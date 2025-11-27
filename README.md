@@ -26,7 +26,7 @@ Our design principle is to **minimize modification to the original XBrainLab**, 
 - **Installation**
   - From latest code:
       ```
-      pip install --upgrade git+https://github.com/CQIN0911/XBrainLab_LLM.git@AI-agent
+      pip install --upgrade git+https://github.com/CECNL/XBrainLab.git@AI-agent
       ```
 `
     
