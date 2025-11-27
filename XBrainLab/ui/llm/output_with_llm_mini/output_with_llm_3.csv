@@ -1,0 +1,16 @@
+User Input,Mapped Function,Model Output,Latency (s)
+Load EEG data from file,load data,[{'text': 'Do you want to perform Load Data or Dataset Splitting?'}],1.74
+I want to load data ,load data,[{'command': 'Import Data'}],0.12
+Can you load data?,load data,[{'command': 'Import Data'}],0.06
+Help me load data,load data,[{'command': 'Import Data'}],0.13
+import data for me,load data,[{'command': 'Import Data'}],0.04
+I want to import data,load data,[{'command': 'Import Data'}],0.12
+data load,load data,[{'command': 'Import Data'}],0.09
+load data,load data,[{'command': 'Import Data'}],0.06
+import data,load data,[{'command': 'Import Data'}],0.11
+load new data for analysis,load data,[{'command': 'Import Data'}],0.06
+filter the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'text': 'Do you want to perform EEGNet, Filtering, or Training Setting?'}]",4.20
+apply filter to the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Filtering', 'parameters': {'h_freq': 30, 'l_freq': 0.5}}]",2.45
+apply band-pass filter to the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}",[],13.24
+filter the data within 5hz to 40hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 5, ""h_freq"": 40}}",[],14.80
+apply filter with low cutoff frequency of 5,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 5, ""h_freq"": 50}}",[],13.62

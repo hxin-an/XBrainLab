@@ -1,0 +1,61 @@
+User Input,Mapped Function,Model Output,Latency (s)
+Load EEG data from file,load data,"[{'command': 'Load Data', 'parameters': {'path': 'path/to/data.mat'}}]",1.82
+I want to load data ,load data,[{'command': 'Import Data'}],0.12
+Can you load data?,load data,[{'command': 'Import Data'}],0.17
+Help me load data,load data,[{'command': 'Import Data'}],0.11
+import data for me,load data,[{'command': 'Import Data'}],0.12
+I want to import data,load data,[{'command': 'Import Data'}],0.13
+data load,load data,[{'command': 'Import Data'}],0.11
+load data,load data,[{'command': 'Import Data'}],0.11
+import data,load data,[{'command': 'Import Data'}],0.19
+load new data for analysis,load data,[{'command': 'Import Data'}],0.13
+filter the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40.0, 'l_freq': 0.5}}]",1.22
+apply filter to the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Resample', 'parameters': {'frequency': 128}}]",8.76
+apply band-pass filter to the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 0.1}}]",1.23
+filter the data within 5hz to 40hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 5, ""h_freq"": 40}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40, 'l_freq': 5}}]",1.13
+apply filter with low cutoff frequency of 5,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 5, ""h_freq"": 50}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 5}}]",1.15
+apply filter with high cutoff of 45hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 45}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 45}}]",1.62
+Apply a low-pass filter at 40 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 40}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40, 'l_freq': 1}}]",3.43
+Apply a high-pass filter at 0.5 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 0.5, ""h_freq"": 45}}","[{'command': 'Filtering', 'parameters': {'h_freq': 0.5, 'l_freq': 0.5}}]",1.19
+Perform a bandpass filter from 0.1 Hz to 45 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 0.1, ""h_freq"": 45}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 0.1}}]",1.19
+Apply a bandpass filter from 1 to 40 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 40}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40, 'l_freq': 1}}]",1.23
+Normalize the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",1.09
+normalize the data with z-score method,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",1.18
+normalize the data with min max method,"{""command"": ""Normalize"", ""parameters"": {""method"": ""min max""}}","[{'command': 'Normalize', 'parameters': {'method': 'min max'}}]",0.89
+apply normalization to the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",1.17
+can you normalize the data?,"{""command"": ""Normalize"", ""parameters"": {""method"": ""min max""}}","[{'text': 'Sure, you can normalize the data using various methods. However, the most commonly used feature scaling method in EEG data analysis is normalization. Normalization involves scaling the data to a common range, typically between 0 and 1. This method is effective in reducing the influence of extreme values and improving the performance of machine learning algorithms.'}]",0.83
+apply normalization to the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",2.05
+Normalize the data using z-score,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",1.02
+Perform min-max normalization,"{""command"": ""Normalize"", ""parameters"": {""method"": ""min max""}}","[{'command': 'Normalize', 'parameters': {'method': 'min max'}}]",0.92
+normalize the data please,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'text': 'Sure, here are the steps to normalize the data: \n1. Subtract the mean from each feature. \n2. Divide each feature by its standard deviation.'}]",0.51
+I want to normalize the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.92
+resample the data to 125hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 125}}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",1.50
+resample the data to 250hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 250}}","[{'command': 'Resample', 'parameters': {'frequency': 250}}]",1.37
+Downsample the data to 128 Hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 128}}","[{'command': 'Resample', 'parameters': {'frequency': 128}}]",0.96
+resample the data to 125,"{""command"": ""Resample"", ""parameters"": {""frequency"": 125}}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",0.95
+resample the data to 250,"{""command"": ""Resample"", ""parameters"": {""frequency"": 250}}","[{'command': 'Resample', 'parameters': {'frequency': 250}}]",0.94
+Downsample the data to 100,"{""command"": ""Resample"", ""parameters"": {""frequency"": 100}}",[],20.38
+apply resampling to 128,"{""command"": ""Resample"", ""parameters"": {""frequency"": 128}}","[{'text': 'The data will be resampled to 128 Hz, and the feature scaling will be performed on the resampled data.'}]",0.41
+resample the data to 500hz please,"{""command"": ""Resample"", ""parameters"": {""frequency"": 500}}","[{'command': 'Resample', 'parameters': {'frequency': 500}}]",0.92
+I want to resample the data to 256hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 256}}","[{'command': 'Resample', 'parameters': {'frequency': 256}}]",0.95
+can you downsample the data to 200hz?,"{""command"": ""Resample"", ""parameters"": {""frequency"": 200}}","[{'command': 'Resample', 'parameters': {'frequency': 200}}]",5.29
+"epoch with event 800,801,802","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': -0.5}}]",1.76
+"epoch with event 600, 700, 801","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [600, 700, 801], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'event': [600, 700, 801]}}]",1.16
+"epoch with event 800,801,802, 803, 804","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802, 803, 804], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",6.24
+epoch with event 800,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800], 'start_time': -0.5}}]",1.19
+"epoch with event 800,801,802 with start time of -1","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -1, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'event': [800, 801, 802], 'start_time': -1}}]",1.34
+"epoch with event 800,801,802 with time -1 to 5","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -1, ""end_time"": 5}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 5, 'event': [800, 801, 802], 'start_time': -1}}]",1.62
+epoch with event 800 with start time 1sec prior of event to 3sec after,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -1, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': 1}}]",1.61
+epoch with event 800 with start time 0.5sec prior of event to 3sec after,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': 0.5}}]",1.74
+"epoch with event 800,801,802 and do baseline removal","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -0.5, ""end_time"": 3, ""baseline_tmin"": -0.5, ""baseline_tmax"": 3, ""doRemoval""： True}}}",[],20.73
+epoch with event 800 and do baseline removal,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -0.5, ""end_time"": 3, ""baseline_tmin"": -0.5, ""baseline_tmax"": 3, ""doRemoval""： True}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800], 'start_time': -0.5}}]",1.69
+export the preprocessed data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[],20.38
+save the preprocessed data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.14
+export the current data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[],20.08
+save the data now,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.11
+perform export,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.11
+export the data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[],20.08
+export current data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[],20.47
+I want to save the preprocessed data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.13
+export the data to ./preprocessed,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed""}}",[{'command': 'Import Data'}],0.13
+export the data to ./new_data,"{""command"": ""Export"", ""parameters"": {""path"": ""./new_data""}}",[{'command': 'Import Data'}],0.13

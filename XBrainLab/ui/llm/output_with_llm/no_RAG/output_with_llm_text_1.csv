@@ -1,0 +1,31 @@
+User Input,Mapped Function,Model Output,Latency (s)
+I want to epoch the data.,"{""text"": ""Which event do you want to use for epoching?""}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': -0.5}}]",1.69
+Epoch it,"{""text"": ""What event should be used to create epochs?""}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",1.07
+Can you segment the data into trials?,"{""text"": ""Which event label should I use to create the epochs?""}","[{'text': 'Yes, the software allows you to segment the data into trials based on specific conditions or time intervals.'}]",0.37
+I'd like to split the data into epochs.,"{""text"": ""Please specify the event you want to use for epoching.""}",[{'text': 'Which event should the data be segmented by?'}],1.31
+Do epoching please,"{""text"": ""What event do you want to epoch the data on?""}",[{'text': '❌ Epoching must be performed before training.'}],0.21
+Can you do epoch segmentation,"{""text"": ""Which event should the data be segmented by?""}","[{'text': ""❌ Epoch segmentation is not included in this software's capabilities.""}]",0.22
+Cut EEG into trials,"{""text"": ""Which event should I use to define the trials?""}","[{'text': ""Sure, you can use the 'epoch extractor' to divide your data into training, validation, and test sets. This allows you to train your model on the training set and evaluate its performance on the validation and test sets.""}]",0.55
+Epoch the signal for me.,"{""text"": ""Please provide the event to use for epoching.""}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",1.14
+Let's do event-based segmentation.,"{""text"": ""Which event would you like to segment by?""}","[{'command': '3D Saliency plot', 'parameters': {'event': 'LH'}}]",0.91
+Divide the data into time windows.,"{""text"": ""Are you referring to epochs? If so, which event should be used?""}","[{'command': 'Resample', 'parameters': {'frequency': 125, 'start_time': 3}}]",2.82
+Can I see the performance?,"{""text"": ""Do you want to see accuracy, AUC, or kappa value?""}",[{'text': 'Accuracy: 80.00%'}],1.19
+I want to know how the model did.,"{""text"": ""Would you like a confusion matrix or a performance table?""}","[{'text': 'Hi, how can I assist you today?'}]",0.82
+Show me the evaluation result.,"{""text"": ""Do you want to see the confusion matrix or performance table?""}",[{'text': 'Confusion matrix shows the following classification results:\\n'}],2.46
+Evaluate the model for me.,"{""text"": ""Which evaluation would you like? (e.g., accuracy, confusion matrix, AUC)""}","[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}]",0.85
+How did the training go?,"{""text"": ""Would you like to see accuracy, AUC, or the confusion matrix?""}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",1.60
+Can I get a summary of results?,"{""text"": ""Do you mean a performance table, confusion matrix, or something else?""}",[{'text': 'The following results are available:'}],2.44
+Give me model output.,"{""text"": ""Do you want to export the model output or view evaluation metrics?""}",[{'text': 'The model is trained and ready to use.'}],0.98
+Check the result,"{""text"": ""Would you like to see accuracy, AUC, or the confusion matrix?""}",[{'text': 'Accuracy: 80.00%'}],1.16
+I want to see how it performs,"{""text"": ""Do you mean performance table or confusion matrix?""}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.95
+Can you show test results?,"{""text"": ""Should I show a performance table or confusion matrix?""}","[{'text': 'The software allows you to preprocess EEG data, train machine learning models, evaluate results, and visualize data insights.'}]",0.96
+Can I see the visualization results?,"{""text"": ""Which plot do you want to see? Saliency map or saliency topographic map?""}","[{'text': 'Sure, here are the visualization results.'}]",0.99
+I want to see a plot.,"{""text"": ""Which plot do you want to see? Can you be more specific?""}","[{'text': ""Sure, here's a plot of the data you loaded.""}]",0.29
+Show me the visualization,"{""text"": ""What kind of visualization do you want to see? (e.g., saliency map, spectrogram, model summary)""}",[{'text': 'Which plot do you want to see? Can you be more specific?'}],1.86
+Can you display something 3D?,"{""text"": ""Do you want to see a 3D saliency plot? If so, for which event?""}",[{'text': '3D visualization is not currently supported by this software.'}],0.24
+I want to see event visualization.,"{""text"": ""Would you like a 3D saliency plot or another type of visualization?""}","[{'command': 'Time Epoch', 'parameters': {'event': [1, 2]}}]",2.31
+Visualize the data.,"{""text"": ""Which type of visualization do you want? (e.g., saliency map, spectrogram)""}",[{'text': 'Which data would you like to visualize? You can choose from: \\n1. Raw data \\n2. Preprocessed data \\n3. Training data \\n4. Evaluation data \\n5. All data \\n6. None.'}],1.45
+Give me saliency of one class.,"{""text"": ""Which saliency plot and event do you want to visualize?""}","[{'command': 'Saliency map', 'parameters': {'class_id': 1}}]",1.25
+I want to see model visualization.,"{""text"": ""Do you want to see the model summary or a saliency plot?""}","[{'command': 'Model Summary', 'parameters': {'model_summary': True}}]",1.10
+Can I see activity over time?,"{""text"": ""Would you like to see a saliency spectrogram?""}","[{'text': 'Yes, you can use the visualization tools to see activity over time. This allows you to observe how different electrodes or channels exhibit varying activity levels.'}]",0.47
+Plot brain activity.,"{""text"": ""Do you want a saliency map, topographic map, or 3D saliency plot? If 3D, which event?""}","[[{'command': '3D Saliency plot', 'parameters': {'event': 'LH'}}], [{'command': 'clean plots', 'parameters': {'plot_type': 'brain activity'}}], [{'command': 'Clean plots', 'parameters': {'plot_type': 'brain activity'}}]]",1.01

@@ -27,11 +27,19 @@ from .training import (
     TrainingSettingWindow,
 )
 from .visualization import VISUALIZATION_MODULE_LIST, PickMontageWindow, SetSaliencyWindow
-
+from .llm import ChatDialog
 
 class DashBoard(tk.Tk):
     def __init__(self, study, script_history):
         super().__init__()
+        # LLM
+        self.menu_items = []
+        self.preprocess_widgets = {}
+        self.training_widgets = {}
+        self.evaluation_widgets = {}
+        self.visualization_widgets = {}
+        self.load_data_widgets = {}
+        self.chat_history = []
         # window
         self.child_list = []
         self.minsize(900, 400)
@@ -96,6 +104,7 @@ class DashBoard(tk.Tk):
         menu.add_cascade(label="Evaluation", menu=evaluation_menu)
         menu.add_cascade(label="Visualization", menu=visualization_menu)
         menu.add_cascade(label="Script", menu=script_menu)
+        menu.add_cascade(label="UI helper", command=self.open_ui_helper)
 
         # import data
         for import_module in IMPORT_TYPE_MODULE_LIST:
@@ -174,8 +183,27 @@ class DashBoard(tk.Tk):
             command=lambda: self.show_script(ScriptType.ALL)
         )
         script_menu.add_command(label='Clear script', command=self.clear_script)
-
+        self.menu_items = {
+            "Import data": import_data_menu,
+            "Preprocess": preprocess_menu,
+            "Training": {
+                "menu": training_menu,
+                "submenu": training_setting_menu
+            },
+            "Evaluation": evaluation_menu,
+            "Visualization": visualization_menu,
+            "Script": script_menu
+        }
         self.config(menu=menu)
+
+    def open_ui_helper(self):
+        if not hasattr(self, 'chat_dialog') or not self.chat_dialog.winfo_exists():
+            self.chat_history = ChatDialog(self, self.menu_items, self.preprocess_widgets, self.training_widgets, self.evaluation_widgets, self.visualization_widgets, self.load_data_widgets, chat_history=self.chat_history, on_close=self.save_chat_history)
+        else:
+            self.chat_history.lift()
+
+    def save_chat_history(self, updated_chat_history):
+        self.chat_history = updated_chat_history
 
     def warn_flow_cleaning(self):
         if tk.messagebox.askokcancel(
@@ -199,6 +227,8 @@ class DashBoard(tk.Tk):
             self.update_dashboard()
 
         current_import_module = import_module(self)
+        label = current_import_module.command_label
+        self.load_data_widgets[label] = (current_import_module)
         data_loader = current_import_module.get_result()
         if data_loader:
             self.script_history += current_import_module.get_script_history()
@@ -213,6 +243,10 @@ class DashBoard(tk.Tk):
         current_preprocess_module = preprocess_module(
             self, self.study.preprocessed_data_list
         )
+
+        label = preprocess_module.command_label
+        self.preprocess_widgets[label] = (current_preprocess_module)
+
         preprocessed_data_list = current_preprocess_module.get_result()
         if preprocessed_data_list:
             self.study.set_preprocessed_data_list(preprocessed_data_list)
@@ -237,6 +271,7 @@ class DashBoard(tk.Tk):
             return
 
         data_splitting_module = DataSplittingSettingWindow(self, self.study.epoch_data)
+        self.training_widgets["Dataset splitting"] = data_splitting_module
         datasets_generator = data_splitting_module.get_result()
         if datasets_generator:
             datasets_generator.apply(self.study)
@@ -252,6 +287,7 @@ class DashBoard(tk.Tk):
             return
 
         model_selection_module = ModelSelectionWindow(self)
+        self.training_widgets["Model Selection"] = model_selection_module
         model_holder = model_selection_module.get_result()
         if model_holder:
             self.study.set_model_holder(model_holder)
@@ -267,6 +303,7 @@ class DashBoard(tk.Tk):
             return
 
         training_module = TrainingSettingWindow(self)
+        self.training_widgets["Training Setting"] = training_module
         training_option = training_module.get_result()
         if training_option:
             self.study.set_training_option(training_option)
@@ -306,7 +343,10 @@ class DashBoard(tk.Tk):
         self.open_training_manager()
 
     def open_training_manager(self):
-        history = TrainingManagerWindow(self, self.study.trainer).get_script_history()
+        # history = TrainingManagerWindow(self, self.study.trainer).get_script_history()
+        training_manager_module = TrainingManagerWindow(self, self.study.trainer)
+        self.training_widgets["Training Manager"] = training_manager_module
+        history = training_manager_module.get_script_history()
         self.script_history += history
 
     # eval
@@ -314,7 +354,11 @@ class DashBoard(tk.Tk):
         training_plan_holders = None
         if self.study.trainer:
             training_plan_holders = self.study.trainer.get_training_plan_holders()
-        history = evaluation_module(self, training_plan_holders).get_script_history()
+        # history = evaluation_module(self, training_plan_holders).get_script_history()
+        curr_module = evaluation_module(self, training_plan_holders)
+        label = curr_module.command_label
+        self.evaluation_widgets[label] = (curr_module)
+        history = curr_module.get_script_history()
         self.script_history += history
 
     # visualize
@@ -347,6 +391,9 @@ class DashBoard(tk.Tk):
                 ):
                     return
         set_saliency_module = SetSaliencyWindow(self, self.study.get_saliency_params())
+        # added
+        label = set_saliency_module.command_label
+        self.visualization_widgets[label] = set_saliency_module
         saliency_param_confirm, saliency_params = set_saliency_module.get_result()
         if saliency_param_confirm:
             self.study.set_saliency_params(saliency_params)
@@ -362,7 +409,11 @@ class DashBoard(tk.Tk):
         training_plan_holders = None
         if self.study.trainer:
             training_plan_holders = self.study.trainer.get_training_plan_holders()
-        hist = visualization_module(self, training_plan_holders).get_script_history()
+        # hist = visualization_module(self, training_plan_holders).get_script_history()
+        curr_module = visualization_module(self, training_plan_holders)
+        label = curr_module.command_label
+        self.visualization_widgets[label] = (curr_module)
+        hist = curr_module.get_script_history()
         self.script_history += hist
 
     def show_script(self, script_type, target=None):
@@ -440,7 +491,7 @@ class DashBoard(tk.Tk):
 
     def destroy(self, force=False):
         self.check_training(force)
-
+        
         child_list = self.child_list.copy()
         for child in child_list:
             if not child.destroy(force):

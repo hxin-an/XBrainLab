@@ -49,4 +49,5 @@ class LoadSet(LoadBase):
                 data_type = DataType.RAW.value
         if data_type:
             self.check_data_type(data_type)
+        print("return selected data")
         return selected_data

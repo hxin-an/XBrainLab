@@ -1,0 +1,31 @@
+User Input,Mapped Function,Model Output,Latency (s)
+I want to epoch the data.,"{""text"": ""Which event do you want to use for epoching?""}",[{'text': 'Which event do you want to use for epoching?'}],1.22
+Epoch it,"{""text"": ""What event should be used to create epochs?""}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",1.75
+Can you segment the data into trials?,"{""text"": ""Which event label should I use to create the epochs?""}","[{'text': 'Yes, you can segment the data into trials by dividing the continuous EEG data into discrete time intervals called trials. Each trial represents a specific time segment of the original data.'}]",0.50
+I'd like to split the data into epochs.,"{""text"": ""Please specify the event you want to use for epoching.""}",[{'text': 'Which event do you want to use for epoching?'}],0.90
+Do epoching please,"{""text"": ""What event do you want to epoch the data on?""}","[{'text': ""Sure, you can perform epoching before training. Epoching involves dividing the continuous EEG data into smaller segments called epochs. Each epoch represents a specific time interval, and the model is trained on each epoch independently before moving on to the next one. This process helps to reduce the impact of noise and artifacts on the model's performance and improves thegeneralizability of the trained model.""}]",0.84
+Can you do epoch segmentation,"{""text"": ""Which event should the data be segmented by?""}","[{'text': 'Yes, this software can perform epoch segmentation by dividing the continuous EEG data into smaller segments based on a specific criterion, such as time intervals or frequency ranges. These segments are then used for training and evaluation purposes.'}]",0.76
+Cut EEG into trials,"{""text"": ""Which event should I use to define the trials?""}","[{'text': 'Sure, you can use this software to split the EEG data into training and testing sets. The number of trials can be specified by the user.'}]",0.46
+Epoch the signal for me.,"{""text"": ""Please provide the event to use for epoching.""}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [100, 200, 300], 'start_time': -0.5}}]",1.74
+Let's do event-based segmentation.,"{""text"": ""Which event would you like to segment by?""}","[{'command': '3D Saliency plot', 'parameters': {'event': 'LH'}}]",1.00
+Divide the data into time windows.,"{""text"": ""Are you referring to epochs? If so, which event should be used?""}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",1.35
+Can I see the performance?,"{""text"": ""Do you want to see accuracy, AUC, or kappa value?""}","[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}]",1.53
+I want to know how the model did.,"{""text"": ""Would you like a confusion matrix or a performance table?""}",[],21.40
+Show me the evaluation result.,"{""text"": ""Do you want to see the confusion matrix or performance table?""}",[],20.38
+Evaluate the model for me.,"{""text"": ""Which evaluation would you like? (e.g., accuracy, confusion matrix, AUC)""}","[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}]",9.21
+How did the training go?,"{""text"": ""Would you like to see accuracy, AUC, or the confusion matrix?""}",[{'text': 'The training process was successful. The accuracy of the model reached 95% on the validation set.'}],1.11
+Can I get a summary of results?,"{""text"": ""Do you mean a performance table, confusion matrix, or something else?""}",[],22.13
+Give me model output.,"{""text"": ""Do you want to export the model output or view evaluation metrics?""}",[],20.36
+Check the result,"{""text"": ""Would you like to see accuracy, AUC, or the confusion matrix?""}","[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}]",0.74
+I want to see how it performs,"{""text"": ""Do you mean performance table or confusion matrix?""}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",1.01
+Can you show test results?,"{""text"": ""Should I show a performance table or confusion matrix?""}",[],20.17
+Can I see the visualization results?,"{""text"": ""Which plot do you want to see? Saliency map or saliency topographic map?""}","[{'command': 'Clean plots', 'parameters': {}}]",1.04
+I want to see a plot.,"{""text"": ""Which plot do you want to see? Can you be more specific?""}",[{'text': '3D saliency plot showing the brain activity during a specific task.'}],0.24
+Show me the visualization,"{""text"": ""What kind of visualization do you want to see? (e.g., saliency map, spectrogram, model summary)""}",[{'text': 'Which plot do you want to see? Can you be more specific?'}],1.58
+Can you display something 3D?,"{""text"": ""Do you want to see a 3D saliency plot? If so, for which event?""}",[{'text': '3D visualization is not included in the software capabilities.'}],0.24
+I want to see event visualization.,"{""text"": ""Would you like a 3D saliency plot or another type of visualization?""}",[{'text': 'Which event do you want to see for the event visualization?'}],1.10
+Visualize the data.,"{""text"": ""Which type of visualization do you want? (e.g., saliency map, spectrogram)""}",[],20.56
+Give me saliency of one class.,"{""text"": ""Which saliency plot and event do you want to visualize?""}",[],20.62
+I want to see model visualization.,"{""text"": ""Do you want to see the model summary or a saliency plot?""}","[{'command': 'Model Summary', 'parameters': {}}]",0.64
+Can I see activity over time?,"{""text"": ""Would you like to see a saliency spectrogram?""}","[{'text': 'Sure, you can use the visualization tools to see activity over time. You can create saliency maps, topographic maps, spectrograms, and 3D saliency plots to visualize the changes in the EEG signals over time.'}]",0.67
+Plot brain activity.,"{""text"": ""Do you want a saliency map, topographic map, or 3D saliency plot? If 3D, which event?""}","[{'command': '3D Saliency plot', 'parameters': {'event': 'LH'}}]",1.02

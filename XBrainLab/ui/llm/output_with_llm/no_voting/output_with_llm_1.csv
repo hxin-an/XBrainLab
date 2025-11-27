@@ -1,0 +1,181 @@
+User Input,Mapped Function,Model Output,Latency (s)
+Load EEG data from file,load data,"[{'command': 'Load Data', 'parameters': {'path': 'path/to/data.mat'}}]",1.35
+I want to load data ,load data,[{'command': 'Import Data'}],0.13
+Can you load data?,load data,[{'command': 'Import Data'}],0.14
+Help me load data,load data,[{'command': 'Import Data'}],0.13
+import data for me,load data,[{'command': 'Import Data'}],0.12
+I want to import data,load data,[{'command': 'Import Data'}],0.13
+data load,load data,[{'command': 'Import Data'}],0.12
+load data,load data,[{'command': 'Import Data'}],0.12
+import data,load data,[{'command': 'Import Data'}],0.13
+load new data for analysis,load data,[{'command': 'Import Data'}],0.12
+filter the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40.0, 'l_freq': 0.5}}]",0.78
+apply filter to the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Resample', 'parameters': {'frequency': 128}}]",2.57
+apply band-pass filter to the data,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 50}}","[{'command': 'Resample', 'parameters': {'frequency': 128}}]",1.84
+filter the data within 5hz to 40hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 5, ""h_freq"": 40}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40, 'l_freq': 5}}]",0.49
+apply filter with low cutoff frequency of 5,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 5, ""h_freq"": 50}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 5}}]",0.52
+apply filter with high cutoff of 45hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 45}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 45}}]",0.44
+Apply a low-pass filter at 40 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 40}}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",2.53
+Apply a high-pass filter at 0.5 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 0.5, ""h_freq"": 45}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 0.5}}]",0.61
+Perform a bandpass filter from 0.1 Hz to 45 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 0.1, ""h_freq"": 45}}","[{'command': 'Filtering', 'parameters': {'h_freq': 45, 'l_freq': 0.1}}]",0.51
+Apply a bandpass filter from 1 to 40 Hz,"{""command"": ""Filtering"", ""parameters"": {""l_freq"": 1, ""h_freq"": 40}}","[{'command': 'Filtering', 'parameters': {'h_freq': 40, 'l_freq': 1}}]",0.51
+Normalize the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.51
+normalize the data with z-score method,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.39
+normalize the data with min max method,"{""command"": ""Normalize"", ""parameters"": {""method"": ""min max""}}","[{'command': 'Normalize', 'parameters': {'method': 'min max'}}]",0.43
+apply normalization to the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.64
+can you normalize the data?,"{""command"": ""Normalize"", ""parameters"": {""method"": ""min max""}}","[{'text': 'Sure, you can normalize the data by subtracting the mean and dividing by the standard deviation of each feature. This will help to reduce the impact of outliers and improve the performance of the model.'}]",0.58
+apply normalization to the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.38
+Normalize the data using z-score,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.44
+Perform min-max normalization,"{""command"": ""Normalize"", ""parameters"": {""method"": ""min max""}}","[{'command': 'Normalize', 'parameters': {'method': 'min max'}}]",0.38
+normalize the data please,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'text': 'Sure, here are the steps to normalize the data:\n1. Subtract the mean from each feature.\n2. Divide each feature by its standard deviation.'}]",0.50
+I want to normalize the data,"{""command"": ""Normalize"", ""parameters"": {""method"": ""z score""}}","[{'command': 'Normalize', 'parameters': {'method': 'z score'}}]",0.36
+resample the data to 125hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 125}}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",0.40
+resample the data to 250hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 250}}","[{'command': 'Resample', 'parameters': {'frequency': 250}}]",0.41
+Downsample the data to 128 Hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 128}}","[{'command': 'Resample', 'parameters': {'frequency': 128}}]",0.39
+resample the data to 125,"{""command"": ""Resample"", ""parameters"": {""frequency"": 125}}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",0.43
+resample the data to 250,"{""command"": ""Resample"", ""parameters"": {""frequency"": 250}}","[{'command': 'Resample', 'parameters': {'frequency': 128}}]",1.02
+Downsample the data to 100,"{""command"": ""Resample"", ""parameters"": {""frequency"": 100}}",[],20.58
+apply resampling to 128,"{""command"": ""Resample"", ""parameters"": {""frequency"": 128}}",[{'text': '128-dimensional feature scaling was applied to the preprocessed data.'}],0.28
+resample the data to 500hz please,"{""command"": ""Resample"", ""parameters"": {""frequency"": 500}}","[{'command': 'Resample', 'parameters': {'frequency': 500}}]",0.54
+I want to resample the data to 256hz,"{""command"": ""Resample"", ""parameters"": {""frequency"": 256}}","[{'command': 'Resample', 'parameters': {'frequency': 256}}]",0.41
+can you downsample the data to 200hz?,"{""command"": ""Resample"", ""parameters"": {""frequency"": 200}}","[{'command': 'Resample', 'parameters': {'frequency': 200}}]",0.41
+"epoch with event 800,801,802","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -0.5, ""end_time"": 3}}}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",0.46
+"epoch with event 600, 700, 801","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [600, 700, 801], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [600, 700, 801], 'start_time': -0.5}}]",0.67
+"epoch with event 800,801,802, 803, 804","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802, 803, 804], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",2.66
+epoch with event 800,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -0.5, ""end_time"": 3}}}",[{'text': 'Epoch the signal for me. Which event do you want to use for epoching?'}],0.43
+"epoch with event 800,801,802 with start time of -1","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -1, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'event': [800, 801, 802], 'start_time': -1}}]",0.59
+"epoch with event 800,801,802 with time -1 to 5","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -1, ""end_time"": 5}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 5, 'event': [800, 801, 802], 'start_time': -1}}]",0.62
+epoch with event 800 with start time 1sec prior of event to 3sec after,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -1, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': 1}}]",0.71
+epoch with event 800 with start time 0.5sec prior of event to 3sec after,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -0.5, ""end_time"": 3}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': 0.5}}]",0.72
+"epoch with event 800,801,802 and do baseline removal","{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800,801,802], ""start_time"": -0.5, ""end_time"": 3, ""baseline_tmin"": -0.5, ""baseline_tmax"": 3, ""doRemoval""： True}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800, 801, 802], 'start_time': -0.5}}]",8.39
+epoch with event 800 and do baseline removal,"{{""command"": ""Time Epoch"", ""parameters"": {""event"": [800], ""start_time"": -0.5, ""end_time"": 3, ""baseline_tmin"": -0.5, ""baseline_tmax"": 3, ""doRemoval""： True}}}","[{'command': 'Time Epoch', 'parameters': {'end_time': 3, 'event': [800], 'start_time': -0.5}}]",1.33
+export the preprocessed data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.21
+save the preprocessed data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.12
+export the current data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.14
+save the data now,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.14
+perform export,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.14
+export the data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.13
+export current data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[],20.15
+I want to save the preprocessed data,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed_data""}}",[{'command': 'Import Data'}],0.18
+export the data to ./preprocessed,"{""command"": ""Export"", ""parameters"": {""path"": ""./preprocessed""}}",[{'command': 'Import Data'}],0.14
+export the data to ./new_data,"{""command"": ""Export"", ""parameters"": {""path"": ""./new_data""}}",[{'command': 'Import Data'}],0.16
+I want to split the data using trial.,"{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Trial"", ""validation_type"": ""By Trial"", ""cross_validation"": ""False""}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'False', 'testing_type': 'By Trial', 'training_type': 'full data', 'validation_type': 'By Trial'}}]",0.70
+standard data splitting.,"{{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Session"", ""validation_type"": ""By Session"", ""cross_validation"": ""False""}}}",[],20.28
+split data into train test validation,"{{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Session"", ""validation_type"": ""By Session"", ""cross_validation"": ""False""}}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'False', 'testing_type': 'By Session', 'training_type': 'full data', 'validation_type': 'By Session'}}]",0.92
+split the data,"{{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Session"", ""validation_type"": ""By Session"", ""cross_validation"": ""False""}}}",[],21.20
+split the data by session,"{{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Session"", ""validation_type"": ""By Session"", ""cross_validation"": ""False""}}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'False', 'testing_type': 'By Session', 'training_type': 'By Session', 'validation_type': 'By Session'}}]",0.71
+create training testing and validation sets,"{{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Session"", ""validation_type"": ""By Session"", ""cross_validation"": ""False""}}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'False', 'testing_type': 'By Session', 'training_type': 'full data', 'validation_type': 'By Session'}}]",0.62
+split the data with cross validation,"{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Trial"", ""validation_type"": ""By Trial"", ""cross_validation"": ""True""}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'True', 'testing_type': 'By Session', 'training_type': 'full data', 'validation_type': 'By Session'}}]",0.71
+I want to split the data using trial and use cross validation,"{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Trial"", ""validation_type"": ""By Trial"", ""cross_validation"": ""True""}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'True', 'testing_type': 'By Trial', 'training_type': 'full data', 'validation_type': 'By Trial'}}]",0.71
+create training testing and validation sets and apply cross validation,"{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Trial"", ""validation_type"": ""By Trial"", ""cross_validation"": ""True""}}","[{'command': 'Dataset Splitting', 'parameters': {'cross_validation': 'True', 'testing_type': 'By Session', 'training_type': 'full data', 'validation_type': 'By Session'}}]",0.71
+split the data by trial,"{""command"": ""Dataset splitting"", ""parameters"": {""training_type"": ""full data"", ""testing_type"": ""By Trial"", ""validation_type"": ""By Trial"", ""cross_validation"": ""False""}}","[{'command': 'Dataset splitting', 'parameters': {'cross_validation': 'False', 'testing_type': 'By Trial', 'training_type': 'full data', 'validation_type': 'By Trial'}}]",0.73
+Use SCCNet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""SCCNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}]",0.40
+Select SCCNet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""SCCNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}]",0.86
+use sccnet as model,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""SCCNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}]",0.39
+perform model selection with sccnet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""SCCNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}]",0.50
+Use EEGNet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""EEGNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'EEGNet'}}]",0.43
+Select EEGNet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""EEGNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'EEGNet'}}]",0.48
+can you use eegnet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""EEGNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'EEGNet'}}]",0.41
+perform model selection with eegnet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""EEGNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'EEGNet'}}]",0.38
+use ShallowConvNet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""ShallowConvNet""}}","[{'command': 'Model Selection', 'parameters': {'model': 'ShallowConvNet'}}]",0.53
+select ShallowConvNet,"{""command"": ""Model Selection"", ""parameters"": {""model"": ""ShallowConvNet""}}","[{'command': 'Model Selection', 'parameters': {'model_type': 'ShallowConvNet'}}]",0.82
+start training,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.72
+start model training,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}, {'command': 'Training Setting', 'parameters': {'batch size': 32, 'checkpoint epoch': 10, 'epoch': 100, 'evaluation': 'Best validation loss', 'learning rate': 0.001, 'optimizer': 'ASGD', 'output directory': './output_model', 'repeat': 1}}]",1.23
+start training the model,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}, {'command': 'Training Setting', 'parameters': {'batch size': 32, 'checkpoint epoch': 10, 'epoch': 100, 'evaluation': 'Best validation loss', 'learning rate': 0.001, 'optimizer': 'ASGD', 'output directory': './output_model', 'repeat': 1}}]",1.12
+start training with batch size of 64,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 64, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'EEGNet'}}, {'command': 'Training Setting', 'parameters': {'batch size': 64, 'checkpoint epoch': 10, 'epoch': 100, 'evaluation': 'Best validation loss', 'learning rate': 0.001, 'optimizer': 'Adam', 'output directory': './output_model', 'repeat': 1}}]",1.12
+start model training with 50 epochs,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 50, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}, {'command': 'Training Setting', 'parameters': {'batch size': 32, 'checkpoint epoch': 10, 'epoch': 50, 'evaluation': 'Best validation loss', 'learning rate': 0.001, 'optimizer': 'ASGD', 'output directory': './output_model', 'repeat': 1}}]",1.13
+start training the model with learning rate 0.01 and 200 epochs,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 200, ""batch size"": 32, ""learning rate"": 0.01, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'EEGNet'}}, {'command': 'Training Setting', 'parameters': {'batch size': 16, 'checkpoint epoch': 20, 'epoch': 200, 'evaluation': 'Best validation loss', 'learning rate': 0.01, 'optimizer': 'Adam', 'output directory': './output_model', 'repeat': 1}}]",1.06
+start training the model with Adam optimizer,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""Adam"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",1.39
+start training the model with SGD optimizer,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""SGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'SGD'}}, {'command': 'Training Setting', 'parameters': {'batch size': 32, 'checkpoint epoch': 10, 'epoch': 100, 'evaluation': 'Best validation loss', 'learning rate': 0.001, 'optimizer': 'SGD', 'output directory': './output_model', 'repeat': 1}}]",1.13
+set training of the model,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}, {'command': 'Training Setting', 'parameters': {'batch size': 32, 'checkpoint epoch': 10, 'epoch': 100, 'evaluation': 'Best validation loss', 'learning rate': 0.001, 'optimizer': 'ASGD', 'output directory': './output_model', 'repeat': 1}}]",1.12
+set basic training settings,"{""command"": ""Training Setting"", ""parameters"": {""epoch"" : 100, ""batch size"": 32, ""learning rate"": 0.001, ""optimizer"": ""ASGD"", ""output directory"": ""./output_model"", ""checkpoint epoch"": 10, ""evaluation"": ""Best validation loss"", ""repeat"" : 1}}","[{'command': 'Model Summary', 'parameters': {'model': 'SCCNet'}}]",0.72
+I want to see training accuracy,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.51
+Can I monitor the training accuracy?,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.37
+I want to see the training loss,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""loss""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'loss'}}]",0.40
+Show the training learning rate,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""learning rate""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'learning rate'}}]",0.63
+show training acc,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.44
+show training accuracy,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}",[{'text': 'Training accuracy: 85.67%'}],0.72
+I want to see training process,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.62
+I want to see the training manager,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}]",0.39
+how to check training loss,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""loss""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'loss'}}]",0.41
+how is the training going?,"{""command"": ""Training Manager"", ""parameters"": {""plot"": ""accuracy""}}","[{'command': 'Training Manager', 'parameters': {'plot': 'loss'}}]",0.35
+I want to see the accuracy results,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Accuracy (%)""}}}","[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}]",0.41
+I want to see the AUC and accuracy of testing,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Area under ROC-curve""}}}","[{'command': 'Performance Table', 'parameters': {'type': 'Area under ROC-curve'}}]",1.09
+I want to see the AUC of results,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Area under ROC-curve""}}}","[{'command': 'Performance Table', 'parameters': {'type': 'Area under ROC-curve'}}]",0.38
+I want to see the accuracy,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Accuracy (%)""}}}",[{'text': 'Accuracy: 98.7%'}],0.30
+I want to see testing accuracy and kappa value,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Accuracy (%)""}}}","[{'command': 'Performance Table', 'parameters': {'type': 'Kappa value'}}]",0.45
+show me testing accuracy,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Accuracy (%)""}}}","[{'text': 'The testing accuracy is not provided in the context, therefore I cannot generate the requested information.'}]",0.41
+show testing accuracy,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Accuracy (%)""}}}","[{'text': ""The testing accuracy of the trained model is not provided in this context. Please check the model's accuracy and performance metrics before asking about testing accuracy.""}]",0.91
+show performance table,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""Accuracy (%)""}}}","[{'text': ""Sure, here's the performance table you requested: Accuracy: 95.7%, AUC: 0.98, Kappa value: 0.99""}]",0.71
+I want to see testing kappa value,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""kappa value""}}}","[{'command': 'Performance Table', 'parameters': {'type': 'Kappa value'}}]",0.91
+show me testing kappa value,"{{""command"": ""Performance Table"", ""parameters"": {""type"": ""kappa value""}}}","[{'command': 'Confusion matrix', 'parameters': {'type': 'Kappa value'}}]",1.76
+confusion matrix please,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.24
+I want to see the confusion table,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.23
+confusion matrix,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.31
+show confusion matrix,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",1.15
+can I see the confusion matrix of resuts,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.26
+I want to see testing confusion matrix,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {'type': 'Confusion matrix'}}]",0.46
+show the confusion matrix,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.26
+confusion matrix of testing results,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.34
+show me the confusion,"{{""command"": ""Confusion matrix""}}","[{'text': 'I cannot generate confusion matrices or show visualizations, as I do not have the capability to display or generate visual outputs.'}]",0.41
+show confusion matrix,"{{""command"": ""Confusion matrix""}}","[{'command': 'Confusion matrix', 'parameters': {}}]",0.55
+Can you export the model.,"{{""command"": ""Export Model""}}",[{'command': 'Import Data'}],0.28
+export the model,"{{""command"": ""Export Model""}}",[{'command': 'Import Data'}],0.22
+export model,"{{""command"": ""Export Model""}}",[{'command': 'Import Data'}],0.30
+I want to export the model,"{{""command"": ""Export Model""}}",[{'command': 'Import Data'}],0.22
+Export the trained model,"{{""command"": ""Export Model""}}","[{'command': 'Export Model', 'parameters': {'model_weights_path': 'path/to/model.weights'}}]",0.59
+Export current model,"{{""command"": ""Export Model""}}",[{'command': 'Import Data'}],0.14
+Can you export the model for me,"{{""command"": ""Export Model""}}","[{'command': 'Export Model', 'parameters': {'data_path': 'Data Path', 'model_name': 'Model Name'}}]",0.58
+Output the model,"{{""command"": ""Export Model""}}","[{'command': 'Export Model', 'parameters': {}}]",0.22
+Can you output the model,"{{""command"": ""Export Model""}}","[{'command': 'Export Model', 'parameters': {}}]",0.24
+perform export model,"{{""command"": ""Export Model""}}",[{'command': 'Import Data'}],0.12
+Show me the saliency map.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.27
+Can I see a saliency map?,"{""command"": ""Saliency map""}",[{'text': 'Which saliency plot do you want to see? Saliency map or saliency topographic map?'}],0.48
+Display the saliency map.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.82
+I want to check the saliency map.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.27
+Generate a saliency map.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.53
+Provide the saliency map.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {'event': 'None'}}]",0.37
+Can you plot the saliency map?,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.30
+Give me a saliency map visualization.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.33
+I need a saliency map.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.31
+Show saliency visualization.,"{""command"": ""Saliency map""}","[{'command': 'Saliency map', 'parameters': {}}]",0.28
+Show me the saliency topographic map.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {'event': None}}]",0.88
+Can I see a topographic saliency map?,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {}}]",0.33
+Display the saliency topo map.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency Topographic Map', 'parameters': {}}]",0.34
+I want to check the saliency topographic map.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {}}]",0.28
+Generate a topographic saliency map.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency map', 'parameters': {'event': None}}]",0.42
+Provide the topographic saliency map.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency map', 'parameters': {'event': None}}]",0.58
+Can you plot the topo saliency map?,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {}}]",0.29
+Give me a saliency topo visualization.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {'event': None}}]",0.53
+I need a saliency topographic map.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {}}]",0.31
+Show saliency topo visualization.,"{""command"": ""Saliency topographic map""}","[{'command': 'Saliency topographic map', 'parameters': {'event': None}}]",0.51
+Show me the saliency spectrogram.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.45
+Can I see a saliency spectrogram?,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.31
+Display the saliency spectrogram.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.47
+I want to check the saliency spectrogram,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.28
+Generate a saliency spectrogram.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.29
+Provide the saliency spectrogram.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.29
+Can you plot the saliency spectrogram?,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.30
+Give me a saliency spectrogram visualization.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {'event': None}}]",0.36
+I need a saliency spectrogram.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.31
+Show saliency spectrogram visualization.,"{""command"": ""Saliency spectrogram""}","[{'command': 'Saliency spectrogram', 'parameters': {}}]",0.31
+Show me a 3D saliency plot.,"{""command"": ""3D Saliency plot""}",[],20.38
+Can I see a 3D saliency plot?,"{""command"": ""3D Saliency plot""}",[{'text': '...'}],3.68
+Display the 3D saliency plot.,"{""command"": ""3D Saliency plot""}",[],20.19
+I want to check the 3D saliency plot.,"{""command"": ""3D Saliency plot""}","[{'command': '3D Saliency plot', 'parameters': {'event': 'None'}}]",0.90
+Generate a 3D saliency plot.,"{""command"": ""3D Saliency plot""}","[{'command': '3D Saliency plot', 'parameters': {'event': None}}]",1.02
+Show me a 3D saliency plot for event RH.,"{""command"": ""3D Saliency plot"", ""parameters"": {""event"": ""RH""}}","[{'command': '3D Saliency plot', 'parameters': {'event': 'RH'}}]",1.30
+I need a 3D saliency plot for event 200.,"{""command"": ""3D Saliency plot"", ""parameters"": {""event"": ""200""}}","[{'command': '3D Saliency plot', 'parameters': {'event': '200'}}]",0.85
+Plot a 3D saliency map for event LH.,"{""command"": ""3D Saliency plot"", ""parameters"": {""event"": ""LH""}}","[{'command': '3D Saliency plot', 'parameters': {'event': 'LH'}}]",1.84
+Give me a 3D saliency plot visualization.,"{""command"": ""3D Saliency plot""}",[],20.13
+Show me a 3D saliency plot of event 50.,"{""command"": ""3D Saliency plot"", ""parameters"": {""event"": ""50""}}",[],20.18
+Show me the model summary.,"{""command"": ""Model Summary""}","[{'command': 'Export Model', 'parameters': {'model_summary': 'Model summary not available in the context.'}}]",0.76
+Can I see the model summary?,"{""command"": ""Model Summary""}","[{'command': 'Model Summary', 'parameters': {}}]",0.27
+Display the model summary,"{""command"": ""Model Summary""}","[{'command': 'Model Summary', 'parameters': {}}]",0.27
+I want to check the model summary,"{""command"": ""Model Summary""}","[{'command': 'Model Summary', 'parameters': {}}]",1.57
+Provide the model summary.,"{""command"": ""Model Summary""}","[{'command': 'Model Summary', 'parameters': {'type': 'Model Summary'}}]",5.06
+What model was used in training?,"{""command"": ""Model Summary""}","[{'command': 'Model Selection', 'parameters': {'model': 'SCCNet'}}]",1.10
+Give me details on the model used.,"{""command"": ""Model Summary""}","[{'text': 'The model used by this software is not explicitly mentioned in the context. Therefore, I cannot provide a detailed description of the model used.'}]",0.35
+Can you show me model info?,"{""command"": ""Model Summary""}","[{'command': 'Export Model', 'parameters': {'type': 'Model weight'}}]",0.46
+What are the layers in the model?,"{""command"": ""Model Summary""}",[],20.48
+I need model details.,"{""command"": ""Model Summary""}","[{'text': 'The model selection can be done based on the type of data and the research question. The software provides different algorithms for different data types, including EEG data. The user can select the most appropriate algorithm based on the data characteristics and the intended analysis.'}]",0.72
