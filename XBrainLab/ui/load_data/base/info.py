@@ -144,7 +144,7 @@ class DictInfo(RawInfo):
         script.add_cmd("events[:, -1] = event")
         script.add_cmd("data = Raw(filepath, data)")
         script.add_cmd("data.set_event(events, event_id)")
-
+        
         return raw_data, script
 
 

@@ -3,7 +3,8 @@ import os
 import scipy.io
 
 from .base import PreprocessBase
-
+import numpy as np
+import mne
 
 class Export(PreprocessBase):
     """Preprocessing class for exporting data.
@@ -37,5 +38,5 @@ class Export(PreprocessBase):
             filename += 'Sess-' + preprocessed_data.get_session_name() # session
             filename += '.mat'
             scipy.io.savemat(os.path.join(filepath, filename), output)
-
+            
         return self.preprocessed_data_list

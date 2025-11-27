@@ -41,4 +41,5 @@ class LoadDict(LoadArray):
             filepath, selected_data, self.type_ctrl.get()
         )
         self.script_history += generation_script
+
         return mne_data

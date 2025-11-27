@@ -1,0 +1,31 @@
+User Input,Mapped Function,Model Output,Latency (s)
+I want to epoch the data.,"{""text"": ""Which event do you want to use for epoching?""}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",7.24
+Epoch it,"{""text"": ""What event should be used to create epochs?""}",[{'command': 'Import Data'}],1.87
+Can you segment the data into trials?,"{""text"": ""Which event label should I use to create the epochs?""}",[{'text': 'Which event should the data be segmented by?'}],6.18
+I'd like to split the data into epochs.,"{""text"": ""Please specify the event you want to use for epoching.""}",[{'command': 'Import Data'}],8.65
+Do epoching please,"{""text"": ""What event do you want to epoch the data on?""}",[{'command': 'Import Data'}],4.22
+Can you do epoch segmentation,"{""text"": ""Which event should the data be segmented by?""}","[{'text': ""I'm afraid I can't perform time epoch without event number, please provide more information.""}]",4.47
+Cut EEG into trials,"{""text"": ""Which event should I use to define the trials?""}","[{'command': 'clean plots', 'parameters': {}}, {'command': '3D Saliency plot', 'parameters': {}}]",1.77
+Epoch the signal for me.,"{""text"": ""Please provide the event to use for epoching.""}",[{'command': 'Import Data'}],1.22
+Let's do event-based segmentation.,"{""text"": ""Which event would you like to segment by?""}","[{'command': 'Dataset Splitting', 'parameters': {'cross_validation': 'False', 'testing_type': 'By Trial', 'training_type': 'By Trial', 'validation_type': 'By Trial'}}]",3.44
+Divide the data into time windows.,"{""text"": ""Are you referring to epochs? If so, which event should be used?""}","[{'command': 'Resample', 'parameters': {'frequency': 125}}]",3.17
+Can I see the performance?,"{""text"": ""Do you want to see accuracy, AUC, or kappa value?""}","[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}]",1.35
+I want to know how the model did.,"{""text"": ""Would you like a confusion matrix or a performance table?""}",[{'command': 'Import Data'}],2.03
+Show me the evaluation result.,"{""text"": ""Do you want to see the confusion matrix or performance table?""}",[{'text': 'Please provide the evaluation result table.'}],3.07
+Evaluate the model for me.,"{""text"": ""Which evaluation would you like? (e.g., accuracy, confusion matrix, AUC)""}","[{'text': 'Sure, I can help you evaluate the model. Please provide me with the trained model parameters and specify the evaluation parameters you would like to use.'}]",2.15
+How did the training go?,"{""text"": ""Would you like to see accuracy, AUC, or the confusion matrix?""}","[{'command': 'Training Manager', 'parameters': {'plot': 'accuracy'}}, {'command': 'Training Manager', 'parameters': {'plot': 'loss'}}]",3.26
+Can I get a summary of results?,"{""text"": ""Do you mean a performance table, confusion matrix, or something else?""}",[{'command': 'Import Data'}],0.30
+Give me model output.,"{""text"": ""Do you want to export the model output or view evaluation metrics?""}","[{'command': 'Filtering', 'parameters': {'h_freq': 40.0, 'l_freq': 0.5}}, {'command': 'Resample', 'parameters': {'frequency': 125}}, {'command': 'Normalize', 'parameters': {'method': 'z score'}}]",1.53
+Check the result,"{""text"": ""Would you like to see accuracy, AUC, or the confusion matrix?""}",[{'command': 'Import Data'}],0.21
+I want to see how it performs,"{""text"": ""Do you mean performance table or confusion matrix?""}","[[{'command': 'Performance Table', 'parameters': {'type': 'Accuracy (%)'}}], [{'command': 'Load Data', 'parameters': {'data_path': 'path/to/data.csv'}}]]",0.80
+Can you show test results?,"{""text"": ""Should I show a performance table or confusion matrix?""}",[{'command': 'Import Data'}],4.51
+Can I see the visualization results?,"{""text"": ""Which plot do you want to see? Saliency map or saliency topographic map?""}","[{'command': 'clean plots', 'parameters': {}}]",23.77
+I want to see a plot.,"{""text"": ""Which plot do you want to see? Can you be more specific?""}",[{'text': 'Which plot do you want to see? Can you be more specific?'}],5.03
+Show me the visualization,"{""text"": ""What kind of visualization do you want to see? (e.g., saliency map, spectrogram, model summary)""}",[{'command': 'Import Data'}],7.86
+Can you display something 3D?,"{""text"": ""Do you want to see a 3D saliency plot? If so, for which event?""}",[{'command': 'Import Data'}],1.73
+I want to see event visualization.,"{""text"": ""Would you like a 3D saliency plot or another type of visualization?""}","[{'command': '3D Saliency plot', 'parameters': {'event': 'LH'}}]",0.85
+Visualize the data.,"{""text"": ""Which type of visualization do you want? (e.g., saliency map, spectrogram)""}",[{'text': 'Which plot do you want to visualize? Can you be more specific?'}],1.51
+Give me saliency of one class.,"{""text"": ""Which saliency plot and event do you want to visualize?""}",[{'command': 'Import Data'}],2.15
+I want to see model visualization.,"{""text"": ""Do you want to see the model summary or a saliency plot?""}","[{'command': 'Model Summary', 'parameters': {}}]",2.14
+Can I see activity over time?,"{""text"": ""Would you like to see a saliency spectrogram?""}","[{'text': 'Sure, you can visualize the activity over time by using the visualization tools. You can choose the event numbers you want to use for the visualization.'}]",1.39
+Plot brain activity.,"{""text"": ""Do you want a saliency map, topographic map, or 3D saliency plot? If 3D, which event?""}",[{'command': 'Import Data'}],0.21
