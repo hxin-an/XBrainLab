@@ -1,7 +1,82 @@
-command_dict = ["filtering", "normalize", "resample", "time epoch", "export", "dataset splitting", "model selection", "training setting", "training manager"
-                , "confusion matrix", "performance table", "export model"
-                , "saliency map", "saliency topographic map", "saliency spectrogram", "3d saliency plot", "model summary", "clean plots", "set saliency methods"
-                , "load data"]
+command_params = {
+    "filtering": {
+        "required": [],
+        "optional": [],
+        "at_least_one": ["l_freq", "h_freq"]
+    },
+    "normalize": {
+        "required": ["method"],
+        "optional": []
+    },
+    "resample": {
+        "required": ["frequency"],
+        "optional": []
+    },
+    "time epoch": {
+        "required": ["event", "start_time", "end_time"],
+        "optional": ["baseline_tmin", "baseline_tmax", "doRemoval"]
+    },
+    "export": {
+        "required": [],
+        "optional": ["path"]
+    },
+    "dataset splitting": {
+        "required": ["training_type", "testing_type", "validation_type"],
+        "optional": ["cross_validation"]
+    },
+    "model selection": {
+        "required": ["model"],
+        "optional": []
+    },
+    "training setting": {
+        "required": ["epoch", "batch size", "learning rate", "optimizer"],
+        "optional": ["output directory", "checkpoint epoch", "evaluation", "repeat"]
+    },
+    "training manager": {
+        "required": [],
+        "optional": ["plot"]
+    },
+    "confusion matrix": {
+        "required": [],
+        "optional": []
+    },
+    "performance table": {
+        "required": ["type"],
+        "optional": []
+    },
+    "export model": {
+        "required": [],
+        "optional": []
+    },
+    "saliency map": {
+        "required": [],
+        "optional": []
+    },
+    "saliency topographic map": {
+        "required": [],
+        "optional": []
+    },
+    "saliency spectrogram": {
+        "required": [],
+        "optional": []
+    },
+    "3d saliency plot": {
+        "required": [],
+        "optional": ["event"]
+    },
+    "model summary": {
+        "required": [],
+        "optional": []
+    },
+    "clean plots": {
+        "required": [],
+        "optional": []
+    },
+    "load data": {
+        "required": [],
+        "optional": []
+    }
+}
 
 prompt_preprocess = '''
 You are an agent designed to help with EEG data analysis. You will return outputs with various commands. Each command with specific parameters.
