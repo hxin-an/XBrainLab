@@ -251,3 +251,89 @@ def api_generate_command():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+
+from sklearn.manifold import TSNE
+import umap
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_distances
+
+def true_input_class(idx: int) -> str:
+    if idx < 10:         return "Import Data"
+    elif idx < 60:       return "Preprocess"
+    elif idx < 100:      return "Training"
+    elif idx < 130:      return "Evaluation"
+    else:                return "Visualization"
+
+@app.route("/tsne_log_v3_heatmap_class_avg_sim2", methods=["GET"])
+def api_tsne_log_v3_heatmap_class_avg_sim():
+    import pandas as pd
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    from collections import defaultdict
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    if not tsne_log:
+        return jsonify({"error": "No inputs recorded yet."}), 400
+
+    # 1. 取得 embeddings
+    input_embeddings = torch.cat(
+        [item["embedding"].unsqueeze(0) for item in tsne_log], dim=0
+    ).cpu().numpy()
+    prompt_labels = [p[0] for p in prompts[1:]]
+    prompt_emb_np = prompt_embeddings[1:].cpu().numpy()
+
+    # 2. 先對所有 input 計算 cosine similarity matrix
+    similarity_matrix = cosine_similarity(input_embeddings, prompt_emb_np)  # shape: (num_inputs, num_prompts)
+
+    # 3. 分類每個 input 所屬 class
+    input_classes = [true_input_class(i) for i in range(len(tsne_log))]
+    class_to_indices = defaultdict(list)
+    for i, cls in enumerate(input_classes):
+        class_to_indices[cls].append(i)
+
+    # 4. 對每個 input 的 similarity row 做 binary select
+    binary_select_matrix = []
+    for i in range(len(similarity_matrix)):
+        cos_scores = similarity_matrix[i]
+        mean_sim = np.mean(cos_scores)
+        std_sim = np.std(cos_scores)
+        threshold = mean_sim + std_sim
+        binary_select = (cos_scores > threshold) & (cos_scores >= 0.2)
+        binary_select_matrix.append(binary_select.astype(int))  # 1 if selected, 0 otherwise
+        print(i, binary_select)
+
+    binary_select_matrix = np.array(binary_select_matrix)  # shape: (num_inputs, num_prompts)
+
+    # 5. 對每個 class 的 binary row 做平均 → 得到選中機率
+    avg_selection_prob = []
+    class_labels = []
+
+    for cls, indices in class_to_indices.items():
+        avg_prob = np.mean(binary_select_matrix[indices, :], axis=0)
+        selected_indices = np.where(avg_prob > 0)[0]
+        print(f"[{cls}] indices = {indices}")
+        print(f"[{cls}] selected prompts:", [prompt_labels[i] for i in selected_indices])
+        avg_selection_prob.append(avg_prob)
+        class_labels.append(f"{cls} input")
+
+    # 6. 畫圖：轉成 DataFrame 畫 heatmap
+    df = pd.DataFrame(avg_selection_prob, index=class_labels, columns=prompt_labels)
+
+    plt.figure(figsize=(12, max(6, len(class_labels) * 0.6)))
+    sns.heatmap(df, cmap="YlGnBu", annot=True, fmt=".2f", linewidths=0.5)
+    plt.title("Prompt Selection Probability (Thresholded by Mean + Std & ≥ 0.2)")
+    plt.tight_layout()
+    plt.savefig("tsne_prompt_selection_prob_heatmap.png", dpi=300)
+    plt.close()
+
+    return jsonify({
+        "status": "ok",
+        "message": "saved as tsne_prompt_input_heatmap_class_avg_sim.png",
+        "num_classes": len(class_labels)
+    })
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
