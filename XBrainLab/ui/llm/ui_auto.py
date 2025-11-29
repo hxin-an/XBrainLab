@@ -555,9 +555,11 @@ class UI_Auto():
 
     def set_model_summary_values(self):
         summary_widget = self.visualization_widgets.get("Model Summary")
-        if summary_widget:
-            plan = len(summary_widget.trainer_list)
-            summary_widget.selected_plan_name.set(summary_widget.trainer_list[plan-1])
+        try:
+            plan_list = list(summary_widget.trainer_map.keys())
+            summary_widget.selected_plan_name.set(plan_list[-1])
+        except Exception:
+            pass
         
     def set_clean_plots_values(self):
         plt.close('all')
