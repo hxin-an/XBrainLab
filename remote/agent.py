@@ -1,5 +1,6 @@
 import os
 import torch
+import argparse
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer, util
 import time
@@ -9,6 +10,16 @@ from flask import Flask, request, jsonify
 from pydantic import BaseModel, Field
 from prompts import command_params, prompt_start, prompt_preprocess, prompt_training, prompt_evaluation, prompt_visualization, prompt_is_load_data
 import random
+
+# Argument Parser
+parser = argparse.ArgumentParser()
+parser.add_argument("--no_prompt_selection", action="store_true",
+                    help="Do not perform semantic prompt selection. Randomly select prompts.")
+parser.add_argument("--no_voting", action="store_true",
+                    help="Disable multiple inference and majority voting.")
+parser.add_argument("--no_rag", action="store_true",
+                    help="Disable retrieval-augmented generation.")
+args = parser.parse_args()
 
 retriever = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
 reference_path = "./txt_output/formatted_output.txt"
@@ -36,9 +47,8 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto"
 )
 
-tsne_log = []
-# prompt_log = []
-def match_prompt(input_text, ablation_random=False):
+def match_prompt(input_text):
+    # Step 1: ALWAYS run original selection to determine n
     query_embedding = retriever.encode(input_text, convert_to_tensor=True)
     cos_scores = util.pytorch_cos_sim(query_embedding, prompt_embeddings)[0]
     mean_similarity = sum(cos_scores) / len(cos_scores)
@@ -46,35 +56,29 @@ def match_prompt(input_text, ablation_random=False):
     std_dev = np.std(cos_scores_np)
     threshold = mean_similarity + std_dev
 
-    sorted_indices = torch.argsort(cos_scores, descending=True)
-    
-    prompt_for_model = ""
-    if not ablation_random:
-        # ✅ 正常選擇模式
-        for i in range(len(prompts)):
-            if cos_scores[i] > threshold and cos_scores[i] >= 0.2:
-                print(prompts[i][0])
-                prompt_for_model += prompts[i][1]
-    else:
-        # ✅ Ablation: 先跑一遍看原本會選幾個
-        original_selected = [
-            i for i in range(len(prompts))
-            if cos_scores[i] > threshold and cos_scores[i] >= 0.2
-        ]
-        cnt = max(1, len(original_selected))
-        print(f"Randomly selecting {cnt} prompts for ablation")
-        random_indices = random.sample(range(len(prompts)), k=cnt)
-        for i in random_indices:
-            print(f"[Random] {prompts[i][0]}")
-            prompt_for_model += prompts[i][1]
+    original_selected = [
+        i for i in range(len(prompts))
+        if cos_scores[i] > threshold and cos_scores[i] >= 0.2
+    ]
+    n = max(1, len(original_selected))   # number of inferences
 
-    if prompt_for_model == prompt_is_load_data:
-        return (1, "Load Data")
-    elif prompt_for_model != "":
-        return (3, prompt_start + prompt_for_model)
-    else:
-        print("no match: Start")
+    # Case 1: no prompt selection → ablation random
+    if args.no_prompt_selection:
+        idxs = random.sample(range(len(prompts)), n)
+        picked_text = "".join(prompts[i][1] for i in idxs)
+        if picked_text == "":
+            return (1, prompt_start)
+        return (n, picked_text)
+
+    # Case 2: normal prompt selection
+    if not original_selected:
+        print("no match → return start")
         return (1, prompt_start)
+
+    chosen_text = "".join(prompts[i][1] for i in original_selected)
+    for i in original_selected:
+        print(prompts[i][0])
+    return (n, prompt_start + chosen_text)
 
 def split_text_into_chunks(text, chunk_size=512):
     return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
@@ -86,23 +90,18 @@ def load_reference_document(path, chunk_size=512):
         chunks = split_text_into_chunks(doc, chunk_size)
         for idx, chunk in enumerate(chunks):
             documents.append((f"chunk_{idx}", chunk))
-
     document_embeddings = retriever.encode([chunk[1] for chunk in documents], convert_to_tensor=True)
 
-load_reference_document(reference_path)
+if not args.no_rag:
+    load_reference_document(reference_path)
 
 def retrieve_relevant_info(input_text, top_k=3):
+    if args.no_rag:
+        return []  # 不做 RAG
+
     query_embedding = retriever.encode(input_text, convert_to_tensor=True)
     hits = util.semantic_search(query_embedding, document_embeddings, top_k=top_k)
-    
-    retrieved_texts = []
-    for hit in hits[0]:
-        chunk_name = documents[hit['corpus_id']][0]
-        chunk_text = documents[hit['corpus_id']][1]
-        snippet = chunk_text
-        retrieved_texts.append(f"{chunk_name}: {snippet}")
-    
-    return retrieved_texts
+    return [documents[h['corpus_id']][1] for h in hits[0]]
 
 class Command(BaseModel):
     command: str = Field(description="The command to perform")
@@ -112,70 +111,69 @@ class Text(BaseModel):
     text: str = Field(description="User friendly reply")
 
 def parse_commands_from_output(output):
-    # Regular expressions to match commands, parameters, and text
+    # regular expressions
     command_pattern = re.compile(r'"command":\s*"([^"]+)"')
     parameter_pattern = re.compile(r'"parameters":\s*(\{[^{}]+\})')
     text_pattern = re.compile(r'"text":\s*"([^"]+)"')
 
-    # Find all command and parameter pairs
     commands = command_pattern.findall(output)
     parameters = parameter_pattern.findall(output)
     texts = text_pattern.findall(output)
 
     extracted_commands = []
 
-    # Extract commands and parameters
     for i, command in enumerate(commands):
         cmd = command.lower()
-        # step 1: check command
         if cmd not in command_params:
             continue
-        # step 2: check parameters
+
         param_str = parameters[i] if i < len(parameters) else '{}'
         try:
             params = eval(param_str)
-            # extracted_commands.append({"command": command, "parameters": paramst})
-        except Exception as e:
-            print(f"Error parsing parameters: {e}")
+        except:
             continue
-        # step 3: check if all required parameters exist
+
         required = command_params[cmd].get("required", [])
-        at_least_one = command_params[cmd].get("at_least_one", [])
-        missing = [p for p in required if p not in params]
-        if missing:
+        atleast = command_params[cmd].get("at_least_one", [])
+
+        if any(r not in params for r in required):
             continue
-        if at_least_one:
-            if not any(p in params for p in at_least_one):
-                continue
+        if atleast and not any(p in params for p in atleast):
+            continue
 
-        # save valied answers
-        extracted_commands.append({
-            "command": cmd,
-            "parameters": params
-        })
+        extracted_commands.append({"command": cmd, "parameters": params})
 
-    # Extract texts
-    for text in texts:
-      extracted_commands.append({"text": text})
+    # text response
+    for t in texts:
+        extracted_commands.append({"text": t})
 
     return extracted_commands
 
 def generate_command(input_text, retrieved_info):
-    cnt, matched_prompt = match_prompt(input_text, ablation_random=False)
+    cnt, matched_prompt = match_prompt(input_text)
+
     if matched_prompt == "Load Data":
         return [{"command": "Import Data"}]
 
-    combined_input = matched_prompt + f"\n[EEG Research Info]:\n{retrieved_info}\nuser: {input_text}" + "\nmodel: " #\n[EEG Research Info]:\n{retrieved_info}
-    input_ids = tokenizer(combined_input, return_tensors="pt")
+    if args.no_rag:
+        combined = matched_prompt + f"\nuser: {input_text}\nmodel: "
+    else:
+        combined = matched_prompt + f"\n[EEG Research Info]:\n{retrieved_info}\nuser: {input_text}\nmodel: "
 
+    input_ids = tokenizer(combined, return_tensors="pt")
     if torch.cuda.is_available():
         input_ids = input_ids.to("cuda")
 
+    # no voting
+    if args.no_voting:
+        cnt = 1
+
+    # inference cnt times
     outputs = []
     for _ in range(cnt):
         output = model.generate(
             input_ids['input_ids'],
-            max_length= 5000,
+            max_length=5000,
             do_sample=True,
             temperature=0.6,
             top_p=0.9
@@ -183,51 +181,54 @@ def generate_command(input_text, retrieved_info):
         result = tokenizer.decode(output[0], skip_special_tokens=True)
         output_only = result.split("model:")[-1].strip()
         commands = parse_commands_from_output(output_only)
-        print(commands)
+        # no valid command extrated and matched prompt is start
         if commands == [] and matched_prompt == prompt_start:
             print("skip")
             commands = [{"text": output_only}]
+        # cnt=1（no voting case），direct return
         if cnt == 1:
             return commands
         if commands:
             outputs.append(commands)
 
+    if not outputs:
+        return []
+
+    # Case 1: all text
     all_text = all("text" in cmd for cmds in outputs for cmd in cmds)
     if all_text:
         for cmds in outputs:
-          for cmd in cmds:
-              if "text" in cmd:
-                return [cmd]
-            
-    # Extract the "command" part from each output for comparison
+            for cmd in cmds:
+                if "text" in cmd:
+                    return [cmd]
+
+    # Case 2: majority voting
     command_sets = [tuple(cmd["command"] for cmd in cmds if "command" in cmd) for cmds in outputs]
-    command_set_counts = {cmd_set: command_sets.count(cmd_set) for cmd_set in command_sets}
-    # print(command_sets)
+    command_set_counts = {cs: command_sets.count(cs) for cs in command_sets}
     print(command_set_counts)
     majority_set = None
-    for cmd_set, count in command_set_counts.items():
+    for cs, count in command_set_counts.items():
         if count >= 2:
-            majority_set = cmd_set
+            majority_set = cs
             break
-
     if majority_set:
         for cmds in outputs:
             if tuple(cmd["command"] for cmd in cmds if "command" in cmd) == majority_set:
                 return cmds
-    else:
-        unique_sequences = []
-        seen = set()
 
-        for cmds in outputs:
-            if any("text" in cmd for cmd in cmds):
-                continue
-            sequence = tuple(cmd["command"] for cmd in cmds if "command" in cmd)
-            if sequence not in seen:
-                seen.add(sequence)
-                unique_sequences.append(cmds)
-        if len(unique_sequences) == 1:
-            return unique_sequences[0]
-        return unique_sequences
+    # Case 3: unique sequences → give list of options
+    unique_sequences = []
+    seen = set()
+    for cmds in outputs:
+        if any("text" in cmd for cmd in cmds):
+            continue
+        seq = tuple(cmd["command"] for cmd in cmds if "command" in cmd)
+        if seq not in seen:
+            seen.add(seq)
+            unique_sequences.append(cmds)
+    if len(unique_sequences) == 1:
+        return unique_sequences[0]
+    return unique_sequences
 
 @app.route('/generate_command', methods=['POST'])
 def api_generate_command():
@@ -244,7 +245,6 @@ def api_generate_command():
           commands = []
           break
     print(f"spend time: {time.time()-start} sec")
-    print(f"spend time: {(time.time()-start)/60} min")
     for command in commands:
       print(command)
     return jsonify(commands)
