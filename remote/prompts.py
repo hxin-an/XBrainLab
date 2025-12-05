@@ -72,7 +72,7 @@ command_params = {
         "required": [],
         "optional": []
     },
-    "load data": {
+    "import data": {
         "required": [],
         "optional": []
     }
