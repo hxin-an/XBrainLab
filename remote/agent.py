@@ -149,16 +149,17 @@ def parse_commands_from_output(output):
 
     return extracted_commands
 
-def generate_command(input_text, retrieved_info):
+def generate_command(history, input_text, retrieved_info):
     cnt, matched_prompt = match_prompt(input_text)
 
     if matched_prompt == "Load Data":
         return [{"command": "Import Data"}]
 
     if args.no_rag:
-        combined = matched_prompt + f"\nuser: {input_text}\nmodel: "
+        combined = f"{history}" + matched_prompt + f"\nuser: {input_text}\nmodel: "
     else:
-        combined = matched_prompt + f"\n[EEG Research Info]:\n{retrieved_info}\nuser: {input_text}\nmodel: "
+        combined =f"{history}" + matched_prompt + f"\n[EEG Research Info]:\n{retrieved_info}\nuser: {input_text}\nmodel: "
+    print(combined)
 
     input_ids = tokenizer(combined, return_tensors="pt")
     if torch.cuda.is_available():
@@ -234,11 +235,12 @@ def generate_command(input_text, retrieved_info):
 def api_generate_command():
     data = request.get_json()
     input_text = data.get('input_text', '')
+    history = data.get('history', '')
     print(input_text)
     start = time.time()
     retrieved_info = retrieve_relevant_info(input_text)
     while 1:
-        commands = generate_command(input_text, "\n".join(retrieved_info))
+        commands = generate_command(history, input_text, "\n".join(retrieved_info))
         if commands != []:
           break
         elif (time.time()-start) > 10:
