@@ -6,6 +6,7 @@ from .load_data import Raw, RawDataLoader
 from .preprocessor import PreprocessBase
 from .training import ModelHolder, Trainer, TrainingOption, TrainingPlanHolder
 from .utils import validate_issubclass, validate_list_type, validate_type
+from .utils.logger import logger
 
 
 class Study:
@@ -41,6 +42,7 @@ class Study:
         self.trainer = None
         # visulaization
         self.saliency_params = None
+        logger.info("Study initialized")
 
     # step 1 - load data
     def get_raw_data_loader(self) -> RawDataLoader:
@@ -70,6 +72,7 @@ class Study:
             force_update=force_update
         )
         self.loaded_data_list = loaded_data_list
+        logger.info(f"Loaded {len(loaded_data_list)} raw data files")
 
     # step 2 - preprocess
     def set_preprocessed_data_list(
@@ -95,6 +98,7 @@ class Study:
                 self.epoch_data = None
                 return
         self.epoch_data = Epochs(preprocessed_data_list)
+        logger.info(f"Set preprocessed data list with {len(preprocessed_data_list)} items")
 
     def reset_preprocess(self, force_update=False) -> None:
         """Discard all preprocessed data and reset to loaded data.
@@ -107,6 +111,7 @@ class Study:
             self.set_preprocessed_data_list(
                 deepcopy(self.loaded_data_list), force_update=force_update
             )
+        logger.info("Reset preprocess to loaded data")
 
     def preprocess(self, preprocessor: Type[PreprocessBase], **kargs: dict) -> None:
         """Preprocess data.
@@ -122,6 +127,7 @@ class Study:
         preprocessor.check_data()
         preprocessed_data_list = preprocessor.data_preprocess(**kargs)
         self.set_preprocessed_data_list(preprocessed_data_list)
+        logger.info(f"Applied preprocessing: {preprocessor.__class__.__name__}")
 
     # step 3 - split data for training
     def get_datasets_generator(self, config: DataSplittingConfig) -> DatasetGenerator:
@@ -148,6 +154,7 @@ class Study:
         validate_list_type(datasets, Dataset, 'datasets')
         self.clean_datasets(force_update=force_update)
         self.datasets = datasets
+        logger.info(f"Set {len(datasets)} datasets for training")
 
     # step 4 - training config
     def set_training_option(
@@ -216,6 +223,7 @@ class Study:
             for dataset in datasets
         ]
         self.trainer = Trainer(training_plan_holders)
+        logger.info("Generated training plan")
 
     # step 5 - training
     def train(self, interact: bool = False) -> None:
@@ -232,6 +240,7 @@ class Study:
             raise ValueError('No valid trainer is generated')
 
         self.trainer.run(interact=interact)
+        logger.info(f"Started training (interact={interact})")
 
     def stop_training(self) -> None:
         """Stop training.
@@ -242,6 +251,7 @@ class Study:
         if not self.trainer:
             raise ValueError('No valid trainer is generated')
         self.trainer.set_interrupt()
+        logger.info("Stopped training")
 
     def is_training(self) -> bool:
         """Return whether training is running.
