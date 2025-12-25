@@ -1,10 +1,15 @@
 import sys
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QTabWidget, QMessageBox, QDockWidget
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QStackedWidget, QMessageBox, QDockWidget, QPushButton, QFrame, QSizePolicy
+)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon, QAction
+
 from XBrainLab.utils.logger import logger
 from XBrainLab.ui_pyqt.agent_worker import AgentWorker
 from XBrainLab.ui_pyqt.chat_panel import ChatPanel
-from XBrainLab.ui_pyqt.dataset_panel import DatasetPanel
+from XBrainLab.ui_pyqt.dashboard_panel.dataset import DatasetPanel
 
 class MainWindow(QMainWindow):
     # Signals to control the worker
@@ -14,30 +19,201 @@ class MainWindow(QMainWindow):
     def __init__(self, study):
         super().__init__()
         self.study = study
-        self.setWindowTitle("XBrainLab (PyQt6)")
-        self.resize(1200, 800)
+        self.setWindowTitle("XBrainLab")
+        self.resize(1280, 800)
         
-        # Central Widget
+        # Apply VS Code Dark Theme (Adjusted for Top Bar)
+        self.apply_vscode_theme()
+        
+        # Central Widget & Main Layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Main Layout
-        layout = QVBoxLayout(central_widget)
+        # Vertical Layout: Top Bar | Main Content
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Tabs for different panels
-        self.tabs = QTabWidget()
-        layout.addWidget(self.tabs)
+        # 1. Top Navigation Bar
+        self.top_bar = QFrame()
+        self.top_bar.setObjectName("TopBar")
+        self.top_bar.setFixedHeight(50)
+        self.top_bar_layout = QHBoxLayout(self.top_bar)
+        self.top_bar_layout.setContentsMargins(10, 0, 10, 0)
+        self.top_bar_layout.setSpacing(10)
         
-        # Initialize Tabs (Placeholders for now)
-        self.init_tabs()
+        # Navigation Buttons
+        self.nav_btns = []
+        self.add_nav_btn("Dataset", 0, "Dataset")
+        self.add_nav_btn("Preprocess", 1, "Preprocess")
+        self.add_nav_btn("Training", 2, "Training")
+        self.add_nav_btn("Evaluation", 3, "Evaluation")
+        self.add_nav_btn("Visualization", 4, "Visualization")
+        
+        self.top_bar_layout.addStretch()
+        
+        # AI Toggle Button
+        self.ai_btn = QPushButton("AI Assistant")
+        self.ai_btn.setCheckable(True)
+        self.ai_btn.setChecked(True)
+        self.ai_btn.clicked.connect(self.toggle_ai_dock)
+        self.ai_btn.setObjectName("ActionBtn")
+        self.top_bar_layout.addWidget(self.ai_btn)
+        
+        main_layout.addWidget(self.top_bar)
+        
+        # 2. Stacked Widget (Content Area)
+        self.stack = QStackedWidget()
+        main_layout.addWidget(self.stack)
+        
+        # Initialize Panels
+        self.init_panels()
         
         # Initialize Agent System
         self.init_agent()
         
         logger.info("MainWindow initialized")
 
+    def apply_vscode_theme(self):
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #1e1e1e;
+                color: #cccccc;
+            }
+            QWidget {
+                background-color: #1e1e1e;
+                color: #cccccc;
+                font-family: 'Segoe UI', 'Arial';
+                font-size: 10pt;
+            }
+            /* Top Bar */
+            QFrame#TopBar {
+                background-color: #333333;
+                border-bottom: 1px solid #252526;
+            }
+            
+            /* Nav Buttons (Tabs style) */
+            QPushButton#NavButton {
+                background-color: transparent;
+                color: #cccccc;
+                border: none;
+                border-bottom: 2px solid transparent;
+                padding: 0 15px;
+                font-weight: bold;
+                height: 48px;
+            }
+            QPushButton#NavButton:hover {
+                background-color: #3e3e42;
+                color: #ffffff;
+            }
+            QPushButton#NavButton:checked {
+                color: #ffffff;
+                border-bottom: 2px solid #007acc;
+                background-color: #1e1e1e;
+            }
+            
+            /* Action Buttons (Import, AI) */
+            QPushButton#ActionBtn {
+                background-color: #0e639c;
+                color: #ffffff;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton#ActionBtn:hover {
+                background-color: #1177bb;
+            }
+            QPushButton#ActionBtn:pressed {
+                background-color: #094771;
+            }
+            QPushButton#ActionBtn:checked {
+                background-color: #094771;
+                border: 1px solid #007acc;
+            }
+            
+            /* Content Area */
+            QStackedWidget {
+                background-color: #1e1e1e;
+            }
+            
+            /* Standard Widgets */
+            QLabel { color: #cccccc; }
+            QGroupBox {
+                border: 1px solid #454545;
+                margin-top: 1.5em;
+                border-radius: 4px;
+                font-weight: bold;
+                color: #cccccc;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 5px;
+                color: #cccccc;
+            }
+            /* Table Widget */
+            QTableWidget {
+                background-color: #1e1e1e;
+                gridline-color: #333333;
+                border: 1px solid #454545;
+                color: #cccccc;
+            }
+            QHeaderView::section {
+                background-color: #252526;
+                color: #cccccc;
+                padding: 4px;
+                border: 1px solid #333333;
+            }
+            QTableWidget::item:selected {
+                background-color: #094771;
+                color: #ffffff;
+            }
+            QDockWidget::title {
+                background: #252526;
+                text-align: left;
+                padding: 5px;
+                color: #cccccc;
+            }
+        """)
+
+    def add_nav_btn(self, name, index, text):
+        btn = QPushButton(text) 
+        btn.setToolTip(name)
+        btn.setCheckable(True)
+        btn.setObjectName("NavButton")
+        
+        btn.clicked.connect(lambda: self.switch_page(index))
+        
+        self.top_bar_layout.addWidget(btn)
+        self.nav_btns.append(btn)
+        
+        if index == 0:
+            btn.setChecked(True)
+
+    def switch_page(self, index):
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.nav_btns):
+            btn.setChecked(i == index)
+
+    def init_panels(self):
+        # 0. Dataset
+        self.dataset_panel = DatasetPanel(self)
+        self.stack.addWidget(self.dataset_panel)
+        
+        # 1. Preprocess
+        self.stack.addWidget(QLabel("Preprocess Panel (Coming Soon)"))
+        
+        # 2. Training
+        self.stack.addWidget(QLabel("Training Panel (Coming Soon)"))
+        
+        # 3. Evaluation
+        self.stack.addWidget(QLabel("Evaluation Panel (Coming Soon)"))
+        
+        # 4. Visualization
+        self.stack.addWidget(QLabel("Visualization Panel (Coming Soon)"))
+
     def init_agent(self):
-        """Setup the Agent Worker and Chat Interface."""
         # 1. Create Chat Panel (Dockable)
         self.chat_panel = ChatPanel()
         self.chat_dock = QDockWidget("AI Assistant", self)
@@ -45,63 +221,46 @@ class MainWindow(QMainWindow):
         self.chat_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
         
+        self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
+        
         # 2. Setup Thread and Worker
         self.agent_thread = QThread()
         self.agent_worker = AgentWorker()
         self.agent_worker.moveToThread(self.agent_thread)
         
         # 3. Connect Signals
-        # UI -> Worker
         self.chat_panel.send_message.connect(self.handle_user_input)
-        
-        # MainWindow -> Worker (Signals)
         self.sig_init_agent.connect(self.agent_worker.initialize_agent)
         self.sig_generate.connect(self.agent_worker.generate)
-
-        # Worker -> UI
         self.agent_worker.finished.connect(self.handle_agent_response)
         self.agent_worker.error.connect(self.handle_agent_error)
         self.agent_worker.log.connect(self.handle_agent_log)
         
-        # Start Thread
         self.agent_thread.start()
         
-        # Initialize Agent in background
-        # We use QMetaObject.invokeMethod to ensure it runs in the thread
-        # Or simply define a slot. For simplicity, let's use a signal or direct call if thread safe.
-        # Best practice: emit a signal to start initialization
-        # But here we can just call a method that runs in the thread if we connected it.
-        # Let's add a signal to MainWindow to trigger init
-        pass 
-        # Actually, let's trigger it via a single shot timer or just call it? 
-        # No, direct call runs in caller thread.
-        # Let's add a signal to AgentWorker "start_init"
-        
-        # For now, let's just connect thread started to worker init?
-        # self.agent_thread.started.connect(self.agent_worker.initialize_agent) 
-        # But we already started it.
-        
-        # Let's just run it:
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(0, self.trigger_agent_init)
 
     def trigger_agent_init(self):
-        """Trigger agent initialization in the worker thread."""
         self.sig_init_agent.emit()
 
+    def toggle_ai_dock(self):
+        if self.chat_dock.isVisible():
+            self.chat_dock.close()
+        else:
+            self.chat_dock.show()
+
+    def update_ai_btn_state(self, visible):
+        self.ai_btn.blockSignals(True)
+        self.ai_btn.setChecked(visible)
+        self.ai_btn.blockSignals(False)
+
     def handle_user_input(self, text):
-        """Handle input from ChatPanel."""
-        # Get history (mock for now, or maintain state)
         history = "" 
-        
-        # Send to worker via signal
         self.sig_generate.emit(history, text)
 
     def handle_agent_response(self, commands):
-        """Handle commands returned by Agent."""
         self.chat_panel.set_status("Ready")
-        
-        # Format response
         response_text = ""
         for cmd in commands:
             if "text" in cmd:
@@ -113,9 +272,6 @@ class MainWindow(QMainWindow):
             response_text = "(No response generated)"
             
         self.chat_panel.append_message("Agent", response_text)
-        
-        # TODO: Execute commands automatically or ask for confirmation?
-        # For now, just display.
 
     def handle_agent_error(self, error_msg):
         self.chat_panel.set_status("Error")
@@ -126,36 +282,20 @@ class MainWindow(QMainWindow):
         self.chat_panel.set_status(msg)
 
     def closeEvent(self, event):
-        """Cleanup threads on close."""
-        self.agent_thread.quit()
-        self.agent_thread.wait()
+        logger.info("Closing application...")
+        if hasattr(self, 'agent_thread') and self.agent_thread.isRunning():
+            logger.info("Stopping agent thread...")
+            self.agent_thread.requestInterruption()
+            self.agent_thread.quit()
+            if not self.agent_thread.wait(500): 
+                logger.warning("Agent thread is busy, letting application exit anyway.")
         super().closeEvent(event)
 
-    def init_tabs(self):
-        """Initialize the tabs for the application."""
-        self.dataset_panel = DatasetPanel(self)
-        self.tabs.addTab(self.dataset_panel, "Dataset")
-        
-        self.tabs.addTab(QLabel("Preprocess Panel (Coming Soon)"), "Preprocess")
-        self.tabs.addTab(QLabel("Training Panel (Coming Soon)"), "Training")
-        self.tabs.addTab(QLabel("Evaluation Panel (Coming Soon)"), "Evaluation")
-        self.tabs.addTab(QLabel("Visualization Panel (Coming Soon)"), "Visualization")
-
 def global_exception_handler(exctype, value, traceback):
-    """
-    Global exception handler to catch unhandled exceptions and log them.
-    Also displays an error message box to the user.
-    """
-    # Log the error
     if issubclass(exctype, KeyboardInterrupt):
         sys.__excepthook__(exctype, value, traceback)
         return
-
     logger.error("Uncaught exception", exc_info=(exctype, value, traceback))
-    
-    # Show error message to user
-    # Note: We need a QApplication instance to show QMessageBox, 
-    # but since this is a global handler, we assume app exists.
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Icon.Critical)
     msg.setText("An unexpected error occurred.")
@@ -163,5 +303,4 @@ def global_exception_handler(exctype, value, traceback):
     msg.setWindowTitle("Error")
     msg.exec()
 
-# Set the global exception handler
 sys.excepthook = global_exception_handler

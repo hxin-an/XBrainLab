@@ -98,13 +98,14 @@ class RawDataLoader(list):
         self.check_loaded_data_consistency(raw)
         super().append(raw)
 
-    def apply(self, study: 'Study') -> None:
+    def apply(self, study: 'Study', force_update: bool = False) -> None:
         """Apply the loaded raw data to the study.
 
         Args:
             study: XBrainLab Study to apply the loaded raw data.
+            force_update: Whether to force override and clear the data of following steps.
         """
         from .. import Study
         validate_type(study, Study, 'study')
         self.validate()
-        study.set_loaded_data_list(self)
+        study.set_loaded_data_list(self, force_update=force_update)
