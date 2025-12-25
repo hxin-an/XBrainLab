@@ -42,6 +42,8 @@ class Study:
         self.trainer = None
         # visulaization
         self.saliency_params = None
+        # dataset locking
+        self.dataset_locked = False
         logger.info("Study initialized")
 
     # step 1 - load data
@@ -352,7 +354,24 @@ class Study:
             self.should_clean_raw_data(interact=True)
         self.loaded_data_list = []
         self.preprocessed_data_list = []
+        self.loaded_data_list = []
+        self.preprocessed_data_list = []
         self.epoch_data = None
+        self.unlock_dataset()
+
+    def lock_dataset(self) -> None:
+        """Lock the dataset to prevent further data import."""
+        self.dataset_locked = True
+        logger.info("Dataset locked")
+
+    def unlock_dataset(self) -> None:
+        """Unlock the dataset."""
+        self.dataset_locked = False
+        logger.info("Dataset unlocked")
+
+    def is_locked(self) -> bool:
+        """Return whether the dataset is locked."""
+        return self.dataset_locked
 
     # stage 2
     def should_clean_datasets(self, interact: bool = True) -> bool:

@@ -10,6 +10,8 @@ from XBrainLab.utils.logger import logger
 from XBrainLab.ui_pyqt.agent_worker import AgentWorker
 from XBrainLab.ui_pyqt.chat_panel import ChatPanel
 from XBrainLab.ui_pyqt.dashboard_panel.dataset import DatasetPanel
+from XBrainLab.ui_pyqt.dashboard_panel.preprocess import PreprocessPanel
+from XBrainLab.ui_pyqt.dashboard_panel.info import AggregateInfoPanel
 
 class MainWindow(QMainWindow):
     # Signals to control the worker
@@ -21,6 +23,8 @@ class MainWindow(QMainWindow):
         self.study = study
         self.setWindowTitle("XBrainLab")
         self.resize(1280, 800)
+        
+        self.agent_initialized = False # Flag for lazy loading
         
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -55,10 +59,18 @@ class MainWindow(QMainWindow):
         # AI Toggle Button
         self.ai_btn = QPushButton("AI Assistant")
         self.ai_btn.setCheckable(True)
-        self.ai_btn.setChecked(True)
+        self.ai_btn.setChecked(False) # Default Off
         self.ai_btn.clicked.connect(self.toggle_ai_dock)
         self.ai_btn.setObjectName("ActionBtn")
         self.top_bar_layout.addWidget(self.ai_btn)
+
+        # Info Toggle Button
+        self.info_btn = QPushButton("Data Info")
+        self.info_btn.setCheckable(True)
+        self.info_btn.setChecked(True)
+        self.info_btn.clicked.connect(self.toggle_info_dock)
+        self.info_btn.setObjectName("ActionBtn")
+        self.top_bar_layout.addWidget(self.info_btn)
         
         main_layout.addWidget(self.top_bar)
         
@@ -68,6 +80,9 @@ class MainWindow(QMainWindow):
         
         # Initialize Panels
         self.init_panels()
+
+        # Initialize Info Dock
+        self.init_info_dock()
         
         # Initialize Agent System
         self.init_agent()
@@ -190,11 +205,18 @@ class MainWindow(QMainWindow):
         
         if index == 0:
             btn.setChecked(True)
+        elif index == 1: # This block was added based on the instruction's intent, assuming it was meant to be a conditional check.
+            pass # The original instruction had `self.preprocess_panel.update_panel()d(True)` which is syntactically incorrect and `preprocess_panel` would not exist yet.
+                 # Keeping this as a placeholder for potential future logic, but not adding the incorrect code.
 
     def switch_page(self, index):
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
+        
+        # Call update_panel if the Preprocess panel is selected
+        if index == 1 and hasattr(self, 'preprocess_panel'):
+            self.preprocess_panel.update_panel()
 
     def init_panels(self):
         # 0. Dataset
@@ -202,7 +224,8 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.dataset_panel)
         
         # 1. Preprocess
-        self.stack.addWidget(QLabel("Preprocess Panel (Coming Soon)"))
+        self.preprocess_panel = PreprocessPanel(self)
+        self.stack.addWidget(self.preprocess_panel)
         
         # 2. Training
         self.stack.addWidget(QLabel("Training Panel (Coming Soon)"))
@@ -222,7 +245,12 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
         
         self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
-        
+        self.chat_dock.hide() # Hide by default
+
+    def start_agent_system(self):
+        if self.agent_initialized:
+            return
+
         # 2. Setup Thread and Worker
         self.agent_thread = QThread()
         self.agent_worker = AgentWorker()
@@ -240,20 +268,64 @@ class MainWindow(QMainWindow):
         
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(0, self.trigger_agent_init)
+        
+        self.agent_initialized = True
 
     def trigger_agent_init(self):
         self.sig_init_agent.emit()
 
     def toggle_ai_dock(self):
-        if self.chat_dock.isVisible():
-            self.chat_dock.close()
+        if not self.agent_initialized:
+            # Show Warning
+            reply = QMessageBox.warning(
+                self, "Activate AI Assistant",
+                "You are about to activate the AI Assistant.\n\n"
+                "This feature uses an LLM (Large Language Model) which requires significant system resources (GPU/VRAM).\n"
+                "It may slow down other operations on lower-end systems.\n"
+                "Do you want to proceed?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                self.start_agent_system()
+                self.chat_dock.show()
+                self.ai_btn.setChecked(True)
+            else:
+                self.ai_btn.setChecked(False) # Revert check state
+                return
         else:
-            self.chat_dock.show()
+            if self.chat_dock.isVisible():
+                self.chat_dock.close()
+            else:
+                self.chat_dock.show()
 
     def update_ai_btn_state(self, visible):
         self.ai_btn.blockSignals(True)
         self.ai_btn.setChecked(visible)
         self.ai_btn.blockSignals(False)
+
+    def init_info_dock(self):
+        self.info_panel = AggregateInfoPanel(self)
+        self.info_dock = QDockWidget("Data Info", self)
+        self.info_dock.setWidget(self.info_panel)
+        self.info_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.info_dock)
+        self.info_dock.visibilityChanged.connect(self.update_info_btn_state)
+
+    def toggle_info_dock(self):
+        if self.info_dock.isVisible():
+            self.info_dock.close()
+        else:
+            self.info_dock.show()
+
+    def update_info_btn_state(self, visible):
+        self.info_btn.blockSignals(True)
+        self.info_btn.setChecked(visible)
+        self.info_btn.blockSignals(False)
+
+    def update_info_panel(self):
+        if hasattr(self, 'info_panel'):
+            self.info_panel.update_info()
 
     def handle_user_input(self, text):
         history = "" 

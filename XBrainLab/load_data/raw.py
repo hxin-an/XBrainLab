@@ -52,6 +52,7 @@ class Raw:
         self.raw_event_id = None
         self.subject = 0
         self.session = 0
+        self.labels_imported = False
 
     def get_filepath(self) -> str:
         """Return the filepath of the raw data."""
@@ -103,6 +104,14 @@ class Raw:
     def set_session_name(self, session: str) -> None:
         """Set the session name of the raw data."""
         self.session = session
+
+    def set_labels_imported(self, imported: bool) -> None:
+        """Set whether labels have been imported."""
+        self.labels_imported = imported
+
+    def is_labels_imported(self) -> bool:
+        """Return whether labels have been imported."""
+        return self.labels_imported
 
     def set_event(self, events: list[list[int]], event_id: dict[str, int]) -> None:
         """Set the event of the raw data.

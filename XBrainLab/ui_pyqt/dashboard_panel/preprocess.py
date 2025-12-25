@@ -1,0 +1,580 @@
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
+    QListWidget, QGroupBox, QGridLayout, QDialog, QFormLayout, 
+    QDoubleSpinBox, QDialogButtonBox, QMessageBox
+)
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
+    QListWidget, QGroupBox, QGridLayout, QDialog, QFormLayout, 
+    QDoubleSpinBox, QDialogButtonBox, QMessageBox, QTabWidget, QSpinBox,
+    QCheckBox, QLineEdit, QScrollArea, QSlider
+)
+from PyQt6.QtCore import Qt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+import numpy as np
+from scipy.signal import welch
+from XBrainLab import preprocessor as Preprocessor
+from XBrainLab.utils.logger import logger
+
+class ResampleDialog(QDialog):
+    def __init__(self, parent, preprocessed_data_list):
+        super().__init__(parent)
+        self.setWindowTitle("Resample")
+        self.resize(300, 100)
+        self.preprocessor = Preprocessor.Resample(preprocessed_data_list)
+        self.return_data = None
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        self.sfreq_spin = QDoubleSpinBox()
+        self.sfreq_spin.setRange(1, 10000)
+        self.sfreq_spin.setValue(250.0)
+        form.addRow("Sampling Rate (Hz):", self.sfreq_spin)
+        layout.addLayout(form)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+    def accept(self):
+        try:
+            self.return_data = self.preprocessor.data_preprocess(self.sfreq_spin.value())
+            super().accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def get_result(self):
+        return self.return_data
+
+class EpochingDialog(QDialog):
+    def __init__(self, parent, preprocessed_data_list):
+        super().__init__(parent)
+        self.setWindowTitle("Time Epoching")
+        self.resize(400, 500)
+        self.preprocessor = Preprocessor.TimeEpoch(preprocessed_data_list)
+        self.data_list = preprocessed_data_list
+        self.return_data = None
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # 1. Event Selection
+        event_group = QGroupBox("Select Events")
+        event_layout = QVBoxLayout()
+        self.event_list = QListWidget()
+        self.event_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        
+        # Collect all unique events
+        events = set()
+        for data in self.data_list:
+            try:
+                # Try raw events first
+                evs, ev_ids = data.get_raw_event_list()
+                if not ev_ids:
+                     evs, ev_ids = data.get_event_list()
+                if ev_ids:
+                    events.update(ev_ids.keys())
+            except:
+                pass
+        
+        for ev in sorted(list(events)):
+            self.event_list.addItem(ev)
+            
+        event_layout.addWidget(self.event_list)
+        event_group.setLayout(event_layout)
+        layout.addWidget(event_group)
+        
+        # 2. Parameters
+        param_group = QGroupBox("Epoch Parameters")
+        form = QFormLayout()
+        
+        self.tmin_spin = QDoubleSpinBox()
+        self.tmin_spin.setRange(-10, 10)
+        self.tmin_spin.setValue(-0.2)
+        self.tmin_spin.setSingleStep(0.1)
+        
+        self.tmax_spin = QDoubleSpinBox()
+        self.tmax_spin.setRange(-10, 10)
+        self.tmax_spin.setValue(0.8)
+        self.tmax_spin.setSingleStep(0.1)
+        
+        form.addRow("Start (s):", self.tmin_spin)
+        form.addRow("End (s):", self.tmax_spin)
+        
+        # Baseline
+        self.baseline_check = QCheckBox("Apply Baseline Correction")
+        self.baseline_check.setChecked(True)
+        self.baseline_check.toggled.connect(self.toggle_baseline)
+        
+        self.b_min_spin = QDoubleSpinBox()
+        self.b_min_spin.setRange(-10, 10)
+        self.b_min_spin.setValue(-0.2)
+        
+        self.b_max_spin = QDoubleSpinBox()
+        self.b_max_spin.setRange(-10, 10)
+        self.b_max_spin.setValue(0.0)
+        
+        form.addRow(self.baseline_check)
+        form.addRow("Baseline Min (s):", self.b_min_spin)
+        form.addRow("Baseline Max (s):", self.b_max_spin)
+        
+        param_group.setLayout(form)
+        layout.addWidget(param_group)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def toggle_baseline(self, checked):
+        self.b_min_spin.setEnabled(checked)
+        self.b_max_spin.setEnabled(checked)
+
+    def accept(self):
+        selected_items = self.event_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Warning", "Please select at least one event.")
+            return
+            
+        selected_events = [item.text() for item in selected_items]
+        tmin = self.tmin_spin.value()
+        tmax = self.tmax_spin.value()
+        
+        baseline = None
+        if self.baseline_check.isChecked():
+            baseline = (self.b_min_spin.value(), self.b_max_spin.value())
+            
+        try:
+            self.return_data = self.preprocessor.data_preprocess(
+                baseline, selected_events, tmin, tmax
+            )
+            super().accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def get_result(self):
+        return self.return_data
+
+class FilteringDialog(QDialog):
+    def __init__(self, parent, preprocessed_data_list):
+        super().__init__(parent)
+        self.setWindowTitle("Filtering")
+        self.resize(300, 150)
+        
+        # Initialize backend preprocessor
+        self.preprocessor = Preprocessor.Filtering(preprocessed_data_list)
+        self.return_data = None
+        
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        form_layout = QFormLayout()
+        
+        self.l_freq_spin = QDoubleSpinBox()
+        self.l_freq_spin.setRange(0, 1000)
+        self.l_freq_spin.setDecimals(2)
+        self.l_freq_spin.setValue(1.0) # Default
+        
+        self.h_freq_spin = QDoubleSpinBox()
+        self.h_freq_spin.setRange(0, 1000)
+        self.h_freq_spin.setDecimals(2)
+        self.h_freq_spin.setValue(40.0) # Default
+        
+        form_layout.addRow("Lower pass-band (Hz):", self.l_freq_spin)
+        form_layout.addRow("Upper pass-band (Hz):", self.h_freq_spin)
+        
+        layout.addLayout(form_layout)
+        
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+    def accept(self):
+        l_freq = self.l_freq_spin.value()
+        h_freq = self.h_freq_spin.value()
+        
+        # Validate (simple check, backend does more)
+        if l_freq >= h_freq and h_freq > 0:
+             QMessageBox.warning(self, "Invalid Input", "Lower freq must be less than Upper freq.")
+             return
+
+        try:
+            self.return_data = self.preprocessor.data_preprocess(l_freq, h_freq)
+            super().accept()
+        except Exception as e:
+            logger.error(f"Filtering failed: {e}")
+            QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
+
+    def get_result(self):
+        return self.return_data
+
+class PreprocessPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.main_window = parent
+        self.init_ui()
+        
+    def init_ui(self):
+        main_layout = QHBoxLayout(self)
+        
+        # --- Left: Operations ---
+        ops_group = QGroupBox("Operations")
+        ops_group.setFixedWidth(200)
+        ops_layout = QVBoxLayout(ops_group)
+        
+        self.btn_filter = QPushButton("Filtering")
+        self.btn_filter.clicked.connect(self.open_filtering)
+        
+        self.btn_resample = QPushButton("Resample")
+        self.btn_resample.clicked.connect(self.open_resample)
+        
+        self.btn_rereference = QPushButton("Re-reference")
+        self.btn_rereference.setEnabled(False) # Placeholder
+        
+        self.btn_epoch = QPushButton("Epoching")
+        self.btn_epoch.clicked.connect(self.open_epoching)
+        
+        self.btn_ica = QPushButton("ICA")
+        self.btn_ica.setEnabled(False) # Placeholder
+
+        ops_layout.addWidget(self.btn_filter)
+        ops_layout.addWidget(self.btn_resample)
+        ops_layout.addWidget(self.btn_rereference)
+        ops_layout.addWidget(self.btn_epoch)
+        ops_layout.addWidget(self.btn_ica)
+        
+        ops_layout.addStretch()
+        
+        # Reset Button
+        self.btn_reset = QPushButton("Reset All Preprocessing")
+        self.btn_reset.setStyleSheet("background-color: #d32f2f; color: white;")
+        self.btn_reset.clicked.connect(self.reset_preprocess)
+        ops_layout.addWidget(self.btn_reset)
+        
+        # --- Right Side: Plot & History ---
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        
+        # Plot Group
+        plot_group = QGroupBox("Signal Preview")
+        plot_layout = QVBoxLayout()
+        
+        # Tabs for Time/Freq
+        self.plot_tabs = QTabWidget()
+        
+        # Tab 1: Time Domain
+        self.tab_time = QWidget()
+        time_layout = QVBoxLayout(self.tab_time)
+        self.fig_time = Figure(figsize=(5, 3), dpi=100)
+        self.canvas_time = FigureCanvas(self.fig_time)
+        self.ax_time = self.fig_time.add_subplot(111)
+        self.fig_time.tight_layout()
+        time_layout.addWidget(self.canvas_time)
+        self.plot_tabs.addTab(self.tab_time, "Time Domain")
+        
+        # Tab 2: Frequency Domain (PSD)
+        self.tab_freq = QWidget()
+        freq_layout = QVBoxLayout(self.tab_freq)
+        self.fig_freq = Figure(figsize=(5, 3), dpi=100)
+        self.canvas_freq = FigureCanvas(self.fig_freq)
+        self.ax_freq = self.fig_freq.add_subplot(111)
+        self.fig_freq.tight_layout()
+        freq_layout.addWidget(self.canvas_freq)
+        self.plot_tabs.addTab(self.tab_freq, "Frequency (PSD)")
+        
+        plot_layout.addWidget(self.plot_tabs)
+
+        # Controls
+        ctrl_layout = QHBoxLayout()
+        ctrl_layout.addWidget(QLabel("Channel:"))
+        self.chan_spin = QSpinBox()
+        self.chan_spin.setRange(0, 0) # Will update dynamically
+        self.chan_spin.valueChanged.connect(self.update_plot_only)
+        ctrl_layout.addWidget(self.chan_spin)
+        
+        ctrl_layout.addSpacing(20)
+        ctrl_layout.addWidget(QLabel("Y-Scale (uV):"))
+        self.yscale_spin = QDoubleSpinBox()
+        self.yscale_spin.setRange(0, 5000)
+        self.yscale_spin.setValue(0) # 0 = Auto
+        self.yscale_spin.setSpecialValueText("Auto")
+        self.yscale_spin.setSingleStep(10)
+        self.yscale_spin.valueChanged.connect(self.update_plot_only)
+        ctrl_layout.addWidget(self.yscale_spin)
+        
+        ctrl_layout.addStretch()
+        ctrl_layout.addStretch()
+        plot_layout.addLayout(ctrl_layout)
+        
+        # Time Navigation
+        time_nav_layout = QHBoxLayout()
+        time_nav_layout.addWidget(QLabel("Time (s):"))
+        
+        self.time_slider = QSlider(Qt.Orientation.Horizontal)
+        self.time_slider.setRange(0, 100) # Placeholder
+        self.time_slider.valueChanged.connect(self.on_time_slider_changed)
+        time_nav_layout.addWidget(self.time_slider)
+        
+        self.time_spin = QDoubleSpinBox()
+        self.time_spin.setRange(0, 10000)
+        self.time_spin.setSingleStep(1.0)
+        self.time_spin.valueChanged.connect(self.on_time_spin_changed)
+        time_nav_layout.addWidget(self.time_spin)
+        
+        plot_layout.addLayout(time_nav_layout)
+        plot_group.setLayout(plot_layout)
+        
+        # History Group
+        hist_group = QGroupBox("Preprocessing History")
+        hist_layout = QVBoxLayout()
+        self.history_list = QListWidget()
+        hist_layout.addWidget(self.history_list)
+        hist_group.setLayout(hist_layout)
+        
+        right_layout.addWidget(plot_group, stretch=2)
+        right_layout.addWidget(hist_group, stretch=1)
+        
+        # Add widgets to main layout (Plot on Left, Ops on Right)
+        main_layout.addWidget(right_widget, stretch=1)
+        main_layout.addWidget(ops_group, stretch=0)
+
+    def on_time_slider_changed(self, value):
+        self.time_spin.blockSignals(True)
+        self.time_spin.setValue(value / 10.0) # Slider is int, spin is float (0.1s step)
+        self.time_spin.blockSignals(False)
+        self.update_plot_only()
+
+    def on_time_spin_changed(self, value):
+        self.time_slider.blockSignals(True)
+        self.time_slider.setValue(int(value * 10))
+        self.time_slider.blockSignals(False)
+        self.update_plot_only()
+
+    def update_panel(self):
+        if not self.main_window or not hasattr(self.main_window, 'study'):
+            return
+            
+        # Update History List
+        self.history_list.clear()
+        data_list = self.main_window.study.preprocessed_data_list
+        
+        if data_list:
+            # Assuming all files have same history, take first one
+            first_data = data_list[0]
+            
+            # Update History
+            history = first_data.get_preprocess_history()
+            if history:
+                for step in history:
+                    self.history_list.addItem(str(step))
+            else:
+                self.history_list.addItem("No preprocessing applied.")
+                
+            # Update Plot
+            # Update channel range
+            n_chan = first_data.get_nchan()
+            self.chan_spin.blockSignals(True)
+            self.chan_spin.setRange(0, n_chan - 1)
+            self.chan_spin.blockSignals(False)
+            
+            self.chan_spin.blockSignals(True)
+            self.chan_spin.setRange(0, n_chan - 1)
+            self.chan_spin.blockSignals(False)
+            
+            # Update time range
+            duration = first_data.get_epochs_length() if not first_data.is_raw() else (first_data.get_mne().times[-1])
+            self.time_spin.setRange(0, duration)
+            self.time_slider.setRange(0, int(duration * 10))
+            
+            self.plot_sample_data()
+        else:
+            self.history_list.addItem("No data loaded.")
+            self.ax_time.clear()
+            self.ax_time.text(0.5, 0.5, "No Data", ha='center', va='center')
+            self.canvas_time.draw()
+            self.ax_freq.clear()
+            self.ax_freq.text(0.5, 0.5, "No Data", ha='center', va='center')
+            self.canvas_freq.draw()
+
+    def update_plot_only(self):
+        self.plot_sample_data()
+
+    def plot_sample_data(self):
+        self.ax_time.clear()
+        self.ax_freq.clear()
+        
+        if not self.main_window or not hasattr(self.main_window, 'study'):
+            return
+            
+        data_list = self.main_window.study.preprocessed_data_list
+        orig_list = self.main_window.study.loaded_data_list
+        
+        if not data_list:
+            return
+
+        try:
+            # Use first file
+            raw_obj = data_list[0]
+            orig_obj = orig_list[0] if orig_list else None
+            
+            chan_idx = self.chan_spin.value()
+            sfreq = raw_obj.get_sfreq()
+            
+            # --- Helper to get data ---
+            def get_chan_data(obj, ch_idx, start_time=0, duration=5):
+                is_raw = obj.is_raw()
+                data = obj.get_mne().get_data()
+                if data is None: return None, None
+                
+                if is_raw:
+                    start_sample = int(start_time * sfreq)
+                    n_samples = int(duration * sfreq)
+                    end_sample = start_sample + n_samples
+                    
+                    # Check bounds
+                    if start_sample >= data.shape[1]:
+                        return None, None
+                    if end_sample > data.shape[1]:
+                        end_sample = data.shape[1]
+                        
+                    y = data[ch_idx, start_sample:end_sample]
+                    x = np.arange(start_sample, end_sample) / sfreq
+                    return x, y
+                else:
+                    if data.ndim == 3:
+                        # For epochs, ignore start_time for now, just show first epoch?
+                        # Or maybe select epoch index?
+                        # Let's just show first epoch for simplicity or implement epoch selection later
+                        y = data[0, ch_idx, :] 
+                        x = obj.get_mne().times
+                        return x, y
+                return None, None
+
+            # Get Current Data
+            start_t = self.time_spin.value()
+            x_curr, y_curr = get_chan_data(raw_obj, chan_idx, start_time=start_t)
+            
+            # Get Original Data (if available and compatible)
+            x_orig, y_orig = None, None
+            if orig_obj:
+                # Try to match time
+                x_orig, y_orig = get_chan_data(orig_obj, chan_idx, start_time=start_t)
+            
+            # --- Time Domain Plot ---
+            if y_curr is not None:
+                # Scale to uV
+                y_curr_uv = y_curr * 1e6
+                y_orig_uv = y_orig * 1e6 if y_orig is not None else None
+                
+                # x is already time array
+                
+                if y_orig_uv is not None and len(y_orig_uv) == len(y_curr_uv):
+                    self.ax_time.plot(x_curr, y_orig_uv, color='gray', alpha=0.5, label='Original')
+                
+                self.ax_time.plot(x_curr, y_curr_uv, color='#2196F3', linewidth=1, label='Current')
+                self.ax_time.set_title(f"Channel {chan_idx} (Time)")
+                self.ax_time.set_xlabel("Time (s)")
+                self.ax_time.set_ylabel("Amplitude (uV)") # Updated unit
+                self.ax_time.legend(loc='upper right', fontsize='small')
+                self.ax_time.grid(True, linestyle='--', alpha=0.5)
+                
+                # Apply Y-Scale
+                y_scale = self.yscale_spin.value()
+                if y_scale > 0:
+                    self.ax_time.set_ylim(-y_scale, y_scale)
+            
+            # --- Frequency Domain (PSD) Plot ---
+            if y_curr is not None:
+                # Calculate PSD (using uV data)
+                def calc_psd(sig):
+                    f, Pxx = welch(sig, fs=sfreq, nperseg=min(len(sig), 256*4))
+                    return f, Pxx
+                
+                f_curr, p_curr = calc_psd(y_curr_uv)
+                
+                if y_orig_uv is not None and len(y_orig_uv) == len(y_curr_uv):
+                    f_orig, p_orig = calc_psd(y_orig_uv)
+                    self.ax_freq.plot(f_orig, 10 * np.log10(p_orig), color='gray', alpha=0.5, label='Original')
+                
+                self.ax_freq.plot(f_curr, 10 * np.log10(p_curr), color='#2196F3', linewidth=1, label='Current')
+                self.ax_freq.set_title(f"Channel {chan_idx} (PSD)")
+                self.ax_freq.set_xlabel("Frequency (Hz)")
+                self.ax_freq.set_ylabel("Power (dB/Hz)") # PSD of uV is uV^2/Hz, log is dB
+                self.ax_freq.legend(loc='upper right', fontsize='small')
+                self.ax_freq.grid(True, linestyle='--', alpha=0.5)
+                
+            self.canvas_time.draw()
+            self.canvas_freq.draw()
+            
+        except Exception as e:
+            logger.error(f"Plotting failed: {e}")
+            self.ax_time.text(0.5, 0.5, "Plot Error", ha='center', va='center')
+            self.canvas_time.draw()
+
+    def open_filtering(self):
+        if not self.check_data_loaded():
+            return
+            
+        dialog = FilteringDialog(self, self.main_window.study.preprocessed_data_list)
+        if dialog.exec():
+            result = dialog.get_result()
+            if result:
+                self.main_window.study.set_preprocessed_data_list(result)
+                self.main_window.study.lock_dataset()
+                self.update_panel()
+                QMessageBox.information(self, "Success", "Filtering applied successfully.")
+
+    def open_resample(self):
+        if not self.check_data_loaded(): return
+        dialog = ResampleDialog(self, self.main_window.study.preprocessed_data_list)
+        if dialog.exec():
+            result = dialog.get_result()
+            if result:
+                self.main_window.study.set_preprocessed_data_list(result)
+                self.main_window.study.lock_dataset()
+                self.update_panel()
+                QMessageBox.information(self, "Success", "Resampling applied.")
+
+    def open_epoching(self):
+        if not self.check_data_loaded(): return
+        dialog = EpochingDialog(self, self.main_window.study.preprocessed_data_list)
+        if dialog.exec():
+            result = dialog.get_result()
+            if result:
+                self.main_window.study.set_preprocessed_data_list(result)
+                self.main_window.study.lock_dataset()
+                self.update_panel()
+                QMessageBox.information(self, "Success", "Epoching applied.")
+
+    def reset_preprocess(self):
+        if not self.check_data_loaded():
+            return
+            
+        reply = QMessageBox.question(
+            self, "Confirm Reset", 
+            "Are you sure you want to reset all preprocessing steps?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.main_window.study.reset_preprocess()
+                self.update_panel()
+                QMessageBox.information(self, "Success", "Preprocessing reset.")
+            except Exception as e:
+                logger.error(f"Reset failed: {e}")
+                QMessageBox.critical(self, "Error", f"Reset failed: {e}")
+
+    def check_data_loaded(self):
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded. Please import data first.")
+            return False
+        return True

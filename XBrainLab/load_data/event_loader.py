@@ -112,15 +112,35 @@ class EventLoader:
             else:
                 # get new event id mapping
                 event_id = {event_name_map[i]: i for i in np.unique(self.label_list)}
+                
                 # create new event array
-                events = np.zeros((len(self.label_list), 3))
-                events[:, 0] = range(len(self.label_list))
+                events = np.zeros((len(self.label_list), 3), dtype=int)
+                
+                # Try to sync with existing events (Timestamps)
+                # This works for both Raw (GDF triggers) and Epochs
+                existing_events = None
+                try:
+                    if self.raw.has_event():
+                        existing_events, _ = self.raw.get_event_list()
+                except Exception:
+                    pass
+
+                if existing_events is not None and len(existing_events) == len(self.label_list):
+                    events[:, 0] = existing_events[:, 0] # Copy timestamps
+                    # Copy previous value (column 1) if available
+                    if existing_events.shape[1] >= 2:
+                        events[:, 1] = existing_events[:, 1]
+                else:
+                    # Fallback: Create artificial timestamps
+                    if self.raw.is_raw():
+                         print(
+                            'UserWarning: Could not sync with existing events (count mismatch or no events found). '
+                            'Creating artificial timestamps (0, 1, 2...). '
+                            'This removes real-time information!'
+                        )
+                    events[:, 0] = range(len(self.label_list))
+                    
                 events[:, -1] = self.label_list
-                print(
-                    'UserWarning: Event array created without onset timesample. '
-                    'Please proceed with caution if operating on raw data '
-                    'without annotations.'
-                )
 
             # check if event array is consistent with raw data
             if not self.raw.is_raw() and self.raw.get_epochs_length() != len(events):
