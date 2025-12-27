@@ -107,6 +107,8 @@ class DatasetPanel(QWidget):
     def init_ui(self):
         # Main Layout: Horizontal Split (Table | Info & Controls)
         main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         # --- Left Side: File List Table ---
         self.table = QTableWidget()

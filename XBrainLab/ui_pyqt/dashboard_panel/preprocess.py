@@ -224,6 +224,8 @@ class PreprocessPanel(QWidget):
         
     def init_ui(self):
         main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
         
         # --- Right Side: Operations (Styled like DatasetPanel) ---
         right_panel = QWidget()
