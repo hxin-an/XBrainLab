@@ -1,14 +1,16 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton, 
     QGroupBox, QMenu, QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QDialog, QListWidget, QDialogButtonBox
+    QHeaderView, QInputDialog, QFrame, QDialog, QListWidget, QDialogButtonBox,
+    QAbstractItemView
 )
 from PyQt6.QtCore import Qt
 import numpy as np
+import os
 from XBrainLab.ui_pyqt.load_data.helper import load_set_file
 from XBrainLab.ui_pyqt.load_data.gdf import load_gdf_file
 from XBrainLab.ui_pyqt.dashboard_panel.smart_parser import SmartParserDialog
-from XBrainLab.ui_pyqt.dashboard_panel.import_label import ImportLabelDialog, EventFilterDialog
+from XBrainLab.ui_pyqt.dashboard_panel.import_label import ImportLabelDialog, EventFilterDialog, LabelMappingDialog
 from XBrainLab.load_data import RawDataLoader, DataType, EventLoader
 from XBrainLab import preprocessor as Preprocessor
 from XBrainLab.utils.logger import logger
@@ -87,6 +89,16 @@ class ChannelSelectionDialog(QDialog):
         return self.return_data
 
 class DatasetPanel(QWidget):
+    """
+    Panel for managing the dataset.
+    
+    Features:
+    - Import Data: Load EEG files (.set, .gdf).
+    - Import Label: Assign labels to loaded data.
+    - Smart Parse: Automatically extract subject/session info from filenames.
+    - Channel Selection: Filter channels.
+    - Table View: Display loaded files and their metadata.
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
@@ -115,46 +127,166 @@ class DatasetPanel(QWidget):
         main_layout.addWidget(self.table, stretch=2)
 
         # --- Right Side: Info & Controls ---
-        right_layout = QVBoxLayout()
+        # --- Right Side: Info & Controls ---
+        # --- Right Side: Info & Controls ---
+        right_panel = QWidget()
+        right_panel.setFixedWidth(260) # Increased width
+        # Slightly lighter gray with border
+        right_panel.setObjectName("RightPanel")
+        right_panel.setStyleSheet("""
+            #RightPanel { 
+                background-color: #252526; 
+                border-left: 1px solid #3e3e42; 
+            }
+            /* Minimal Group Style (No borders, no cards) */
+            QGroupBox {
+                background-color: transparent;
+                border: none;
+                margin-top: 15px;
+                font-weight: bold;
+                color: #808080; /* Subtle title */
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 0px;
+                padding: 0 0px;
+                color: #808080;
+            }
+            /* Flat, Minimal Buttons - Maximized Width */
+            /* Flat, Minimal Buttons - Maximized Width */
+            QPushButton {
+                background-color: #3e3e42; /* Lighter gray (VS Code style) */
+                border: none; 
+                border-radius: 4px;
+                padding: 8px 12px; 
+                color: #ffffff; /* White text */
+                font-weight: normal;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #4e4e52;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #007acc;
+            }
+        """)
         
-        # --- Right Side: Controls ---
-        # Operations Group
-        ops_group = QGroupBox("Operations")
-        ops_group.setFixedWidth(200)
-        right_layout = QVBoxLayout(ops_group)
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(10, 20, 10, 20) # Reduced margins for wider buttons
         
-        # Import Button
-        self.import_btn = QPushButton("Import Data")
-        self.import_btn.clicked.connect(self.import_data)
-        right_layout.addWidget(self.import_btn)
+        # 0. Logo (Minimal, no frame)
+        logo_frame = QFrame()
+        logo_frame.setStyleSheet("""
+            QFrame {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        logo_layout = QVBoxLayout(logo_frame)
+        logo_layout.setContentsMargins(0, 0, 0, 10)
         
-        # Import Label Button
-        self.import_label_btn = QPushButton("Import Label")
-        self.import_label_btn.clicked.connect(self.import_label)
-        right_layout.addWidget(self.import_label_btn)
+        logo_label = QLabel()
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        logo_label.setStyleSheet("border: none; background: transparent;") 
         
-        # Smart Parse Button
-        self.smart_parse_btn = QPushButton("Smart Parse Metadata")
-        self.smart_parse_btn.clicked.connect(self.open_smart_parser)
-        right_layout.addWidget(self.smart_parse_btn)
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.svg")
+        if os.path.exists(logo_path):
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap(logo_path)
+            # Scale pixmap to fit panel width (260 - 20 margin = 240)
+            scaled_pixmap = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
+            logo_label.setPixmap(scaled_pixmap)
+            logo_label.setScaledContents(False)
+        else:
+            logo_label.setText("XBrainLab")
+            logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cccccc; margin-bottom: 5px; border: none;")
+            
+        logo_layout.addWidget(logo_label)
+        right_layout.addWidget(logo_frame)
+        
+        # 1. Dynamic Tips (Always visible)
+        self.tips_group = QGroupBox("GETTING STARTED")
+        # Explicitly set transparent background to avoid black box
+        self.tips_group.setStyleSheet("QGroupBox { background-color: transparent; border: none; margin-top: 10px; } QGroupBox::title { color: #808080; }")
+        
+        tips_layout = QVBoxLayout(self.tips_group)
+        tips_layout.setContentsMargins(0, 10, 0, 0)
+        tips_label = QLabel(
+            "<div style='line-height: 1.2; color: #999999;'>"
+            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>1. Import Data</b><br>Load EEG recordings</div>"
+            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>2. Import Label</b><br>Add events (optional)</div>"
+            "<div><b style='color: #cccccc;'>3. Smart Parse</b><br>Organize metadata</div>"
+            "</div>"
+        )
+        tips_label.setWordWrap(True)
+        tips_label.setStyleSheet("background-color: transparent; border: none;") # Explicitly transparent
+        tips_layout.addWidget(tips_label)
+        right_layout.addWidget(self.tips_group)
+        
+        right_layout.addSpacing(10)
 
+        # 2. Dataset Actions Group
+        actions_group = QGroupBox("Dataset Actions")
+        actions_layout = QVBoxLayout(actions_group)
+        actions_layout.setContentsMargins(0, 10, 0, 0) # Maximize width
+        
+        self.import_btn = QPushButton("Import Data")
+        self.import_btn.setToolTip("Load .set or .gdf files")
+        self.import_btn.clicked.connect(self.import_data)
+        actions_layout.addWidget(self.import_btn)
+        
+        self.import_label_btn = QPushButton("Import Label")
+        self.import_label_btn.setToolTip("Import labels from external files")
+        self.import_label_btn.clicked.connect(self.import_label)
+        actions_layout.addWidget(self.import_label_btn)
+        
+        self.smart_parse_btn = QPushButton("Smart Parse Metadata")
+        self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
+        self.smart_parse_btn.clicked.connect(self.open_smart_parser)
+        actions_layout.addWidget(self.smart_parse_btn)
+        
+        right_layout.addWidget(actions_group)
+
+        # 3. Configuration Group
+        config_group = QGroupBox("Configuration")
+        config_layout = QVBoxLayout(config_group)
+        config_layout.setContentsMargins(0, 10, 0, 0) # Maximize width
+        
+        self.chan_select_btn = QPushButton("Channel Selection")
+        self.chan_select_btn.setToolTip("Select specific channels to keep")
+        self.chan_select_btn.clicked.connect(self.open_channel_selection)
+        config_layout.addWidget(self.chan_select_btn)
+        
+        right_layout.addWidget(config_group)
+
+        # Spacer to push Danger Zone to bottom
         right_layout.addStretch()
 
-        # Channel Selection Button (Moved here)
-        self.chan_select_btn = QPushButton("Channel Selection")
-        self.chan_select_btn.setStyleSheet("background-color: #2e7d32; color: white;") # Green
-        self.chan_select_btn.clicked.connect(self.open_channel_selection)
-        right_layout.addWidget(self.chan_select_btn)
-
-        # Clear Button
+        # 4. Danger Zone (Button Only)
         self.clear_btn = QPushButton("Clear Dataset")
-        self.clear_btn.setStyleSheet("background-color: #d32f2f; color: white;")
+        # Match Preprocess Reset Button Style
+        self.clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a1818; 
+                color: #ff9999;
+                border: 1px solid #802020;
+            }
+            QPushButton:hover {
+                background-color: #602020;
+            }
+        """)
+        self.clear_btn.setToolTip("Remove all loaded data")
         self.clear_btn.clicked.connect(self.clear_dataset)
         right_layout.addWidget(self.clear_btn)
         
-        main_layout.addWidget(ops_group)
+        main_layout.addWidget(right_panel)
 
     def import_data(self):
+        """
+        Opens a file dialog to select and import EEG data files.
+        Supports .set and .gdf formats.
+        """
         if self.main_window and hasattr(self.main_window, 'study') and self.main_window.study.is_locked():
             QMessageBox.warning(self, "Import Blocked", 
                                 "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
@@ -289,7 +421,7 @@ class DatasetPanel(QWidget):
                     count += 1
             
             self.update_panel()
-            self.update_panel()
+
             QMessageBox.information(self, "Success", f"Updated metadata for {count} files.")
 
     def open_channel_selection(self):
@@ -328,206 +460,233 @@ class DatasetPanel(QWidget):
                 QMessageBox.information(self, "Success", "Channel selection applied.")
 
     def import_label(self):
+        """
+        Imports labels from external files (e.g., .mat) and applies them to the loaded data.
+        Handles event synchronization and batch application.
+        """
         try:
-            # Get selected files
-            selected_rows = sorted(set(index.row() for index in self.table.selectedIndexes()))
-            if not selected_rows:
-                # If nothing selected, maybe apply to all?
-                reply = QMessageBox.question(
-                    self, "Import Label", 
-                    "No files selected. Apply labels to ALL loaded files?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    selected_rows = range(self.table.rowCount())
-                else:
-                    return
+            # 1. Select Files
+            target_files = self._get_target_files_for_import()
+            if not target_files: return
 
-            data_list = self.main_window.study.loaded_data_list
-            if not data_list:
-                QMessageBox.warning(self, "Warning", "No data loaded.")
-                return
-
-            target_files = [data_list[i] for i in selected_rows]
-            
+            # 2. Select Label File
             dialog = ImportLabelDialog(self)
-            if dialog.exec():
-                labels, mapping = dialog.get_results()
-                if labels is None: return
-                
-                # --- Step 2: GDF Event Filtering (New) ---
-                # Check if we have Raw files with events
-                raw_files_with_events = [d for d in target_files if d.is_raw() and d.has_event()]
-                selected_event_names = None
-                
-                if raw_files_with_events:
-                    # Collect all unique event NAMES (Descriptions)
-                    unique_names = set()
-                    for d in raw_files_with_events:
-                        try:
-                            _, ev_ids = d.get_raw_event_list()
-                            if ev_ids:
-                                unique_names.update(ev_ids.keys())
-                        except:
-                            pass
-                    
-                    if unique_names:
-                        # Sort numerically if possible, else alphabetically
-                        try:
-                            sorted_names = sorted(list(unique_names), key=lambda x: int(x) if x.isdigit() else x)
-                        except:
-                            sorted_names = sorted(list(unique_names))
-                            
-                        filter_dialog = EventFilterDialog(self, sorted_names)
-                        if filter_dialog.exec():
-                            selected_event_names = set(filter_dialog.get_selected_ids()) # Reusing method name, but returns names now
-                        else:
-                            return # User cancelled filtering
-                
-                # --- Step 3: Calculate Total Epochs (using filtered events) ---
-                total_epochs = 0
-                for d in target_files:
-                    if d.is_raw():
-                        events, event_id_map = d.get_event_list()
-                        if selected_event_names is not None and event_id_map:
-                            # Find IDs for selected names in THIS file
-                            # event_id_map is {name: id}
-                            relevant_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-                            
-                            if relevant_ids:
-                                mask = np.isin(events[:, -1], relevant_ids)
-                                total_epochs += np.sum(mask)
-                            else:
-                                # None of the selected events exist in this file
-                                total_epochs += 0
-                        else:
-                            total_epochs += len(events)
-                    else:
-                        total_epochs += d.get_epochs_length()
-                
-                label_count = len(labels)
-                applied_count = 0
-                
-                try:
-                    # Case 1: Labels match total length -> Split and distribute
-                    if label_count == total_epochs and total_epochs > 0:
-                        current_idx = 0
-                        for data in target_files:
-                            if data.is_raw():
-                                events, event_id_map = data.get_event_list()
-                                file_specific_ids = []
-                                if selected_event_names is not None and event_id_map:
-                                    file_specific_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-                                
-                                if file_specific_ids:
-                                    mask = np.isin(events[:, -1], file_specific_ids)
-                                    n = np.sum(mask)
-                                else:
-                                    # If filtering was active but no match, n=0
-                                    # If filtering NOT active, use all
-                                    if selected_event_names is not None:
-                                        n = 0
-                                    else:
-                                        n = len(events)
-                            else:
-                                n = data.get_epochs_length()
-                                
-                            file_labels = labels[current_idx : current_idx + n]
-                            current_idx += n
-                            
-                            if n == 0:
-                                continue
+            if not dialog.exec(): return
+            label_map, mapping = dialog.get_results()
+            if label_map is None: return
 
-                            loader = EventLoader(data)
-                            loader.label_list = file_labels
-                            
-                            # If we have selected_event_names, we need to sync manually
-                            if selected_event_names is not None and data.is_raw() and file_specific_ids:
-                                # Manually prepare events with synced timestamps
-                                events, _ = data.get_event_list()
-                                mask = np.isin(events[:, -1], file_specific_ids)
-                                filtered_events = events[mask]
-                                
-                                # Verify length matches
-                                if len(filtered_events) == len(file_labels):
-                                    # Create new events array
-                                    new_events = np.zeros((len(file_labels), 3), dtype=int)
-                                    new_events[:, 0] = filtered_events[:, 0] # Sync timestamps
-                                    new_events[:, -1] = file_labels
-                                    
-                                    # Create event_id dict
-                                    new_event_id = {mapping[i]: i for i in np.unique(file_labels)}
-                                    
-                                    # Apply directly
-                                    data.set_event(new_events, new_event_id)
-                                    data.set_labels_imported(True)
-                                    applied_count += 1
-                                    continue # Skip standard loader.create_event
-                                
-                            loader.create_event(mapping)
-                            loader.apply()
-                            data.set_labels_imported(True)
-                            applied_count += 1
-                            
-                    # Case 2: Labels match each file length (Apply same to all)
-                    elif all(self._check_length(d, label_count, selected_event_names) for d in target_files):
-                        for data in target_files:
-                            if selected_event_names is not None and data.is_raw():
-                                events, event_id_map = data.get_event_list()
-                                file_specific_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-                                
-                                if file_specific_ids:
-                                    mask = np.isin(events[:, -1], file_specific_ids)
-                                    filtered_events = events[mask]
-                                    
-                                    if len(filtered_events) == len(labels):
-                                        new_events = np.zeros((len(labels), 3), dtype=int)
-                                        new_events[:, 0] = filtered_events[:, 0]
-                                        new_events[:, -1] = labels
-                                        new_event_id = {mapping[i]: i for i in np.unique(labels)}
-                                        data.set_event(new_events, new_event_id)
-                                        data.set_labels_imported(True)
-                                        applied_count += 1
-                                        continue
+            # 3. Filter Events (Optional, for Raw files)
+            selected_event_names = self._filter_events_for_import(target_files)
+            if selected_event_names is False: return # User cancelled
 
-                            loader = EventLoader(data)
-                            loader.label_list = labels
-                            loader.create_event(mapping)
-                            loader.apply()
-                            data.set_labels_imported(True)
-                            applied_count += 1
-                            
-                    else:
-                        # Mismatch detected
-                        reply = QMessageBox.question(
-                            self, "Mismatch Detected", 
-                            f"Label count ({label_count}) does not match expected events ({total_epochs}).\n\n"
-                            "Do you want to FORCE import?\n"
-                            "WARNING: Original timestamps will be lost (set to 0, 1, 2...).",
-                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                        )
-                        
-                        if reply == QMessageBox.StandardButton.Yes:
-                            for data in target_files:
-                                loader = EventLoader(data)
-                                loader.label_list = labels
-                                loader.create_event(mapping)
-                                loader.apply()
-                                data.set_labels_imported(True)
-                                applied_count += 1
-                        else:
-                            return
+            # 4. Distribute Labels
+            is_batch_mode = len(label_map) > 1
+            count = 0
+            
+            if is_batch_mode:
+                count = self._apply_labels_batch(target_files, label_map, mapping, selected_event_names)
+            else:
+                count = self._apply_labels_legacy(target_files, label_map, mapping, selected_event_names)
 
-                    self.update_panel()
-                    QMessageBox.information(self, "Success", f"Applied labels to {applied_count} files.")
-                
-                except Exception as e:
-                    logger.error(f"Error during label distribution: {e}", exc_info=True)
-                    QMessageBox.critical(self, "Error", f"Failed to distribute labels: {e}")
-        
+            if count > 0:
+                self.update_panel()
+                QMessageBox.information(self, "Success", f"Applied labels to {count} files.")
+
         except Exception as e:
             logger.error(f"Import label failed: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to import labels: {e}")
+
+    def _get_target_files_for_import(self):
+        selected_rows = sorted(set(index.row() for index in self.table.selectedIndexes()))
+        if not selected_rows:
+            reply = QMessageBox.question(
+                self, "Import Label", 
+                "No files selected. Apply labels to ALL loaded files?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                selected_rows = range(self.table.rowCount())
+            else:
+                return []
+        
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.loaded_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return []
+            
+        data_list = self.main_window.study.loaded_data_list
+        return [data_list[i] for i in selected_rows if i < len(data_list)]
+
+    def _filter_events_for_import(self, target_files):
+        """
+        Returns:
+            set: selected event names
+            None: no filtering needed/applied
+            False: user cancelled
+        """
+        raw_files_with_events = [d for d in target_files if d.is_raw() and d.has_event()]
+        if not raw_files_with_events:
+            return None
+            
+        unique_names = set()
+        for d in raw_files_with_events:
+            try:
+                _, ev_ids = d.get_raw_event_list()
+                if ev_ids:
+                    unique_names.update(ev_ids.keys())
+            except:
+                pass
+        
+        if not unique_names:
+            return None
+            
+        # Sort numerically if possible, else alphabetically
+        try:
+            sorted_names = sorted(list(unique_names), key=lambda x: int(x) if x.isdigit() else x)
+        except:
+            sorted_names = sorted(list(unique_names))
+            
+        filter_dialog = EventFilterDialog(self, sorted_names)
+        if filter_dialog.exec():
+            selected = set(filter_dialog.get_selected_ids())
+            logger.info(f"User selected event names: {selected}")
+            return selected
+        else:
+            return False
+
+    def _apply_labels_batch(self, target_files, label_map, mapping, selected_event_names):
+        data_filepaths = [d.get_filepath() for d in target_files]
+        label_filenames = list(label_map.keys())
+        
+        mapping_dialog = LabelMappingDialog(self, data_filepaths, label_filenames)
+        if not mapping_dialog.exec():
+            return 0
+            
+        file_mapping = mapping_dialog.get_mapping() # {data_filepath: label_filename}
+        matched_count = 0
+        
+        for data in target_files:
+            data_path = data.get_filepath()
+            if data_path in file_mapping:
+                label_fname = file_mapping[data_path]
+                matched_labels = label_map[label_fname]
+                
+                try:
+                    self._apply_labels_to_single_file(data, matched_labels, mapping, selected_event_names)
+                    matched_count += 1
+                except Exception as e:
+                    logger.error(f"Error applying labels to {data_path}: {e}", exc_info=True)
+                    QMessageBox.warning(self, "Error", f"Failed to apply labels to {os.path.basename(data_path)}: {e}")
+                    
+        return matched_count
+
+    def _apply_labels_legacy(self, target_files, label_map, mapping, selected_event_names):
+        labels = list(label_map.values())[0]
+        label_count = len(labels)
+        
+        # Calculate total epochs needed
+        total_epochs = 0
+        for d in target_files:
+            total_epochs += self._get_epoch_count_for_file(d, selected_event_names)
+            
+        if label_count == total_epochs and total_epochs > 0:
+            current_idx = 0
+            for data in target_files:
+                n = self._get_epoch_count_for_file(data, selected_event_names)
+                file_labels = labels[current_idx : current_idx + n]
+                current_idx += n
+                
+                if n > 0:
+                    self._apply_labels_to_single_file(data, file_labels, mapping, selected_event_names)
+            return len(target_files)
+            
+        else:
+            # Mismatch
+            reply = QMessageBox.question(
+                self, "Mismatch Detected",
+                f"Total labels ({label_count}) != Total epochs ({total_epochs}).\n"
+                "Do you want to FORCE import? (This will assign labels sequentially to files and overwrite timestamps!)",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                current_idx = 0
+                applied_count = 0
+                for data in target_files:
+                    n = self._get_epoch_count_for_file(data, None) # Ignore filtering for force import size estimation?
+                    if n == 0: n = 100 # Default
+                    
+                    if current_idx + n <= len(labels):
+                        file_labels = labels[current_idx : current_idx + n]
+                        current_idx += n
+                        
+                        # Force apply
+                        loader = EventLoader(data)
+                        loader.label_list = file_labels
+                        loader.create_event()
+                        
+                        # Update mapping if possible
+                        current_events, _ = data.get_event_list()
+                        if current_events is not None:
+                             new_event_id = {name: code for code, name in mapping.items() if code in np.unique(current_events[:, 2])}
+                             if new_event_id:
+                                 data.set_event(current_events, new_event_id)
+                        
+                        data.set_labels_imported(True)
+                        applied_count += 1
+                return applied_count
+            else:
+                return 0
+
+    def _get_epoch_count_for_file(self, data, selected_event_names):
+        if data.is_raw():
+            events, event_id_map = data.get_event_list()
+            if selected_event_names is not None and event_id_map:
+                relevant_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
+                if relevant_ids:
+                    mask = np.isin(events[:, -1], relevant_ids)
+                    return np.sum(mask)
+                return 0
+            return len(events)
+        else:
+            return data.get_epochs_length()
+
+    def _apply_labels_to_single_file(self, data, labels, mapping, selected_event_names):
+        """Helper to apply labels to a single data object, handling event syncing."""
+        logger.info(f"Applying labels to {data.get_filename()}. Label count: {len(labels)}")
+        
+        loader = EventLoader(data)
+        loader.label_list = labels
+        
+        file_specific_ids = []
+        if selected_event_names is not None and data.is_raw():
+             events, event_id_map = data.get_event_list()
+             if event_id_map:
+                 file_specific_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
+
+        if selected_event_names is not None and data.is_raw() and file_specific_ids:
+            # Sync with specific events
+            events, _ = data.get_event_list()
+            mask = np.isin(events[:, -1], file_specific_ids)
+            filtered_events = events[mask]
+            
+            if len(filtered_events) != len(labels):
+                raise ValueError(f"Event count mismatch in {data.get_filename()}: Expected {len(labels)}, found {len(filtered_events)} filtered events.")
+                
+            new_events = filtered_events.copy()
+            new_events[:, 2] = labels
+            
+            new_event_id = {name: code for code, name in mapping.items() if code in np.unique(labels)}
+            
+            data.set_event(new_events, new_event_id)
+            data.set_labels_imported(True)
+            logger.info(f"Successfully applied synced labels to {data.get_filename()}")
+            
+        else:
+            # Standard application
+            loader.create_event(mapping) 
+            loader.apply()
+            data.set_labels_imported(True)
+            logger.info(f"Successfully applied labels to {data.get_filename()}")
 
     def _check_length(self, data, label_count, selected_event_names=None):
         if data.is_raw():
@@ -559,7 +718,7 @@ class DatasetPanel(QWidget):
             self.update_panel()
 
     def remove_selected_files(self, rows):
-        if not self.main_window or not hasattr(self.main_window, 'study'):
+        if not self.main_window and not hasattr(self.main_window, 'study'):
             return
             
         reply = QMessageBox.question(
@@ -601,6 +760,14 @@ class DatasetPanel(QWidget):
 
     def clear_dataset(self):
         if self.main_window and hasattr(self.main_window, 'study'):
+            reply = QMessageBox.question(
+                self, "Confirm Clear",
+                "Are you sure you want to clear the entire dataset?\nThis action cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+
             try:
                 # Use study's clean method directly
                 self.main_window.study.clean_raw_data(force_update=True)
@@ -616,7 +783,12 @@ class DatasetPanel(QWidget):
 
         data_list = self.main_window.study.loaded_data_list
         
+        # Toggle Tips Visibility (User requested to keep it always visible)
+        # if hasattr(self, 'tips_group'):
+        #     self.tips_group.setVisible(not bool(data_list))
+        
         # 1. Update Table
+        self.table.clearContents()
         self.table.blockSignals(True) # Prevent itemChanged triggering during update
         self.table.setRowCount(0)
         
@@ -666,6 +838,7 @@ class DatasetPanel(QWidget):
                     
                     # Color logic: Green if imported labels, Default (Gray/Black) if original
                     if data.is_labels_imported():
+                        logger.info(f"File {data.get_filename()} has imported labels. Setting green.")
                         item_ev.setForeground(Qt.GlobalColor.green)
                     else:
                         # Use default color (or explicitly set to something neutral if needed)

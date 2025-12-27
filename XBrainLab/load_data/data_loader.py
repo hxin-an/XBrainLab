@@ -43,11 +43,11 @@ class RawDataLoader(list):
         for i in range(len(self)):
             raw_data = self[i]
             self.check_loaded_data_consistency(raw_data, idx=0)
-            _, event_id = raw_data.get_event_list()
-            if not event_id:
-                raise ValueError(
-                    f"No label has been loaded for {raw_data.get_filename()}"
-                )
+            # _, event_id = raw_data.get_event_list()
+            # if not event_id:
+            #     raise ValueError(
+            #         f"No label has been loaded for {raw_data.get_filename()}"
+            #     )
         if len(self) == 0:
             raise ValueError("No dataset has been loaded")
 

@@ -60,11 +60,15 @@ class TimeEpoch(PreprocessBase):
         if(len(selected_events) == 0):
             raise ValueError("No event markers found.")
 
+        if not preprocessed_data.is_raw():
+            raise ValueError("Data is already epoched. Cannot perform TimeEpoch on epoched data.")
+
         data = mne.Epochs(preprocessed_data.get_mne(), selected_events,
                                         event_id=selected_event_id,
                                         tmin=tmin,
                                         tmax=tmax,
                                         baseline=baseline,
                                         preload=True)
+
 
         preprocessed_data.set_mne(data)

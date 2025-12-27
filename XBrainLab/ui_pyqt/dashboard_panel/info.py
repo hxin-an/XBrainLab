@@ -7,7 +7,7 @@ class AggregateInfoPanel(QGroupBox):
         super().__init__("Aggregate Information", parent)
         self.main_window = None
         if parent and hasattr(parent, 'study'):
-             self.main_window = parent
+            self.main_window = parent
              
         self.init_ui()
 
@@ -21,7 +21,7 @@ class AggregateInfoPanel(QGroupBox):
         
         self.labels = {}
         keys = [
-            "Type", "Total Files", "Subjects", "Sessions", "Total Epochs", 
+            "Type", "Total Files", "Subjects", "Sessions", "Total Epochs", "Total Events",
             "Channel", "Sample rate", "tmin (sec)", "duration (sec)", 
             "Highpass", "Lowpass", "Classes"
         ]
@@ -51,7 +51,19 @@ class AggregateInfoPanel(QGroupBox):
         # But usually Aggregate Info shows the "Current Data" stats.
         
         study = self.main_window.study
-        data_list = study.preprocessed_data_list if study.preprocessed_data_list else study.loaded_data_list
+        
+        # Check active tab to decide which list to show
+        # Tab 0: Dataset -> loaded_data_list
+        # Tab 1: Preprocess -> preprocessed_data_list (if available)
+        # Others: Default to preprocessed if available
+        
+        use_loaded = True
+        if hasattr(self.main_window, 'stack'):
+            current_index = self.main_window.stack.currentIndex()
+            if current_index != 0 and study.preprocessed_data_list:
+                use_loaded = False
+        
+        data_list = study.loaded_data_list if use_loaded else study.preprocessed_data_list
         
         if not data_list:
             self.reset_labels()
@@ -60,7 +72,9 @@ class AggregateInfoPanel(QGroupBox):
         subject_set = set()
         session_set = set()
         classes_set = set()
+
         total_epochs = 0
+        total_events = 0
         
         first_data = data_list[0]
         
@@ -73,7 +87,21 @@ class AggregateInfoPanel(QGroupBox):
                     classes_set.update(event_id)
             except:
                 pass
+
             total_epochs += data.get_epochs_length()
+            
+            # Calculate Total Events
+            try:
+                if data.is_raw():
+                    events, _ = data.get_event_list()
+                    if events is not None:
+                        total_events += len(events)
+                else:
+                    # For epochs, total events is same as total epochs usually, 
+                    # but let's be consistent with dataset.py logic
+                    total_events += data.get_epochs_length()
+            except:
+                pass
             
         tmin = "None"
         duration = "None"
@@ -94,6 +122,7 @@ class AggregateInfoPanel(QGroupBox):
         self.labels["Subjects"].setText(str(len(subject_set)))
         self.labels["Sessions"].setText(str(len(session_set)))
         self.labels["Total Epochs"].setText(str(total_epochs))
+        self.labels["Total Events"].setText(str(total_events))
         self.labels["Channel"].setText(str(first_data.get_nchan()))
         self.labels["Sample rate"].setText(str(first_data.get_sfreq()))
         self.labels["tmin (sec)"].setText(tmin)

@@ -199,7 +199,7 @@ class Raw:
 
     def is_raw(self) -> bool:
         """Return whether the data is unsegmented raw data."""
-        return isinstance(self.mne_data, mne.io.base.BaseRaw)
+        return isinstance(self.mne_data, mne.io.BaseRaw)
 
     # event related functions
     def get_raw_event_list(self) -> tuple[list[list[int]], dict[str, int]]:
@@ -217,12 +217,17 @@ class Raw:
             pass
         # stim channel
         try:
-            events = mne.find_events(self.mne_data)
+            events = mne.find_events(self.mne_data, verbose=False)
+            if len(events) == 0:
+                raise ValueError("No events found on stim channel")
             event_ids = {
                 str(e): e for e in np.unique(events[:, -1])
             }
         except Exception:
-            return mne.events_from_annotations(self.mne_data)
+            try:
+                return mne.events_from_annotations(self.mne_data, verbose=False)
+            except Exception:
+                return [], {}
         else:
             return events, event_ids
 

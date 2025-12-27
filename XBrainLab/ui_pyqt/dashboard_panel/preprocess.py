@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QListWidget, QGroupBox, QGridLayout, QDialog, QFormLayout, 
-    QDoubleSpinBox, QDialogButtonBox, QMessageBox
+    QDoubleSpinBox, QDialogButtonBox, QMessageBox, QFrame
 )
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
@@ -225,10 +225,107 @@ class PreprocessPanel(QWidget):
     def init_ui(self):
         main_layout = QHBoxLayout(self)
         
-        # --- Left: Operations ---
-        ops_group = QGroupBox("Operations")
-        ops_group.setFixedWidth(200)
+        # --- Right Side: Operations (Styled like DatasetPanel) ---
+        right_panel = QWidget()
+        right_panel.setFixedWidth(260)
+        right_panel.setObjectName("RightPanel")
+        right_panel.setStyleSheet("""
+            #RightPanel { 
+                background-color: #252526; 
+                border-left: 1px solid #3e3e42; 
+            }
+            /* Minimal Group Style */
+            QGroupBox {
+                background-color: transparent;
+                border: none;
+                margin-top: 15px;
+                font-weight: bold;
+                color: #808080;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 0px;
+                padding: 0 0px;
+                color: #808080;
+            }
+            /* Flat, Minimal Buttons */
+            /* Flat, Minimal Buttons */
+            QPushButton {
+                background-color: #3e3e42; /* Lighter gray (VS Code style) */
+                border: none;
+                border-radius: 4px;
+                padding: 8px 12px;
+                color: #ffffff; /* White text */
+                font-weight: normal;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #4e4e52;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #007acc;
+            }
+        """)
+        
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(10, 20, 10, 20)
+        
+        # 0. Logo (Minimal, no frame)
+        logo_frame = QFrame()
+        logo_frame.setStyleSheet("""
+            QFrame {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        logo_layout = QVBoxLayout(logo_frame)
+        logo_layout.setContentsMargins(0, 0, 0, 10)
+        
+        logo_label = QLabel()
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        logo_label.setStyleSheet("border: none; background: transparent;") 
+        
+        import os
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.svg")
+        if os.path.exists(logo_path):
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap(logo_path)
+            # Scale pixmap to fit panel width (260 - 20 margin = 240)
+            scaled_pixmap = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
+            logo_label.setPixmap(scaled_pixmap)
+            logo_label.setScaledContents(False)
+        else:
+            logo_label.setText("XBrainLab")
+            logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cccccc; margin-bottom: 5px; border: none;")
+            
+        logo_layout.addWidget(logo_label)
+        right_layout.addWidget(logo_frame)
+        
+        # 1. Dynamic Tips (Always visible)
+        self.tips_group = QGroupBox("GETTING STARTED")
+        # Explicitly set transparent background to avoid black box
+        self.tips_group.setStyleSheet("QGroupBox { background-color: transparent; border: none; margin-top: 10px; } QGroupBox::title { color: #808080; }")
+        
+        tips_layout = QVBoxLayout(self.tips_group)
+        tips_layout.setContentsMargins(0, 10, 0, 0)
+        tips_label = QLabel(
+            "<div style='line-height: 1.2; color: #999999;'>"
+            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>1. Filtering</b><br>Apply bandpass/notch filters</div>"
+            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>2. Resample</b><br>Change sampling rate</div>"
+            "<div><b style='color: #cccccc;'>3. Epoching</b><br>Segment data by events</div>"
+            "</div>"
+        )
+        tips_label.setWordWrap(True)
+        tips_label.setStyleSheet("background-color: transparent; border: none;") # Explicitly transparent
+        tips_layout.addWidget(tips_label)
+        right_layout.addWidget(self.tips_group)
+        
+        right_layout.addSpacing(10)
+        
+        ops_group = QGroupBox("OPERATIONS")
         ops_layout = QVBoxLayout(ops_group)
+        ops_layout.setContentsMargins(0, 10, 0, 0)
         
         self.btn_filter = QPushButton("Filtering")
         self.btn_filter.clicked.connect(self.open_filtering)
@@ -251,13 +348,23 @@ class PreprocessPanel(QWidget):
         ops_layout.addWidget(self.btn_epoch)
         ops_layout.addWidget(self.btn_ica)
         
-        ops_layout.addStretch()
+        right_layout.addWidget(ops_group)
+        right_layout.addStretch()
         
-        # Reset Button
+        # Reset Button (Styled distinctively but consistent shape)
         self.btn_reset = QPushButton("Reset All Preprocessing")
-        self.btn_reset.setStyleSheet("background-color: #d32f2f; color: white;")
+        self.btn_reset.setStyleSheet("""
+            QPushButton {
+                background-color: #4a1818; 
+                color: #ff9999;
+                border: 1px solid #802020;
+            }
+            QPushButton:hover {
+                background-color: #602020;
+            }
+        """)
         self.btn_reset.clicked.connect(self.reset_preprocess)
-        ops_layout.addWidget(self.btn_reset)
+        right_layout.addWidget(self.btn_reset)
         
         # --- Right Side: Plot & History ---
         right_widget = QWidget()
@@ -274,8 +381,20 @@ class PreprocessPanel(QWidget):
         self.tab_time = QWidget()
         time_layout = QVBoxLayout(self.tab_time)
         self.fig_time = Figure(figsize=(5, 3), dpi=100)
+        self.fig_time.patch.set_facecolor('#2d2d2d')
         self.canvas_time = FigureCanvas(self.fig_time)
         self.ax_time = self.fig_time.add_subplot(111)
+        self.ax_time.set_facecolor('#2d2d2d')
+        # Style axes
+        self.ax_time.spines['bottom'].set_color('#cccccc')
+        self.ax_time.spines['top'].set_color('#cccccc') 
+        self.ax_time.spines['right'].set_color('#cccccc')
+        self.ax_time.spines['left'].set_color('#cccccc')
+        self.ax_time.tick_params(axis='x', colors='#cccccc')
+        self.ax_time.tick_params(axis='y', colors='#cccccc')
+        self.ax_time.yaxis.label.set_color('#cccccc')
+        self.ax_time.xaxis.label.set_color('#cccccc')
+        self.ax_time.title.set_color('#cccccc')
         self.fig_time.tight_layout()
         time_layout.addWidget(self.canvas_time)
         self.plot_tabs.addTab(self.tab_time, "Time Domain")
@@ -284,8 +403,20 @@ class PreprocessPanel(QWidget):
         self.tab_freq = QWidget()
         freq_layout = QVBoxLayout(self.tab_freq)
         self.fig_freq = Figure(figsize=(5, 3), dpi=100)
+        self.fig_freq.patch.set_facecolor('#2d2d2d')
         self.canvas_freq = FigureCanvas(self.fig_freq)
         self.ax_freq = self.fig_freq.add_subplot(111)
+        self.ax_freq.set_facecolor('#2d2d2d')
+        # Style axes
+        self.ax_freq.spines['bottom'].set_color('#cccccc')
+        self.ax_freq.spines['top'].set_color('#cccccc') 
+        self.ax_freq.spines['right'].set_color('#cccccc')
+        self.ax_freq.spines['left'].set_color('#cccccc')
+        self.ax_freq.tick_params(axis='x', colors='#cccccc')
+        self.ax_freq.tick_params(axis='y', colors='#cccccc')
+        self.ax_freq.yaxis.label.set_color('#cccccc')
+        self.ax_freq.xaxis.label.set_color('#cccccc')
+        self.ax_freq.title.set_color('#cccccc')
         self.fig_freq.tight_layout()
         freq_layout.addWidget(self.canvas_freq)
         self.plot_tabs.addTab(self.tab_freq, "Frequency (PSD)")
@@ -344,7 +475,7 @@ class PreprocessPanel(QWidget):
         
         # Add widgets to main layout (Plot on Left, Ops on Right)
         main_layout.addWidget(right_widget, stretch=1)
-        main_layout.addWidget(ops_group, stretch=0)
+        main_layout.addWidget(right_panel, stretch=0)
 
     def on_time_slider_changed(self, value):
         self.time_spin.blockSignals(True)

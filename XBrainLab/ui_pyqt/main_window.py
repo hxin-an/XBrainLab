@@ -12,8 +12,20 @@ from XBrainLab.ui_pyqt.chat_panel import ChatPanel
 from XBrainLab.ui_pyqt.dashboard_panel.dataset import DatasetPanel
 from XBrainLab.ui_pyqt.dashboard_panel.preprocess import PreprocessPanel
 from XBrainLab.ui_pyqt.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.ui_pyqt.training.panel import TrainingPanel
+from XBrainLab.ui_pyqt.evaluation.panel import EvaluationPanel
+from XBrainLab.ui_pyqt.visualization.panel import VisualizationPanel
 
 class MainWindow(QMainWindow):
+    """
+    The main application window for XBrainLab (PyQt6 version).
+    
+    This window manages the overall layout, including:
+    - Top Navigation Bar: For switching between main panels (Dataset, Preprocess, Training, etc.).
+    - Stacked Widget: Holds the content of each panel.
+    - Dock Widgets: For the AI Assistant and Data Info panel.
+    - Agent System: Initializes and manages the background AI agent thread.
+    """
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
@@ -190,6 +202,37 @@ class MainWindow(QMainWindow):
                 padding: 5px;
                 color: #cccccc;
             }
+            
+            /* Card Widget */
+            QFrame#CardWidget {
+                background-color: #252526;
+                border: 1px solid #3e3e42;
+                border-radius: 8px;
+            }
+            QLabel#CardTitle {
+                font-size: 12pt;
+                font-weight: bold;
+                color: #ffffff;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #3e3e42;
+                margin-bottom: 5px;
+            }
+            
+            /* Modern Buttons in Cards */
+            QPushButton {
+                background-color: #3e3e42;
+                color: #ffffff;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #4e4e52;
+            }
+            QPushButton:pressed {
+                background-color: #007acc;
+            }
         """)
 
     def add_nav_btn(self, name, index, text):
@@ -219,6 +262,10 @@ class MainWindow(QMainWindow):
             self.preprocess_panel.update_panel()
 
     def init_panels(self):
+        """
+        Initializes and adds all main functional panels to the stacked widget.
+        The order of addition corresponds to the index used in navigation.
+        """
         # 0. Dataset
         self.dataset_panel = DatasetPanel(self)
         self.stack.addWidget(self.dataset_panel)
@@ -228,13 +275,16 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.preprocess_panel)
         
         # 2. Training
-        self.stack.addWidget(QLabel("Training Panel (Coming Soon)"))
+        self.training_panel = TrainingPanel(self)
+        self.stack.addWidget(self.training_panel)
         
         # 3. Evaluation
-        self.stack.addWidget(QLabel("Evaluation Panel (Coming Soon)"))
+        self.evaluation_panel = EvaluationPanel(self)
+        self.stack.addWidget(self.evaluation_panel)
         
         # 4. Visualization
-        self.stack.addWidget(QLabel("Visualization Panel (Coming Soon)"))
+        self.visualization_panel = VisualizationPanel(self)
+        self.stack.addWidget(self.visualization_panel)
 
     def init_agent(self):
         # 1. Create Chat Panel (Dockable)
@@ -248,6 +298,10 @@ class MainWindow(QMainWindow):
         self.chat_dock.hide() # Hide by default
 
     def start_agent_system(self):
+        """
+        Initializes the AI Agent system in a separate thread.
+        This is done lazily (only when requested) to save resources.
+        """
         if self.agent_initialized:
             return
 
