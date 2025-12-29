@@ -7,8 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 import numpy as np
 import os
-from XBrainLab.ui_pyqt.load_data.helper import load_set_file
-from XBrainLab.ui_pyqt.load_data.gdf import load_gdf_file
+from XBrainLab.load_data.raw_data_loader import load_set_file, load_gdf_file
 from XBrainLab.ui_pyqt.dashboard_panel.smart_parser import SmartParserDialog
 from XBrainLab.ui_pyqt.dashboard_panel.import_label import ImportLabelDialog, EventFilterDialog, LabelMappingDialog
 from XBrainLab.load_data import RawDataLoader, DataType, EventLoader

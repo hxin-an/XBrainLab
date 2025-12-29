@@ -73,9 +73,16 @@ def test_map(absolute, epochs, n_class, visualizer, mask_out):
         gradient[0] = np.array([])
         n_class -= 1
     epochs.set_channels(ch_names, np.random.rand(len(ch_names), 3))
-    eval_record = EvalRecord(label, output, gradient)
+    
+    # Create dummy data for new EvalRecord arguments
+    gradient_input = gradient.copy()
+    smoothgrad = gradient.copy()
+    smoothgrad_sq = gradient.copy()
+    vargrad = gradient.copy()
+    
+    eval_record = EvalRecord(label, output, gradient, gradient_input, smoothgrad, smoothgrad_sq, vargrad)
     visualizer = visualizer.value(eval_record, epochs)
-    assert visualizer.get_plt(absolute) is not None
+    assert visualizer.get_plt("Gradient", absolute) is not None
     assert sum([len(i.images) for i in visualizer.fig.axes]) == n_class
     plt.close(visualizer.fig)
 
@@ -96,8 +103,15 @@ def test_eval_plot(epochs, n_class, mask_out, visualizer):
         gradient[0] = np.array([])
         n_class -= 1
     epochs.set_channels(ch_names, np.random.rand(len(ch_names), 3))
-    eval_record = EvalRecord(label, output, gradient)
+    
+    # Create dummy data for new EvalRecord arguments
+    gradient_input = gradient.copy()
+    smoothgrad = gradient.copy()
+    smoothgrad_sq = gradient.copy()
+    vargrad = gradient.copy()
+    
+    eval_record = EvalRecord(label, output, gradient, gradient_input, smoothgrad, smoothgrad_sq, vargrad)
     visualizer = visualizer.value(eval_record, epochs)
-    assert visualizer.get_plt() is not None
+    assert visualizer.get_plt("Gradient") is not None
     assert sum([len(i.images) for i in visualizer.fig.axes]) == n_class
     plt.close(visualizer.fig)

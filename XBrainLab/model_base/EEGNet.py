@@ -96,7 +96,7 @@ class EEGNet(nn.Module):
         return x
 
     def _get_size(self, ch, tsamp):
-        data = torch.ones((1, 1, ch, tsamp))
+        data = torch.ones((2, 1, ch, tsamp))
         x = self.conv1(data)
         x = self.conv2(x)
         x = self.conv3(x)

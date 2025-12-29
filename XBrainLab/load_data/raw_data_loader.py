@@ -1,6 +1,7 @@
 import mne
 import os
 from XBrainLab.load_data import Raw, DataType
+from XBrainLab.utils.logger import logger
 
 def load_set_file(filepath):
     """
@@ -11,9 +12,6 @@ def load_set_file(filepath):
     selected_data = None
     
     # Try loading as Raw first (default assumption for now)
-    # In the original UI, there was a radio button. 
-    # Here we try to infer or default to Raw, then fallback.
-    
     try:
         selected_data = mne.io.read_raw_eeglab(
             filepath, uint16_codec='latin1', preload=True
@@ -27,10 +25,10 @@ def load_set_file(filepath):
             )
             data_type = DataType.EPOCH.value
         except Exception as e:
-            print(f"Failed to load as Epochs: {e}")
+            logger.warning(f"Failed to load as Epochs: {e}")
             return None
     except Exception as e:
-        print(f"Failed to load as Raw: {e}")
+        logger.warning(f"Failed to load as Raw: {e}")
         # Try Epochs if Raw failed due to other reasons (e.g. ValueError)
         try:
             selected_data = mne.io.read_epochs_eeglab(
@@ -44,5 +42,24 @@ def load_set_file(filepath):
         # Wrap in XBrainLab Raw object
         raw_wrapper = Raw(filepath, selected_data)
         return raw_wrapper
+    
+    return None
+
+def load_gdf_file(filepath):
+    """
+    Load .gdf file (BIOSIG) and return a XBrainLab Raw object.
+    """
+    try:
+        # GDF is typically loaded as Raw
+        selected_data = mne.io.read_raw_gdf(filepath, preload=True)
+        
+        if selected_data:
+            # Wrap in XBrainLab Raw object
+            raw_wrapper = Raw(filepath, selected_data)
+            return raw_wrapper
+            
+    except Exception as e:
+        logger.error(f"Failed to load GDF file {filepath}: {e}", exc_info=True)
+        return None
     
     return None

@@ -17,6 +17,7 @@ def test_dataset(
     epochs, # noqa: F811
 ):
     config = DataSplittingConfig(TrainingType.IND, False, [], [])
+    Dataset.SEQ = 0
     dataset = Dataset(epochs, config)
 
     assert dataset.get_epoch_data() == epochs

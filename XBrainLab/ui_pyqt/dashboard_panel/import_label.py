@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt, QSettings
 import numpy as np
 import scipy.io
 import os
+from XBrainLab.load_data.label_loader import load_label_file
 
 class ImportLabelDialog(QDialog):
     def __init__(self, parent=None):
@@ -116,77 +117,14 @@ class ImportLabelDialog(QDialog):
 
     def load_file(self, path):
         filename = os.path.basename(path)
-        labels = None
-        
-        if path.endswith('.txt'):
-            labels = self.load_txt(path)
-        elif path.endswith('.mat'):
-            labels = self.load_mat(path)
-            
-        if labels is not None:
-            self.label_data_map[filename] = labels
-
-    def update_unique_labels(self):
-        all_labels = []
-        for labels in self.label_data_map.values():
-            all_labels.extend(labels)
-            
-        if all_labels:
-            self.unique_labels = sorted(np.unique(all_labels))
-            self.info_label.setText(f"Loaded {len(self.label_data_map)} files. Total {len(all_labels)} labels. Found {len(self.unique_labels)} unique codes.")
-        else:
-            self.unique_labels = []
-            self.info_label.setText("No labels loaded.")
-            
-        # Populate Table
-        self.map_table.setRowCount(len(self.unique_labels))
-        for i, code in enumerate(self.unique_labels):
-            # Code (Read-only)
-            item_code = QTableWidgetItem(str(code))
-            item_code.setFlags(item_code.flags() ^ Qt.ItemFlag.ItemIsEditable)
-            self.map_table.setItem(i, 0, item_code)
-            
-            # Name (Editable)
-            # Check if we already have a name for this code (preserve user input)
-            current_name = f"Event_{code}"
-            # TODO: Preserve existing mapping if re-populating?
-            # For now, just reset default
-            item_name = QTableWidgetItem(current_name)
-            self.map_table.setItem(i, 1, item_name)
-            
-    def load_txt(self, path):
-        # Read space-separated integers
-        labels = []
-        with open(path, 'r') as f:
-            for line in f:
-                parts = line.strip().split()
-                for p in parts:
-                    try:
-                        labels.append(int(p))
-                    except ValueError:
-                        pass
-        
-        return np.array(labels)
-        
-    def load_mat(self, path):
         try:
-            mat = scipy.io.loadmat(path)
-            # Filter out __header__, __version__, __globals__
-            vars = [k for k in mat.keys() if not k.startswith('__')]
-            
-            if not vars:
-                raise ValueError("No variables found in .mat file")
-                
-            # For multi-file mat, this is tricky. We assume same variable name for all?
-            # Or we just pick the first one automatically.
-            # For simplicity in batch mode, let's pick the first valid variable.
-            # If user needs specific variable selection per file, that's too complex for this dialog right now.
-            var_name = vars[0]
-            data = mat[var_name]
-            return np.array(data).flatten()
-            
+            labels = load_label_file(path)
+            if labels is not None:
+                self.label_data_map[filename] = labels
         except Exception as e:
-            raise ValueError(f"Invalid .mat file: {e}")
+            raise e # Let caller handle or re-raise
+
+    # Removed load_txt and load_mat as they are now in XBrainLab.load_data.label_loader
 
     # Removed on_var_changed and process_labels as they are refactored into update_unique_labels
 

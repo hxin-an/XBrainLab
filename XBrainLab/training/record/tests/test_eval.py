@@ -47,17 +47,17 @@ def test_calculate_confusion(output, label, expected):
 ])
 def test_acc(label, output, expected):
     gradient = {}
-    eval_record = EvalRecord(label, output, gradient)
+    eval_record = EvalRecord(label, output, gradient, {}, {}, {}, {})
     assert np.isclose(eval_record.get_acc(), expected)
 
 @pytest.mark.parametrize('value, expected', [
     (np.array([[25, 15], [5, 55]]), 0.5652173913043478),
     (np.array([[45, 15], [25, 15]]), 0.13043478260869554),
 ])
-def test_kappa(mocker, value, expected):
-    mocker.patch('XBrainLab.training.record.eval.calculate_confusion',
-                 return_value=value)
-    assert np.isclose(EvalRecord([], [], {}).get_kappa(), expected)
+def test_kappa(value, expected):
+    from unittest.mock import patch
+    with patch('XBrainLab.training.record.eval.calculate_confusion', return_value=value):
+        assert np.isclose(EvalRecord([], [], {}, {}, {}, {}, {}).get_kappa(), expected)
 
 @pytest.mark.xfail
 @pytest.mark.parametrize('label, output, expected', [
@@ -67,19 +67,20 @@ def test_auc(label, output, expected):
     raise NotImplementedError
 
 
-def test_export(mocker):
-    torch_mock = mocker.patch('torch.save')
-    gradient = {'123': 'test'}
-    label = [1, 2]
-    output = [1]
-    eval_record = EvalRecord(label, output, gradient)
-    eval_record.export('target_path')
-    torch_mock.assert_called_once_with(
-        {
-            'label': label, 'output': output, 'gradient': gradient
-        },
-        'target_path/eval'
-    )
+def test_export():
+    from unittest.mock import patch
+    with patch('torch.save') as torch_mock:
+        gradient = {'123': 'test'}
+        label = [1, 2]
+        output = [1]
+        eval_record = EvalRecord(label, output, gradient, {}, {}, {}, {})
+        eval_record.export('target_path')
+        torch_mock.assert_called_once_with(
+            {
+                'label': label, 'output': output, 'gradient': gradient
+            },
+            'target_path/eval'
+        )
 
 @pytest.fixture
 def clean_csv():
@@ -91,7 +92,7 @@ def test_export_csv(clean_csv):
     gradient = {'123': 'test'}
     label = [1, 2]
     output = np.array([[0, 1], [1, 0]])
-    eval_record = EvalRecord(label, output, gradient)
+    eval_record = EvalRecord(label, output, gradient, {}, {}, {}, {})
     eval_record.export_csv('target_path')
     assert os.path.exists('target_path')
 

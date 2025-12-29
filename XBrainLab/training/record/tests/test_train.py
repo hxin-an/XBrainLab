@@ -22,15 +22,15 @@ from ...tests.test_training_plan import (
 
 
 def test_train_record(
-    mocker,
     dataset, training_option, model_holder # noqa: F811
 ):
+    from unittest.mock import patch
     repeat = 0
     seed = set_seed(0)
     model = model_holder.get_model({})
-    create_dir_mock = mocker.patch.object(TrainRecord, 'create_dir')
-    TrainRecord(repeat, dataset, model, training_option, seed)
-    create_dir_mock.assert_called_once()
+    with patch.object(TrainRecord, 'create_dir') as create_dir_mock:
+        TrainRecord(repeat, dataset, model, training_option, seed)
+        create_dir_mock.assert_called_once()
 
 def test_train_record_getter(
     export_mocker, dataset, training_option, model_holder # noqa: F811
@@ -63,7 +63,7 @@ def cleanup():
         shutil.rmtree('ok')
 
 def test_train_record_create_dir(
-    cleanup, mocker,
+    cleanup,
     dataset, training_option, model_holder # noqa: F811
 ):
     repeat = 0
@@ -76,31 +76,69 @@ def test_train_record_create_dir(
     assert os.path.exists(expected)
 
 def test_train_record_backup_dir(
-    cleanup, mocker,
+    cleanup,
     dataset, training_option, model_holder # noqa: F811
 ):
+    from unittest.mock import patch
     mkdir = os.makedirs
-    move_mock = mocker.patch('shutil.move')
-    make_dir_mock = mocker.patch('os.makedirs')
+    with patch('shutil.move') as move_mock, \
+         patch('os.makedirs') as make_dir_mock:
+        
+        repeat = 0
+        seed = set_seed(0)
+        model = model_holder.get_model({})
+        record = TrainRecord(repeat, dataset, model, training_option, seed)
+
+        record_name = record.dataset.get_name()
+        repeat_name = record.get_name()
+        output_root = record.option.get_output_dir()
+        expected = os.path.join(output_root, record_name, repeat_name)
+        expected_backup_root = os.path.join(output_root, record_name, 'backup')
+
+        make_dir_mock.assert_called_once_with(expected)
+
+        # To test the backup logic, we need to simulate that the directory exists.
+        # But TrainRecord.__init__ calls create_dir which calls os.makedirs.
+        # If we mock os.makedirs, it doesn't create the dir.
+        
+        # The original test logic seems to rely on side effects or partial mocking.
+        # "os.makedirs = mkdir" restores the original function.
+        
+        # Let's try to follow the logic but with patch context managers.
+        # The original test mocked os.makedirs, instantiated TrainRecord (which calls create_dir -> mock),
+        # then restored os.makedirs, created the dir for real, 
+        # then mocked os.makedirs AGAIN, and called create_dir again.
+        
+    # Re-implementing the logic with cleaner mocking is hard without changing the test structure significantly.
+    # Let's try to replicate the steps.
+    
     repeat = 0
     seed = set_seed(0)
     model = model_holder.get_model({})
-    record = TrainRecord(repeat, dataset, model, training_option, seed)
+    
+    with patch('os.makedirs') as make_dir_mock:
+         record = TrainRecord(repeat, dataset, model, training_option, seed)
+         
+         record_name = record.dataset.get_name()
+         repeat_name = record.get_name()
+         output_root = record.option.get_output_dir()
+         expected = os.path.join(output_root, record_name, repeat_name)
+         expected_backup_root = os.path.join(output_root, record_name, 'backup')
+         
+         make_dir_mock.assert_called_once_with(expected)
 
-    record_name = record.dataset.get_name()
-    repeat_name = record.get_name()
-    output_root = record.option.get_output_dir()
-    expected = os.path.join(output_root, record_name, repeat_name)
-    expected_backup_root = os.path.join(output_root, record_name, 'backup')
-
-    make_dir_mock.assert_called_once_with(expected)
-
-    os.makedirs = mkdir
-    os.makedirs(expected)
-    make_dir_mock = mocker.patch('os.makedirs')
-    record.create_dir()
-    assert make_dir_mock.call_count == 2
-    move_mock.assert_called_once()
+    # Create the directory for real to trigger backup logic
+    if not os.path.exists(expected):
+        os.makedirs(expected)
+        
+    with patch('shutil.move') as move_mock, \
+         patch('os.makedirs') as make_dir_mock:
+        
+        record.create_dir()
+        
+        # make_dir_mock should be called twice: once for backup dir, once for new dir
+        assert make_dir_mock.call_count == 2
+        move_mock.assert_called_once()
 
     called_args_list = make_dir_mock.call_args_list
     bakup_create = called_args_list[0]
@@ -219,15 +257,17 @@ def test_train_record_update_larger(
         assert train_record.best_record[expected_key] == expected_value
         assert train_record.best_record[expected_key + '_epoch'] == 9
 
-def test_train_record_update_eval(mocker, train_record):
-    update_mock = mocker.patch.object(train_record, 'update')
-    train_record.update_eval('testing')
-    update_mock.assert_called_once_with('val', 'testing')
+def test_train_record_update_eval(train_record):
+    from unittest.mock import patch
+    with patch.object(train_record, 'update') as update_mock:
+        train_record.update_eval('testing')
+        update_mock.assert_called_once_with('val', 'testing')
 
-def test_train_record_update_test(mocker, train_record):
-    update_mock = mocker.patch.object(train_record, 'update')
-    train_record.update_test('testing')
-    update_mock.assert_called_once_with('test', 'testing')
+def test_train_record_update_test(train_record):
+    from unittest.mock import patch
+    with patch.object(train_record, 'update') as update_mock:
+        train_record.update_test('testing')
+        update_mock.assert_called_once_with('test', 'testing')
 
 def test_train_record_update_train(train_record):
     mock = {
@@ -298,7 +338,7 @@ def eval_record():
         output[i * CLASS_NUM: (i + 1) * CLASS_NUM, i] = 1
     output[0][1] = 10
     gradient = {}
-    return EvalRecord(label, output, gradient)
+    return EvalRecord(label, output, gradient, {}, {}, {}, {})
 
 def test_train_record_test_confusion_figure(train_record, eval_record):
     assert train_record.get_confusion_figure() is None

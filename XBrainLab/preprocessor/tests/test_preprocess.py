@@ -76,23 +76,27 @@ def test_edit_event_name_epoch(epoch):
     assert result.get_preprocess_history()[1] == 'Update 1 event names'
 
 # export
+# export
 @pytest.mark.parametrize('target_str', ['raw', 'epoch'])
-def test_export(target_str, request, mocker):
-    mocked_savemat = mocker.patch('scipy.io.savemat')
+def test_export(target_str, request):
+    from unittest.mock import patch
+    
     target = request.getfixturevalue(target_str)
     # to ensure history is not empty
     processor2 = preprocessor.ChannelSelection([target])
     processor2.data_preprocess(['Fp1', 'Fp2'])
 
     processor = preprocessor.Export(processor2.get_preprocessed_data_list())
-    processor.data_preprocess('tests/test_data')
+    
+    with patch('scipy.io.savemat') as mocked_savemat:
+        processor.data_preprocess('tests/test_data')
 
-    args, _ = mocked_savemat.call_args
-    assert args[0] == 'tests/test_data/Sub-0_Sess-0.mat'
-    assert 'x' in args[1]
-    if target_str == 'epoch':
-        assert 'y' in args[1]
-    assert 'history' in args[1]
+        args, _ = mocked_savemat.call_args
+        assert args[0] == 'tests/test_data/Sub-0_Sess-0.mat'
+        assert 'x' in args[1]
+        if target_str == 'epoch':
+            assert 'y' in args[1]
+        assert 'history' in args[1]
 
 # filtering
 @pytest.mark.parametrize('target_str', ['raw', 'epoch'])
@@ -235,10 +239,43 @@ def test_window_epoch(annotated_raw):
         'Epoching 2s (1s overlap) by sliding window'
     )
 
-@pytest.mark.xfail
-def test_normalization_zero_min():
-    raise NotImplementedError
+# normalization
+@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+def test_normalization_z_score(target_str, request):
+    target = request.getfixturevalue(target_str)
+    processor = preprocessor.Normalize([target])
+    processor.data_preprocess('z score')
+    result = processor.get_preprocessed_data_list()[0]
+    
+    data = result.get_mne().get_data()
+    # Check if mean is close to 0 and std is close to 1 for each channel/epoch
+    if target_str == 'raw':
+        # (n_channels, n_times)
+        assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
+        assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
+    else:
+        # (n_epochs, n_channels, n_times)
+        assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
+        assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
 
-@pytest.mark.xfail
-def test_normalization_zero_min_minmax():
-    raise NotImplementedError
+    assert result.get_preprocess_history()[-1] == 'z score normalization'
+
+@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+def test_normalization_minmax(target_str, request):
+    target = request.getfixturevalue(target_str)
+    processor = preprocessor.Normalize([target])
+    processor.data_preprocess('minmax')
+    result = processor.get_preprocessed_data_list()[0]
+    
+    data = result.get_mne().get_data()
+    # Check if min is 0 and max is 1 for each channel/epoch
+    if target_str == 'raw':
+        # (n_channels, n_times)
+        assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
+        assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
+    else:
+        # (n_epochs, n_channels, n_times)
+        assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
+        assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
+
+    assert result.get_preprocess_history()[-1] == 'minmax normalization'

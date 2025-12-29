@@ -132,23 +132,26 @@ def training_option():
     return TrainingOption(**args)
 
 @pytest.fixture
-def export_mocker(mocker):
-    mocker.patch('torch.save')
-    mocker.patch('os.makedirs')
+def export_mocker():
+    from unittest.mock import patch
+    with patch('torch.save') as mock_save, \
+         patch('os.makedirs') as mock_makedirs:
+        yield mock_save, mock_makedirs
 
 @pytest.fixture
 def base_holder(export_mocker, model_holder, dataset, training_option):
     args = {
         'model_holder': model_holder,
         'dataset': dataset,
-        'option': training_option
+        'option': training_option,
+        'saliency_params': {}
     }
     return TrainingPlanHolder(**args)
 
 
 
 @pytest.mark.parametrize("test_arg", [
-    'model_holder', 'dataset', 'option', None
+    'model_holder', 'dataset', 'option', 'saliency_params', None
 ])
 def test_training_plan_holder_check_data(
     export_mocker, model_holder, dataset, training_option, test_arg
@@ -156,7 +159,8 @@ def test_training_plan_holder_check_data(
     args = {
         'model_holder': model_holder,
         'dataset': dataset,
-        'option': training_option
+        'option': training_option,
+        'saliency_params': {}
     }
     if test_arg is None:
         holder = TrainingPlanHolder(**args)
@@ -165,8 +169,11 @@ def test_training_plan_holder_check_data(
             assert isinstance(record, TrainRecord)
     else:
         args[test_arg] = None
-        with pytest.raises(ValueError):
-            TrainingPlanHolder(**args)
+        if test_arg == 'saliency_params':
+            pass
+        else:
+            with pytest.raises(ValueError):
+                TrainingPlanHolder(**args)
 
 def test_training_plan_holder_get_loader(base_holder):
     set_seed(0)
@@ -273,23 +280,25 @@ def test_training_plan_holder_get_eval_pair_not_implemented(
             base_holder.get_eval_pair(record, val_loader, test_loader)
 
 def test_training_plan_holder_get_eval_model_by_lastest_model(
-    mocker, base_holder, dataset, model_holder, training_option
+    base_holder, dataset, model_holder, training_option
 ):
+    from unittest.mock import patch
     repeat = 0
     val_loader = None
     test_loader = None
     seed = set_seed()
     model = model_holder.get_model({})
-    mocker.patch.object(model, 'state_dict', return_value='test')
-    training_option.evaluation_option = TRAINING_EVALUATION.LAST_EPOCH
-    record = TrainRecord(
-        repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
-    )
+    
+    with patch.object(model, 'state_dict', return_value='test'):
+        training_option.evaluation_option = TRAINING_EVALUATION.LAST_EPOCH
+        record = TrainRecord(
+            repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
+        )
 
-    target_model, _ = base_holder.get_eval_pair(record, val_loader, test_loader)
+        target_model, _ = base_holder.get_eval_pair(record, val_loader, test_loader)
 
-    assert isinstance(target_model, FakeModel)
-    assert target_model.my_state_dict == 'test'
+        assert isinstance(target_model, FakeModel)
+        assert target_model.my_state_dict == 'test'
 
 def test_training_plan_holder_set_interrupt(base_holder):
     assert base_holder.interrupt is False
@@ -305,79 +314,81 @@ def test_training_plan_holder_trivial_getter(base_holder, dataset):
 
 @pytest.mark.timeout(10)
 @pytest.mark.parametrize("interrupt", [True, False])
-def test_training_plan_holder_one_epoch(mocker, base_holder, interrupt):
+def test_training_plan_holder_one_epoch(base_holder, interrupt):
+    from unittest.mock import patch
     model = base_holder.model_holder.get_model({})
     trainLoader, valLoader, testLoader = base_holder.get_loader()
     train_record = base_holder.train_record_list[0]
     optimizer = train_record.optim
     criterion = train_record.criterion
 
-    update_train_mock = mocker.patch.object(train_record, 'update_train')
-    update_val_mock = mocker.patch.object(train_record, 'update_eval')
-    update_test_mock = mocker.patch.object(train_record, 'update_test')
-    update_statistic_mock = mocker.patch.object(train_record, 'update_statistic')
-    export_checkpoint_mock = mocker.patch.object(train_record, 'export_checkpoint')
     fake_test_result = {'test': 'test'}
-    mocker.patch(
-        'XBrainLab.training.training_plan._test_model',
-        return_value=fake_test_result
-    )
-    if interrupt:
-        base_holder.set_interrupt()
+    
+    with patch.object(train_record, 'update_train') as update_train_mock, \
+         patch.object(train_record, 'update_eval') as update_val_mock, \
+         patch.object(train_record, 'update_test') as update_test_mock, \
+         patch.object(train_record, 'update_statistic') as update_statistic_mock, \
+         patch.object(train_record, 'export_checkpoint') as export_checkpoint_mock, \
+         patch('XBrainLab.training.training_plan._test_model', return_value=fake_test_result):
+        
+        if interrupt:
+            base_holder.set_interrupt()
 
-    start_time = time.time()
-    base_holder.train_one_epoch(
-        model, trainLoader, valLoader, testLoader, optimizer, criterion, train_record
-    )
-    total_time = time.time() - start_time
+        start_time = time.time()
+        base_holder.train_one_epoch(
+            model, trainLoader, valLoader, testLoader, optimizer, criterion, train_record
+        )
+        total_time = time.time() - start_time
 
-    if interrupt:
-        assert update_train_mock.call_count == 0
-        assert update_val_mock.call_count == 0
-        assert update_test_mock.call_count == 0
-        assert update_statistic_mock.call_count == 0
-        assert export_checkpoint_mock.call_count == 0
-        return
+        if interrupt:
+            assert update_train_mock.call_count == 0
+            assert update_val_mock.call_count == 0
+            assert update_test_mock.call_count == 0
+            assert update_statistic_mock.call_count == 0
+            assert export_checkpoint_mock.call_count == 0
+            return
 
-    update_train_mock.assert_called_once()
-    update_val_mock.assert_called_once()
-    update_test_mock.assert_called_once()
-    update_statistic_mock.assert_called_once()
-    export_checkpoint_mock.assert_not_called()
+        update_train_mock.assert_called_once()
+        update_val_mock.assert_called_once()
+        update_test_mock.assert_called_once()
+        update_statistic_mock.assert_called_once()
+        export_checkpoint_mock.assert_not_called()
 
-    step_called_args = update_statistic_mock.call_args[0]
-    assert (step_called_args[0]["time"]  - total_time) < 0.1
-    assert step_called_args[0]["lr"] == 0.01
+        step_called_args = update_statistic_mock.call_args[0]
+        assert (step_called_args[0]["time"]  - total_time) < 0.1
+        assert step_called_args[0]["lr"] == 0.01
 
-    update_val_called_args = update_val_mock.call_args[0][0]
-    assert update_val_called_args == fake_test_result
+        update_val_called_args = update_val_mock.call_args[0][0]
+        assert update_val_called_args == fake_test_result
 
-    update_test_called_args = update_test_mock.call_args[0][0]
-    assert update_test_called_args == fake_test_result
+        update_test_called_args = update_test_mock.call_args[0][0]
+        assert update_test_called_args == fake_test_result
 
-    base_holder.train_one_epoch(
-        model, trainLoader, valLoader, testLoader, optimizer, criterion, train_record
-    )
-    export_checkpoint_mock.assert_called_once()
+        base_holder.train_one_epoch(
+            model, trainLoader, valLoader, testLoader, optimizer, criterion, train_record
+        )
+        export_checkpoint_mock.assert_called_once()
 
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train_one_repeat(mocker, base_holder):
+def test_training_plan_holder_train_one_repeat(base_holder):
+    from unittest.mock import patch
     train_record = base_holder.train_record_list[0]
 
     def set_interrupt(*args, **kwargs):
         base_holder.set_interrupt()
-    train_one_epoch_mock = mocker.patch.object(base_holder, 'train_one_epoch')
-    train_one_epoch_mock.side_effect = set_interrupt
-    export_checkpoint_mock = mocker.patch.object(train_record, 'export_checkpoint')
+    
+    with patch.object(base_holder, 'train_one_epoch', side_effect=set_interrupt) as train_one_epoch_mock, \
+         patch.object(train_record, 'export_checkpoint') as export_checkpoint_mock:
 
-    base_holder.train_one_repeat(train_record)
+        base_holder.train_one_repeat(train_record)
 
-    train_one_epoch_mock.assert_called_once()
-    export_checkpoint_mock.assert_called_once()
+        train_one_epoch_mock.assert_called_once()
+        export_checkpoint_mock.assert_called_once()
 
 # check status
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train_one_repeat_status(mocker, base_holder):
+def test_training_plan_holder_train_one_repeat_status(base_holder):
+    from unittest.mock import patch
     original_train_one_epoch = base_holder.train_one_epoch
     epoch_counter = 0
     def train_one_epoch_side_effect(*args, **kwargs):
@@ -392,53 +403,55 @@ def test_training_plan_holder_train_one_repeat_status(mocker, base_holder):
         assert base_holder.get_epoch_progress_text() == str(epoch_counter) + " / 50"
         for i in base_holder.get_training_evaluation():
             assert i != "-"
-    train_one_epoch_mock = mocker.patch.object(base_holder, 'train_one_epoch')
-    train_one_epoch_mock.side_effect = train_one_epoch_side_effect
-
-    train_record = base_holder.train_record_list[0]
-    for i in base_holder.get_training_evaluation():
-        assert i == "-"
-    base_holder.train_one_repeat(train_record)
-
-
-@pytest.mark.timeout(10)
-def test_training_plan_holder_train_one_repeat_empty_training_data(
-    mocker, base_holder
-):
-    train_record = base_holder.train_record_list[0]
-    mocker.patch.object(base_holder, 'get_loader', return_value=(None, None, None))
-    with pytest.raises(ValueError):
+    
+    with patch.object(base_holder, 'train_one_epoch', side_effect=train_one_epoch_side_effect) as train_one_epoch_mock:
+        train_record = base_holder.train_record_list[0]
+        for i in base_holder.get_training_evaluation():
+            assert i == "-"
         base_holder.train_one_repeat(train_record)
 
 
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train_one_repeat_eval(mocker, base_holder):
+def test_training_plan_holder_train_one_repeat_empty_training_data(
+    base_holder
+):
+    from unittest.mock import patch
     train_record = base_holder.train_record_list[0]
+    with patch.object(base_holder, 'get_loader', return_value=(None, None, None)):
+        with pytest.raises(ValueError):
+            base_holder.train_one_repeat(train_record)
 
-    set_eval_record_mock = mocker.patch.object(train_record, 'set_eval_record')
-    base_holder.train_one_repeat(train_record)
-
-    set_eval_record_mock.assert_called_once()
 
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train_one_repeat_already_finished(mocker, base_holder):
+def test_training_plan_holder_train_one_repeat_eval(base_holder):
+    from unittest.mock import patch
     train_record = base_holder.train_record_list[0]
 
-    mocker.patch.object(train_record, 'is_finished', return_value=True)
-    train_one_epoch_mock = mocker.patch.object(base_holder, 'train_one_epoch')
-    export_checkpoint_mock = mocker.patch.object(train_record, 'export_checkpoint')
-    set_eval_record_mock = mocker.patch.object(train_record, 'set_eval_record')
+    with patch.object(train_record, 'set_eval_record') as set_eval_record_mock:
+        base_holder.train_one_repeat(train_record)
 
-    base_holder.train_one_repeat(train_record)
-    assert train_one_epoch_mock.call_count == 0
-    assert export_checkpoint_mock.call_count == 0
-    assert set_eval_record_mock.call_count == 0
+        set_eval_record_mock.assert_called_once()
 
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train(mocker, base_holder):
+def test_training_plan_holder_train_one_repeat_already_finished(base_holder):
+    from unittest.mock import patch
+    train_record = base_holder.train_record_list[0]
+
+    with patch.object(train_record, 'is_finished', return_value=True), \
+         patch.object(base_holder, 'train_one_epoch') as train_one_epoch_mock, \
+         patch.object(train_record, 'export_checkpoint') as export_checkpoint_mock, \
+         patch.object(train_record, 'set_eval_record') as set_eval_record_mock:
+
+        base_holder.train_one_repeat(train_record)
+        assert train_one_epoch_mock.call_count == 0
+        assert export_checkpoint_mock.call_count == 0
+        assert set_eval_record_mock.call_count == 0
+
+@pytest.mark.timeout(10)
+def test_training_plan_holder_train(base_holder):
+    from unittest.mock import patch
     original_train_one_repeat = base_holder.train_one_repeat
 
-    train_one_repeat_mock = mocker.patch.object(base_holder, 'train_one_repeat')
     repeat_counter = 0
     def train_one_repeat_side_effect(*args, **kwargs):
         nonlocal repeat_counter
@@ -447,55 +460,115 @@ def test_training_plan_holder_train(mocker, base_holder):
         assert base_holder.is_finished() is False
         original_train_one_repeat(*args, **kwargs)
         repeat_counter += 1
-    train_one_repeat_mock.side_effect = train_one_repeat_side_effect
 
     original_get_eval_record = base_holder.get_eval_pair
-    get_eval_pair_mock = mocker.patch.object(base_holder, 'get_eval_pair')
     def get_eval_pair_side_effect(*args, **kwargs):
         assert base_holder.get_training_status().startswith("Evaluating")
         return original_get_eval_record(*args, **kwargs)
-    get_eval_pair_mock.side_effect = get_eval_pair_side_effect
 
-    assert base_holder.get_training_status() == "Pending"
-    assert base_holder.is_finished() is False
-    assert base_holder.get_training_repeat() == 0
-    assert base_holder.get_training_epoch() == 0
-    for i in base_holder.get_training_evaluation():
-        assert i == "-"
-    assert base_holder.get_epoch_progress_text() == "0 / 50"
-    base_holder.train()
-    assert base_holder.get_training_status() == "Finished"
-    assert base_holder.is_finished()
-    assert base_holder.get_training_repeat() == 4
-    assert base_holder.get_training_epoch() == 10
-    for i in base_holder.get_training_evaluation():
-        assert i != "-"
-    assert base_holder.get_epoch_progress_text() == "50 / 50"
-    train_one_repeat_mock.assert_called()
-    get_eval_pair_mock.assert_called()
+    with patch.object(base_holder, 'train_one_repeat', side_effect=train_one_repeat_side_effect) as train_one_repeat_mock, \
+         patch.object(base_holder, 'get_eval_pair', side_effect=get_eval_pair_side_effect) as get_eval_pair_mock:
+
+        assert base_holder.get_training_status() == "Pending"
+        assert base_holder.is_finished() is False
+        assert base_holder.get_training_repeat() == 0
+        assert base_holder.get_training_epoch() == 0
+        for i in base_holder.get_training_evaluation():
+            assert i == "-"
+        assert base_holder.get_epoch_progress_text() == "0 / 50"
+        base_holder.train()
+        assert base_holder.get_training_status() == "Finished"
+        assert base_holder.is_finished()
+        assert base_holder.get_training_repeat() == 4
+        assert base_holder.get_training_epoch() == 10
+        for i in base_holder.get_training_evaluation():
+            assert i != "-"
+        assert base_holder.get_epoch_progress_text() == "50 / 50"
+        train_one_repeat_mock.assert_called()
+        get_eval_pair_mock.assert_called()
 
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train_status(mocker, base_holder):
+def test_training_plan_holder_train_status(base_holder):
+    from unittest.mock import patch
     original_train_one_repeat = base_holder.train_one_repeat
-    train_one_repeat_mock = mocker.patch.object(base_holder, 'train_one_repeat')
+    
     def train_one_repeat_side_effect(*args, **kwargs):
         base_holder.set_interrupt()
         original_train_one_repeat(*args, **kwargs)
-    train_one_repeat_mock.side_effect = train_one_repeat_side_effect
-
-    base_holder.train()
-    assert base_holder.is_finished() is False
-    assert base_holder.get_training_status() == "Pending"
-    train_one_repeat_mock.assert_called()
+    
+    with patch.object(base_holder, 'train_one_repeat', side_effect=train_one_repeat_side_effect) as train_one_repeat_mock:
+        base_holder.train()
+        assert base_holder.is_finished() is False
+        assert base_holder.get_training_status() == "Pending"
+        train_one_repeat_mock.assert_called()
 
 @pytest.mark.timeout(10)
-def test_training_plan_holder_train_error(mocker, base_holder):
-    train_one_repeat_mock = mocker.patch.object(base_holder, 'train_one_repeat')
+def test_training_plan_holder_train_error(base_holder):
+    from unittest.mock import patch
     def train_one_repeat_side_effect(*args, **kwargs):
         raise RuntimeError("test")
-    train_one_repeat_mock.side_effect = train_one_repeat_side_effect
+    
+    with patch.object(base_holder, 'train_one_repeat', side_effect=train_one_repeat_side_effect) as train_one_repeat_mock:
+        base_holder.train()
+        assert base_holder.is_finished() is False
+        assert base_holder.get_training_status() == "test"
+        train_one_repeat_mock.assert_called()
 
-    base_holder.train()
-    assert base_holder.is_finished() is False
-    assert base_holder.get_training_status() == "test"
-    train_one_repeat_mock.assert_called()
+def test_test_model_metrics():
+    from XBrainLab.training.training_plan import _test_model
+    
+    # Setup
+    model = FakeModel()
+    criterion = torch.nn.CrossEntropyLoss()
+    
+    # Create dummy data
+    # 2 batches, batch size 2
+    # Batch 1: 
+    #   Input: random
+    #   Labels: [0, 1]
+    #   Preds: [[10, 0, 0, 0], [0, 10, 0, 0]] -> Argmax: [0, 1] (Correct)
+    # Batch 2:
+    #   Input: random
+    #   Labels: [2, 3]
+    #   Preds: [[0, 0, 10, 0], [0, 10, 0, 0]] -> Argmax: [2, 1] (1 Correct, 1 Wrong)
+    
+    # Total: 4 samples, 3 correct -> Acc = 75%
+    
+    class MockDataset(torch.utils.data.Dataset):
+        def __len__(self):
+            return 4
+        def __getitem__(self, idx):
+            return torch.randn(CLASS_NUM), torch.tensor(idx)
+
+    # Mock model output
+    # We need to mock the model call to return specific predictions
+    # But FakeModel is simple linear. Let's just mock the forward pass or use specific weights.
+    # Easier: Mock the model object itself to return specific outputs
+    
+    mock_model = torch.nn.Linear(4, 4) # Dummy
+    
+    # Batch 1 outputs (indices 0, 1) -> Labels 0, 1
+    out1 = torch.tensor([[10.0, 0.0, 0.0, 0.0], [0.0, 10.0, 0.0, 0.0]])
+    # Batch 2 outputs (indices 2, 3) -> Labels 2, 3
+    out2 = torch.tensor([[0.0, 0.0, 10.0, 0.0], [0.0, 10.0, 0.0, 0.0]]) # Last one wrong (pred 1, label 3)
+    
+    from unittest.mock import Mock
+    mock_model = Mock()
+    mock_model.eval.return_value = None
+    mock_model.side_effect = [out1, out2]
+    
+    # DataLoader
+    # We need a dataloader that yields 2 batches
+    # Inputs don't matter as we mock model output
+    inputs = torch.randn(2, 4)
+    labels1 = torch.tensor([0, 1])
+    labels2 = torch.tensor([2, 3])
+    
+    loader = [(inputs, labels1), (inputs, labels2)]
+    
+    # Run
+    result = _test_model(mock_model, loader, criterion)
+    
+    assert result[RecordKey.ACC] == 75.0
+    assert RecordKey.AUC in result
+    assert RecordKey.LOSS in result

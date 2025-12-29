@@ -12,10 +12,14 @@ def test_visualizer():
         0: np.zeros((10, 2, 3, 4)),
         1: np.ones((10, 2, 3, 4)),
     }
-    eval_record = EvalRecord(label, output, gradient)
+    gradient_input = gradient.copy()
+    smoothgrad = gradient.copy()
+    smoothgrad_sq = gradient.copy()
+    vargrad = gradient.copy()
+    eval_record = EvalRecord(label, output, gradient, gradient_input, smoothgrad, smoothgrad_sq, vargrad)
     visualizer = Visualizer(eval_record, None)
     with pytest.raises(NotImplementedError):
         visualizer.get_plt()
 
-    assert np.array_equal(visualizer.get_gradient(0), np.zeros((10, 2, 3, 4)))
-    assert np.array_equal(visualizer.get_gradient(1), np.ones((10, 2, 3, 4)))
+    assert np.array_equal(visualizer.get_saliency("Gradient", 0), np.zeros((10, 2, 3, 4)))
+    assert np.array_equal(visualizer.get_saliency("Gradient", 1), np.ones((10, 2, 3, 4)))

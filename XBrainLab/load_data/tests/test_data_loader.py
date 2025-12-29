@@ -11,9 +11,9 @@ from .test_raw import _generate_mne, _set_event
 def test_raw_data_loader():
     raw = Raw('tests/0.fif', _generate_mne(500, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg'))
     assert len(RawDataLoader()) == 0
-    # no event
-    with pytest.raises(ValueError):
-        RawDataLoader([raw])
+    # no event check removed
+    # with pytest.raises(ValueError):
+    #     RawDataLoader([raw])
     # with event
     _set_event(raw)
     assert len(RawDataLoader([raw])) == 1

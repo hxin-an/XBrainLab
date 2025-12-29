@@ -203,33 +203,32 @@ def test_study_set_model_holder(trainer_study, force_update):
         trainer_study.set_model_holder(holder, force_update)
 
 @pytest.mark.parametrize('force_update', [True, False])
-def test_study_generate_plan(mocker, trainer_study, force_update):
-    holder_mock = mocker.patch(
-        'XBrainLab.training.TrainingPlanHolder.__init__', return_value=None
-    )
-    trainer_mock = mocker.patch(
-        'XBrainLab.training.Trainer.__init__', return_value=None
-    )
-    trainer_study.datasets = [1, 2, 3]
-    trainer_study.training_option = 2
-    trainer_study.model_holder = 3
-    if force_update:
-        trainer_study.generate_plan(force_update=force_update)
-    else:
-        with pytest.raises(ValueError):
+def test_study_generate_plan(trainer_study, force_update):
+    from unittest.mock import patch
+    with patch('XBrainLab.training.TrainingPlanHolder.__init__', return_value=None) as holder_mock, \
+         patch('XBrainLab.training.Trainer.__init__', return_value=None) as trainer_mock:
+        
+        trainer_study.datasets = [1, 2, 3]
+        trainer_study.training_option = 2
+        trainer_study.model_holder = 3
+        if force_update:
             trainer_study.generate_plan(force_update=force_update)
-        trainer_study.clean_trainer()
-        trainer_study.generate_plan(force_update=force_update)
+        else:
+            with pytest.raises(ValueError):
+                trainer_study.generate_plan(force_update=force_update)
+            trainer_study.clean_trainer()
+            trainer_study.generate_plan(force_update=force_update)
 
-    called_args_list = holder_mock.call_args_list
-    assert len(called_args_list) == 3
-    for i in range(3):
-        called_args = called_args_list[i][0]
-        assert called_args[0] == 3
-        assert called_args[1] == (i + 1)
-        assert called_args[2] == 2
+        called_args_list = holder_mock.call_args_list
+        assert len(called_args_list) == 3
+        for i in range(3):
+            called_args = called_args_list[i][0]
+            assert called_args[0] == 3
+            assert called_args[1] == (i + 1)
+            assert called_args[2] == 2
+            assert called_args[3] is None # saliency_params
 
-    trainer_mock.assert_called_once()
+        trainer_mock.assert_called_once()
 
 @pytest.mark.parametrize(
     'missing_part, complain',
@@ -267,26 +266,25 @@ def test_study_training_not_set():
 
 @pytest.mark.parametrize('has_record', [True, False])
 @pytest.mark.parametrize('has_eval', [True, False])
-def test_study_export_output_csv(mocker, trainer_study, has_record, has_eval):
+def test_study_export_output_csv(trainer_study, has_record, has_eval):
+    from unittest.mock import patch
     record = FakeRecord()
     return_value = None
     if has_eval:
         return_value = record
-    mocker.patch(
-        'XBrainLab.tests.test_study.FakePlan.get_eval_record',
-        return_value=return_value
-    )
-    trainer_study.trainer.return_plan = has_record
-    if not has_record:
-        with pytest.raises(ValueError):
-            trainer_study.export_output_csv('test', '1', '2')
-        return
-    if not has_eval:
-        with pytest.raises(ValueError):
-            trainer_study.export_output_csv('test', '1', '2')
-        return
-    trainer_study.export_output_csv('test', '1', '2')
-    assert record.filepath == 'test'
+    
+    with patch('XBrainLab.tests.test_study.FakePlan.get_eval_record', return_value=return_value):
+        trainer_study.trainer.return_plan = has_record
+        if not has_record:
+            with pytest.raises(ValueError):
+                trainer_study.export_output_csv('test', '1', '2')
+            return
+        if not has_eval:
+            with pytest.raises(ValueError):
+                trainer_study.export_output_csv('test', '1', '2')
+            return
+        trainer_study.export_output_csv('test', '1', '2')
+        assert record.filepath == 'test'
 
 
 def test_study_export_output_csv_not_set():

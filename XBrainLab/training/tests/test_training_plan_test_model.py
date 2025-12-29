@@ -119,33 +119,42 @@ def test_test_model(dataloader, loss_avg):
     assert test_dict['accuracy'] == (TOTAL_NUM - ERROR_NUM) / (TOTAL_NUM) * 100
     assert np.isclose(test_dict['loss'], loss_avg)
 
-@pytest.mark.xfail
-def test_test_model_auc(mocker, dataloader):
-    raise NotImplementedError
 
 
-def test_eval_model(mocker, dataloader, y, full_y):
+
+def test_eval_model(dataloader, y, full_y):
+    from unittest.mock import patch
     model = FakeModel()
     model.eval()
-    eval_record_mock = mocker.patch(
-        'XBrainLab.training.record.eval.EvalRecord.__init__',
-        return_value=None
-    )
-    eval_model_mock = mocker.patch.object(model, 'eval')
-    result = _eval_model(model, dataloader)
-    eval_model_mock.assert_called_once()
+    
+    saliency_params = {
+        'SmoothGrad': {'nt_samples': 1, 'stdevs': 0.1},
+        'SmoothGrad_Squared': {'nt_samples': 1, 'stdevs': 0.1},
+        'VarGrad': {'nt_samples': 1, 'stdevs': 0.1}
+    }
+    
+    with patch('XBrainLab.training.record.eval.EvalRecord.__init__', return_value=None) as eval_record_mock, \
+         patch.object(model, 'eval') as eval_model_mock:
+        
+        result = _eval_model(model, dataloader, saliency_params)
+        eval_model_mock.assert_called()
 
-    assert isinstance(result, EvalRecord)
-    called_y, called_output, called_gradient = eval_record_mock.call_args[0]
-    assert np.array_equal(called_y, y)
-    assert np.array_equal(called_output.argmax(axis=-1), full_y)
-    assert len(called_gradient) == CLASS_NUM
+        assert isinstance(result, EvalRecord)
+        # EvalRecord now takes 7 arguments: label, output, gradient, gradient_input, smoothgrad, smoothgrad_sq, vargrad
+        args = eval_record_mock.call_args[0]
+        called_y = args[0]
+        called_output = args[1]
+        called_gradient = args[2]
+        
+        assert np.array_equal(called_y, y)
+        assert np.array_equal(called_output.argmax(axis=-1), full_y)
+        assert len(called_gradient) == CLASS_NUM
 
-    expected_list = [
-        (REPEAT - ERROR_NUM, CLASS_NUM),
-        (REPEAT + ERROR_NUM, CLASS_NUM),
-        (REPEAT, CLASS_NUM),
-        (REPEAT, CLASS_NUM)
-    ]
-    for g, expected_shape in zip(called_gradient, expected_list):
-        assert called_gradient[g].shape == expected_shape
+        expected_list = [
+            (REPEAT - ERROR_NUM, CLASS_NUM),
+            (REPEAT + ERROR_NUM, CLASS_NUM),
+            (REPEAT, CLASS_NUM),
+            (REPEAT, CLASS_NUM)
+        ]
+        for g, expected_shape in zip(called_gradient, expected_list):
+            assert called_gradient[g].shape == expected_shape

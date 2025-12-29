@@ -17,13 +17,14 @@ from XBrainLab.training import (
     (False, 1, "1 - test"),
     (False, None, None),
 ])
-def test_parse_device_name(mocker, use_cpu, gpu_idx, expected):
-    mocker.patch("torch.cuda.get_device_name", return_value="test")
-    if expected is None:
-        with pytest.raises(ValueError):
-            parse_device_name(use_cpu, gpu_idx)
-    else:
-        assert parse_device_name(use_cpu, gpu_idx) == expected
+def test_parse_device_name(use_cpu, gpu_idx, expected):
+    from unittest.mock import patch
+    with patch("torch.cuda.get_device_name", return_value="test"):
+        if expected is None:
+            with pytest.raises(ValueError):
+                parse_device_name(use_cpu, gpu_idx)
+        else:
+            assert parse_device_name(use_cpu, gpu_idx) == expected
 
 class FakeOptim:
     def __init__(self, **kwargs):
@@ -72,6 +73,7 @@ def test_parse_optim_name():
     ({'repeat_num': "error"}, True),
 ])
 def test_option(kwargs, has_error):
+    from unittest.mock import patch
     args = {
         'output_dir': 'ok',
         'optim': FakeOptim,
@@ -89,45 +91,49 @@ def test_option(kwargs, has_error):
     for k in kwargs:
         args[k] = kwargs[k]
 
-    if has_error:
-        with pytest.raises(ValueError):
-            option = TrainingOption(**args)
-        return
+    with patch('torch.cuda.is_available', return_value=True), \
+         patch('torch.cuda.device_count', return_value=2), \
+         patch('torch.cuda.get_device_name', return_value='test_gpu'):
+        
+        if has_error:
+            with pytest.raises(ValueError):
+                option = TrainingOption(**args)
+            return
 
-    option = TrainingOption(**args)
+        option = TrainingOption(**args)
 
 
-    assert option.get_output_dir() == 'ok'
-    assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.VAL_LOSS"
-    if args['use_cpu'] or (not args['use_cpu'] and torch.cuda.is_available()):
-        assert option.get_device_name() == parse_device_name(
-            args['use_cpu'], args['gpu_idx']
+        assert option.get_output_dir() == 'ok'
+        assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.VAL_LOSS"
+        if args['use_cpu'] or (not args['use_cpu'] and torch.cuda.is_available()):
+            assert option.get_device_name() == parse_device_name(
+                args['use_cpu'], args['gpu_idx']
+            )
+        if args['use_cpu']:
+            assert option.get_device() == "cpu"
+        else:
+            assert option.get_device() == "cuda:" + str(args['gpu_idx'])
+
+        assert option.get_optim_name() == "FakeOptim"
+        assert option.get_optim_desc_str() == parse_optim_name(
+            FakeOptim, args["optim_params"]
         )
-    if args['use_cpu']:
-        assert option.get_device() == "cpu"
-    else:
-        assert option.get_device() == "cuda:" + str(args['gpu_idx'])
 
-    assert option.get_optim_name() == "FakeOptim"
-    assert option.get_optim_desc_str() == parse_optim_name(
-        FakeOptim, args["optim_params"]
-    )
+        model = FakeModel()
+        optim_instance = option.get_optim(model)
+        assert isinstance(optim_instance, FakeOptim)
 
-    model = FakeModel()
-    optim_instance = option.get_optim(model)
-    assert isinstance(optim_instance, FakeOptim)
+        for k in args['optim_params']:
+            assert (
+                k in optim_instance.kwargs and
+                optim_instance.kwargs[k] == args['optim_params'][k]
+            )
+        assert optim_instance.kwargs['lr'] == args['lr']
 
-    for k in args['optim_params']:
-        assert (
-            k in optim_instance.kwargs and
-            optim_instance.kwargs[k] == args['optim_params'][k]
-        )
-    assert optim_instance.kwargs['lr'] == args['lr']
-
-    model_params = optim_instance.kwargs['params']
-    expected_model_params = model.parameters()
-    for p, e in zip(model_params, expected_model_params):
-        torch.testing.assert_close(p, e)
+        model_params = optim_instance.kwargs['params']
+        expected_model_params = model.parameters()
+        for p, e in zip(model_params, expected_model_params):
+            torch.testing.assert_close(p, e)
 
 
 @pytest.mark.parametrize("kwargs, has_error", [
@@ -145,6 +151,7 @@ def test_option(kwargs, has_error):
     ({'bs': "error"}, True),
 ])
 def test_test_only_option(kwargs, has_error):
+    from unittest.mock import patch
     args = {
         'output_dir': 'ok',
         'use_cpu': False,
@@ -155,28 +162,32 @@ def test_test_only_option(kwargs, has_error):
     for k in kwargs:
         args[k] = kwargs[k]
 
-    if has_error:
-        with pytest.raises(ValueError):
-            option = TestOnlyOption(**args)
-        return
+    with patch('torch.cuda.is_available', return_value=True), \
+         patch('torch.cuda.device_count', return_value=2), \
+         patch('torch.cuda.get_device_name', return_value='test_gpu'):
 
-    option = TestOnlyOption(**args)
+        if has_error:
+            with pytest.raises(ValueError):
+                option = TestOnlyOption(**args)
+            return
+
+        option = TestOnlyOption(**args)
 
 
-    assert option.get_output_dir() == 'ok'
-    assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.LAST_EPOCH"
+        assert option.get_output_dir() == 'ok'
+        assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.LAST_EPOCH"
 
-    if args['use_cpu'] or (not args['use_cpu'] and torch.cuda.is_available()):
-       assert option.get_device_name() == parse_device_name(
-           args['use_cpu'], args['gpu_idx']
-        )
-    if args['use_cpu']:
-        assert option.get_device() == "cpu"
-    else:
-        assert option.get_device() == "cuda:" + str(args['gpu_idx'])
+        if args['use_cpu'] or (not args['use_cpu'] and torch.cuda.is_available()):
+           assert option.get_device_name() == parse_device_name(
+               args['use_cpu'], args['gpu_idx']
+            )
+        if args['use_cpu']:
+            assert option.get_device() == "cpu"
+        else:
+            assert option.get_device() == "cuda:" + str(args['gpu_idx'])
 
-    assert option.get_optim_name() == "-"
-    assert option.get_optim_desc_str() == "-"
+        assert option.get_optim_name() == "-"
+        assert option.get_optim_desc_str() == "-"
 
-    assert option.get_optim(None) is None
-    assert option.get_optim(10) is None
+        assert option.get_optim(None) is None
+        assert option.get_optim(10) is None

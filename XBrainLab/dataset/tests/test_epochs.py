@@ -311,9 +311,11 @@ def test_epochs_get_real_num_not_implemented(epochs):
     with pytest.raises(NotImplementedError):
         epochs._get_real_num(np.arange(4), 1, 'test', np.ones(4, dtype=bool), None, 0)
 
+from unittest.mock import patch
+
 @pytest.mark.parametrize('selected_num', np.arange(block_size + 2))
 @pytest.mark.parametrize('is_partial', [False, True])
-def test_epochs_pick(mocker, epochs, selected_num, is_partial):
+def test_epochs_pick(epochs, selected_num, is_partial):
     target_type = np.arange(block_size).repeat(len(subject_list) * len(session_list))
     mask = np.ones(len(target_type), dtype=bool)
     real_block_size = block_size
@@ -325,11 +327,11 @@ def test_epochs_pick(mocker, epochs, selected_num, is_partial):
     value = 0
     split_unit = 0
     group_idx = 0
-    mocker.patch.object(epochs, '_get_real_num', return_value=selected_num)
-
-    ret, new_mask = epochs._pick(
-        target_type, mask, clean_mask, value, split_unit, group_idx
-    )
+    
+    with patch.object(epochs, '_get_real_num', return_value=selected_num):
+        ret, new_mask = epochs._pick(
+            target_type, mask, clean_mask, value, split_unit, group_idx
+        )
 
     assert (new_mask == mask).all()
     if is_partial:
@@ -372,38 +374,38 @@ def test_epochs_pick_manual(epochs):
     (SplitUnit.RATIO, False),
 ])
 def test_epochs_pick_by_wrapper(
-    mocker, epochs, func_name, split_unit, is_manual, target_type_name
+    epochs, func_name, split_unit, is_manual, target_type_name
 ):
-    pick_mock = mocker.patch.object(epochs, '_pick')
-    manual_mock = mocker.patch.object(epochs, '_pick_manual')
+    with patch.object(epochs, '_pick') as pick_mock, \
+         patch.object(epochs, '_pick_manual') as manual_mock:
 
-    target_type = getattr(epochs, target_type_name)()
-    mask = np.random.randint(0, 2, size=len(target_type), dtype=bool)
-    clean_mask = None
-    group_idx = 5
-    value = [1, 2, 3]
-    # call func_name of epochs
-    func = getattr(epochs, func_name)
+        target_type = getattr(epochs, target_type_name)()
+        mask = np.random.randint(0, 2, size=len(target_type), dtype=bool)
+        clean_mask = None
+        group_idx = 5
+        value = [1, 2, 3]
+        # call func_name of epochs
+        func = getattr(epochs, func_name)
 
-    func(mask, clean_mask, value, split_unit, group_idx)
-    if is_manual:
-        manual_mock.assert_called_once()
-        pick_mock.assert_not_called()
-        (_target_type, _mask, _value), _ = manual_mock.call_args
-        assert (_target_type == target_type).all()
-        assert (_mask == mask).all()
-        assert _value == value
-    else:
-        pick_mock.assert_called_once()
-        manual_mock.assert_not_called()
-        (_target_type, _mask, _clean_mask, _value, _split_unit, _group_idx), _ = \
-            pick_mock.call_args
-        assert (_target_type == target_type).all()
-        assert (_mask == mask).all()
-        assert _clean_mask == clean_mask
-        assert _value == value
-        assert _split_unit == split_unit
-        assert _group_idx == group_idx
+        func(mask, clean_mask, value, split_unit, group_idx)
+        if is_manual:
+            manual_mock.assert_called_once()
+            pick_mock.assert_not_called()
+            (_target_type, _mask, _value), _ = manual_mock.call_args
+            assert (_target_type == target_type).all()
+            assert (_mask == mask).all()
+            assert _value == value
+        else:
+            pick_mock.assert_called_once()
+            manual_mock.assert_not_called()
+            (_target_type, _mask, _clean_mask, _value, _split_unit, _group_idx), _ = \
+                pick_mock.call_args
+            assert (_target_type == target_type).all()
+            assert (_mask == mask).all()
+            assert _clean_mask == clean_mask
+            assert _value == value
+            assert _split_unit == split_unit
+            assert _group_idx == group_idx
 
 def test_epochs_pick_manual_trial(epochs):
     mask = np.ones(block_size * len(subject_list) * len(session_list), dtype=bool)

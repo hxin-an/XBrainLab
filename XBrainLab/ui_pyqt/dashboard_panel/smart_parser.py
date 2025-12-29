@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QSettings
 import re
 import os
+from XBrainLab.utils.filename_parser import FilenameParser
 
 class SmartParserDialog(QDialog):
     def __init__(self, filenames, parent=None):
@@ -236,56 +237,32 @@ class SmartParserDialog(QDialog):
             sess = "-"
             
             if self.radio_split.isChecked():
-                parts = name_no_ext.split(sep)
-                sub_i = self.split_sub_idx.value() - 1
-                sess_i = self.split_sess_idx.value() - 1
-                
-                if 0 <= sub_i < len(parts):
-                    sub = parts[sub_i]
-                if 0 <= sess_i < len(parts):
-                    sess = parts[sess_i]
+                sub, sess = FilenameParser.parse_by_split(
+                    filename, sep, 
+                    self.split_sub_idx.value(), 
+                    self.split_sess_idx.value()
+                )
                     
-            elif self.radio_regex.isChecked() and regex:
-                match = regex.search(filename)
-                if match:
-                    try:
-                        sub_i = self.regex_sub_idx.value()
-                        sess_i = self.regex_sess_idx.value()
-                        if sub_i <= len(match.groups()):
-                            sub = match.group(sub_i)
-                        if sess_i <= len(match.groups()):
-                            sess = match.group(sess_i)
-                    except:
-                        pass
+            elif self.radio_regex.isChecked():
+                # Note: FilenameParser.parse_by_regex now handles extension stripping internally
+                # We pass the raw regex pattern string
+                sub, sess = FilenameParser.parse_by_regex(
+                    filename, self.regex_input.text(),
+                    self.regex_sub_idx.value(),
+                    self.regex_sess_idx.value()
+                )
                         
             elif self.radio_folder.isChecked():
-                try:
-                    parent_dir = os.path.dirname(filepath)
-                    sub = os.path.basename(parent_dir)
-                    grandparent_dir = os.path.dirname(parent_dir)
-                    sess = sub # Default assumption
-                    # Heuristic: if parent is 'SessionX', use grandparent as Subject
-                    if "ses" in sub.lower():
-                        sess = sub
-                        sub = os.path.basename(grandparent_dir)
-                except:
-                    pass
+                sub, sess = FilenameParser.parse_by_folder(filepath)
                     
             elif self.radio_fixed.isChecked():
-                try:
-                    # Subject (1-based index from UI -> 0-based for slice)
-                    s_start = self.fixed_sub_start.value() - 1
-                    s_len = self.fixed_sub_len.value()
-                    if s_start >= 0 and s_start < len(name_no_ext):
-                        sub = name_no_ext[s_start : s_start + s_len]
-                        
-                    # Session (1-based index from UI -> 0-based for slice)
-                    sess_start = self.fixed_sess_start.value() - 1
-                    sess_len = self.fixed_sess_len.value()
-                    if sess_start >= 0 and sess_start < len(name_no_ext):
-                        sess = name_no_ext[sess_start : sess_start + sess_len]
-                except:
-                    pass
+                sub, sess = FilenameParser.parse_by_fixed_position(
+                    filename,
+                    self.fixed_sub_start.value(),
+                    self.fixed_sub_len.value(),
+                    self.fixed_sess_start.value(),
+                    self.fixed_sess_len.value()
+                )
 
             # Update Table
             sub_item = QTableWidgetItem(sub)

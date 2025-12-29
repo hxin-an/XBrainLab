@@ -9,7 +9,8 @@ class FakeModel:
     def load_state_dict(self, state_dict):
         self.state_dict = state_dict
 
-def test_model_holder(mocker):
+def test_model_holder():
+    from unittest.mock import patch
     target_model = FakeModel
     model_params_map = {
         'a': 1,
@@ -17,9 +18,10 @@ def test_model_holder(mocker):
     }
     pretrained_weight_path = 'test.pth'
     holder = ModelHolder(target_model, model_params_map, pretrained_weight_path)
-    mocker.patch('torch.load', return_value='state_dict')
-    model = holder.get_model({'c': 3})
+    
+    with patch('torch.load', return_value='state_dict'):
+        model = holder.get_model({'c': 3})
 
-    assert holder.get_model_desc_str() == 'FakeModel (a=1, b=2)'
-    assert model.kwargs == {'a': 1, 'b': 2, 'c': 3}
-    assert model.state_dict == 'state_dict'
+        assert holder.get_model_desc_str() == 'FakeModel (a=1, b=2)'
+        assert model.kwargs == {'a': 1, 'b': 2, 'c': 3}
+        assert model.state_dict == 'state_dict'
