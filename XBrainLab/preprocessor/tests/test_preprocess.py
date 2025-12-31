@@ -75,6 +75,43 @@ def test_edit_event_name_epoch(epoch):
     assert result.get_event_name_list_str() == 'a,b,c,f'
     assert result.get_preprocess_history()[1] == 'Update 1 event names'
 
+def test_edit_event_id_raw(raw): # noqa: F811
+    with pytest.raises(
+        ValueError, match="Event id can only be edited for epoched data"
+    ):
+        preprocessor.EditEventId([raw])
+
+def test_edit_event_id_epoch(epoch):
+    processor = preprocessor.EditEventId([epoch])
+    
+    # Test no update
+    with pytest.raises(AssertionError, match="No Event Id updated."):
+        processor.data_preprocess({'a': 1, 'b': 2, 'c': 3, 'd': 4})
+
+    # Test simple update
+    processor.data_preprocess({'a': 10, 'b': 20, 'c': 30, 'd': 40})
+    result = processor.get_preprocessed_data_list()[0]
+    _, event_id = result.get_event_list()
+    assert event_id == {'a': 10, 'b': 20, 'c': 30, 'd': 40}
+    assert result.get_preprocess_history()[0] == 'Update event ids'
+
+    # Test merge update (duplicate new IDs)
+    # Reset processor with fresh epoch
+    processor = preprocessor.EditEventId([epoch])
+    # Merge 'c' (3) and 'd' (4) into ID 5
+    processor.data_preprocess({'a': 1, 'b': 2, 'c': 5, 'd': 5})
+    result = processor.get_preprocessed_data_list()[0]
+    _, event_id = result.get_event_list()
+    
+    # Check if 'c' and 'd' are merged into 'c/d' or 'd/c' with ID 5
+    assert len(event_id) == 3
+    assert event_id['a'] == 1
+    assert event_id['b'] == 2
+    # The key for ID 5 should be a combination of 'c' and 'd'
+    merged_key = [k for k, v in event_id.items() if v == 5][0]
+    assert 'c' in merged_key and 'd' in merged_key
+    assert result.get_preprocess_history()[0] == 'Update event ids'
+
 # export
 # export
 @pytest.mark.parametrize('target_str', ['raw', 'epoch'])

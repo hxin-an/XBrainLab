@@ -6,8 +6,8 @@ from PyQt6.QtGui import QPainter, QColor, QBrush
 from PyQt6.QtCore import Qt
 import numpy as np
 from enum import Enum
-from XBrainLab.dataset import Epochs, SplitByType, TrainingType, ValSplitByType
-from .data_splitting import DataSplittingWindow, DataSplittingConfigHolder
+from XBrainLab.dataset import Epochs, SplitByType, TrainingType, ValSplitByType, DataSplittingConfig
+from .data_splitting import DataSplittingWindow, DataSplitterHolder
 
 class DrawColor(Enum):
     TRAIN = QColor('DodgerBlue')
@@ -337,10 +337,17 @@ class DataSplittingSettingWindow(QDialog):
             if i.value == self.test_combo.currentText():
                 test_type_list.append(i)
                 break
-                
-        config = DataSplittingConfigHolder(
-            train_type, val_type_list, test_type_list,
-            is_cross_validation=self.cv_check.isChecked()
+        
+        # Create DataSplitter instances for val and test
+        val_splitters = [DataSplitterHolder(True, t) for t in val_type_list]
+        test_splitters = [DataSplitterHolder(True, t) for t in test_type_list]
+        
+        # Create DataSplittingConfig directly with backend class
+        config = DataSplittingConfig(
+            train_type=train_type,
+            is_cross_validation=self.cv_check.isChecked(),
+            val_splitter_list=val_splitters,
+            test_splitter_list=test_splitters
         )
         
         self.step2_window = DataSplittingWindow(

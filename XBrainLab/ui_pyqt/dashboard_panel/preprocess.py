@@ -663,6 +663,8 @@ class PreprocessPanel(QWidget):
                 self.main_window.study.set_preprocessed_data_list(result)
                 self.main_window.study.lock_dataset()
                 self.update_panel()
+                if hasattr(self.main_window, 'update_info_panel'):
+                    self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Filtering applied successfully.")
 
     def open_resample(self):
@@ -674,6 +676,8 @@ class PreprocessPanel(QWidget):
                 self.main_window.study.set_preprocessed_data_list(result)
                 self.main_window.study.lock_dataset()
                 self.update_panel()
+                if hasattr(self.main_window, 'update_info_panel'):
+                    self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Resampling applied.")
 
     def open_epoching(self):
@@ -685,6 +689,8 @@ class PreprocessPanel(QWidget):
                 self.main_window.study.set_preprocessed_data_list(result)
                 self.main_window.study.lock_dataset()
                 self.update_panel()
+                if hasattr(self.main_window, 'update_info_panel'):
+                    self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Epoching applied.")
 
     def reset_preprocess(self):
@@ -701,6 +707,8 @@ class PreprocessPanel(QWidget):
             try:
                 self.main_window.study.reset_preprocess()
                 self.update_panel()
+                if hasattr(self.main_window, 'update_info_panel'):
+                    self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Preprocessing reset.")
             except Exception as e:
                 logger.error(f"Reset failed: {e}")

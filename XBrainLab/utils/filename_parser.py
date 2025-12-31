@@ -59,7 +59,9 @@ class FilenameParser:
         try:
             regex = re.compile(pattern)
             match = regex.search(name_no_ext)
+            print(f"DEBUG: pattern='{pattern}', name='{name_no_ext}'")
             if match:
+                print(f"DEBUG: groups={match.groups()}")
                 if sub_group <= len(match.groups()):
                     sub = match.group(sub_group)
                 if sess_group <= len(match.groups()):
@@ -128,6 +130,42 @@ class FilenameParser:
                 extracted = name_no_ext[se_start : se_start + sess_len]
                 if extracted:
                     sess = extracted
+        except Exception:
+            pass
+            
+        return sub, sess
+
+    @staticmethod
+    def parse_by_named_regex(filename: str, pattern: str) -> Tuple[str, str]:
+        """
+        Parse filename using Named Regular Expression (e.g. (?P<subject>...)).
+        
+        Args:
+            filename: The filename.
+            pattern: The regex pattern string with named groups 'subject' and 'session'.
+            
+        Returns:
+            (subject, session) or ("-", "-") if not found.
+        """
+        # Remove extension for easier parsing
+        name_no_ext = os.path.splitext(filename)[0]
+        
+        sub = "-"
+        sess = "-"
+        
+        try:
+            regex = re.compile(pattern)
+            match = regex.match(filename)
+            # Try matching full filename first, if not, try name without extension
+            if not match:
+                match = regex.match(name_no_ext)
+                
+            if match:
+                groupdict = match.groupdict()
+                if 'subject' in groupdict:
+                    sub = groupdict['subject']
+                if 'session' in groupdict:
+                    sess = groupdict['session']
         except Exception:
             pass
             

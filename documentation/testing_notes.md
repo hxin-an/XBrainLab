@@ -22,7 +22,7 @@
     *   `data_loader.py` (`RawDataLoader`):
         *   `Raw` 物件的容器 (List subclass)。
         *   負責檢查多個檔案間的一致性 (通道數、取樣率)。
-    *   `label_loader.py` (New):
+    *   `label_loader.py` :
         *   專責處理標籤檔案 I/O (.txt, .mat)。
         *   統一回傳 1D numpy array，處理了各種 mat 檔的維度問題。
     *   `event_loader.py` (`EventLoader`):

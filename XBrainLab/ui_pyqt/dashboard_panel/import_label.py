@@ -128,12 +128,37 @@ class ImportLabelDialog(QDialog):
 
     # Removed on_var_changed and process_labels as they are refactored into update_unique_labels
 
-    def process_labels(self, labels):
-        self.label_data = labels
-        self.unique_labels = sorted(np.unique(labels))
+    def update_unique_labels(self):
+        """
+        Aggregates labels from all loaded files, finds unique codes, 
+        and updates the mapping table.
+        """
+        all_labels = []
+        for labels in self.label_data_map.values():
+            all_labels.extend(labels)
+            
+        if not all_labels:
+            self.unique_labels = []
+            self.info_label.setText("No labels loaded.")
+            self.map_table.setRowCount(0)
+            return
+
+        self.unique_labels = sorted(np.unique(all_labels))
+        self.info_label.setText(f"Loaded {len(all_labels)} labels from {len(self.label_data_map)} files. Found {len(self.unique_labels)} unique codes.")
         
-        self.info_label.setText(f"Loaded {len(labels)} labels. Found {len(self.unique_labels)} unique codes.")
-        
+        # Preserve existing mapping if possible
+        current_mapping = {}
+        for i in range(self.map_table.rowCount()):
+            code_item = self.map_table.item(i, 0)
+            name_item = self.map_table.item(i, 1)
+            if code_item and name_item:
+                try:
+                    code = int(code_item.text())
+                    name = name_item.text()
+                    current_mapping[code] = name
+                except:
+                    pass
+
         # Populate Table
         self.map_table.setRowCount(len(self.unique_labels))
         for i, code in enumerate(self.unique_labels):
@@ -143,7 +168,9 @@ class ImportLabelDialog(QDialog):
             self.map_table.setItem(i, 0, item_code)
             
             # Name (Editable)
-            item_name = QTableWidgetItem(f"Event_{code}")
+            # Use existing name if available, else default
+            name = current_mapping.get(code, f"Event_{code}")
+            item_name = QTableWidgetItem(name)
             self.map_table.setItem(i, 1, item_name)
 
     def get_results(self):
@@ -378,7 +405,8 @@ class LabelMappingDialog(QDialog):
         
         # 1. Try strict matching
         for i, data_file in enumerate(self.data_files):
-            data_stem = os.path.splitext(os.path.basename(data_file))[0]
+            data_name = os.path.basename(data_file)
+            data_stem = os.path.splitext(data_name)[0]
             
             best_match = None
             best_match_idx = -1

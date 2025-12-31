@@ -66,3 +66,35 @@ class TestFilenameParser:
         # Case 2: Out of bounds
         sub, sess = FilenameParser.parse_by_fixed_position(fname, 10, 3, 1, 1)
         assert sub == "-"
+
+    def test_parse_by_named_regex(self):
+        fname = "sub-01_ses-02_task-rest.gdf"
+        
+        # Case 1: Standard named groups
+        pattern = r"sub-(?P<subject>[^_]+)_ses-(?P<session>[^_]+)"
+        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern)
+        assert sub == "01"
+        assert sess == "02"
+        
+        # Case 2: Only subject
+        pattern_sub = r"sub-(?P<subject>[^_]+)"
+        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern_sub)
+        assert sub == "01"
+        assert sess == "-"
+        
+        # Case 3: Only session
+        pattern_sess = r".*ses-(?P<session>[^_]+)"
+        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern_sess)
+        assert sub == "-"
+        assert sess == "02"
+        
+        # Case 4: No match
+        sub, sess = FilenameParser.parse_by_named_regex("random.txt", pattern)
+        assert sub == "-"
+        assert sess == "-"
+        
+        # Case 5: Invalid Regex (should not crash)
+        pattern_invalid = r"sub-(?P<subject>[^_]+_ses-(?P<session>[^_]+)" # Missing closing parenthesis
+        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern_invalid)
+        assert sub == "-"
+        assert sess == "-"

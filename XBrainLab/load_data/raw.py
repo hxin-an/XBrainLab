@@ -9,14 +9,10 @@ import mne
 import numpy as np
 
 from ..utils import validate_type
+from ..utils.filename_parser import FilenameParser
 
 
-class FilenameGroupKey(Enum):
-    """
-    Utility class for parsing filename with regex.
-    """
-    SUBJECT = 'subject'
-    SESSION = 'session'
+
 
 class Raw:
     """Class for storing raw data.
@@ -84,18 +80,13 @@ class Raw:
         Args:
             regex: Regex for parsing filename.
         """
-        try:
-            filepath = self.get_filepath()
-            filename = os.path.basename(filepath)
-            m = re.match(regex, filename)
-            groupdict = m.groupdict()
-            if FilenameGroupKey.SESSION.value in groupdict:
-                self.set_session_name(groupdict[FilenameGroupKey.SESSION.value])
-            if FilenameGroupKey.SUBJECT.value in groupdict:
-                self.set_subject_name(groupdict[FilenameGroupKey.SUBJECT.value])
-        except Exception:
-            traceback.print_exc()
-            pass
+        filename = self.get_filename()
+        sub, sess = FilenameParser.parse_by_named_regex(filename, regex)
+        
+        if sub != "-":
+            self.set_subject_name(sub)
+        if sess != "-":
+            self.set_session_name(sess)
 
     def set_subject_name(self, subject: str) -> None:
         """Set the subject name of the raw data."""

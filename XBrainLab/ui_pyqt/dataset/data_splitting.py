@@ -19,66 +19,22 @@ class DataSplitterHolder(DataSplitter):
         super().__init__(
             split_type, value_var=None, split_unit=None, is_option=is_option
         )
-        self.split_var = None # Will hold current text/value
-        self.entry_var = None # Will hold current text/value
-        self.is_valid_var = False
 
     def set_split_unit_var(self, val):
-        self.split_var = val
+        # val is the string representation from the ComboBox
+        self.split_unit = None
+        for unit in SplitUnit:
+            if unit.value == val:
+                self.split_unit = unit
+                break
 
     def set_entry_var(self, val):
-        self.entry_var = val
-
-    def _is_valid(self):
-        if self.entry_var is None: return False
-        if self.split_var is None: return False
-        
-        if self.split_var == SplitUnit.RATIO.value:
-            try:
-                val = float(self.entry_var)
-                if 0 <= val <= 1: return True
-            except ValueError:
-                return False
-        elif self.split_var == SplitUnit.NUMBER.value:
-            return self.entry_var.isdigit()
-        elif self.split_var == SplitUnit.KFOLD.value:
-            val = self.entry_var
-            if val.isdigit(): return int(val) > 0
-        elif self.split_unit == SplitUnit.MANUAL:
-            # Manual validation logic
-            return True # Simplified for now
-        return False
-
-    def _get_value(self):
-        if not self._is_valid(): return 0
-        return self.entry_var
-
-    def _get_split_unit(self):
-        if self.split_var is None: return None
-        for i in SplitUnit:
-            if i.value == self.split_var: return i
-        return None
+        self.value_var = val
 
     def to_thread(self):
-        self.split_unit = self._get_split_unit() # Must set this before validation check in original logic?
-        # Original code: self.split_unit = self._get_split_unit() inside to_thread
-        self.is_valid_var = self._is_valid()
-        self.value_var = self._get_value()
-
-    def is_valid(self):
-        return self.is_valid_var
-
-class DataSplittingConfigHolder:
-    def __init__(self, train_type, val_type_list, test_type_list, is_cross_validation):
-        self.train_type = train_type
-        self.val_type_list = val_type_list
-        self.test_type_list = test_type_list
-        self.is_cross_validation = is_cross_validation
-
-    def generate_splitter_option(self):
-        val_splitters = [DataSplitterHolder(True, t) for t in self.val_type_list]
-        test_splitters = [DataSplitterHolder(True, t) for t in self.test_type_list]
-        return val_splitters, test_splitters
+        # State is already updated via setters.
+        # No need to "commit" state or cache validation.
+        pass
 
 class DataSplittingWindow(QDialog):
     def __init__(self, parent, title, epoch_data, config):
@@ -142,7 +98,7 @@ class DataSplittingWindow(QDialog):
         self.val_widgets = []
         
         split_unit_list = [i.value for i in SplitUnit if i not in [SplitUnit.KFOLD, SplitUnit.MANUAL]]
-        val_splitter_list, test_splitter_list = self.config.generate_splitter_option()
+        val_splitter_list, test_splitter_list = self.config.get_splitter_option()
         self.val_splitter_list = val_splitter_list
         self.test_splitter_list = test_splitter_list
         

@@ -307,3 +307,23 @@ def test_study_set_channels_not_set():
     study = Study()
     with pytest.raises(ValueError):
         study.set_channels([], [])
+
+def test_study_saliency_params():
+    study = Study()
+    params = {'method': {'param': 1}}
+    study.set_saliency_params(params)
+    assert study.get_saliency_params() == params
+    
+    # Test propagation to trainer
+    class FakePlanHolder:
+        def set_saliency_params(self, params):
+            self.params = params
+            
+    holder = FakePlanHolder()
+    class FakeTrainer:
+        def get_training_plan_holders(self):
+            return [holder]
+
+    study.trainer = FakeTrainer()
+    study.set_saliency_params(params)
+    assert holder.params == params

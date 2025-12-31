@@ -56,16 +56,20 @@ class EditEventId(PreprocessBase):
                 raise ValueError("Event id can only be edited for epoched data")
 
     def get_preprocess_desc(self, new_event_ids: dict[str, int]):
-        diff = np.sum(np.array(list(new_event_ids.values())) != np.array(list(new_event_ids.keys())))
-        return f"Update {diff} event ids"
+        return f"Update event ids"
 
     def _data_preprocess(self, preprocessed_data: Raw, new_event_ids: dict[str, int]):
         # update parent event data
-        assert (
-            list(new_event_ids.keys()) != list(new_event_ids.values())
-        ), "No Event Id updated."
-
         events, event_id = preprocessed_data.get_event_list()
+        
+        has_change = False
+        for name, new_id in new_event_ids.items():
+            if name in event_id and event_id[name] != new_id:
+                has_change = True
+                break
+        
+        assert has_change, "No Event Id updated."
+
         new_events, new_event_id = events.copy(), {}
         if (
             len(np.unique(new_event_ids.keys())) ==
@@ -82,12 +86,12 @@ class EditEventId(PreprocessBase):
             dup = uq[cnt>1] # 3
             event_id_dup = {v: [] for v in dup} # 3: [768_2, 768_3]
             for k, v in event_id.items():
-                if new_event_ids[v] not in dup:
-                    new_event_id[k] = new_event_ids[v]
+                if new_event_ids[k] not in dup:
+                    new_event_id[k] = new_event_ids[k]
                 else:
-                    event_id_dup[new_event_ids[v]].append(k) #
+                    event_id_dup[new_event_ids[k]].append(k) #
 
-                new_events[np.where(events[:, -1]==v), -1] = new_event_ids[v]
+                new_events[np.where(events[:, -1]==v), -1] = new_event_ids[k]
             event_id_dup = {
                 k: '/'.join(v)
                 for k, v in event_id_dup.items()

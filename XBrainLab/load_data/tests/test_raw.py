@@ -43,9 +43,26 @@ def test_parse_filename(raw):
     assert raw.get_subject_name() == '01'
     assert raw.get_session_name() == '01'
 
-    with patch("traceback.print_exc") as mock_print_exc:
-        raw.parse_filename('sub-(?P<subject>[^_]*_ses-(?P<session>[^_]*)_.*')
-        mock_print_exc.assert_called_once()
+    # Invalid regex should be handled gracefully without crashing or printing stack trace
+    raw.parse_filename('sub-(?P<subject>[^_]*_ses-(?P<session>[^_]*)_.*')
+    assert raw.get_subject_name() == '01'
+    assert raw.get_session_name() == '01'
+
+def test_file_info(raw):
+    assert raw.get_filepath() == 'tests/test_data/sub-01_ses-01_task-rest_eeg.fif'
+    assert raw.get_filename() == 'sub-01_ses-01_task-rest_eeg.fif'
+
+def test_labels_imported_status(raw):
+    # Default should be False
+    assert raw.is_labels_imported() is False
+    
+    # Set to True
+    raw.set_labels_imported(True)
+    assert raw.is_labels_imported() is True
+    
+    # Set back to False
+    raw.set_labels_imported(False)
+    assert raw.is_labels_imported() is False
 
 # set event
 def _set_event(raw):
