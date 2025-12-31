@@ -73,10 +73,8 @@ class EpochingDialog(QDialog):
         events = set()
         for data in self.data_list:
             try:
-                # Try raw events first
-                evs, ev_ids = data.get_raw_event_list()
-                if not ev_ids:
-                     evs, ev_ids = data.get_event_list()
+                # Use get_event_list which prioritizes imported/resampled events
+                evs, ev_ids = data.get_event_list()
                 if ev_ids:
                     events.update(ev_ids.keys())
             except:
@@ -564,12 +562,13 @@ class PreprocessPanel(QWidget):
             # --- Helper to get data ---
             def get_chan_data(obj, ch_idx, start_time=0, duration=5):
                 is_raw = obj.is_raw()
+                obj_sfreq = obj.get_sfreq()
                 data = obj.get_mne().get_data()
                 if data is None: return None, None
                 
                 if is_raw:
-                    start_sample = int(start_time * sfreq)
-                    n_samples = int(duration * sfreq)
+                    start_sample = int(start_time * obj_sfreq)
+                    n_samples = int(duration * obj_sfreq)
                     end_sample = start_sample + n_samples
                     
                     # Check bounds
@@ -579,7 +578,7 @@ class PreprocessPanel(QWidget):
                         end_sample = data.shape[1]
                         
                     y = data[ch_idx, start_sample:end_sample]
-                    x = np.arange(start_sample, end_sample) / sfreq
+                    x = np.arange(start_sample, end_sample) / obj_sfreq
                     return x, y
                 else:
                     if data.ndim == 3:
@@ -609,8 +608,8 @@ class PreprocessPanel(QWidget):
                 
                 # x is already time array
                 
-                if y_orig_uv is not None and len(y_orig_uv) == len(y_curr_uv):
-                    self.ax_time.plot(x_curr, y_orig_uv, color='gray', alpha=0.5, label='Original')
+                if y_orig_uv is not None:
+                    self.ax_time.plot(x_orig, y_orig_uv, color='gray', alpha=0.5, label='Original')
                 
                 self.ax_time.plot(x_curr, y_curr_uv, color='#2196F3', linewidth=1, label='Current')
                 self.ax_time.set_title(f"Channel {chan_idx} (Time)")
@@ -633,7 +632,7 @@ class PreprocessPanel(QWidget):
                 
                 f_curr, p_curr = calc_psd(y_curr_uv)
                 
-                if y_orig_uv is not None and len(y_orig_uv) == len(y_curr_uv):
+                if y_orig_uv is not None:
                     f_orig, p_orig = calc_psd(y_orig_uv)
                     self.ax_freq.plot(f_orig, 10 * np.log10(p_orig), color='gray', alpha=0.5, label='Original')
                 

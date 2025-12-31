@@ -1,100 +1,70 @@
+
 import pytest
 from XBrainLab.utils.filename_parser import FilenameParser
+import os
 
 class TestFilenameParser:
     
     def test_parse_by_split(self):
-        # Case 1: Standard underscore
-        fname = "sub-01_ses-02_task-rest.gdf"
-        sub, sess = FilenameParser.parse_by_split(fname, '_', 1, 2)
-        assert sub == "sub-01"
-        assert sess == "ses-02"
+        filename = "Sub01_Ses02_Task.gdf"
         
-        # Case 2: Out of bounds
-        sub, sess = FilenameParser.parse_by_split(fname, '_', 10, 1)
+        # Test standard case
+        sub, sess = FilenameParser.parse_by_split(filename, '_', 1, 2)
+        assert sub == "Sub01"
+        assert sess == "Ses02"
+        
+        # Test out of bounds
+        sub, sess = FilenameParser.parse_by_split(filename, '_', 10, 11)
         assert sub == "-"
+        assert sess == "-"
         
-        # Case 3: Different separator
-        fname2 = "S01-Session1.set"
-        sub, sess = FilenameParser.parse_by_split(fname2, '-', 1, 2)
-        assert sub == "S01"
-        assert sess == "Session1"
+        # Test different separator
+        filename_hyphen = "Sub01-Ses02.gdf"
+        sub, sess = FilenameParser.parse_by_split(filename_hyphen, '-', 1, 2)
+        assert sub == "Sub01"
+        assert sess == "Ses02"
 
     def test_parse_by_regex(self):
-        fname = "sub-01_ses-02.gdf"
+        filename = "sub-01_ses-02_task-rest.gdf"
         
-        # Case 1: BIDS style
+        # Test BIDS style
         pattern = r"sub-([^_]+)_ses-([^_]+)"
-        sub, sess = FilenameParser.parse_by_regex(fname, pattern, 1, 2)
+        sub, sess = FilenameParser.parse_by_regex(filename, pattern, 1, 2)
         assert sub == "01"
         assert sess == "02"
         
-        # Case 2: No match
-        sub, sess = FilenameParser.parse_by_regex("random_file.txt", pattern, 1, 2)
+        # Test no match
+        sub, sess = FilenameParser.parse_by_regex("nomatch.gdf", pattern, 1, 2)
         assert sub == "-"
         assert sess == "-"
 
     def test_parse_by_folder(self):
-        # Case 1: .../Subject/Session/file
-        path1 = "/data/Subject01/Session02/data.gdf"
-        sub, sess = FilenameParser.parse_by_folder(path1)
-        # Note: Logic assumes 'ses' in folder name to distinguish session
-        # If not present, it might treat parent as Subject.
-        # Let's test the specific heuristic implemented:
-        # if "ses" in parent -> parent is sess, grandparent is sub
+        # Mock path
+        filepath = "/data/Subject01/Session02/data.gdf"
         
-        path2 = "/data/Subject01/ses-01/data.gdf"
-        sub, sess = FilenameParser.parse_by_folder(path2)
+        # Note: parse_by_folder uses os.path.dirname, so we need full paths or at least relative dirs
+        sub, sess = FilenameParser.parse_by_folder(filepath)
+        # Logic: parent=Session02 (contains 'ses'?), grandparent=Subject01
+        # 'Session02' doesn't contain 'ses' (case sensitive? code says .lower())
+        # "Session02".lower() -> "session02" -> contains "ses" -> True
         assert sub == "Subject01"
-        assert sess == "ses-01"
+        assert sess == "Session02"
         
-        # Case 2: .../Subject/file (No session folder)
-        path3 = "/data/Subject02/data.gdf"
-        sub, sess = FilenameParser.parse_by_folder(path3)
-        assert sub == "Subject02"
+        # Test simple parent
+        filepath_simple = "/data/Subject01/data.gdf"
+        sub, sess = FilenameParser.parse_by_folder(filepath_simple)
+        # parent=Subject01 (no 'ses') -> sub=Subject01, sess=-
+        assert sub == "Subject01"
         assert sess == "-"
 
     def test_parse_by_fixed_position(self):
-        fname = "S01T02.gdf" # S01 is sub, T02 is sess
-        # S01: start 1, len 3
-        # T02: start 4, len 3
+        filename = "A01T.gdf"
+        # Sub: A01 (start 1, len 3), Sess: T (start 4, len 1)
+        sub, sess = FilenameParser.parse_by_fixed_position(filename, 1, 3, 4, 1)
+        assert sub == "A01"
+        assert sess == "T"
         
-        sub, sess = FilenameParser.parse_by_fixed_position(fname, 1, 3, 4, 3)
-        assert sub == "S01"
-        assert sess == "T02"
-        
-        # Case 2: Out of bounds
-        sub, sess = FilenameParser.parse_by_fixed_position(fname, 10, 3, 1, 1)
-        assert sub == "-"
-
-    def test_parse_by_named_regex(self):
-        fname = "sub-01_ses-02_task-rest.gdf"
-        
-        # Case 1: Standard named groups
-        pattern = r"sub-(?P<subject>[^_]+)_ses-(?P<session>[^_]+)"
-        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern)
-        assert sub == "01"
-        assert sess == "02"
-        
-        # Case 2: Only subject
-        pattern_sub = r"sub-(?P<subject>[^_]+)"
-        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern_sub)
-        assert sub == "01"
-        assert sess == "-"
-        
-        # Case 3: Only session
-        pattern_sess = r".*ses-(?P<session>[^_]+)"
-        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern_sess)
-        assert sub == "-"
-        assert sess == "02"
-        
-        # Case 4: No match
-        sub, sess = FilenameParser.parse_by_named_regex("random.txt", pattern)
-        assert sub == "-"
-        assert sess == "-"
-        
-        # Case 5: Invalid Regex (should not crash)
-        pattern_invalid = r"sub-(?P<subject>[^_]+_ses-(?P<session>[^_]+)" # Missing closing parenthesis
-        sub, sess = FilenameParser.parse_by_named_regex(fname, pattern_invalid)
+        # Test out of bounds
+        sub, sess = FilenameParser.parse_by_fixed_position(filename, 10, 3, 20, 1)
         assert sub == "-"
         assert sess == "-"

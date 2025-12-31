@@ -1,0 +1,152 @@
+============================= test session starts ==============================
+platform linux -- Python 3.9.25, pytest-8.4.2, pluggy-1.6.0 -- /home/hxin/miniconda3/envs/XBrainLab/bin/python
+cachedir: .pytest_cache
+PyQt6 6.10.1 -- Qt runtime 6.10.1 -- Qt compiled 6.10.0
+rootdir: /mnt/data/lab/XBrainlab_with_agent
+configfile: pytest.ini
+plugins: qt-4.5.0
+collecting ... collected 1 item
+
+tests/integration/test_ui_integration.py::test_resample_epoch_no_labels 2025-12-31 12:42:29 - XBrainLab - INFO - Study initialized
+
+[Integration] Starting Resample -> Epoch (No Labels) Test...
+Extracting EDF parameters from /mnt/data/lab/XBrainlab_with_agent/test_data_small/A01T.gdf...
+GDF file detected
+Setting channel info structure...
+Could not determine channel type of the following channels, they will be set as EEG:
+EEG-Fz, EEG, EEG, EEG, EEG, EEG, EEG, EEG-C3, EEG, EEG-Cz, EEG, EEG-C4, EEG, EEG, EEG, EEG, EEG, EEG, EEG, EEG-Pz, EEG, EEG, EOG-left, EOG-central, EOG-right
+Creating raw.info structure...
+Reading 0 ... 672527  =      0.000 ...  2690.108 secs...
+Extracting EDF parameters from /mnt/data/lab/XBrainlab_with_agent/test_data_small/A01E.gdf...
+GDF file detected
+Setting channel info structure...
+Could not determine channel type of the following channels, they will be set as EEG:
+EEG-Fz, EEG, EEG, EEG, EEG, EEG, EEG, EEG-C3, EEG, EEG-Cz, EEG, EEG-C4, EEG, EEG, EEG, EEG, EEG, EEG, EEG, EEG-Pz, EEG, EEG, EOG-left, EOG-central, EOG-right
+Creating raw.info structure...
+Reading 0 ... 686999  =      0.000 ...  2747.996 secs...
+Extracting EDF parameters from /mnt/data/lab/XBrainlab_with_agent/test_data_small/A02T.gdf...
+GDF file detected
+Setting channel info structure...
+Could not determine channel type of the following channels, they will be set as EEG:
+EEG-Fz, EEG, EEG, EEG, EEG, EEG, EEG, EEG-C3, EEG, EEG-Cz, EEG, EEG-C4, EEG, EEG, EEG, EEG, EEG, EEG, EEG, EEG-Pz, EEG, EEG, EOG-left, EOG-central, EOG-right
+Creating raw.info structure...
+Reading 0 ... 677168  =      0.000 ...  2708.672 secs...
+Extracting EDF parameters from /mnt/data/lab/XBrainlab_with_agent/test_data_small/A02E.gdf...
+GDF file detected
+Setting channel info structure...
+Could not determine channel type of the following channels, they will be set as EEG:
+EEG-Fz, EEG, EEG, EEG, EEG, EEG, EEG, EEG-C3, EEG, EEG-Cz, EEG, EEG-C4, EEG, EEG, EEG, EEG, EEG, EEG, EEG, EEG-Pz, EEG, EEG, EOG-left, EOG-central, EOG-right
+Creating raw.info structure...
+Reading 0 ... 662665  =      0.000 ...  2650.660 secs...
+Extracting EDF parameters from /mnt/data/lab/XBrainlab_with_agent/test_data_small/A03T.gdf...
+GDF file detected
+Setting channel info structure...
+Could not determine channel type of the following channels, they will be set as EEG:
+EEG-Fz, EEG, EEG, EEG, EEG, EEG, EEG, EEG-C3, EEG, EEG-Cz, EEG, EEG-C4, EEG, EEG, EEG, EEG, EEG, EEG, EEG, EEG-Pz, EEG, EEG, EOG-left, EOG-central, EOG-right
+Creating raw.info structure...
+Reading 0 ... 660529  =      0.000 ...  2642.116 secs...
+Extracting EDF parameters from /mnt/data/lab/XBrainlab_with_agent/test_data_small/A03E.gdf...
+GDF file detected
+Setting channel info structure...
+Could not determine channel type of the following channels, they will be set as EEG:
+EEG-Fz, EEG, EEG, EEG, EEG, EEG, EEG, EEG-C3, EEG, EEG-Cz, EEG, EEG-C4, EEG, EEG, EEG, EEG, EEG, EEG, EEG, EEG-Pz, EEG, EEG, EOG-left, EOG-central, EOG-right
+Creating raw.info structure...
+Reading 0 ... 648774  =      0.000 ...  2595.096 secs...
+2025-12-31 12:42:32 - XBrainLab - INFO - Dataset unlocked
+2025-12-31 12:42:32 - XBrainLab - INFO - Loaded 6 raw data files
+  Resampling to 100Hz...
+[DEBUG] Resample: Found 603 events before resampling.
+[DEBUG] Resample: Setting 603 resampled events.
+[DEBUG] Resample: Found 595 events before resampling.
+[DEBUG] Resample: Setting 595 resampled events.
+[DEBUG] Resample: Found 606 events before resampling.
+[DEBUG] Resample: Setting 606 resampled events.
+[DEBUG] Resample: Found 593 events before resampling.
+[DEBUG] Resample: Setting 593 resampled events.
+[DEBUG] Resample: Found 606 events before resampling.
+[DEBUG] Resample: Setting 606 resampled events.
+[DEBUG] Resample: Found 603 events before resampling.
+[DEBUG] Resample: Setting 603 resampled events.
+2025-12-31 12:42:34 - XBrainLab - INFO - Applied preprocessing: Resample
+  Epoching...
+  Events available: {'1023': 1, '1072': 2, '276': 3, '277': 4, '32766': 5, '768': 6, '769': 7, '770': 8, '771': 9, '772': 10}
+[DEBUG] TimeEpoch: Found 603 events. IDs: ['1023', '1072', '276', '277', '32766', '768', '769', '770', '771', '772']
+[DEBUG] TimeEpoch: Selected event names: ['768']
+[DEBUG] TimeEpoch: Matched IDs: {'768': 6}
+Not setting metadata
+288 matching events found
+No baseline correction applied
+0 projection items activated
+Using data from preloaded Raw for 288 events and 401 original time points ...
+0 bad epochs dropped
+[DEBUG] TimeEpoch: Found 595 events. IDs: ['1023', '1072', '276', '277', '32766', '768', '783']
+[DEBUG] TimeEpoch: Selected event names: ['768']
+[DEBUG] TimeEpoch: Matched IDs: {'768': 6}
+Not setting metadata
+288 matching events found
+No baseline correction applied
+0 projection items activated
+Using data from preloaded Raw for 288 events and 401 original time points ...
+0 bad epochs dropped
+[DEBUG] TimeEpoch: Found 606 events. IDs: ['1023', '1072', '276', '277', '32766', '768', '769', '770', '771', '772']
+[DEBUG] TimeEpoch: Selected event names: ['768']
+[DEBUG] TimeEpoch: Matched IDs: {'768': 6}
+Not setting metadata
+288 matching events found
+No baseline correction applied
+0 projection items activated
+Using data from preloaded Raw for 288 events and 401 original time points ...
+0 bad epochs dropped
+[DEBUG] TimeEpoch: Found 593 events. IDs: ['1023', '1072', '276', '277', '32766', '768', '783']
+[DEBUG] TimeEpoch: Selected event names: ['768']
+[DEBUG] TimeEpoch: Matched IDs: {'768': 6}
+Not setting metadata
+288 matching events found
+No baseline correction applied
+0 projection items activated
+Using data from preloaded Raw for 288 events and 401 original time points ...
+0 bad epochs dropped
+[DEBUG] TimeEpoch: Found 606 events. IDs: ['1023', '1072', '276', '277', '32766', '768', '769', '770', '771', '772']
+[DEBUG] TimeEpoch: Selected event names: ['768']
+[DEBUG] TimeEpoch: Matched IDs: {'768': 6}
+Not setting metadata
+288 matching events found
+No baseline correction applied
+0 projection items activated
+Using data from preloaded Raw for 288 events and 401 original time points ...
+0 bad epochs dropped
+[DEBUG] TimeEpoch: Found 603 events. IDs: ['1023', '1072', '276', '277', '32766', '768', '783']
+[DEBUG] TimeEpoch: Selected event names: ['768']
+[DEBUG] TimeEpoch: Matched IDs: {'768': 6}
+Not setting metadata
+288 matching events found
+No baseline correction applied
+0 projection items activated
+Using data from preloaded Raw for 288 events and 401 original time points ...
+0 bad epochs dropped
+2025-12-31 12:42:34 - XBrainLab - INFO - Set preprocessed data list with 6 items
+2025-12-31 12:42:34 - XBrainLab - INFO - Applied preprocessing: TimeEpoch
+[Integration] Resample -> Epoch (No Labels) Successful!
+PASSED
+
+=============================== warnings summary ===============================
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+  /home/hxin/miniconda3/envs/XBrainLab/lib/python3.9/site-packages/mne/io/edf/edf.py:1433: DeprecationWarning: The binary mode of fromstring is deprecated, as it behaves surprisingly on unicode inputs. Use frombuffer instead
+    etmode = np.fromstring(etmode, UINT8).tolist()[0]
+
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+XBrainLab/tests/integration/test_ui_integration.py::test_resample_epoch_no_labels
+  /home/hxin/miniconda3/envs/XBrainLab/lib/python3.9/contextlib.py:126: RuntimeWarning: Channel names are not unique, found duplicates for: {'EEG'}. Applying running numbers for duplicates.
+    next(self.gen)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 1 passed, 12 warnings in 6.04s ========================

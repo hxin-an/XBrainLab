@@ -23,6 +23,8 @@ class Resample(PreprocessBase):
             # It does NOT reliably return (inst, events) tuple across versions/methods
             # So we manually resample events if they exist
             
+            # So we manually resample events if they exist
+            
             new_mne = preprocessed_data.get_mne().resample(sfreq=sfreq, events=None)
             preprocessed_data.set_mne(new_mne)
             

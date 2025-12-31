@@ -13,6 +13,7 @@ from XBrainLab.ui_pyqt.dashboard_panel.import_label import ImportLabelDialog, Ev
 from XBrainLab.load_data import RawDataLoader, DataType, EventLoader
 from XBrainLab import preprocessor as Preprocessor
 from XBrainLab.utils.logger import logger
+from XBrainLab.ui_pyqt.services.label_import_service import LabelImportService
 
 class ChannelSelectionDialog(QDialog):
     def __init__(self, parent, data_list):
@@ -101,6 +102,7 @@ class DatasetPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
+        self.label_service = LabelImportService()
         self.init_ui()
 
     def init_ui(self):
@@ -485,11 +487,51 @@ class DatasetPanel(QWidget):
             count = 0
             
             if is_batch_mode:
-                count = self._apply_labels_batch(target_files, label_map, mapping, selected_event_names)
+                # Batch Mode
+                data_filepaths = [d.get_filepath() for d in target_files]
+                label_filenames = list(label_map.keys())
+                
+                mapping_dialog = LabelMappingDialog(self, data_filepaths, label_filenames)
+                if not mapping_dialog.exec():
+                    return
+                    
+                file_mapping = mapping_dialog.get_mapping()
+                count = self.label_service.apply_labels_batch(
+                    target_files, label_map, file_mapping, mapping, selected_event_names
+                )
             else:
-                count = self._apply_labels_legacy(target_files, label_map, mapping, selected_event_names)
+                # Legacy Mode (Single label file to multiple data files)
+                labels = list(label_map.values())[0]
+                label_count = len(labels)
+                
+                # Check if exact match first
+                total_epochs = sum(self.label_service.get_epoch_count_for_file(d, selected_event_names) for d in target_files)
+                
+                if label_count == total_epochs and total_epochs > 0:
+                    count = self.label_service.apply_labels_legacy(
+                        target_files, labels, mapping, selected_event_names
+                    )
+                else:
+                    # Mismatch
+                    reply = QMessageBox.question(
+                        self, "Mismatch Detected",
+                        f"Total labels ({label_count}) != Total epochs ({total_epochs}).\n"
+                        "Do you want to FORCE import? (This will assign labels sequentially to files and overwrite timestamps!)",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    
+                    if reply == QMessageBox.StandardButton.Yes:
+                        count = self.label_service.apply_labels_legacy(
+                            target_files, labels, mapping, selected_event_names, force_import=True
+                        )
+                    else:
+                        count = 0
 
             if count > 0:
+                # IMPORTANT: Reset preprocess to propagate new events to preprocessed_data_list
+                if self.main_window and hasattr(self.main_window, 'study'):
+                    self.main_window.study.reset_preprocess(force_update=True)
+                
                 self.update_panel()
                 QMessageBox.information(self, "Success", f"Applied labels to {count} files.")
 
@@ -554,155 +596,7 @@ class DatasetPanel(QWidget):
         else:
             return False
 
-    def _apply_labels_batch(self, target_files, label_map, mapping, selected_event_names):
-        data_filepaths = [d.get_filepath() for d in target_files]
-        label_filenames = list(label_map.keys())
-        
-        mapping_dialog = LabelMappingDialog(self, data_filepaths, label_filenames)
-        if not mapping_dialog.exec():
-            return 0
-            
-        file_mapping = mapping_dialog.get_mapping() # {data_filepath: label_filename}
-        matched_count = 0
-        
-        for data in target_files:
-            data_path = data.get_filepath()
-            if data_path in file_mapping:
-                label_fname = file_mapping[data_path]
-                matched_labels = label_map[label_fname]
-                
-                try:
-                    self._apply_labels_to_single_file(data, matched_labels, mapping, selected_event_names)
-                    matched_count += 1
-                except Exception as e:
-                    logger.error(f"Error applying labels to {data_path}: {e}", exc_info=True)
-                    QMessageBox.warning(self, "Error", f"Failed to apply labels to {os.path.basename(data_path)}: {e}")
-                    
-        return matched_count
 
-    def _apply_labels_legacy(self, target_files, label_map, mapping, selected_event_names):
-        labels = list(label_map.values())[0]
-        label_count = len(labels)
-        
-        # Calculate total epochs needed
-        total_epochs = 0
-        for d in target_files:
-            total_epochs += self._get_epoch_count_for_file(d, selected_event_names)
-            
-        if label_count == total_epochs and total_epochs > 0:
-            current_idx = 0
-            for data in target_files:
-                n = self._get_epoch_count_for_file(data, selected_event_names)
-                file_labels = labels[current_idx : current_idx + n]
-                current_idx += n
-                
-                if n > 0:
-                    self._apply_labels_to_single_file(data, file_labels, mapping, selected_event_names)
-            return len(target_files)
-            
-        else:
-            # Mismatch
-            reply = QMessageBox.question(
-                self, "Mismatch Detected",
-                f"Total labels ({label_count}) != Total epochs ({total_epochs}).\n"
-                "Do you want to FORCE import? (This will assign labels sequentially to files and overwrite timestamps!)",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                current_idx = 0
-                applied_count = 0
-                for data in target_files:
-                    n = self._get_epoch_count_for_file(data, None) # Ignore filtering for force import size estimation?
-                    if n == 0: n = 100 # Default
-                    
-                    if current_idx + n <= len(labels):
-                        file_labels = labels[current_idx : current_idx + n]
-                        current_idx += n
-                        
-                        # Force apply
-                        loader = EventLoader(data)
-                        loader.label_list = file_labels
-                        loader.create_event()
-                        
-                        # Update mapping if possible
-                        current_events, _ = data.get_event_list()
-                        if current_events is not None:
-                             new_event_id = {name: code for code, name in mapping.items() if code in np.unique(current_events[:, 2])}
-                             if new_event_id:
-                                 data.set_event(current_events, new_event_id)
-                        
-                        data.set_labels_imported(True)
-                        applied_count += 1
-                return applied_count
-            else:
-                return 0
-
-    def _get_epoch_count_for_file(self, data, selected_event_names):
-        if data.is_raw():
-            events, event_id_map = data.get_event_list()
-            if selected_event_names is not None and event_id_map:
-                relevant_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-                if relevant_ids:
-                    mask = np.isin(events[:, -1], relevant_ids)
-                    return np.sum(mask)
-                return 0
-            return len(events)
-        else:
-            return data.get_epochs_length()
-
-    def _apply_labels_to_single_file(self, data, labels, mapping, selected_event_names):
-        """Helper to apply labels to a single data object, handling event syncing."""
-        logger.info(f"Applying labels to {data.get_filename()}. Label count: {len(labels)}")
-        
-        loader = EventLoader(data)
-        loader.label_list = labels
-        
-        file_specific_ids = []
-        if selected_event_names is not None and data.is_raw():
-             events, event_id_map = data.get_event_list()
-             if event_id_map:
-                 file_specific_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-
-        if selected_event_names is not None and data.is_raw() and file_specific_ids:
-            # Sync with specific events
-            events, _ = data.get_event_list()
-            mask = np.isin(events[:, -1], file_specific_ids)
-            filtered_events = events[mask]
-            
-            if len(filtered_events) != len(labels):
-                raise ValueError(f"Event count mismatch in {data.get_filename()}: Expected {len(labels)}, found {len(filtered_events)} filtered events.")
-                
-            new_events = filtered_events.copy()
-            new_events[:, 2] = labels
-            
-            new_event_id = {name: code for code, name in mapping.items() if code in np.unique(labels)}
-            
-            data.set_event(new_events, new_event_id)
-            data.set_labels_imported(True)
-            logger.info(f"Successfully applied synced labels to {data.get_filename()}")
-            
-        else:
-            # Standard application
-            loader.create_event(mapping) 
-            loader.apply()
-            data.set_labels_imported(True)
-            logger.info(f"Successfully applied labels to {data.get_filename()}")
-
-    def _check_length(self, data, label_count, selected_event_names=None):
-        if data.is_raw():
-            events, event_id_map = data.get_event_list()
-            if selected_event_names is not None and event_id_map:
-                file_specific_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-                if file_specific_ids:
-                    mask = np.isin(events[:, -1], file_specific_ids)
-                    return np.sum(mask) == label_count
-                else:
-                    return 0 == label_count
-            else:
-                return len(events) == label_count
-        else:
-            return data.get_epochs_length() == label_count
 
     def batch_set_attribute(self, rows, attr_name):
         from PyQt6.QtWidgets import QInputDialog
