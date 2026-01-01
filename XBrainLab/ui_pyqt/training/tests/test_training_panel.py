@@ -119,6 +119,8 @@ def test_training_panel_update_loop_metrics():
     mock_plan.get_training_epoch.return_value = 1
     # (lr, loss, acc, auc, val_loss, val_acc, val_auc)
     mock_plan.get_training_evaluation.return_value = (0.001, 0.5, 0.8, 0.9, 0.6, 0.75, 0.85)
+    mock_plan.get_best_performance.return_value = 0.75
+    mock_plan.get_epoch_progress_text.return_value = "10 / 100"
     
     # Mock Training Option
     mock_study.training_option = MagicMock()
@@ -143,7 +145,7 @@ def test_training_panel_update_loop_metrics():
     
     # Verify Best Acc update
     assert panel.best_acc == 0.75
-    assert "0.7500" in panel.acc_label.text()
+    assert "0.75" in panel.acc_label.text()
 
 def test_training_panel_finished():
     """

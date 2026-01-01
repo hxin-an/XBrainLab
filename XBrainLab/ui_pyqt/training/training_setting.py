@@ -5,13 +5,18 @@ from PyQt6.QtWidgets import (
     QAbstractItemView
 )
 from PyQt6.QtCore import Qt
-import torch
-import inspect
 from XBrainLab.training import (
     TRAINING_EVALUATION,
     TrainingOption,
     parse_device_name,
     parse_optim_name,
+)
+from XBrainLab.training.utils import (
+    get_optimizer_classes,
+    get_optimizer_params,
+    instantiate_optimizer,
+    get_device_count,
+    get_device_name,
 )
 
 class TrainingSettingWindow(QDialog):
@@ -22,7 +27,8 @@ class TrainingSettingWindow(QDialog):
         
         self.training_option = None
         self.output_dir = "./output"  # Default output directory
-        self.optim = torch.optim.Adam  # Default optimizer: Adam
+        self.optim_classes = get_optimizer_classes()
+        self.optim = self.optim_classes.get('Adam')  # Default optimizer: Adam
         self.optim_params = {}  # Default: no extra params (lr is separate)
         self.use_cpu = True  # Default: use CPU
         self.gpu_idx = None
@@ -180,9 +186,7 @@ class SetOptimizerWindow(QDialog):
         self.optim = None
         self.optim_params = None
         
-        self.algo_map = {
-            c[0]: c[1] for c in inspect.getmembers(torch.optim, inspect.isclass)
-        }
+        self.algo_map = get_optimizer_classes()
         
         self.init_ui()
         
@@ -223,24 +227,8 @@ class SetOptimizerWindow(QDialog):
         self.params_table.setRowCount(0)
         
         if target:
-            sigs = inspect.signature(target.__init__)
-            params = list(sigs.parameters)[2:] # skip self and lr (usually)
-            # Note: PyTorch optimizers usually have 'params' as first arg, 'defaults' as second?
-            # Or 'params', 'lr', ...
-            # The original code skips first 2. Let's trust it.
+            rows = get_optimizer_params(target)
             
-            rows = []
-            for param in params:
-                if 'lr' in param:
-                    continue
-                
-                default_val = ""
-                if (sigs.parameters[param].default != inspect._empty and 
-                    sigs.parameters[param].default is not None):
-                    default_val = str(sigs.parameters[param].default)
-                    
-                rows.append((param, default_val))
-                
             self.params_table.setRowCount(len(rows))
             for i, (param, val) in enumerate(rows):
                 item_param = QTableWidgetItem(param)
@@ -269,7 +257,7 @@ class SetOptimizerWindow(QDialog):
                     optim_params[param] = value
             
             # Test instantiation
-            target([torch.Tensor()], lr=1, **optim_params)
+            instantiate_optimizer(target, optim_params)
             
             self.optim_params = optim_params
             self.optim = target
@@ -298,8 +286,8 @@ class SetDeviceWindow(QDialog):
         
         self.device_list = QListWidget()
         self.device_list.addItem("CPU")
-        for i in range(torch.cuda.device_count()):
-            name = f"{i} - {torch.cuda.get_device_name(i)}"
+        for i in range(get_device_count()):
+            name = f"{i} - {get_device_name(i)}"
             self.device_list.addItem(name)
             
         # Select last item (usually GPU if available) or CPU

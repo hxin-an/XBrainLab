@@ -584,7 +584,10 @@ class TrainingPanel(QWidget):
             # Get best accuracy from plan directly
             best_acc = plan.get_best_performance()
             if best_acc is not None:
-                 self.best_acc = best_acc
+                 try:
+                     self.best_acc = float(best_acc)
+                 except (ValueError, TypeError):
+                     self.best_acc = 0.0
                  self.acc_label.setText(f"Best Acc: {self.best_acc:.2f}%")
 
             self.status_label.setText(plan.get_training_status())

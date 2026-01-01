@@ -22,6 +22,7 @@ def mock_study():
     mock_holder.record = {"test_acc": 0.85, "val_acc": 0.80, "train_acc": 0.90}
     # Mocking get_training_plan_holders to return a list
     mock_holder.get_name.return_value = "TestModel"
+    mock_holder.get_plans.return_value = [] # Mock get_plans
     study.trainer.get_training_plan_holders.return_value = [mock_holder]
     
     # Mock epoch data

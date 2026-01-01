@@ -219,7 +219,8 @@ class DatasetPanel(QWidget):
             "<div style='line-height: 1.2; color: #999999;'>"
             "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>1. Import Data</b><br>Load EEG recordings</div>"
             "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>2. Import Label</b><br>Add events (optional)</div>"
-            "<div><b style='color: #cccccc;'>3. Smart Parse</b><br>Organize metadata</div>"
+            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>3. Smart Parse</b><br>Organize metadata</div>"
+            "<div><br>When ready, do <b>Channel Selection</b></div>"
             "</div>"
         )
         tips_label.setWordWrap(True)
@@ -251,20 +252,32 @@ class DatasetPanel(QWidget):
         
         right_layout.addWidget(actions_group)
 
-        # 3. Configuration Group
-        config_group = QGroupBox("Configuration")
-        config_layout = QVBoxLayout(config_group)
-        config_layout.setContentsMargins(0, 10, 0, 0) # Maximize width
-        
-        self.chan_select_btn = QPushButton("Channel Selection")
-        self.chan_select_btn.setToolTip("Select specific channels to keep")
-        self.chan_select_btn.clicked.connect(self.open_channel_selection)
-        config_layout.addWidget(self.chan_select_btn)
-        
-        right_layout.addWidget(config_group)
-
         # Spacer to push Danger Zone to bottom
         right_layout.addStretch()
+
+        # 3. Channel Selection (Moved here, Green)
+        self.chan_select_btn = QPushButton("Channel Selection")
+        self.chan_select_btn.setToolTip("Select specific channels to keep")
+        self.chan_select_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #1b5e20; 
+                color: #a5d6a7;
+                border: 1px solid #2e7d32;
+            }
+            QPushButton:hover {
+                background-color: #2e7d32;
+                color: white;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #555555;
+                border: 1px solid #3e3e42;
+            }
+        """)
+        self.chan_select_btn.clicked.connect(self.open_channel_selection)
+        right_layout.addWidget(self.chan_select_btn)
+
+
 
         # 4. Danger Zone (Button Only)
         self.clear_btn = QPushButton("Clear Dataset")
@@ -401,6 +414,12 @@ class DatasetPanel(QWidget):
             self.remove_selected_files(selected_rows)
 
     def open_smart_parser(self):
+        if self.main_window and hasattr(self.main_window, 'study') and self.main_window.study.is_locked():
+            QMessageBox.warning(self, "Action Blocked", 
+                                "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
+                                "Please 'Clear Dataset' before modifying metadata.")
+            return
+
         if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.loaded_data_list:
             QMessageBox.warning(self, "Warning", "No data loaded to parse.")
             return
@@ -450,15 +469,16 @@ class DatasetPanel(QWidget):
         if dialog.exec():
             result = dialog.get_result()
             if result:
-                # Lock the dataset
-                self.main_window.study.lock_dataset()
-                
                 # Result is the modified list (in-place modification usually, but let's be safe)
                 # The preprocessor modifies the objects in the list.
                 # We need to notify study that data changed? 
                 # Actually, since it modifies Raw objects in place, we just need to update UI.
                 # But to be safe and trigger any signals, we can set it back.
                 self.main_window.study.set_loaded_data_list(result, force_update=True)
+                
+                # Lock the dataset AFTER updating data (because set_loaded_data_list resets the lock)
+                self.main_window.study.lock_dataset()
+                
                 self.update_panel()
                 QMessageBox.information(self, "Success", "Channel selection applied.")
 
@@ -468,6 +488,12 @@ class DatasetPanel(QWidget):
         Handles event synchronization and batch application.
         """
         try:
+            if self.main_window and hasattr(self.main_window, 'study') and self.main_window.study.is_locked():
+                QMessageBox.warning(self, "Import Blocked", 
+                                    "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
+                                    "Please 'Clear Dataset' or 'Reset Preprocessing' before importing labels.")
+                return
+
             # 1. Select Files
             target_files = self._get_target_files_for_import()
             if not target_files: return
@@ -759,6 +785,26 @@ class DatasetPanel(QWidget):
         # 2. Update Global Info Panel
         if self.main_window and hasattr(self.main_window, 'update_info_panel'):
             self.main_window.update_info_panel()
+            
+        # 3. Update Channel Selection Button State
+        if self.main_window and hasattr(self.main_window, 'study'):
+            is_locked = self.main_window.study.is_locked()
+            if hasattr(self, 'chan_select_btn'):
+                self.chan_select_btn.setEnabled(not is_locked)
+                if is_locked:
+                    self.chan_select_btn.setToolTip("Dataset is locked (Channel Selection or Preprocessing applied)")
+                else:
+                    self.chan_select_btn.setToolTip("Select specific channels to keep")
+                    
+        # 4. Update Smart Parse Button State
+        if self.main_window and hasattr(self.main_window, 'study'):
+            is_locked = self.main_window.study.is_locked()
+            if hasattr(self, 'smart_parse_btn'):
+                self.smart_parse_btn.setEnabled(not is_locked)
+                if is_locked:
+                    self.smart_parse_btn.setToolTip("Dataset is locked (Channel Selection or Preprocessing applied)")
+                else:
+                    self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
 
     def on_item_changed(self, item):
         row = item.row()

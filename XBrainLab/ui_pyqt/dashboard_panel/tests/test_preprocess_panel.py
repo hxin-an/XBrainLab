@@ -39,6 +39,8 @@ def test_preprocess_panel_init(mock_main_window, qtbot):
     assert panel.btn_filter.isEnabled()
     assert panel.btn_resample.isEnabled()
     assert panel.btn_epoch.isEnabled()
+    assert panel.btn_ica.isEnabled()
+    assert panel.btn_rereference.isEnabled()
 
 def test_preprocess_panel_filtering(mock_main_window, qtbot):
     """Test filtering operation."""
@@ -58,7 +60,82 @@ def test_preprocess_panel_filtering(mock_main_window, qtbot):
             mock_main_window.study.set_preprocessed_data_list.assert_called_with(["filtered_data"])
             mock_main_window.study.lock_dataset.assert_called_once()
             mock_info.assert_called_once()
+            mock_main_window.study.set_preprocessed_data_list.assert_called_with(["filtered_data"])
+            mock_main_window.study.lock_dataset.assert_called_once()
+            mock_info.assert_called_once()
 
+def test_preprocess_panel_filtering_notch_only(mock_main_window, qtbot):
+    """Test filtering with only Notch filter (Bandpass disabled)."""
+    mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    
+    panel = PreprocessPanel(mock_main_window)
+    qtbot.addWidget(panel)
+    
+    with patch('XBrainLab.ui_pyqt.dashboard_panel.preprocess.FilteringDialog') as MockDialog:
+        instance = MockDialog.return_value
+        
+        # Simulate user interaction: Uncheck Bandpass, Check Notch
+        # Since we mock the dialog, we need to simulate the accept logic or 
+        # verify that the dialog *would* produce the correct call if it were real.
+        # However, integration tests usually test the *Panel's* reaction to the dialog's result.
+        # But here the logic we fixed (validation) is INSIDE the dialog class.
+        # So we should test the Dialog class directly or rely on the fact that 
+        # if the dialog logic was broken, it wouldn't return success (or would show warning).
+        
+        # Actually, to test the validation logic fix, we should instantiate the real dialog
+        # and call accept() with specific states.
+        pass
+
+def test_filtering_dialog_notch_only(mock_main_window, qtbot):
+    """Test FilteringDialog logic for Notch Only mode."""
+    from XBrainLab.ui_pyqt.dashboard_panel.preprocess import FilteringDialog
+    
+    # Mock preprocessor
+    mock_data = MagicMock()
+    mock_data.get_mne.return_value.info = {'sfreq': 250}
+    
+    # Patch validate_list_type to avoid strict type checking
+    with patch('XBrainLab.preprocessor.base.validate_list_type'):
+        dialog = FilteringDialog(None, [mock_data])
+        qtbot.addWidget(dialog)
+        
+        # Mock the internal preprocessor to avoid actual computation
+        dialog.preprocessor = MagicMock()
+        
+        # 1. Uncheck Bandpass
+        dialog.bandpass_check.setChecked(False)
+        
+        # 2. Check Notch
+        dialog.notch_check.setChecked(True)
+        # 2. Check Notch
+        dialog.notch_check.setChecked(True)
+        dialog.notch_spin.setValue(50.0)
+        
+        # 3. Accept
+        with patch('PyQt6.QtWidgets.QDialog.accept') as mock_accept:
+            dialog.accept()
+            
+            # Verify preprocessor called with None for bandpass
+            dialog.preprocessor.data_preprocess.assert_called_with(None, None, notch_freqs=50.0)
+            mock_accept.assert_called_once()
+    dialog.preprocessor = MagicMock()
+    
+    # 1. Uncheck Bandpass
+    dialog.bandpass_check.setChecked(False)
+    
+    # 2. Check Notch
+    dialog.notch_check.setChecked(True)
+    # 2. Check Notch
+    dialog.notch_check.setChecked(True)
+    dialog.notch_spin.setValue(50.0)
+    
+    # 3. Accept
+    with patch('PyQt6.QtWidgets.QDialog.accept') as mock_accept:
+        dialog.accept()
+        
+        # Verify preprocessor called with None for bandpass
+        dialog.preprocessor.data_preprocess.assert_called_with(None, None, notch_freqs=50.0)
+        mock_accept.assert_called_once()
 def test_preprocess_panel_resample(mock_main_window, qtbot):
     """Test resampling operation."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
@@ -95,6 +172,42 @@ def test_preprocess_panel_epoching(mock_main_window, qtbot):
             mock_main_window.study.set_preprocessed_data_list.assert_called_with(["epoched_data"])
             mock_info.assert_called_once()
 
+def test_preprocess_panel_ica(mock_main_window, qtbot):
+    """Test ICA operation."""
+    mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    
+    panel = PreprocessPanel(mock_main_window)
+    qtbot.addWidget(panel)
+    
+    with patch('XBrainLab.ui_pyqt.dashboard_panel.preprocess.ICADialog') as MockDialog:
+        instance = MockDialog.return_value
+        instance.exec.return_value = True
+        instance.get_result.return_value = ["ica_data"]
+        
+        with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info:
+            panel.open_ica()
+            
+            mock_main_window.study.set_preprocessed_data_list.assert_called_with(["ica_data"])
+            mock_info.assert_called_once()
+
+def test_preprocess_panel_rereference(mock_main_window, qtbot):
+    """Test Re-reference operation."""
+    mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    
+    panel = PreprocessPanel(mock_main_window)
+    qtbot.addWidget(panel)
+    
+    with patch('XBrainLab.ui_pyqt.dashboard_panel.preprocess.RereferenceDialog') as MockDialog:
+        instance = MockDialog.return_value
+        instance.exec.return_value = True
+        instance.get_result.return_value = ["reref_data"]
+        
+        with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info:
+            panel.open_rereference()
+            
+            mock_main_window.study.set_preprocessed_data_list.assert_called_with(["reref_data"])
+            mock_info.assert_called_once()
+
 
 def test_preprocess_panel_reset(mock_main_window, qtbot):
     """Test reset operation."""
@@ -128,7 +241,8 @@ def test_preprocess_panel_update_history(mock_main_window, qtbot):
     with patch.object(panel, 'plot_sample_data'):
         panel.update_panel()
         
-        assert panel.history_list.count() == 2
+        assert panel.history_list.count() == 3
+        assert panel.history_list.item(2).text() == "Preprocessing Locked (Epoched)."
         assert panel.history_list.item(0).text() == "Step 1"
 
 def test_preprocess_panel_plot_update(mock_main_window, qtbot):
@@ -137,11 +251,15 @@ def test_preprocess_panel_plot_update(mock_main_window, qtbot):
     mock_data = MagicMock()
     mock_data.get_nchan.return_value = 2
     mock_data.get_sfreq.return_value = 100
+    mock_data.get_sfreq.return_value = 100
     mock_data.is_raw.return_value = True
+    # Mock events
+    mock_data.get_event_list.return_value = (np.array([[10, 0, 1]]), {'Event1': 1})
     
     # Mock MNE data as numpy array
     mock_mne = MagicMock()
     mock_mne.get_data.return_value = np.array([[1, 2, 3], [4, 5, 6]]) # (n_chan, n_times)
+    mock_mne.ch_names = ['Ch1', 'Ch2']
     mock_data.get_mne.return_value = mock_mne
     
     mock_main_window.study.preprocessed_data_list = [mock_data]

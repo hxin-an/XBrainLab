@@ -202,13 +202,15 @@ class EvaluationPanel(QWidget):
         # Re-create widgets
         self.tab_table.setParent(None)
         self.tab_table = EvaluationTableWidget(self, trainers)
-        self.tabs.removeTab(0)
-        self.tabs.insertTab(0, self.tab_table, "Performance Table")
         
         self.tab_matrix.setParent(None)
         self.tab_matrix = ConfusionMatrixWidget(self, trainers)
-        self.tabs.removeTab(1)
-        self.tabs.insertTab(1, self.tab_matrix, "Confusion Matrix")
+
+        # Clear and re-add all tabs to avoid index issues
+        self.tabs.clear()
+        self.tabs.addTab(self.tab_table, "Performance Table")
+        self.tabs.addTab(self.tab_matrix, "Confusion Matrix")
+        self.tabs.addTab(self.tab_output, "Model Output")
         
         self.tabs.setCurrentIndex(0)
         QMessageBox.information(self, "Success", "Evaluation data refreshed.")

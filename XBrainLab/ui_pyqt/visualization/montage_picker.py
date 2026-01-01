@@ -4,8 +4,11 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox
 )
 from PyQt6.QtCore import Qt
-import mne
-import numpy as np
+from XBrainLab.utils.mne_helper import (
+    get_builtin_montages,
+    get_montage_positions,
+    get_montage_channel_positions
+)
 
 class PickMontageWindow(QDialog):
     def __init__(self, parent, channel_names):
@@ -35,7 +38,7 @@ class PickMontageWindow(QDialog):
         top_layout.addWidget(QLabel("Montage:"))
         
         self.montage_combo = QComboBox()
-        self.montage_list = mne.channels.get_builtin_montages()
+        self.montage_list = get_builtin_montages()
         self.montage_combo.addItems(self.montage_list)
         self.montage_combo.currentTextChanged.connect(self.on_montage_select)
         top_layout.addWidget(self.montage_combo)
@@ -92,8 +95,8 @@ class PickMontageWindow(QDialog):
         self.selected_list.clear()
         
         try:
-            montage = mne.channels.make_standard_montage(montage_name)
-            self.options = list(montage.get_positions()['ch_pos'].keys())
+            positions = get_montage_positions(montage_name)
+            self.options = list(positions['ch_pos'].keys())
             self.option_list.addItems(self.options)
             
             # Auto-select matching channels
@@ -147,8 +150,7 @@ class PickMontageWindow(QDialog):
             return
 
         try:
-            montage = mne.channels.make_standard_montage(self.montage_combo.currentText())
-            positions = np.array([montage.get_positions()['ch_pos'][ch] for ch in chs])
+            positions = get_montage_channel_positions(self.montage_combo.currentText(), chs)
             self.chs = chs
             self.positions = positions
             self.accept()

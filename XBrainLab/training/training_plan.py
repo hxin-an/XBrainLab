@@ -474,6 +474,10 @@ class TrainingPlanHolder:
         ):
             train_record.export_checkpoint()
 
+    def set_interrupt(self) -> None:
+        """Set the interrupt flag"""
+        self.interrupt = True
+
     def clear_interrupt(self) -> None:
         """Clear the interrupt flag and error status"""
         self.error = None

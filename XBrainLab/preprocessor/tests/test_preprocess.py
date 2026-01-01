@@ -145,7 +145,7 @@ def test_filtering(target_str, request):
     result = processor.get_preprocessed_data_list()[0]
     assert target.get_filter_range() == (0, base_fs / 2)
     assert result.get_filter_range() == (1, fs)
-    assert result.get_preprocess_history()[0] == 'Filtering 1 ~ ' + str(fs)
+    assert result.get_preprocess_history()[0] == 'Filtering 1 ~ ' + str(fs) + ' Hz'
 
 # resample
 @pytest.mark.parametrize('target_str', ['raw', 'epoch'])
@@ -157,7 +157,7 @@ def test_resample(target_str, request):
     result = processor.get_preprocessed_data_list()[0]
     assert target.get_sfreq() == base_fs
     assert result.get_sfreq() == fs
-    assert result.get_preprocess_history()[-1] == 'Resample to ' + str(fs)
+    assert result.get_preprocess_history()[-1] == 'Resample to ' + str(fs) + 'Hz'
 
     events = np.array([[15, 0, 1], [20, 0, 2], [30, 0, 3], [40, 0, 4]])
     event_id = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
@@ -169,7 +169,7 @@ def test_resample(target_str, request):
     processor.data_preprocess(fs)
     result = processor.get_preprocessed_data_list()[0]
     assert result.get_sfreq() == fs
-    assert result.get_preprocess_history()[-1] == 'Resample to ' + str(fs)
+    assert result.get_preprocess_history()[-1] == 'Resample to ' + str(fs) + 'Hz'
     # onset doesn't matter for already epoched data
     if target_str == 'raw':
         new_events, _ = result.get_event_list()

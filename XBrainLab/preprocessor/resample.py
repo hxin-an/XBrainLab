@@ -11,7 +11,7 @@ class Resample(PreprocessBase):
     """
 
     def get_preprocess_desc(self, sfreq: float):
-        return f"Resample to {sfreq}"
+        return f"Resample to {sfreq}Hz"
 
     def _data_preprocess(self, preprocessed_data: Raw, sfreq: float):
         preprocessed_data.get_mne().load_data()

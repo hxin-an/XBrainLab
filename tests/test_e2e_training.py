@@ -128,7 +128,9 @@ class TestTrainingPanelRealUsage:
         
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
+        mock_trainer.is_running.return_value = True
         mock_trainer.get_progress_text.return_value = "Training..."
+        mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
         
         study.trainer = mock_trainer
         
@@ -257,7 +259,9 @@ class TestTrainingWorkflowWithUI:
         mock_plan.get_training_evaluation.return_value = (0.001, 0.5, 0.8, 0.9, 0.6, 0.75, 0.85)
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
+        mock_trainer.is_running.return_value = True
         mock_trainer.get_progress_text.return_value = "Epoch 5/10"
+        mock_plan.get_epoch_progress_text.return_value = "Epoch 5/10"
         study.trainer = mock_trainer
         
         # Update should work without type errors
@@ -321,10 +325,13 @@ class TestTrainingWorkflowWithUI:
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
         mock_trainer.get_progress_text.return_value = "Training..."
+        mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
+        mock_plan.get_best_performance.return_value = 0.75
         study.trainer = mock_trainer
         
         # This should NOT raise TypeError about '>' comparison
         try:
+            print(f"DEBUG: plan.get_epoch_progress_text() = {mock_plan.get_epoch_progress_text()}")
             panel.update_loop()
         except TypeError as e:
             if "'>' not supported" in str(e):
