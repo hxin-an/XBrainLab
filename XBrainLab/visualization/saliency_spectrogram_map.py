@@ -65,4 +65,4 @@ class SaliencySpectrogramMapViz(Visualizer):
                 f"{self.epoch_data.label_map[labelIndex]}"
             )
         plt.tight_layout()
-        return plt
+        return plt.gcf()

@@ -95,14 +95,30 @@ class EpochingDialog(QDialog):
         self.tmin_spin.setRange(-10, 10)
         self.tmin_spin.setValue(-0.2)
         self.tmin_spin.setSingleStep(0.1)
+        self.tmin_spin.valueChanged.connect(self.update_duration_info)
         
         self.tmax_spin = QDoubleSpinBox()
         self.tmax_spin.setRange(-10, 10)
         self.tmax_spin.setValue(0.8)
         self.tmax_spin.setSingleStep(0.1)
+        self.tmax_spin.valueChanged.connect(self.update_duration_info)
         
         form.addRow("Start (s):", self.tmin_spin)
         form.addRow("End (s):", self.tmax_spin)
+        
+        # Duration info label
+        self.duration_label = QLabel()
+        self.duration_label.setStyleSheet("color: gray; font-style: italic;")
+        form.addRow("Duration:", self.duration_label)
+        
+        # Warning label (must be created before update_duration_info is called)
+        self.warning_label = QLabel()
+        self.warning_label.setStyleSheet("color: orange; font-weight: bold;")
+        self.warning_label.setWordWrap(True)
+        form.addRow(self.warning_label)
+        
+        # Now update duration info (which uses warning_label)
+        self.update_duration_info()
         
         # Baseline
         self.baseline_check = QCheckBox("Apply Baseline Correction")
@@ -132,6 +148,31 @@ class EpochingDialog(QDialog):
     def toggle_baseline(self, checked):
         self.b_min_spin.setEnabled(checked)
         self.b_max_spin.setEnabled(checked)
+    
+    def update_duration_info(self):
+        """Update duration information and show warning if duration is too short."""
+        tmin = self.tmin_spin.value()
+        tmax = self.tmax_spin.value()
+        duration = tmax - tmin
+        
+        self.duration_label.setText(f"{duration:.2f}s ({tmax} - ({tmin}))")
+        
+        # Check if duration might be too short for models
+        # Most models need at least 1.0-1.2s at typical sampling rates
+        if duration < 1.0:
+            self.warning_label.setText(
+                "⚠️ Warning: Epoch duration < 1.0s may be too short for some models (EEGNet, SCCNet, ShallowConvNet). "
+                "Consider using at least 1.2s to avoid errors during training plan generation."
+            )
+            self.warning_label.show()
+        elif duration < 1.2:
+            self.warning_label.setText(
+                "⚠️ Note: Epoch duration < 1.2s may cause issues with high sampling rates (>250Hz)."
+            )
+            self.warning_label.show()
+        else:
+            self.warning_label.hide()
+
 
     def accept(self):
         selected_items = self.event_list.selectedItems()

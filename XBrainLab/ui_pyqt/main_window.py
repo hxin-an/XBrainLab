@@ -260,6 +260,13 @@ class MainWindow(QMainWindow):
         # Call update_panel if the Preprocess panel is selected
         if index == 1 and hasattr(self, 'preprocess_panel'):
             self.preprocess_panel.update_panel()
+            
+        # Call refresh_data if Evaluation or Visualization panel is selected
+        if index == 3 and hasattr(self, 'evaluation_panel'):
+            self.evaluation_panel.refresh_data()
+            
+        if index == 4 and hasattr(self, 'visualization_panel'):
+            self.visualization_panel.refresh_data()
 
     def init_panels(self):
         """

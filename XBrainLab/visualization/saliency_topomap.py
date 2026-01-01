@@ -51,4 +51,4 @@ class SaliencyTopoMapViz(Visualizer):
             cbar.ax.get_yaxis().set_ticks([])
             plt.title(f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}")
         plt.tight_layout()
-        return plt
+        return plt.gcf()

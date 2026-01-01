@@ -80,6 +80,7 @@ class MetricTab(QWidget):
         self.canvas.draw()
         
     def clear(self):
+        # Clear plot
         self.ax.clear()
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
@@ -87,6 +88,11 @@ class MetricTab(QWidget):
         self.ax.grid(True, linestyle='--', alpha=0.3, color='#666666')
         self.canvas.draw()
         self.summary_text.setText("Model: -- | Batch: -- | LR: --")
+        
+        # Clear history data
+        if hasattr(self, 'epochs'): self.epochs = []
+        if hasattr(self, 'train_vals'): self.train_vals = []
+        if hasattr(self, 'val_vals'): self.val_vals = []
 
     def update_plot(self, epoch, train_val, val_val):
         # We need to store history to plot lines. 
@@ -136,6 +142,7 @@ class TrainingPanel(QWidget):
         from PyQt6.QtCore import QTimer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_loop)
+        self.training_completed_shown = False  # Track if completion message was shown
         
     def init_ui(self):
         # Main Layout: Horizontal (Left: Content, Right: Controls)
@@ -425,43 +432,65 @@ class TrainingPanel(QWidget):
         # Fix: Pass self.study.epoch_data as the second argument
         win = DataSplittingSettingWindow(self, self.study.epoch_data)
         if win.exec():
+            generator = win.get_result()
+            if generator:
+                generator.apply(self.study)
             QMessageBox.information(self, "Success", "Data splitting configuration saved.")
 
     def select_model(self):
-        win = ModelSelectionWindow(self.study)
+        win = ModelSelectionWindow(self)
         if win.exec():
-            QMessageBox.information(self, "Success", f"Model selected: {self.study.model_holder.model_name}")
+            self.study.set_model_holder(win.get_result())
+            # ModelHolder doesn't have model_name, use get_model_desc_str() or target_model.__name__
+            model_name = self.study.model_holder.target_model.__name__
+            QMessageBox.information(self, "Success", f"Model selected: {model_name}")
 
     def training_setting(self):
-        win = TrainingSettingWindow(self.study)
+        win = TrainingSettingWindow(self)
         if win.exec():
+            self.study.set_training_option(win.get_result())
             QMessageBox.information(self, "Success", "Training settings saved.")
 
     def test_only_setting(self):
-        win = TestOnlySettingWindow(self.study)
+        win = TestOnlySettingWindow(self)
         if win.exec():
+            self.study.set_training_option(win.get_result())
             QMessageBox.information(self, "Success", "Test settings saved.")
 
     def generate_plan(self):
         try:
-            self.study.create_training_plan()
+            self.study.generate_plan()
             QMessageBox.information(self, "Success", "Training plan generated successfully.")
             self.log_text.append("Training plan generated.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate plan: {e}")
 
     def start_training(self):
-        if not self.study.training_plan_list:
+        if not self.study.trainer or not self.study.trainer.get_training_plan_holders():
             QMessageBox.warning(self, "No Plan", "Please generate a training plan first.")
             return
             
+        # Check if dataset is empty or invalid
+        holders = self.study.trainer.get_training_plan_holders()
+        for holder in holders:
+            dataset = holder.get_dataset()
+            if dataset.get_train_len() == 0:
+                QMessageBox.critical(
+                    self, 
+                    "Training Error", 
+                    f"Dataset '{dataset.get_name()}' has 0 training samples.\n"
+                    "Please check your Data Splitting settings or ensure you have enough data."
+                )
+                return
+            
         # Initialize History
         self.history_list.clear()
-        model_name = self.study.model_holder.model_name if self.study.model_holder else "Unknown"
+        model_name = self.study.model_holder.target_model.__name__ if self.study.model_holder else "Unknown"
         self.model_label.setText(f"Model: {model_name}")
         self.acc_label.setText("Best Acc: N/A")
         self.progress_bar.setValue(0)
         self.status_label.setText("Starting...")
+        self.training_completed_shown = False  # Reset flag for new training
         
         # Disable buttons
         self.btn_start.setEnabled(False)
@@ -519,27 +548,55 @@ class TrainingPanel(QWidget):
             # get_training_evaluation returns: (lr, loss, acc, auc, val_loss, val_acc, val_auc)
             metrics = plan.get_training_evaluation()
             if metrics:
+                # Convert all metrics to float to ensure type safety
                 lr, loss, acc, auc, val_loss, val_acc, val_auc = metrics
+                # Helper to safely convert to float
+                def safe_float(val):
+                    if val == '-' or val is None:
+                        return 0.0
+                    try:
+                        return float(val)
+                    except ValueError:
+                        return 0.0
+
+                lr = safe_float(lr)
+                loss = safe_float(loss)
+                acc = safe_float(acc)
+                auc = safe_float(auc)
+                val_loss = safe_float(val_loss)
+                val_acc = safe_float(val_acc)
+                val_auc = safe_float(val_auc)
                 
                 # Update Plots
-                self.tab_acc.update_plot(epoch, acc, val_acc)
-                self.tab_loss.update_plot(epoch, loss, val_loss)
+                self.tab_acc.update_plot(int(epoch), acc, val_acc)
+                self.tab_loss.update_plot(int(epoch), loss, val_loss)
                 
                 # Update Progress Bar
                 max_epochs = 100
-                if self.study.training_setting:
-                    max_epochs = self.study.training_setting.epoch
+                if self.study.training_option:
+                    max_epochs = int(self.study.training_option.epoch)
                 if max_epochs > 0:
-                    self.progress_bar.setValue(int((epoch / max_epochs) * 100))
-                
-                # Update Best Acc
-                # We need to track it ourselves or get from plan
-                # MetricTab tracks it? No, we just added lists.
-                # Let's just show current val_acc as best for now or track it in panel
-                if not hasattr(self, 'best_acc'): self.best_acc = 0.0
-                if val_acc > self.best_acc:
-                    self.best_acc = val_acc
-                    self.acc_label.setText(f"Best Acc: {self.best_acc:.4f}")
+                    self.progress_bar.setValue(int((int(epoch) / max_epochs) * 100))
+              # update status
+            lr, train_loss, train_acc, train_auc, val_loss, val_acc, val_auc = \
+                plan.get_training_evaluation()
+            
+            # Get best accuracy from plan directly
+            best_acc = plan.get_best_performance()
+            if best_acc is not None:
+                 self.best_acc = best_acc
+                 self.acc_label.setText(f"Best Acc: {self.best_acc:.2f}%")
+
+            self.status_label.setText(plan.get_training_status())
+            # The progress bar should show percentage, not epoch number directly
+            # Assuming plan.get_training_epoch() returns current epoch and max_epochs is available
+            if self.study.training_option:
+                max_epochs = int(self.study.training_option.epoch)
+                if max_epochs > 0:
+                    self.progress_bar.setValue(int((plan.get_training_epoch() / max_epochs) * 100))
+            else:
+                self.progress_bar.setValue(0) # Or some default if option not set
+            self.log_text.append(plan.get_epoch_progress_text()) # Assuming this is the intended label for progress text
 
     def training_finished(self):
         self.status_label.setText("Training Completed")
@@ -549,4 +606,8 @@ class TrainingPanel(QWidget):
         self.btn_gen_plan.setEnabled(True)
         if self.timer.isActive():
             self.timer.stop()
-        QMessageBox.information(self, "Done", "Training process finished.")
+        
+        # Only show message once
+        if not self.training_completed_shown:
+            self.training_completed_shown = True
+            QMessageBox.information(self, "Done", "Training process finished.")

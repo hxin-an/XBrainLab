@@ -24,6 +24,19 @@ class SCCNet(nn.Module):
         self.sf = sfreq
         self.n_class = n_classes
         self.octsf = int(math.floor(self.sf*0.1))
+        
+        # Validate minimum samples requirement
+        # SCCNet requires: Conv2 padding + AvgPool(sf/2)
+        min_samples = int(self.sf / 2) + 1
+        epoch_duration = samples / sfreq
+        min_duration = min_samples / sfreq
+        if samples < min_samples:
+            raise ValueError(
+                f"Epoch duration is too short for SCCNet. "
+                f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
+                f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
+                f"Please increase epoch length (tmax-tmin) to at least {min_duration:.2f}s or use a lower sampling frequency."
+            )
 
 
         # (1, n_ch, kernelsize=(n_ch,1))

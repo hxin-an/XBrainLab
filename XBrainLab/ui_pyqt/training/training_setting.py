@@ -21,26 +21,60 @@ class TrainingSettingWindow(QDialog):
         self.resize(500, 600)
         
         self.training_option = None
-        self.output_dir = None
-        self.optim = None
-        self.optim_params = None
-        self.use_cpu = None
+        self.output_dir = "./output"  # Default output directory
+        self.optim = torch.optim.Adam  # Default optimizer: Adam
+        self.optim_params = {}  # Default: no extra params (lr is separate)
+        self.use_cpu = True  # Default: use CPU
         self.gpu_idx = None
         
         self.init_ui()
+        # Set default values in UI
+        self.opt_label.setText(parse_optim_name(self.optim, self.optim_params))
+        self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+        self.output_dir_label.setText(self.output_dir)
+        self.load_settings()
         
+    def load_settings(self):
+        if hasattr(self.parent(), 'study') and self.parent().study.training_option:
+            opt = self.parent().study.training_option
+            self.epoch_entry.setText(str(opt.epoch))
+            self.bs_entry.setText(str(opt.bs))
+            self.lr_entry.setText(str(opt.lr))
+            self.checkpoint_entry.setText(str(opt.checkpoint_epoch))
+            self.repeat_entry.setText(str(opt.repeat_num))
+            
+            # Restore optimizer
+            self.optim = opt.optim
+            self.optim_params = opt.optim_params
+            if self.optim and self.optim_params:
+                self.opt_label.setText(parse_optim_name(self.optim, self.optim_params))
+                
+            # Restore device
+            self.use_cpu = opt.use_cpu
+            self.gpu_idx = opt.gpu_idx
+            self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
+            
+            # Restore output dir
+            self.output_dir = opt.output_dir
+            if self.output_dir:
+                self.output_dir_label.setText(self.output_dir)
+                
+            # Restore evaluation
+            if opt.evaluation_option:
+                self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
+
     def init_ui(self):
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
         
-        # Entries
-        self.epoch_entry = QLineEdit()
+        # Entries with default values for easier testing
+        self.epoch_entry = QLineEdit("10")  # Default: 10 epochs
         form_layout.addRow("Epoch", self.epoch_entry)
         
-        self.bs_entry = QLineEdit()
+        self.bs_entry = QLineEdit("32")  # Default: batch size 32
         form_layout.addRow("Batch size", self.bs_entry)
         
-        self.lr_entry = QLineEdit()
+        self.lr_entry = QLineEdit("0.001")  # Default: learning rate 0.001
         form_layout.addRow("Learning rate", self.lr_entry)
         
         # Optimizer
@@ -70,16 +104,17 @@ class TrainingSettingWindow(QDialog):
         out_layout.addWidget(self.out_btn)
         form_layout.addRow("Output Directory", out_layout)
         
-        self.checkpoint_entry = QLineEdit()
+        self.checkpoint_entry = QLineEdit("1")  # Default: checkpoint every 1 epoch
         form_layout.addRow("CheckPoint epoch", self.checkpoint_entry)
         
         # Evaluation
         self.evaluation_combo = QComboBox()
         self.evaluation_list = [i.value for i in TRAINING_EVALUATION]
         self.evaluation_combo.addItems(self.evaluation_list)
+        self.evaluation_combo.setCurrentIndex(2)  # Default: Best testing performance
         form_layout.addRow("Evaluation", self.evaluation_combo)
         
-        self.repeat_entry = QLineEdit()
+        self.repeat_entry = QLineEdit("1")  # Default: 1 repeat
         form_layout.addRow("Repeat Number", self.repeat_entry)
         
         layout.addLayout(form_layout)

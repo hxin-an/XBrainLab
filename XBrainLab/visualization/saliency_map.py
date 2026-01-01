@@ -45,4 +45,4 @@ class SaliencyMapViz(Visualizer):
             plt.colorbar(im, orientation='vertical')
             plt.title(f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}")
         plt.tight_layout()
-        return plt
+        return plt.gcf()

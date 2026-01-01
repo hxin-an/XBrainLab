@@ -27,6 +27,19 @@ class ShallowConvNet(nn.Module):
         self.temporal_filter = 40
         self.spatial_filter = 40
         self.kernel = math.ceil(sfreq * 0.1)
+        
+        # Validate minimum samples requirement
+        # ShallowConvNet requires: Conv1(kernel=0.1*sf) + AvgPool(pool_len)
+        min_samples = self.kernel + pool_len
+        epoch_duration = samples / sfreq
+        min_duration = min_samples / sfreq
+        if samples < min_samples:
+            raise ValueError(
+                f"Epoch duration is too short for ShallowConvNet. "
+                f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
+                f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
+                f"Please increase epoch length (tmax-tmin) to at least {min_duration:.2f}s or use a lower sampling frequency."
+            )
         self.conv1 = nn.Conv2d(1, self.temporal_filter, (1, self.kernel), bias=False)
         self.conv2 = nn.Conv2d(
             self.temporal_filter, self.spatial_filter, (channels, 1), bias=False

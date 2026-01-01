@@ -17,7 +17,10 @@ def test_training_panel_start_training_success():
     # Mock Study and Trainer
     mock_study = MagicMock()
     mock_study.training_plan_list = ["Plan1"]
-    mock_study.model_holder.model_name = "TestModel"
+    # Mock model_holder with target_model that has __name__
+    mock_model_class = MagicMock()
+    mock_model_class.__name__ = "TestModel"
+    mock_study.model_holder.target_model = mock_model_class
     
     # Mock Trainer
     mock_trainer = MagicMock()
@@ -117,9 +120,9 @@ def test_training_panel_update_loop_metrics():
     # (lr, loss, acc, auc, val_loss, val_acc, val_auc)
     mock_plan.get_training_evaluation.return_value = (0.001, 0.5, 0.8, 0.9, 0.6, 0.75, 0.85)
     
-    # Mock Training Setting
-    mock_study.training_setting = MagicMock()
-    mock_study.training_setting.epoch = 10
+    # Mock Training Option
+    mock_study.training_option = MagicMock()
+    mock_study.training_option.epoch = 10
     
     mock_trainer.get_training_plan_holders.return_value = [mock_plan]
     

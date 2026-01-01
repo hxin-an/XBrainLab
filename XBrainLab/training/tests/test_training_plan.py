@@ -572,3 +572,24 @@ def test_test_model_metrics():
     assert result[RecordKey.ACC] == 75.0
     assert RecordKey.AUC in result
     assert RecordKey.LOSS in result
+
+def test_training_plan_holder_init_error(base_holder, model_holder, dataset, training_option):
+    from unittest.mock import patch
+    
+    # Mock model_holder.get_model to raise RuntimeError
+    with patch.object(model_holder, 'get_model', side_effect=RuntimeError("Given input size: (16x1x1). Calculated output size: (16x1x0). Output size is too small")):
+        args = {
+            'model_holder': model_holder,
+            'dataset': dataset,
+            'option': training_option,
+            'saliency_params': {}
+        }
+        
+        # Should raise ValueError with specific message (now includes model name)
+        with pytest.raises(ValueError, match="Failed to create model.*Output size is too small"):
+            TrainingPlanHolder(**args)
+            
+    # Verify other RuntimeErrors are re-raised
+    with patch.object(model_holder, 'get_model', side_effect=RuntimeError("Other error")):
+        with pytest.raises(RuntimeError, match="Other error"):
+            TrainingPlanHolder(**args)

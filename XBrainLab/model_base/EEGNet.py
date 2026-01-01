@@ -34,6 +34,20 @@ class EEGNet(nn.Module):
         self.sf = sfreq
         self.n_class = n_classes
         self.half_sf = math.floor(self.sf/2)
+        
+        # Validate minimum samples requirement
+        # EEGNet requires: Conv1(kernel=sf/2) -> AvgPool(4) -> Conv3(kernel=sf/16) -> AvgPool(8)
+        # Approximate minimum: sf/2 + 4 + (sf/16)*4 + 32
+        min_samples = self.half_sf + 4 + math.floor(self.half_sf/4)*4 + 32
+        epoch_duration = samples / sfreq
+        min_duration = min_samples / sfreq
+        if samples < min_samples:
+            raise ValueError(
+                f"Epoch duration is too short for EEGNet. "
+                f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
+                f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
+                f"Please increase epoch length (tmax-tmin) to at least {min_duration:.2f}s or use a lower sampling frequency."
+            )
 
         self.F1=F1
         self.F2=F2

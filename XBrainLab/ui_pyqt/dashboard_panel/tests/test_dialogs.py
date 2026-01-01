@@ -76,6 +76,11 @@ def test_epoching_dialog_init(qtbot):
         assert dialog.event_list.count() > 0
         assert dialog.event_list.item(0).text() == 'Event1'
         
+        # Verify new UI elements exist (added for epoch duration validation)
+        assert hasattr(dialog, 'duration_label')
+        assert hasattr(dialog, 'warning_label')
+        assert hasattr(dialog, 'update_duration_info')
+        
         # Select event
         dialog.event_list.item(0).setSelected(True)
         
