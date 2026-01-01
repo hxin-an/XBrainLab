@@ -44,6 +44,7 @@ class Study:
         self.saliency_params = None
         # dataset locking
         self.dataset_locked = False
+        self.backup_loaded_data_list = None # Backup for undoing channel selection
         logger.info("Study initialized")
 
     # step 1 - load data
@@ -53,6 +54,12 @@ class Study:
         Helper function to get loader for loading raw data.
         """
         return RawDataLoader()
+
+    def backup_loaded_data(self) -> None:
+        """Backup current loaded_data_list to allow undoing changes (e.g. Channel Selection)."""
+        if self.loaded_data_list:
+            self.backup_loaded_data_list = deepcopy(self.loaded_data_list)
+            logger.info("Backed up loaded data list")
 
     def set_loaded_data_list(
         self,
@@ -104,11 +111,24 @@ class Study:
 
     def reset_preprocess(self, force_update=False) -> None:
         """Discard all preprocessed data and reset to loaded data.
+        Also restores backup loaded data if available (undoing Channel Selection).
 
         Args:
             force_update: Whether to force override and
                           clear the data of following steps.
         """
+        # Restore backup if exists (Undoing Channel Selection)
+        if self.backup_loaded_data_list:
+            logger.info("Restoring loaded data from backup (Undoing Channel Selection)")
+            self.loaded_data_list = self.backup_loaded_data_list
+            self.backup_loaded_data_list = None
+            # Unlock if it was locked by channel selection? 
+            # Usually reset_preprocess implies we want to start over preprocessing.
+            # Channel selection locks it. If we undo it, we might want to unlock?
+            # But clean_raw_data unlocks. Here we are not calling clean_raw_data.
+            # Let's unlock to be safe/flexible, as we are back to "raw" state.
+            self.unlock_dataset()
+
         if self.loaded_data_list:
             self.set_preprocessed_data_list(
                 deepcopy(self.loaded_data_list), force_update=force_update

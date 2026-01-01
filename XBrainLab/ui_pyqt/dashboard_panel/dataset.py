@@ -451,11 +451,18 @@ class DatasetPanel(QWidget):
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
 
+        # Check lock
+        if self.main_window.study.is_locked():
+             QMessageBox.warning(self, "Action Blocked", 
+                                "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
+                                "Please 'Reset All Preprocessing' to undo Channel Selection or 'Clear Dataset' to start over.")
+             return
+
         # Warning before proceeding
         reply = QMessageBox.question(
             self, "Warning",
             "Performing Channel Selection will modify the dataset.\n"
-            "You will NOT be able to import new data afterwards unless you clear the dataset.\n\n"
+            "You can undo this later using 'Reset All Preprocessing'.\n\n"
             "Do you want to proceed?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -469,6 +476,9 @@ class DatasetPanel(QWidget):
         if dialog.exec():
             result = dialog.get_result()
             if result:
+                # Backup before applying changes
+                self.main_window.study.backup_loaded_data()
+                
                 # Result is the modified list (in-place modification usually, but let's be safe)
                 # The preprocessor modifies the objects in the list.
                 # We need to notify study that data changed? 
@@ -790,9 +800,9 @@ class DatasetPanel(QWidget):
         if self.main_window and hasattr(self.main_window, 'study'):
             is_locked = self.main_window.study.is_locked()
             if hasattr(self, 'chan_select_btn'):
-                self.chan_select_btn.setEnabled(not is_locked)
+                # self.chan_select_btn.setEnabled(not is_locked) # Keep enabled to show warning
                 if is_locked:
-                    self.chan_select_btn.setToolTip("Dataset is locked (Channel Selection or Preprocessing applied)")
+                    self.chan_select_btn.setToolTip("Dataset is locked. Click to see details.")
                 else:
                     self.chan_select_btn.setToolTip("Select specific channels to keep")
                     
@@ -800,9 +810,9 @@ class DatasetPanel(QWidget):
         if self.main_window and hasattr(self.main_window, 'study'):
             is_locked = self.main_window.study.is_locked()
             if hasattr(self, 'smart_parse_btn'):
-                self.smart_parse_btn.setEnabled(not is_locked)
+                # self.smart_parse_btn.setEnabled(not is_locked) # Keep enabled to show warning
                 if is_locked:
-                    self.smart_parse_btn.setToolTip("Dataset is locked (Channel Selection or Preprocessing applied)")
+                    self.smart_parse_btn.setToolTip("Dataset is locked. Click to see details.")
                 else:
                     self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
 

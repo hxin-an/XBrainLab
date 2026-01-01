@@ -99,7 +99,7 @@ class EpochingDialog(QDialog):
         
         self.tmax_spin = QDoubleSpinBox()
         self.tmax_spin.setRange(-10, 10)
-        self.tmax_spin.setValue(0.8)
+        self.tmax_spin.setValue(1.0)
         self.tmax_spin.setSingleStep(0.1)
         self.tmax_spin.valueChanged.connect(self.update_duration_info)
         
@@ -161,13 +161,13 @@ class EpochingDialog(QDialog):
         # Most models need at least 1.0-1.2s at typical sampling rates
         if duration < 1.0:
             self.warning_label.setText(
-                "⚠️ Warning: Epoch duration < 1.0s may be too short for some models (EEGNet, SCCNet, ShallowConvNet). "
+                "Warning: Epoch duration < 1.0s may be too short for some models (EEGNet, SCCNet, ShallowConvNet). "
                 "Consider using at least 1.2s to avoid errors during training plan generation."
             )
             self.warning_label.show()
         elif duration < 1.2:
             self.warning_label.setText(
-                "⚠️ Note: Epoch duration < 1.2s may cause issues with high sampling rates (>250Hz)."
+                "Note: Epoch duration < 1.2s may cause issues with high sampling rates (>250Hz)."
             )
             self.warning_label.show()
         else:
@@ -805,15 +805,41 @@ class PreprocessPanel(QWidget):
             # Check if data is epoched
             is_epoched = not first_data.is_raw()
             
-            # Disable/Enable Operations based on Epoched state
-            self.btn_filter.setEnabled(not is_epoched)
-            self.btn_resample.setEnabled(not is_epoched)
-            self.btn_ica.setEnabled(not is_epoched)
-            self.btn_rereference.setEnabled(not is_epoched)
-            self.btn_epoch.setEnabled(not is_epoched)
-            
+            # 2. Update Preprocessing Buttons State
+        # Unified Style: Keep buttons enabled but show warning if locked
+        if hasattr(self, 'btn_filter'):
+            # self.btn_filter.setEnabled(not is_epoched)
+            if is_epoched:
+                self.btn_filter.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+            else:
+                self.btn_filter.setToolTip("Apply bandpass/notch filters")
+
+        if hasattr(self, 'btn_resample'):
+            # self.btn_resample.setEnabled(not is_epoched)
+            if is_epoched:
+                self.btn_resample.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+            else:
+                self.btn_resample.setToolTip("Change sampling rate")
+
+        if hasattr(self, 'btn_ica'):
+            # self.btn_ica.setEnabled(not is_epoched)
+            if is_epoched:
+                self.btn_ica.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+            else:
+                self.btn_ica.setToolTip("Run Auto ICA")
+
+        if hasattr(self, 'btn_rereference'):
+            # self.btn_rereference.setEnabled(not is_epoched)
+            if is_epoched:
+                self.btn_rereference.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+            else:
+                self.btn_rereference.setToolTip("Change reference")
+                
+        if hasattr(self, 'btn_epoch'):
+            # self.btn_epoch.setEnabled(not is_epoched)
             if is_epoched:
                 self.btn_epoch.setText("Epoched (Locked)")
+                self.btn_epoch.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
                 # Skip Plotting for Epoched Data (as requested)
                 self.history_list.addItem("Preprocessing Locked (Epoched).")
                 self.ax_time.clear()
@@ -1018,8 +1044,18 @@ class PreprocessPanel(QWidget):
             self.ax_time.text(0.5, 0.5, "Plot Error", ha='center', va='center', color='#cccccc')
             self.canvas_time.draw()
 
+    def check_lock(self):
+        if self.main_window and hasattr(self.main_window, 'study') and self.main_window.study.epoch_data:
+            QMessageBox.warning(self, "Action Blocked", 
+                                "Preprocessing is locked because data has been Epoched.\n"
+                                "Please 'Reset All Preprocessing' to make changes.")
+            return True
+        return False
+
     def open_filtering(self):
-        if not self.check_data_loaded():
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
             return
             
         dialog = FilteringDialog(self, self.main_window.study.preprocessed_data_list)
@@ -1027,59 +1063,79 @@ class PreprocessPanel(QWidget):
             result = dialog.get_result()
             if result:
                 self.main_window.study.set_preprocessed_data_list(result)
-                self.main_window.study.lock_dataset()
+                # self.main_window.study.preprocess(Preprocessor.Filtering, l_freq=None, h_freq=None) # Log only?
+                # Actually study.preprocess calls the preprocessor. 
+                # Here we already ran it in dialog.
+                # We should probably refactor to let study run it, but current pattern is dialog runs it.
+                # Just update UI.
                 self.update_panel()
                 if hasattr(self.main_window, 'update_info_panel'):
                     self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Filtering applied successfully.")
+                QMessageBox.information(self, "Success", "Filtering applied.")
 
     def open_resample(self):
-        if not self.check_data_loaded(): return
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return
+            
         dialog = ResampleDialog(self, self.main_window.study.preprocessed_data_list)
         if dialog.exec():
             result = dialog.get_result()
             if result:
                 self.main_window.study.set_preprocessed_data_list(result)
-                self.main_window.study.lock_dataset()
                 self.update_panel()
                 if hasattr(self.main_window, 'update_info_panel'):
                     self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Resampling applied.")
 
     def open_epoching(self):
-        if not self.check_data_loaded(): return
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return
+            
         dialog = EpochingDialog(self, self.main_window.study.preprocessed_data_list)
         if dialog.exec():
             result = dialog.get_result()
             if result:
                 self.main_window.study.set_preprocessed_data_list(result)
+                
+                # Lock preprocessing after epoching
                 self.main_window.study.lock_dataset()
+                
                 self.update_panel()
                 if hasattr(self.main_window, 'update_info_panel'):
                     self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Epoching applied.\nPreprocessing is now LOCKED. Reset to make changes.")
+                QMessageBox.information(self, "Success", "Epoching applied.\nPreprocessing is now LOCKED.")
 
     def open_ica(self):
-        if not self.check_data_loaded(): return
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return
+            
         dialog = ICADialog(self, self.main_window.study.preprocessed_data_list)
         if dialog.exec():
             result = dialog.get_result()
             if result:
                 self.main_window.study.set_preprocessed_data_list(result)
-                self.main_window.study.lock_dataset()
                 self.update_panel()
                 if hasattr(self.main_window, 'update_info_panel'):
                     self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Auto ICA applied.")
+                QMessageBox.information(self, "Success", "ICA applied.")
 
     def open_rereference(self):
-        if not self.check_data_loaded(): return
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return
+            
         dialog = RereferenceDialog(self, self.main_window.study.preprocessed_data_list)
         if dialog.exec():
             result = dialog.get_result()
             if result:
                 self.main_window.study.set_preprocessed_data_list(result)
-                self.main_window.study.lock_dataset()
                 self.update_panel()
                 if hasattr(self.main_window, 'update_info_panel'):
                     self.main_window.update_info_panel()
