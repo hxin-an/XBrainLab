@@ -1,3 +1,3 @@
-from .study import Study
+from .backend.study import Study
 
 __all__ = ['Study']

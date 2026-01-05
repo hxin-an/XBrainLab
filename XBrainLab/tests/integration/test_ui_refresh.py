@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from PyQt6.QtWidgets import QApplication
-from XBrainLab.ui_pyqt.main_window import MainWindow
+from XBrainLab.ui.main_window import MainWindow
 
 @pytest.fixture
 def mock_study():

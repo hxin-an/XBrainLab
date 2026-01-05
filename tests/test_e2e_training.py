@@ -13,9 +13,9 @@ from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import Qt
 
 from XBrainLab import Study
-from XBrainLab.training import TrainingOption, TRAINING_EVALUATION
-from XBrainLab.training.model_holder import ModelHolder
-from XBrainLab.model_base import SCCNet
+from XBrainLab.backend.training import TrainingOption, TRAINING_EVALUATION
+from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.backend.model_base import SCCNet
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ class TestTrainingPanelRealUsage:
     
     def test_repeated_training_no_duplicate_messages(self, qtbot, real_training_option):
         """Verify that training completion message only shows once, not on every update."""
-        from XBrainLab.ui_pyqt.training.panel import TrainingPanel
+        from XBrainLab.ui.training.panel import TrainingPanel
         
         # Setup study with real option
         study = Study()
@@ -76,7 +76,7 @@ class TestTrainingPanelRealUsage:
     
     def test_start_training_resets_completion_flag(self, qtbot, real_training_option):
         """Verify that starting new training resets the completion flag."""
-        from XBrainLab.ui_pyqt.training.panel import TrainingPanel
+        from XBrainLab.ui.training.panel import TrainingPanel
         
         study = Study()
         study.set_training_option(real_training_option)
@@ -105,7 +105,7 @@ class TestTrainingPanelRealUsage:
     
     def test_update_loop_type_safety(self, qtbot, real_training_option):
         """Verify that update_loop handles type conversions correctly."""
-        from XBrainLab.ui_pyqt.training.panel import TrainingPanel
+        from XBrainLab.ui.training.panel import TrainingPanel
         
         study = Study()
         study.set_training_option(real_training_option)
@@ -149,7 +149,7 @@ class TestEvaluationPanelIntegration:
     
     def test_evaluation_panel_with_no_trainer(self, qtbot):
         """Verify evaluation panel handles missing trainer gracefully."""
-        from XBrainLab.ui_pyqt.evaluation.panel import EvaluationPanel
+        from XBrainLab.ui.evaluation.panel import EvaluationPanel
         
         study = Study()
         # No trainer set
@@ -166,7 +166,7 @@ class TestEvaluationPanelIntegration:
     
     def test_evaluation_panel_with_trainer(self, qtbot):
         """Verify evaluation panel can access trainer data."""
-        from XBrainLab.ui_pyqt.evaluation.panel import EvaluationPanel
+        from XBrainLab.ui.evaluation.panel import EvaluationPanel
         
         study = Study()
         
@@ -203,7 +203,7 @@ class TestVisualizationPanelIntegration:
     
     def test_visualization_panel_initialization(self, qtbot):
         """Verify visualization panel initializes without errors."""
-        from XBrainLab.ui_pyqt.visualization.panel import VisualizationPanel
+        from XBrainLab.ui.visualization.panel import VisualizationPanel
         
         study = Study()
         
@@ -222,7 +222,7 @@ class TestTrainingWorkflowWithUI:
     
     def test_progress_bar_calculation_with_string_epoch(self, qtbot):
         """Test that progress bar works even if epoch types are mixed."""
-        from XBrainLab.ui_pyqt.training.panel import TrainingPanel
+        from XBrainLab.ui.training.panel import TrainingPanel
         
         # Create option with string epoch (as from UI input)
         study = Study()
@@ -267,12 +267,14 @@ class TestTrainingWorkflowWithUI:
         # Update should work without type errors
         panel.update_loop()
         
-        # Progress should be 50%
-        assert panel.progress_bar.value() == 50
+        # Progress should be shown in history table
+        # Row 0, Column 1 is Progress
+        assert panel.history_table.rowCount() > 0
+        assert panel.history_table.item(0, 1).text() == "5/10"
     
     def test_metric_tab_accumulates_history(self, qtbot):
         """Test that MetricTab correctly accumulates training history."""
-        from XBrainLab.ui_pyqt.training.panel import MetricTab
+        from XBrainLab.ui.training.panel import MetricTab
         
         tab = MetricTab("Accuracy", color="#4CAF50")
         qtbot.addWidget(tab)
@@ -302,7 +304,7 @@ class TestTrainingWorkflowWithUI:
     
     def test_update_loop_handles_string_metrics(self, qtbot, real_training_option):
         """Test that update_loop handles string metrics from trainer correctly."""
-        from XBrainLab.ui_pyqt.training.panel import TrainingPanel
+        from XBrainLab.ui.training.panel import TrainingPanel
         
         study = Study()
         study.set_training_option(real_training_option)
@@ -338,13 +340,15 @@ class TestTrainingWorkflowWithUI:
                 pytest.fail(f"update_loop failed to handle string metrics: {e}")
             raise
         
-        # Verify metrics were converted to float
-        assert panel.best_acc == 0.75
-        assert isinstance(panel.best_acc, float)
+        # Verify metrics were converted to float and plotted
+        # Check the last value in the accuracy tab's validation values
+        assert len(panel.tab_acc.val_vals) > 0
+        assert panel.tab_acc.val_vals[-1] == 0.75
+        assert isinstance(panel.tab_acc.val_vals[-1], float)
     
     def test_metric_tab_only_shows_one_point_initially(self, qtbot):
         """Test that plots show proper line progression, not just one point."""
-        from XBrainLab.ui_pyqt.training.panel import MetricTab
+        from XBrainLab.ui.training.panel import MetricTab
         
         tab = MetricTab("Accuracy", color="#4CAF50")
         qtbot.addWidget(tab)

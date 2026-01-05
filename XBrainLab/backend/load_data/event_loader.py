@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import numpy as np
+import scipy.io
+
+from ..utils import validate_type
+from .raw import Raw
+
+
+class EventLoader:
+    """Helper class for loading event data.
+
+    Attributes:
+        raw: :class:`Raw`
+            Raw data.
+        label_list: List[int] | None
+            List of event codes.
+        events: list[list[int]] | None
+            Event array. Same as `mne` format.
+        event_id: dict[str, int] | None
+            Event id. Same as `mne` format.
+    """
+
+    def __init__(self, raw: Raw):
+        validate_type(raw, Raw, 'raw')
+        self.raw = raw
+        self.label_list = None
+        self.events = None
+        self.event_id = None
+
+    # Removed read_txt, read_mat, from_mat as they are now handled by XBrainLab.backend.load_data.label_loader
+
+    def create_event(self, event_name_map: dict[int, str]) -> tuple:
+        """Create event array and event id.
+
+        Args:
+            event_name_map: Mapping from event code to event name.
+
+        Returns:
+            Tuple of event array and event id.
+        """
+        if self.label_list is not None and len(self.label_list) > 0:
+            # check if new event name is valid
+            for e in event_name_map:
+                if not event_name_map[e].strip():
+                    raise ValueError("Event name cannot be empty.")
+
+            self.label_list = np.array(self.label_list)
+            # label_list in (n,3) format
+            if len(self.label_list.shape) > 1:
+                # get new event id mapping
+                event_id = {
+                    event_name_map[i]: i
+                    for i in np.unique(self.label_list[:, -1])
+                }
+                events = self.label_list
+            # label_list in (n,) format
+            else:
+                # get new event id mapping
+                event_id = {event_name_map[i]: i for i in np.unique(self.label_list)}
+                
+                # create new event array
+                events = np.zeros((len(self.label_list), 3), dtype=int)
+                
+                # Try to sync with existing events (Timestamps)
+                # This works for both Raw (GDF triggers) and Epochs
+                existing_events = None
+                try:
+                    if self.raw.has_event():
+                        existing_events, _ = self.raw.get_event_list()
+                except Exception:
+                    pass
+
+                if existing_events is not None and len(existing_events) == len(self.label_list):
+                    events[:, 0] = existing_events[:, 0] # Copy timestamps
+                    # Copy previous value (column 1) if available
+                    if existing_events.shape[1] >= 2:
+                        events[:, 1] = existing_events[:, 1]
+                else:
+                    # Fallback: Create artificial timestamps
+                    if self.raw.is_raw():
+                         raise ValueError(
+                            'Could not sync with existing events (count mismatch or no events found). '
+                            'Cannot import labels for Raw data without valid event markers.'
+                        )
+                    events[:, 0] = range(len(self.label_list))
+                    
+                events[:, -1] = self.label_list
+
+            # check if event array is consistent with raw data
+            if not self.raw.is_raw() and self.raw.get_epochs_length() != len(events):
+                raise ValueError(
+                    f'Inconsistent number of events (got {len(events)})'
+                )
+            self.events = events
+            self.event_id = event_id
+            return events, event_id
+        else:
+            raise ValueError("No label has been loaded.")
+
+    def apply(self) -> None:
+        """Apply the loaded event data to the raw data.
+
+        Raises:
+            ValueError: If no label has been loaded.
+        """
+        assert self.events is not None, "No label has been loaded."
+        assert self.event_id is not None, "No label has been loaded."
+        self.raw.set_event(self.events, self.event_id)

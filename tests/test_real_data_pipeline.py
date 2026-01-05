@@ -4,19 +4,19 @@ import numpy as np
 import torch
 from unittest.mock import patch
 
-from XBrainLab.load_data.raw_data_loader import load_gdf_file
-from XBrainLab.preprocessor import Filtering, Normalize
-from XBrainLab.dataset import DatasetGenerator, DataSplittingConfig, TrainingType
-from XBrainLab.training import ModelHolder, TrainingOption, Trainer, TrainingPlanHolder, TRAINING_EVALUATION
-from XBrainLab.model_base import EEGNet
-from XBrainLab.study import Study
+from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
+from XBrainLab.backend.preprocessor import Filtering, Normalize
+from XBrainLab.backend.dataset import DatasetGenerator, DataSplittingConfig, TrainingType
+from XBrainLab.backend.training import ModelHolder, TrainingOption, Trainer, TrainingPlanHolder, TRAINING_EVALUATION
+from XBrainLab.backend.model_base import EEGNet
+from XBrainLab.backend.study import Study
 
 # Path to real test data
 TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test_data_small'))
 GDF_FILE = os.path.join(TEST_DATA_DIR, 'A01T.gdf')
-from XBrainLab.dataset.data_splitter import DataSplitter
-from XBrainLab.dataset.option import SplitByType, ValSplitByType, SplitUnit
-from XBrainLab.preprocessor import Filtering, Normalize, TimeEpoch
+from XBrainLab.backend.dataset.data_splitter import DataSplitter
+from XBrainLab.backend.dataset.option import SplitByType, ValSplitByType, SplitUnit
+from XBrainLab.backend.preprocessor import Filtering, Normalize, TimeEpoch
 
 @pytest.mark.skipif(not os.path.exists(GDF_FILE), reason="Real test data not found")
 def test_real_data_pipeline():
@@ -174,7 +174,7 @@ def test_real_data_pipeline():
     record = plan.train_record_list[0]
     
     # Check metrics exist
-    from XBrainLab.training.record import RecordKey
+    from XBrainLab.backend.training.record import RecordKey
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train
     

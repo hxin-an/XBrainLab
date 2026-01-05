@@ -1,16 +1,16 @@
 import mne
 import pytest
 
-from XBrainLab import Study
-from XBrainLab.dataset import (
+from XBrainLab.backend.study import Study
+from XBrainLab.backend.dataset import (
     Dataset,
     DatasetGenerator,
     DataSplittingConfig,
     TrainingType,
 )
-from XBrainLab.load_data import Raw, RawDataLoader
-from XBrainLab.preprocessor import PreprocessBase
-from XBrainLab.training import TRAINING_EVALUATION, ModelHolder, TrainingOption
+from XBrainLab.backend.load_data import Raw, RawDataLoader
+from XBrainLab.backend.preprocessor import PreprocessBase
+from XBrainLab.backend.training import TRAINING_EVALUATION, ModelHolder, TrainingOption
 
 
 def test_study_load_data():
@@ -205,8 +205,8 @@ def test_study_set_model_holder(trainer_study, force_update):
 @pytest.mark.parametrize('force_update', [True, False])
 def test_study_generate_plan(trainer_study, force_update):
     from unittest.mock import patch
-    with patch('XBrainLab.training.TrainingPlanHolder.__init__', return_value=None) as holder_mock, \
-         patch('XBrainLab.training.Trainer.__init__', return_value=None) as trainer_mock:
+    with patch('XBrainLab.backend.training.TrainingPlanHolder.__init__', return_value=None) as holder_mock, \
+         patch('XBrainLab.backend.training.Trainer.__init__', return_value=None) as trainer_mock:
         
         trainer_study.datasets = [1, 2, 3]
         trainer_study.training_option = 2

@@ -12,9 +12,9 @@ from unittest.mock import patch, MagicMock
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab import Study
-from XBrainLab.training import TrainingOption, TRAINING_EVALUATION
-from XBrainLab.training.model_holder import ModelHolder
-from XBrainLab.model_base import EEGNet, SCCNet, ShallowConvNet
+from XBrainLab.backend.training import TrainingOption, TRAINING_EVALUATION
+from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.backend.model_base import EEGNet, SCCNet, ShallowConvNet
 
 
 @pytest.fixture
@@ -198,7 +198,7 @@ class TestTrainingSettingDefaultValues:
     
     def test_training_setting_has_defaults(self, qtbot):
         """Verify default values are set for easier testing."""
-        from XBrainLab.ui_pyqt.training.training_setting import TrainingSettingWindow
+        from XBrainLab.ui.training.training_setting import TrainingSettingWindow
         
         # Use real QWidget instead of MagicMock
         parent = QWidget()
@@ -223,7 +223,7 @@ class TestTrainingSettingDefaultValues:
     
     def test_confirm_creates_valid_training_option(self, qtbot):
         """Test that confirming with defaults creates valid TrainingOption."""
-        from XBrainLab.ui_pyqt.training.training_setting import TrainingSettingWindow
+        from XBrainLab.ui.training.training_setting import TrainingSettingWindow
         
         # Use real QWidget
         parent = QWidget()
@@ -245,7 +245,7 @@ class TestTrainingSettingDefaultValues:
     
     def test_training_option_epoch_is_int(self, qtbot):
         """Test that training_option.epoch is converted to int for comparisons."""
-        from XBrainLab.ui_pyqt.training.training_setting import TrainingSettingWindow
+        from XBrainLab.ui.training.training_setting import TrainingSettingWindow
         
         parent = QWidget()
         parent.study = MagicMock()
@@ -341,7 +341,7 @@ class TestMetricTabHistoryManagement:
     
     def test_clear_resets_history_lists(self, qtbot):
         """Test that clear() resets epochs, train_vals, val_vals."""
-        from XBrainLab.ui_pyqt.training.panel import MetricTab
+        from XBrainLab.ui.training.panel import MetricTab
         
         tab = MetricTab("Accuracy", color="#4CAF50")
         qtbot.addWidget(tab)
@@ -364,7 +364,7 @@ class TestMetricTabHistoryManagement:
     
     def test_history_accumulates_correctly(self, qtbot):
         """Test that history accumulates over multiple updates."""
-        from XBrainLab.ui_pyqt.training.panel import MetricTab
+        from XBrainLab.ui.training.panel import MetricTab
         
         tab = MetricTab("Loss", color="#F44336")
         qtbot.addWidget(tab)
@@ -388,7 +388,7 @@ class TestMetricTabHistoryManagement:
     
     def test_new_training_after_clear(self, qtbot):
         """Test that new training session works after clear."""
-        from XBrainLab.ui_pyqt.training.panel import MetricTab
+        from XBrainLab.ui.training.panel import MetricTab
         
         tab = MetricTab("AUC", color="#2196F3")
         qtbot.addWidget(tab)

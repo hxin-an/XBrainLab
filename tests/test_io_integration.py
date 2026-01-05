@@ -1,8 +1,8 @@
 import os
 import pytest
 import numpy as np
-from XBrainLab.load_data.raw_data_loader import load_gdf_file
-from XBrainLab.load_data import Raw
+from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
+from XBrainLab.backend.load_data import Raw
 
 # Path to the small test data provided in the repo
 TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test_data_small'))

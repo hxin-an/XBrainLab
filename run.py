@@ -5,8 +5,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from PyQt6.QtWidgets import QApplication
-from XBrainLab.ui_pyqt.main_window import MainWindow
-from XBrainLab.utils.logger import logger
+from XBrainLab.ui.main_window import MainWindow
+from XBrainLab.backend.utils.logger import logger
 
 def main():
     logger.info("Starting XBrainLab (PyQt6)...")
@@ -16,7 +16,7 @@ def main():
     app.setStyle("Fusion")
     
     # Initialize Study
-    from XBrainLab.study import Study
+    from XBrainLab.backend.study import Study
     study = Study()
     
     window = MainWindow(study)

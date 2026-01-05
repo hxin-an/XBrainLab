@@ -3,9 +3,9 @@ import pytest
 import torch
 from unittest.mock import Mock
 
-from XBrainLab.dataset import Epochs, Dataset
-from XBrainLab.training import ModelHolder, TrainingOption, TrainingPlanHolder
-from XBrainLab.training.option import TRAINING_EVALUATION
+from XBrainLab.backend.dataset import Epochs, Dataset
+from XBrainLab.backend.training import ModelHolder, TrainingOption, TrainingPlanHolder
+from XBrainLab.backend.training.option import TRAINING_EVALUATION
 
 
 def test_epoch_duration_too_short():
@@ -13,7 +13,7 @@ def test_epoch_duration_too_short():
     
     This test reproduces the bug: When samples are too few for model architecture.
     """
-    from XBrainLab.model_base import EEGNet
+    from XBrainLab.backend.model_base import EEGNet
     
     # Create mock epoch data with very short duration
     mock_epoch = Mock(spec=Epochs)
@@ -63,7 +63,7 @@ def test_epoch_duration_too_short():
 
 def test_minimum_samples_required():
     """Test to verify minimum samples validation for each model."""
-    from XBrainLab.model_base import EEGNet, SCCNet, ShallowConvNet
+    from XBrainLab.backend.model_base import EEGNet, SCCNet, ShallowConvNet
     
     test_cases = [
         ('EEGNet', EEGNet, {'F1': 8, 'F2': 16, 'D': 2}),

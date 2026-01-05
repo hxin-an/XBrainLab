@@ -3,10 +3,10 @@ import numpy as np
 import torch
 from unittest.mock import MagicMock, patch
 
-from XBrainLab.dataset import DatasetGenerator
-from XBrainLab.training import Trainer, TrainingPlanHolder, ModelHolder, TrainingOption
-from XBrainLab.model_base import EEGNet
-from XBrainLab.visualization import VisualizerType
+from XBrainLab.backend.dataset import DatasetGenerator
+from XBrainLab.backend.training import Trainer, TrainingPlanHolder, ModelHolder, TrainingOption
+from XBrainLab.backend.model_base import EEGNet
+from XBrainLab.backend.visualization import VisualizerType
 
 def test_pipeline_integration():
     # 1. Setup Mock Data and Environment
@@ -91,7 +91,7 @@ def test_pipeline_integration():
             'evaluation_option': 'TRAINING_EVALUATION.VAL_LOSS', 
             'repeat_num': 1
         }
-        from XBrainLab.training import TRAINING_EVALUATION
+        from XBrainLab.backend.training import TRAINING_EVALUATION
         option_args['evaluation_option'] = TRAINING_EVALUATION.VAL_LOSS
         
         option = TrainingOption(**option_args)
@@ -129,7 +129,7 @@ def test_pipeline_integration():
         # Check if metrics are recorded
         # TrainRecord stores metrics in .train dictionary with keys from RecordKey
         # We need to import RecordKey or check string keys if they are strings
-        from XBrainLab.training.record import RecordKey
+        from XBrainLab.backend.training.record import RecordKey
         assert RecordKey.LOSS in record.train
         assert RecordKey.ACC in record.train
         assert RecordKey.AUC in record.train

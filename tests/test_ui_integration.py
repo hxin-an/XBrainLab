@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import QApplication
 # Ensure XBrainLab is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from XBrainLab.ui_pyqt.main_window import MainWindow
+from XBrainLab.ui.main_window import MainWindow
 
 @pytest.fixture
 def mock_study():

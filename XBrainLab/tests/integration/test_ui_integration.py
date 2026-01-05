@@ -3,10 +3,10 @@ import os
 import pytest
 import numpy as np
 from PyQt6.QtWidgets import QApplication
-from XBrainLab.study import Study
-from XBrainLab.load_data import RawDataLoader
-from XBrainLab.load_data.raw_data_loader import load_gdf_file
-from XBrainLab.ui_pyqt.dashboard_panel.dataset import DatasetPanel
+from XBrainLab.backend.study import Study
+from XBrainLab.backend.load_data import RawDataLoader
+from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
+from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 from unittest.mock import MagicMock, patch
 
 # Constants for test data
@@ -131,9 +131,9 @@ def test_full_import_flow(dataset_panel, study):
             file_mapping[data.get_filepath()] = label_name
 
     # Mock the dialogs
-    with patch('XBrainLab.ui_pyqt.dashboard_panel.dataset.ImportLabelDialog') as MockLabelDialog, \
-         patch('XBrainLab.ui_pyqt.dashboard_panel.dataset.EventFilterDialog') as MockFilterDialog, \
-         patch('XBrainLab.ui_pyqt.dashboard_panel.dataset.LabelMappingDialog') as MockMappingDialog, \
+    with patch('XBrainLab.ui.dashboard_panel.dataset.ImportLabelDialog') as MockLabelDialog, \
+         patch('XBrainLab.ui.dashboard_panel.dataset.EventFilterDialog') as MockFilterDialog, \
+         patch('XBrainLab.ui.dashboard_panel.dataset.LabelMappingDialog') as MockMappingDialog, \
          patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info, \
          patch.object(dataset_panel, '_get_target_files_for_import', return_value=study.loaded_data_list):
         
@@ -200,7 +200,7 @@ def test_full_import_flow(dataset_panel, study):
     
     # 1. Preprocess Data (Required before generation)
     # We need to epoch the data first.
-    from XBrainLab.preprocessor import TimeEpoch
+    from XBrainLab.backend.preprocessor import TimeEpoch
     
     # Check events in first file again
     events, event_id = study.loaded_data_list[0].get_event_list()
@@ -239,9 +239,9 @@ def test_full_import_flow(dataset_panel, study):
     print(f"  Preprocessed {len(study.preprocessed_data_list)} files.")
     
     # 2. Generate Dataset
-    from XBrainLab.dataset import DatasetGenerator, DataSplittingConfig, DataSplitter
-    from XBrainLab.dataset.option import SplitUnit, SplitByType, ValSplitByType, TrainingType
-    from XBrainLab.training.option import TrainingOption, TRAINING_EVALUATION
+    from XBrainLab.backend.dataset import DatasetGenerator, DataSplittingConfig, DataSplitter
+    from XBrainLab.backend.dataset.option import SplitUnit, SplitByType, ValSplitByType, TrainingType
+    from XBrainLab.backend.training.option import TrainingOption, TRAINING_EVALUATION
     import torch.optim as optim
     
     # Setup Training Option
@@ -343,9 +343,9 @@ def test_resample_and_epoch(dataset_panel, study):
         if label_name in label_map:
             file_mapping[data.get_filepath()] = label_name
 
-    with patch('XBrainLab.ui_pyqt.dashboard_panel.dataset.ImportLabelDialog') as MockLabelDialog, \
-         patch('XBrainLab.ui_pyqt.dashboard_panel.dataset.EventFilterDialog') as MockFilterDialog, \
-         patch('XBrainLab.ui_pyqt.dashboard_panel.dataset.LabelMappingDialog') as MockMappingDialog, \
+    with patch('XBrainLab.ui.dashboard_panel.dataset.ImportLabelDialog') as MockLabelDialog, \
+         patch('XBrainLab.ui.dashboard_panel.dataset.EventFilterDialog') as MockFilterDialog, \
+         patch('XBrainLab.ui.dashboard_panel.dataset.LabelMappingDialog') as MockMappingDialog, \
          patch('PyQt6.QtWidgets.QMessageBox.information'), \
          patch.object(dataset_panel, '_get_target_files_for_import', return_value=study.loaded_data_list):
         
@@ -366,7 +366,7 @@ def test_resample_and_epoch(dataset_panel, study):
     study.reset_preprocess(force_update=True)
     
     # --- Step 3: Resample ---
-    from XBrainLab.preprocessor import Resample, TimeEpoch
+    from XBrainLab.backend.preprocessor import Resample, TimeEpoch
     
     print("  Resampling to 100Hz...")
     study.preprocess(Resample, sfreq=100.0)
@@ -416,7 +416,7 @@ def test_resample_epoch_no_labels(dataset_panel, study):
     # Skip Label Import
     
     # --- Step 2: Resample ---
-    from XBrainLab.preprocessor import Resample, TimeEpoch
+    from XBrainLab.backend.preprocessor import Resample, TimeEpoch
     
     print("  Resampling to 100Hz...")
     study.preprocess(Resample, sfreq=100.0)
