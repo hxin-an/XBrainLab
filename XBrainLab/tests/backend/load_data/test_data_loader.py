@@ -79,16 +79,18 @@ def test_raw_data_loader_append_error():
 
     assert len(raw_data_loader) == 1
 
-    with pytest.raises(ValueError, match=r".*channel numbers inconsistent.*"):
+    from XBrainLab.backend.exceptions import DataMismatchError
+    
+    with pytest.raises(DataMismatchError, match=r".*channel numbers inconsistent.*"):
         raw_data_loader.append(raw_miss_channel)
 
-    with pytest.raises(ValueError, match=r".*sample frequency inconsistent.*"):
+    with pytest.raises(DataMismatchError, match=r".*sample frequency inconsistent.*"):
         raw_data_loader.append(raw_miss_sf)
 
-    with pytest.raises(ValueError, match=r".*type inconsistent.*"):
+    with pytest.raises(DataMismatchError, match=r".*type inconsistent.*"):
         raw_data_loader.append(raw_miss_type)
 
-    with pytest.raises(ValueError, match=r".*duration inconsistent.*"):
+    with pytest.raises(DataMismatchError, match=r".*duration inconsistent.*"):
         raw_data_loader.append(raw_miss_duration)
 
 def test_apply():

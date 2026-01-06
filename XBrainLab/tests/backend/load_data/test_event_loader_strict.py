@@ -22,11 +22,12 @@ def test_event_loader_raw_no_events_raises_error():
     mapping = {1: 'A', 2: 'B', 3: 'C'}
     
     # Expect ValueError because we cannot sync timestamps
-    with pytest.raises(ValueError, match="Could not sync with existing events"):
+    # Expect ValueError because raw has no events
+    with pytest.raises(ValueError, match="Raw data has no events for sequence alignment"):
         loader.create_event(mapping)
 
-def test_event_loader_raw_mismatch_raises_error():
-    """Test that loading labels with count mismatch raises ValueError."""
+def test_event_loader_raw_mismatch_truncates():
+    """Test that loading labels with count mismatch truncates to minimum."""
     raw_mne = _generate_mne_raw()
     raw = Raw('test.fif', raw_mne)
     
@@ -39,8 +40,12 @@ def test_event_loader_raw_mismatch_raises_error():
     loader.label_list = [1, 2, 3] # 3 labels vs 2 events
     mapping = {1: 'A', 2: 'B', 3: 'C'}
     
-    with pytest.raises(ValueError, match="Could not sync with existing events"):
-        loader.create_event(mapping)
+    # Should NOT raise error, but truncate
+    new_events, _ = loader.create_event(mapping)
+    
+    assert len(new_events) == 2
+    assert new_events[0, -1] == 1
+    assert new_events[1, -1] == 2
 
 def test_event_loader_epochs_fallback_ok():
     """Test that Epochs data still allows artificial timestamps (indices)."""

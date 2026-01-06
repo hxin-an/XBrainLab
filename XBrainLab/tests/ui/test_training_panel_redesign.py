@@ -2,7 +2,7 @@
 import sys
 from unittest.mock import MagicMock
 import sys
-sys.modules["mne"] = MagicMock()
+from unittest.mock import MagicMock
 
 import pytest
 from PyQt6.QtWidgets import QApplication
@@ -47,9 +47,9 @@ def test_training_panel_layout(qtbot):
     
     # Check for History Table
     assert hasattr(panel, 'history_table')
-    assert panel.history_table.columnCount() == 8
-    header_labels = [panel.history_table.horizontalHeaderItem(i).text() for i in range(8)]
-    assert header_labels == ["Model", "Progress", "Epoch", "Train Loss", "Train Acc", "Val Loss", "Val Acc", "LR"]
+    assert panel.history_table.columnCount() == 11
+    header_labels = [panel.history_table.horizontalHeaderItem(i).text() for i in range(11)]
+    assert header_labels == ["Group", "Run", "Model", "Status", "Progress", "Train Loss", "Train Acc", "Val Loss", "Val Acc", "LR", "Time"]
     
     # Check Buttons
     assert hasattr(panel, 'btn_split')

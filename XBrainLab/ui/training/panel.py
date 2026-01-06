@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QGroupBox, 
-    QGridLayout, QMessageBox, QFrame, QTabWidget, QTableWidget, QTableWidgetItem,
-    QHeaderView, QProgressBar, QTextEdit
+    QGridLayout, QMessageBox, QFrame, QTabWidget, QTreeWidget, QTreeWidgetItem,
+    QHeaderView, QProgressBar, QTextEdit, QTableWidget, QTableWidgetItem
 )
 from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -112,6 +112,8 @@ class MetricTab(QWidget):
 
     # set_summary removed
 
+    # set_summary removed
+
 class TrainingPanel(QWidget):
     """
     Panel for managing the training process.
@@ -120,6 +122,10 @@ class TrainingPanel(QWidget):
         super().__init__()
         self.main_window = main_window
         self.study = main_window.study
+        
+        self.current_plotting_record = None # Initialize here to avoid AttributeError
+        self.plan_items = {} # Map id(plan) -> QTreeWidgetItem
+        self.run_items = {}  # Map id(record) -> QTreeWidgetItem
         
         self.init_ui()
         
@@ -175,9 +181,10 @@ class TrainingPanel(QWidget):
         
         # History Table
         self.history_table = QTableWidget()
-        self.history_table.setColumnCount(8)
+        self.history_table.setColumnCount(11)
         self.history_table.setHorizontalHeaderLabels([
-            "Model", "Progress", "Epoch", "Train Loss", "Train Acc", "Val Loss", "Val Acc", "LR"
+            "Group", "Run", "Model", "Status", "Progress", 
+            "Train Loss", "Train Acc", "Val Loss", "Val Acc", "LR", "Time"
         ])
         
         # Style the table
@@ -186,32 +193,54 @@ class TrainingPanel(QWidget):
                 background-color: #1e1e1e;
                 border: 1px solid #333;
                 color: #cccccc;
+                font-size: 13px;
                 gridline-color: #333;
             }
             QHeaderView::section {
                 background-color: #2d2d2d;
                 color: #cccccc;
-                padding: 4px;
+                padding: 6px;
                 border: 1px solid #333;
+                font-weight: bold;
             }
             QTableWidget::item {
                 padding: 4px;
+                border-bottom: 1px solid #2a2a2a;
+            }
+            QTableWidget::item:selected {
+                background-color: #007acc;
+                color: #ffffff;
             }
         """)
         
-        # Header settings
-        header = self.history_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) # Model name might be long
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) # Progress text
-        
         self.history_table.verticalHeader().setVisible(False)
-        self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.history_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        
+        # Column widths
+        header = self.history_table.horizontalHeader()
+        for i in range(11):
+             header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+             
+        self.history_table.setColumnWidth(0, 80)  # Group
+        self.history_table.setColumnWidth(1, 80)  # Run
+        self.history_table.setColumnWidth(2, 150) # Model
+        self.history_table.setColumnWidth(3, 100) # Status
+        self.history_table.setColumnWidth(4, 80)  # Progress
+        # Metrics
+        for i in range(5, 11):
+            self.history_table.setColumnWidth(i, 80)
+            
+        header.setStretchLastSection(True)
+        
+        # Connect selection
+        self.history_table.itemSelectionChanged.connect(self.on_history_selection_changed)
         
         history_layout.addWidget(self.history_table)
         
-        left_layout.addWidget(history_group, stretch=1)
+        # Internal map to track rows: row_index -> (plan, run)
+        self.row_map = {} 
         
         left_layout.addWidget(history_group, stretch=1)
         main_layout.addWidget(left_widget, stretch=1)
@@ -296,7 +325,8 @@ class TrainingPanel(QWidget):
         self.summary_group = QGroupBox("CONFIGURATION SUMMARY")
         self.summary_group.setStyleSheet("QGroupBox { border: none; margin-top: 10px; font-weight: bold; color: #808080; } QGroupBox::title { color: #808080; }")
         summary_layout = QVBoxLayout(self.summary_group)
-        summary_layout.setContentsMargins(0, 10, 0, 0)
+        summary_layout.setContentsMargins(0, 8, 0, 0)
+        summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.summary_table = QTableWidget()
         self.summary_table.setColumnCount(2)
@@ -324,7 +354,10 @@ class TrainingPanel(QWidget):
         right_layout.addWidget(self.summary_group)
         
         # Add more spacing to separate Summary from Configuration
-        right_layout.addSpacing(20)
+        right_layout.addSpacing(120)
+        
+        # Limit height to prevent pushing content too far
+        self.summary_table.setMaximumHeight(500)
         
         # Group 1: Configuration Buttons
         config_group = QGroupBox("CONFIGURATION")
@@ -342,8 +375,6 @@ class TrainingPanel(QWidget):
         self.btn_setting = QPushButton("Training Setting")
         self.btn_setting.clicked.connect(self.training_setting)
         config_layout.addWidget(self.btn_setting)
-        
-        # Removed Test Only Setting
         
         right_layout.addWidget(config_group)
         right_layout.addSpacing(20)
@@ -377,12 +408,13 @@ class TrainingPanel(QWidget):
         self.btn_stop = QPushButton("Stop Training")
         self.btn_stop.setStyleSheet("""
             QPushButton {
-                background-color: #4a1818; 
-                color: #ff9999;
-                border: 1px solid #802020;
+                background-color: #bf360c; 
+                color: #ffccbc;
+                border: 1px solid #d84315;
             }
             QPushButton:hover {
-                background-color: #602020;
+                background-color: #d84315;
+                color: white;
             }
         """)
         self.btn_stop.setEnabled(False)
@@ -392,13 +424,12 @@ class TrainingPanel(QWidget):
         self.btn_clear = QPushButton("Clear History")
         self.btn_clear.setStyleSheet("""
             QPushButton {
-                background-color: #b71c1c; 
-                color: #ffcdd2;
-                border: 1px solid #c62828;
+                background-color: #4a1818; 
+                color: #ff9999;
+                border: 1px solid #802020;
             }
             QPushButton:hover {
-                background-color: #d32f2f;
-                color: white;
+                background-color: #602020;
             }
         """)
         self.btn_clear.clicked.connect(self.clear_history)
@@ -408,7 +439,7 @@ class TrainingPanel(QWidget):
         
         main_layout.addWidget(right_panel, stretch=0)
 
-    # --- Event Handlers (Placeholders) ---
+    # --- Event Handlers ---
     def update_summary(self):
         """Update the configuration summary table based on current study state."""
         self.summary_table.setRowCount(0)
@@ -477,7 +508,19 @@ class TrainingPanel(QWidget):
         else:
             add_row("Training", "Not Set")
 
-    # --- Event Handlers ---
+        # Dynamic Height Adjustment
+        self.summary_table.resizeRowsToContents()
+        total_height = 0
+        # Calculate total height of all rows
+        for i in range(self.summary_table.rowCount()):
+            total_height += self.summary_table.rowHeight(i)
+        
+        # Add buffer for borders (header is hidden)
+        # If total_height is 0 (empty), set a minimum
+        # Cap at 500 to prevent layout shift
+        target_height = min(max(total_height + 5, 20), 500)
+        self.summary_table.setFixedHeight(target_height)
+
     def split_data(self):
         if not self.study.loaded_data_list:
             QMessageBox.warning(self, "No Data", "Please load and preprocess data first.")
@@ -521,8 +564,9 @@ class TrainingPanel(QWidget):
     def start_training(self):
         # Auto-generate plan if needed or just always regenerate to be safe with current settings
         try:
-            self.study.generate_plan()
-            self.log_text.append("Training plan generated.")
+            # Use append=True to add to existing history instead of clearing it
+            self.study.generate_plan(force_update=True, append=True)
+            self.log_text.append("New training plan added to queue.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to generate plan: {e}")
             return
@@ -566,18 +610,22 @@ class TrainingPanel(QWidget):
 
     def stop_training(self):
         if self.study.trainer.is_running():
-            self.study.trainer.set_interrupt()
+            self.study.trainer.set_interrupt() 
 
     def clear_history(self):
+        """Clear the training history."""
         if self.study.trainer and self.study.trainer.is_running():
             QMessageBox.warning(self, "Warning", "Cannot clear history while training is running.")
             return
             
         if self.study.trainer:
             self.study.trainer.clear_history()
+            
         self.history_table.setRowCount(0)
+        self.row_map.clear()
         self.tab_acc.clear()
         self.tab_loss.clear()
+        # self.tab_summary.clear() # Removed
         self.log_text.clear()
         self.log_text.append("History cleared.")
 
@@ -589,59 +637,90 @@ class TrainingPanel(QWidget):
         if not trainer.is_running():
             self.timer.stop()
             self.training_finished()
-            # Even if finished, we might need one last update to show final state
         
         # Update Plots/Progress
         holders = trainer.get_training_plan_holders()
         
-        # We need to map table rows to (plan_idx, repeat_idx)
-        # To avoid full rebuild every tick, we can check if row count matches
-        # total expected rows.
-        
-        total_rows = 0
-        row_map = [] # List of (plan, record)
-        
-        for plan in holders:
-            for record in plan.get_plans():
-                row_map.append((plan, record))
-                total_rows += 1
+        # Flatten the list of all runs
+        target_rows = []
+        for i, plan in enumerate(holders):
+            group_name = f"Group {i+1}"
+            model_name = plan.model_holder.target_model.__name__
+            
+            is_plan_active = False
+            if trainer.is_running() and trainer.current_idx == i:
+                is_plan_active = True
                 
-        # Ensure table has correct number of rows
-        if self.history_table.rowCount() != total_rows:
-            self.history_table.setRowCount(total_rows)
+            runs = plan.get_plans()
+            for r_idx, record in enumerate(runs):
+                target_rows.append({
+                    'plan': plan,
+                    'record': record,
+                    'group': group_name,
+                    'run_name': f"{r_idx + 1}", # 1-based index
+                    'model': model_name,
+                    'is_plan_active': is_plan_active
+                })
+                
+        # If row count mismatch, adjust
+        if self.history_table.rowCount() != len(target_rows):
+            self.history_table.setRowCount(len(target_rows))
             
-        # Update each row
-        for row, (plan, record) in enumerate(row_map):
-            # Get metrics from record directly
-            # We need to access TrainRecord's data
-            # TrainRecord stores lists of metrics. We want the last one.
+        # Update content
+        for row_idx, data in enumerate(target_rows):
+            plan = data['plan']
+            record = data['record']
+            group_name = data['group']
+            run_name = data['run_name']
+            model_name = data['model']
+            is_plan_active = data['is_plan_active']
             
+            # Store mapping
+            self.row_map[row_idx] = (plan, record)
+            
+            # Determine status
             epoch = record.get_epoch()
             max_epochs = plan.option.epoch
             
-            # Status/Progress
+            is_active = False
             if record.is_finished():
                 status = "Done"
-            elif trainer.is_running() and trainer.current_idx == holders.index(plan) and plan.get_training_repeat() == record.repeat:
-                status = f"Running {epoch}/{max_epochs}"
+            elif is_plan_active and plan.get_training_repeat() == record.repeat:
+                status = "Running"
+                is_active = True
             elif record.epoch == 0:
                 status = "Pending"
             else:
-                status = f"Stopped {epoch}/{max_epochs}"
-                
-            model_name = f"{plan.model_holder.target_model.__name__} ({record.repeat+1})"
+                status = "Stopped"
             
-            self.history_table.setItem(row, 0, QTableWidgetItem(model_name))
-            self.history_table.setItem(row, 1, QTableWidgetItem(status))
-            self.history_table.setItem(row, 2, QTableWidgetItem(str(epoch)))
+            # Helper to set item text safely
+            def set_item(col, text):
+                item = self.history_table.item(row_idx, col)
+                if not item:
+                    item = QTableWidgetItem()
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.history_table.setItem(row_idx, col, item)
+                if item.text() != text:
+                    item.setText(text)
+            
+            set_item(0, group_name)
+            set_item(0, group_name)
+            set_item(1, run_name)
+            set_item(2, model_name)
+            set_item(3, status)
+            set_item(4, f"{epoch}/{max_epochs}")
             
             # Metrics
             def get_last(key, source):
                 if len(source[key]) > 0:
-                    return source[key][-1]
+                    val = source[key][-1]
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return 0.0
                 return 0.0
 
-            from XBrainLab.backend.training.train_record import RecordKey, TrainRecordKey
+            from XBrainLab.backend.training.record.train import RecordKey, TrainRecordKey
             
             train_loss = get_last(TrainRecordKey.LOSS, record.train)
             train_acc = get_last(TrainRecordKey.ACC, record.train)
@@ -649,42 +728,116 @@ class TrainingPanel(QWidget):
             val_acc = get_last(RecordKey.ACC, record.val)
             lr = get_last(TrainRecordKey.LR, record.train)
             
-            self.history_table.setItem(row, 3, QTableWidgetItem(f"{train_loss:.4f}"))
-            self.history_table.setItem(row, 4, QTableWidgetItem(f"{train_acc:.2f}%"))
-            
             val_loss_str = f"{val_loss:.4f}" if val_loss != 0 else "N/A"
             val_acc_str = f"{val_acc:.2f}%" if val_acc != 0 else "N/A"
             
-            self.history_table.setItem(row, 5, QTableWidgetItem(val_loss_str))
-            self.history_table.setItem(row, 6, QTableWidgetItem(val_acc_str))
-            self.history_table.setItem(row, 7, QTableWidgetItem(f"{lr:.6f}"))
+            set_item(5, f"{train_loss:.4f}")
+            set_item(6, f"{train_acc:.2f}%")
+            set_item(7, val_loss_str)
+            set_item(8, val_acc_str)
+            set_item(9, f"{lr:.6f}")
             
-            # Update plots if this is the currently running record
-            if status.startswith("Running"):
-                # We need to handle plot updates carefully to avoid clearing previous lines
-                # For now, let's just plot the current running one
-                # Or maybe we can plot all of them? That might be too messy.
-                # Let's stick to plotting the active one.
+            import datetime
+            time_str = ""
+            if is_active:
+                # Show current time or elapsed? User asked for duration/end time?
+                # "training history 的 time 那欄還是空的" -> usually implies duration or timestamp
+                # Let's show current time for active, and maybe duration for finished?
+                # For now, let's show Start Time or Duration if available.
+                # Since record doesn't track start/end time explicitly in this snippet,
+                # we can use current time for running.
+                time_str = datetime.datetime.now().strftime("%H:%M:%S")
+            elif record.is_finished():
+                 # If we had start/end time, we could show duration.
+                 # For now, let's show "Done" or leave it empty if no data.
+                 # But user said "Time column is empty".
+                 # Let's try to show something meaningful.
+                 # Maybe we can add a timestamp to the record in backend?
+                 # Or just show current time when it finished?
+                 # Without backend changes, we can't show true duration.
+                 # But we can show "N/A" or similar.
+                 # However, let's check if record has any time info.
+                 # It seems not.
+                 # Let's just show current time for active, and maybe "-" for others for now,
+                 # or implement a simple duration tracker in the panel if possible?
+                 # No, panel is recreated.
+                 # Let's stick to current time for active.
+                 pass
+            
+            set_item(10, time_str)
+
+            # Update plots logic
+            selected_items = self.history_table.selectedItems()
+            user_selected_row = -1
+            if selected_items:
+                user_selected_row = selected_items[0].row()
+            
+            should_plot = False
+            if user_selected_row != -1:
+                if user_selected_row == row_idx:
+                    should_plot = True
+            elif is_active:
+                should_plot = True
                 
-                # Check if we need to update plot (e.g. new epoch)
-                # MetricTab.update_plot appends data.
-                # If we switch context (new record running), we might need to clear or handle differently.
-                # For simplicity, let's just clear and replot current record's history
+            if should_plot:
+                if self.current_plotting_record != record:
+                    self.current_plotting_record = record
+                    self.tab_acc.clear()
+                    self.tab_loss.clear()
+                    # self.tab_summary.update_plot(plan) # Removed
                 
-                # Optimization: Only update if data length changed
-                if len(record.train[TrainRecordKey.ACC]) > len(self.tab_acc.epochs):
+                current_plot_epoch = 0
+                if self.tab_acc.epochs:
+                    current_plot_epoch = self.tab_acc.epochs[-1]
+                
+                if is_active and epoch > current_plot_epoch:
                      self.tab_acc.update_plot(epoch, train_acc, val_acc)
                      self.tab_loss.update_plot(epoch, train_loss, val_loss)
+                     # self.tab_summary.update_plot(plan) # Removed
                      
                      # Log
-                     import datetime
                      timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                      log_msg = (
-                        f"[{timestamp}] {model_name} Epoch {epoch}: "
+                        f"[{timestamp}] {group_name} {record.get_name()} Epoch {epoch}: "
                         f"Loss={train_loss:.4f}, Acc={train_acc:.2f}%, "
                         f"Val Loss={val_loss_str}, Val Acc={val_acc_str}"
                      )
                      self.log_text.append(log_msg)
+
+    def on_history_selection_changed(self):
+        """Handle row selection to update plots."""
+        selected_items = self.history_table.selectedItems()
+        if not selected_items:
+            return
+            
+        row = selected_items[0].row()
+        if row in self.row_map:
+            plan, record = self.row_map[row]
+            
+            # Update Summary (Removed)
+            # self.tab_summary.update_plot(plan)
+            
+            # Update Current Run Plots (Replay history)
+            self.current_plotting_record = record
+            self.tab_acc.clear()
+            self.tab_loss.clear()
+            
+            # Replay
+            train_accs = record.train['accuracy']
+            val_accs = record.val['accuracy']
+            train_losses = record.train['loss']
+            val_losses = record.val['loss']
+            
+            # We assume lengths match roughly
+            for i in range(len(train_accs)):
+                ep = i + 1
+                t_acc = train_accs[i]
+                v_acc = val_accs[i] if i < len(val_accs) else 0
+                t_loss = train_losses[i]
+                v_loss = val_losses[i] if i < len(val_losses) else 0
+                
+                self.tab_acc.update_plot(ep, t_acc, v_acc)
+                self.tab_loss.update_plot(ep, t_loss, v_loss)
 
     def training_finished(self):
         # self.btn_start.setEnabled(True) # Always enabled now

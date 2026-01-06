@@ -34,10 +34,15 @@ class Trainer:
         self.progress_text = Status.PENDING
         self.training_plan_holders = training_plan_holders
         self.current_idx = 0
+        self.job_thread = None
 
     def add_plan(self, plan: TrainingPlanHolder) -> None:
         """Add a new training plan to the queue"""
         self.training_plan_holders.append(plan)
+
+    def add_training_plan_holders(self, plans: List[TrainingPlanHolder]) -> None:
+        """Add a list of training plans to the queue"""
+        self.training_plan_holders.extend(plans)
 
     def clear_history(self) -> None:
         """Clear training history and pending jobs"""
@@ -113,7 +118,23 @@ class Trainer:
     def set_interrupt(self) -> None:
         """Set interrupt flag"""
         self.interrupt = True
+        self.progress_text = Status.INTING
+        for holder in self.training_plan_holders:
+            holder.set_interrupt()
 
     def clear_interrupt(self) -> None:
         """Clear interrupt flag"""
         self.interrupt = False
+        self.progress_text = Status.PENDING
+        for holder in self.training_plan_holders:
+            holder.clear_interrupt()
+
+    def get_real_training_plan(self, plan_name: str, real_plan_name: str):
+        """Get the real training plan (TrainRecord) from the holder"""
+        for holder in self.training_plan_holders:
+            if holder.get_name() == plan_name:
+                for plan in holder.get_plans():
+                    if plan.get_name() == real_plan_name:
+                        return plan
+                raise ValueError(f"Cannot find real plan {real_plan_name}")
+        raise ValueError(f"Cannot find training plan {plan_name}")

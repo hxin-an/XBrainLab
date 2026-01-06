@@ -38,25 +38,34 @@ def test_dataset_panel_import_data_success(mock_main_window, qtbot):
     qtbot.addWidget(panel)
     
     # Mock QFileDialog
+    # Mock QFileDialog
     with patch('PyQt6.QtWidgets.QFileDialog.getOpenFileNames', return_value=(['/path/to/file.set'], 'Filter')):
-        # Mock Loader
-        with patch('XBrainLab.ui.dashboard_panel.dataset.RawDataLoader') as MockLoader:
+        # Mock Factory AND Loader
+        with patch('XBrainLab.ui.dashboard_panel.dataset.RawDataLoaderFactory') as MockFactory, \
+             patch('XBrainLab.ui.dashboard_panel.dataset.RawDataLoader') as MockLoader:
+            
+            # Mock Loader instance
             loader_instance = MockLoader.return_value
             loader_instance.__len__.return_value = 1
             
-            # Mock load_set_file
-            with patch('XBrainLab.ui.dashboard_panel.dataset.load_set_file') as mock_load:
-                mock_raw = MagicMock()
-                mock_raw.get_filepath.return_value = '/path/to/file.set'
-                mock_load.return_value = mock_raw
+            # Mock load method
+            mock_raw = MagicMock()
+            mock_raw.get_filepath.return_value = '/path/to/file.set'
+            MockFactory.load.return_value = mock_raw # Factory.load returns single Raw object now? 
+            # Wait, Factory.load(path) returns Raw. Factory.load(files) returns list?
+            # In dataset.py: raw = RawDataLoaderFactory.load(path) inside loop.
+            # So it returns single Raw.
+            
+            # Mock QMessageBox
+            with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info, \
+                 patch('PyQt6.QtWidgets.QMessageBox.critical') as mock_critical:
+                panel.import_data()
                 
-                # Mock QMessageBox
-                with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info:
-                    panel.import_data()
-                    
-                    # Verify loader was applied
-                    loader_instance.apply.assert_called_once()
-                    mock_info.assert_called_once()
+                # Verify factory load called
+                MockFactory.load.assert_called_once()
+                if mock_critical.called:
+                    pytest.fail(f"Critical error: {mock_critical.call_args}")
+                mock_info.assert_called_once()
 
 def test_dataset_panel_clear_dataset(mock_main_window, qtbot):
     """Test clearing the dataset."""

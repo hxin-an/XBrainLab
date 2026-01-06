@@ -2,6 +2,8 @@ import mne
 import os
 from XBrainLab.backend.load_data import Raw, DataType
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
+from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 
 def load_set_file(filepath):
     """
@@ -14,7 +16,7 @@ def load_set_file(filepath):
     # Try loading as Raw first (default assumption for now)
     try:
         selected_data = mne.io.read_raw_eeglab(
-            filepath, uint16_codec='latin1', preload=True
+            filepath, uint16_codec='latin1', preload=False
         )
         data_type = DataType.RAW.value
     except TypeError:
@@ -26,7 +28,7 @@ def load_set_file(filepath):
             data_type = DataType.EPOCH.value
         except Exception as e:
             logger.warning(f"Failed to load as Epochs: {e}")
-            return None
+            raise FileCorruptedError(filepath, f"Failed to load as Epochs: {e}")
     except Exception as e:
         logger.warning(f"Failed to load as Raw: {e}")
         # Try Epochs if Raw failed due to other reasons (e.g. ValueError)
@@ -36,7 +38,7 @@ def load_set_file(filepath):
             )
             data_type = DataType.EPOCH.value
         except Exception:
-            return None
+             raise FileCorruptedError(filepath, f"Failed to load as Raw or Epochs: {e}")
 
     if selected_data:
         # Wrap in XBrainLab Raw object
@@ -51,7 +53,7 @@ def load_gdf_file(filepath):
     """
     try:
         # GDF is typically loaded as Raw
-        selected_data = mne.io.read_raw_gdf(filepath, preload=True)
+        selected_data = mne.io.read_raw_gdf(filepath, preload=False)
         
         if selected_data:
             # Wrap in XBrainLab Raw object
@@ -60,7 +62,7 @@ def load_gdf_file(filepath):
             
     except Exception as e:
         logger.error(f"Failed to load GDF file {filepath}: {e}", exc_info=True)
-        return None
+        raise FileCorruptedError(filepath, str(e))
     
     return None
 
@@ -69,11 +71,12 @@ def load_fif_file(filepath):
     Load .fif file (MNE-Python native) and return a XBrainLab Raw object.
     """
     try:
-        selected_data = mne.io.read_raw_fif(filepath, preload=True)
+        selected_data = mne.io.read_raw_fif(filepath, preload=False)
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
         logger.error(f"Failed to load FIF file {filepath}: {e}", exc_info=True)
+        raise FileCorruptedError(filepath, str(e))
     return None
 
 def load_edf_file(filepath):
@@ -81,11 +84,12 @@ def load_edf_file(filepath):
     Load .edf file (European Data Format) and return a XBrainLab Raw object.
     """
     try:
-        selected_data = mne.io.read_raw_edf(filepath, preload=True)
+        selected_data = mne.io.read_raw_edf(filepath, preload=False)
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
         logger.error(f"Failed to load EDF file {filepath}: {e}", exc_info=True)
+        raise FileCorruptedError(filepath, str(e))
     return None
 
 def load_bdf_file(filepath):
@@ -93,11 +97,12 @@ def load_bdf_file(filepath):
     Load .bdf file (BioSemi) and return a XBrainLab Raw object.
     """
     try:
-        selected_data = mne.io.read_raw_bdf(filepath, preload=True)
+        selected_data = mne.io.read_raw_bdf(filepath, preload=False)
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
         logger.error(f"Failed to load BDF file {filepath}: {e}", exc_info=True)
+        raise FileCorruptedError(filepath, str(e))
     return None
 
 def load_cnt_file(filepath):
@@ -105,11 +110,12 @@ def load_cnt_file(filepath):
     Load .cnt file (Neuroscan) and return a XBrainLab Raw object.
     """
     try:
-        selected_data = mne.io.read_raw_cnt(filepath, preload=True)
+        selected_data = mne.io.read_raw_cnt(filepath, preload=False)
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
         logger.error(f"Failed to load CNT file {filepath}: {e}", exc_info=True)
+        raise FileCorruptedError(filepath, str(e))
     return None
 
 def load_brainvision_file(filepath):
@@ -117,9 +123,25 @@ def load_brainvision_file(filepath):
     Load .vhdr file (BrainVision) and return a XBrainLab Raw object.
     """
     try:
-        selected_data = mne.io.read_raw_brainvision(filepath, preload=True)
+        selected_data = mne.io.read_raw_brainvision(filepath, preload=False)
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
         logger.error(f"Failed to load BrainVision file {filepath}: {e}", exc_info=True)
+        raise FileCorruptedError(filepath, str(e))
     return None
+
+# Register loaders
+RawDataLoaderFactory.register_loader('.set', load_set_file)
+RawDataLoaderFactory.register_loader('.gdf', load_gdf_file)
+RawDataLoaderFactory.register_loader('.fif', load_fif_file)
+RawDataLoaderFactory.register_loader('.edf', load_edf_file)
+RawDataLoaderFactory.register_loader('.bdf', load_bdf_file)
+RawDataLoaderFactory.register_loader('.cnt', load_cnt_file)
+RawDataLoaderFactory.register_loader('.vhdr', load_brainvision_file)
+
+def load_raw_data(filepath: str) -> Raw:
+    """
+    Load raw data from file using the factory.
+    """
+    return RawDataLoaderFactory.load(filepath)

@@ -115,7 +115,7 @@ def test_pipeline_integration():
              patch('torch.save'), \
              patch('numpy.savetxt'), \
              patch('os.makedirs'), \
-             patch('XBrainLab.training.training_plan.validate_type'):
+             patch('XBrainLab.backend.training.training_plan.validate_type'):
             
             plan_holder = TrainingPlanHolder(holder, dataset_mock, option, saliency_params)
             trainer = Trainer([plan_holder])

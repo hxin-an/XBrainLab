@@ -8,6 +8,9 @@ from XBrainLab.ui.main_window import MainWindow
 def mock_study():
     study = MagicMock()
     study.trainer = MagicMock()
+    study.model_holder = MagicMock()
+    study.model_holder.target_model = MagicMock()
+    study.model_holder.target_model.__name__ = "MockModel"
     return study
 
 def test_ui_refresh_on_tab_switch(qtbot, mock_study):

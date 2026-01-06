@@ -7,10 +7,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 import numpy as np
 import os
-from XBrainLab.backend.load_data.raw_data_loader import (
-    load_set_file, load_gdf_file, load_fif_file, load_edf_file, 
-    load_bdf_file, load_cnt_file, load_brainvision_file
-)
+from XBrainLab.backend.load_data.raw_data_loader import load_raw_data
+from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
+from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.ui.dashboard_panel.smart_parser import SmartParserDialog
 from XBrainLab.ui.dashboard_panel.import_label import ImportLabelDialog, EventFilterDialog, LabelMappingDialog
 from XBrainLab.backend.load_data import RawDataLoader, DataType, EventLoader
@@ -364,33 +363,22 @@ class DatasetPanel(QWidget):
             try:
                 logger.info(f"Loading file: {path}")
                 
-                # Auto-detect loader based on extension
-                loader_func = None
-                if path.lower().endswith('.set'):
-                    loader_func = load_set_file
-                elif path.lower().endswith('.gdf'):
-                    loader_func = load_gdf_file
-                elif path.lower().endswith('.fif'):
-                    loader_func = load_fif_file
-                elif path.lower().endswith('.edf'):
-                    loader_func = load_edf_file
-                elif path.lower().endswith('.bdf'):
-                    loader_func = load_bdf_file
-                elif path.lower().endswith('.cnt'):
-                    loader_func = load_cnt_file
-                elif path.lower().endswith('.vhdr'):
-                    loader_func = load_brainvision_file
+                # Use Factory to load data
+                raw = RawDataLoaderFactory.load(path)
                 
-                if loader_func:
-                    raw = loader_func(path)
-                    if raw:
-                        # This append() call triggers consistency checks against existing data
-                        loader.append(raw) 
-                        success_count += 1
-                    else:
-                        errors.append(f"{path}: Loader function returned None (check logs).")
+                if raw:
+                    # This append() call triggers consistency checks against existing data
+                    loader.append(raw) 
+                    success_count += 1
                 else:
-                    errors.append(f"{path}: Unsupported file extension.")
+                    errors.append(f"{path}: Loader returned None.")
+                    
+            except UnsupportedFormatError as e:
+                logger.error(f"Unsupported format: {e}")
+                errors.append(f"{path}: Unsupported format.")
+            except FileCorruptedError as e:
+                logger.error(f"File corrupted: {e}")
+                errors.append(f"{path}: File corrupted or unreadable.")
             except Exception as e:
                 logger.error(f"Error loading {path}: {e}")
                 errors.append(f"{path}: {str(e)}")
@@ -453,17 +441,25 @@ class DatasetPanel(QWidget):
             results = dialog.get_results()
             # Apply results
             count = 0
+            logger.info(f"Smart Parse Results: {len(results)} items")
             for data in data_list:
                 path = data.get_filepath()
                 if path in results:
                     sub, sess = results[path]
+                    logger.info(f"Updating {os.path.basename(path)}: Sub={sub}, Sess={sess}")
                     if sub != "-":
                         data.set_subject_name(sub)
                     if sess != "-":
                         data.set_session_name(sess)
                     count += 1
+                else:
+                    logger.warning(f"Path not found in results: {path}")
             
             self.update_panel()
+            
+            # IMPORTANT: Sync changes to preprocessor
+            if self.main_window and hasattr(self.main_window, 'study'):
+                self.main_window.study.reset_preprocess(force_update=True)
 
             QMessageBox.information(self, "Success", f"Updated metadata for {count} files.")
 
@@ -515,7 +511,7 @@ class DatasetPanel(QWidget):
 
     def import_label(self):
         """
-        Imports labels from external files (e.g., .mat) and applies them to the loaded data.
+        Imports labels from external files (e.g., .mat, .csv) and applies them to the loaded data.
         Handles event synchronization and batch application.
         """
         try:
@@ -535,9 +531,19 @@ class DatasetPanel(QWidget):
             label_map, mapping = dialog.get_results()
             if label_map is None: return
 
-            # 3. Filter Events (Optional, for Raw files)
-            selected_event_names = self._filter_events_for_import(target_files)
-            if selected_event_names is False: return # User cancelled
+            # Check Mode (Timestamp vs Sequence)
+            # Assume all loaded labels have same structure
+            first_labels = list(label_map.values())[0]
+            is_timestamp_mode = isinstance(first_labels, list) and len(first_labels) > 0 and isinstance(first_labels[0], dict)
+
+            selected_event_names = None
+            
+            if not is_timestamp_mode:
+                # Sequence Mode: Filter Events
+                # Calculate target count from first label file (heuristic)
+                target_count = len(first_labels)
+                selected_event_names = self._filter_events_for_import(target_files, target_count)
+                if selected_event_names is False: return # User cancelled
 
             # 4. Distribute Labels
             is_batch_mode = len(label_map) > 1
@@ -558,31 +564,47 @@ class DatasetPanel(QWidget):
                 )
             else:
                 # Legacy Mode (Single label file to multiple data files)
-                labels = list(label_map.values())[0]
-                label_count = len(labels)
-                
-                # Check if exact match first
-                total_epochs = sum(self.label_service.get_epoch_count_for_file(d, selected_event_names) for d in target_files)
-                
-                if label_count == total_epochs and total_epochs > 0:
-                    count = self.label_service.apply_labels_legacy(
-                        target_files, labels, mapping, selected_event_names
-                    )
+                if is_timestamp_mode:
+                     # Timestamp mode usually implies 1-to-1 or batch. 
+                     # Applying single timestamp file to multiple data files is rare unless they are segments.
+                     # We treat it as batch where all files get same labels? Or just apply to all.
+                     # Let's apply to all target files.
+                     labels = list(label_map.values())[0]
+                     # Mock file mapping: all files -> same label file
+                     # Actually apply_labels_batch expects file_mapping.
+                     # Let's use apply_labels_batch with a constructed mapping
+                     label_fname = list(label_map.keys())[0]
+                     file_mapping = {d.get_filepath(): label_fname for d in target_files}
+                     count = self.label_service.apply_labels_batch(
+                        target_files, label_map, file_mapping, mapping, selected_event_names
+                     )
                 else:
-                    # Mismatch
-                    reply = QMessageBox.question(
-                        self, "Mismatch Detected",
-                        f"Total labels ({label_count}) != Total epochs ({total_epochs}).\n"
-                        "Do you want to FORCE import? (This will assign labels sequentially to files and overwrite timestamps!)",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
+                    # Sequence Mode Legacy Splitting
+                    labels = list(label_map.values())[0]
+                    label_count = len(labels)
                     
-                    if reply == QMessageBox.StandardButton.Yes:
+                    # Check if exact match first
+                    total_epochs = sum(self.label_service.get_epoch_count_for_file(d, selected_event_names) for d in target_files)
+                    
+                    if label_count == total_epochs and total_epochs > 0:
                         count = self.label_service.apply_labels_legacy(
-                            target_files, labels, mapping, selected_event_names, force_import=True
+                            target_files, labels, mapping, selected_event_names
                         )
                     else:
-                        count = 0
+                        # Mismatch
+                        reply = QMessageBox.question(
+                            self, "Mismatch Detected",
+                            f"Total labels ({label_count}) != Total epochs ({total_epochs}).\n"
+                            "Do you want to FORCE import? (This will assign labels sequentially to files and overwrite timestamps!)",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        )
+                        
+                        if reply == QMessageBox.StandardButton.Yes:
+                            count = self.label_service.apply_labels_legacy(
+                                target_files, labels, mapping, selected_event_names, force_import=True
+                            )
+                        else:
+                            count = 0
 
             if count > 0:
                 # IMPORTANT: Reset preprocess to propagate new events to preprocessed_data_list
@@ -616,7 +638,7 @@ class DatasetPanel(QWidget):
         data_list = self.main_window.study.loaded_data_list
         return [data_list[i] for i in selected_rows if i < len(data_list)]
 
-    def _filter_events_for_import(self, target_files):
+    def _filter_events_for_import(self, target_files, target_count=None):
         """
         Returns:
             set: selected event names
@@ -645,7 +667,35 @@ class DatasetPanel(QWidget):
         except:
             sorted_names = sorted(list(unique_names))
             
+        # Smart Filter Suggestion
+        suggested_names = []
+        if target_count is not None and len(raw_files_with_events) > 0:
+            # Use first file for suggestion (heuristic)
+            # Or aggregate counts?
+            # Let's use first file
+            d = raw_files_with_events[0]
+            loader = EventLoader(d)
+            suggested_ids = loader.smart_filter(target_count)
+            
+            # Map IDs back to names
+            _, ev_ids = d.get_raw_event_list()
+            # Invert map: {id: name}
+            id_to_name = {v: k for k, v in ev_ids.items()}
+            suggested_names = [id_to_name[i] for i in suggested_ids if i in id_to_name]
+            
         filter_dialog = EventFilterDialog(self, sorted_names)
+        
+        # Apply suggestions
+        if suggested_names:
+             # We need to update EventFilterDialog to accept suggestions or set them
+             # Since we can't easily change constructor signature without breaking other calls (if any),
+             # let's set it after init if possible, or update init.
+             # Actually, EventFilterDialog loads from settings.
+             # We should override settings if we have a smart suggestion?
+             # Or just select them.
+             # Let's add a method to EventFilterDialog to set selection.
+             filter_dialog.set_selection(suggested_names)
+             
         if filter_dialog.exec():
             selected = set(filter_dialog.get_selected_ids())
             logger.info(f"User selected event names: {selected}")
@@ -667,6 +717,11 @@ class DatasetPanel(QWidget):
                         data.set_subject_name(text)
                     elif attr_name == "Session":
                         data.set_session_name(text)
+            
+            # IMPORTANT: Sync changes to preprocessor
+            if self.main_window and hasattr(self.main_window, 'study'):
+                self.main_window.study.reset_preprocess(force_update=True)
+                
             self.update_panel()
 
     def remove_selected_files(self, rows):

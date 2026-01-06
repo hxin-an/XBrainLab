@@ -15,15 +15,18 @@ def mock_study():
     """Mock the backend Study object."""
     study = MagicMock()
     
+    # Mock study.model_holder
+    study.model_holder = MagicMock()
+    study.model_holder.target_model.__name__ = "TestModel"
+
     # Mock trainer and training plans
     study.trainer = MagicMock()
-    mock_holder = MagicMock()
-    mock_holder.model_name = "TestModel"
-    mock_holder.record = {"test_acc": 0.85, "val_acc": 0.80, "train_acc": 0.90}
-    # Mocking get_training_plan_holders to return a list
-    mock_holder.get_name.return_value = "TestModel"
-    mock_holder.get_plans.return_value = [] # Mock get_plans
-    study.trainer.get_training_plan_holders.return_value = [mock_holder]
+    mock_plan = MagicMock()
+    mock_plan.get_name.return_value = "TestPlan"
+    mock_plan.model_holder.target_model.__name__ = "TestModel"
+    mock_plan.record = {"test_acc": 0.85, "val_acc": 0.80, "train_acc": 0.90}
+    mock_plan.get_plans.return_value = [] 
+    study.trainer.get_training_plan_holders.return_value = [mock_plan]
     
     # Mock epoch data
     study.epoch_data = MagicMock()

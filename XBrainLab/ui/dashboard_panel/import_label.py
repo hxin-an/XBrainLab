@@ -80,7 +80,7 @@ class ImportLabelDialog(QDialog):
         layout.addWidget(buttons)
         
     def browse_files(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open Label Files", "", "Label Files (*.txt *.mat)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open Label Files", "", "Label Files (*.txt *.mat *.csv *.tsv)")
         if not paths:
             return
             
@@ -135,7 +135,13 @@ class ImportLabelDialog(QDialog):
         """
         all_labels = []
         for labels in self.label_data_map.values():
-            all_labels.extend(labels)
+            if isinstance(labels, list) and len(labels) > 0 and isinstance(labels[0], dict):
+                # Timestamp Mode: Extract 'label' from dicts
+                for item in labels:
+                    all_labels.append(item['label'])
+            else:
+                # Sequence Mode: labels is ndarray
+                all_labels.extend(labels)
             
         if not all_labels:
             self.unique_labels = []
@@ -323,6 +329,18 @@ class EventFilterDialog(QDialog):
     def get_selected_ids(self):
         # Kept name for compatibility, but returns names
         return self.selected_names
+
+    def set_selection(self, names):
+        """Programmatically set the selection."""
+        # Uncheck all first? Or just check the ones in names?
+        # Smart filter implies "These are the ones you want".
+        # So let's uncheck all, then check names.
+        self.set_all_checked(False)
+        
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item.text() in names:
+                item.setCheckState(Qt.CheckState.Checked)
 
 class LabelMappingDialog(QDialog):
     def __init__(self, parent, data_files, label_files):

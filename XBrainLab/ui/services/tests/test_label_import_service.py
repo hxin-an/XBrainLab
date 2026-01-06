@@ -110,7 +110,8 @@ def test_apply_labels_synced(service, mock_raw_data):
     assert count == 5
     
     # Apply
-    service.apply_labels_to_single_file(mock_raw_data, labels, mapping, selected_event_names)
+    with patch('XBrainLab.backend.load_data.event_loader.validate_type'):
+        service.apply_labels_to_single_file(mock_raw_data, labels, mapping, selected_event_names)
     
     # Verify set_event called with new events
     mock_raw_data.set_event.assert_called()
@@ -120,7 +121,7 @@ def test_apply_labels_synced(service, mock_raw_data):
     assert np.array_equal(new_events[:, 2], labels)
 
 def test_apply_labels_synced_mismatch(service, mock_raw_data):
-    """Test synced application raises error on mismatch."""
+    """Test synced application handles mismatch by truncation (Sequence Mode)."""
     events = np.zeros((10, 3), dtype=int)
     events[:, 2] = 768
     event_id = {'Target': 768}
@@ -130,5 +131,13 @@ def test_apply_labels_synced_mismatch(service, mock_raw_data):
     mapping = {1: "Left"}
     selected_event_names = {"Target"}
     
-    with pytest.raises(ValueError, match="Event count mismatch"):
-        service.apply_labels_to_single_file(mock_raw_data, labels, mapping, selected_event_names)
+    # Patch validate_type to allow MagicMock as raw data
+    with patch('XBrainLab.backend.load_data.event_loader.validate_type'):
+         service.apply_labels_to_single_file(mock_raw_data, labels, mapping, selected_event_names)
+         
+    # Verify set_event called with 5 events (truncated)
+    mock_raw_data.set_event.assert_called()
+    args = mock_raw_data.set_event.call_args[0]
+    new_events = args[0]
+    assert len(new_events) == 5
+    assert np.array_equal(new_events[:, 2], labels)

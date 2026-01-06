@@ -212,7 +212,7 @@ class Study:
         self.clean_trainer(force_update=force_update)
         self.model_holder = model_holder
 
-    def generate_plan(self, force_update: bool = False) -> None:
+    def generate_plan(self, force_update: bool = False, append: bool = False) -> None:
         """Generate training plan.
 
         Helper function to
@@ -223,12 +223,14 @@ class Study:
         Args:
             force_update: Whether to force override and
                           clear the data of following steps.
+            append: Whether to append new plans to existing trainer.
 
         Raises:
             ValueError: If no valid dataset, training option or
                         model holder has been generated.
         """
-        self.clean_trainer(force_update=force_update)
+        if not append:
+            self.clean_trainer(force_update=force_update)
 
         if not self.datasets:
             raise ValueError('No valid dataset is generated')
@@ -245,8 +247,13 @@ class Study:
             TrainingPlanHolder(model_holder, dataset, option, self.saliency_params)
             for dataset in datasets
         ]
-        self.trainer = Trainer(training_plan_holders)
-        logger.info("Generated training plan")
+        
+        if append and self.trainer:
+            self.trainer.add_training_plan_holders(training_plan_holders)
+            logger.info(f"Appended {len(training_plan_holders)} training plans")
+        else:
+            self.trainer = Trainer(training_plan_holders)
+            logger.info("Generated training plan")
 
     # step 5 - training
     def train(self, interact: bool = False) -> None:

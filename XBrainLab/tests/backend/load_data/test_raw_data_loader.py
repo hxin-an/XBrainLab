@@ -21,7 +21,7 @@ class TestRawDataLoaderUnit:
         result = load_gdf_file("dummy.gdf")
         
         # Verify
-        mock_read_gdf.assert_called_once_with("dummy.gdf", preload=True)
+        mock_read_gdf.assert_called_once_with("dummy.gdf", preload=False)
         assert isinstance(result, Raw)
         assert result.get_mne() == mock_raw
 
@@ -31,11 +31,10 @@ class TestRawDataLoaderUnit:
         # Setup mock to raise exception
         mock_read_gdf.side_effect = Exception("File corrupted")
         
-        # Execute
-        result = load_gdf_file("corrupted.gdf")
-        
-        # Verify
-        assert result is None
+        # Execute & Verify
+        from XBrainLab.backend.exceptions import FileCorruptedError
+        with pytest.raises(FileCorruptedError):
+            load_gdf_file("corrupted.gdf")
 
     @patch('XBrainLab.backend.load_data.raw.validate_type')
     @patch('XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_eeglab')

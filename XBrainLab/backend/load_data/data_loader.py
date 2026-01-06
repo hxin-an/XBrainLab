@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ..utils import validate_list_type, validate_type
 from .raw import Raw
+from XBrainLab.backend.exceptions import DataMismatchError
 
 if TYPE_CHECKING: # pragma: no cover
     from .. import Study
@@ -69,23 +70,23 @@ class RawDataLoader(list):
             return
         # check channel number
         if self[idx].get_nchan() != raw.get_nchan():
-            raise ValueError(
+            raise DataMismatchError(
                 f'Dataset channel numbers inconsistent (got {raw.get_nchan()}).'
             )
         # check sfreq
         if self[idx].get_sfreq() != raw.get_sfreq():
-            raise ValueError(
+            raise DataMismatchError(
                 f'Dataset sample frequency inconsistent (got {raw.get_sfreq()}).'
             )
         # check same data type
         if self[idx].is_raw() != raw.is_raw():
-            raise ValueError('Dataset type inconsistent.')
+            raise DataMismatchError('Dataset type inconsistent.')
         # check epoch trial size
         if (
             not raw.is_raw() and
             (self[idx].get_epoch_duration() != raw.get_epoch_duration())
         ):
-            raise ValueError(
+            raise DataMismatchError(
                 f'Epoch duration inconsistent (got {raw.get_epoch_duration()}).'
             )
 

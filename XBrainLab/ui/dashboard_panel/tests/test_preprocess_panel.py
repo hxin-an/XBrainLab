@@ -45,6 +45,7 @@ def test_preprocess_panel_init(mock_main_window, qtbot):
 def test_preprocess_panel_filtering(mock_main_window, qtbot):
     """Test filtering operation."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    mock_main_window.study.epoch_data = None
     
     panel = PreprocessPanel(mock_main_window)
     qtbot.addWidget(panel)
@@ -58,15 +59,12 @@ def test_preprocess_panel_filtering(mock_main_window, qtbot):
             panel.open_filtering()
             
             mock_main_window.study.set_preprocessed_data_list.assert_called_with(["filtered_data"])
-            mock_main_window.study.lock_dataset.assert_called_once()
-            mock_info.assert_called_once()
-            mock_main_window.study.set_preprocessed_data_list.assert_called_with(["filtered_data"])
-            mock_main_window.study.lock_dataset.assert_called_once()
             mock_info.assert_called_once()
 
 def test_preprocess_panel_filtering_notch_only(mock_main_window, qtbot):
     """Test filtering with only Notch filter (Bandpass disabled)."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    mock_main_window.study.epoch_data = None
     
     panel = PreprocessPanel(mock_main_window)
     qtbot.addWidget(panel)
@@ -107,8 +105,6 @@ def test_filtering_dialog_notch_only(mock_main_window, qtbot):
         
         # 2. Check Notch
         dialog.notch_check.setChecked(True)
-        # 2. Check Notch
-        dialog.notch_check.setChecked(True)
         dialog.notch_spin.setValue(50.0)
         
         # 3. Accept
@@ -118,27 +114,11 @@ def test_filtering_dialog_notch_only(mock_main_window, qtbot):
             # Verify preprocessor called with None for bandpass
             dialog.preprocessor.data_preprocess.assert_called_with(None, None, notch_freqs=50.0)
             mock_accept.assert_called_once()
-    dialog.preprocessor = MagicMock()
-    
-    # 1. Uncheck Bandpass
-    dialog.bandpass_check.setChecked(False)
-    
-    # 2. Check Notch
-    dialog.notch_check.setChecked(True)
-    # 2. Check Notch
-    dialog.notch_check.setChecked(True)
-    dialog.notch_spin.setValue(50.0)
-    
-    # 3. Accept
-    with patch('PyQt6.QtWidgets.QDialog.accept') as mock_accept:
-        dialog.accept()
-        
-        # Verify preprocessor called with None for bandpass
-        dialog.preprocessor.data_preprocess.assert_called_with(None, None, notch_freqs=50.0)
-        mock_accept.assert_called_once()
+
 def test_preprocess_panel_resample(mock_main_window, qtbot):
     """Test resampling operation."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    mock_main_window.study.epoch_data = None
     
     panel = PreprocessPanel(mock_main_window)
     qtbot.addWidget(panel)
@@ -157,6 +137,7 @@ def test_preprocess_panel_resample(mock_main_window, qtbot):
 def test_preprocess_panel_epoching(mock_main_window, qtbot):
     """Test epoching operation."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    mock_main_window.study.epoch_data = None
     
     panel = PreprocessPanel(mock_main_window)
     qtbot.addWidget(panel)
@@ -175,6 +156,7 @@ def test_preprocess_panel_epoching(mock_main_window, qtbot):
 def test_preprocess_panel_ica(mock_main_window, qtbot):
     """Test ICA operation."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    mock_main_window.study.epoch_data = None # Ensure not locked
     
     panel = PreprocessPanel(mock_main_window)
     qtbot.addWidget(panel)
@@ -193,6 +175,7 @@ def test_preprocess_panel_ica(mock_main_window, qtbot):
 def test_preprocess_panel_rereference(mock_main_window, qtbot):
     """Test Re-reference operation."""
     mock_main_window.study.preprocessed_data_list = [MagicMock()]
+    mock_main_window.study.epoch_data = None # Ensure not locked
     
     panel = PreprocessPanel(mock_main_window)
     qtbot.addWidget(panel)

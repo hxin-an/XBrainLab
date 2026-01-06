@@ -64,10 +64,13 @@ class EvaluationTableWidget(QWidget):
         self.tree = QTreeWidget()
         self.tree.setAlternatingRowColors(True)
         if self.trainers:
+            # Use "Group X" naming for columns if needed, but here columns are usually Run names (e.g. Fold 1, Fold 2)
+            # The rows are the Plans (Trainers).
+            # So we need to update the ROW names to be "Group X".
             columns = [plan.get_name() for plan in self.trainers[0].get_plans()] + ['Average']
-            self.tree.setHeaderLabels(['Plan Name'] + columns)
+            self.tree.setHeaderLabels(['Group'] + columns)
         else:
-            self.tree.setHeaderLabels(['Plan Name', 'Average'])
+            self.tree.setHeaderLabels(['Group', 'Average'])
             
         self.tree.setStyleSheet("""
             QTreeWidget {
@@ -99,9 +102,10 @@ class EvaluationTableWidget(QWidget):
         # Init items
         self.items = {}
         if self.trainers:
-            for trainer in self.trainers:
+            for i, trainer in enumerate(self.trainers):
+                group_name = f"Group {i+1}"
                 item = QTreeWidgetItem(self.tree)
-                item.setText(0, trainer.get_name())
+                item.setText(0, group_name)
                 self.items[trainer.get_name()] = item
                 
             self.avg_item = QTreeWidgetItem(self.tree)

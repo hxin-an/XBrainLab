@@ -11,6 +11,13 @@ class TestTrainingPanel:
         # Mock MainWindow and Study
         main_window = MagicMock(spec=QMainWindow)
         main_window.study = MagicMock(spec=Study)
+        # Explicitly set instance attributes that are accessed but not in class spec
+        main_window.study.dataset_generator = MagicMock()
+        main_window.study.model_holder = MagicMock()
+        main_window.study.model_holder.target_model.__name__ = "MockModel"
+        main_window.study.training_option = MagicMock()
+        main_window.study.trainer = MagicMock()
+        main_window.study.loaded_data_list = []
         
         # We need to patch the imports in panel.py because they might be instantiated
         # But for now let's just instantiate the panel
@@ -51,19 +58,6 @@ class TestTrainingPanel:
                 
             panel.study.set_training_option.assert_called_once_with(mock_result)
 
-    def test_test_only_setting_success(self, panel):
-        mock_result = MagicMock()
-        
-        with patch('XBrainLab.ui.training.panel.TestOnlySettingWindow') as MockWindow:
-            instance = MockWindow.return_value
-            instance.exec.return_value = True
-            instance.get_result.return_value = mock_result
-            
-            with patch('PyQt6.QtWidgets.QMessageBox.information'):
-                panel.test_only_setting()
-                
-            panel.study.set_training_option.assert_called_once_with(mock_result)
-
     def test_start_training_success(self, panel):
         # Mock trainer and plan holders
         mock_trainer = MagicMock()
@@ -87,13 +81,6 @@ class TestTrainingPanel:
         mock_trainer.run.assert_called_once_with(interact=True)
         panel.timer.start.assert_called_once()
 
-    def test_generate_plan(self, panel):
-        with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info:
-            panel.generate_plan()
-            
-            # Verify Study.generate_plan is called (NOT create_training_plan)
-            panel.study.generate_plan.assert_called_once()
-            mock_info.assert_called_once()
 
     def test_split_data(self, panel):
         # Mock epoch_data

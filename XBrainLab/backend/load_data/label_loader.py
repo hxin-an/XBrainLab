@@ -21,6 +21,8 @@ def load_label_file(filepath: str) -> np.ndarray:
 
     if filepath.endswith('.txt'):
         return _load_txt(filepath)
+    elif filepath.endswith('.csv') or filepath.endswith('.tsv'):
+        return _load_csv_tsv(filepath)
     elif filepath.endswith('.mat'):
         return _load_mat(filepath)
     else:
@@ -85,3 +87,53 @@ def _load_mat(path: str) -> np.ndarray:
     except Exception as e:
         logger.error(f"Failed to load mat file {path}: {e}")
         raise ValueError(f"Invalid .mat file: {e}")
+
+def _load_csv_tsv(path: str):
+    """Load labels from CSV/TSV file.
+    Returns:
+        np.ndarray: If sequence data (single column or no header).
+        List[dict]: If timestamp data (headers 'time', 'latency', 'onset', 'duration', 'label', 'trial_type').
+    """
+    import pandas as pd
+    try:
+        sep = '\t' if path.endswith('.tsv') else ','
+        df = pd.read_csv(path, sep=sep)
+        
+        # Normalize column names
+        df.columns = [c.lower().strip() for c in df.columns]
+        
+        # Check for timestamp columns
+        time_cols = ['time', 'latency', 'onset']
+        label_cols = ['label', 'trial_type', 'type']
+        duration_cols = ['duration']
+        
+        found_time = next((c for c in time_cols if c in df.columns), None)
+        found_label = next((c for c in label_cols if c in df.columns), None)
+        found_duration = next((c for c in duration_cols if c in df.columns), None)
+        
+        if found_time and found_label:
+            # Timestamp Mode
+            result = []
+            for _, row in df.iterrows():
+                item = {
+                    'onset': row[found_time],
+                    'label': row[found_label],
+                    'duration': row[found_duration] if found_duration else 0.0
+                }
+                result.append(item)
+            return result
+        else:
+            # Sequence Mode: Assume first column is labels if no specific label column found
+            # Or if only one column exists
+            if found_label:
+                return df[found_label].values
+            elif len(df.columns) == 1:
+                return df.iloc[:, 0].values
+            else:
+                # Try to guess? Or raise error?
+                # Let's assume first column
+                return df.iloc[:, 0].values
+                
+    except Exception as e:
+        logger.error(f"Failed to load csv/tsv file {path}: {e}")
+        raise ValueError(f"Failed to load csv/tsv file: {e}")

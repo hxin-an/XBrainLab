@@ -2,6 +2,7 @@ import os
 import numpy as np
 import scipy.io
 import pytest
+from unittest.mock import MagicMock, patch
 from XBrainLab.backend.load_data.label_loader import load_label_file
 
 class TestLabelLoader:
@@ -45,8 +46,29 @@ class TestLabelLoader:
     def test_load_unsupported_format(self, tmp_path):
         d = tmp_path / "labels"
         d.mkdir()
-        p = d / "test.csv" # CSV not explicitly supported in current implementation
+        p = d / "test.xyz"
         p.write_text("1,2,3")
         
         with pytest.raises(ValueError, match="Unsupported file format"):
             load_label_file(str(p))
+
+    def test_load_csv_success(self, tmp_path):
+        """Test CSV loading with mocked pandas."""
+        d = tmp_path / "labels"
+        d.mkdir()
+        p = d / "test.csv"
+        p.write_text("label\n1\n2\n3")
+        
+        # Mock pandas
+        mock_pd = MagicMock()
+        mock_df = MagicMock()
+        mock_df.columns = ['label']
+        mock_df.__getitem__.return_value.values = np.array([1, 2, 3])
+        # iterrows for timestamp check (not used if timestamp cols missing)
+        # But _load_csv_tsv checks columns first.
+        
+        mock_pd.read_csv.return_value = mock_df
+        
+        with patch.dict('sys.modules', {'pandas': mock_pd}):
+            labels = load_label_file(str(p))
+            np.testing.assert_array_equal(labels, np.array([1, 2, 3]))

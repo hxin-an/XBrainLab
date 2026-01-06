@@ -115,6 +115,8 @@ class TrainRecord:
         self.target_path = None
         self.create_dir()
         self.random_state = get_random_state()
+        self.start_timestamp = None
+        self.end_timestamp = None
 
     def create_dir(self) -> None:
         """Initialize the directory to save the record"""

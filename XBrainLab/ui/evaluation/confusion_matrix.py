@@ -10,7 +10,9 @@ class ConfusionMatrixWidget(QWidget):
     def __init__(self, parent, trainers):
         super().__init__(parent)
         self.trainers = trainers
-        self.trainer_map = {t.get_name(): t for t in trainers}
+        self.trainers = trainers
+        # Map "Group X" -> Trainer
+        self.trainer_map = {f"Group {i+1}": t for i, t in enumerate(trainers)}
         self.plot_type = PlotType.CONFUSION
         
         self.current_plan = None
@@ -24,12 +26,12 @@ class ConfusionMatrixWidget(QWidget):
         
         # Controls
         ctrl_layout = QHBoxLayout()
-        lbl = QLabel("Plan:")
+        lbl = QLabel("Group:")
         lbl.setStyleSheet("color: #cccccc;")
         ctrl_layout.addWidget(lbl)
         
         self.plan_combo = QComboBox()
-        self.plan_combo.addItem("Select a plan")
+        self.plan_combo.addItem("Select a group")
         self.plan_combo.addItems(list(self.trainer_map.keys()))
         self.plan_combo.setStyleSheet("""
             QComboBox {
@@ -59,7 +61,7 @@ class ConfusionMatrixWidget(QWidget):
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
         self.ax.set_facecolor('#2d2d2d')
-        self.ax.text(0.5, 0.5, "Select a plan to view Confusion Matrix", 
+        self.ax.text(0.5, 0.5, "Select a group to view Confusion Matrix", 
                      color='#666666', ha='center', va='center')
         self.ax.axis('off')
         
@@ -67,7 +69,7 @@ class ConfusionMatrixWidget(QWidget):
         layout.addWidget(self.plot_container, stretch=1)
 
     def on_plan_select(self, plan_name):
-        if plan_name == "Select a plan" or plan_name not in self.trainer_map:
+        if plan_name == "Select a group" or plan_name not in self.trainer_map:
             return
             
         trainer = self.trainer_map[plan_name]

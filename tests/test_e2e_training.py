@@ -97,6 +97,9 @@ class TestTrainingPanelRealUsage:
         # Set flag as if previous training completed
         panel.training_completed_shown = True
         
+        # Mock generate_plan to avoid dataset generator error
+        study.generate_plan = MagicMock()
+        
         # Start new training
         panel.start_training()
         
@@ -131,6 +134,15 @@ class TestTrainingPanelRealUsage:
         mock_trainer.is_running.return_value = True
         mock_trainer.get_progress_text.return_value = "Training..."
         mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
+        mock_plan.model_holder.target_model.__name__ = "TestModel"
+        
+        # Mock get_plans
+        mock_record = MagicMock()
+        mock_record.get_epoch.return_value = 1
+        mock_record.train = {'loss': [0.5], 'accuracy': [0.8], 'auc': [0.9], 'lr': [0.001]}
+        mock_record.val = {'loss': [0.6], 'accuracy': [0.75], 'auc': [0.85]}
+        mock_plan.get_plans.return_value = [mock_record]
+        mock_plan.option.epoch = 10
         
         study.trainer = mock_trainer
         
@@ -141,7 +153,10 @@ class TestTrainingPanelRealUsage:
             pytest.fail(f"update_loop raised TypeError: {e}")
         
         # Verify progress bar was updated
-        assert panel.progress_bar.value() > 0
+        # Verify progress in history table
+        assert panel.history_table.rowCount() > 0
+        progress_text = panel.history_table.item(0, 4).text()
+        assert "/" in progress_text
 
 
 class TestEvaluationPanelIntegration:
@@ -261,7 +276,17 @@ class TestTrainingWorkflowWithUI:
         mock_trainer.is_running.return_value = True
         mock_trainer.is_running.return_value = True
         mock_trainer.get_progress_text.return_value = "Epoch 5/10"
+        mock_trainer.get_progress_text.return_value = "Epoch 5/10"
         mock_plan.get_epoch_progress_text.return_value = "Epoch 5/10"
+        mock_plan.model_holder.target_model.__name__ = "TestModel"
+        
+        # Mock get_plans
+        mock_record = MagicMock()
+        mock_record.get_epoch.return_value = 5
+        mock_record.train = {'loss': [0.5], 'accuracy': [0.8], 'auc': [0.9], 'lr': [0.001]}
+        mock_record.val = {'loss': [0.6], 'accuracy': [0.75], 'auc': [0.85]}
+        mock_plan.get_plans.return_value = [mock_record]
+        mock_plan.option.epoch = 10
         study.trainer = mock_trainer
         
         # Update should work without type errors
@@ -270,7 +295,8 @@ class TestTrainingWorkflowWithUI:
         # Progress should be shown in history table
         # Row 0, Column 1 is Progress
         assert panel.history_table.rowCount() > 0
-        assert panel.history_table.item(0, 1).text() == "5/10"
+        assert panel.history_table.rowCount() > 0
+        assert panel.history_table.item(0, 4).text() == "5/10"
     
     def test_metric_tab_accumulates_history(self, qtbot):
         """Test that MetricTab correctly accumulates training history."""
@@ -326,9 +352,23 @@ class TestTrainingWorkflowWithUI:
         
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
+        mock_trainer.current_idx = 0
         mock_trainer.get_progress_text.return_value = "Training..."
         mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
+        mock_plan.model_holder.target_model.__name__ = "TestModel"
         mock_plan.get_best_performance.return_value = 0.75
+        mock_plan.get_training_repeat.return_value = 0
+        
+        # Mock get_plans
+        mock_record = MagicMock()
+        mock_record.repeat = 0
+        mock_record.is_finished.return_value = False
+        mock_record.get_epoch.return_value = 1
+        # Use string values in record to simulate the issue
+        mock_record.train = {'loss': ['0.5'], 'accuracy': ['0.8'], 'auc': ['0.9'], 'lr': ['0.001']}
+        mock_record.val = {'loss': ['0.6'], 'accuracy': ['0.75'], 'auc': ['0.85']}
+        mock_plan.get_plans.return_value = [mock_record]
+        mock_plan.option.epoch = 10
         study.trainer = mock_trainer
         
         # This should NOT raise TypeError about '>' comparison

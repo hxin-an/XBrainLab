@@ -21,38 +21,39 @@ class TestLoaders(unittest.TestCase):
         mock_read.return_value = MagicMock()
         result = load_fif_file('test.fif')
         self.assertIsInstance(result, Raw)
-        mock_read.assert_called_with('test.fif', preload=True)
+        mock_read.assert_called_with('test.fif', preload=False)
 
     @patch('mne.io.read_raw_edf')
     def test_load_edf_file(self, mock_read):
         mock_read.return_value = MagicMock()
         result = load_edf_file('test.edf')
         self.assertIsInstance(result, Raw)
-        mock_read.assert_called_with('test.edf', preload=True)
+        mock_read.assert_called_with('test.edf', preload=False)
 
     @patch('mne.io.read_raw_bdf')
     def test_load_bdf_file(self, mock_read):
         mock_read.return_value = MagicMock()
         result = load_bdf_file('test.bdf')
         self.assertIsInstance(result, Raw)
-        mock_read.assert_called_with('test.bdf', preload=True)
+        mock_read.assert_called_with('test.bdf', preload=False)
 
     @patch('mne.io.read_raw_cnt')
     def test_load_cnt_file(self, mock_read):
         mock_read.return_value = MagicMock()
         result = load_cnt_file('test.cnt')
         self.assertIsInstance(result, Raw)
-        mock_read.assert_called_with('test.cnt', preload=True)
+        mock_read.assert_called_with('test.cnt', preload=False)
 
     @patch('mne.io.read_raw_brainvision')
     def test_load_brainvision_file(self, mock_read):
         mock_read.return_value = MagicMock()
         result = load_brainvision_file('test.vhdr')
         self.assertIsInstance(result, Raw)
-        mock_read.assert_called_with('test.vhdr', preload=True)
+        mock_read.assert_called_with('test.vhdr', preload=False)
 
     @patch('mne.io.read_raw_fif')
     def test_load_fif_failure(self, mock_read):
         mock_read.side_effect = Exception("Load failed")
-        result = load_fif_file('test.fif')
-        self.assertIsNone(result)
+        from XBrainLab.backend.exceptions import FileCorruptedError
+        with self.assertRaises(FileCorruptedError):
+            load_fif_file('test.fif')

@@ -110,7 +110,7 @@ class LabelImportService:
 
     def apply_labels_to_single_file(self, 
                                    data: Any, 
-                                   labels: List[int], 
+                                   labels: List[Any], 
                                    mapping: Dict[int, str], 
                                    selected_event_names: Optional[Set[str]] = None):
         """
@@ -118,39 +118,28 @@ class LabelImportService:
         """
         logger.info(f"Applying labels to {data.get_filename()}. Label count: {len(labels)}")
         
-        file_specific_ids = []
-        if selected_event_names is not None and data.is_raw():
-             events, event_id_map = data.get_event_list()
-             if event_id_map:
-                 file_specific_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
-
-        if selected_event_names is not None and data.is_raw() and file_specific_ids:
-            # Sync with specific events
-            events, _ = data.get_event_list()
-            mask = np.isin(events[:, -1], file_specific_ids)
-            filtered_events = events[mask]
-            
-            if len(filtered_events) != len(labels):
-                raise ValueError(f"Event count mismatch in {data.get_filename()}: Expected {len(labels)}, found {len(filtered_events)} filtered events.")
-                
-            new_events = filtered_events.copy()
-            new_events[:, 2] = labels
-            
-            # Update event_id map for the new labels
-            new_event_id = {name: code for code, name in mapping.items() if code in np.unique(labels)}
-            
-            data.set_event(new_events, new_event_id)
-            data.set_labels_imported(True)
-            logger.info(f"Successfully applied synced labels to {data.get_filename()}")
-            
+        loader = EventLoader(data)
+        loader.label_list = labels
+        
+        # Check Mode
+        is_timestamp_mode = isinstance(labels, list) and len(labels) > 0 and isinstance(labels[0], dict)
+        
+        if is_timestamp_mode:
+            # Timestamp Mode: No filtering needed, just create events
+            loader.create_event(mapping)
         else:
-            # Standard application (using EventLoader)
-            loader = EventLoader(data)
-            loader.label_list = labels
-            loader.create_event(mapping) 
-            loader.apply()
-            data.set_labels_imported(True)
-            logger.info(f"Successfully applied labels to {data.get_filename()}")
+            # Sequence Mode: Handle filtering if names provided
+            selected_ids = None
+            if selected_event_names is not None and data.is_raw():
+                events, event_id_map = data.get_event_list()
+                if event_id_map:
+                    selected_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
+            
+            loader.create_event(mapping, selected_event_ids=selected_ids)
+            
+        loader.apply()
+        data.set_labels_imported(True)
+        logger.info(f"Successfully applied labels to {data.get_filename()}")
 
     def _force_apply_single(self, data: Any, labels: List[int], mapping: Dict[int, str]):
         """Helper for force application."""
