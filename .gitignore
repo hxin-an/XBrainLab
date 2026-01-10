@@ -151,3 +151,13 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Project specific
+output/
+logs/
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.pkl
+XBrainLab/llm/core/models/
