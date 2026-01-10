@@ -9,13 +9,15 @@ from PyQt6.QtWidgets import (
     QDoubleSpinBox, QDialogButtonBox, QMessageBox, QTabWidget, QSpinBox,
     QCheckBox, QLineEdit, QScrollArea, QSlider, QComboBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np
 from scipy.signal import welch
 from XBrainLab.backend import preprocessor as Preprocessor
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 
 class ResampleDialog(QDialog):
     def __init__(self, parent, preprocessed_data_list):
@@ -295,143 +297,7 @@ class FilteringDialog(QDialog):
     def get_result(self):
         return self.return_data
 
-class ICAWorker(QThread):
-    finished = pyqtSignal(object)
-    error = pyqtSignal(str)
 
-    def __init__(self, preprocessor, n_components, method):
-        super().__init__()
-        self.preprocessor = preprocessor
-        self.n_components = n_components
-        self.method = method
-
-    def run(self):
-        try:
-            result = self.preprocessor.data_preprocess(
-                n_components=self.n_components,
-                method=self.method
-            )
-            self.finished.emit(result)
-        except Exception as e:
-            self.error.emit(str(e))
-
-class ICADialog(QDialog):
-    def __init__(self, parent, preprocessed_data_list):
-        super().__init__(parent)
-        self.setWindowTitle("Auto ICA")
-        self.resize(400, 250) # Increased size to fit text
-        self.preprocessor = Preprocessor.ICA(preprocessed_data_list)
-        self.return_data = None
-        self.init_ui()
-        
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        
-        # Explanation Label
-        lbl_info = QLabel(
-            "Auto ICA decomposes the signal into independent components to identify artifacts. "
-            "It automatically detects and removes components highly correlated with EOG (eye movement) activity.\n\n"
-            "Note: This process may take a little time."
-        )
-        lbl_info.setWordWrap(True)
-        lbl_info.setStyleSheet("color: #cccccc; font-style: italic; margin-bottom: 10px;")
-        layout.addWidget(lbl_info)
-        
-        form = QFormLayout()
-        
-        # Style for labels
-        label_style = "color: #cccccc;"
-        
-        lbl_comp = QLabel("Number of components:")
-        lbl_comp.setStyleSheet(label_style)
-        self.n_components_spin = QSpinBox()
-        self.n_components_spin.setRange(2, 100)
-        self.n_components_spin.setValue(20)
-        self.n_components_spin.setStyleSheet("color: #cccccc; background-color: #333333;")
-        form.addRow(lbl_comp, self.n_components_spin)
-        
-        lbl_method = QLabel("Method:")
-        lbl_method.setStyleSheet(label_style)
-        self.method_combo = QComboBox()
-        self.method_combo.addItems([
-            'fastica (Fast, standard)', 
-            'picard (Robust, slower)', 
-            'infomax (Classic, reliable)'
-        ])
-        self.method_combo.setStyleSheet("color: #cccccc; background-color: #333333;")
-        form.addRow(lbl_method, self.method_combo)
-        
-        layout.addLayout(form)
-        
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        # Style buttons if needed, but standard dialog buttons usually adapt or need global style
-        # Let's just ensure the dialog background is dark-ish if not globally set, 
-        # but usually QDialog inherits.
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-        
-    def accept(self):
-        from PyQt6.QtWidgets import QProgressDialog
-        from PyQt6.QtCore import Qt
-        
-        # Create a modal progress dialog
-        self.progress = QProgressDialog("Running Auto ICA... Please wait.", None, 0, 0, self)
-        self.progress.setWindowTitle("Processing")
-        self.progress.setWindowModality(Qt.WindowModality.WindowModal)
-        self.progress.setCancelButton(None)
-        self.progress.setMinimumDuration(0)
-        self.progress.setStyleSheet("""
-            QProgressDialog {
-                background-color: #252526;
-                color: #cccccc;
-                border: 1px solid #3e3e42;
-                border-radius: 5px;
-            }
-            QLabel {
-                color: #cccccc;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 10px;
-                background-color: transparent; /* Ensure transparent background */
-            }
-            QProgressBar {
-                border: 1px solid #3e3e42;
-                border-radius: 4px;
-                background-color: #2d2d2d;
-                text-align: center;
-                color: #cccccc;
-            }
-            QProgressBar::chunk {
-                background-color: #007acc;
-                border-radius: 3px;
-            }
-        """)
-        
-        # Setup Worker
-        self.worker = ICAWorker(
-            self.preprocessor, 
-            self.n_components_spin.value(), 
-            self.method_combo.currentText().split(' ')[0] # Strip description
-        )
-        self.worker.finished.connect(self.on_ica_finished)
-        self.worker.error.connect(self.on_ica_error)
-        
-        # Start
-        self.worker.start()
-        self.progress.exec() # Blocks interaction but keeps event loop running for the dialog
-
-    def on_ica_finished(self, result):
-        self.return_data = result
-        self.progress.close()
-        super().accept()
-        
-    def on_ica_error(self, error_msg):
-        self.progress.close()
-        QMessageBox.critical(self, "Error", error_msg)
-
-    def get_result(self):
-        return self.return_data
 
 class RereferenceDialog(QDialog):
     def __init__(self, parent, preprocessed_data_list):
@@ -496,6 +362,9 @@ class PreprocessPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
+        self.plot_timer = QTimer()
+        self.plot_timer.setSingleShot(True)
+        self.plot_timer.timeout.connect(self.plot_sample_data)
         self.init_ui()
         
     def init_ui(self):
@@ -549,58 +418,49 @@ class PreprocessPanel(QWidget):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20)
         
-        # 0. Logo (Minimal, no frame)
-        logo_frame = QFrame()
-        logo_frame.setStyleSheet("""
-            QFrame {
+        # 0. Logo Removed
+        
+        # 1. Aggregate Info (Replaces Getting Started)
+        self.info_panel = AggregateInfoPanel(self.main_window)
+        # Style it to match the panel look (transparent background if needed, but AggregateInfoPanel is a GroupBox)
+        # We might need to adjust its style slightly or let it inherit.
+        # AggregateInfoPanel sets its own title "Aggregate Information".
+        
+        # Remove the default border/background from AggregateInfoPanel to match our minimal style
+        self.info_panel.setStyleSheet("""
+            QGroupBox {
                 background-color: transparent;
                 border: none;
+                margin-top: 15px;
+                font-weight: bold;
+                color: #808080;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 0px;
+                padding: 0 0px;
+                color: #808080;
+            }
+            QLabel {
+                color: #cccccc;
+                font-weight: normal;
             }
         """)
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(0, 0, 0, 10)
         
-        logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        logo_label.setStyleSheet("border: none; background: transparent;") 
+        right_layout.addWidget(self.info_panel, stretch=1)
         
-        import os
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.svg")
-        if os.path.exists(logo_path):
-            from PyQt6.QtGui import QPixmap
-            pixmap = QPixmap(logo_path)
-            # Scale pixmap to fit panel width (260 - 20 margin = 240)
-            scaled_pixmap = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
-            logo_label.setPixmap(scaled_pixmap)
-            logo_label.setScaledContents(False)
-        else:
-            logo_label.setText("XBrainLab")
-            logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cccccc; margin-bottom: 5px; border: none;")
-            
-        logo_layout.addWidget(logo_label)
-        right_layout.addWidget(logo_frame)
-        
-        # 1. Dynamic Tips (Always visible)
-        self.tips_group = QGroupBox("GETTING STARTED")
-        # Explicitly set transparent background to avoid black box
-        self.tips_group.setStyleSheet("QGroupBox { background-color: transparent; border: none; margin-top: 10px; } QGroupBox::title { color: #808080; }")
-        
-        tips_layout = QVBoxLayout(self.tips_group)
-        tips_layout.setContentsMargins(0, 10, 0, 0)
-        tips_label = QLabel(
-            "<div style='line-height: 1.2; color: #999999;'>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>1. Filtering</b><br>Apply bandpass or notch filters (optional)</div>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>2. Resample</b><br>Change the sampling rate (optional)</div>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>3. Auto ICA</b><br>Automatically remove EOG artifacts (optional)</div>"
-            "<div><br>When ready, proceed to <b>Epoching</b></div>"
-            "</div>"
-        )
-        tips_label.setWordWrap(True)
-        tips_label.setStyleSheet("background-color: transparent; border: none;") # Explicitly transparent
-        tips_layout.addWidget(tips_label)
-        right_layout.addWidget(self.tips_group)
+        # Add separator line with spacing to center it
+        right_layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #3e3e42; border: none;")
+        line.setFixedHeight(1)
+        right_layout.addWidget(line)
+        right_layout.addSpacing(10)
         
         right_layout.addSpacing(10)
+        # right_layout.addStretch() # Removed to align buttons up
         
         ops_group = QGroupBox("OPERATIONS")
         ops_layout = QVBoxLayout(ops_group)
@@ -615,18 +475,16 @@ class PreprocessPanel(QWidget):
         self.btn_rereference = QPushButton("Re-reference")
         self.btn_rereference.clicked.connect(self.open_rereference)
         
-
-        
-        self.btn_ica = QPushButton("Auto ICA")
-        self.btn_ica.clicked.connect(self.open_ica)
-
         ops_layout.addWidget(self.btn_filter)
         ops_layout.addWidget(self.btn_resample)
         ops_layout.addWidget(self.btn_rereference)
-        ops_layout.addWidget(self.btn_ica)
         
         right_layout.addWidget(ops_group)
-        right_layout.addStretch()
+        
+        # Execution Group
+        exec_group = QGroupBox("EXECUTION")
+        exec_layout = QVBoxLayout(exec_group)
+        exec_layout.setContentsMargins(0, 10, 0, 0)
         
         # Epoching Button (Moved here, Green)
         self.btn_epoch = QPushButton("Epoching")
@@ -642,7 +500,7 @@ class PreprocessPanel(QWidget):
             }
         """)
         self.btn_epoch.clicked.connect(self.open_epoching)
-        right_layout.addWidget(self.btn_epoch)
+        exec_layout.addWidget(self.btn_epoch)
 
         # Reset Button (Styled distinctively but consistent shape)
         self.btn_reset = QPushButton("Reset All Preprocessing")
@@ -657,15 +515,23 @@ class PreprocessPanel(QWidget):
             }
         """)
         self.btn_reset.clicked.connect(self.reset_preprocess)
-        right_layout.addWidget(self.btn_reset)
+        exec_layout.addWidget(self.btn_reset)
         
+        right_layout.addWidget(exec_group)
+        
+        right_layout.addStretch() # Push everything to top
+        
+        # --- Right Side: Plot & History ---
         # --- Right Side: Plot & History ---
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(20, 20, 20, 20)
+        right_layout.setSpacing(0)
         
         # Plot Group
-        plot_group = QGroupBox("Signal Preview")
+        plot_group = QGroupBox("SIGNAL PREVIEW")
         plot_layout = QVBoxLayout()
+        plot_layout.setContentsMargins(10, 20, 10, 10)
         
         # Tabs for Time/Freq
         self.plot_tabs = QTabWidget()
@@ -688,6 +554,12 @@ class PreprocessPanel(QWidget):
         self.ax_time.yaxis.label.set_color('#cccccc')
         self.ax_time.xaxis.label.set_color('#cccccc')
         self.ax_time.title.set_color('#cccccc')
+        
+        # Add Title and Labels with Units
+        self.ax_time.set_title("Time Domain Signal")
+        self.ax_time.set_xlabel("Time (s)")
+        self.ax_time.set_ylabel("Amplitude (uV)")
+        
         self.fig_time.tight_layout()
         time_layout.addWidget(self.canvas_time)
         self.plot_tabs.addTab(self.tab_time, "Time Domain")
@@ -710,6 +582,12 @@ class PreprocessPanel(QWidget):
         self.ax_freq.yaxis.label.set_color('#cccccc')
         self.ax_freq.xaxis.label.set_color('#cccccc')
         self.ax_freq.title.set_color('#cccccc')
+        
+        # Add Title and Labels with Units
+        self.ax_freq.set_title("Power Spectral Density")
+        self.ax_freq.set_xlabel("Frequency (Hz)")
+        self.ax_freq.set_ylabel("Power (uV²/Hz)")
+        
         self.fig_freq.tight_layout()
         freq_layout.addWidget(self.canvas_freq)
         self.plot_tabs.addTab(self.tab_freq, "Frequency (PSD)")
@@ -757,11 +635,12 @@ class PreprocessPanel(QWidget):
         plot_group.setLayout(plot_layout)
         
         # History Group
-        hist_group = QGroupBox("Preprocessing History")
-        hist_layout = QVBoxLayout()
+        hist_group = QGroupBox("PREPROCESSING HISTORY")
+        hist_layout = QVBoxLayout(hist_group)
+        hist_layout.setContentsMargins(10, 20, 10, 10)
         self.history_list = QListWidget()
         hist_layout.addWidget(self.history_list)
-        hist_group.setLayout(hist_layout)
+        # hist_group.setLayout(hist_layout) # Already passed to constructor
         
         right_layout.addWidget(plot_group, stretch=2)
         right_layout.addWidget(hist_group, stretch=1)
@@ -774,19 +653,22 @@ class PreprocessPanel(QWidget):
         self.time_spin.blockSignals(True)
         self.time_spin.setValue(value / 10.0) # Slider is int, spin is float (0.1s step)
         self.time_spin.blockSignals(False)
-        self.update_plot_only()
+        self.plot_timer.start(50) # Debounce: Wait 50ms before plotting
 
     def on_time_spin_changed(self, value):
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(int(value * 10))
         self.time_slider.blockSignals(False)
-        self.update_plot_only()
+        self.plot_timer.start(50) # Debounce
 
     def update_panel(self):
         if not self.main_window or not hasattr(self.main_window, 'study'):
             return
             
         # Update History List
+        if hasattr(self, 'info_panel'):
+            self.info_panel.update_info()
+            
         self.history_list.clear()
         data_list = self.main_window.study.preprocessed_data_list
         
@@ -822,12 +704,7 @@ class PreprocessPanel(QWidget):
             else:
                 self.btn_resample.setToolTip("Change sampling rate")
 
-        if hasattr(self, 'btn_ica'):
-            # self.btn_ica.setEnabled(not is_epoched)
-            if is_epoched:
-                self.btn_ica.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
-            else:
-                self.btn_ica.setToolTip("Run Auto ICA")
+
 
         if hasattr(self, 'btn_rereference'):
             # self.btn_rereference.setEnabled(not is_epoched)
@@ -1071,8 +948,8 @@ class PreprocessPanel(QWidget):
                 # We should probably refactor to let study run it, but current pattern is dialog runs it.
                 # Just update UI.
                 self.update_panel()
-                if hasattr(self.main_window, 'update_info_panel'):
-                    self.main_window.update_info_panel()
+                if self.main_window:
+                    self.main_window.refresh_panels()
                 QMessageBox.information(self, "Success", "Filtering applied.")
 
     def open_resample(self):
@@ -1087,8 +964,8 @@ class PreprocessPanel(QWidget):
             if result:
                 self.main_window.study.set_preprocessed_data_list(result)
                 self.update_panel()
-                if hasattr(self.main_window, 'update_info_panel'):
-                    self.main_window.update_info_panel()
+                if self.main_window:
+                    self.main_window.refresh_panels()
                 QMessageBox.information(self, "Success", "Resampling applied.")
 
     def open_epoching(self):
@@ -1111,21 +988,7 @@ class PreprocessPanel(QWidget):
                     self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Epoching applied.\nPreprocessing is now LOCKED.")
 
-    def open_ica(self):
-        if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
-            QMessageBox.warning(self, "Warning", "No data loaded.")
-            return
-            
-        dialog = ICADialog(self, self.main_window.study.preprocessed_data_list)
-        if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                self.update_panel()
-                if hasattr(self.main_window, 'update_info_panel'):
-                    self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "ICA applied.")
+
 
     def open_rereference(self):
         if self.check_lock(): return

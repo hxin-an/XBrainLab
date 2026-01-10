@@ -12,7 +12,7 @@ from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.study import Study
 
 # Path to real test data
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test_data_small'))
+TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'test_data_small'))
 GDF_FILE = os.path.join(TEST_DATA_DIR, 'A01T.gdf')
 from XBrainLab.backend.dataset.data_splitter import DataSplitter
 from XBrainLab.backend.dataset.option import SplitByType, ValSplitByType, SplitUnit

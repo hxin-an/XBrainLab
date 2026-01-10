@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QAction
 
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.agent_worker import AgentWorker
 from XBrainLab.ui.chat_panel import ChatPanel
 from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
@@ -76,13 +75,6 @@ class MainWindow(QMainWindow):
         self.ai_btn.setObjectName("ActionBtn")
         self.top_bar_layout.addWidget(self.ai_btn)
 
-        # Info Toggle Button
-        self.info_btn = QPushButton("Data Info")
-        self.info_btn.setCheckable(True)
-        self.info_btn.setChecked(True)
-        self.info_btn.clicked.connect(self.toggle_info_dock)
-        self.info_btn.setObjectName("ActionBtn")
-        self.top_bar_layout.addWidget(self.info_btn)
         
         main_layout.addWidget(self.top_bar)
         
@@ -93,8 +85,6 @@ class MainWindow(QMainWindow):
         # Initialize Panels
         self.init_panels()
 
-        # Initialize Info Dock
-        self.init_info_dock()
         
         # Initialize Agent System
         self.init_agent()
@@ -306,34 +296,28 @@ class MainWindow(QMainWindow):
 
     def start_agent_system(self):
         """
-        Initializes the AI Agent system in a separate thread.
+        Initializes the AI Agent system.
         This is done lazily (only when requested) to save resources.
         """
         if self.agent_initialized:
             return
 
-        # 2. Setup Thread and Worker
-        self.agent_thread = QThread()
-        self.agent_worker = AgentWorker()
-        self.agent_worker.moveToThread(self.agent_thread)
+        from XBrainLab.llm.agent.controller import LLMController
+        
+        # 2. Create Controller
+        self.agent_controller = LLMController(self.study)
         
         # 3. Connect Signals
         self.chat_panel.send_message.connect(self.handle_user_input)
-        self.sig_init_agent.connect(self.agent_worker.initialize_agent)
-        self.sig_generate.connect(self.agent_worker.generate)
-        self.agent_worker.finished.connect(self.handle_agent_response)
-        self.agent_worker.error.connect(self.handle_agent_error)
-        self.agent_worker.log.connect(self.handle_agent_log)
         
-        self.agent_thread.start()
+        self.agent_controller.response_ready.connect(lambda sender, text: self.chat_panel.append_message(sender, text))
+        self.agent_controller.status_update.connect(self.chat_panel.set_status)
+        self.agent_controller.error_occurred.connect(self.handle_agent_error)
         
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(0, self.trigger_agent_init)
+        # Initialize
+        self.agent_controller.initialize()
         
         self.agent_initialized = True
-
-    def trigger_agent_init(self):
-        self.sig_init_agent.emit()
 
     def toggle_ai_dock(self):
         if not self.agent_initialized:
@@ -365,64 +349,54 @@ class MainWindow(QMainWindow):
         self.ai_btn.setChecked(visible)
         self.ai_btn.blockSignals(False)
 
-    def init_info_dock(self):
-        self.info_panel = AggregateInfoPanel(self)
-        self.info_dock = QDockWidget("Data Info", self)
-        self.info_dock.setWidget(self.info_panel)
-        self.info_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.info_dock)
-        self.info_dock.visibilityChanged.connect(self.update_info_btn_state)
-
-    def toggle_info_dock(self):
-        if self.info_dock.isVisible():
-            self.info_dock.close()
-        else:
-            self.info_dock.show()
-
-    def update_info_btn_state(self, visible):
-        self.info_btn.blockSignals(True)
-        self.info_btn.setChecked(visible)
-        self.info_btn.blockSignals(False)
 
     def update_info_panel(self):
         if hasattr(self, 'info_panel'):
             self.info_panel.update_info()
 
     def handle_user_input(self, text):
-        history = "" 
-        self.sig_generate.emit(history, text)
-
-    def handle_agent_response(self, commands):
-        self.chat_panel.set_status("Ready")
-        response_text = ""
-        for cmd in commands:
-            if "text" in cmd:
-                response_text += cmd["text"] + "\n"
-            elif "command" in cmd:
-                response_text += f"[Command] {cmd['command']}: {cmd['parameters']}\n"
-        
-        if not response_text:
-            response_text = "(No response generated)"
-            
-        self.chat_panel.append_message("Agent", response_text)
+        # Forward to controller
+        if hasattr(self, 'agent_controller'):
+            self.agent_controller.handle_user_input(text)
 
     def handle_agent_error(self, error_msg):
         self.chat_panel.set_status("Error")
         self.chat_panel.append_message("System", f"Error: {error_msg}")
         logger.error(f"Agent Error: {error_msg}")
 
-    def handle_agent_log(self, msg):
-        self.chat_panel.set_status(msg)
+    def closeEvent(self, event):
+        logger.info("Closing application...")
+        if hasattr(self, 'agent_controller'):
+            self.agent_controller.close()
+        event.accept()
 
     def closeEvent(self, event):
         logger.info("Closing application...")
-        if hasattr(self, 'agent_thread') and self.agent_thread.isRunning():
-            logger.info("Stopping agent thread...")
-            self.agent_thread.requestInterruption()
-            self.agent_thread.quit()
-            if not self.agent_thread.wait(500): 
-                logger.warning("Agent thread is busy, letting application exit anyway.")
+        if hasattr(self, 'agent_controller'):
+            self.agent_controller.close()
         super().closeEvent(event)
+
+    def refresh_panels(self):
+        """Refresh all panels to synchronize data."""
+        # Update Dataset Panel (which updates its own Aggregate Info)
+        if hasattr(self, 'dataset_panel'):
+            self.dataset_panel.update_panel()
+            
+        # Update Preprocess Panel
+        if hasattr(self, 'preprocess_panel'):
+            self.preprocess_panel.update_panel()
+            
+        # Update Training Panel
+        if hasattr(self, 'training_panel'):
+            self.training_panel.update_info()
+            
+        # Update Evaluation Panel
+        if hasattr(self, 'evaluation_panel'):
+            self.evaluation_panel.update_info()
+            
+        # Update Visualization Panel
+        if hasattr(self, 'visualization_panel'):
+            self.visualization_panel.update_info()
 
 def global_exception_handler(exctype, value, traceback):
     if issubclass(exctype, KeyboardInterrupt):
@@ -436,4 +410,7 @@ def global_exception_handler(exctype, value, traceback):
     msg.setWindowTitle("Error")
     msg.exec()
 
-sys.excepthook = global_exception_handler
+# Only set exception hook if not running under pytest
+import sys
+if "pytest" not in sys.modules:
+    sys.excepthook = global_exception_handler

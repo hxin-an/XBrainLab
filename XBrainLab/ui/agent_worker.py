@@ -1,65 +1,97 @@
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.agent.prompts import get_system_prompt
+from XBrainLab.llm.tools import AVAILABLE_TOOLS
+
+class GenerationThread(QThread):
+    """Thread for running LLM generation without blocking UI."""
+    chunk_received = pyqtSignal(str)
+    finished_generation = pyqtSignal()
+    error_occurred = pyqtSignal(str)
+
+    def __init__(self, engine, messages):
+        super().__init__()
+        self.engine = engine
+        self.messages = messages
+
+    def run(self):
+        try:
+            for chunk in self.engine.generate_stream(self.messages):
+                self.chunk_received.emit(chunk)
+            self.finished_generation.emit()
+        except Exception as e:
+            logger.error(f"Generation error: {e}", exc_info=True)
+            self.error_occurred.emit(str(e))
 
 class AgentWorker(QObject):
     """
-    Worker class for AI Agent inference.
-    
-    NOTE: AI Agent functionality is currently disabled to maintain 
-    frontend-backend separation. The agent backend (remote/) is under 
-    development and should not be imported by the UI layer.
-    
-    This class provides a stub implementation that returns empty results.
-    To enable AI features, implement a proper API-based backend service.
+    Worker class for AI Agent inference using Local LLM.
     """
-    finished = pyqtSignal(list)
+    finished = pyqtSignal(list) # Kept for compatibility, though we stream now
+    chunk_received = pyqtSignal(str) # New signal for streaming text
     error = pyqtSignal(str)
     log = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
-        self.agent = None
-        self._agent_disabled = True
+        self.engine = None
+        self.generation_thread = None
 
     def initialize_agent(self):
-        """Initialize the agent (currently disabled)."""
-        if self._agent_disabled:
-            logger.warning("AI Agent is disabled - remote module not integrated")
-            self.log.emit("AI Agent is currently disabled.")
-            self.error.emit("AI Agent functionality is not available in this build.")
+        """Initialize the local LLM engine."""
+        if self.engine:
             return
-        
-        # Original implementation would go here when backend is ready:
-        # try:
-        #     logger.info("Initializing Local Agent...")
-        #     self.log.emit("Loading AI Model (this may take a while)...")
-        #     # TODO: Use API-based backend instead of direct import
-        #     # Example: requests.post('http://localhost:5000/api/init')
-        #     self.log.emit("AI Model Loaded.")
-        #     logger.info("Local Agent initialized successfully")
-        # except Exception as e:
-        #     logger.error("Failed to initialize Agent", exc_info=True)
-        #     self.error.emit(str(e))
+
+        try:
+            logger.info("Initializing Local LLM Engine...")
+            self.log.emit("Loading AI Model (this may take a while)...")
+            
+            # Initialize Engine
+            # TODO: Allow user to configure model path via UI settings
+            config = LLMConfig() 
+            self.engine = LLMEngine(config)
+            
+            # Load model in a separate thread to not freeze UI completely
+            # For simplicity in this step, we might block briefly or need another thread
+            # But LLMEngine.load_model is called lazily in generate_stream usually, 
+            # or we can force it here. Let's force it but warn user.
+            self.engine.load_model()
+            
+            self.log.emit("AI Model Loaded.")
+            logger.info("Local Agent initialized successfully")
+        except Exception as e:
+            logger.error("Failed to initialize Agent", exc_info=True)
+            self.error.emit(f"Model Load Error: {str(e)}")
 
     def generate(self, history, input_text):
-        """Run generation (currently disabled)."""
-        if self._agent_disabled:
-            logger.warning(f"AI Agent disabled, ignoring request: {input_text}")
-            self.error.emit("AI Agent is currently disabled.")
-            self.finished.emit([])  # Return empty command list
-            return
-        
-        # Original implementation would go here when backend is ready:
-        # if not self.agent:
-        #     self.initialize_agent()
-        # 
-        # try:
-        #     logger.info(f"Agent generating for input: {input_text}")
-        #     # TODO: Use API call instead of direct method call
-        #     # Example: response = requests.post('http://localhost:5000/api/generate',
-        #     #                                   json={'history': history, 'input': input_text})
-        #     # commands = response.json()
-        #     self.finished.emit(commands)
-        # except Exception as e:
-        #     logger.error("Error during generation", exc_info=True)
-        #     self.error.emit(str(e))
+        """Run generation (Legacy wrapper)."""
+        # This is kept for compatibility if needed, but Controller uses generate_from_messages
+        # We can construct a simple message list here
+        from XBrainLab.llm.prompts import SYSTEM_PROMPT_CHAT
+        messages = [{"role": "system", "content": SYSTEM_PROMPT_CHAT}]
+        messages.append({"role": "user", "content": input_text})
+        self.generate_from_messages(messages)
+
+    def generate_from_messages(self, messages):
+        """Run generation with full message history."""
+        if not self.engine:
+            self.initialize_agent()
+            if not self.engine: # If initialization failed
+                return
+
+        # Log the last user message for context
+        last_msg = messages[-1]
+        if last_msg['role'] == 'user':
+            log_text = last_msg['content'][:50] + "..." if len(last_msg['content']) > 50 else last_msg['content']
+            self.log.emit(f"Processing: {log_text}")
+            logger.info(f"Agent generating for input: {log_text}")
+        else:
+            self.log.emit("Processing...")
+
+        self.generation_thread = GenerationThread(self.engine, messages)
+        self.generation_thread.chunk_received.connect(self.chunk_received)
+        self.generation_thread.finished_generation.connect(lambda: (self.finished.emit([]), self.log.emit("Generation completed.")))
+        self.generation_thread.error_occurred.connect(self.error)
+        self.generation_thread.start()

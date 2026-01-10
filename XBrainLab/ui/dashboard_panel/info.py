@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QGroupBox, QGridLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy
+from PyQt6.QtWidgets import QGroupBox, QGridLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QFrame
 from PyQt6.QtCore import Qt
 from XBrainLab.backend.load_data import DataType
 
@@ -12,30 +12,79 @@ class AggregateInfoPanel(QGroupBox):
         self.init_ui()
 
     def init_ui(self):
-        # Use VBox with Form or Grid, aligned to top
+        # Main Layout for the GroupBox
         main_layout = QVBoxLayout(self)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        main_layout.setContentsMargins(0, 8, 0, 0) # Space for title
         
-        info_layout = QGridLayout()
-        info_layout.setVerticalSpacing(5) # Tighter spacing
+        # Use QTableWidget to match TrainingPanel's Configuration Summary
+        from PyQt6.QtWidgets import QTableWidget, QHeaderView, QTableWidgetItem
         
-        self.labels = {}
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.verticalHeader().setVisible(False)
+        self.table.horizontalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                background-color: #2d2d2d;
+                border: 1px solid #3e3e42;
+                border-radius: 4px;
+                color: #cccccc;
+            }
+            QTableWidget::item {
+                padding: 4px;
+                border: none; 
+            }
+        """)
+        
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        
         keys = [
             "Type", "Total Files", "Subjects", "Sessions", "Total Epochs", "Total Events",
             "Channel", "Sample rate", "tmin (sec)", "duration (sec)", 
             "Highpass", "Lowpass", "Classes"
         ]
         
+        self.table.setRowCount(len(keys))
+        self.row_map = {}
+        
         for i, key in enumerate(keys):
-            info_layout.addWidget(QLabel(key), i, 0)
-            val_label = QLabel("-")
-            val_label.setAlignment(Qt.AlignmentFlag.AlignRight) # Align values right
-            info_layout.addWidget(val_label, i, 1)
-            self.labels[key] = val_label
+            # Key Item
+            key_item = QTableWidgetItem(key)
+            key_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(i, 0, key_item)
+            
+            # Value Item
+            val_item = QTableWidgetItem("-")
+            val_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            val_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.table.setItem(i, 1, val_item)
+            
+            self.row_map[key] = i
 
-        main_layout.addLayout(info_layout)
-        self.setFixedWidth(250) # Fixed width for the dock content
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum) # Don't expand vertically
+        main_layout.addWidget(self.table)
+        
+        # Set height based on content
+        self.table.verticalHeader().setDefaultSectionSize(25)
+        
+        # Set height based on content
+        # 25px per row + 2px for borders/margins (tight fit)
+        total_height = len(keys) * 25 + 2 
+        self.table.setMinimumHeight(150) # Allow shrinking
+        self.table.setMaximumHeight(total_height + 5) # Minimal buffer
+        
+        # Limit the GroupBox height so it doesn't consume extra space when expanded
+        # Table height + padding for GroupBox title (approx 20px) + margins (approx 10px)
+        self.setMaximumHeight(total_height + 35) 
+        
+        self.setMinimumWidth(200)
+        # Use Expanding to ensure it takes up available space up to MaximumHeight
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
     def set_main_window(self, main_window):
         self.main_window = main_window
@@ -45,17 +94,7 @@ class AggregateInfoPanel(QGroupBox):
         if not self.main_window or not hasattr(self.main_window, 'study'):
             return
 
-        # Determine which list to use: Preprocessed if available, else Loaded
-        # Actually, user wants to see current state.
-        # If we are in Preprocess panel, we might want to see preprocessed data stats.
-        # But usually Aggregate Info shows the "Current Data" stats.
-        
         study = self.main_window.study
-        
-        # Check active tab to decide which list to show
-        # Tab 0: Dataset -> loaded_data_list
-        # Tab 1: Preprocess -> preprocessed_data_list (if available)
-        # Others: Default to preprocessed if available
         
         use_loaded = True
         if hasattr(self.main_window, 'stack'):
@@ -90,15 +129,12 @@ class AggregateInfoPanel(QGroupBox):
 
             total_epochs += data.get_epochs_length()
             
-            # Calculate Total Events
             try:
                 if data.is_raw():
                     events, _ = data.get_event_list()
                     if events is not None:
                         total_events += len(events)
                 else:
-                    # For epochs, total events is same as total epochs usually, 
-                    # but let's be consistent with dataset.py logic
                     total_events += data.get_epochs_length()
             except:
                 pass
@@ -117,20 +153,30 @@ class AggregateInfoPanel(QGroupBox):
         highpass, lowpass = first_data.get_filter_range()
         text_type = DataType.RAW.value if first_data.is_raw() else DataType.EPOCH.value
 
-        self.labels["Type"].setText(str(text_type))
-        self.labels["Total Files"].setText(str(len(data_list)))
-        self.labels["Subjects"].setText(str(len(subject_set)))
-        self.labels["Sessions"].setText(str(len(session_set)))
-        self.labels["Total Epochs"].setText(str(total_epochs))
-        self.labels["Total Events"].setText(str(total_events))
-        self.labels["Channel"].setText(str(first_data.get_nchan()))
-        self.labels["Sample rate"].setText(str(first_data.get_sfreq()))
-        self.labels["tmin (sec)"].setText(tmin)
-        self.labels["duration (sec)"].setText(duration)
-        self.labels["Highpass"].setText(f"{highpass:.2f}")
-        self.labels["Lowpass"].setText(f"{lowpass:.2f}")
-        self.labels["Classes"].setText(str(len(classes_set)))
+        self.set_val("Type", str(text_type))
+        self.set_val("Total Files", str(len(data_list)))
+        self.set_val("Subjects", str(len(subject_set)))
+        self.set_val("Sessions", str(len(session_set)))
+        self.set_val("Total Epochs", str(total_epochs))
+        self.set_val("Total Events", str(total_events))
+        self.set_val("Channel", str(first_data.get_nchan()))
+        self.set_val("Sample rate", str(first_data.get_sfreq()))
+        self.set_val("tmin (sec)", tmin)
+        self.set_val("duration (sec)", duration)
+        self.set_val("Highpass", f"{highpass:.2f}")
+        self.set_val("Lowpass", f"{lowpass:.2f}")
+        self.set_val("Classes", str(len(classes_set)))
+
+    def set_val(self, key, value):
+        if key in self.row_map:
+            row = self.row_map[key]
+            from PyQt6.QtWidgets import QTableWidgetItem
+            item = self.table.item(row, 1)
+            if item:
+                item.setText(value)
 
     def reset_labels(self):
-        for label in self.labels.values():
-            label.setText("-")
+        for i in range(self.table.rowCount()):
+            item = self.table.item(i, 1)
+            if item:
+                item.setText("-")

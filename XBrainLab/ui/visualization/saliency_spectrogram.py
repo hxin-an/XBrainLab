@@ -28,7 +28,15 @@ class SaliencySpectrogramWidget(QWidget):
         
         self.plan_combo = QComboBox()
         self.plan_combo.addItem("Select a plan")
-        self.plan_combo.addItems(list(self.trainer_map.keys()))
+        
+        # Re-build map with friendly names
+        self.friendly_map = {}
+        for i, trainer in enumerate(self.trainers):
+            model_name = trainer.model_holder.target_model.__name__
+            friendly_name = f"Group {i+1} ({model_name})"
+            self.friendly_map[friendly_name] = trainer
+            self.plan_combo.addItem(friendly_name)
+            
         self.plan_combo.setStyleSheet("""
             QComboBox {
                 background-color: #3e3e42;
@@ -40,8 +48,20 @@ class SaliencySpectrogramWidget(QWidget):
                 border: 0px;
             }
         """)
-        self.plan_combo.currentTextChanged.connect(self.on_update)
+        self.plan_combo.currentTextChanged.connect(self.on_plan_changed)
         ctrl_layout.addWidget(self.plan_combo)
+        
+        ctrl_layout.addSpacing(20)
+        
+        # Run Selector
+        lbl_run = QLabel("Run:")
+        lbl_run.setStyleSheet("color: #cccccc;")
+        ctrl_layout.addWidget(lbl_run)
+        
+        self.run_combo = QComboBox()
+        self.run_combo.setStyleSheet(self.plan_combo.styleSheet())
+        self.run_combo.currentTextChanged.connect(self.on_update)
+        ctrl_layout.addWidget(self.run_combo)
         
         ctrl_layout.addSpacing(20)
         
@@ -79,31 +99,116 @@ class SaliencySpectrogramWidget(QWidget):
         self.plot_layout.addWidget(self.canvas)
         layout.addWidget(self.plot_container, stretch=1)
 
+    def on_plan_changed(self, text):
+        """Update Run combo when Plan changes."""
+        self.run_combo.blockSignals(True)
+        self.run_combo.clear()
+        
+        if text in self.friendly_map:
+            trainer = self.friendly_map[text]
+            # Add runs
+            for i in range(trainer.option.repeat_num):
+                self.run_combo.addItem(f"Run {i+1}")
+            # Add Average
+            self.run_combo.addItem("Average")
+            
+        self.run_combo.blockSignals(False)
+        self.on_update()
+
     def on_update(self):
         plan_name = self.plan_combo.currentText()
+        run_name = self.run_combo.currentText()
         method_name = self.saliency_combo.currentText()
         
-        if plan_name == "Select a plan" or plan_name not in self.trainer_map:
+        if plan_name not in self.friendly_map:
+            return
+        if not run_name:
             return
             
-        trainer = self.trainer_map[plan_name]
-        plans = trainer.get_plans()
-        if not plans:
+        trainer = self.friendly_map[plan_name]
+        
+        target_plan = None
+        eval_record = None
+        
+        if run_name == "Average":
+            # Compute Average
+            eval_record = self.get_averaged_record(trainer)
+            if not eval_record:
+                self.show_error("No finished runs to average.")
+                return
+            target_plan = trainer.get_plans()[0]
+        else:
+            # Parse "Run X"
+            try:
+                run_idx = int(run_name.split(" ")[1]) - 1
+                plans = trainer.get_plans()
+                if 0 <= run_idx < len(plans):
+                    target_plan = plans[run_idx]
+                    eval_record = target_plan.get_eval_record()
+            except:
+                pass
+        
+        if not eval_record:
+            self.show_error("Selected run has no evaluation record.")
             return
         
-        # Use first plan for now
-        target_plan = plans[0]
-        
-        self.plot_saliency(target_plan, trainer, method_name)
+        self.plot_saliency(target_plan, trainer, method_name, eval_record)
 
-    def plot_saliency(self, plan, trainer, method):
+    def get_averaged_record(self, trainer):
+        """Compute average EvalRecord from all finished runs."""
+        import numpy as np
+        from XBrainLab.backend.training.record.eval import EvalRecord
+        
+        plans = trainer.get_plans()
+        records = [p.get_eval_record() for p in plans if p.get_eval_record() is not None]
+        
+        if not records:
+            return None
+            
+        base = records[0]
+        
+        def avg_dict(attr_name):
+            result = {}
+            keys = getattr(base, attr_name).keys()
+            for k in keys:
+                arrays = [getattr(r, attr_name)[k] for r in records]
+                result[k] = np.mean(np.stack(arrays), axis=0)
+            return result
+
+        avg_gradient = avg_dict('gradient')
+        avg_gradient_input = avg_dict('gradient_input')
+        avg_smoothgrad = avg_dict('smoothgrad')
+        avg_smoothgrad_sq = avg_dict('smoothgrad_sq')
+        avg_vargrad = avg_dict('vargrad')
+        
+        return EvalRecord(
+            label=base.label,
+            output=base.output,
+            gradient=avg_gradient,
+            gradient_input=avg_gradient_input,
+            smoothgrad=avg_smoothgrad,
+            smoothgrad_sq=avg_smoothgrad_sq,
+            vargrad=avg_vargrad
+        )
+
+    def show_error(self, message):
+        for i in reversed(range(self.plot_layout.count())): 
+            self.plot_layout.itemAt(i).widget().setParent(None)
+        lbl = QLabel(message)
+        lbl.setStyleSheet("color: #ef5350; font-size: 14px; font-weight: bold;")
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.plot_layout.addWidget(lbl)
+
+    def plot_saliency(self, plan, trainer, method, eval_record=None):
         try:
             # Clear previous
             for i in reversed(range(self.plot_layout.count())): 
                 self.plot_layout.itemAt(i).widget().setParent(None)
             
             # Get Data
-            eval_record = plan.get_eval_record()
+            if eval_record is None:
+                eval_record = plan.get_eval_record()
+                
             if not eval_record:
                 raise ValueError("No evaluation record found.")
                 
@@ -133,13 +238,8 @@ class SaliencySpectrogramWidget(QWidget):
                 self.canvas = FigureCanvas(self.fig)
                 self.plot_layout.addWidget(self.canvas)
             else:
-                lbl = QLabel("No data available.")
-                lbl.setStyleSheet("color: #999;")
-                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.plot_layout.addWidget(lbl)
+                self.show_error("No data available.")
                 
         except Exception as e:
             print(f"Error plotting spectrogram: {e}")
-            lbl = QLabel(f"Error: {e}")
-            lbl.setStyleSheet("color: #ef5350;")
-            self.plot_layout.addWidget(lbl)
+            self.show_error(f"Error: {e}")

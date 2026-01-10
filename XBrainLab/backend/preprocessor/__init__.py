@@ -7,7 +7,6 @@ from .normalize import Normalize
 from .resample import Resample
 from .time_epoch import TimeEpoch
 from .window_epoch import WindowEpoch
-from .ica import ICA
 from .rereference import Rereference
 
 __all__ = [
@@ -21,6 +20,5 @@ __all__ = [
     'EditEventName',
     'EditEventId',
     'Export',
-    'ICA',
     'Rereference'
 ]

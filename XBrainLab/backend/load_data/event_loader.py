@@ -192,7 +192,7 @@ class EventLoader:
             eeg_events, _ = self.raw.get_event_list()
             
             # Filter EEG Triggers
-            if selected_event_ids:
+            if selected_event_ids is not None:
                 mask = np.isin(eeg_events[:, -1], selected_event_ids)
                 filtered_eeg_events = eeg_events[mask]
             else:

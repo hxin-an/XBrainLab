@@ -8,7 +8,7 @@ from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.load_data.event_loader import EventLoader
 
 # Path to the small test data provided in the repo
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'test_data_small'))
+TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'test_data_small'))
 GDF_FILE = os.path.join(TEST_DATA_DIR, 'A01T.gdf')
 
 class TestMetadataIntegration:

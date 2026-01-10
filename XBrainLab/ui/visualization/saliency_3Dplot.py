@@ -28,9 +28,18 @@ class Saliency3DPlotWidget(QWidget):
         lbl1 = QLabel("Plan:")
         lbl1.setStyleSheet("color: #cccccc; font-weight: bold;")
         h1.addWidget(lbl1)
+        
         self.plan_combo = QComboBox()
         self.plan_combo.addItem("---")
-        self.plan_combo.addItems(list(self.trainer_map.keys()))
+        
+        # Friendly names
+        self.friendly_map = {}
+        for i, trainer in enumerate(self.trainers):
+            model_name = trainer.model_holder.target_model.__name__
+            friendly_name = f"Group {i+1} ({model_name})"
+            self.friendly_map[friendly_name] = trainer
+            self.plan_combo.addItem(friendly_name)
+            
         self.plan_combo.setStyleSheet(self.get_combo_style())
         self.plan_combo.currentTextChanged.connect(self.on_plan_change)
         h1.addWidget(self.plan_combo)
@@ -38,7 +47,7 @@ class Saliency3DPlotWidget(QWidget):
         
         # Repeat Selector
         h2 = QHBoxLayout()
-        lbl2 = QLabel("Repeat:")
+        lbl2 = QLabel("Run:") # Changed from Repeat to Run for consistency
         lbl2.setStyleSheet("color: #cccccc; font-weight: bold;")
         h2.addWidget(lbl2)
         self.repeat_combo = QComboBox()
@@ -113,37 +122,104 @@ class Saliency3DPlotWidget(QWidget):
         self.repeat_combo.clear()
         self.repeat_combo.addItem("---")
         
-        if plan_name != "---":
-            trainer = self.trainer_map[plan_name]
-            self.real_plan_opt = {
-                plan.get_name(): plan
-                for plan in trainer.get_plans()
-            }
-            self.repeat_combo.addItems(list(self.real_plan_opt.keys()))
+        if plan_name != "---" and plan_name in self.friendly_map:
+            trainer = self.friendly_map[plan_name]
+            # Add runs
+            for i in range(trainer.option.repeat_num):
+                self.repeat_combo.addItem(f"Run {i+1}")
+            # Add Average
+            self.repeat_combo.addItem("Average")
         else:
-            self.real_plan_opt = {}
+            pass
             
     def on_repeat_change(self, repeat_name):
         self.event_combo.clear()
         self.event_combo.addItem("---")
         
-        if repeat_name != "---" and repeat_name in self.real_plan_opt:
-            real_plan = self.real_plan_opt[repeat_name]
-            events = list(real_plan.dataset.get_epoch_data().event_id.keys())
+        plan_name = self.plan_combo.currentText()
+        if plan_name == "---" or plan_name not in self.friendly_map:
+            return
+            
+        trainer = self.friendly_map[plan_name]
+        
+        # Get events from dataset (same for all runs)
+        epoch_data = trainer.get_dataset().get_epoch_data()
+        if epoch_data:
+            events = list(epoch_data.event_id.keys())
             self.event_combo.addItems(events)
             
+    def get_averaged_record(self, trainer):
+        """Compute average EvalRecord from all finished runs."""
+        import numpy as np
+        from XBrainLab.backend.training.record.eval import EvalRecord
+        
+        plans = trainer.get_plans()
+        records = [p.get_eval_record() for p in plans if p.get_eval_record() is not None]
+        
+        if not records:
+            return None
+            
+        base = records[0]
+        
+        def avg_dict(attr_name):
+            result = {}
+            keys = getattr(base, attr_name).keys()
+            for k in keys:
+                arrays = [getattr(r, attr_name)[k] for r in records]
+                result[k] = np.mean(np.stack(arrays), axis=0)
+            return result
+
+        avg_gradient = avg_dict('gradient')
+        avg_gradient_input = avg_dict('gradient_input')
+        avg_smoothgrad = avg_dict('smoothgrad')
+        avg_smoothgrad_sq = avg_dict('smoothgrad_sq')
+        avg_vargrad = avg_dict('vargrad')
+        
+        return EvalRecord(
+            label=base.label,
+            output=base.output,
+            gradient=avg_gradient,
+            gradient_input=avg_gradient_input,
+            smoothgrad=avg_smoothgrad,
+            smoothgrad_sq=avg_smoothgrad_sq,
+            vargrad=avg_vargrad
+        )
+
     def show_plot(self):
         plan_name = self.plan_combo.currentText()
         repeat_name = self.repeat_combo.currentText()
         event_name = self.event_combo.currentText()
         
         if plan_name == "---" or repeat_name == "---" or event_name == "---":
-            QMessageBox.warning(self, "Warning", "Please select Plan, Repeat, and Event.")
+            QMessageBox.warning(self, "Warning", "Please select Plan, Run, and Event.")
             return
             
-        real_plan = self.real_plan_opt[repeat_name]
-        eval_record = real_plan.get_eval_record()
-        epoch_data = real_plan.dataset.get_epoch_data()
+        trainer = self.friendly_map[plan_name]
+        
+        target_plan = None
+        eval_record = None
+        
+        if repeat_name == "Average":
+            eval_record = self.get_averaged_record(trainer)
+            if not eval_record:
+                QMessageBox.warning(self, "Warning", "No finished runs to average.")
+                return
+            target_plan = trainer.get_plans()[0]
+        else:
+            try:
+                run_idx = int(repeat_name.split(" ")[1]) - 1
+                plans = trainer.get_plans()
+                if 0 <= run_idx < len(plans):
+                    target_plan = plans[run_idx]
+                    eval_record = target_plan.get_eval_record()
+            except:
+                pass
+        
+        if not eval_record:
+            QMessageBox.warning(self, "Warning", "Selected run has no evaluation record.")
+            return
+
+        epoch_data = trainer.get_dataset().get_epoch_data()
         
         try:
             saliency = Saliency3D(

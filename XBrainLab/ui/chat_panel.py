@@ -55,5 +55,24 @@ class ChatPanel(QWidget):
         color = "blue" if sender == "User" else "green"
         self.chat_display.append(f"<b style='color:{color}'>{sender}:</b> {text}")
 
+    def start_agent_message(self):
+        """Prepares the chat display for a new agent message."""
+        self.chat_display.append(f"<b style='color:green'>Agent:</b> ")
+        # We don't add a newline yet so chunks can be appended directly
+    
+    def on_chunk_received(self, text):
+        """Appends a chunk of text to the chat display."""
+        # Move cursor to end
+        cursor = self.chat_display.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.chat_display.setTextCursor(cursor)
+        
+        # Insert text
+        self.chat_display.insertPlainText(text)
+        
+        # Ensure scroll to bottom
+        scrollbar = self.chat_display.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
     def set_status(self, status):
         self.status_label.setText(status)

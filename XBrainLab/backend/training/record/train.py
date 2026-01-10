@@ -113,37 +113,36 @@ class TrainRecord:
         #
         self.epoch = 0
         self.target_path = None
-        self.create_dir()
+        self.init_dir()
         self.random_state = get_random_state()
         self.start_timestamp = None
         self.end_timestamp = None
+        
+        # Load existing data if available
+        self.load()
 
-    def create_dir(self) -> None:
+    def init_dir(self) -> None:
         """Initialize the directory to save the record"""
         record_name = self.dataset.get_name()
         repeat_name = self.get_name()
         target_path = os.path.join(
             self.option.get_output_dir(), record_name, repeat_name
         )
-
-        if os.path.exists(target_path):
-            backup_root = os.path.join(
-                self.option.get_output_dir(), record_name, 'backup'
-            )
-            backup_path = os.path.join(backup_root, f"{repeat_name}-{time.time()}")
-            os.makedirs(backup_root, exist_ok=True)
-            shutil.move(target_path, backup_path)
-
-        os.makedirs(target_path)
+        
+        # Do NOT backup automatically. Just ensure it exists.
+        os.makedirs(target_path, exist_ok=True)
         self.target_path = target_path
 
     def resume(self) -> None:
         """Resume training from the last training state"""
         set_random_state(self.random_state)
+        if self.start_timestamp is None:
+            self.start_timestamp = time.time()
 
     def pause(self) -> None:
         """Pause training and save the current training state"""
         self.random_state = get_random_state()
+        self.end_timestamp = time.time()
 
     def get_name(self) -> str:
         """Return the name of the record"""
@@ -254,6 +253,64 @@ class TrainRecord:
         torch.save(record, os.path.join(self.target_path, 'record'))
 
 
+    def load(self) -> None:
+        """Load training record from disk if exists"""
+        if not self.target_path or not os.path.exists(self.target_path):
+            return
+
+        # Load record dict
+        record_path = os.path.join(self.target_path, 'record')
+        if os.path.exists(record_path):
+            try:
+                data = torch.load(record_path, weights_only=False)
+                self.train = data['train']
+                self.val = data['val']
+                self.test = data['test']
+                self.best_record = data['best_record']
+                self.seed = data['seed']
+                # Restore epoch from train loss length
+                self.epoch = len(self.train[RecordKey.LOSS])
+            except Exception as e:
+                print(f"Failed to load TrainRecord stats: {e}")
+
+        # Load EvalRecord
+        self.eval_record = EvalRecord.load(self.target_path)
+
+    def get_model_output(self) -> str:
+        """Return a formatted string summary of the training history."""
+        lines = []
+        lines.append(f"=== Training Summary for {self.get_name()} ===")
+        lines.append(f"Total Epochs: {self.epoch}")
+        
+        # Best Performance
+        lines.append("\n[Best Performance]")
+        for key, val in self.best_record.items():
+            if "epoch" in key:
+                continue
+            epoch_key = key + "_epoch"
+            epoch_val = self.best_record.get(epoch_key, "-")
+            lines.append(f"  {key}: {val:.4f} (Epoch {epoch_val})")
+            
+        # Last Epoch Stats
+        lines.append("\n[Last Epoch Statistics]")
+        if self.epoch > 0:
+            idx = -1
+            def get_val(d, k):
+                return d[k][idx] if len(d[k]) > 0 else "N/A"
+
+            def fmt(val, p=4):
+                if isinstance(val, (int, float)):
+                    return f"{val:.{p}f}"
+                return str(val)
+
+            lines.append(f"  Train Loss: {fmt(get_val(self.train, RecordKey.LOSS))}")
+            lines.append(f"  Train Acc:  {fmt(get_val(self.train, RecordKey.ACC), 2)}%")
+            lines.append(f"  Val Loss:   {fmt(get_val(self.val, RecordKey.LOSS))}")
+            lines.append(f"  Val Acc:    {fmt(get_val(self.val, RecordKey.ACC), 2)}%")
+        else:
+            lines.append("  No training data available.")
+            
+        return "\n".join(lines)
     # figure
     def get_loss_figure(
         self,

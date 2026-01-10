@@ -10,6 +10,7 @@ from .saliency_spectrogram import SaliencySpectrogramWidget
 from .saliency_3Dplot import Saliency3DPlotWidget
 from .export_saliency import ExportSaliencyWindow
 from .model_summary import ModelSummaryWindow
+from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 
 class VisualizationPanel(QWidget):
     """
@@ -109,56 +110,31 @@ class VisualizationPanel(QWidget):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20)
         
-        # 0. Logo (Minimal, no frame)
-        logo_frame = QFrame()
-        logo_frame.setStyleSheet("""
-            QFrame {
-                background-color: transparent;
-                border: none;
-            }
-        """)
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(0, 0, 0, 10)
+        # 0. Logo Removed
         
-        logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        logo_label.setStyleSheet("border: none; background: transparent;") 
+        # 1. Aggregate Information (New)
+        self.info_panel = AggregateInfoPanel(self.main_window)
+        right_layout.addWidget(self.info_panel, stretch=1)
         
-        import os
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.svg")
-        if os.path.exists(logo_path):
-            from PyQt6.QtGui import QPixmap
-            pixmap = QPixmap(logo_path)
-            # Scale pixmap to fit panel width (260 - 20 margin = 240)
-            scaled_pixmap = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
-            logo_label.setPixmap(scaled_pixmap)
-            logo_label.setScaledContents(False)
-        else:
-            logo_label.setText("XBrainLab")
-            logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cccccc; margin-bottom: 5px; border: none;")
-            
-        logo_layout.addWidget(logo_label)
-        right_layout.addWidget(logo_frame)
+        # Add separator line with spacing to center it
+        right_layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #3e3e42; border: none;")
+        line.setFixedHeight(1)
+        right_layout.addWidget(line)
+        right_layout.addSpacing(10)
+
         
-        # 1. Dynamic Tips (Always visible)
-        self.tips_group = QGroupBox("GETTING STARTED")
-        # Explicitly set transparent background to avoid black box
-        self.tips_group.setStyleSheet("QGroupBox { background-color: transparent; border: none; margin-top: 10px; } QGroupBox::title { color: #808080; }")
-        
-        tips_layout = QVBoxLayout(self.tips_group)
-        tips_layout.setContentsMargins(0, 10, 0, 0)
-        tips_label = QLabel(
-            "<div style='line-height: 1.2; color: #999999;'>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>1. Select Plan</b><br>Choose model to visualize</div>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>2. Set Montage</b><br>Configure channel positions</div>"
-            "<div><b style='color: #cccccc;'>3. Generate Plots</b><br>View Saliency/Topomaps</div>"
-            "</div>"
-        )
-        tips_label.setWordWrap(True)
-        tips_label.setStyleSheet("background-color: transparent; border: none;") # Explicitly transparent
-        tips_layout.addWidget(tips_label)
-        right_layout.addWidget(self.tips_group)
-        
+        # Add separator line with spacing
+        right_layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #3e3e42; border: none;")
+        line.setFixedHeight(1)
+        # Add separator line with spacing
         right_layout.addSpacing(10)
         
         # Group 1: Configuration
@@ -267,4 +243,12 @@ class VisualizationPanel(QWidget):
         self.tabs.insertTab(3, self.tab_3d, "3D Plot")
         
         self.tabs.setCurrentIndex(0)
+        self.tabs.setCurrentIndex(0)
+        
         QMessageBox.information(self, "Success", "Visualization data refreshed.")
+
+    def update_info(self):
+        """Update the Aggregate Info Panel."""
+        if hasattr(self, 'info_panel'):
+            self.info_panel.update_info()
+

@@ -193,7 +193,8 @@ class Study:
                           clear the data of following steps.
         """
         validate_type(training_option, TrainingOption, 'training_option')
-        self.clean_trainer(force_update=force_update)
+        # Do not clean trainer here to allow multi-experiment history
+        # self.clean_trainer(force_update=force_update)
         self.training_option = training_option
 
     def set_model_holder(
@@ -209,7 +210,8 @@ class Study:
                           clear the data of following steps.
         """
         validate_type(model_holder, ModelHolder, 'model_holder')
-        self.clean_trainer(force_update=force_update)
+        # Do not clean trainer here to allow multi-experiment history
+        # self.clean_trainer(force_update=force_update)
         self.model_holder = model_holder
 
     def generate_plan(self, force_update: bool = False, append: bool = False) -> None:

@@ -11,7 +11,9 @@ from XBrainLab.backend.load_data.raw_data_loader import load_raw_data
 from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.ui.dashboard_panel.smart_parser import SmartParserDialog
+from XBrainLab.ui.dashboard_panel.smart_parser import SmartParserDialog
 from XBrainLab.ui.dashboard_panel.import_label import ImportLabelDialog, EventFilterDialog, LabelMappingDialog
+from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 from XBrainLab.backend.load_data import RawDataLoader, DataType, EventLoader
 from XBrainLab.backend import preprocessor as Preprocessor
 from XBrainLab.backend.utils.logger import logger
@@ -180,60 +182,50 @@ class DatasetPanel(QWidget):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20) # Reduced margins for wider buttons
         
-        # 0. Logo (Minimal, no frame)
-        logo_frame = QFrame()
-        logo_frame.setStyleSheet("""
-            QFrame {
+        # 0. Logo Removed
+        
+        # 1. Aggregate Info (Replaces Getting Started)
+        self.info_panel = AggregateInfoPanel(self.main_window)
+        # Style it to match the panel look (transparent background if needed, but AggregateInfoPanel is a GroupBox)
+        # We might need to adjust its style slightly or let it inherit.
+        # AggregateInfoPanel sets its own title "Aggregate Information".
+        
+        # Remove the default border/background from AggregateInfoPanel to match our minimal style
+        self.info_panel.setStyleSheet("""
+            QGroupBox {
                 background-color: transparent;
                 border: none;
+                margin-top: 15px;
+                font-weight: bold;
+                color: #808080;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 0px;
+                padding: 0 0px;
+                color: #808080;
+            }
+            QLabel {
+                color: #cccccc;
+                font-weight: normal;
             }
         """)
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(0, 0, 0, 10)
         
-        logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        logo_label.setStyleSheet("border: none; background: transparent;") 
+        right_layout.addWidget(self.info_panel, stretch=1)
         
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.svg")
-        if os.path.exists(logo_path):
-            from PyQt6.QtGui import QPixmap
-            pixmap = QPixmap(logo_path)
-            # Scale pixmap to fit panel width (260 - 20 margin = 240)
-            scaled_pixmap = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
-            logo_label.setPixmap(scaled_pixmap)
-            logo_label.setScaledContents(False)
-        else:
-            logo_label.setText("XBrainLab")
-            logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cccccc; margin-bottom: 5px; border: none;")
-            
-        logo_layout.addWidget(logo_label)
-        right_layout.addWidget(logo_frame)
-        
-        # 1. Dynamic Tips (Always visible)
-        self.tips_group = QGroupBox("GETTING STARTED")
-        # Explicitly set transparent background to avoid black box
-        self.tips_group.setStyleSheet("QGroupBox { background-color: transparent; border: none; margin-top: 10px; } QGroupBox::title { color: #808080; }")
-        
-        tips_layout = QVBoxLayout(self.tips_group)
-        tips_layout.setContentsMargins(0, 10, 0, 0)
-        tips_label = QLabel(
-            "<div style='line-height: 1.2; color: #999999;'>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>1. Import Data</b><br>Load EEG recordings</div>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>2. Import Label</b><br>Add events (optional)</div>"
-            "<div style='margin-bottom: 6px;'><b style='color: #cccccc;'>3. Smart Parse</b><br>Organize metadata</div>"
-            "<div><br>When ready, do <b>Channel Selection</b></div>"
-            "</div>"
-        )
-        tips_label.setWordWrap(True)
-        tips_label.setStyleSheet("background-color: transparent; border: none;") # Explicitly transparent
-        tips_layout.addWidget(tips_label)
-        right_layout.addWidget(self.tips_group)
-        
+        # Add separator line with spacing to center it
         right_layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #3e3e42; border: none;")
+        line.setFixedHeight(1)
+        right_layout.addWidget(line)
+        right_layout.addSpacing(10)
+        # right_layout.addStretch() # Removed to align buttons up
 
         # 2. Dataset Actions Group
-        actions_group = QGroupBox("Dataset Actions")
+        actions_group = QGroupBox("OPERATIONS")
         actions_layout = QVBoxLayout(actions_group)
         actions_layout.setContentsMargins(0, 10, 0, 0) # Maximize width
         
@@ -254,10 +246,12 @@ class DatasetPanel(QWidget):
         
         right_layout.addWidget(actions_group)
 
-        # Spacer to push Danger Zone to bottom
-        right_layout.addStretch()
+        # 3. EXECUTION Group
+        exec_group = QGroupBox("EXECUTION")
+        exec_layout = QVBoxLayout(exec_group)
+        exec_layout.setContentsMargins(0, 10, 0, 0)
 
-        # 3. Channel Selection (Moved here, Green)
+        # Channel Selection (Moved here, Green)
         self.chan_select_btn = QPushButton("Channel Selection")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
         self.chan_select_btn.setStyleSheet("""
@@ -277,9 +271,7 @@ class DatasetPanel(QWidget):
             }
         """)
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
-        right_layout.addWidget(self.chan_select_btn)
-
-
+        exec_layout.addWidget(self.chan_select_btn)
 
         # 4. Danger Zone (Button Only)
         self.clear_btn = QPushButton("Clear Dataset")
@@ -296,7 +288,11 @@ class DatasetPanel(QWidget):
         """)
         self.clear_btn.setToolTip("Remove all loaded data")
         self.clear_btn.clicked.connect(self.clear_dataset)
-        right_layout.addWidget(self.clear_btn)
+        exec_layout.addWidget(self.clear_btn)
+        
+        right_layout.addWidget(exec_group)
+        
+        right_layout.addStretch() # Push everything to top
         
         main_layout.addWidget(right_panel)
 
@@ -386,6 +382,8 @@ class DatasetPanel(QWidget):
         # 3. Apply Changes
         if success_count > 0:
             self.apply_loader(loader)
+            if self.main_window:
+                self.main_window.refresh_panels()
         
         # 4. Report Errors
         if errors:
@@ -456,6 +454,9 @@ class DatasetPanel(QWidget):
                     logger.warning(f"Path not found in results: {path}")
             
             self.update_panel()
+            
+            if self.main_window:
+                self.main_window.refresh_panels()
             
             # IMPORTANT: Sync changes to preprocessor
             if self.main_window and hasattr(self.main_window, 'study'):
@@ -700,8 +701,8 @@ class DatasetPanel(QWidget):
             selected = set(filter_dialog.get_selected_ids())
             logger.info(f"User selected event names: {selected}")
             return selected
-        else:
-            return False
+        
+        return False
 
 
 
@@ -795,6 +796,9 @@ class DatasetPanel(QWidget):
         #     self.tips_group.setVisible(not bool(data_list))
         
         # 1. Update Table
+        if hasattr(self, 'info_panel'):
+            self.info_panel.update_info()
+            
         self.table.clearContents()
         self.table.blockSignals(True) # Prevent itemChanged triggering during update
         self.table.setRowCount(0)
@@ -868,12 +872,12 @@ class DatasetPanel(QWidget):
         self.table.blockSignals(False)
 
         # Also update the global info panel
-        if hasattr(self.main_window, 'update_info_panel'):
-            self.main_window.update_info_panel()
+        # if hasattr(self.main_window, 'update_info_panel'):
+        #     self.main_window.update_info_panel()
 
-        # 2. Update Global Info Panel
-        if self.main_window and hasattr(self.main_window, 'update_info_panel'):
-            self.main_window.update_info_panel()
+        # 2. Update Global Info Panel (Redundant, handled by refresh_panels or individual updates)
+        # if self.main_window and hasattr(self.main_window, 'update_info_panel'):
+        #     self.main_window.update_info_panel()
             
         # 3. Update Channel Selection Button State
         if self.main_window and hasattr(self.main_window, 'study'):

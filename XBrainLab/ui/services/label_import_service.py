@@ -100,7 +100,7 @@ class LabelImportService:
                     file_labels = labels[current_idx : current_idx + n]
                     current_idx += n
                     
-                    self._force_apply_single(data, file_labels, mapping)
+                    self._force_apply_single(data, file_labels, mapping, selected_event_names)
                     applied_count += 1
             return applied_count
             
@@ -134,6 +134,7 @@ class LabelImportService:
                 events, event_id_map = data.get_event_list()
                 if event_id_map:
                     selected_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
+                    logger.info(f"Filtered IDs for {data.get_filename()}: {selected_ids} (from names: {selected_event_names})")
             
             loader.create_event(mapping, selected_event_ids=selected_ids)
             
@@ -141,18 +142,21 @@ class LabelImportService:
         data.set_labels_imported(True)
         logger.info(f"Successfully applied labels to {data.get_filename()}")
 
-    def _force_apply_single(self, data: Any, labels: List[int], mapping: Dict[int, str]):
+    def _force_apply_single(self, data: Any, labels: List[int], mapping: Dict[int, str], selected_event_names: Optional[Set[str]] = None):
         """Helper for force application."""
         loader = EventLoader(data)
         loader.label_list = labels
-        loader.create_event()
         
-        # Update mapping if possible
-        current_events, _ = data.get_event_list()
-        if current_events is not None:
-             new_event_id = {name: code for code, name in mapping.items() if code in np.unique(current_events[:, 2])}
-             if new_event_id:
-                 data.set_event(current_events, new_event_id)
+        # Handle filtering if names provided
+        selected_ids = None
+        if selected_event_names is not None and data.is_raw():
+            events, event_id_map = data.get_event_list()
+            if event_id_map:
+                selected_ids = [eid for name, eid in event_id_map.items() if name in selected_event_names]
+                logger.info(f"Force Import: Filtered IDs for {data.get_filename()}: {selected_ids}")
+
+        loader.create_event(mapping, selected_event_ids=selected_ids)
+        loader.apply()
         
         data.set_labels_imported(True)
 

@@ -54,8 +54,38 @@ class EvalRecord:
             'label': self.label,
             'output': self.output,
             'gradient': self.gradient,
+            'gradient_input': self.gradient_input,
+            'smoothgrad': self.smoothgrad,
+            'smoothgrad_sq': self.smoothgrad_sq,
+            'vargrad': self.vargrad
         }
         torch.save(record, os.path.join(target_path, 'eval'))
+
+    @classmethod
+    def load(cls, target_path: str) -> 'EvalRecord | None':
+        """Load evaluation result from torch file.
+
+        Args:
+            target_path: Path to load evaluation result.
+        """
+        path = os.path.join(target_path, 'eval')
+        if not os.path.exists(path):
+            return None
+            
+        try:
+            data = torch.load(path, weights_only=False)
+            return cls(
+                label=data['label'],
+                output=data['output'],
+                gradient=data.get('gradient', {}),
+                gradient_input=data.get('gradient_input', {}),
+                smoothgrad=data.get('smoothgrad', {}),
+                smoothgrad_sq=data.get('smoothgrad_sq', {}),
+                vargrad=data.get('vargrad', {})
+            )
+        except Exception as e:
+            print(f"Failed to load EvalRecord: {e}")
+            return None
 
     def export_csv(self, target_path: str) -> None:
         """Export evaluation result as csv file.

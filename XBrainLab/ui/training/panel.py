@@ -12,6 +12,7 @@ from .test_only_setting import TestOnlySettingWindow
 from .model_selection import ModelSelectionWindow
 from .training_manager import TrainingManagerWindow
 from ..dataset.data_splitting_setting import DataSplittingSettingWindow
+from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 
 class MetricTab(QWidget):
     """
@@ -47,7 +48,13 @@ class MetricTab(QWidget):
         
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
-        self.ax.set_ylabel(self.metric_name)
+        
+        # Add Units
+        ylabel = self.metric_name
+        if "Accuracy" in self.metric_name:
+            ylabel += " (%)"
+        self.ax.set_ylabel(ylabel)
+        
         self.ax.grid(True, linestyle='--', alpha=0.3, color='#666666') # Subtle grid
         self.fig.tight_layout()
         layout.addWidget(self.canvas, stretch=1)
@@ -86,7 +93,13 @@ class MetricTab(QWidget):
         
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
-        self.ax.set_ylabel(self.metric_name)
+        
+        # Add Units
+        ylabel = self.metric_name
+        if "Accuracy" in self.metric_name:
+            ylabel += " (%)"
+        self.ax.set_ylabel(ylabel)
+        
         self.ax.grid(True, linestyle='--', alpha=0.3, color='#666666')
         
         # Legend styling
@@ -101,7 +114,13 @@ class MetricTab(QWidget):
         self.ax.clear()
         self.ax.set_title(f"{self.metric_name} vs Epoch")
         self.ax.set_xlabel("Epoch")
-        self.ax.set_ylabel(self.metric_name)
+        
+        # Add Units
+        ylabel = self.metric_name
+        if "Accuracy" in self.metric_name:
+            ylabel += " (%)"
+        self.ax.set_ylabel(ylabel)
+        
         self.ax.grid(True, linestyle='--', alpha=0.3, color='#666666')
         self.canvas.draw()
         
@@ -290,74 +309,22 @@ class TrainingPanel(QWidget):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20)
         
-        # 0. Logo (Minimal, no frame)
-        logo_frame = QFrame()
-        logo_frame.setStyleSheet("""
-            QFrame {
-                background-color: transparent;
-                border: none;
-            }
-        """)
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(0, 0, 0, 10)
+        # 0. Logo Removed
         
-        logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        logo_label.setStyleSheet("border: none; background: transparent;") 
+        # 1. Aggregate Information (New)
+        self.info_panel = AggregateInfoPanel(self.main_window)
+        right_layout.addWidget(self.info_panel, stretch=1)
         
-        import os
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.svg")
-        if os.path.exists(logo_path):
-            from PyQt6.QtGui import QPixmap
-            pixmap = QPixmap(logo_path)
-            # Scale pixmap to fit panel width (260 - 20 margin = 240)
-            scaled_pixmap = pixmap.scaledToWidth(240, Qt.TransformationMode.SmoothTransformation)
-            logo_label.setPixmap(scaled_pixmap)
-            logo_label.setScaledContents(False)
-        else:
-            logo_label.setText("XBrainLab")
-            logo_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cccccc; margin-bottom: 5px; border: none;")
-            
-        logo_layout.addWidget(logo_label)
-        right_layout.addWidget(logo_frame)
-        
-        # 1. Configuration Summary Table (Replaces Getting Started)
-        self.summary_group = QGroupBox("CONFIGURATION SUMMARY")
-        self.summary_group.setStyleSheet("QGroupBox { border: none; margin-top: 10px; font-weight: bold; color: #808080; } QGroupBox::title { color: #808080; }")
-        summary_layout = QVBoxLayout(self.summary_group)
-        summary_layout.setContentsMargins(0, 8, 0, 0)
-        summary_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        
-        self.summary_table = QTableWidget()
-        self.summary_table.setColumnCount(2)
-        self.summary_table.setHorizontalHeaderLabels(["Setting", "Value"])
-        self.summary_table.verticalHeader().setVisible(False)
-        self.summary_table.horizontalHeader().setVisible(False) # Clean look
-        self.summary_table.setShowGrid(False)
-        self.summary_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.summary_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.summary_table.setStyleSheet("""
-            QTableWidget {
-                background-color: transparent;
-                border: none;
-                color: #cccccc;
-            }
-            QTableWidget::item {
-                padding: 4px;
-                border-bottom: 1px solid #3e3e42;
-            }
-        """)
-        self.summary_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.summary_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        
-        summary_layout.addWidget(self.summary_table)
-        right_layout.addWidget(self.summary_group)
-        
-        # Add more spacing to separate Summary from Configuration
-        right_layout.addSpacing(120)
-        
-        # Limit height to prevent pushing content too far
-        self.summary_table.setMaximumHeight(500)
+        # Add separator line with spacing to center it
+        right_layout.addSpacing(10)
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setFrameShadow(QFrame.Shadow.Sunken)
+        line.setStyleSheet("background-color: #3e3e42; border: none;")
+        line.setFixedHeight(1)
+        right_layout.addWidget(line)
+        right_layout.addSpacing(10)
+
         
         # Group 1: Configuration Buttons
         config_group = QGroupBox("CONFIGURATION")
@@ -379,11 +346,9 @@ class TrainingPanel(QWidget):
         right_layout.addWidget(config_group)
         right_layout.addSpacing(20)
         
-        # Initialize summary
-        self.update_summary()
         
         # Spacer to push Execution group to bottom
-        right_layout.addStretch()
+        # right_layout.addStretch()
         
         # Group 2: Execution
         exec_group = QGroupBox("EXECUTION")
@@ -437,89 +402,11 @@ class TrainingPanel(QWidget):
         
         right_layout.addWidget(exec_group)
         
+        right_layout.addStretch() # Push everything to top
+        
         main_layout.addWidget(right_panel, stretch=0)
 
     # --- Event Handlers ---
-    def update_summary(self):
-        """Update the configuration summary table based on current study state."""
-        self.summary_table.setRowCount(0)
-        
-        def add_row(setting, value):
-            row = self.summary_table.rowCount()
-            self.summary_table.insertRow(row)
-            self.summary_table.setItem(row, 0, QTableWidgetItem(setting))
-            self.summary_table.setItem(row, 1, QTableWidgetItem(value))
-            
-        # 1. Dataset Splitting
-        if self.study.dataset_generator:
-            gen = self.study.dataset_generator
-            if gen.config:
-                # Validation Split Info
-                val_splitters = gen.config.val_splitter_list
-                for s in val_splitters:
-                    if s.is_option:
-                        info = f"{s.text}"
-                        if s.split_unit:
-                            info += f" ({s.split_unit.value}: {s.value_var})"
-                        add_row("Val Split", info)
-                        
-                # Test Split Info
-                test_splitters = gen.config.test_splitter_list
-                for s in test_splitters:
-                    if s.is_option:
-                        info = f"{s.text}"
-                        if s.split_unit:
-                            info += f" ({s.split_unit.value}: {s.value_var})"
-                        add_row("Test Split", info)
-
-            if gen.datasets:
-                # Show detailed summary for each dataset
-                for i, dataset in enumerate(gen.datasets):
-                    train_count = sum(dataset.train_mask)
-                    val_count = sum(dataset.val_mask)
-                    test_count = sum(dataset.test_mask)
-                    total = len(dataset.train_mask)
-                    
-                    prefix = f"Dataset {i+1}" if len(gen.datasets) > 1 else "Data"
-                    
-                    if total > 0:
-                        add_row(f"{prefix} Train", f"{train_count} ({train_count/total*100:.1f}%)")
-                        add_row(f"{prefix} Val", f"{val_count} ({val_count/total*100:.1f}%)")
-                        add_row(f"{prefix} Test", f"{test_count} ({test_count/total*100:.1f}%)")
-                    else:
-                        add_row(f"{prefix} Status", "Empty")
-        else:
-            add_row("Splitting", "Not Set")
-            
-        # 2. Model
-        if self.study.model_holder:
-            model_name = self.study.model_holder.target_model.__name__
-            add_row("Model", model_name)
-        else:
-            add_row("Model", "Not Set")
-            
-        # 3. Training Settings
-        if self.study.training_option:
-            opt = self.study.training_option
-            add_row("Epochs", str(opt.epoch))
-            add_row("Batch Size", str(opt.bs))
-            add_row("LR", str(opt.lr))
-            add_row("Device", opt.get_device_name())
-        else:
-            add_row("Training", "Not Set")
-
-        # Dynamic Height Adjustment
-        self.summary_table.resizeRowsToContents()
-        total_height = 0
-        # Calculate total height of all rows
-        for i in range(self.summary_table.rowCount()):
-            total_height += self.summary_table.rowHeight(i)
-        
-        # Add buffer for borders (header is hidden)
-        # If total_height is 0 (empty), set a minimum
-        # Cap at 500 to prevent layout shift
-        target_height = min(max(total_height + 5, 20), 500)
-        self.summary_table.setFixedHeight(target_height)
 
     def split_data(self):
         if not self.study.loaded_data_list:
@@ -535,30 +422,58 @@ class TrainingPanel(QWidget):
                 "Dataset splitting requires epoched data to generate training, validation, and test sets."
             )
             return
-            
-        # Fix: Pass self.study.epoch_data as the second argument
+
+        # Check if training is running
+        if self.study.is_training():
+            QMessageBox.warning(self, "Training Running", "Cannot change data splitting while training is running.")
+            return
+
         win = DataSplittingSettingWindow(self, self.study.epoch_data)
         if win.exec():
+            # Check if reset is needed
+            if self.study.datasets or self.study.trainer:
+                reply = QMessageBox.question(
+                    self, 
+                    "Reset Training Data", 
+                    "Applying new data splitting will clear existing datasets and training history.\n\n"
+                    "Do you want to continue?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.No:
+                    return
+                # Force clean
+                self.study.clean_datasets(force_update=True)
+
             generator = win.get_result()
             if generator:
                 generator.apply(self.study)
-            self.update_summary() # Refresh summary
             QMessageBox.information(self, "Success", "Data splitting configuration saved.")
 
     def select_model(self):
+        # Check if training is running
+        if self.study.is_training():
+            QMessageBox.warning(self, "Training Running", "Cannot change model while training is running.")
+            return
+
         win = ModelSelectionWindow(self)
         if win.exec():
+            # No need to reset trainer anymore, allowing multi-experiment history
             self.study.set_model_holder(win.get_result())
-            self.update_summary() # Refresh summary
             # ModelHolder doesn't have model_name, use get_model_desc_str() or target_model.__name__
             model_name = self.study.model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
 
     def training_setting(self):
+        # Check if training is running
+        if self.study.is_training():
+            QMessageBox.warning(self, "Training Running", "Cannot change training settings while training is running.")
+            return
+
         win = TrainingSettingWindow(self)
         if win.exec():
+            # No need to reset trainer anymore, allowing multi-experiment history
             self.study.set_training_option(win.get_result())
-            self.update_summary() # Refresh summary
             QMessageBox.information(self, "Success", "Training settings saved.")
 
     def start_training(self):
@@ -738,31 +653,22 @@ class TrainingPanel(QWidget):
             set_item(9, f"{lr:.6f}")
             
             import datetime
-            time_str = ""
-            if is_active:
-                # Show current time or elapsed? User asked for duration/end time?
-                # "training history 的 time 那欄還是空的" -> usually implies duration or timestamp
-                # Let's show current time for active, and maybe duration for finished?
-                # For now, let's show Start Time or Duration if available.
-                # Since record doesn't track start/end time explicitly in this snippet,
-                # we can use current time for running.
-                time_str = datetime.datetime.now().strftime("%H:%M:%S")
-            elif record.is_finished():
-                 # If we had start/end time, we could show duration.
-                 # For now, let's show "Done" or leave it empty if no data.
-                 # But user said "Time column is empty".
-                 # Let's try to show something meaningful.
-                 # Maybe we can add a timestamp to the record in backend?
-                 # Or just show current time when it finished?
-                 # Without backend changes, we can't show true duration.
-                 # But we can show "N/A" or similar.
-                 # However, let's check if record has any time info.
-                 # It seems not.
-                 # Let's just show current time for active, and maybe "-" for others for now,
-                 # or implement a simple duration tracker in the panel if possible?
-                 # No, panel is recreated.
-                 # Let's stick to current time for active.
-                 pass
+            import time
+            time_str = "-"
+            
+            start_ts = getattr(record, 'start_timestamp', None)
+            end_ts = getattr(record, 'end_timestamp', None)
+            
+            if start_ts:
+                if end_ts:
+                    duration = end_ts - start_ts
+                else:
+                    duration = time.time() - start_ts
+                
+                # Format duration as HH:MM:SS
+                m, s = divmod(int(duration), 60)
+                h, m = divmod(m, 60)
+                time_str = f"{h:02d}:{m:02d}:{s:02d}"
             
             set_item(10, time_str)
 
@@ -782,9 +688,7 @@ class TrainingPanel(QWidget):
             if should_plot:
                 if self.current_plotting_record != record:
                     self.current_plotting_record = record
-                    self.tab_acc.clear()
-                    self.tab_loss.clear()
-                    # self.tab_summary.update_plot(plan) # Removed
+                    self.refresh_plot(record)
                 
                 current_plot_epoch = 0
                 if self.tab_acc.epochs:
@@ -793,7 +697,6 @@ class TrainingPanel(QWidget):
                 if is_active and epoch > current_plot_epoch:
                      self.tab_acc.update_plot(epoch, train_acc, val_acc)
                      self.tab_loss.update_plot(epoch, train_loss, val_loss)
-                     # self.tab_summary.update_plot(plan) # Removed
                      
                      # Log
                      timestamp = datetime.datetime.now().strftime("%H:%M:%S")
@@ -805,7 +708,7 @@ class TrainingPanel(QWidget):
                      self.log_text.append(log_msg)
 
     def on_history_selection_changed(self):
-        """Handle row selection to update plots."""
+        """Handle history table selection change."""
         selected_items = self.history_table.selectedItems()
         if not selected_items:
             return
@@ -813,31 +716,37 @@ class TrainingPanel(QWidget):
         row = selected_items[0].row()
         if row in self.row_map:
             plan, record = self.row_map[row]
-            
-            # Update Summary (Removed)
-            # self.tab_summary.update_plot(plan)
-            
-            # Update Current Run Plots (Replay history)
             self.current_plotting_record = record
-            self.tab_acc.clear()
-            self.tab_loss.clear()
+            self.refresh_plot(record)
+
+    def refresh_plot(self, record):
+        """Refresh the plots with the full history of the given record."""
+        self.tab_acc.clear()
+        self.tab_loss.clear()
+        
+        # Re-populate data
+        from XBrainLab.backend.training.record.train import RecordKey, TrainRecordKey
+        
+        epochs = len(record.train[TrainRecordKey.ACC])
+        for i in range(epochs):
+            epoch = i + 1
             
-            # Replay
-            train_accs = record.train['accuracy']
-            val_accs = record.val['accuracy']
-            train_losses = record.train['loss']
-            val_losses = record.val['loss']
+            def get_val(key, source, idx):
+                if idx < len(source[key]):
+                    val = source[key][idx]
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        return 0.0
+                return 0.0
+
+            train_acc = get_val(TrainRecordKey.ACC, record.train, i)
+            val_acc = get_val(RecordKey.ACC, record.val, i)
+            train_loss = get_val(TrainRecordKey.LOSS, record.train, i)
+            val_loss = get_val(RecordKey.LOSS, record.val, i)
             
-            # We assume lengths match roughly
-            for i in range(len(train_accs)):
-                ep = i + 1
-                t_acc = train_accs[i]
-                v_acc = val_accs[i] if i < len(val_accs) else 0
-                t_loss = train_losses[i]
-                v_loss = val_losses[i] if i < len(val_losses) else 0
-                
-                self.tab_acc.update_plot(ep, t_acc, v_acc)
-                self.tab_loss.update_plot(ep, t_loss, v_loss)
+            self.tab_acc.update_plot(epoch, train_acc, val_acc)
+            self.tab_loss.update_plot(epoch, train_loss, val_loss)
 
     def training_finished(self):
         # self.btn_start.setEnabled(True) # Always enabled now
@@ -849,3 +758,8 @@ class TrainingPanel(QWidget):
         if not self.training_completed_shown:
             self.training_completed_shown = True
             QMessageBox.information(self, "Done", "All training jobs finished.")
+
+    def update_info(self):
+        """Update the Aggregate Info Panel."""
+        if hasattr(self, 'info_panel'):
+            self.info_panel.update_info()
