@@ -85,12 +85,14 @@ class TrainRecord:
         dataset: Dataset,
         model: torch.nn.Module,
         option: TrainingOption,
-        seed: int
+        seed: int,
+        plan_id: str = None
     ):
         self.repeat = repeat
         self.dataset = dataset
         self.option = option
         self.seed = seed
+        self.plan_id = plan_id
         self.model = model
         self.optim = self.option.get_optim(model)
         self.criterion = self.option.criterion
@@ -125,8 +127,13 @@ class TrainRecord:
         """Initialize the directory to save the record"""
         record_name = self.dataset.get_name()
         repeat_name = self.get_name()
+        
+        # Construct unique path: output / dataset / model_timestamp / repeat
+        model_name = self.model.__class__.__name__
+        unique_id = f"{model_name}_{self.plan_id}" if self.plan_id else model_name
+        
         target_path = os.path.join(
-            self.option.get_output_dir(), record_name, repeat_name
+            self.option.get_output_dir(), record_name, unique_id, repeat_name
         )
         
         # Do NOT backup automatically. Just ensure it exists.
@@ -465,7 +472,8 @@ class TrainRecord:
         self,
         fig: Figure = None,
         figsize: tuple = (6.4, 4.8),
-        dpi: int = 100
+        dpi: int = 100,
+        show_percentage: bool = False
     ) -> Figure:
         """Return the confusion matrix of the evaluation record
 
@@ -473,6 +481,7 @@ class TrainRecord:
             fig: Figure to be plotted on. If None, a new figure will be created
             figsize: Figure size
             dpi: Figure dpi
+            show_percentage: Whether to show percentage instead of count
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -484,28 +493,62 @@ class TrainRecord:
         confusion = calculate_confusion(output, label)
         classNum = confusion.shape[0]
 
+        if show_percentage:
+            # Normalize by row (Ground Truth)
+            row_sums = confusion.sum(axis=1, keepdims=True)
+            row_sums[row_sums == 0] = 1  # Avoid division by zero
+            plot_data = confusion / row_sums
+        else:
+            plot_data = confusion
+
         ax = fig.add_subplot(111)
-        ax.set_title('Confusion matrix')
-        ax.set_xlabel('Prediction')
-        ax.set_ylabel('Ground Truth')
-        res = ax.imshow(confusion, cmap='magma', interpolation='nearest')
+        ax.set_title('Confusion matrix', color='#cccccc', pad=20)
+        
+        # Improved Labels
+        ax.set_xlabel('Predicted Label', labelpad=10, color='#cccccc')
+        ax.set_ylabel('True Label', labelpad=10, color='#cccccc')
+        
+        res = ax.imshow(plot_data, cmap='magma', interpolation='nearest')
+        
+        # Threshold for text color
+        threshold = (plot_data.max() + plot_data.min()) / 2
+        
         for x in range(classNum):
             for y in range(classNum):
-                if confusion[x][y] > (confusion.max() - confusion.min()) / 2:
+                val = plot_data[x][y]
+                if val > threshold:
                     annot_color = 'k'
                 else:
                     annot_color = 'w'
-                ax.annotate(str(confusion[x][y]), xy=(y, x),
+                    
+                if show_percentage:
+                    text = f"{val:.1%}"
+                else:
+                    text = str(int(val))
+                    
+                ax.annotate(text, xy=(y, x),
                             horizontalalignment='center',
                             verticalalignment='center',
                             color=annot_color
                             )
-        fig.colorbar(res)
-        ax.xaxis.tick_top()
-        ax.xaxis.set_label_position('top')
+        
+        # Colorbar
+        cbar = fig.colorbar(res)
+        cbar.ax.yaxis.set_tick_params(color='#cccccc')
+        plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='#cccccc')
+        
+        # Ticks
         labels = [self.dataset.get_epoch_data().label_map[i] for i in range(classNum)]
-        plt.xticks(range(classNum), labels)
+        plt.xticks(range(classNum), labels, rotation=0, ha='center') # Horizontal labels
         plt.yticks(range(classNum), labels)
+        
+        # Styling
+        ax.tick_params(axis='x', colors='#cccccc')
+        ax.tick_params(axis='y', colors='#cccccc')
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#444444')
+
+        fig.tight_layout() # This should help with centering and margins
 
         return fig
 

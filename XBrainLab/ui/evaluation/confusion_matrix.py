@@ -1,54 +1,20 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QGroupBox
+    QWidget, QVBoxLayout, QLabel
 )
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import Qt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from XBrainLab.backend.visualization import PlotType
 
 class ConfusionMatrixWidget(QWidget):
-    def __init__(self, parent, trainers):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.trainers = trainers
-        self.trainers = trainers
-        # Map "Group X" -> Trainer
-        self.trainer_map = {f"Group {i+1}": t for i, t in enumerate(trainers)}
         self.plot_type = PlotType.CONFUSION
-        
-        self.current_plan = None
-        self.current_fig = None
-        
         self.init_ui()
         
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Controls
-        ctrl_layout = QHBoxLayout()
-        lbl = QLabel("Group:")
-        lbl.setStyleSheet("color: #cccccc;")
-        ctrl_layout.addWidget(lbl)
-        
-        self.plan_combo = QComboBox()
-        self.plan_combo.addItem("Select a group")
-        self.plan_combo.addItems(list(self.trainer_map.keys()))
-        self.plan_combo.setStyleSheet("""
-            QComboBox {
-                background-color: #3e3e42;
-                color: #cccccc;
-                border: 1px solid #555;
-                padding: 5px;
-            }
-            QComboBox::drop-down {
-                border: 0px;
-            }
-        """)
-        self.plan_combo.currentTextChanged.connect(self.on_plan_select)
-        ctrl_layout.addWidget(self.plan_combo)
-        
-        ctrl_layout.addStretch()
-        layout.addLayout(ctrl_layout)
         
         # Plot Area
         self.plot_container = QWidget()
@@ -66,40 +32,45 @@ class ConfusionMatrixWidget(QWidget):
         self.ax.axis('off')
         
         self.plot_layout.addWidget(self.canvas)
-        layout.addWidget(self.plot_container, stretch=1)
+        layout.addWidget(self.plot_container)
 
-    def on_plan_select(self, plan_name):
-        if plan_name == "Select a group" or plan_name not in self.trainer_map:
-            return
-            
-        trainer = self.trainer_map[plan_name]
-        plans = trainer.get_plans()
-        if not plans:
-            return
-            
-        # For simplicity, take the first plan or average? 
-        # Usually confusion matrix is for a specific model run.
-        # Let's take the best plan or the first one.
-        # Ideally we should let user select sub-plan (repeat), but for now let's pick the first one to keep UI simple.
-        target_plan = plans[0] 
+    def update_plot(self, plan, show_percentage: bool = False):
+        """Update the confusion matrix plot.
         
-        self.plot_matrix(target_plan)
-
-    def plot_matrix(self, plan):
+        Args:
+            plan: TrainingPlanHolder or TrainRecord
+            show_percentage: Whether to show percentage
+        """
         try:
             # Clear previous
             for i in reversed(range(self.plot_layout.count())): 
                 self.plot_layout.itemAt(i).widget().setParent(None)
                 
-            # Create new figure using backend logic
-            # The backend returns a matplotlib Figure
-            target_func = getattr(plan, self.plot_type.value)
-            # We need to pass params. Confusion matrix usually needs none or standard ones.
-            # Let's try calling it.
-            # Note: The backend might return a figure with default white background.
-            # We might need to style it after creation.
+            # Get the plotting function
+            # If plan is TrainingPlanHolder, it might not have get_confusion_figure directly?
+            # Wait, TrainingPlanHolder usually delegates or we need to pass TrainRecord.
+            # The backend method get_confusion_figure is in TrainRecord.
+            # So 'plan' argument here should ideally be a TrainRecord.
             
-            self.fig = target_func()
+            if hasattr(plan, 'get_confusion_figure'):
+                target_func = plan.get_confusion_figure
+            elif hasattr(plan, 'get_plans'):
+                # Fallback if a PlanHolder is passed: use the first record
+                # But ideally the caller should pass the specific record.
+                records = plan.get_plans()
+                if records:
+                    target_func = records[0].get_confusion_figure
+                else:
+                    raise ValueError("Plan has no records")
+            else:
+                # Try getattr with PlotType value just in case
+                target_func = getattr(plan, self.plot_type.value, None)
+                
+            if not target_func:
+                raise ValueError(f"Object {type(plan)} has no method for confusion matrix")
+
+            # Call the function with show_percentage
+            self.fig = target_func(show_percentage=show_percentage)
             
             if self.fig:
                 # Apply Dark Theme
@@ -108,24 +79,26 @@ class ConfusionMatrixWidget(QWidget):
                 ax.set_facecolor('#2d2d2d')
                 
                 # Style text elements
-                for text in self.fig.findobj(match=lambda x: hasattr(x, 'set_color')):
-                    # This is a bit aggressive, might overwrite heatmap text colors.
-                    # Better to target specific elements if possible.
-                    # For confusion matrix, the heatmap text needs to be readable against the colors.
-                    # The titles and labels should be light.
-                    pass
-
+                # Axis labels and title
+                ax.title.set_color('#cccccc')
+                ax.xaxis.label.set_color('#cccccc')
+                ax.yaxis.label.set_color('#cccccc')
+                ax.tick_params(axis='x', colors='#cccccc')
+                ax.tick_params(axis='y', colors='#cccccc')
+                
                 # Re-create canvas
                 self.canvas = FigureCanvas(self.fig)
                 self.plot_layout.addWidget(self.canvas)
             else:
-                lbl = QLabel("No data available for this plan.")
-                lbl.setStyleSheet("color: #999;")
-                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.plot_layout.addWidget(lbl)
+                self._show_message("No data available for this plan.")
                 
         except Exception as e:
             print(f"Error plotting matrix: {e}")
-            lbl = QLabel(f"Error: {e}")
-            lbl.setStyleSheet("color: #ef5350;")
-            self.plot_layout.addWidget(lbl)
+            self._show_message(f"Error: {e}", color="#ef5350")
+
+    def _show_message(self, message, color="#999"):
+        lbl = QLabel(message)
+        lbl.setStyleSheet(f"color: {color};")
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.plot_layout.addWidget(lbl)
+

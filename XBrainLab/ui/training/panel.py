@@ -477,6 +477,86 @@ class TrainingPanel(QWidget):
             QMessageBox.information(self, "Success", "Training settings saved.")
 
     def start_training(self):
+        # --- Auto-Configuration Logic ---
+        # 1. Auto-Split Data if missing
+        if not self.study.datasets:
+            if not self.study.epoch_data:
+                 QMessageBox.warning(self, "No Data", "Please load data and perform epoching in Preprocess panel first.")
+                 return
+                 
+            from XBrainLab.backend.dataset import DataSplittingConfig, SplitUnit, SplitByType, ValSplitByType
+            # Default: 80% Train, 20% Val, 0% Test (or maybe 20% test? Let's do 80/20 val for simplicity)
+            # Actually, let's do 80% Train, 20% Val, 0% Test to be safe and simple.
+            # Or 60/20/20?
+            # Let's stick to a simple 80/20 split for Train/Val.
+            config = DataSplittingConfig(
+                unit=SplitUnit.RATIO,
+                train_ratio=80,
+                val_ratio=20,
+                test_ratio=0,
+                split_by_type=SplitByType.TRIAL, # Random split by trial is usually safe default
+                val_split_by_type=ValSplitByType.TRIAL,
+                shuffle=True,
+                random_state=42
+            )
+            
+            try:
+                generator = self.study.get_datasets_generator(config)
+                self.study.set_datasets(generator.generate())
+                self.log_text.append("Auto-configured: Data Split (80% Train, 20% Val)")
+            except Exception as e:
+                QMessageBox.critical(self, "Auto-Config Error", f"Failed to auto-split data: {e}")
+                return
+
+        # 2. Auto-Select Model if missing
+        if not self.study.model_holder:
+            from XBrainLab.backend.training import ModelHolder
+            from XBrainLab.backend.models import EEGNet # Default model
+            
+            # We need to know n_classes and n_channels
+            # epoch_data is guaranteed to exist if datasets exist (checked above)
+            # But we can get it from study.epoch_data
+            
+            # Default EEGNet params
+            # We can use empty dict, EEGNet has defaults. 
+            # But usually we need to match input shape.
+            # ModelHolder.get_model will pass get_model_args() from epoch_data.
+            
+            model_holder = ModelHolder(EEGNet, {})
+            self.study.set_model_holder(model_holder)
+            self.log_text.append("Auto-configured: Model (EEGNet)")
+
+        # 3. Auto-Set Training Options if missing
+        if not self.study.training_option:
+            from XBrainLab.backend.training import TrainingOption, TRAINING_EVALUATION
+            import torch.optim as optim
+            
+            # Default Options
+            option = TrainingOption(
+                output_dir="./output", # Default output dir
+                optim=optim.Adam,
+                optim_params={'lr': 0.001, 'weight_decay': 0.0}, # Default params
+                use_cpu=True, # Safer default? Or check cuda?
+                gpu_idx=0,
+                epoch=10, # Short run for testing
+                bs=16,
+                lr=0.001,
+                checkpoint_epoch=0,
+                evaluation_option=TRAINING_EVALUATION.VAL_LOSS,
+                repeat_num=1
+            )
+            
+            # Check for GPU
+            import torch
+            if torch.cuda.is_available():
+                option.use_cpu = False
+                option.gpu_idx = 0
+            
+            self.study.set_training_option(option)
+            self.log_text.append("Auto-configured: Training Options (Adam, 10 epochs)")
+            
+        # --- End Auto-Configuration ---
+
         # Auto-generate plan if needed or just always regenerate to be safe with current settings
         try:
             # Use append=True to add to existing history instead of clearing it

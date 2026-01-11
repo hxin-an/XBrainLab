@@ -1,62 +1,105 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QGroupBox, QMessageBox, QTabWidget, QTextEdit, QLabel, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QComboBox, QCheckBox, 
+    QLabel, QGroupBox, QFrame, QPushButton, QSpacerItem, QSizePolicy,
+    QTabWidget, QTextEdit
 )
 from PyQt6.QtCore import Qt
-from .confusion_matrix import ConfusionMatrixWidget
-from .evaluation_table import EvaluationTableWidget
-from .model_output import ModelOutputWindow
+from torchinfo import summary
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.ui.evaluation.confusion_matrix import ConfusionMatrixWidget
+from XBrainLab.ui.evaluation.metrics_table import MetricsTableWidget
+from XBrainLab.ui.evaluation.metrics_bar_chart import MetricsBarChartWidget
 
 class EvaluationPanel(QWidget):
-    """
-    Panel for evaluating trained models.
-    """
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
         self.study = main_window.study
-        
         self.init_ui()
         
     def init_ui(self):
-        # Main Layout: Horizontal (Left: Content, Right: Controls)
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
-        # --- Left Column: Tabs ---
+        # --- Left Side: Main Content ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(20, 20, 20, 20)
-        left_layout.setSpacing(0)
+        left_layout.setSpacing(20)
         
-        # Evaluation Results Group
-        eval_group = QGroupBox("EVALUATION RESULTS")
-        eval_layout = QVBoxLayout(eval_group)
-        eval_layout.setContentsMargins(10, 20, 10, 10)
+        # 1. Plots Group (Top)
+        plots_group = QGroupBox("EVALUATION PLOTS")
+        plots_layout = QVBoxLayout(plots_group)
+        plots_layout.setContentsMargins(10, 20, 10, 10)
         
-        self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border: 0; }")
+        # Horizontal Layout for Matrix and Bar Chart
+        charts_layout = QHBoxLayout()
         
-        # Tab 1: Performance Table
-        trainers = self.get_trainers()
-        self.tab_table = EvaluationTableWidget(self, trainers if trainers else [])
-        self.tabs.addTab(self.tab_table, "Performance Table")
+        # Matrix Widget
+        self.matrix_widget = ConfusionMatrixWidget(self)
+        charts_layout.addWidget(self.matrix_widget, stretch=1)
         
-        # Tab 2: Confusion Matrix
-        self.tab_matrix = ConfusionMatrixWidget(self, trainers if trainers else [])
-        self.tabs.addTab(self.tab_matrix, "Confusion Matrix")
+        # Bar Chart Widget
+        self.bar_chart = MetricsBarChartWidget(self)
+        charts_layout.addWidget(self.bar_chart, stretch=1)
         
-        # Tab 3: Model Output (Placeholder or embedded)
-        self.tab_output = QTextEdit()
-        self.tab_output.setReadOnly(True)
-        self.tab_output.setPlaceholderText("Model output details will appear here...")
-        self.tab_output.setStyleSheet("background-color: #1e1e1e; border: 1px solid #333; color: #aaa; font-family: monospace;")
-        self.tabs.addTab(self.tab_output, "Model Output")
+        plots_layout.addLayout(charts_layout)
         
-        eval_layout.addWidget(self.tabs)
-        left_layout.addWidget(eval_group)
-        main_layout.addWidget(left_widget, stretch=1)
+        # Toolbar (Below Charts)
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(0, 10, 0, 0)
+        
+        # Model Selection
+        toolbar_layout.addWidget(QLabel("Model:"))
+        self.model_combo = QComboBox()
+        self.model_combo.setMinimumWidth(150)
+        self.model_combo.currentIndexChanged.connect(self.on_model_changed)
+        toolbar_layout.addWidget(self.model_combo)
+        
+        toolbar_layout.addSpacing(15)
+        
+        # Run Selection
+        toolbar_layout.addWidget(QLabel("Run:"))
+        self.run_combo = QComboBox()
+        self.run_combo.setMinimumWidth(150)
+        self.run_combo.currentIndexChanged.connect(self.update_views)
+        toolbar_layout.addWidget(self.run_combo)
+        
+        toolbar_layout.addSpacing(15)
+        
+        # Options
+        self.chk_percentage = QCheckBox("Show Percentage")
+        self.chk_percentage.toggled.connect(self.update_views)
+        toolbar_layout.addWidget(self.chk_percentage)
+        
+        toolbar_layout.addStretch()
+        plots_layout.addLayout(toolbar_layout)
+        
+        # 2. Bottom Section (Tabs: Metrics & Model Summary)
+        self.bottom_tabs = QTabWidget()
+        
+        # Tab 1: Metrics
+        self.metrics_tab = QWidget()
+        metrics_layout = QVBoxLayout(self.metrics_tab)
+        metrics_layout.setContentsMargins(10, 10, 10, 10)
+        self.metrics_table = MetricsTableWidget(self)
+        metrics_layout.addWidget(self.metrics_table)
+        self.bottom_tabs.addTab(self.metrics_tab, "Metrics Summary")
+        
+        # Tab 2: Model Summary
+        self.summary_tab = QWidget()
+        summary_layout = QVBoxLayout(self.summary_tab)
+        summary_layout.setContentsMargins(10, 10, 10, 10)
+        self.summary_text = QTextEdit()
+        self.summary_text.setReadOnly(True)
+        self.summary_text.setFontFamily("Courier New")
+        summary_layout.addWidget(self.summary_text)
+        self.bottom_tabs.addTab(self.summary_tab, "Model Summary")
+        
+        # Add to left layout directly
+        left_layout.addWidget(plots_group, stretch=2)
+        left_layout.addWidget(self.bottom_tabs, stretch=1)
         
         # --- Right Side: Sidebar ---
         right_panel = QWidget()
@@ -81,129 +124,153 @@ class EvaluationPanel(QWidget):
                 color: #808080;
             }
             QPushButton {
-                background-color: #3e3e42; 
+                background-color: #3e3e42;
                 border: none;
                 border-radius: 4px;
                 padding: 8px 12px;
                 color: #ffffff;
-                font-weight: normal;
                 text-align: left;
             }
             QPushButton:hover {
                 background-color: #4e4e52;
-                color: #ffffff;
-            }
-            QPushButton:pressed {
-                background-color: #007acc;
             }
         """)
         
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20)
         
-        # 0. Logo Removed
-        
-        # 1. Aggregate Information (New)
+        # Aggregate Info
         self.info_panel = AggregateInfoPanel(self.main_window)
-        right_layout.addWidget(self.info_panel, stretch=1)
+        self.info_panel.setStyleSheet("""
+            QGroupBox {
+                background-color: transparent;
+                border: none;
+                margin-top: 15px;
+                font-weight: bold;
+                color: #808080;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 0px;
+                padding: 0 0px;
+                color: #808080;
+            }
+            QLabel {
+                color: #cccccc;
+                font-weight: normal;
+            }
+        """)
+        right_layout.addWidget(self.info_panel)
         
-        # Add separator line with spacing to center it
-        right_layout.addSpacing(10)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("background-color: #3e3e42; border: none;")
-        line.setFixedHeight(1)
-        right_layout.addWidget(line)
-        right_layout.addSpacing(10)
-
-        
-        # Add separator line with spacing
-        right_layout.addSpacing(10)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        line.setStyleSheet("background-color: #3e3e42; border: none;")
-        line.setFixedHeight(1)
-        # Add separator line with spacing
-        right_layout.addSpacing(10)
-        
-        # Group 1: Configuration
-        config_group = QGroupBox("CONFIGURATION")
-        config_layout = QVBoxLayout(config_group)
-        config_layout.setContentsMargins(0, 10, 0, 0)
-        
-        self.btn_export = QPushButton("Export Results")
-        self.btn_export.clicked.connect(self.export_results)
-        config_layout.addWidget(self.btn_export)
-        
-        self.btn_report = QPushButton("Save Report")
-        self.btn_report.clicked.connect(self.save_report)
-        config_layout.addWidget(self.btn_report)
-        
-        right_layout.addWidget(config_group)
-        right_layout.addSpacing(20)
-        
-        # Group 2: Operations
-        ops_group = QGroupBox("OPERATIONS")
-        ops_layout = QVBoxLayout(ops_group)
-        ops_layout.setContentsMargins(0, 10, 0, 0)
-        
-        self.btn_refresh = QPushButton("Refresh Data")
-        self.btn_refresh.clicked.connect(self.refresh_data)
-        ops_layout.addWidget(self.btn_refresh)
-        
-        right_layout.addWidget(ops_group)
         right_layout.addStretch()
         
+        # Add to main layout
+        main_layout.addWidget(left_widget, stretch=1)
         main_layout.addWidget(right_panel, stretch=0)
 
-    def get_trainers(self):
-        if self.study.trainer:
-            return self.study.trainer.get_training_plan_holders()
-        return None
-
-    def export_results(self):
-        QMessageBox.information(self, "Info", "Export Results feature coming soon.")
-
-    def save_report(self):
-        QMessageBox.information(self, "Info", "Save Report feature coming soon.")
-
-    def refresh_data(self):
-        trainers = self.get_trainers()
-        if not trainers:
-            QMessageBox.warning(self, "Warning", "No training results available.")
-            return
-            
-        # Re-create widgets
-        self.tab_table.setParent(None)
-        self.tab_table = EvaluationTableWidget(self, trainers)
-        
-        self.tab_matrix.setParent(None)
-        self.tab_matrix = ConfusionMatrixWidget(self, trainers)
-
-        # Update Model Output
-        output_text = ""
-        for i, trainer in enumerate(trainers):
-            output_text += f"=== Group {i+1}: {trainer.get_name()} ===\n"
-            for plan in trainer.get_plans():
-                output_text += plan.get_model_output()
-                output_text += "\n\n" + "-"*50 + "\n\n"
-        
-        self.tab_output.setPlainText(output_text)
-
-        # Clear and re-add all tabs to avoid index issues
-        self.tabs.clear()
-        self.tabs.addTab(self.tab_table, "Performance Table")
-        self.tabs.addTab(self.tab_matrix, "Confusion Matrix")
-        self.tabs.addTab(self.tab_output, "Model Output")
-        
-        self.tabs.setCurrentIndex(0)
-        
-        QMessageBox.information(self, "Success", "Evaluation data refreshed.")
-
-    def update_info(self):
-        """Update the Aggregate Info Panel."""
+    def update_panel(self):
+        """Update panel content when switched to."""
         if hasattr(self, 'info_panel'):
             self.info_panel.update_info()
+            
+        # Update Model Combo
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        
+        if self.study.trainer and self.study.trainer.training_plan_holders:
+            plans = self.study.trainer.training_plan_holders
+            for i, plan in enumerate(plans):
+                self.model_combo.addItem(f"Group {i+1}: {plan.get_name()}", plan)
+                
+            if self.model_combo.count() > 0:
+                self.model_combo.setCurrentIndex(0)
+                self.on_model_changed(0) # Manually trigger update for runs
+        else:
+            self.model_combo.addItem("No Training Plans")
+            self.run_combo.clear()
+            self.matrix_widget.update_plot(None) # Clear plot
+            self.bar_chart.update_plot({}) # Clear bar chart
+            self.metrics_table.update_data({})
+            self.summary_text.clear()
+            
+        self.model_combo.blockSignals(False)
 
+    def on_model_changed(self, index):
+        """Handle model selection change."""
+        if index < 0: return
+        
+        plan = self.model_combo.currentData()
+        if not plan: return
+        
+        # Update Run Combo
+        self.run_combo.blockSignals(True)
+        self.run_combo.clear()
+        
+        records = plan.get_plans()
+        for i, record in enumerate(records):
+            status = " (Finished)" if record.is_finished() else ""
+            self.run_combo.addItem(f"Repeat {i+1}{status}", record)
+            
+        if self.run_combo.count() > 0:
+            self.run_combo.setCurrentIndex(0)
+            
+        self.run_combo.blockSignals(False)
+        self.update_views()
+        self.update_model_summary(plan)
+
+    def update_views(self):
+        """Update Matrix and Table based on current selection."""
+        record = self.run_combo.currentData()
+        if not record:
+            return
+            
+        # Update Matrix
+        show_pct = self.chk_percentage.isChecked()
+        self.matrix_widget.update_plot(record, show_percentage=show_pct)
+        
+        # Update Table and Bar Chart
+        # Check if evaluation is done
+        if record.eval_record:
+            metrics = record.eval_record.get_per_class_metrics()
+            self.metrics_table.update_data(metrics)
+            self.bar_chart.update_plot(metrics)
+        else:
+            self.metrics_table.update_data({})
+            self.bar_chart.update_plot({})
+
+    def update_model_summary(self, plan):
+        """Generate and display model summary."""
+        self.summary_text.clear()
+        try:
+            # We need to access the trainer to get the model and data shape
+            # The plan object here is a TrainingPlanHolder
+            # We can get the trainer from self.study.trainer
+            trainer = self.study.trainer
+            
+            # Get model instance
+            model_instance = trainer.model_holder.get_model(
+                trainer.dataset.get_epoch_data().get_model_args()
+            ).to(trainer.option.get_device())
+            
+            # Get input shape
+            X, _ = trainer.dataset.get_training_data()
+            # Assuming X is [N, C, T]
+            train_shape = (trainer.option.bs, 1, *X.shape[-2:])
+            
+            summary_str = str(summary(
+                model_instance, input_size=train_shape, verbose=0
+            ))
+            
+            self.summary_text.setText(summary_str)
+            
+        except Exception as e:
+            self.summary_text.setText(f"Error generating summary: {e}")
+
+    def refresh_data(self):
+        """Alias for update_panel to maintain compatibility with MainWindow."""
+        self.update_panel()
+
+    def update_info(self):
+        """Update the aggregate info panel."""
+        if hasattr(self, 'info_panel'):
+            self.info_panel.update_info()

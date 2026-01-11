@@ -387,6 +387,7 @@ class Study:
         self.loaded_data_list = []
         self.preprocessed_data_list = []
         self.epoch_data = None
+        logger.info("Cleared raw data, preprocessed data, and epoch data")
         self.unlock_dataset()
 
     def lock_dataset(self) -> None:

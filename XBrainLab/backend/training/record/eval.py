@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import torch
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
 
 
 def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
@@ -153,6 +153,41 @@ class EvalRecord:
             (confusion.sum() * confusion.sum())
         )
         return (P0 - Pe) / (1 - Pe)
+    
+    def get_per_class_metrics(self) -> dict:
+        """Get per-class precision, recall, f1-score, and support.
+
+        Returns:
+            Dictionary where keys are class indices and values are dicts containing:
+            'precision', 'recall', 'f1-score', 'support'
+        """
+        y_true = self.label
+        y_pred = self.output.argmax(axis=1)
+        class_num = self.output.shape[1]
+        labels = np.arange(class_num)
+        
+        precision, recall, f1, support = precision_recall_fscore_support(
+            y_true, y_pred, labels=labels, zero_division=0
+        )
+        
+        metrics = {}
+        for i in labels:
+            metrics[int(i)] = {
+                'precision': precision[i],
+                'recall': recall[i],
+                'f1-score': f1[i],
+                'support': int(support[i])
+            }
+            
+        # Calculate macro average
+        metrics['macro_avg'] = {
+            'precision': np.mean(precision),
+            'recall': np.mean(recall),
+            'f1-score': np.mean(f1),
+            'support': int(np.sum(support))
+        }
+        
+        return metrics
     
     def get_gradient(self, labelIndex: int) -> np.ndarray:
         """Return gradient of model by class index."""

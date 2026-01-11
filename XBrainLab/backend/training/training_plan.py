@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+import datetime
+import datetime
 import traceback
 from enum import Enum
 
@@ -233,6 +235,9 @@ class TrainingPlanHolder:
         self.option = option
         self.check_data()
 
+        # Generate unique plan ID (timestamp) to avoid directory collision
+        self.plan_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
         self.train_record_list = []
         self.interrupt = False
         self.error = None
@@ -254,7 +259,7 @@ class TrainingPlanHolder:
             self.train_record_list.append(
                 TrainRecord(
                     repeat=i, dataset=self.dataset, model=model,
-                    option=self.option, seed=seed
+                    option=self.option, seed=seed, plan_id=self.plan_id
                 )
             )
 
