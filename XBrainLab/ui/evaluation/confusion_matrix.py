@@ -46,6 +46,10 @@ class ConfusionMatrixWidget(QWidget):
             for i in reversed(range(self.plot_layout.count())): 
                 self.plot_layout.itemAt(i).widget().setParent(None)
                 
+            if plan is None:
+                self._show_message("No Data Available")
+                return
+                
             # Get the plotting function
             # If plan is TrainingPlanHolder, it might not have get_confusion_figure directly?
             # Wait, TrainingPlanHolder usually delegates or we need to pass TrainRecord.

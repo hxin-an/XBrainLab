@@ -7,7 +7,7 @@ import os
 import requests
 
 
-bgcolor = 'white'#'#F8F5F1'#lightslategray'
+bgcolor = '#2d2d2d'#'#F8F5F1'#lightslategray'
 mesh_scale_scalar = 0.8
 
 checkboxKwargs = {
@@ -17,13 +17,13 @@ checkboxKwargs = {
     'color_off' : bgcolor,
 }
 checkboxTextKwargs = {
-    'color' : 'black',
+    'color' : 'white',
     'shadow' : True,
     'font_size' : 8
 }
 
 class Saliency3D:
-    def __init__(self, eval_record, epoch_data, selected_event_name):
+    def __init__(self, eval_record, epoch_data, selected_event_name, plotter=None):
         # set parameters
         self.selected_event_name = selected_event_name
         self.save = False
@@ -33,21 +33,39 @@ class Saliency3D:
         self.neighbor = 3
 
         # load 3d model
-
-        if not os.path.isdir('./XBrainLab.backend.visualization/3Dmodel'):
-            os.makedirs('./XBrainLab.backend.visualization/3Dmodel')
+        # Use absolute path relative to this file's location or package structure
+        # This file is in XBrainLab/ui/visualization/
+        # Models are in XBrainLab/backend/visualization/3Dmodel/
+        
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Go up two levels to XBrainLab root, then into backend
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        model_dir = os.path.join(project_root, 'backend', 'visualization', '3Dmodel')
+        
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
             fn_ply = ['brain.ply','head.ply']
             gitrepo_loc = 'https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab.backend.visualization/3Dmodel/'
             for fn in fn_ply:
-                req = requests.get(gitrepo_loc+fn)
-                with open('./XBrainLab.backend.visualization/3Dmodel/'+ fn, 'wb') as handle:
-                    handle.write(req.content)
+                try:
+                    req = requests.get(gitrepo_loc+fn)
+                    with open(os.path.join(model_dir, fn), 'wb') as handle:
+                        handle.write(req.content)
+                except Exception as e:
+                    print(f"Failed to download {fn}: {e}")
 
-            # XBrainLab.backend.visualization/3Dmodel/brain.ply
-
-
-        mesh_head = pv.read('./XBrainLab.backend.visualization/3Dmodel/head.ply')
-        mesh_brain = pv.read('./XBrainLab.backend.visualization/3Dmodel/brain.ply')
+        head_path = os.path.join(model_dir, 'head.ply')
+        brain_path = os.path.join(model_dir, 'brain.ply')
+        
+        if os.path.exists(head_path):
+            mesh_head = pv.read(head_path)
+        else:
+            raise FileNotFoundError(f"Head model not found at {head_path}")
+            
+        if os.path.exists(brain_path):
+            mesh_brain = pv.read(brain_path)
+        else:
+            raise FileNotFoundError(f"Brain model not found at {brain_path}")
 
         # get saliency
         labelIndex = epoch_data.event_id[self.selected_event_name]
@@ -77,7 +95,12 @@ class Saliency3D:
         ]
 
         # set plotter
-        self.plotter = pv.Plotter(window_size=[750, 750])
+        if plotter:
+            self.plotter = plotter
+            self.plotter.clear() # Clear existing actors
+        else:
+            self.plotter = pv.Plotter(window_size=[750, 750])
+            
         self.plotter.background_color = bgcolor
 
         scaling = np.ones(3) * mesh_scale_scalar 
@@ -93,22 +116,17 @@ class Saliency3D:
             'save': self.save,
         }
         # checkbox instances & widget containers
-        self.saveBox = CheckboxObj(self.param['save'])
-        self.channelBox = CheckboxObj(self.showChannel)
-        self.headBox = CheckboxObj(self.showHead)
-        # Todo/ "save" mechanism improvement notes:
-        #     from https://github.com/pyvista/pyvista/blob/release/0.42/pyvista/plotting/widgets.py#L2351-L2461
-        #     add_checkbox_button_widget returns _vtk.vtkButtonWidget()
-        #     utilize vtkButtonWidget_instance.GetRepresentation().set_state()
+        # Pass callback to trigger update immediately when clicked
+        self.channelBox = CheckboxObj(self.showChannel, lambda s: self.update())
+        self.headBox = CheckboxObj(self.showHead, lambda s: self.update())
 
-        self.update(save=0)
+        self.update()
 
     def __call__(self, key, value):
         self.param[key] = value
-        self.update(save=self.saveBox.ctrl)
+        self.update()
 
-    def update(self, save=0):
-        self.param['save'] = save
+    def update(self):
         for i in range(self.saliency_cap.n_points):
             dist = [np.linalg.norm(self.saliency_cap.points[i] - ch) for ch in self.pos_on_3d]
             dist_idx = np.argsort(dist)[:self.neighbor] # id of #neighbor cloest points
@@ -117,7 +135,9 @@ class Saliency3D:
                 dist, self.saliency[dist_idx, self.param['timestamp'] - 1]
             )
         try:
-            self.plotter.update_scalars(self.scalar, self.saliency_cap)
+            # Update scalars in-place to avoid deprecation warning
+            self.saliency_cap['scalars'] = self.scalar
+            self.plotter.render()
             self.plotter.update_scalar_bar_range(self.scalar_bar_range, '')
         except Exception:
             pass
@@ -125,8 +145,6 @@ class Saliency3D:
         if self.channelActor != []:
             for actor in self.channelActor:
                 actor.SetVisibility(self.channelBox.ctrl)
-        if save:
-            self.save_svg()
 
         if self.headBox.ctrl:
             if self.headActor is None:
@@ -144,20 +162,11 @@ class Saliency3D:
             callback=lambda val: self('timestamp', int(val)),
             rng=[1, self.max_time], value=1,
             title="Timestamp",
+            color='white',
             pointa=(0.025, 0.08),  # left bottom
             pointb=(0.31, 0.08),  # right bottom
             style='modern',
             interaction_event = 'always'
-        )
-
-        self.plotter.add_checkbox_button_widget(
-            self.saveBox,
-            value=self.save,
-            position=(25, 150),
-            **checkboxKwargs
-        )
-        self.plotter.add_text(
-            'Save', position=(60, 147), **checkboxTextKwargs
         )
 
         self.plotter.add_checkbox_button_widget(
@@ -184,33 +193,31 @@ class Saliency3D:
         self.plotter.camera.zoom(0.8)
 
         self.channelActor = [self.plotter.add_mesh(ch, color='w') for ch in self.chs]
+        
+        # Initialize scalars in the mesh
+        self.saliency_cap['scalars'] = self.scalar
+        
         self.plotter.add_mesh(
             self.saliency_cap, opacity=0.8,
-            scalars=self.scalar, cmap=self.cmap, show_scalar_bar=False
+            scalars='scalars', cmap=self.cmap, show_scalar_bar=False
         )
-        self.plotter.add_scalar_bar('', interactive=False, vertical=False)
+        self.plotter.add_scalar_bar('', interactive=False, vertical=False, color='white')
         self.plotter.update_scalar_bar_range(self.scalar_bar_range, '')
         self.plotter.add_mesh(self.brain, color='#FDEBD0')
 
-        self.plotter.show_bounds()
-
-        if self.param['save']:
-            self.save_svg()
+        self.plotter.show_bounds(color='white')
 
         return self.plotter
-    
-    def save_svg(self):
-        self.plotter.save_graphic(
-                f"event-{self.selected_event_name}_"
-                f"time-{self.param['timestamp']}_saliency3d.svg"
-            )
 
 class CheckboxObj:
-    def __init__(self, init_val):
+    def __init__(self, init_val, callback=None):
         self.ctrl = init_val
+        self.callback = callback
 
     def __call__(self, state):
         self.ctrl = state
+        if self.callback:
+            self.callback(state)
 
 def InverseDistWeightedSum(dist, val):
     assert len(dist) == len(val)

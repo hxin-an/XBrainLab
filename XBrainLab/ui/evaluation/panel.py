@@ -186,7 +186,7 @@ class EvaluationPanel(QWidget):
                 self.model_combo.setCurrentIndex(0)
                 self.on_model_changed(0) # Manually trigger update for runs
         else:
-            self.model_combo.addItem("No Training Plans")
+            self.model_combo.addItem("No Data Available")
             self.run_combo.clear()
             self.matrix_widget.update_plot(None) # Clear plot
             self.bar_chart.update_plot({}) # Clear bar chart
@@ -207,9 +207,16 @@ class EvaluationPanel(QWidget):
         self.run_combo.clear()
         
         records = plan.get_plans()
+        finished_records = [r for r in records if r.is_finished()]
+        
+        # Add Individual Runs
         for i, record in enumerate(records):
             status = " (Finished)" if record.is_finished() else ""
             self.run_combo.addItem(f"Repeat {i+1}{status}", record)
+            
+        # Add Average Option if we have finished runs
+        if finished_records:
+            self.run_combo.addItem("Average (Finished Runs)", "average")
             
         if self.run_combo.count() > 0:
             self.run_combo.setCurrentIndex(0)
@@ -220,16 +227,85 @@ class EvaluationPanel(QWidget):
 
     def update_views(self):
         """Update Matrix and Table based on current selection."""
-        record = self.run_combo.currentData()
-        if not record:
+        data = self.run_combo.currentData()
+        if not data:
             return
             
+        # Handle Average
+        if data == "average":
+            plan = self.model_combo.currentData()
+            if not plan: return
+            
+            records = [r for r in plan.get_plans() if r.is_finished()]
+            if not records: return
+            
+            # Pool predictions for Confusion Matrix
+            import numpy as np
+            from XBrainLab.backend.training.record import EvalRecord
+            
+            all_labels = []
+            all_outputs = []
+            
+            for r in records:
+                if r.eval_record:
+                    all_labels.append(r.eval_record.label)
+                    all_outputs.append(r.eval_record.output)
+            
+            if all_labels:
+                pooled_labels = np.concatenate(all_labels)
+                pooled_outputs = np.concatenate(all_outputs)
+                
+                # Create a dummy record for plotting
+                class DummyRecord:
+                    def __init__(self, dataset, labels, outputs):
+                        self.dataset = dataset
+                        self.eval_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
+                    
+                    def get_confusion_figure(self, fig, show_percentage=False):
+                        # Reuse TrainRecord's static method or logic if possible, 
+                        # but TrainRecord.get_confusion_figure is an instance method.
+                        # We can create a temporary TrainRecord or mock it.
+                        # Better: Instantiate a TrainRecord with dummy data? No, it requires model etc.
+                        # Let's just use the first record but swap its eval_record temporarily? 
+                        # Or better, make get_confusion_figure robust.
+                        # Actually, we can just use one of the records and patch its eval_record.
+                        pass
+                
+                # Hack: Use the first record as a template, but override eval_record
+                template_record = records[0]
+                
+                # Create a proxy object that delegates to template_record but returns pooled eval_record
+                class ProxyRecord:
+                    def __init__(self, original, pooled_eval):
+                        self.original = original
+                        self.eval_record = pooled_eval
+                        self.dataset = original.dataset
+                        
+                    def get_confusion_figure(self, fig=None, show_percentage=False):
+                        return self.original.__class__.get_confusion_figure(self, fig, show_percentage=show_percentage)
+                
+                pooled_eval = EvalRecord(pooled_labels, pooled_outputs, {}, {}, {}, {}, {})
+                proxy_record = ProxyRecord(template_record, pooled_eval)
+                
+                # Update Matrix
+                show_pct = self.chk_percentage.isChecked()
+                self.matrix_widget.update_plot(proxy_record, show_percentage=show_pct)
+                
+                # Update Table and Bar Chart (Micro-Average via pooling)
+                metrics = pooled_eval.get_per_class_metrics()
+                self.metrics_table.update_data(metrics)
+                self.bar_chart.update_plot(metrics)
+                
+            return
+
+        # Handle Single Record
+        record = data
+        
         # Update Matrix
         show_pct = self.chk_percentage.isChecked()
         self.matrix_widget.update_plot(record, show_percentage=show_pct)
         
         # Update Table and Bar Chart
-        # Check if evaluation is done
         if record.eval_record:
             metrics = record.eval_record.get_per_class_metrics()
             self.metrics_table.update_data(metrics)
@@ -237,29 +313,46 @@ class EvaluationPanel(QWidget):
         else:
             self.metrics_table.update_data({})
             self.bar_chart.update_plot({})
+            
+        # Update Model Summary for this specific run (if requested)
+        # Although model architecture is same, user requested "output for each run"
+        # We can re-trigger update_model_summary with the specific record context if needed
+        # But update_model_summary currently takes 'plan'.
+        # Let's pass the record to it if possible, or just re-run it.
+        # Actually, let's modify update_model_summary to accept optional record or just update it here.
+        plan = self.model_combo.currentData()
+        if plan:
+             self.update_model_summary(plan, record=record)
 
-    def update_model_summary(self, plan):
+    def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
         self.summary_text.clear()
         try:
-            # We need to access the trainer to get the model and data shape
-            # The plan object here is a TrainingPlanHolder
-            # We can get the trainer from self.study.trainer
-            trainer = self.study.trainer
+            # Use plan.model_holder instead of trainer.model_holder
+            # Also need trainer for dataset/options
+            # trainer = self.study.trainer # Not needed if we use plan
             
             # Get model instance
-            model_instance = trainer.model_holder.get_model(
-                trainer.dataset.get_epoch_data().get_model_args()
-            ).to(trainer.option.get_device())
+            # If record is provided, use its model (trained)
+            if record and hasattr(record, 'model'):
+                model_instance = record.model
+            else:
+                model_instance = plan.model_holder.get_model(
+                    plan.dataset.get_epoch_data().get_model_args()
+                ).to(plan.option.get_device())
             
             # Get input shape
-            X, _ = trainer.dataset.get_training_data()
+            X, _ = plan.dataset.get_training_data()
             # Assuming X is [N, C, T]
-            train_shape = (trainer.option.bs, 1, *X.shape[-2:])
+            train_shape = (plan.option.bs, 1, *X.shape[-2:])
             
             summary_str = str(summary(
                 model_instance, input_size=train_shape, verbose=0
             ))
+            
+            # Append Run Info if available
+            if record:
+                summary_str = f"=== Run: {record.get_name()} ===\n" + summary_str
             
             self.summary_text.setText(summary_str)
             

@@ -368,6 +368,7 @@ class TrainingPanel(QWidget):
             }
         """)
         self.btn_start.clicked.connect(self.start_training)
+        self.btn_start.setEnabled(False) # Locked until configured
         exec_layout.addWidget(self.btn_start)
         
         self.btn_stop = QPushButton("Stop Training")
@@ -405,6 +406,9 @@ class TrainingPanel(QWidget):
         right_layout.addStretch() # Push everything to top
         
         main_layout.addWidget(right_panel, stretch=0)
+        
+        # Initial check
+        self.check_ready_to_train()
 
     # --- Event Handlers ---
 
@@ -449,6 +453,7 @@ class TrainingPanel(QWidget):
             if generator:
                 generator.apply(self.study)
             QMessageBox.information(self, "Success", "Data splitting configuration saved.")
+            self.check_ready_to_train()
 
     def select_model(self):
         # Check if training is running
@@ -463,6 +468,7 @@ class TrainingPanel(QWidget):
             # ModelHolder doesn't have model_name, use get_model_desc_str() or target_model.__name__
             model_name = self.study.model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
+            self.check_ready_to_train()
 
     def training_setting(self):
         # Check if training is running
@@ -475,88 +481,9 @@ class TrainingPanel(QWidget):
             # No need to reset trainer anymore, allowing multi-experiment history
             self.study.set_training_option(win.get_result())
             QMessageBox.information(self, "Success", "Training settings saved.")
+            self.check_ready_to_train()
 
     def start_training(self):
-        # --- Auto-Configuration Logic ---
-        # 1. Auto-Split Data if missing
-        if not self.study.datasets:
-            if not self.study.epoch_data:
-                 QMessageBox.warning(self, "No Data", "Please load data and perform epoching in Preprocess panel first.")
-                 return
-                 
-            from XBrainLab.backend.dataset import DataSplittingConfig, SplitUnit, SplitByType, ValSplitByType
-            # Default: 80% Train, 20% Val, 0% Test (or maybe 20% test? Let's do 80/20 val for simplicity)
-            # Actually, let's do 80% Train, 20% Val, 0% Test to be safe and simple.
-            # Or 60/20/20?
-            # Let's stick to a simple 80/20 split for Train/Val.
-            config = DataSplittingConfig(
-                unit=SplitUnit.RATIO,
-                train_ratio=80,
-                val_ratio=20,
-                test_ratio=0,
-                split_by_type=SplitByType.TRIAL, # Random split by trial is usually safe default
-                val_split_by_type=ValSplitByType.TRIAL,
-                shuffle=True,
-                random_state=42
-            )
-            
-            try:
-                generator = self.study.get_datasets_generator(config)
-                self.study.set_datasets(generator.generate())
-                self.log_text.append("Auto-configured: Data Split (80% Train, 20% Val)")
-            except Exception as e:
-                QMessageBox.critical(self, "Auto-Config Error", f"Failed to auto-split data: {e}")
-                return
-
-        # 2. Auto-Select Model if missing
-        if not self.study.model_holder:
-            from XBrainLab.backend.training import ModelHolder
-            from XBrainLab.backend.models import EEGNet # Default model
-            
-            # We need to know n_classes and n_channels
-            # epoch_data is guaranteed to exist if datasets exist (checked above)
-            # But we can get it from study.epoch_data
-            
-            # Default EEGNet params
-            # We can use empty dict, EEGNet has defaults. 
-            # But usually we need to match input shape.
-            # ModelHolder.get_model will pass get_model_args() from epoch_data.
-            
-            model_holder = ModelHolder(EEGNet, {})
-            self.study.set_model_holder(model_holder)
-            self.log_text.append("Auto-configured: Model (EEGNet)")
-
-        # 3. Auto-Set Training Options if missing
-        if not self.study.training_option:
-            from XBrainLab.backend.training import TrainingOption, TRAINING_EVALUATION
-            import torch.optim as optim
-            
-            # Default Options
-            option = TrainingOption(
-                output_dir="./output", # Default output dir
-                optim=optim.Adam,
-                optim_params={'lr': 0.001, 'weight_decay': 0.0}, # Default params
-                use_cpu=True, # Safer default? Or check cuda?
-                gpu_idx=0,
-                epoch=10, # Short run for testing
-                bs=16,
-                lr=0.001,
-                checkpoint_epoch=0,
-                evaluation_option=TRAINING_EVALUATION.VAL_LOSS,
-                repeat_num=1
-            )
-            
-            # Check for GPU
-            import torch
-            if torch.cuda.is_available():
-                option.use_cpu = False
-                option.gpu_idx = 0
-            
-            self.study.set_training_option(option)
-            self.log_text.append("Auto-configured: Training Options (Adam, 10 epochs)")
-            
-        # --- End Auto-Configuration ---
-
         # Auto-generate plan if needed or just always regenerate to be safe with current settings
         try:
             # Use append=True to add to existing history instead of clearing it
@@ -589,7 +516,7 @@ class TrainingPanel(QWidget):
         self.training_completed_shown = False  # Reset flag for new training
         
         # Disable buttons
-        # self.btn_start.setEnabled(False) # Allow clicking start again to queue
+        # self.btn_start.setEnabled(False) # User requested to keep it enabled for queueing
         self.btn_stop.setEnabled(True)
         
         # Start Training directly via Trainer
@@ -599,6 +526,10 @@ class TrainingPanel(QWidget):
                 self.timer.start(100) # Start polling
             else:
                 self.log_text.append("Training already running. New plan added to queue.")
+                
+            # Ensure button state is correct (should be enabled if config is ready)
+            self.check_ready_to_train()
+            
         except Exception as e:
              QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
              self.training_finished()
@@ -829,7 +760,7 @@ class TrainingPanel(QWidget):
             self.tab_loss.update_plot(epoch, train_loss, val_loss)
 
     def training_finished(self):
-        # self.btn_start.setEnabled(True) # Always enabled now
+        self.check_ready_to_train() # Re-enable start button if ready
         self.btn_stop.setEnabled(False)
         if self.timer.isActive():
             self.timer.stop()
@@ -843,3 +774,26 @@ class TrainingPanel(QWidget):
         """Update the Aggregate Info Panel."""
         if hasattr(self, 'info_panel'):
             self.info_panel.update_info()
+
+    def update_panel(self):
+        """Update panel content when switched to."""
+        self.update_info()
+        self.check_ready_to_train()
+        
+    def check_ready_to_train(self):
+        """Check if all configurations are set and enable/disable start button."""
+        ready = (
+            self.study.datasets is not None and len(self.study.datasets) > 0 and
+            self.study.model_holder is not None and
+            self.study.training_option is not None
+        )
+        self.btn_start.setEnabled(ready)
+        
+        if not ready:
+            missing = []
+            if not self.study.datasets: missing.append("Data Splitting")
+            if not self.study.model_holder: missing.append("Model Selection")
+            if not self.study.training_option: missing.append("Training Settings")
+            self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
+        else:
+            self.btn_start.setToolTip("Start Training")

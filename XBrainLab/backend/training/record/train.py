@@ -540,7 +540,7 @@ class TrainRecord:
         # Ticks
         labels = [self.dataset.get_epoch_data().label_map[i] for i in range(classNum)]
         plt.xticks(range(classNum), labels, rotation=0, ha='center') # Horizontal labels
-        plt.yticks(range(classNum), labels)
+        plt.yticks(range(classNum), labels, va='center') # Vertically centered
         
         # Styling
         ax.tick_params(axis='x', colors='#cccccc')
@@ -548,7 +548,8 @@ class TrainRecord:
         for spine in ax.spines.values():
             spine.set_edgecolor('#444444')
 
-        fig.tight_layout() # This should help with centering and margins
+        # Ensure tight layout handles labels correctly
+        fig.tight_layout()
 
         return fig
 

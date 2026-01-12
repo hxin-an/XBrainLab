@@ -104,6 +104,21 @@ class AggregateInfoPanel(QGroupBox):
         
         data_list = study.loaded_data_list if use_loaded else study.preprocessed_data_list
         
+        # Fallback: If preprocessed is empty but we have epoch_data (meaning we did preprocess),
+        # or if we just want to show something, try loaded_data_list as fallback.
+        # This handles the case where preprocessed_data_list might be cleared or not yet populated
+        # but the user expects to see *some* info.
+        # Specifically for the reported issue: "epoched data disappeared".
+        # If epoch_data exists, we should definitely show info based on it or its source.
+        if not data_list and not use_loaded:
+             if study.epoch_data:
+                 # If we have epoch data, we can try to use its raw_list if accessible,
+                 # or fallback to loaded_data_list if preprocessed is empty.
+                 # Epochs object usually holds reference to data.
+                 # Let's fallback to loaded_data_list if preprocessed is empty but loaded is not.
+                 if study.loaded_data_list:
+                     data_list = study.loaded_data_list
+        
         if not data_list:
             self.reset_labels()
             return

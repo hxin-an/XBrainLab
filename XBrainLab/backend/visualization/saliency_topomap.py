@@ -49,6 +49,6 @@ class SaliencyTopoMapViz(Visualizer):
             im, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
             cbar = plt.colorbar(im, orientation='vertical')
             cbar.ax.get_yaxis().set_ticks([])
-            plt.title(f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}")
+            plt.title(f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}", color='white')
         plt.tight_layout()
         return plt.gcf()
