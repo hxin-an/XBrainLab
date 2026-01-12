@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QListWidget, QGroupBox, QGridLayout, QDialog, QFormLayout, 
     QDoubleSpinBox, QDialogButtonBox, QMessageBox, QTabWidget, QSpinBox,
-    QCheckBox, QLineEdit, QScrollArea, QSlider, QComboBox
+    QCheckBox, QLineEdit, QScrollArea, QSlider, QComboBox, QRadioButton, QButtonGroup
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -358,6 +358,46 @@ class RereferenceDialog(QDialog):
     def get_result(self):
         return self.return_data
 
+class NormalizeDialog(QDialog):
+    def __init__(self, parent, preprocessed_data_list):
+        super().__init__(parent)
+        self.setWindowTitle("Normalize")
+        self.resize(300, 150)
+        self.preprocessor = Preprocessor.Normalize(preprocessed_data_list)
+        self.return_data = None
+        self.init_ui()
+        
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        
+        self.method_group = QGroupBox("Normalization Method")
+        method_layout = QVBoxLayout()
+        
+        self.zscore_radio = QRadioButton("Z-Score (Standardization)")
+        self.zscore_radio.setChecked(True)
+        self.minmax_radio = QRadioButton("Min-Max Scaling")
+        
+        method_layout.addWidget(self.zscore_radio)
+        method_layout.addWidget(self.minmax_radio)
+        self.method_group.setLayout(method_layout)
+        layout.addWidget(self.method_group)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+    def accept(self):
+        try:
+            method = "z score" if self.zscore_radio.isChecked() else "minmax"
+            self.return_data = self.preprocessor.data_preprocess(norm=method)
+            super().accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
+    def get_result(self):
+        return self.return_data
+
 class PreprocessPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -475,9 +515,13 @@ class PreprocessPanel(QWidget):
         self.btn_rereference = QPushButton("Re-reference")
         self.btn_rereference.clicked.connect(self.open_rereference)
         
+        self.btn_normalize = QPushButton("Normalize")
+        self.btn_normalize.clicked.connect(self.open_normalize)
+        
         ops_layout.addWidget(self.btn_filter)
         ops_layout.addWidget(self.btn_resample)
         ops_layout.addWidget(self.btn_rereference)
+        ops_layout.addWidget(self.btn_normalize)
         
         right_layout.addWidget(ops_group)
         
@@ -712,6 +756,12 @@ class PreprocessPanel(QWidget):
                 self.btn_rereference.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
             else:
                 self.btn_rereference.setToolTip("Change reference")
+
+        if hasattr(self, 'btn_normalize'):
+            if is_epoched:
+                self.btn_normalize.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+            else:
+                self.btn_normalize.setToolTip("Apply Z-Score or Min-Max normalization")
                 
         if hasattr(self, 'btn_epoch'):
             # self.btn_epoch.setEnabled(not is_epoched)
@@ -967,6 +1017,38 @@ class PreprocessPanel(QWidget):
                 if self.main_window:
                     self.main_window.refresh_panels()
                 QMessageBox.information(self, "Success", "Resampling applied.")
+
+    def open_rereference(self):
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return
+            
+        dialog = RereferenceDialog(self, self.main_window.study.preprocessed_data_list)
+        if dialog.exec():
+            result = dialog.get_result()
+            if result:
+                self.main_window.study.set_preprocessed_data_list(result)
+                self.update_panel()
+                if self.main_window:
+                    self.main_window.refresh_panels()
+                QMessageBox.information(self, "Success", "Re-reference applied.")
+
+    def open_normalize(self):
+        if self.check_lock(): return
+        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+            QMessageBox.warning(self, "Warning", "No data loaded.")
+            return
+            
+        dialog = NormalizeDialog(self, self.main_window.study.preprocessed_data_list)
+        if dialog.exec():
+            result = dialog.get_result()
+            if result:
+                self.main_window.study.set_preprocessed_data_list(result)
+                self.update_panel()
+                if self.main_window:
+                    self.main_window.refresh_panels()
+                QMessageBox.information(self, "Success", "Normalization applied.")
 
     def open_epoching(self):
         if self.check_lock(): return

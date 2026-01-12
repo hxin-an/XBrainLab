@@ -3,7 +3,8 @@
 本文檔定義了 XBrainLab Agent 可使用的所有工具 (Tools)。
 這些工具是 Agent 與後端邏輯 (`Study`) 互動的唯一介面。
 
-## 1. Dataset Tools (數據集管理)
+## 1. Dataset Tools workfows(數據集管理) 
+## 文本 ＋ 工具
 
 ### `list_files`
 *   **功能描述**: 列出指定目錄下的所有檔案名稱。Agent 應先使用此工具來探索資料夾結構，並自行判斷哪些是數據檔、哪些是標籤檔，以及它們的對應關係。
@@ -11,6 +12,12 @@
 *   **參數**:
     *   `directory` (字串, 必填): 目錄的絕對路徑。
     *   `pattern` (字串, 選填): 篩選模式 (例如 "*.gdf", "*.mat")。
+
+## meta data
+*    **功能描述** ： 使用者可能在 folder 裡面放 metadata ，他跟我說 metadata 在哪裡
+*    **Python 對應**： `XBrainLab.llm.tools.dataset_tools.MetaDataTool`
+*    **參數**:
+    *   `metadata_path` (字串, 必填): metadata 的絕對路徑。
 
 ### `load_data`
 *   **功能描述**: 載入原始 EEG/GDF 數據檔案到 Study 中。
@@ -43,8 +50,6 @@
 ---
 
 ## 2. Preprocessing Tools (預處理 - 訊號處理)
-
-*注意：所有預處理步驟會被加入 Pipeline 並按順序執行。*
 
 ### `apply_standard_preprocess`
 *   **功能描述**: 應用標準的 EEG 預處理流程，包含帶通濾波、陷波濾波 (去除電源線雜訊)、重參考 (Re-referencing) 以及正規化。這是一個「懶人包」工具，適合快速建立 Baseline。
@@ -87,7 +92,7 @@
     *   `method` (字串, 必填): 選擇 `"z-score"` 或 `"min-max"`。
 
 ### `set_reference`
-*   **功能描述**: 對訊號進行重參考 (例如 CAR - Common Average Reference)。
+*   **功能描述**: 對訊號進行重參考 (例如 CAR - Common Average Reference)，加上可 channel 
 *   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.RereferenceTool`
 *   **參數**:
     *   `method` (字串): "average" 或特定的通道名稱。
@@ -101,14 +106,13 @@
 ---
 
 ## 2.1 Epoching Tools (預處理 - 切段)
-
 ### `epoch_data`
 *   **功能描述**: 根據事件標記將連續的 EEG 數據切分為片段 (Epochs)。
 *   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.EpochDataTool`
 *   **參數**:
     *   `t_min` (浮點數): 相對於事件的開始時間 (例如 -0.1)。
     *   `t_max` (浮點數): 相對於事件的結束時間 (例如 1.0)。
-    *   `event_id` (字典 或 字串, 選填): 指定要用於切段的事件 ID 或名稱。
+    *   `event_id` (lists, 選填): 指定要用於切段的事件 ID 或名稱。
         *   若不填，通常會使用所有找到的事件。
         *   格式範例：`{"Left Hand": 769, "Right Hand": 770}` 或 直接傳入事件代碼列表。
     *   `baseline` (浮點數陣列, 選填): 基線校正區間，例如 [-0.1, 0]。

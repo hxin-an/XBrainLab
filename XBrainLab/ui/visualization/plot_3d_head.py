@@ -29,28 +29,37 @@ class Saliency3D:
         self.save = False
         self.showChannel = True
         self.showHead = True
-        self.cmap = plt.cm.get_cmap("jet")
+        self.cmap = plt.cm.get_cmap("coolwarm")
         self.neighbor = 3
 
         # load 3d model
-        # Use absolute path relative to this file's location or package structure
-        # This file is in XBrainLab/ui/visualization/
-        # Models are in XBrainLab/backend/visualization/3Dmodel/
-        
+        # Use project directory: XBrainLab/backend/visualization/3Dmodel
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up two levels to XBrainLab root, then into backend
+        # Go up two levels to XBrainLab root: ui/visualization -> ui -> XBrainLab
         project_root = os.path.dirname(os.path.dirname(current_dir))
         model_dir = os.path.join(project_root, 'backend', 'visualization', '3Dmodel')
         
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
-            fn_ply = ['brain.ply','head.ply']
-            gitrepo_loc = 'https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab.backend.visualization/3Dmodel/'
-            for fn in fn_ply:
+            
+        fn_ply = ['brain.ply','head.ply']
+        # Correct URL: XBrainLab.backend.visualization is a directory in the repo
+        # https://github.com/CECNL/XBrainLab/tree/main/XBrainLab/backend/visualization/3Dmodel
+        # Raw: https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab/backend/visualization/3Dmodel/
+        gitrepo_loc = 'https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab/backend/visualization/3Dmodel/'
+        
+        for fn in fn_ply:
+            file_path = os.path.join(model_dir, fn)
+            # Check if file exists and is valid (size > 1KB)
+            if not os.path.exists(file_path) or os.path.getsize(file_path) < 1024:
                 try:
+                    print(f"Downloading {fn}...")
                     req = requests.get(gitrepo_loc+fn)
-                    with open(os.path.join(model_dir, fn), 'wb') as handle:
-                        handle.write(req.content)
+                    if req.status_code == 200:
+                        with open(file_path, 'wb') as handle:
+                            handle.write(req.content)
+                    else:
+                        print(f"Failed to download {fn}: HTTP {req.status_code}")
                 except Exception as e:
                     print(f"Failed to download {fn}: {e}")
 
@@ -60,6 +69,10 @@ class Saliency3D:
         if os.path.exists(head_path):
             mesh_head = pv.read(head_path)
         else:
+            # Fallback or error
+            # If download failed, we might not have the file.
+            # Try to find it in the old location as a fallback?
+            # Or just raise error.
             raise FileNotFoundError(f"Head model not found at {head_path}")
             
         if os.path.exists(brain_path):

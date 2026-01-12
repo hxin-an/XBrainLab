@@ -46,6 +46,11 @@ class SaliencyTopoMapViz(Visualizer):
 
             # average over time
             data = saliency.mean(axis=1)
+            
+            # Handle constant data to prevent RuntimeWarning in MNE
+            if np.std(data) < 1e-10:
+                data += np.random.normal(0, 1e-10, data.shape)
+                
             im, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
             cbar = plt.colorbar(im, orientation='vertical')
             cbar.ax.get_yaxis().set_ticks([])

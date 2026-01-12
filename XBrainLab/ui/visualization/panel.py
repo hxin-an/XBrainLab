@@ -254,6 +254,8 @@ class VisualizationPanel(QWidget):
         # If items exist, select first real plan
         if self.plan_combo.count() > 1:
             self.plan_combo.setCurrentIndex(1)
+            # Explicitly call on_plan_changed to ensure run_combo is populated
+            self.on_plan_changed(self.plan_combo.currentText())
 
     def on_plan_changed(self, text):
         """Update Run combo when Plan changes."""
@@ -415,4 +417,6 @@ class VisualizationPanel(QWidget):
     def update_panel(self):
         """Called when switching to this panel."""
         self.update_info()
+        # Explicitly trigger update to ensure plot is shown even if signals were suppressed
+        self.on_update()
 
