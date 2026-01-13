@@ -1,9 +1,67 @@
+[tool.poetry]
+name = "xbrainlab"
+version = "0.1.0"
+description = "XBrainLab: EEG Analysis Platform with AI Agent"
+authors = ["XBrainLab Team"]
+readme = "documentation/README.md"
+packages = [{include = "XBrainLab"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+# Core Science Stack
+numpy = "^1.23.0"
+scipy = "^1.10.0"
+matplotlib = "^3.8.0"
+scikit-learn = "^1.4.0"
+pandas = "^2.0.0"
+h5py = "^3.10.0"
+
+# EEG & Visualization
+mne = "^1.6.0"
+pyvista = "^0.43.0"
+vtk = "^9.3.0"
+pymatreader = "^1.0.0"
+
+# GUI
+PyQt6 = "^6.6.0"
+qdarkstyle = "^3.2"  # Often useful, though not in reqs, good to have. Or stick to reqs.
+
+# Deep Learning & AI
+torch = ">=2.0.0"
+torchvision = ">=0.15.0"
+transformers = "^4.30.0"
+accelerate = "^0.25.0"
+sentence-transformers = "^2.2.0"
+torchinfo = "^1.8.0"
+
+# Utilities
+tqdm = "^4.66.0"
+requests = "^2.31.0"
+pyyaml = "^6.0"
+psutil = "^5.9.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.1.0"
+black = "^24.0.0"
+pre-commit = "^3.6.0"
+isort = "^5.13.0"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.0.0"
+pytest-cov = "^4.1.0"
+pytest-qt = "^4.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# --- Tool Configurations ---
+
 [tool.ruff]
 ignore = [
     "PLR09",
     "PLR2004",
 ]
-
 select = [
     "F",
     "W",
