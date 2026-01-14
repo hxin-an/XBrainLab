@@ -69,7 +69,7 @@ class AgentWorker(QObject):
         """Run generation (Legacy wrapper)."""
         # This is kept for compatibility if needed, but Controller uses generate_from_messages
         # We can construct a simple message list here
-        from XBrainLab.llm.prompts import SYSTEM_PROMPT_CHAT
+        from XBrainLab.llm.agent.prompts import SYSTEM_PROMPT_CHAT
         messages = [{"role": "system", "content": SYSTEM_PROMPT_CHAT}]
         messages.append({"role": "user", "content": input_text})
         self.generate_from_messages(messages)

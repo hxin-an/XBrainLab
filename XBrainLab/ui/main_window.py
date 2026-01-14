@@ -368,12 +368,6 @@ class MainWindow(QMainWindow):
         logger.info("Closing application...")
         if hasattr(self, 'agent_controller'):
             self.agent_controller.close()
-        event.accept()
-
-    def closeEvent(self, event):
-        logger.info("Closing application...")
-        if hasattr(self, 'agent_controller'):
-            self.agent_controller.close()
         super().closeEvent(event)
 
     def refresh_panels(self):

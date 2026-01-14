@@ -29,6 +29,23 @@
     *   類別：`PascalCase` (如 `DatasetGenerator`, `MainWindow`)
     *   常數：`UPPER_CASE` (如 `DEFAULT_SAMPLE_RATE`)
 
+## 架構規範 (Architecture Guidelines)
+
+為確保系統的可維護性，請嚴格遵守以下原則：
+
+1.  **前後端分離**：
+    *   **UI 層** (`XBrainLab/ui`) 僅負責顯示與使用者互動，**嚴禁**直接呼叫後端核心邏輯或實例化後端類別。
+    *   所有 UI 與後端的溝通應透過 **Controller** 或 **Signal/Slot** 機制進行。
+2.  **資源管理**：
+    *   在處理大型數據 (Tensor/Numpy Array) 時，請注意記憶體釋放 (如使用 `.detach()`, `del`)。
+    *   避免在迴圈中進行不必要的數據複製。
+
+## 文件規範 (Documentation Guidelines)
+
+*   **專業語氣**：所有文件應保持專業、客觀。
+*   **禁止 Emoji**：文件中**嚴禁使用 Emoji**，以維持專業形象。
+*   **語言**：主要使用繁體中文，關鍵術語可保留英文。
+
 ## Git 規範 (Git Workflow)
 
 ### Commit Message
@@ -57,10 +74,48 @@ git commit -m "fix: resolve crash when loading empty dataset"
 *   `docs/update-readme`
 *   `refactor/cleanup-backend`
 
-## 測試 (Testing)
+## 測試規範 (Testing Guidelines)
 
-在提交 PR 之前，請確保所有測試皆通過：
+我們致力於建立高覆蓋率且穩定的測試體系。請遵循以下準則：
 
-```bash
-poetry run pytest
-```
+### 1. 測試結構 (Structure)
+所有測試應位於專案根目錄的 `tests/` 資料夾中，並鏡像源碼結構：
+*   `XBrainLab/backend/foo.py` -> `tests/backend/test_foo.py`
+*   `XBrainLab/ui/bar.py` -> `tests/ui/test_bar.py`
+
+### 2. 命名規則 (Naming)
+*   檔案：`test_*.py`
+*   函式：`test_功能名稱_預期行為` (如 `test_load_data_invalid_path_raises_error`)
+
+### 3. UI 測試 (UI Testing)
+*   使用 `pytest-qt` 的 `qtbot` fixture 進行互動測試。
+*   **必須 Mock 後端**：UI 測試不應依賴真實的後端運算 (如訓練模型)，請使用 `unittest.mock` 模擬後端回傳值。
+*   範例：
+    ```python
+    def test_click_train_button(qtbot, mock_study):
+        panel = TrainingPanel(mock_study)
+        qtbot.addWidget(panel)
+        qtbot.mouseClick(panel.btn_start, Qt.LeftButton)
+        mock_study.train.assert_called_once()
+    ```
+
+### 4. 整合測試 (Integration Testing)
+*   針對關鍵流程 (如 "Import -> Preprocess -> Train") 撰寫 E2E 測試。
+*   標記為 `@pytest.mark.slow` 以便區分。
+
+### 5. 執行測試 (Running Tests)
+
+1.  **執行所有測試**：
+    ```bash
+    poetry run pytest
+    ```
+2.  **執行 UI 測試**：
+    ```bash
+    poetry run pytest tests/ui
+    ```
+
+**提交 PR 前的檢查清單**：
+- [ ] 所有測試皆通過 (`pytest`)。
+- [ ] 程式碼風格檢查通過 (`pre-commit`)。
+- [ ] 若有新功能，已新增對應的測試。
+- [ ] 已更新 `CHANGELOG.md`。

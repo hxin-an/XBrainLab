@@ -1,73 +1,78 @@
 # XBrainLab 開發路線圖 (Roadmap)
 
-本文件概述了 XBrainLab 專案的開發計畫。專案將分為兩個並行的主要軌道 (Tracks) 進行：**系統重構**與 **AI Agent 增強**。
+本文件概述了 XBrainLab 專案的開發計畫。基於最新的**紅隊測試與架構審計**，我們調整了優先順序，將**系統穩定性**與**架構解耦**列為首要任務。
+
+專案將分為兩個並行的主要軌道 (Tracks) 進行：**系統重構**與 **AI Agent 增強**。
 
 ## Track A: 系統重構與優化 (System Refactoring)
-**目標**：建立穩固的工程基礎，提升程式碼品質、穩定性與可維護性。
+**目標**：修復關鍵資源洩漏，解耦前後端，並建立統一的測試基礎建設。
 
-### 第一階段：基礎建設與清理 (Infrastructure & Cleanup)
-- [ ] **專案清理**
-    - [ ] 移除臨時檔案 (`reproduce_issue.py`, `test_output.txt`, `verify_path.py`)。
-    - [ ] **整合 UI 目錄**：比較 `XBrainLab/ui` 與 `XBrainLab/ui_pyqt`，確認並移除冗餘目錄。
-    - [ ] 清理 `documentation/` 中過時的文件，確保單一真實來源。
-- [ ] **建立文件骨架**
-    - [ ] 建立 `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md` 等標準文件。
-- [ ] **Poetry 遷移**
-    - [ ] 初始化 `pyproject.toml` (Python 3.10+)。
-    - [ ] 遷移並鎖定相依套件版本 (`poetry.lock`)。
-- [ ] **Git 標準化**
-    - [ ] 設定 Pre-commit Hooks (Ruff, Black)。
-    - [ ] 強制執行 Conventional Commits。
+### 第一階段：關鍵穩定性修復 (Critical Stabilization) - **[HOTFIX]**
+*解決 `KNOWN_ISSUES.md` 中的高風險資源與穩定性問題*
+- [ ] **修復 VRAM 洩漏**
+    - [ ] `training_plan.py`: 實作 `.detach().cpu()` 與 `empty_cache()` 機制。
+- [ ] **修復 RAM 記憶體倍增**
+    - [ ] `Dataset`: 改用 Index-based access (`Subset`) 取代 Numpy Masking 複製。
+- [ ] **消除靜默失敗 (Silent Failures)**
+    - [ ] 全局搜尋並修復 `try...except: pass`，確保錯誤被 Log 記錄。
+- [ ] **依賴衝突防護**
+    - [ ] `pyproject.toml`: 鎖定 PyTorch 與 CUDA 版本對應關係。
 
-### 第二階段：品質保證 (Quality Assurance)
-- [ ] **測試結構重組**
-    - [ ] 拆分 Unit Tests 與 Integration Tests。
-    - [ ] 設定 `pytest.ini` 支援 Headless UI 測試。
-- [ ] **單元測試修復**
-    - [ ] 修復 `dataset` 與 `training` 模組的失敗測試。
-    - [ ] 增加核心邏輯的測試覆蓋率。
+### 第二階段：架構重構與解耦 (Architecture & Decoupling)
+*解決前後端強耦合問題，為未來的擴展鋪路*
+- [ ] **實作 Controller 模式**
+    - [ ] 建立 `TrainingController`，移除 `TrainingPanel` 對 `Study` 的直接呼叫。
+    - [ ] 將 `VisualizationPanel` 的計算邏輯移至 Backend Service。
+- [ ] **UI/Backend 介面標準化**
+    - [ ] 定義明確的 Signal/Slot 介面，禁止 UI 直接實例化 Backend 類別 (如 `Preprocessor`)。
+- [ ] **基礎建設清理**
+    - [ ] 移除冗餘目錄 (`ui_pyqt`)。
+    - [ ] 完成 Poetry 遷移與 Git Hooks 設定。
+
+### 第三階段：測試體系重組 (Test Infrastructure)
+*解決測試檔案分散與 UI 測試不足的問題*
+- [ ] **測試結構統一**
+    - [ ] 建立根目錄 `tests/`，將散落的測試檔案 (`backend/tests`, `ui/tests`) 集中管理。
+- [ ] **UI 自動化測試**
+    - [ ] 引入 `pytest-qt`，為核心面板 (`TrainingPanel`, `VisualizationPanel`) 建立基礎互動測試。
+    - [ ] 建立 "Import -> Preprocess -> Train" 的完整 E2E 測試路徑。
 - [ ] **CI 管線建置**
-    - [ ] 建立 GitHub Actions (`ci.yml`) 自動執行 Linting 與 Testing。
+    - [ ] 設定 GitHub Actions 自動執行測試與 Linting。
 
-### 第三階段：部署與文件完善 (Deployment & Docs)
+### 第四階段：部署與文件 (Deployment & Docs)
 - [ ] **Docker 化**
     - [ ] 建立支援 GPU 的 `Dockerfile`。
-    - [ ] 驗證容器化部署流程。
 - [ ] **技術文件補完**
-    - [ ] 撰寫詳細的 Architecture, API Reference 與 Test Strategy 文件。
+    - [ ] 更新 `ARCHITECTURE.md` 反映重構後的設計。
 
 ---
 
 ## Track B: AI Agent 增強 (AI Agent Enhancement)
-**目標**：賦予 Agent 知識檢索與工具呼叫的能力，採用「先模擬，後整合」策略與 Track A 並行開發。
+**目標**：修復 Agent 記憶體問題，並賦予其更強的工具使用能力。
 
-### 第一階段：定義與模擬 (Definition & Simulation)
-- [ ] **工具定義**
-    - [ ] 完善 `tool_definitions.md`，確立 Agent 與後端的介面合約。
-- [ ] **Mock Tools 實作**
-    - [ ] 實作 Mock 工具 (如 `MockDatasetTool`)，回傳假數據以驗證 Agent 對話邏輯。
-- [ ] **RAG 知識庫建置**
-    - [ ] 建立 `XBrainLab/llm/rag/knowledge_base/`，收集架構文件與 API 說明。
+### 第一階段：Agent 核心修復 (Core Fixes) - **[✅ Completed]**
+- [x] **修復記憶體洩漏 (Unbounded Memory)**
+    - [x] `LLMController`: 實作 Context Window 管理 (Sliding Window)。
+- [x] **解決 UI 阻塞**
+    - [x] 將 Agent 執行邏輯 (`AgentWorker`) 移至獨立的 `QThread`，並確立 MVC 架構。
 
-### 第二階段：認知能力驗證 (Cognitive Validation)
-- [ ] **黃金測試集 (Golden Dataset)**
-    - [ ] 建立「使用者指令 -> 預期 Tool Call」的標準測試案例。
-- [ ] **離線評估 (Offline Evaluation)**
-    - [ ] 在無 GUI 環境下測試 Agent 的意圖理解與參數提取準確率。
-- [ ] **Prompt 優化**
-    - [ ] 根據評估結果調整 System Prompt，降低幻覺 (Hallucination)。
+### 第二階段：定義與模擬 (Definition & Simulation) - **[✅ Completed]**
+- [x] **工具定義完善**
+    - [x] 完成 `tool_definitions.md`，涵蓋 Dataset, Preprocess, Training, UI Control。
+- [x] **Mock Tools 實作與重構**
+    - [x] 實作全套 Mock Tools。
+    - [x] **架構重構**：採用 `definitions/` (Base), `mock/` (Impl), `real/` (Placeholder) 的分層架構與工廠模式。
+- [x] **測試驗證**
+    - [x] 建立 `llm_test_cases.md` 並實作完整的單元測試 (`test_tools.py` 等)。
 
-### 第三階段：真實整合 (Integration)
-*需等待 Track A 的後端重構穩定後進行*
+### 第三階段：認知能力驗證 (Cognitive Validation) - **[🚧 Pending]**
+- [ ] **黃金測試集 (Benchmark)**
+    - [ ] 建立標準測試案例 (Input -> Expected Tool Calls)。
+- [ ] **離線評估腳本**
+    - [ ] 開發自動化評測腳本，使用 Mock Tools 快速驗證模型推理能力。
+
+### 第四階段：真實整合 (Integration) - **[🚧 Pending]**
 - [ ] **Real Tools 實作**
-    - [ ] 將 Mock Tools 替換為呼叫真實 `Study` 物件的 API。
-- [ ] **端對端測試 (E2E Testing)**
-    - [ ] 在 GUI 中驗證 Agent 操作的實際效果。
-- [ ] **安全性機制**
-    - [ ] 實作敏感操作 (如刪除數據) 的使用者確認流程。
-
-### 第四階段：RAG 增強 (RAG Enhancement)
-- [ ] **向量資料庫**
-    - [ ] 實作本地 Vector DB (如 ChromaDB) 以加速檢索。
-- [ ] **語意搜尋優化**
-    - [ ] 優化檢索演算法，提升相關文檔的召回率 (Recall)。
+    - [ ] 在 `llm/tools/real/` 中實作真實工具，連接 `Study` Backend。
+- [ ] **RAG 增強**
+    - [ ] 實作本地向量資料庫 (ChromaDB/FAISS) 以支援文件檢索。

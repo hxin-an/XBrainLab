@@ -1,15 +1,63 @@
 
-from .data_loader import LoadDataTool
-from .dataset_tools import ClearDatasetTool
+import os
+from typing import List
+from .base import BaseTool
 
-# List of all available tools
-AVAILABLE_TOOLS = [
-    LoadDataTool(),
-    ClearDatasetTool()
-]
+# Import Mock Tools
+from .mock.dataset_mock import (
+    MockListFilesTool, MockLoadDataTool, MockAttachLabelsTool, 
+    MockClearDatasetTool, MockGetDatasetInfoTool, MockGenerateDatasetTool
+)
+from .mock.preprocess_mock import (
+    MockStandardPreprocessTool, MockBandPassFilterTool, MockNotchFilterTool, 
+    MockResampleTool, MockNormalizeTool, MockRereferenceTool, 
+    MockChannelSelectionTool, MockSetMontageTool, MockEpochDataTool
+)
+from .mock.training_mock import (
+    MockSetModelTool, MockConfigureTrainingTool, MockStartTrainingTool
+)
+from .mock.ui_control_mock import MockSwitchPanelTool
 
-def get_tool_by_name(name: str):
+# Import Real Tools (Placeholder for now)
+# from .real.dataset_real import ...
+
+def get_tool_by_name(name: str) -> BaseTool:
+    """
+    Returns the tool instance with the given name.
+    """
     for tool in AVAILABLE_TOOLS:
         if tool.name == name:
             return tool
     return None
+
+def get_all_tools(mode: str = 'mock') -> List[BaseTool]:
+    """
+    Factory function to get all tools based on the mode.
+    """
+    if mode == 'mock':
+        return [
+            # Dataset
+            MockListFilesTool(), MockLoadDataTool(), 
+            MockAttachLabelsTool(), MockClearDatasetTool(), MockGetDatasetInfoTool(), 
+            MockGenerateDatasetTool(),
+            
+            # Preprocess
+            MockStandardPreprocessTool(), MockBandPassFilterTool(), MockNotchFilterTool(), 
+            MockResampleTool(), MockNormalizeTool(), MockRereferenceTool(), 
+            MockChannelSelectionTool(), MockSetMontageTool(), MockEpochDataTool(),
+            
+            # Training
+            MockSetModelTool(), MockConfigureTrainingTool(), MockStartTrainingTool(),
+            
+            # UI Control
+            MockSwitchPanelTool()
+        ]
+    elif mode == 'real':
+        # TODO: Implement real tools
+        raise NotImplementedError("Real tools are not yet implemented.")
+    else:
+        raise ValueError(f"Unknown tool mode: {mode}")
+
+# Default to mock for now, or read from env
+# In the future, this can be dynamic.
+AVAILABLE_TOOLS = get_all_tools(mode='mock')

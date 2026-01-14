@@ -3,8 +3,7 @@
 本文檔定義了 XBrainLab Agent 可使用的所有工具 (Tools)。
 這些工具是 Agent 與後端邏輯 (`Study`) 互動的唯一介面。
 
-## 1. Dataset Tools workfows(數據集管理) 
-## 文本 ＋ 工具
+## 1. Dataset Tools (數據集管理)
 
 ### `list_files`
 *   **功能描述**: 列出指定目錄下的所有檔案名稱。Agent 應先使用此工具來探索資料夾結構，並自行判斷哪些是數據檔、哪些是標籤檔，以及它們的對應關係。
@@ -13,18 +12,12 @@
     *   `directory` (字串, 必填): 目錄的絕對路徑。
     *   `pattern` (字串, 選填): 篩選模式 (例如 "*.gdf", "*.mat")。
 
-## meta data
-*    **功能描述** ： 使用者可能在 folder 裡面放 metadata ，他跟我說 metadata 在哪裡
-*    **Python 對應**： `XBrainLab.llm.tools.dataset_tools.MetaDataTool`
-*    **參數**:
-    *   `metadata_path` (字串, 必填): metadata 的絕對路徑。
-
 ### `load_data`
-*   **功能描述**: 載入原始 EEG/GDF 數據檔案到 Study 中。
+*   **功能描述**: 將原始 EEG/GDF 數據載入到 Study 中。支援單個檔案、多個檔案或整個資料夾。
 *   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.LoadDataTool`
-*   **後端方法**: `study.load_raw_data_list(file_path_list)`
+*   **後端方法**: `study.load_raw_data_list(path_list)`
 *   **參數**:
-    *   `file_paths` (字串陣列, 必填): 數據檔案的絕對路徑列表。
+    *   `paths` (字串陣列, 必填): 數據檔案的絕對路徑或資料夾路徑列表。
 
 ### `attach_labels`
 *   **功能描述**: 將標籤檔案關聯到已載入的數據檔案。
@@ -103,6 +96,13 @@
 *   **參數**:
     *   `channels` (字串陣列): 要保留的通道名稱列表。
 
+### `set_montage`
+*   **功能描述**: 設定 EEG 通道的空間位置 (Montage)，這對於繪製拓樸圖 (Topomap) 是必須的。
+*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.SetMontageTool`
+*   **參數**:
+    *   `montage_name` (字串, 必填): 標準 Montage 名稱，例如 `"standard_1020"`, `"standard_1005"`。
+
+
 ---
 
 ## 2.1 Epoching Tools (預處理 - 切段)
@@ -162,26 +162,22 @@
 
 ---
 
-## 5. Visualization Tools (分析與視覺化)
+## 5. UI Control Tools (介面導航)
 
-### `plot_training_curve`
-*   **功能描述**: 繪製訓練過程的曲線圖 (Loss, Accuracy, AUC)。
-*   **Python 對應**: `XBrainLab.llm.tools.visualization_tools.PlotTrainingCurveTool`
+### `switch_panel`
+*   **功能描述**: 切換主視窗的顯示面板。當使用者想查看特定資訊（如訓練進度、分析結果）時，使用此工具跳轉到對應頁面。
+*   **Python 對應**: `XBrainLab.llm.tools.ui_control_tools.SwitchPanelTool`
 *   **參數**:
-    *   `metric` (字串, 必填): 要繪製的指標，選擇 ["loss", "accuracy", "auc"] 之一。
-
-### `plot_confusion_matrix`
-*   **功能描述**: 繪製分類結果的混淆矩陣 (Confusion Matrix)。
-*   **Python 對應**: `XBrainLab.llm.tools.visualization_tools.PlotConfusionMatrixTool`
-*   **參數**: 無
-
-### `plot_feature_map`
-*   **功能描述**: 繪製特徵重要性分析圖 (Saliency Map)。這通常用於解釋深度學習模型關注的特徵。
-*   **Python 對應**: `XBrainLab.llm.tools.visualization_tools.PlotFeatureMapTool`
-*   **參數**:
-    *   `map_type` (字串, 必填): 選擇 `"heatmap"` (時間-通道熱力圖) 或 `"topomap"` (大腦拓樸圖)。
-    *   `method` (字串, 選填): 計算梯度的方法，例如 `"Gradient"`, `"SmoothGrad"` 等。預設為 `"Gradient"`。
-    *   `absolute` (布林值, 選填): 是否取絕對值 (只看重要性強度，不看正負)。預設為 True。
+    *   `panel_name` (字串, 必填): 目標面板名稱。
+        *   `"dashboard"`: 首頁/儀表板。
+        *   `"dataset"`: 數據集管理。
+        *   `"preprocess"`: 預處理設定與波形檢視。
+        *   `"training"`: 訓練設定與即時曲線。
+        *   `"visualization"`: 結果分析 (混淆矩陣、特徵圖)。
+    *   `view_mode` (字串, 選填): 指定面板內的子視圖 (Tab)。
+        *   對於 `visualization`: 支援 `"saliency_map"`, `"spectrogram"`, `"topographic_map"`, `"3d_plot"`。
+        *   對於 `evaluation`: 支援 `"metrics"`, `"model_summary"`。
+        *   對於 `preprocess`: 支援 `"time_domain"`, `"frequency_domain"`。
 
 ---
 
@@ -196,7 +192,7 @@
     - Call `list_files(directory="/data/bcic/label", pattern="*.mat")` -> 獲得 `['A01T.mat', 'A02T.mat', 'A03T.mat']`
 2.  **Logic**: Agent 分析發現檔名一致 ("A01T" 對應 "A01T")。
 3.  **Data Loading**:
-    - Call `load_data(file_paths=["/data/bcic/A01T.gdf", ...])`
+    - Call `load_data(paths=["/data/bcic/A01T.gdf", ...])`
 4.  **Label Attachment**:
     - Call `attach_labels(mapping={"A01T.gdf": "/data/bcic/label/A01T.mat", ...})`
 5.  **Preprocessing**: Call `apply_bandpass_filter(low_freq=4, high_freq=40)`

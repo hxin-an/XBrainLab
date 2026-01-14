@@ -34,14 +34,23 @@ Agent 扮演「操作員」的角色，它不直接持有數據，而是透過�
 
 ## 2. 核心元件 (Core Components)
 
-### 2.1 Agent Worker (Controller)
-*   **職責**: 負責協調 User, LLM, RAG 與 Tools 之間的訊息傳遞。
+### 2.1 Agent Controller (The Brain Stem)
+*   **職責**: 負責協調 User, LLM, RAG 與 Tools 之間的訊息傳遞與狀態管理。
 *   **核心模組**: `XBrainLab/llm/agent/controller.py`
 *   **功能**:
     *   維護對話歷史 (Message History)。
     *   **RAG 整合**: 將 User Query 傳送至 RAG Engine，獲取相關文檔或範例，並注入 System Prompt。
     *   解析 LLM 回傳的 Tool Call 請求。
     *   在 Python 環境中執行對應的 Tool Class。
+    *   **執行緒管理**: 啟動並管理 Worker 執行緒。
+
+### 2.2 Agent Worker (The Engine)
+*   **職責**: 在獨立執行緒中執行耗時的 LLM 推論。
+*   **核心模組**: `XBrainLab/llm/agent/worker.py`
+*   **功能**:
+    *   載入 LLM 模型。
+    *   執行 `generate_stream` 進行推論。
+    *   透過 Signal 回傳生成的文字 Chunk 與最終結果。
 
 ### 2.2 LLM (The Brain)
 *   **職責**: 理解使用者意圖，結合 RAG 提供的背景知識，規劃操作步驟。
@@ -61,11 +70,11 @@ Agent 扮演「操作員」的角色，它不直接持有數據，而是透過�
 
 ### 2.4 Tool Registry (The Interface)
 *   **定義**: 位於 `XBrainLab/llm/tools/`
-    *   `base.py`: 工具基類。
-    *   `dataset_tools.py` (Mock): 數據集操作。
-    *   `preprocess_tools.py` (Mock): 訊號處理。
-    *   `training_tools.py` (Mock): 訓練控制。
-    *   `visualization_tools.py` (Mock): 圖表繪製。
+*   **架構**: 採用 **Factory Pattern** 與 **分層設計**。
+    *   `definitions/`: 定義工具介面 (Base Classes)。
+    *   `mock/`: 模擬實作 (用於測試與評估)。
+    *   `real/`: 真實實作 (連接 Backend)。
+    *   `__init__.py`: 負責根據設定 (Mock/Real) 實例化對應的工具集。
 
 ### 2.5 Study Object (The State)
 *   **定義**: `XBrainLab/backend/study.py`。
@@ -73,14 +82,138 @@ Agent 扮演「操作員」的角色，它不直接持有數據，而是透過�
     *   是整個實驗的 **"Single Source of Truth"**。
     *   持有 Raw Data, Epochs, Training Configuration, Model Weights。
 
-## 3. 專案結構快照 (Project Structure Snapshot - LLM Module Only)
+## 3. 資料流與互動機制 (Data Flow & Interaction Mechanism)
+
+本系統採用 **MVC (Model-View-Controller)** 變體設計，利用 Qt 的 **Signal/Slot** 機制實現非同步通訊，確保 UI 流暢度。
+
+### 3.1 角色職責 (Roles)
+
+*   **UI 層 (The Face)**: `MainWindow`, `ChatPanel`
+    *   **職責**: 只負責「顯示」與「接收輸入」。完全不處理 LLM 邏輯，不知道 Prompt 存在。
+*   **Controller 層 (The Brain)**: `LLMController`
+    *   **職責**: 核心指揮官。負責記憶對話 (State)、決策 (ReAct Loop)、解析工具指令，以及調度 Worker。
+*   **Worker 層 (The Hand/Engine)**: `AgentWorker`
+    *   **職責**: 執行引擎。負責執行最耗資源的 LLM 推論 (Inference)。運作於獨立的 `QThread` 中。
+
+### 3.2 詳細資料傳輸流程 (Detailed Data Flow)
+
+#### **階段一：使用者輸入 (UI -> Controller)**
+1.  **使用者**在 `ChatPanel` 輸入指令（如：「幫我載入數據」）。
+2.  `ChatPanel` 發出 `send_message` 信號。
+3.  `MainWindow` 接收信號，轉發給 `agent_controller.handle_user_input()`。
+    *   *此階段僅傳遞字串，UI 執行緒不會阻塞。*
+
+#### **階段二：思考與推論 (Controller <-> Worker)**
+4.  **Controller** 將使用者訊息加入 `self.history` (短期記憶)。
+5.  **Controller** 組合完整的 Prompt (System Prompt + History)。
+6.  **Controller** 發出 `sig_generate` 信號給 **Worker**。
+    *   *關鍵點：跨越執行緒邊界 (Thread Boundary)。*
+7.  **Worker** (在背景執行緒) 收到信號，呼叫 LLM Engine 進行推論。
+8.  **Worker** 推論結束，發出 `finished` 信號，將生成文字傳回 **Controller**。
+
+#### **階段三：執行與回應 (Controller -> UI)**
+9.  **Controller** 解析回應文字 (`CommandParser`)：
+    *   **情況 A (純對話)**:
+        *   LLM 回應普通文字 (如 "你好")。
+        *   Controller 發出 `response_ready` 信號 -> UI 顯示文字。
+    *   **情況 B (工具呼叫 - ReAct Loop)**:
+        *   LLM 回應 JSON 指令 (如 `{"command": "load_data"}`)。
+        1.  Controller 發出 `status_update` 信號 -> UI 顯示「正在執行工具...」。
+        2.  Controller **執行工具函式** (操作 `Study` 物件)。
+        3.  Controller 取得執行結果 (Result)。
+        4.  **自動迴圈**: Controller 將 Result 作為新的「觀察」加入歷史，**重複步驟 5**，讓 LLM 根據結果產生最終回應。
+
+### 3.3 UI 刷新機制 (UI Refresh Mechanism)
+
+**核心原則**: Agent/Tool **不直接操作 UI**。
+UI 刷新由 **Backend (Study)** 的狀態變更信號觸發。
+
+```text
+┌──────────────┐
+│   Tool Call  │  執行: study.load_dataset(...)
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Study Object │  修改內部狀態 (self.raw_data = ...)
+│  (Backend)   │  
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Emit Signal  │  發出: study.data_changed.emit()
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ UI Listener  │  接收 Signal → 刷新數據列表/圖表
+│ (MainWindow) │  
+└──────────────┘
+```
+
+### 3.2 實現方式
+
+#### Qt Signal/Slot 機制 
+
+**Study 發出信號**:
+```python
+# XBrainLab/backend/study.py
+from PyQt6.QtCore import QObject, pyqtSignal
+
+class Study(QObject):
+    # 定義信號
+    data_loaded = pyqtSignal(str)      # 數據載入完成
+    data_modified = pyqtSignal(str)    # 數據修改 (濾波、切分等)
+    training_started = pyqtSignal()    # 訓練開始
+    training_finished = pyqtSignal(dict) # 訓練完成，傳遞結果
+    
+    def load_dataset(self, path):
+        # 執行載入邏輯
+        self.raw_data = load_gdf(path)
+        # 發出信號
+        self.data_loaded.emit(f"Loaded {path}")
+```
+
+**UI 連接信號**:
+```python
+# XBrainLab/ui/main_window.py
+class MainWindow(QMainWindow):
+    def __init__(self, study):
+        super().__init__()
+        self.study = study
+        
+        # 連接 Backend 信號到 UI 槽函數
+        self.study.data_loaded.connect(self.on_data_loaded)
+        self.study.data_modified.connect(self.on_data_modified)
+        self.study.training_finished.connect(self.on_training_finished)
+    
+    def on_data_loaded(self, message):
+        # 刷新數據列表
+        self.update_dataset_list()
+        # 更新狀態欄
+        self.statusBar().showMessage(message)
+    
+    def on_data_modified(self, message):
+        # 刷新圖表
+        self.plot_widget.refresh()
+```
+
+**Tool 只負責調用**:
+```python
+# XBrainLab/llm/tools/dataset_tools.py
+class LoadDatasetTool(BaseTool):
+    def execute(self, study, path):
+        # 只調用 Backend 方法，不管 UI
+        study.load_dataset(path)
+        return f"Dataset loaded from {path}"
+```
+
+## 4. 專案結構快照 (Project Structure Snapshot - LLM Module Only)
 
 以下展示 `XBrainLab/llm/` 模組的內部結構。**注意：RAG 模組將擁有自己專屬的文件資料夾 (`knowledge_base/`)，以確保檢索範圍的精確性。**
 
 ```
 XBrainLab/llm/                <-- Agent 核心模組
 ├── agent/                    <-- 控制層
-│   ├── controller.py         <-- 協調者 (Worker)
+│   ├── controller.py         <-- 協調者 (Main Thread)
+│   ├── worker.py             <-- 執行者 (Worker Thread)
 │   ├── parser.py             <-- 輸出解析
 │   └── prompts.py            <-- 提示詞模板
 │
@@ -88,12 +221,17 @@ XBrainLab/llm/                <-- Agent 核心模組
 │   ├── config.py             <-- 模型設定
 │   └── engine.py             <-- 推論引擎 (支援 HuggingFace Local Models)
 │
-├── tools/                    <-- 工具介面層 (Mock/Real)
+├── tools/                    <-- 工具介面層 (Factory Pattern)
+│   ├── definitions/          <-- Base Classes (Interface)
+│   │   ├── dataset_def.py
+│   │   ├── preprocess_def.py
+│   │   └── ...
+│   ├── mock/                 <-- Mock Implementation
+│   │   ├── dataset_mock.py
+│   │   └── ...
+│   ├── real/                 <-- Real Implementation (Planned)
 │   ├── base.py               <-- Tool Base Class
-│   ├── dataset_tools.py      <-- [待實作] Dataset Tools
-│   ├── preprocess_tools.py   <-- [待實作] Preprocess Tools
-│   ├── training_tools.py     <-- [待實作] Training Tools
-│   └── visualization_tools.py <-- [待實作] Visualization Tools
+│   └── __init__.py           <-- Tool Factory
 │
 └── rag/                      <-- [規劃中] RAG 檢索模組
     ├── engine.py             <-- 檢索邏輯
@@ -102,5 +240,6 @@ XBrainLab/llm/                <-- Agent 核心模組
         ├── api_reference.md     <-- 後端 API 說明
         └── few_shot_examples.md <-- 操作範例
 ```
+
 
 

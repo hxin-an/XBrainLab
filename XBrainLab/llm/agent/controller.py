@@ -4,7 +4,7 @@ from XBrainLab.backend.utils.logger import logger
 from .parser import CommandParser
 from XBrainLab.llm.tools import get_tool_by_name, AVAILABLE_TOOLS
 from .prompts import get_system_prompt
-from XBrainLab.ui.agent_worker import AgentWorker
+from .worker import AgentWorker
 
 class LLMController(QObject):
     """
@@ -71,7 +71,9 @@ class LLMController(QObject):
         # Construct full messages list
         system_prompt = get_system_prompt(AVAILABLE_TOOLS)
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(self.history)
+        # Sliding Window: Keep only the last 10 messages to avoid context overflow
+        recent_history = self.history[-10:]
+        messages.extend(recent_history)
         
         self.current_response = "" # Reset accumulator
         
@@ -109,8 +111,7 @@ class LLMController(QObject):
             self.history.append({"role": "assistant", "content": response_text})
             
             # Defer execution slightly to allow UI to update status
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(50, lambda: self._execute_tool(command_name, params))
+            self._execute_tool(command_name, params)
         
         else:
             # It's a final text response
