@@ -19,7 +19,8 @@ def test_to_holder(shuffle):
     y = np.arange(length)
 
     bs = 128
-    dataloader = to_holder(X, y, device, bs, shuffle)
+    indices = np.arange(length)
+    dataloader = to_holder(X, y, indices, device, bs, shuffle)
 
     # Perform assertions
     assert isinstance(dataloader, DataLoader)
@@ -38,10 +39,11 @@ def test_to_holder(shuffle):
 def test_to_holder_empty():
     X = np.array([])
     y = np.array([])
+    indices = np.array([])
     device = 'cpu'
     bs = 128
     shuffle = True
-    assert to_holder(X, y, device, bs, shuffle) is None
+    assert to_holder(X, y, indices, device, bs, shuffle) is None
 
 CLASS_NUM = 4
 ERROR_NUM = 3
@@ -90,7 +92,8 @@ def dataloader(full_y, y):
 
     device = 'cpu'
     shuffle = False
-    return to_holder(X, y, device, BS, shuffle)
+    indices = np.arange(TOTAL_NUM)
+    return to_holder(X, y, indices, device, BS, shuffle)
 
 @pytest.fixture
 def loss_avg():
