@@ -61,7 +61,13 @@
     - **問題**：雖然目前 `pyproject.toml` 看似乾淨，但 `requirements.txt` 中曾出現多個 CUDA 版本衝突。若使用者混用安裝方式，極易導致 PyTorch 無法使用 GPU。
     - **建議解法**：在 `pyproject.toml` 中明確鎖定 PyTorch 版本與 CUDA 版本的對應關係 (如使用 `extra-index-url`)，並在啟動時檢查 `torch.version.cuda`。
 
-### 測試缺漏 (Testing Gaps)
+### 測試缺漏與環境問題 (Testing Gaps & Environment)
+- [ ] **Headless Qt/Torch Conflict (SIGABRT)**：
+    - **問題描述**：在無顯示環境 (Headless/SSH) 下，同時使用 `PyQt6` (QApplication) 與 `torch` (OpenMP/CUDA) 會導致 `IOT instruction (core dumped)` 崩潰，Exit Code 134/250。
+    - **技術分析**：這是 Qt 自身的 Event Loop 與 Torch 的 OpenMP/CUDA 初始化順序衝突所致 (Race Condition)。
+    - **目前解法 (Workaround)**：在 `tests/conftest.py` 頂部強制 `import torch` 以確保預先載入，繞過衝突窗口。
+    - **風險**：這是一個 Global Workaround，可能掩蓋了真實的 Import Order 問題。
+
 - [ ] **Test File Fragmentation (測試檔案分散)**：
     - **問題**：測試檔案散落在 `XBrainLab/tests/` (集中式) 與各模組目錄下 (如 `XBrainLab/backend/evaluation/tests/`, `XBrainLab/ui/dashboard_panel/tests/`)。
     - **影響**：缺乏統一的測試入口與結構，導致 CI/CD 配置困難，且開發者難以找到對應的測試。

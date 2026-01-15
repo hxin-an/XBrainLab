@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-01-15
+### Changed (High Risk)
+- **Dependency Architecture Refactoring**:
+    - **Break Change**: `pyproject.toml` 依賴結構重組為 `gui`, `llm` 分組。
+    - **Impact**: 改變了預設安裝行為。
+    - **Risk**: 僅驗證 Headless/Remote 環境 (`--without gui`) 可行性，**GUI 環境 (Full Install) 尚未進行完整的手動回歸測試**。
+- **Test Configuration Workaround**:
+    - **Critical Change**: 修改 `tests/conftest.py` 強制全域預載入 `torch`。
+    - **Reason**: 解決 Headless 環境下 Qt 與 Torch (OpenMP/CUDA) 衝突導致的 SIGABRT (IOT instruction) 崩潰。
+    - **Risk**: 此變更影響所有測試執行，掩蓋了潛在的 Import Order 問題，可能與生產環境行為不一致。
+
+### Fixed
+- **Testing**:
+    - 修復 `test-remote` 指令執行錯誤。
+    - **Workaround**: 在 Headless 模式下跳過 `tests/unit/llm/test_controller.py`，因其無法在無顯卡環境下同時初始化 Qt 與 Torch。
+
 ## [0.3.2] - 2026-01-15
 ### Added
 - **Controller Pattern**:

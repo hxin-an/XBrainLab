@@ -58,8 +58,20 @@ class BenchmarkRunner(QObject):
         # We will proceed blindly after a short wait, allowing the inference call 
         # to trigger the loading lazily if needed (AgentWorker does lazy load).
         
+        
+        # Category stats
+        category_stats = {}
+        
         for case in self.test_cases:
             case_id = case['id']
+            # Default to 'unknown' if category missing
+            category = case.get('category', 'unknown')
+            
+            if category not in category_stats:
+                category_stats[category] = {"passed": 0, "total": 0}
+            
+            category_stats[category]["total"] += 1
+            
             user_input = case['input']
             expected_tools = case['expected_tool_calls']
             
@@ -72,13 +84,27 @@ class BenchmarkRunner(QObject):
             if is_match:
                 print(f"  [PASS]")
                 passed += 1
+                category_stats[category]["passed"] += 1
             else:
                 print(f"  [FAIL]")
                 print(f"   Expected: {expected_tools}")
                 print(f"   Actual:   {captured_tools}")
                 
-        print(f"\nBenchmark Complete.")
-        print(f"Score: {passed}/{total} ({passed/total*100:.1f}%)")
+        print(f"\n" + "="*40)
+        print(f"BENCHMARK REPORT")
+        print("="*40)
+        print(f"{'Category':<15} | {'Passed':<8} | {'Total':<8} | {'Acc':<6}")
+        print("-" * 45)
+        
+        for cat, stats in sorted(category_stats.items()):
+            p = stats['passed']
+            t = stats['total']
+            acc = (p/t)*100 if t > 0 else 0
+            print(f"{cat:<15} | {p:<8} | {t:<8} | {acc:.1f}%")
+            
+        print("-" * 45)
+        print(f"{'TOTAL':<15} | {passed:<8} | {total:<8} | {passed/total*100:.1f}%")
+        print("="*40)
         
         self.controller.close()
         QCoreApplication.quit()

@@ -2,6 +2,7 @@
 # Previously, this file mocked mne, captum, and torch, which caused import errors.
 
 import sys
+import torch # Pre-load torch to prevent Qt/OpenMP conflict crash
 import pytest
 from unittest.mock import MagicMock, patch
 from PyQt6.QtWidgets import QMessageBox, QDialog, QWidget
