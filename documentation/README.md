@@ -53,6 +53,9 @@ poetry run test-llm
 
 # 執行遠端/Headless 環境安全測試 (跳過需螢幕顯示的 UI 測試)
 poetry run test-remote
+
+# 執行 LLM Agent 認知能力基準測試 (Benchmark)
+poetry run benchmark-llm
 ```
 
 ## 文件導航 (Documentation)

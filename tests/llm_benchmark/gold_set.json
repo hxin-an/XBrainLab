@@ -1,0 +1,111 @@
+[
+    {
+        "id": "dataset_01",
+        "category": "dataset",
+        "input": "Show me the files in /data/eeg/.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "list_files",
+                "parameters": {
+                    "directory": "/data/eeg/"
+                }
+            }
+        ]
+    },
+    {
+        "id": "dataset_02",
+        "category": "dataset",
+        "input": "Load the file /data/eeg/subject1.gdf",
+        "expected_tool_calls": [
+            {
+                "tool_name": "load_data",
+                "parameters": {
+                    "paths": ["/data/eeg/subject1.gdf"]
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_01",
+        "category": "preprocess",
+        "input": "Apply a bandpass filter from 4 to 40 Hz.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_bandpass_filter",
+                "parameters": {
+                    "low_freq": 4,
+                    "high_freq": 40
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_02",
+        "category": "preprocess",
+        "input": "Resample the data to 250Hz.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "resample_data",
+                "parameters": {
+                    "rate": 250
+                }
+            }
+        ]
+    },
+    {
+        "id": "training_01",
+        "category": "training",
+        "input": "I want to use the EEGNet model.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_model",
+                "parameters": {
+                    "model_name": "EEGNet"
+                }
+            }
+        ]
+    },
+    {
+        "id": "training_02",
+        "category": "training",
+        "input": "Set epoch to 100, batch size to 32, and learning rate to 0.001.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "configure_training",
+                "parameters": {
+                    "epoch": 100,
+                    "batch_size": 32,
+                    "learning_rate": 0.001
+                }
+            }
+        ]
+    },
+    {
+        "id": "ui_01",
+        "category": "ui",
+        "input": "Switch to the training panel.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "switch_panel",
+                "parameters": {
+                    "panel_name": "training"
+                }
+            }
+        ]
+    },
+    {
+        "id": "complex_01",
+        "category": "complex",
+        "input": "Please standard preprocess the data and then start training.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_standard_preprocess",
+                "parameters": {}
+            },
+            {
+                "tool_name": "start_training",
+                "parameters": {}
+            }
+        ]
+    }
+]

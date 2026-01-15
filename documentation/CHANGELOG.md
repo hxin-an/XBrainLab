@@ -9,6 +9,9 @@
 - **Controller Pattern**:
     - 新增 `TrainingController`：封裝訓練流程控制與狀態查詢。
     - 新增 `VisualizationController`：集中管理視覺化設定與數據檢索。
+- **Cognitive Benchmark**:
+    - 新增 `tests/llm_benchmark/gold_set.json`：Agent 認知能力測試黃金集。
+    - 新增 `poetry run benchmark-llm`：自動化基準測試腳本。
 ### Refactored
 - **UI Decoupling**:
     - 重構 `TrainingPanel` 與 `VisualizationPanel`，移除對 `Study` 的直接依賴。

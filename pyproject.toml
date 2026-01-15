@@ -101,6 +101,7 @@ multi_line_output = 3
 [tool.poetry.scripts]
 test-backend = "scripts.run_tests:backend"
 test-ui = "scripts.run_tests:ui"
-test-llm = "scripts.run_tests:llm"
-test-remote = "scripts.run_tests:remote"
-# test-all = "scripts.run_tests:all_tests" # Optional
+test-llm = "scripts.run_tests:run_llm_tests"
+test-remote = "scripts.run_tests:run_remote_tests"
+benchmark-llm = "tests.llm_benchmark.run_benchmark:run_benchmark_cli"
+# test-all = "scripts.run_tests:all_tests"
