@@ -13,6 +13,7 @@ from .model_selection import ModelSelectionWindow
 from .training_manager import TrainingManagerWindow
 from ..dataset.data_splitting_setting import DataSplittingSettingWindow
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.backend.controller.training_controller import TrainingController
 
 class MetricTab(QWidget):
     """
@@ -141,6 +142,7 @@ class TrainingPanel(QWidget):
         super().__init__()
         self.main_window = main_window
         self.study = main_window.study
+        self.controller = TrainingController(self.study)
         
         self.current_plotting_record = None # Initialize here to avoid AttributeError
         self.plan_items = {} # Map id(plan) -> QTreeWidgetItem
@@ -484,68 +486,44 @@ class TrainingPanel(QWidget):
             self.check_ready_to_train()
 
     def start_training(self):
-        # Auto-generate plan if needed or just always regenerate to be safe with current settings
+        """Start training using the controller."""
         try:
-            # Use append=True to add to existing history instead of clearing it
-            self.study.generate_plan(force_update=True, append=True)
-            self.log_text.append("New training plan added to queue.")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate plan: {e}")
-            return
-
-        if not self.study.trainer or not self.study.trainer.get_training_plan_holders():
-            QMessageBox.warning(self, "No Plan", "Failed to generate training plan.")
-            return
-            
-        # Check if dataset is empty or invalid
-        # We only check the newly added plan (last one)
-        holders = self.study.trainer.get_training_plan_holders()
-        new_holder = holders[-1]
-        dataset = new_holder.get_dataset()
-        if dataset.get_train_len() == 0:
-            QMessageBox.critical(
-                self, 
-                "Training Error", 
-                f"Dataset '{dataset.get_name()}' has 0 training samples.\n"
-                "Please check your Data Splitting settings or ensure you have enough data."
-            )
-            # Remove the invalid plan
-            holders.pop()
-            return
-            
-        self.training_completed_shown = False  # Reset flag for new training
-        
-        # Disable buttons
-        # self.btn_start.setEnabled(False) # User requested to keep it enabled for queueing
-        self.btn_stop.setEnabled(True)
-        
-        # Start Training directly via Trainer
-        try:
-            if not self.study.trainer.is_running():
-                self.study.trainer.run(interact=True)
-                self.timer.start(100) # Start polling
-            else:
-                self.log_text.append("Training already running. New plan added to queue.")
+            if not self.controller.is_training():
+                # This will generate plan and start training
+                self.controller.start_training()
                 
-            # Ensure button state is correct (should be enabled if config is ready)
-            self.check_ready_to_train()
+                # Check if started successfully
+                if self.controller.is_training():
+                    self.timer.start(100) # Start polling
+                    self.log_text.append("Training started.")
+                else:
+                    self.log_text.append("Failed to start training.")
+            else:
+                 self.log_text.append("Training is already running.")
             
+            self.training_completed_shown = False
+            self.btn_stop.setEnabled(True)
+            self.check_ready_to_train()
+
         except Exception as e:
              QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
              self.training_finished()
 
     def stop_training(self):
-        if self.study.trainer.is_running():
-            self.study.trainer.set_interrupt() 
+        if self.controller.is_training():
+            self.controller.stop_training() 
 
     def clear_history(self):
         """Clear the training history."""
-        if self.study.trainer and self.study.trainer.is_running():
-            QMessageBox.warning(self, "Warning", "Cannot clear history while training is running.")
-            return
+        try:
+            if self.controller.is_training():
+                QMessageBox.warning(self, "Warning", "Cannot clear history while training is running.")
+                return
             
-        if self.study.trainer:
-            self.study.trainer.clear_history()
+            self.controller.clear_history()
+        except Exception as e:
+             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
+             return
             
         self.history_table.setRowCount(0)
         self.row_map.clear()
@@ -557,36 +535,27 @@ class TrainingPanel(QWidget):
 
     def update_loop(self):
         # Poll trainer status
-        trainer = self.study.trainer
-        
-        # Check if finished
-        if not trainer.is_running():
+        if not self.controller.is_training():
             self.timer.stop()
             self.training_finished()
         
         # Update Plots/Progress
-        holders = trainer.get_training_plan_holders()
-        
-        # Flatten the list of all runs
-        target_rows = []
-        for i, plan in enumerate(holders):
-            group_name = f"Group {i+1}"
-            model_name = plan.model_holder.target_model.__name__
-            
-            is_plan_active = False
-            if trainer.is_running() and trainer.current_idx == i:
-                is_plan_active = True
+        # Use Controller to get flattened history
+        target_rows = self.controller.get_formatted_history()
                 
-            runs = plan.get_plans()
-            for r_idx, record in enumerate(runs):
-                target_rows.append({
-                    'plan': plan,
-                    'record': record,
-                    'group': group_name,
-                    'run_name': f"{r_idx + 1}", # 1-based index
-                    'model': model_name,
-                    'is_plan_active': is_plan_active
-                })
+        # If row count mismatch, adjust
+        if self.history_table.rowCount() != len(target_rows):
+            self.history_table.setRowCount(len(target_rows))
+            
+        # Update content
+        for row_idx, data in enumerate(target_rows):
+            plan = data['plan']
+            record = data['record']
+            group_name = data['group_name']
+            run_name = data['run_name']
+            model_name = data['model_name']
+            # is_plan_active = data['is_active'] # Not strictly needed if using is_current_run logic below
+            is_current_run = data.get('is_current_run', False)
                 
         # If row count mismatch, adjust
         if self.history_table.rowCount() != len(target_rows):
@@ -611,7 +580,7 @@ class TrainingPanel(QWidget):
             is_active = False
             if record.is_finished():
                 status = "Done"
-            elif is_plan_active and plan.get_training_repeat() == record.repeat:
+            elif is_current_run:
                 status = "Running"
                 is_active = True
             elif record.epoch == 0:
@@ -782,11 +751,7 @@ class TrainingPanel(QWidget):
         
     def check_ready_to_train(self):
         """Check if all configurations are set and enable/disable start button."""
-        ready = (
-            self.study.datasets is not None and len(self.study.datasets) > 0 and
-            self.study.model_holder is not None and
-            self.study.training_option is not None
-        )
+        ready = self.controller.validate_ready()
         self.btn_start.setEnabled(ready)
         
         if not ready:

@@ -12,6 +12,7 @@ from .saliency_3Dplot import Saliency3DPlotWidget
 from .export_saliency import ExportSaliencyWindow
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.backend.controller.visualization_controller import VisualizationController
 
 class VisualizationPanel(QWidget):
     """
@@ -20,7 +21,10 @@ class VisualizationPanel(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
+        super().__init__()
+        self.main_window = main_window
         self.study = main_window.study
+        self.controller = VisualizationController(self.study)
         self.trainer_map = {}
         self.friendly_map = {}
         
@@ -228,9 +232,7 @@ class VisualizationPanel(QWidget):
         layout.addSpacing(10)
 
     def get_trainers(self):
-        if self.study.trainer:
-            return self.study.trainer.get_training_plan_holders()
-        return None
+        return self.controller.get_trainers()
 
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
@@ -310,7 +312,7 @@ class VisualizationPanel(QWidget):
         eval_record = None
         
         if run_name == "Average":
-            eval_record = self.get_averaged_record(trainer)
+            eval_record = self.controller.get_averaged_record(trainer)
             if not eval_record:
                 if hasattr(current_widget, 'show_error'):
                     current_widget.show_error("No finished runs to average.")
@@ -340,42 +342,7 @@ class VisualizationPanel(QWidget):
             from PyQt6.QtWidgets import QApplication
             QApplication.processEvents()
 
-    def get_averaged_record(self, trainer):
-        """Compute average EvalRecord from all finished runs."""
-        import numpy as np
-        from XBrainLab.backend.training.record.eval import EvalRecord
-        
-        plans = trainer.get_plans()
-        records = [p.get_eval_record() for p in plans if p.get_eval_record() is not None]
-        
-        if not records:
-            return None
-            
-        base = records[0]
-        
-        def avg_dict(attr_name):
-            result = {}
-            keys = getattr(base, attr_name).keys()
-            for k in keys:
-                arrays = [getattr(r, attr_name)[k] for r in records]
-                result[k] = np.mean(np.stack(arrays), axis=0)
-            return result
 
-        avg_gradient = avg_dict('gradient')
-        avg_gradient_input = avg_dict('gradient_input')
-        avg_smoothgrad = avg_dict('smoothgrad')
-        avg_smoothgrad_sq = avg_dict('smoothgrad_sq')
-        avg_vargrad = avg_dict('vargrad')
-        
-        return EvalRecord(
-            label=base.label,
-            output=base.output,
-            gradient=avg_gradient,
-            gradient_input=avg_gradient_input,
-            smoothgrad=avg_smoothgrad,
-            smoothgrad_sq=avg_smoothgrad_sq,
-            vargrad=avg_vargrad
-        )
 
     def set_montage(self):
         if not self.study.epoch_data:
@@ -385,17 +352,17 @@ class VisualizationPanel(QWidget):
         if win.exec():
             chs, positions = win.get_result()
             if chs is not None and positions is not None:
-                self.study.set_channels(chs, positions)
+                self.controller.set_montage(chs, positions)
                 QMessageBox.information(self, "Success", "Montage set")
                 # Refresh current view if it depends on montage
                 self.on_update()
 
     def set_saliency(self):
-        win = SetSaliencyWindow(self, self.study.get_saliency_params())
+        win = SetSaliencyWindow(self, self.controller.get_saliency_params())
         if win.exec():
             params = win.get_result()
             if params:
-                self.study.set_saliency_params(params)
+                self.controller.set_saliency_params(params)
                 QMessageBox.information(self, "Success", "Saliency parameters set")
                 self.on_update()
 
