@@ -8,7 +8,7 @@
 
 1.  **安裝相依套件**：
     ```bash
-    poetry install
+    poetry install --with gui,llm
     ```
 2.  **啟動虛擬環境**：
     ```bash

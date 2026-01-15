@@ -18,7 +18,7 @@ XBrainLab 是一個專為腦波 (EEG) 研究設計的智慧分析平台。本專
 *   **GPU**: NVIDIA GPU (建議，用於加速模型訓練)
 
 ## 下載專案 (Download)
-3.  **Clone Repository**:
+1.  **Clone Repository**:
     ```bash
     git clone https://github.com/hxin-an/XBrainLab.git
     cd XBrainLab
@@ -33,16 +33,18 @@ XBrainLab 是一個專為腦波 (EEG) 研究設計的智慧分析平台。本專
 # 安裝 Poetry (如果尚未安裝)
 curl -sSL https://install.python-poetry.org | python3 -
 
-# [選項 1] 完整安裝 (包含 GUI 和 LLM 工具, 預設)
+# [選項 1] 完整安裝 (包含 GUI 和 LLM 工具)
+# 注意：GUI 和 LLM 為選用群組，需加上 --with 參數
+poetry install --with gui,llm
+
+# [選項 2] 僅安裝 GUI 環境
+poetry install --with gui
+
+# [選項 3] 僅 LLM 開發環境 (不含 GUI)
+poetry install --with llm
+
+# [選項 4] 僅核心後端 (最精簡安裝)
 poetry install
-
-# [選項 2] 遠端/無頭模式安裝 (不含 GUI)
-# 推薦用於伺服器環境或 SSH 連線，節省空間並避免圖形依賴錯誤
-poetry install --without gui
-
-# [選項 3] 僅 LLM 開發環境 (最小化安裝)
-# 僅安裝 LLM 測試所需套件，不含 GUI
-poetry install --with llm --without gui
 ```
 
 ### 2. 啟動程式

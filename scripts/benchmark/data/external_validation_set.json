@@ -241,7 +241,9 @@
         "parameters": {
           "epoch": 50,
           "batch_size": null,
-          "learning_rate": 0.001
+          "learning_rate": 0.001,
+          "optimizer": "adam",
+          "save_checkpoints_every": 5
         }
       }
     ]
@@ -269,7 +271,8 @@
         "parameters": {
           "epoch": 100,
           "batch_size": null,
-          "learning_rate": 0.001
+          "learning_rate": 0.001,
+          "optimizer": "sgd"
         }
       }
     ]
@@ -321,7 +324,8 @@
         "parameters": {
           "epoch": 200,
           "batch_size": null,
-          "learning_rate": 0.001
+          "learning_rate": 0.001,
+          "optimizer": "adamw"
         }
       }
     ]
@@ -1690,7 +1694,8 @@
         "parameters": {
           "epoch": 100,
           "batch_size": null,
-          "learning_rate": 0.001
+          "learning_rate": 0.001,
+          "optimizer": "adam"
         }
       }
     ]
@@ -1704,7 +1709,8 @@
         "parameters": {
           "epoch": 100,
           "batch_size": null,
-          "learning_rate": 0.001
+          "learning_rate": 0.001,
+          "optimizer": "sgd"
         }
       }
     ]

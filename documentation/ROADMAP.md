@@ -77,6 +77,10 @@
 ### 第四階段：RAG 整合與工具實作 (RAG Integration & Real Tools) - **[🚧 In Progress]**
 **目標**：讓 Agent 具備操作真實軟體的能力 (Coordinator Persona)。
 
+- [ ] **真實工具實作 (Real Tools) - [Focus First]**
+    - [ ] **基礎架構**: 在 `llm/tools/real/` 實作連接 Backend 的 Adapter。
+    - [ ] **功能補完**: 實作 `optimizer` 與 `checkpoint` 支援 (解決已知的 High Priority Issue)。
+    - [ ] **整合測試**: 確保 `real` 工具能通過 `benchmark-llm` (至少在 Happy Path 上)。
 - [ ] **向量資料庫 (Vector Store)**
     - [ ] **選型**: 採用 **Qdrant** (Local Mode) + `langchain-qdrant`。
     - [ ] **資料策略 (OOD Testing)**:
@@ -85,8 +89,6 @@
     - [ ] **建置**: 索引 `documentation/agent/*.md` 與 `gold_set.json`。
 - [ ] **RAG 引擎**
     - [ ] 實作針對 Tool 檢索的最佳化 Retriever (Metadata Filtering)。
-- [ ] **真實工具實作 (Real Tools)**
-    - [ ] 實作 `llm/tools/real/` 連接 Backend API。
 
 ### 第五階段：多 Agent 擴充 (Multi-Agent Expansion) - **[📅 Planned]**
 **目標**：引入專家 Agent 以支援教學與進階分析。
