@@ -554,21 +554,8 @@ class TrainingPanel(QWidget):
             group_name = data['group_name']
             run_name = data['run_name']
             model_name = data['model_name']
-            # is_plan_active = data['is_active'] # Not strictly needed if using is_current_run logic below
+            is_plan_active = data['is_active']
             is_current_run = data.get('is_current_run', False)
-                
-        # If row count mismatch, adjust
-        if self.history_table.rowCount() != len(target_rows):
-            self.history_table.setRowCount(len(target_rows))
-            
-        # Update content
-        for row_idx, data in enumerate(target_rows):
-            plan = data['plan']
-            record = data['record']
-            group_name = data['group']
-            run_name = data['run_name']
-            model_name = data['model']
-            is_plan_active = data['is_plan_active']
             
             # Store mapping
             self.row_map[row_idx] = (plan, record)
@@ -598,7 +585,6 @@ class TrainingPanel(QWidget):
                 if item.text() != text:
                     item.setText(text)
             
-            set_item(0, group_name)
             set_item(0, group_name)
             set_item(1, run_name)
             set_item(2, model_name)

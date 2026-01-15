@@ -16,6 +16,19 @@
     - 移除臨時轉換腳本 `convert_senior_benchmark.py` 與原始 CSV 檔案。
     - 刪除冗餘的 `rag_knowledge_content_plan.md`，內容合併至 Roadmap。
 
+## [0.3.4] - 2026-01-16
+### Fixed
+- **VTK Dependency Conflict**:
+    - 修復 VTK 9.5.2 與 PyVista 不相容問題，降級至 VTK 9.3.1。
+    - 解決 `ImportError: cannot import name 'vtkCompositePolyDataMapper2'` 錯誤。
+- **Training Panel KeyError**:
+    - 修復 `TrainingPanel.update_loop()` 中的字典鍵名不一致問題：
+        - `'group'` → `'group_name'`
+        - `'model'` → `'model_name'`
+        - `'is_plan_active'` → `'is_active'`
+    - 修復 `is_current_run` 未定義錯誤。
+    - 移除重複的循環代碼和重複的 `set_item(0, group_name)` 調用。
+
 ## [0.3.3] - 2026-01-15
 ### Changed (High Risk)
 - **Dependency Architecture Refactoring**:
