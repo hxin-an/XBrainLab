@@ -65,13 +65,40 @@
 - [x] **測試驗證**
     - [x] 建立 `llm_test_cases.md` 並實作完整的單元測試 (`test_tools.py` 等)。
 
-- [ ] **黃金測試集 (Benchmark)**
-    - [ ] 建立標準測試案例 (Input -> Expected Tool Calls)。
-- [ ] **離線評估腳本**
-    - [ ] 開發自動化評測腳本，使用 Mock Tools 快速驗證模型推理能力。
+### 第三階段：認知驗證與基準測試 (Cognitive Validation) - **[✅ Completed]**
+- [x] **黃金測試集 (Gold Set)**
+    - [x] 擴充至 50+ 測試案例，覆蓋 Dataset, Preprocess, Training, UI。
+- [x] **自動化評測 (Benchmark Script)**
+    - [x] 實作 `eval_agent.py`，支援分類準確率報告與詳細失敗分析。
+    - [x] 達成 88.0% 通過率。
+- [x] **架構重構**
+    - [x] 實作 `PromptManager` 以支援動態 System Prompt 與 Context。
 
-### 第四階段：真實整合 (Integration) - **[🚧 Pending]**
-- [ ] **Real Tools 實作**
-    - [ ] 在 `llm/tools/real/` 中實作真實工具，連接 `Study` Backend。
-- [ ] **RAG 增強**
-    - [ ] 實作本地向量資料庫 (ChromaDB/FAISS) 以支援文件檢索。
+### 第四階段：RAG 整合與工具實作 (RAG Integration & Real Tools) - **[🚧 In Progress]**
+**目標**：讓 Agent 具備操作真實軟體的能力 (Coordinator Persona)。
+
+- [ ] **向量資料庫 (Vector Store)**
+    - [ ] **選型**: 採用 **Qdrant** (Local Mode) + `langchain-qdrant`。
+    - [ ] **資料策略 (OOD Testing)**:
+        - [ ] **RAG Knowledge**: 將目前的 `gold_set.json` (50題) 全數 index 進 Qdrant 作為範例。
+        - [x] **Benchmark**: 引入「外部驗證集」作為測試基準 (`external_validation_set.json`)，已包含 175 題 (Basic + Multi-step)。
+    - [ ] **建置**: 索引 `documentation/agent/*.md` 與 `gold_set.json`。
+- [ ] **RAG 引擎**
+    - [ ] 實作針對 Tool 檢索的最佳化 Retriever (Metadata Filtering)。
+- [ ] **真實工具實作 (Real Tools)**
+    - [ ] 實作 `llm/tools/real/` 連接 Backend API。
+
+### 第五階段：多 Agent 擴充 (Multi-Agent Expansion) - **[📅 Planned]**
+**目標**：引入專家 Agent 以支援教學與進階分析。
+
+- [ ] **虛擬多 Agent (Persona Switching)**
+    - [ ] 實作 Intent Router 區分 `Coordinator` vs `Tutor`.
+- [ ] **領域知識 RAG**
+    - [ ] 索引 EEG 概念與教科書摘要供 Tutor 使用。
+
+## RAG 內容策略 (Content Strategy)
+| 知識類別 | 來源 | 使用者 | 優先級 |
+| :--- | :--- | :--- | :--- |
+| **工具與API** | `tool_definitions.md`, API Docs | **Coordinator** | **P0** (Phase 4) |
+| **操作範例** | `gold_set.json` | **Coordinator** | **P0** (Phase 4) |
+| **領域知識** | EEG Concepts, Glossary | **Tutor**, **Analyst** | P2 (Phase 5) |

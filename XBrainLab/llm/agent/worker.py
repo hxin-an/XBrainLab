@@ -2,8 +2,6 @@ from PyQt6.QtCore import QThread, pyqtSignal, QObject
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.agent.prompts import get_system_prompt
-from XBrainLab.llm.tools import AVAILABLE_TOOLS
 
 class GenerationThread(QThread):
     """Thread for running LLM generation without blocking UI."""
@@ -64,15 +62,6 @@ class AgentWorker(QObject):
         except Exception as e:
             logger.error("Failed to initialize Agent", exc_info=True)
             self.error.emit(f"Model Load Error: {str(e)}")
-
-    def generate(self, history, input_text):
-        """Run generation (Legacy wrapper)."""
-        # This is kept for compatibility if needed, but Controller uses generate_from_messages
-        # We can construct a simple message list here
-        from XBrainLab.llm.agent.prompts import SYSTEM_PROMPT_CHAT
-        messages = [{"role": "system", "content": SYSTEM_PROMPT_CHAT}]
-        messages.append({"role": "user", "content": input_text})
-        self.generate_from_messages(messages)
 
     def generate_from_messages(self, messages):
         """Run generation with full message history."""

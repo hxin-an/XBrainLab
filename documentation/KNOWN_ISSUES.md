@@ -4,6 +4,14 @@
 
 ## 🔴 高優先級 (High Priority)
 
+### 工具功能缺漏 (Missing Tool Capabilities)
+- [ ] **Missing Training Parameters (訓練參數缺失)**：
+    - **問題描述**：External Validation Set (`external_validation_set.json`) 中包含 `optimizer` (Adam/SGD) 與 `save_checkpoints_every` (Epochs) 的設定要求，但目前的 `configure_training` 工具僅支援 `epoch`, `batch_size`, `learning_rate`。
+    - **影響**：Agent 無法完全滿足進階使用者的訓練配置需求，導致 Benchmark 部分指令無法精確執行。
+    - **建議解法**：
+        1. 更新 `TrainingOption` 類別以支援 Optimizer 選擇與 Checkpoint 頻率。
+        2. 更新 `configure_training` 工具定義以接受這些新參數。
+
 ### 資源管理 (Resource Management)
 - [ ] **Training VRAM Leak (嚴重)**：
     - **問題描述**：在 `XBrainLab/backend/training/training_plan.py` 的 `train_one_epoch` 中，`y_true` 和 `y_pred` 變數在迴圈中不斷進行 `torch.cat` 串接，且這些 Tensor 位於 GPU 上 (若使用 GPU 訓練)。

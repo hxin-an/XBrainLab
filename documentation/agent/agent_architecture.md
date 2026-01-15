@@ -5,31 +5,78 @@
 XBrainLab 的 Agent 系統採用 **"Headless Backend + Intelligent Bridge + RAG"** 的設計模式。
 Agent 扮演「操作員」的角色，它不直接持有數據，而是透過標準化的 **Tools** 介面來操作後端的 **Study** 物件，並通過 **RAG** 檢索知識庫來增強決策能力。
 
-```text
-[Human User]
-     ↕ (Chat Interface)
-[UI / Chat Panel]
-     ↕ (JSON Stream)
-[Agent Worker (Controller)]
-     │
-     ├──↔ (Query) ───────────── [RAG Engine] (Retrieval-Augmented Generation)
-     │                          (Knowledge Base: Docs, Examples, Code)
-     │
-     ├──↔ (Prompt + Context) ── [LLM (GPT-4o/Gemini/Local Models)]
-     │                          (Brain: Reasoning & Planning)
-     │
-     └──→ (Execute Tool) ─────→ [Tool Registry]
-                                (Hands: Execution Layer)
-                                     │
-                                     ├── [Dataset Tools]
-                                     ├── [Preprocess Tools]
-                                     ├── [Training Tools]
-                                     └── [Visualization Tools]
-                                              ↕ (Modify/Read)
-                                       [Study Object]
-                                       (Body: Backend State)
-                                              │
-                                              └──→ (Logs/Status) → [UI]
+```mermaid
+graph TD
+    %% Nodes
+    User([User 👤])
+    
+    subgraph MainThread ["Main Thread (UI & Controller)"]
+        direction TB
+        UI[UI: ChatPanel]
+        
+        subgraph ControllerScope ["Controller Logic"]
+            direction TB
+            Controller[Controller: LLMController]
+            PromptMgr[PromptMgr: PromptManager]
+            Parser[Parser: CommandParser]
+            
+            subgraph PromptGen ["Prompt Construction "]
+                direction TB
+                Sys[System Prompt]
+                Tools[Tool Definitions]
+                Hist["History (Sliding Window)"]
+                FullPrompt[Final Prompt Stack]
+                
+                Sys & Tools & Hist --> FullPrompt
+            end
+            
+            Controller -- "delegates" --> PromptMgr
+            PromptMgr -.-> PromptGen
+        end
+        
+        ToolReg[Tool Registry]
+    end
+    
+    subgraph WorkerThread ["QThread: Worker"]
+        direction TB
+        Worker[Worker: AgentWorker]
+        LLM[Engine: LLMEngine]
+    end
+    
+    subgraph Backend ["Backend System"]
+        direction TB
+        Study[Study Object]
+    end
+
+    %% Data Flow
+    User --> |"1. Input Text"| UI
+    UI --> |"2. signal: send_message"| Controller
+    
+    Controller -.-> |"Builds"| PromptGen
+    FullPrompt --> |"3. signal: sig_generate(prompt)"| Worker
+    
+    Worker --> |"4. Generate(prompt)"| LLM
+    LLM --> |"5. Stream Tokens"| Worker
+    Worker --> |"6. signal: finished(text)"| Controller
+    
+    Controller --> |"7. Parse Response"| Parser
+    Parser --> |"8. Intent (JSON)"| Controller
+    
+    Controller --> |"9. Execute Tool"| ToolReg
+    ToolReg --> |"10. Call Method"| Study
+    
+    Study -.-> |"11. signal: data_changed"| UI
+
+    %% Professional Dark Mode Styles
+    classDef container fill:#1e1e1e,stroke:#3c3c3c,stroke-width:2px,color:#d4d4d4;
+    classDef component fill:#2d2d2d,stroke:#5c5c5c,stroke-width:1px,color:#e0e0e0;
+    classDef accent fill:#0d47a1,stroke:#64b5f6,stroke-width:2px,color:#ffffff;
+    classDef logic fill:#263238,stroke:#455a64,stroke-width:1px,stroke-dasharray: 3 3,color:#b0bec5;
+
+    class MainThread,WorkerThread,Backend,ControllerScope container;
+    class UI,Controller,Parser,ToolReg,Worker,LLM,Study,Sys,Tools,Hist component;
+    class FullPrompt,User accent;
+    class PromptGen logic;
 ```
 
 ## 2. 核心元件 (Core Components)
@@ -215,7 +262,7 @@ XBrainLab/llm/                <-- Agent 核心模組
 │   ├── controller.py         <-- 協調者 (Main Thread)
 │   ├── worker.py             <-- 執行者 (Worker Thread)
 │   ├── parser.py             <-- 輸出解析
-│   └── prompts.py            <-- 提示詞模板
+│   ├── prompt_manager.py     <-- Prompt 建構與管理 (System+History+Tools)
 │
 ├── core/                     <-- LLM 引擎層
 │   ├── config.py             <-- 模型設定

@@ -1,9 +1,8 @@
-
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from XBrainLab.backend.utils.logger import logger
 from .parser import CommandParser
 from XBrainLab.llm.tools import get_tool_by_name, AVAILABLE_TOOLS
-from .prompts import get_system_prompt
+from .prompt_manager import PromptManager
 from .worker import AgentWorker
 
 class LLMController(QObject):
@@ -24,6 +23,9 @@ class LLMController(QObject):
     def __init__(self, study):
         super().__init__()
         self.study = study
+        
+        # Initialize PromptManager
+        self.prompt_manager = PromptManager(AVAILABLE_TOOLS)
         
         # Setup Worker in separate thread to avoid blocking UI during load/inference
         self.worker_thread = QThread()
@@ -68,12 +70,8 @@ class LLMController(QObject):
 
     def _generate_response(self):
         """Triggers the LLM generation based on current history."""
-        # Construct full messages list
-        system_prompt = get_system_prompt(AVAILABLE_TOOLS)
-        messages = [{"role": "system", "content": system_prompt}]
-        # Sliding Window: Keep only the last 10 messages to avoid context overflow
-        recent_history = self.history[-10:]
-        messages.extend(recent_history)
+        # Use PromptManager to construct messages
+        messages = self.prompt_manager.get_messages(self.history)
         
         self.current_response = "" # Reset accumulator
         

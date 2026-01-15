@@ -59,8 +59,10 @@ class BenchmarkRunner(QObject):
         # to trigger the loading lazily if needed (AgentWorker does lazy load).
         
         
+        
         # Category stats
         category_stats = {}
+        failed_details = []
         
         for case in self.test_cases:
             case_id = case['id']
@@ -89,22 +91,60 @@ class BenchmarkRunner(QObject):
                 print(f"  [FAIL]")
                 print(f"   Expected: {expected_tools}")
                 print(f"   Actual:   {captured_tools}")
+                failed_details.append({
+                    "id": case_id,
+                    "input": user_input,
+                    "expected": expected_tools,
+                    "actual": captured_tools
+                })
                 
-        print(f"\n" + "="*40)
-        print(f"BENCHMARK REPORT")
-        print("="*40)
-        print(f"{'Category':<15} | {'Passed':<8} | {'Total':<8} | {'Acc':<6}")
-        print("-" * 45)
+        # Generate Report
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        report_lines = []
+        report_lines.append(f"BENCHMARK REPORT")
+        report_lines.append(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append(f"Total Cases: {total}")
+        report_lines.append(f"Passed: {passed} ({passed/total*100:.1f}%)")
+        report_lines.append("="*60)
+        report_lines.append(f"{'Category':<15} | {'Passed':<8} | {'Total':<8} | {'Acc':<6}")
+        report_lines.append("-" * 60)
         
         for cat, stats in sorted(category_stats.items()):
             p = stats['passed']
             t = stats['total']
             acc = (p/t)*100 if t > 0 else 0
-            print(f"{cat:<15} | {p:<8} | {t:<8} | {acc:.1f}%")
+            report_lines.append(f"{cat:<15} | {p:<8} | {t:<8} | {acc:.1f}%")
             
-        print("-" * 45)
-        print(f"{'TOTAL':<15} | {passed:<8} | {total:<8} | {passed/total*100:.1f}%")
-        print("="*40)
+        report_lines.append("-" * 60)
+        report_lines.append(f"{'TOTAL':<15} | {passed:<8} | {total:<8} | {passed/total*100:.1f}%")
+        report_lines.append("="*60)
+        
+        if failed_details:
+            report_lines.append("\nFAILED CASES ANALYSIS")
+            report_lines.append("="*60)
+            for fail in failed_details:
+                report_lines.append(f"Case ID: {fail['id']}")
+                report_lines.append(f"Input:   {fail['input']}")
+                report_lines.append(f"Expected: {json.dumps(fail['expected'], indent=2)}")
+                report_lines.append(f"Actual:   {json.dumps(fail['actual'], indent=2)}")
+                report_lines.append("-" * 40)
+        
+        report_text = "\n".join(report_lines)
+        print("\n" + report_text)
+        
+        # Save Report to File
+        try:
+            output_dir = project_root / "output" / "benchmarks"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            report_filename = f"benchmark_{timestamp}.txt"
+            report_path = output_dir / report_filename
+            with open(report_path, "w") as f:
+                f.write(report_text)
+            print(f"\n[Report Saved]: {report_path}")
+        except Exception as e:
+            print(f"\n[Error Saving Report]: {e}")
         
         self.controller.close()
         QCoreApplication.quit()
