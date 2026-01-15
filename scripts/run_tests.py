@@ -27,12 +27,12 @@ def ui():
     print("Running UI Tests...")
     run_pytest(["tests/unit/ui"])
 
-def llm():
+def run_llm_tests():
     """Run LLM unit tests."""
     print("Running LLM Tests...")
     run_pytest(["tests/unit/llm"])
 
-def remote():
+def run_remote_tests():
     """Run tests suitable for remote/headless environment (skips UI that requires display)."""
     print("Running Remote/Headless Tests (Backend + LLM)...")
     os.environ["MPLBACKEND"] = "Agg"
@@ -54,9 +54,9 @@ if __name__ == "__main__":
         elif command == "ui":
             ui()
         elif command == "llm":
-            llm()
+            run_llm_tests()
         elif command == "remote":
-            remote()
+            run_remote_tests()
         elif command == "all":
             all_tests()
         else:
