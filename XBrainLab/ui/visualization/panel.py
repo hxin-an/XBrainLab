@@ -325,8 +325,9 @@ class VisualizationPanel(QWidget):
                 if 0 <= run_idx < len(plans):
                     target_plan = plans[run_idx]
                     eval_record = target_plan.get_eval_record()
-            except:
-                pass
+            except Exception as e:
+                from XBrainLab.backend.utils.logger import logger
+                logger.warning(f"Failed to find plan for run {run_name}: {e}")
         
         if not eval_record:
             if hasattr(current_widget, 'show_error'):

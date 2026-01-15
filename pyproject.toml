@@ -21,9 +21,9 @@ mne = "^1.6.0"
 pymatreader = "^1.0.0"
 
 # Deep Learning Core (Required for Backend & LLM)
-torch = "^2.9.1"
-torchvision = "^0.24.1"
-torchaudio = "^2.9.1"
+torch = "^2.2.0"
+torchvision = "^0.17.0"
+torchaudio = "^2.2.0"
 captum = "^0.7.0"
 
 # Utilities

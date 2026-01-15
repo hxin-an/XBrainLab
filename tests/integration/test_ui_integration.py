@@ -35,6 +35,10 @@ def mock_study():
     # Mock saliency params
     study.get_saliency_params.return_value = {}
     
+    # Mock lists to be empty by default to comply with InfoPanel logic
+    study.loaded_data_list = []
+    study.preprocessed_data_list = []
+    
     return study
 
 def test_mainwindow_launch(qtbot, mock_study):
@@ -84,14 +88,14 @@ def test_evaluation_panel_init(qtbot, mock_study):
     window.switch_page(3)
     eval_panel = window.evaluation_panel
     
-    # Check tabs exist (Performance Table, Confusion Matrix, Model Output)
-    assert eval_panel.tabs.count() >= 3
-    assert eval_panel.tabs.tabText(0) == "Performance Table"
-    assert eval_panel.tabs.tabText(1) == "Confusion Matrix"
+    # Check widgets exist (Matrix and Metrics Table are now separate/in different layout)
+    assert eval_panel.matrix_widget is not None
+    assert eval_panel.metrics_table is not None
     
-    # Check if widgets inside tabs are initialized (not None)
-    assert eval_panel.tab_table is not None
-    assert eval_panel.tab_matrix is not None
+    # Check bottom tabs (Metrics Summary, Model Summary)
+    assert eval_panel.bottom_tabs.count() >= 2
+    assert eval_panel.bottom_tabs.tabText(0) == "Metrics Summary"
+    assert eval_panel.bottom_tabs.tabText(1) == "Model Summary"
     
     window.close()
 
@@ -107,7 +111,8 @@ def test_visualization_panel_init(qtbot, mock_study):
     # Check tabs exist (Saliency Map, Topographic Map, Spectrogram, 3D Plot)
     assert viz_panel.tabs.count() >= 4
     assert viz_panel.tabs.tabText(0) == "Saliency Map"
-    assert viz_panel.tabs.tabText(1) == "Topographic Map"
+    assert viz_panel.tabs.tabText(1) == "Spectrogram"
+    assert viz_panel.tabs.tabText(2) == "Topographic Map"
     
     # Check if widgets inside tabs are initialized
     assert viz_panel.tab_map is not None

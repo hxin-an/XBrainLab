@@ -80,7 +80,7 @@ def test_export():
                 'label': label, 'output': output, 'gradient': gradient,
                 'gradient_input': {}, 'smoothgrad': {}, 'smoothgrad_sq': {}, 'vargrad': {}
             },
-            'target_path/eval'
+            os.path.join('target_path', 'eval')
         )
 
 @pytest.fixture

@@ -18,8 +18,11 @@ from .mock.training_mock import (
 )
 from .mock.ui_control_mock import MockSwitchPanelTool
 
-# Import Real Tools (Placeholder for now)
-# from .real.dataset_real import ...
+from .real.training_real import (
+    RealSetModelTool, RealConfigureTrainingTool, RealStartTrainingTool
+)
+
+# ... (Previous imports)
 
 def get_tool_by_name(name: str) -> BaseTool:
     """
@@ -53,8 +56,24 @@ def get_all_tools(mode: str = 'mock') -> List[BaseTool]:
             MockSwitchPanelTool()
         ]
     elif mode == 'real':
-        # TODO: Implement real tools
-        raise NotImplementedError("Real tools are not yet implemented.")
+        return [
+            # Dataset (Reusing Mock for now if Real not ready, or Todo)
+            # For now we only implemented Real Training Tools as requested
+            MockListFilesTool(), MockLoadDataTool(), 
+            MockAttachLabelsTool(), MockClearDatasetTool(), MockGetDatasetInfoTool(), 
+            MockGenerateDatasetTool(),
+            
+            # Preprocess
+            MockStandardPreprocessTool(), MockBandPassFilterTool(), MockNotchFilterTool(), 
+            MockResampleTool(), MockNormalizeTool(), MockRereferenceTool(), 
+            MockChannelSelectionTool(), MockSetMontageTool(), MockEpochDataTool(),
+            
+            # Training - REAL
+            RealSetModelTool(), RealConfigureTrainingTool(), RealStartTrainingTool(),
+             
+            # UI Control
+            MockSwitchPanelTool()
+        ]
     else:
         raise ValueError(f"Unknown tool mode: {mode}")
 

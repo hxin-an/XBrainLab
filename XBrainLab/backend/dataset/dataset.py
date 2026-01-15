@@ -148,13 +148,25 @@ class Dataset:
     # train
     def get_training_data(self) -> tuple[np.ndarray, np.ndarray]:
         """Return the training data and label.
-
-        Returns:
-            (X, y)
+        
+        WARNING: This creates a COPY of the data, doubling RAM usage.
+        For training, use get_training_indices() and SharedMemoryDataset instead.
         """
         X = self.epoch_data.get_data()[self.train_mask]
         y = self.epoch_data.get_label_list()[self.train_mask]
         return X, y
+
+    def get_training_indices(self) -> np.ndarray:
+        """Return the indices of available training data."""
+        return np.where(self.train_mask)[0]
+
+    def get_val_indices(self) -> np.ndarray:
+        """Return the indices of available validation data."""
+        return np.where(self.val_mask)[0]
+
+    def get_test_indices(self) -> np.ndarray:
+        """Return the indices of available test data."""
+        return np.where(self.test_mask)[0]
 
     def get_val_data(self) -> tuple:
         """Return the validation data and label.

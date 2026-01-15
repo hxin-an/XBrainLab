@@ -139,6 +139,8 @@
     *   `learning_rate` (數值, 必填): 學習率。
     *   `repeat` (整數, 選填): 實驗重複次數 (預設 1)。
     *   `device` (字串, 選填): `"cpu"` 或 `"cuda"`。預設為自動偵測。
+    *   `optimizer` (字串, 選填): 優化器 ("adam", "sgd", "adamw")。預設為 "adam"。
+    *   `save_checkpoints_every` (整數, 選填): 每幾輪存檔一次 Checkpoint，0 代表不存。預設為 0。
 
 ### `start_training`
 *   **功能描述**: 根據配置好的數據與模型開始訓練流程。

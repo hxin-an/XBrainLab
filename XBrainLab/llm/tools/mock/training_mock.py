@@ -10,8 +10,9 @@ class MockSetModelTool(BaseSetModelTool):
 
 class MockConfigureTrainingTool(BaseConfigureTrainingTool):
     def execute(self, study: Any, epoch: int, batch_size: int, learning_rate: float, 
-                repeat: int = 1, device: str = "cpu") -> str:
-        return f"Training configured (Epochs: {epoch}, LR: {learning_rate}, Device: {device})."
+                repeat: int = 1, device: str = "cpu", optimizer: str = "adam", 
+                save_checkpoints_every: int = 0) -> str:
+        return f"Training configured (Epochs: {epoch}, LR: {learning_rate}, Device: {device}, Optim: {optimizer}, Ckt: {save_checkpoints_every})."
 
 class MockStartTrainingTool(BaseStartTrainingTool):
     def execute(self, study: Any) -> str:

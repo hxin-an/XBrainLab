@@ -129,7 +129,9 @@ def test_export(target_str, request):
         processor.data_preprocess('tests/test_data')
 
         args, _ = mocked_savemat.call_args
-        assert args[0] == 'tests/test_data/Sub-0_Sess-0.mat'
+        import os
+        expected_path = os.path.join('tests/test_data', 'Sub-0_Sess-0.mat')
+        assert args[0] == expected_path
         assert 'x' in args[1]
         if target_str == 'epoch':
             assert 'y' in args[1]

@@ -496,12 +496,14 @@ class TrainingPlanHolder:
             TrainRecordKey.LR: optimizer.param_groups[0]['lr'],
             TrainRecordKey.TIME: trainingTime
         })
-        train_record.step()
         if (
             self.option.checkpoint_epoch and
             train_record.get_epoch() % self.option.checkpoint_epoch == 0
         ):
             train_record.export_checkpoint()
+        
+        # CLEAR VRAM to prevent linear memory growth
+        torch.cuda.empty_cache()
 
     def set_interrupt(self) -> None:
         """Set the interrupt flag"""

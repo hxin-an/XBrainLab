@@ -32,7 +32,9 @@ class BaseConfigureTrainingTool(BaseTool):
                 "batch_size": {"type": "integer"},
                 "learning_rate": {"type": "number"},
                 "repeat": {"type": "integer", "default": 1},
-                "device": {"type": "string", "enum": ["cpu", "cuda"]}
+                "device": {"type": "string", "enum": ["cpu", "cuda"]},
+                "optimizer": {"type": "string", "enum": ["adam", "sgd", "adamw"], "default": "adam"},
+                "save_checkpoints_every": {"type": "integer", "default": 0}
             },
             "required": ["epoch", "batch_size", "learning_rate"]
         }

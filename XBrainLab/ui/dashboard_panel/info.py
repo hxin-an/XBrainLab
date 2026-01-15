@@ -139,8 +139,9 @@ class AggregateInfoPanel(QGroupBox):
                 _, event_id = data.get_event_list()
                 if event_id:
                     classes_set.update(event_id)
-            except:
-                pass
+            except Exception as e:
+                from XBrainLab.backend.utils.logger import logger
+                logger.warning(f"Failed to get event list for data: {e}")
 
             total_epochs += data.get_epochs_length()
             
@@ -151,8 +152,9 @@ class AggregateInfoPanel(QGroupBox):
                         total_events += len(events)
                 else:
                     total_events += data.get_epochs_length()
-            except:
-                pass
+            except Exception as e:
+                from XBrainLab.backend.utils.logger import logger
+                logger.warning(f"Failed to count events: {e}")
             
         tmin = "None"
         duration = "None"
@@ -162,7 +164,9 @@ class AggregateInfoPanel(QGroupBox):
             try:
                 dur_val = int(first_data.get_epoch_duration() * 100 / first_data.get_sfreq()) / 100
                 duration = str(dur_val)
-            except:
+            except Exception as e:
+                from XBrainLab.backend.utils.logger import logger
+                logger.warning(f"Failed to calc duration: {e}")
                 duration = "?"
 
         highpass, lowpass = first_data.get_filter_range()

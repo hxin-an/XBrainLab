@@ -16,6 +16,33 @@
     - 移除臨時轉換腳本 `convert_senior_benchmark.py` 與原始 CSV 檔案。
     - 刪除冗餘的 `rag_knowledge_content_plan.md`，內容合併至 Roadmap。
 
+## [0.3.5] - 2026-01-16
+### Fixed
+- **Known Issues Resolved**:
+    - **Backend Parameters**: `configure_training` 現在完整支援 `optimizer` (Adam/SGD/AdamW) 與 `save_checkpoints_every` 參數。相關變更同步至 `TrainingOption`、Tool Definitions 與 Mock/Real Implementations。
+    - **Memory Leaks**:
+        - **VRAM**: `train_one_epoch` 結束後自動呼叫 `torch.cuda.empty_cache()`。
+        - **RAM**: `Dataset` 新增索引存取 helper，並在文件與代碼中警告 `get_training_data` 的複製風險。
+        - **Agent**: `LLMController` 實作 Sliding Window 機制 (Max 20 Turns)，防止記憶體無限增長。
+    - **Silent Failures**: `AggregateInfoPanel` 與 `VisualizationPanel` 移除裸露的 `try...except: pass`，改為 `logger.warning` 記錄異常。
+    - **Dependencies**:
+        - 移除 `requirements.txt` 中衝突的 `nvidia-*` 套件。
+        - 修正 `pyproject.toml` 中的 Torch 版本至 `2.2.0` (與 Changelog 一致)。
+        - 重建 `requirements.txt` 以匹配 `pyproject.toml`。
+
+### Added
+- **Real Tool Implementation**:
+    - 新增 `XBrainLab/llm/tools/real/training_real.py`，實作真正控制後端的訓練工具。
+    - 更新 `XBrainLab/llm/tools/__init__.py` 支援 `mode='real'`。
+
+### QA & Infrastructure
+- **Test Compatibility**:
+    - 修復 Windows 環境下的路徑分隔符問題 (`test_preprocess.py`, `test_eval.py`)，確保跨平台測試通過。
+    - 修正 UI 整合測試 (`test_ui_integration.py`) 以符合最新的 `VisualizationPanel` 與 `EvaluationPanel` 佈局與 Tab 順序。
+    - 修正 `mock_study` Fixture 以避免在某些測試情境下的 Unpacking Error。
+- **Cleanup**:
+    - 刪除過時且無對應模組的測試檔案 `tests/unit/llm/test_prompts.py`。
+
 ## [0.3.4] - 2026-01-16
 ### Fixed
 - **VTK Dependency Conflict**:
