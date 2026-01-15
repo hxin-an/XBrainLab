@@ -52,11 +52,11 @@ def _test_model(
             total_count += len(labels)
 
             if y_true is None or y_pred is None:
-                y_true = labels
-                y_pred = outputs
+                y_true = labels.detach().cpu()
+                y_pred = outputs.detach().cpu()
             else:
-                y_true = torch.cat((y_true, labels))
-                y_pred = torch.cat((y_pred, outputs))
+                y_true = torch.cat((y_true, labels.detach().cpu()))
+                y_pred = torch.cat((y_pred, outputs.detach().cpu()))
 
         try:
             if y_pred.size()[-1] <=2:
@@ -69,8 +69,9 @@ def _test_model(
                 torch.nn.functional.softmax(
                     y_pred, dim=1
                 ).clone().detach().cpu().numpy(), multi_class='ovr')
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to calculate AUC in test: {e}")
 
     running_loss /= len(dataLoader)
     acc = correct / total_count * 100
@@ -161,29 +162,41 @@ def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_pa
     }
     return EvalRecord(label_list, output_list, gradient_list, gradient_input_list, smoothgrad_list, smoothgrad_sq_list, vargrad_list)
 
+class SharedMemoryDataset(Data.Dataset):
+    """Dataset that references original data to save RAM/VRAM."""
+    def __init__(self, data: np.ndarray, labels: np.ndarray, indices: np.ndarray, device: str):
+        self.data = data
+        self.labels = labels
+        self.indices = indices
+        self.device = device
+        
+    def __len__(self):
+        return len(self.indices)
+        
+    def __getitem__(self, idx):
+        real_idx = self.indices[idx]
+        # Data is transferred to device only when accessed (saves VRAM)
+        x = torch.from_numpy(self.data[real_idx]).float().to(self.device)
+        y = torch.tensor(self.labels[real_idx]).long().to(self.device)
+        return x, y
+
 def to_holder(
-    X: np.ndarray,
-    y: np.ndarray,
+    data: np.ndarray,
+    labels: np.ndarray,
+    indices: np.ndarray,
     dev: str,
     bs: int,
     shuffle: bool = False
 ) -> Data.DataLoader | None:
-    """Convert numpy array to torch data holder
+    """Convert data to torch dataloader using SharedMemoryDataset"""
 
-    Args:
-        X: Input data
-        y: Label
-        dev: Device string
-        bs: Batch size
-        shuffle: Whether to shuffle the data
-    """
-
-    if len(X) == 0:
+    if len(indices) == 0:
         return None
-    torchX = torch.tensor(X).float().to(dev)
-    torchY = torch.tensor(y).long().to(dev)
-
-    dataset = Data.TensorDataset(torchX, torchY)
+    
+    # Use SharedMemoryDataset to avoid copying numpy arrays (saves RAM)
+    # and to load to GPU on-the-fly (saves VRAM).
+    dataset = SharedMemoryDataset(data, labels, indices, dev)
+    
     dataloader = Data.DataLoader(
         dataset,
         batch_size=bs,
@@ -310,9 +323,19 @@ class TrainingPlanHolder:
         """Return the data loader for training, validation and testing"""
         bs = self.option.bs
         dev = self.option.get_device()
-        trainHolder = to_holder(*self.dataset.get_training_data(), dev, bs, True)
-        valHolder = to_holder(*self.dataset.get_val_data(), dev, bs)
-        testHolder = to_holder(*self.dataset.get_test_data(), dev, bs)
+        
+        # Access full data once (Reference)
+        full_data = self.dataset.get_epoch_data().get_data()
+        full_labels = self.dataset.get_epoch_data().get_label_list()
+        
+        # Get indices from masks
+        train_idx = np.where(self.dataset.train_mask)[0]
+        val_idx = np.where(self.dataset.val_mask)[0]
+        test_idx = np.where(self.dataset.test_mask)[0]
+
+        trainHolder = to_holder(full_data, full_labels, train_idx, dev, bs, True)
+        valHolder = to_holder(full_data, full_labels, val_idx, dev, bs)
+        testHolder = to_holder(full_data, full_labels, test_idx, dev, bs)
         return trainHolder, valHolder, testHolder
 
     def get_eval_pair(
@@ -425,11 +448,11 @@ class TrainingPlanHolder:
 
             correct += (outputs.argmax(axis=1) == labels).float().sum().item()
             if y_true is None or y_pred is None:
-                y_true = labels
-                y_pred = outputs
+                y_true = labels.detach().cpu()
+                y_pred = outputs.detach().cpu()
             else:
-                y_true = torch.cat((y_true, labels))
-                y_pred = torch.cat((y_pred, outputs))
+                y_true = torch.cat((y_true, labels.detach().cpu()))
+                y_pred = torch.cat((y_pred, outputs.detach().cpu()))
             total_count += len(labels)
             running_loss += loss.item()
 
@@ -444,10 +467,11 @@ class TrainingPlanHolder:
                 torch.nn.functional.softmax(
                     y_pred, dim=1
                 ).clone().detach().cpu().numpy(), multi_class='ovr')
-        except Exception:
+        except Exception as e:
             # first few epochs in binary classification
             # might not be able to compute score
-            pass
+            import logging
+            logging.getLogger(__name__).debug(f"Failed to calculate AUC in train (epoch {train_record.epoch}): {e}")
 
 
         running_loss /= len(trainLoader)

@@ -27,7 +27,7 @@ PyQt6 = "^6.6.0"
 qdarkstyle = "^3.2"  # Often useful, though not in reqs, good to have. Or stick to reqs.
 
 # Deep Learning & AI
-torch = ">=2.0.0"
+torch = "2.2.0"
 torchvision = ">=0.15.0"
 transformers = "^4.30.0"
 accelerate = "^0.25.0"

@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-01-15
+### Fixed
+- **Resource Management**:
+    - 修復 VRAM 洩漏：在 `training_plan.py` 中增加 tensor `.detach().cpu()` 處理。
+    - 優化 RAM 使用：實作 `SharedMemoryDataset` 以參照方式存取資料，避免大量 NumPy Copy。
+- **Stability**:
+    - 消除 `training_plan.py` 中的靜默失敗 (Silent Failures)，增加異常日誌記錄。
+    - 鎖定 `torch==2.2.0` 相依版本以確保環境一致性。
+
 ## [0.3.0] - 2026-01-15
 ### Changed
 - **Unit Test Infrastructure**:
