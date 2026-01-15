@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-01-15
+### Added
+- **Controller Pattern**:
+    - 新增 `TrainingController`：封裝訓練流程控制與狀態查詢。
+    - 新增 `VisualizationController`：集中管理視覺化設定與數據檢索。
+### Refactored
+- **UI Decoupling**:
+    - 重構 `TrainingPanel` 與 `VisualizationPanel`，移除對 `Study` 的直接依賴。
+    - 移除過舊的 `ui_pyqt` 目錄。
+
+
 ## [0.3.1] - 2026-01-15
 ### Fixed
 - **Resource Management**:

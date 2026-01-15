@@ -7,27 +7,27 @@
 ## Track A: 系統重構與優化 (System Refactoring)
 **目標**：修復關鍵資源洩漏，解耦前後端，並建立統一的測試基礎建設。
 
-### 第一階段：關鍵穩定性修復 (Critical Stabilization) - **[HOTFIX]**
+### 第一階段：關鍵穩定性修復 (Critical Stabilization) - **[✅ Completed]**
 *解決 `KNOWN_ISSUES.md` 中的高風險資源與穩定性問題*
-- [ ] **修復 VRAM 洩漏**
-    - [ ] `training_plan.py`: 實作 `.detach().cpu()` 與 `empty_cache()` 機制。
-- [ ] **修復 RAM 記憶體倍增**
-    - [ ] `Dataset`: 改用 Index-based access (`Subset`) 取代 Numpy Masking 複製。
-- [ ] **消除靜默失敗 (Silent Failures)**
-    - [ ] 全局搜尋並修復 `try...except: pass`，確保錯誤被 Log 記錄。
-- [ ] **依賴衝突防護**
-    - [ ] `pyproject.toml`: 鎖定 PyTorch 與 CUDA 版本對應關係。
+- [x] **修復 VRAM 洩漏**
+    - [x] `training_plan.py`: 實作 `.detach().cpu()` 與 `empty_cache()` 機制。
+- [x] **修復 RAM 記憶體倍增**
+    - [x] `Dataset`: 改用 Index-based access (`Subset`) 取代 Numpy Masking 複製。
+- [x] **消除靜默失敗 (Silent Failures)**
+    - [x] 全局搜尋並修復 `try...except: pass`，確保錯誤被 Log 記錄。
+- [x] **依賴衝突防護**
+    - [x] `pyproject.toml`: 鎖定 PyTorch 與 CUDA 版本對應關係。
 
-### 第二階段：架構重構與解耦 (Architecture & Decoupling)
+### 第二階段：架構重構與解耦 (Architecture & Decoupling) - **[✅ Completed]**
 *解決前後端強耦合問題，為未來的擴展鋪路*
-- [ ] **實作 Controller 模式**
-    - [ ] 建立 `TrainingController`，移除 `TrainingPanel` 對 `Study` 的直接呼叫。
-    - [ ] 將 `VisualizationPanel` 的計算邏輯移至 Backend Service。
-- [ ] **UI/Backend 介面標準化**
-    - [ ] 定義明確的 Signal/Slot 介面，禁止 UI 直接實例化 Backend 類別 (如 `Preprocessor`)。
-- [ ] **基礎建設清理**
-    - [ ] 移除冗餘目錄 (`ui_pyqt`)。
-    - [ ] 完成 Poetry 遷移與 Git Hooks 設定。
+- [x] **實作 Controller 模式**
+    - [x] 建立 `TrainingController`，移除 `TrainingPanel` 對 `Study` 的直接呼叫。
+    - [x] 將 `VisualizationPanel` 的計算邏輯移至 Backend Service。
+- [x] **UI/Backend 介面標準化**
+    - [x] 定義明確的 Signal/Slot 介面，禁止 UI 直接實例化 Backend 類別 (如 `Preprocessor`)。
+- [x] **基礎建設清理**
+    - [x] 移除冗餘目錄 (`ui_pyqt`)。
+    - [x] 完成 Poetry 遷移與 Git Hooks 設定。
 
 ### 第三階段：測試體系重組 (Test Infrastructure)
 *解決測試檔案分散與 UI 測試不足的問題*
