@@ -77,7 +77,8 @@ def test_export():
         eval_record.export('target_path')
         torch_mock.assert_called_once_with(
             {
-                'label': label, 'output': output, 'gradient': gradient
+                'label': label, 'output': output, 'gradient': gradient,
+                'gradient_input': {}, 'smoothgrad': {}, 'smoothgrad_sq': {}, 'vargrad': {}
             },
             'target_path/eval'
         )

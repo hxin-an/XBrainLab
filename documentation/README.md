@@ -36,6 +36,25 @@ poetry install
 poetry run python run.py
 ```
 
+## 測試 (Testing)
+
+本專案提供多種 Poetry 指令來執行不同層級的測試。
+
+### 執行測試
+```bash
+# 執行後端單元測試 (推薦優先執行)
+poetry run test-backend
+
+# 執行 UI 單元測試
+poetry run test-ui
+
+# 執行 LLM Agent 相關測試
+poetry run test-llm
+
+# 執行遠端/Headless 環境安全測試 (跳過需螢幕顯示的 UI 測試)
+poetry run test-remote
+```
+
 ## 文件導航 (Documentation)
 
 ### 專案文件

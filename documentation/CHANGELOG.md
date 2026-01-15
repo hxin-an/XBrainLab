@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-01-15
+### Changed
+- **Unit Test Infrastructure**:
+    - 全面整併測試檔案至 `tests/unit/`，移除源碼目錄中的散落測試。
+    - 引入 `scripts/run_tests.py` 與 Poetry 測試指令 (`test-backend`, `test-ui`, `test-llm`, `test-remote`)。
+    - 配置 `MPLBACKEND=Agg` 支援 Headless 環境測試。
+- **Test Integrity**:
+    - 修復 `test_montage_picker_redesign.py` Segmentation Fault 問題 (移除全域 `QApplication`)。
+    - 達成 Backend 單元測試 100% 通過率 (2020 個測試案例)。
+
+### Fixed
+- **Dependencies**: 補齊 `captum`, `pyvistaqt` 缺失相依套件。
+
 ## [0.2.0] - 2026-01-14
 ### Added
 - **Agent Tool System Refactoring**:

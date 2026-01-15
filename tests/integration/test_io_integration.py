@@ -6,7 +6,7 @@ from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.exceptions import FileCorruptedError
 
 # Path to the small test data provided in the repo
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'test_data_small'))
+TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
 GDF_FILE = os.path.join(TEST_DATA_DIR, 'A01T.gdf')
 
 class TestIOIntegration:

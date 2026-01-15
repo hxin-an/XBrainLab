@@ -1,7 +1,12 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QWidget, QSizePolicy
 from PyQt6.QtCore import Qt
 import matplotlib
-matplotlib.use('QtAgg')
+# Only force QtAgg if we are not in a headless testing environment (Agg)
+if matplotlib.get_backend().lower() != 'agg':
+    try:
+        matplotlib.use('QtAgg')
+    except ImportError:
+        pass
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt

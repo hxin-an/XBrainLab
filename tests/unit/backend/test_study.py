@@ -1,3 +1,4 @@
+
 import mne
 import pytest
 
@@ -144,18 +145,20 @@ class FakeRecord:
         self.filepath = filepath
 
 class FakePlan:
-    def __init__(self, name, real_name):
+    def __init__(self, name, real_name, record=None):
         self.name = name
         self.real_name = real_name
-    def get_eval_record(self): # pragma: no cover
-        pass
+        self.record = record
+    def get_eval_record(self):
+        return self.record
 
 class FakeTrainer:
-    def __init__(self):
+    def __init__(self, record=None):
         self.running = False
         self.interact = None
         self.interrupt = False
         self.return_plan = False
+        self.record = record
     def run(self, interact=False):
         self.running = True
         self.interact = interact
@@ -167,7 +170,7 @@ class FakeTrainer:
         pass
     def get_real_training_plan(self, name, real_name):
         if self.return_plan:
-            return FakePlan(name, real_name)
+            return FakePlan(name, real_name, self.record)
         else:
             raise ValueError
 
@@ -183,24 +186,16 @@ def test_study_set_training_option(trainer_study, force_update):
     option = TrainingOption(
         'test', int, 0, True, None, 1, 1, 1, 1, TRAINING_EVALUATION.TEST_ACC, 1
     )
-    if force_update:
-        trainer_study.set_training_option(option, force_update)
-    else:
-        with pytest.raises(ValueError):
-            trainer_study.set_training_option(option, force_update)
-        trainer_study.clean_trainer()
-        trainer_study.set_training_option(option, force_update)
+    # Since we allow multi-experiment history, this should not raise ValueError anymore
+    trainer_study.set_training_option(option, force_update)
+    assert trainer_study.training_option == option
 
 @pytest.mark.parametrize('force_update', [True, False])
 def test_study_set_model_holder(trainer_study, force_update):
     holder = ModelHolder(int, 0)
-    if force_update:
-        trainer_study.set_model_holder(holder, force_update)
-    else:
-        with pytest.raises(ValueError):
-            trainer_study.set_model_holder(holder, force_update)
-        trainer_study.clean_trainer()
-        trainer_study.set_model_holder(holder, force_update)
+    # Since we allow multi-experiment history, this should not raise ValueError anymore
+    trainer_study.set_model_holder(holder, force_update)
+    assert trainer_study.model_holder == holder
 
 @pytest.mark.parametrize('force_update', [True, False])
 def test_study_generate_plan(trainer_study, force_update):
@@ -267,24 +262,24 @@ def test_study_training_not_set():
 @pytest.mark.parametrize('has_record', [True, False])
 @pytest.mark.parametrize('has_eval', [True, False])
 def test_study_export_output_csv(trainer_study, has_record, has_eval):
-    from unittest.mock import patch
     record = FakeRecord()
-    return_value = None
     if has_eval:
-        return_value = record
+        trainer_study.trainer.record = record
+    else:
+        trainer_study.trainer.record = None
     
-    with patch('XBrainLab.tests.test_study.FakePlan.get_eval_record', return_value=return_value):
-        trainer_study.trainer.return_plan = has_record
-        if not has_record:
-            with pytest.raises(ValueError):
-                trainer_study.export_output_csv('test', '1', '2')
-            return
-        if not has_eval:
-            with pytest.raises(ValueError):
-                trainer_study.export_output_csv('test', '1', '2')
-            return
-        trainer_study.export_output_csv('test', '1', '2')
-        assert record.filepath == 'test'
+    trainer_study.trainer.return_plan = has_record
+    
+    if not has_record:
+        with pytest.raises(ValueError):
+            trainer_study.export_output_csv('test', '1', '2')
+        return
+    if not has_eval:
+        with pytest.raises(ValueError):
+            trainer_study.export_output_csv('test', '1', '2')
+        return
+    trainer_study.export_output_csv('test', '1', '2')
+    assert record.filepath == 'test'
 
 
 def test_study_export_output_csv_not_set():
