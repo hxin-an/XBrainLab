@@ -3,6 +3,18 @@
 所有對本專案的重要變更都將記錄於此文件中。
 
 
+## [0.4.0] - 2026-01-16
+### Added
+- **Hybrid Inference Engine**: Support for switching between Local (GPU), OpenAI, and Gemini backends.
+- **Gemini API Support**: Native integration using `google-genai` SDK (v2).
+- **OpenAI API Support**: Compatible with GPT-4o, DeepSeek, and vLLM.
+- **Verification Scripts**: Added `scripts/verify_api_llm.py` and `scripts/verify_gemini_llm.py`.
+- **Poe Tasks**: Added `verify-api` and `verify-gemini` commands.
+
+### Changed
+- Refactored `LLMEngine` to use a Strategy Pattern (`LocalBackend`, `APIBackend`, `GeminiBackend`).
+- Migrated from deprecated `google-generativeai` to `google-genai`.
+
 ## [0.3.9] - 2026-01-16
 ### Added
 - **Human-in-the-loop (HIL) - Montage Verification**:

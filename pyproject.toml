@@ -32,6 +32,8 @@ requests = "^2.31.0"
 pyyaml = "^6.0"
 psutil = "^5.9.0"
 pyqt6 = "^6.10.2"
+openai = "^2.15.0"
+google-genai = "^1.59.0"
 
 [tool.poetry.group.gui]
 optional = true
@@ -122,5 +124,7 @@ benchmark-llm = "scripts.benchmark.eval_agent:run_benchmark_cli"
 verify = "python scripts/verify_real_tools.py"
 test-unit = "pytest tests/unit"
 test-real = "pytest tests/unit/llm/tools/real"
+verify-api = "python scripts/verify_api_llm.py"
+verify-gemini = "python scripts/verify_gemini_llm.py"
 clean = { cmd = "rm -rf output", help = "Remove output directory" }
 test-all = "pytest"

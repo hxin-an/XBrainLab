@@ -28,6 +28,9 @@
 - [x] **基礎建設清理**
     - [x] 移除冗餘目錄 (`ui_pyqt`)。
     - [x] 完成 Poetry 遷移與 Git Hooks 設定。
+    - [ ] **系統清理與優化 (Cleanup & Optimization)**
+        - [ ] **Warning 消除**: 修復 `DeprecationWarning` 與 `FutureWarning` (Pydantic, Torch, etc.)。
+        - [ ] **代碼與文件清理**: 移除 Dead Code 與冗餘文件。
 
 ### 第三階段：測試體系重組 (Test Infrastructure)
 *解決測試檔案分散與 UI 測試不足的問題*
@@ -81,6 +84,8 @@
     - [ ] **基礎架構**: 在 `llm/tools/real/` 實作連接 Backend 的 Adapter。
     - [ ] **功能補完**: 實作 `optimizer` 與 `checkpoint` 支援 (解決已知的 High Priority Issue)。
     - [ ] **整合測試**: 確保 `real` 工具能通過 `benchmark-llm` (至少在 Happy Path 上)。
+    - [ ] **流程控制 (Flow Control)**
+        - [ ] **Human-in-the-loop (HIL)**: 實作 Montage Verification 的人工介入機制 (v0.3.9 implemented, pending coverage)。
 - [ ] **向量資料庫 (Vector Store)**
     - [ ] **選型**: 採用 **Qdrant** (Local Mode) + `langchain-qdrant`。
     - [ ] **資料策略 (OOD Testing)**:
@@ -89,6 +94,13 @@
     - [ ] **建置**: 索引 `documentation/agent/*.md` 與 `gold_set.json`。
 - [ ] **RAG 引擎**
     - [ ] 實作針對 Tool 檢索的最佳化 Retriever (Metadata Filtering)。
+- [ ] **RAG 評估與觀測 (Evaluation & Observability)**
+    - [ ] **檢索指標 (Retrieval)**: 測量 Hit Rate 與 MRR，確保在大量工具中能撈到正確的 API 文件。
+    - [ ] **生成指標 (Generation)**: 測量 Faithfulness (忠實度)，確保 Agent 嚴格遵守檢索到的參數限制。
+    - [ ] **框架**: 引入 **Ragas** 或 **Arize Phoenix** 進行自動化評分。
+- [ ] **混合推論引擎 (Hybrid Inference Engine)**
+    - [ ] **API Client 支援**: 實作 `OpenAI` 兼容介面，支援調用 GPT-4o 或 DeepSeek (解決本地算力不足問題)。
+    - [ ] **Engine Factory**: 重構 `LLMEngine` 支援 `Local` vs `Remote` 切換。
 
 ### 第五階段：多 Agent 擴充 (Multi-Agent Expansion) - **[📅 Planned]**
 **目標**：引入專家 Agent 以支援教學與進階分析。
