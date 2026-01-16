@@ -1,78 +1,89 @@
-
 from typing import Any
-import torch
-from ..definitions.training_def import (
-    BaseSetModelTool, BaseConfigureTrainingTool, BaseStartTrainingTool
-)
-# We need to import backend classes to configure the study
-# Assuming imports available or checked at runtime
-from XBrainLab.backend.training.option import TrainingOption, TRAINING_EVALUATION
+
 from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.backend.training.option import TRAINING_EVALUATION, TrainingOption
+
+from ..definitions.training_def import (
+    BaseConfigureTrainingTool,
+    BaseSetModelTool,
+    BaseStartTrainingTool,
+)
+from .registry import ToolRegistry
+
 
 class RealSetModelTool(BaseSetModelTool):
     def execute(self, study: Any, model_name: str) -> str:
         if not model_name:
             return "Error: model_name must be provided."
-        
-        # In a real scenario, we might need a model factory or map
-        # For now, we assume ModelHolder takes a string ID or we map standard names
-        # But ModelHolder usually takes a class or registry name.
-        # Let's check how UI does it: ModelHolder(model_name) seems standard if model_name is valid.
-        
+
+        model_class = ToolRegistry.get_model_class(model_name)
+        if not model_class:
+            return f"Error: Unknown model '{model_name}'. Supported: {list(ToolRegistry._MODELS.keys())}"
+
         try:
-            # We assume ModelHolder can resolve the name or we rely on a factory
-            # Checking codebase conventions... 
-            # Usually study.set_model_holder expects a ModelHolder instance
-            study.set_model_holder(ModelHolder(model_name))
+            # Create ModelHolder with the resolved class
+            # Note: We might need default params or empty dict if not provided by tool
+            # Current BaseSetModelTool doesn't accept params via LLM yet, usually assumes defaults
+            holder = ModelHolder(model_class, model_params_map={})
+            study.set_model_holder(holder)
             return f"Model successfully set to {model_name}."
         except Exception as e:
-            return f"Failed to set model {model_name}: {str(e)}"
+            return f"Failed to set model {model_name}: {e!s}"
+
 
 class RealConfigureTrainingTool(BaseConfigureTrainingTool):
-    def execute(self, study: Any, epoch: int, batch_size: int, learning_rate: float, 
-                repeat: int = 1, device: str = "cpu", optimizer: str = "adam", 
-                save_checkpoints_every: int = 0) -> str:
-        
-        # Map optimizer string to class
-        optim_map = {
-            "adam": torch.optim.Adam,
-            "sgd": torch.optim.SGD,
-            "adamw": torch.optim.AdamW
-        }
-        optim_class = optim_map.get(optimizer.lower(), torch.optim.Adam)
-        
+    def execute(
+        self,
+        study: Any,
+        epoch: int,
+        batch_size: int,
+        learning_rate: float,
+        repeat: int = 1,
+        device: str = "cpu",
+        optimizer: str = "adam",
+        save_checkpoints_every: int = 0,
+    ) -> str:
+        optim_class = ToolRegistry.get_optimizer_class(optimizer)
+
         # Determine Device
-        use_cpu = (device.lower() == "cpu")
+        use_cpu = device.lower() == "cpu"
         gpu_idx = 0 if not use_cpu else None
-        
-        # Prepare Option
-        # Note: TrainingOption.__init__ signature:
-        # output_dir, optim, optim_params, use_cpu, gpu_idx, epoch, bs, lr, checkpoint_epoch, evaluation_option, repeat_num
-        
+
         try:
             option = TrainingOption(
-                output_dir=study.output_dir if hasattr(study, 'output_dir') else "./output", # Fallback
+                output_dir=getattr(study, "output_dir", "./output"),  # Fallback
                 optim=optim_class,
-                optim_params={}, # Default params
+                optim_params={},  # Default params
                 use_cpu=use_cpu,
                 gpu_idx=gpu_idx,
                 epoch=epoch,
                 bs=batch_size,
                 lr=learning_rate,
                 checkpoint_epoch=save_checkpoints_every,
-                evaluation_option=TRAINING_EVALUATION.LAST_EPOCH, # Default
-                repeat_num=repeat
+                evaluation_option=TRAINING_EVALUATION.LAST_EPOCH,  # Default
+                repeat_num=repeat,
             )
-            
+
             study.set_training_option(option)
             return f"Training configured: {option.get_optim_name()} on {option.get_device_name()}, Epochs: {epoch}."
         except Exception as e:
-            return f"Failed to configure training: {str(e)}"
+            return f"Failed to configure training: {e!s}"
+
 
 class RealStartTrainingTool(BaseStartTrainingTool):
     def execute(self, study: Any) -> str:
         try:
-            study.start_training()
-            return "Training started successfully."
+            # 1. Generate Plan (Backend requirement)
+            # append=True allows adding to existing experiments if needed,
+            # but usually for a new run we might want clean state?
+            # Controller uses append=True. Let's stick to generating a fresh plan if none exists?
+            # Safe default: force_update=True to ensure consistency with current settings
+            study.generate_plan(force_update=True)
+
+            # 2. Start Training
+            # interact=True allows running in a separate thread (non-blocking for UI/Agent)
+            study.train(interact=True)
+
+            return "Training started successfully (Background Thread)."
         except Exception as e:
-            return f"Failed to start training: {str(e)}"
+            return f"Failed to start training: {e!s}"

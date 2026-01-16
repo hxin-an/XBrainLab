@@ -1,17 +1,18 @@
-from XBrainLab.backend.load_data import RawDataLoader
-from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
-from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
+# Ensure loaders are registered
 from XBrainLab.backend import preprocessor as Preprocessor
-from XBrainLab.ui.services.label_import_service import LabelImportService
-from XBrainLab.backend.load_data import EventLoader
+from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
+from XBrainLab.backend.load_data import EventLoader, RawDataLoader
+from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
 from XBrainLab.backend.utils.logger import logger
-import os
+from XBrainLab.ui.services.label_import_service import LabelImportService
+
 
 class DatasetController:
     """
     Controller for managing dataset operations.
     Handles data loading, modification, and interactions with the Study backend.
     """
+
     def __init__(self, study):
         self.study = study
         self.label_service = LabelImportService()
@@ -36,7 +37,7 @@ class DatasetController:
         existing_data = []
         if self.study.loaded_data_list:
             existing_data = list(self.study.loaded_data_list)
-            
+
         try:
             loader = RawDataLoader(existing_data)
         except Exception as e:
@@ -52,17 +53,17 @@ class DatasetController:
             if any(d.get_filepath() == path for d in loader):
                 logger.info(f"Skipping duplicate: {path}")
                 continue
-                
+
             try:
                 logger.info(f"Loading file: {path}")
                 raw = RawDataLoaderFactory.load(path)
-                
+
                 if raw:
                     loader.append(raw)
                     success_count += 1
                 else:
                     errors.append(f"{path}: Loader returned None.")
-                    
+
             except UnsupportedFormatError:
                 logger.error(f"Unsupported format: {path}")
                 errors.append(f"{path}: Unsupported format.")
@@ -71,11 +72,11 @@ class DatasetController:
                 errors.append(f"{path}: File corrupted.")
             except Exception as e:
                 logger.error(f"Error loading {path}: {e}")
-                errors.append(f"{path}: {str(e)}")
+                errors.append(f"{path}: {e!s}")
 
         if success_count > 0:
             loader.apply(self.study, force_update=True)
-            
+
         return success_count, errors
 
     def clean_dataset(self):
@@ -89,7 +90,7 @@ class DatasetController:
         for idx in indices:
             if idx < len(current_list):
                 to_remove.append(current_list[idx])
-        
+
         new_list = [d for d in current_list if d not in to_remove]
         self.study.set_loaded_data_list(new_list, force_update=True)
 
@@ -102,8 +103,8 @@ class DatasetController:
                 data.set_subject_name(subject)
             if session is not None:
                 data.set_session_name(session)
-            
-            # Sync to study to trigger updates if necessary (often metadata-only doesn't strictly require it, 
+
+            # Sync to study to trigger updates if necessary (often metadata-only doesn't strictly require it,
             # but resetting preprocess ensures consistency)
             self.study.reset_preprocess(force_update=True)
 
@@ -124,10 +125,10 @@ class DatasetController:
                 if sess != "-":
                     data.set_session_name(sess)
                 count += 1
-        
+
         if count > 0:
             self.study.reset_preprocess(force_update=True)
-            
+
         return count
 
     def apply_channel_selection(self, selected_channels):
@@ -137,11 +138,11 @@ class DatasetController:
         """
         data_list = self.study.loaded_data_list
         preprocessor = Preprocessor.ChannelSelection(data_list)
-        
+
         try:
             # Performs processing
             result = preprocessor.data_preprocess(selected_channels)
-            
+
             # Apply changes
             self.study.backup_loaded_data()
             self.study.set_loaded_data_list(result, force_update=True)
@@ -165,7 +166,9 @@ class DatasetController:
         data_list = self.study.loaded_data_list
         return [data_list[i] for i in indices if i < len(data_list)]
 
-    def apply_labels_batch(self, target_files, label_map, file_mapping, mapping, selected_event_names):
+    def apply_labels_batch(
+        self, target_files, label_map, file_mapping, mapping, selected_event_names
+    ):
         """Wraps label service batch application."""
         count = self.label_service.apply_labels_batch(
             target_files, label_map, file_mapping, mapping, selected_event_names
@@ -174,10 +177,16 @@ class DatasetController:
             self.study.reset_preprocess(force_update=True)
         return count
 
-    def apply_labels_legacy(self, target_files, labels, mapping, selected_event_names, force_import=False):
+    def apply_labels_legacy(
+        self, target_files, labels, mapping, selected_event_names, force_import=False
+    ):
         """Wraps label service legacy application."""
         count = self.label_service.apply_labels_legacy(
-            target_files, labels, mapping, selected_event_names, force_import=force_import
+            target_files,
+            labels,
+            mapping,
+            selected_event_names,
+            force_import=force_import,
         )
         if count > 0:
             self.study.reset_preprocess(force_update=True)
