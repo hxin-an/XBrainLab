@@ -71,31 +71,36 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
 
 class RealNotchFilterTool(BaseNotchFilterTool):
     def execute(self, study: Any, freq: float) -> str:
-        study.preprocess(Filtering, notch_freqs=freq)
+        # Notch filter uses Filtering class but requires l_freq/h_freq not to crash
+        study.preprocess(Filtering, notch_freqs=freq, l_freq=None, h_freq=None)
         return f"Applied Notch Filter ({freq} Hz)"
 
 
 class RealResampleTool(BaseResampleTool):
     def execute(self, study: Any, rate: int) -> str:
-        study.preprocess(Resample, rate=rate)
+        study.preprocess(Resample, sfreq=rate)
         return f"Resampled data to {rate} Hz"
 
 
 class RealNormalizeTool(BaseNormalizeTool):
     def execute(self, study: Any, method: str) -> str:
-        study.preprocess(Normalize, method=method)
+        study.preprocess(Normalize, norm=method)
         return f"Normalized data using {method}"
 
 
 class RealRereferenceTool(BaseRereferenceTool):
     def execute(self, study: Any, method: str) -> str:
-        study.preprocess(Rereference, method=method)
+        # Backend expects 'ref_channels'
+        # 'CAR', 'average' -> 'average'
+        ref = "average" if method.lower() in ["car", "average"] else [method]
+
+        study.preprocess(Rereference, ref_channels=ref)
         return f"Applied reference: {method}"
 
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
     def execute(self, study: Any, channels: list[str]) -> str:
-        study.preprocess(ChannelSelection, channels=channels)
+        study.preprocess(ChannelSelection, selected_channels=channels)
         return f"Selected {len(channels)} channels."
 
 
