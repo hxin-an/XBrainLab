@@ -3,6 +3,19 @@
 所有對本專案的重要變更都將記錄於此文件中。
 
 
+## [0.3.8] - 2026-01-16
+### Refactored
+- **DatasetController**:
+    - Inherit `QObject` and emit signals (`dataChanged`, `datasetLocked`, `importFinished`) to enable UI synchronization when backend state changes.
+    - Updated `import_files`, `apply_channel_selection`, `reset_preprocess` to emit signals.
+### Added
+- **RealSetMontageTool**:
+    - Implemented channel mapping logic (Exact/Clean match) using `mne_helper.get_montage_positions`.
+    - Enables Agent to set montage for visualization.
+- **Tests**:
+    - Added `test_set_montage` to `tests/unit/llm/tools/real/test_real_tools.py`.
+    - Updated preprocessing unit tests to match new backend signatures.
+
 ## [0.3.7] - 2026-01-16
 ### Added
 - Implemented "Real" backend interaction tools for LLM Agent:

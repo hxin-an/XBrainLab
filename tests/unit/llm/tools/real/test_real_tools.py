@@ -25,6 +25,7 @@ from XBrainLab.llm.tools.real.preprocess_real import (
     RealNotchFilterTool,
     RealRereferenceTool,
     RealResampleTool,
+    RealSetMontageTool,
     RealStandardPreprocessTool,
 )
 from XBrainLab.llm.tools.real.training_real import (
@@ -116,7 +117,7 @@ class TestRealDatasetTools:
         mock_study.loaded_data_list = [mock_raw]
 
         with patch(
-            "XBrainLab.backend.load_data.label_loader.load_label_file",
+            "XBrainLab.llm.tools.real.dataset_real.load_label_file",
             return_value=[[1, 0, 1]],
         ):
             res = tool.execute(mock_study, mapping={"A.gdf": "/labels/A.mat"})
@@ -182,32 +183,34 @@ class TestRealPreprocessTools:
         tool = RealNotchFilterTool()
         res = tool.execute(mock_study, freq=50)
         assert "Applied Notch Filter" in res
-        mock_study.preprocess.assert_called_with(Filtering, notch_freqs=50)
+        mock_study.preprocess.assert_called_with(
+            Filtering, notch_freqs=50, l_freq=None, h_freq=None
+        )
 
     def test_resample(self, mock_study):
         tool = RealResampleTool()
         res = tool.execute(mock_study, rate=128)
         assert "Resampled" in res
-        mock_study.preprocess.assert_called_with(Resample, rate=128)
+        mock_study.preprocess.assert_called_with(Resample, sfreq=128)
 
     def test_normalize(self, mock_study):
         tool = RealNormalizeTool()
         res = tool.execute(mock_study, method="z-score")
         assert "Normalized" in res
-        mock_study.preprocess.assert_called_with(Normalize, method="z-score")
+        mock_study.preprocess.assert_called_with(Normalize, norm="z-score")
 
     def test_rereference(self, mock_study):
         tool = RealRereferenceTool()
         res = tool.execute(mock_study, method="CAR")
         assert "Applied reference" in res
-        mock_study.preprocess.assert_called_with(Rereference, method="CAR")
+        mock_study.preprocess.assert_called_with(Rereference, ref_channels="average")
 
     def test_channel_selection(self, mock_study):
         tool = RealChannelSelectionTool()
         res = tool.execute(mock_study, channels=["C3", "C4"])
         assert "Selected 2 channels" in res
         mock_study.preprocess.assert_called_with(
-            ChannelSelection, channels=["C3", "C4"]
+            ChannelSelection, selected_channels=["C3", "C4"]
         )
 
     def test_epoch_data(self, mock_study):
@@ -229,6 +232,32 @@ class TestRealPreprocessTools:
         assert kwargs["tmax"] == 4
         # Verify events were collected
         assert set(kwargs["selected_event_names"]) == {"769", "770"}
+
+    def test_set_montage(self, mock_study):
+        tool = RealSetMontageTool()
+
+        # Mock epoch data
+        mock_epochs = MagicMock()
+        mock_epochs.get_mne.return_value.info = {"ch_names": ["FP1", "FP2"]}
+        mock_study.epoch_data = mock_epochs
+
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.get_montage_positions"
+        ) as mock_get_pos:
+            # Setup mock return
+            mock_get_pos.return_value = {"ch_pos": {"Fp1": [1, 2, 3], "Fp2": [4, 5, 6]}}
+
+            res = tool.execute(mock_study, montage_name="standard_1020")
+
+            assert "Set Montage 'standard_1020'" in res
+            assert "Matched 2 channels" in res
+
+            mock_study.set_channels.assert_called_once()
+            args, _ = mock_study.set_channels.call_args
+            # mapped_chs
+            assert args[0] == ["FP1", "FP2"]
+            # mapped_positions
+            assert args[1] == [(1, 2, 3), (4, 5, 6)]
 
 
 class TestRealUIControlTools:

@@ -1,4 +1,6 @@
 # Ensure loaders are registered
+from PyQt6.QtCore import QObject, pyqtSignal
+
 from XBrainLab.backend import preprocessor as Preprocessor
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.load_data import EventLoader, RawDataLoader
@@ -7,13 +9,20 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.services.label_import_service import LabelImportService
 
 
-class DatasetController:
+class DatasetController(QObject):
     """
     Controller for managing dataset operations.
     Handles data loading, modification, and interactions with the Study backend.
     """
 
+    # Signals for UI synchronization
+    dataChanged = pyqtSignal()
+    datasetLocked = pyqtSignal(bool)
+    importFinished = pyqtSignal(int, list)  # success_count, errors
+    errorOccurred = pyqtSignal(str)
+
     def __init__(self, study):
+        super().__init__()
         self.study = study
         self.label_service = LabelImportService()
 
@@ -76,6 +85,9 @@ class DatasetController:
 
         if success_count > 0:
             loader.apply(self.study, force_update=True)
+            self.dataChanged.emit()
+
+        self.importFinished.emit(success_count, errors)
 
         return success_count, errors
 
@@ -149,6 +161,8 @@ class DatasetController:
         self.study.backup_loaded_data()
         self.study.set_loaded_data_list(result, force_update=True)
         self.study.lock_dataset()
+        self.dataChanged.emit()
+        self.datasetLocked.emit(True)
         return True
 
     def get_filenames(self):
@@ -158,6 +172,8 @@ class DatasetController:
     def reset_preprocess(self):
         """Triggers a reset of downstream preprocessing."""
         self.study.reset_preprocess(force_update=True)
+        self.dataChanged.emit()
+        self.datasetLocked.emit(False)
 
     # Label Import Wrappers
     def get_data_at_assignments(self, indices):

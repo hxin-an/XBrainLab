@@ -9,40 +9,40 @@ Agent 扮演「操作員」的角色，它不直接持有數據，而是透過�
 graph TD
     %% Nodes
     User([User 👤])
-    
+
     subgraph MainThread ["Main Thread (UI & Controller)"]
         direction TB
         UI[UI: ChatPanel]
-        
+
         subgraph ControllerScope ["Controller Logic"]
             direction TB
             Controller[Controller: LLMController]
             PromptMgr[PromptMgr: PromptManager]
             Parser[Parser: CommandParser]
-            
+
             subgraph PromptGen ["Prompt Construction "]
                 direction TB
                 Sys[System Prompt]
                 Tools[Tool Definitions]
                 Hist["History (Sliding Window)"]
                 FullPrompt[Final Prompt Stack]
-                
+
                 Sys & Tools & Hist --> FullPrompt
             end
-            
+
             Controller -- "delegates" --> PromptMgr
             PromptMgr -.-> PromptGen
         end
-        
+
         ToolReg[Tool Registry]
     end
-    
+
     subgraph WorkerThread ["QThread: Worker"]
         direction TB
         Worker[Worker: AgentWorker]
         LLM[Engine: LLMEngine]
     end
-    
+
     subgraph Backend ["Backend System"]
         direction TB
         Study[Study Object]
@@ -51,20 +51,20 @@ graph TD
     %% Data Flow
     User --> |"1. Input Text"| UI
     UI --> |"2. signal: send_message"| Controller
-    
+
     Controller -.-> |"Builds"| PromptGen
     FullPrompt --> |"3. signal: sig_generate(prompt)"| Worker
-    
+
     Worker --> |"4. Generate(prompt)"| LLM
     LLM --> |"5. Stream Tokens"| Worker
     Worker --> |"6. signal: finished(text)"| Controller
-    
+
     Controller --> |"7. Parse Response"| Parser
     Parser --> |"8. Intent (JSON)"| Controller
-    
+
     Controller --> |"9. Execute Tool"| ToolReg
     ToolReg --> |"10. Call Method"| Study
-    
+
     Study -.-> |"11. signal: data_changed"| UI
 
     %% Professional Dark Mode Styles
@@ -125,7 +125,7 @@ graph TD
 
 ### 2.5 Study Object (The State)
 *   **定義**: `XBrainLab/backend/study.py`。
-*   **職責**: 
+*   **職責**:
     *   是整個實驗的 **"Single Source of Truth"**。
     *   持有 Raw Data, Epochs, Training Configuration, Model Weights。
 
@@ -182,7 +182,7 @@ UI 刷新由 **Backend (Study)** 的狀態變更信號觸發。
        ↓
 ┌──────────────┐
 │ Study Object │  修改內部狀態 (self.raw_data = ...)
-│  (Backend)   │  
+│  (Backend)   │
 └──────┬───────┘
        ↓
 ┌──────────────┐
@@ -191,13 +191,13 @@ UI 刷新由 **Backend (Study)** 的狀態變更信號觸發。
        ↓
 ┌──────────────┐
 │ UI Listener  │  接收 Signal → 刷新數據列表/圖表
-│ (MainWindow) │  
+│ (MainWindow) │
 └──────────────┘
 ```
 
 ### 3.2 實現方式
 
-#### Qt Signal/Slot 機制 
+#### Qt Signal/Slot 機制
 
 **Study 發出信號**:
 ```python
@@ -210,7 +210,7 @@ class Study(QObject):
     data_modified = pyqtSignal(str)    # 數據修改 (濾波、切分等)
     training_started = pyqtSignal()    # 訓練開始
     training_finished = pyqtSignal(dict) # 訓練完成，傳遞結果
-    
+
     def load_dataset(self, path):
         # 執行載入邏輯
         self.raw_data = load_gdf(path)
@@ -225,18 +225,18 @@ class MainWindow(QMainWindow):
     def __init__(self, study):
         super().__init__()
         self.study = study
-        
+
         # 連接 Backend 信號到 UI 槽函數
         self.study.data_loaded.connect(self.on_data_loaded)
         self.study.data_modified.connect(self.on_data_modified)
         self.study.training_finished.connect(self.on_training_finished)
-    
+
     def on_data_loaded(self, message):
         # 刷新數據列表
         self.update_dataset_list()
         # 更新狀態欄
         self.statusBar().showMessage(message)
-    
+
     def on_data_modified(self, message):
         # 刷新圖表
         self.plot_widget.refresh()
@@ -251,6 +251,14 @@ class LoadDatasetTool(BaseTool):
         study.load_dataset(path)
         return f"Dataset loaded from {path}"
 ```
+
+### 3.4 Controller 訊號同步機制 (Controller Signal Synchronization)
+為了支援 Agent 操作後導致的 UI 更新，`DatasetController` 繼承自 `QObject` 並發出以下信號：
+*   `dataChanged`: 當數據集內容變更時（如載入、預處理）。
+*   `datasetLocked(bool)`: 當數據集被鎖定/解鎖時。
+*   `importFinished(int, list)`: 檔案匯入完成後。
+
+這確保了 Agent 不論是在後台載入數據還是執行預處理，UI 都能即時響應並刷新顯示。
 
 ## 4. 專案結構快照 (Project Structure Snapshot - LLM Module Only)
 
@@ -287,6 +295,3 @@ XBrainLab/llm/                <-- Agent 核心模組
         ├── api_reference.md     <-- 後端 API 說明
         └── few_shot_examples.md <-- 操作範例
 ```
-
-
-

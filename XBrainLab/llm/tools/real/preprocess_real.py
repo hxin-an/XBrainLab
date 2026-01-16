@@ -11,6 +11,7 @@ from XBrainLab.backend.preprocessor.resample import Resample
 # SetMontage might be specialized
 # Epoching
 from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
+from XBrainLab.backend.utils.mne_helper import get_montage_positions
 
 from ..definitions.preprocess_def import (
     BaseBandPassFilterTool,
@@ -106,25 +107,61 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
 
 class RealSetMontageTool(BaseSetMontageTool):
     def execute(self, study: Any, montage_name: str) -> str:
-        # Assuming MNE set_montage logic is embedded in ChannelSelection
-        # or separate utility?
-        # Backend check: study.set_channels usage?
-        # Actually set_channels takes (chs, positions).
-        # We need a way to Convert 'standard_1020' to positions.
-        # study.epoch_data.set_montage(montage_name)?
+        # Backend requires epoch data for set_channels currently
+        if not study.epoch_data:
+            return "Error: Epoch data must be generated before setting montage."
 
-        # If epoch_data exists
-        if study.epoch_data:
-            # MNE wrapped objects usually have .set_montage method on Raw/Epochs
-            # But study wrapper access?
-            # Let's assume user calls this AFTER epoching? Or BEFORE?
-            # Usually standard montage is applied to Raw.
-            pass
+        try:
+            # Get Standard Positions
+            # {'ch_pos': {name: array, ...}}
+            loaded_positions = get_montage_positions(montage_name)
+            if not loaded_positions:
+                return f"Error: Failed to load montage '{montage_name}'"
 
-        return (
-            "SetMontage not fully implemented in Study API yet "
-            "(requires MNE integration)."
-        )
+            ch_pos_dict = loaded_positions["ch_pos"]
+
+            # Map Dataset Channels to Positions
+            # Currently loaded/selected channels
+            current_chs = study.epoch_data.get_mne().info["ch_names"]
+
+            mapped_chs = []
+            mapped_positions = []
+
+            # Simple Case Insensitive / Clean Match Logic
+            montage_lookup = {k.lower(): k for k in ch_pos_dict}
+
+            for ch in current_chs:
+                # heuristic breakdown
+                clean_ch = (
+                    ch.lower()
+                    .replace("eeg", "")
+                    .replace("ref", "")
+                    .replace("-", "")
+                    .strip()
+                )
+
+                real_name = None
+                if ch.lower() in montage_lookup:
+                    real_name = montage_lookup[ch.lower()]
+                elif clean_ch in montage_lookup:
+                    real_name = montage_lookup[clean_ch]
+
+                if real_name:
+                    mapped_chs.append(ch)
+                    # Convert array to tuple if needed, backend expects tuple (x,y,z)?
+                    # study.set_channels doc says "List of channel positions.
+                    # Should be tuple of (x, y, z)."
+                    # mne returns arrays.
+                    mapped_positions.append(tuple(ch_pos_dict[real_name]))
+
+            if not mapped_chs:
+                return f"Error: No channels matched for montage '{montage_name}'"
+
+            study.set_channels(mapped_chs, mapped_positions)
+            return f"Set Montage '{montage_name}' (Matched {len(mapped_chs)} channels)"
+
+        except Exception as e:
+            return f"SetMontage failed: {e!s}"
 
 
 class RealEpochDataTool(BaseEpochDataTool):

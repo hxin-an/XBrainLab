@@ -85,7 +85,7 @@
     *   `method` (字串, 必填): 選擇 `"z-score"` 或 `"min-max"`。
 
 ### `set_reference`
-*   **功能描述**: 對訊號進行重參考 (例如 CAR - Common Average Reference)，加上可 channel 
+*   **功能描述**: 對訊號進行重參考 (例如 CAR - Common Average Reference)，加上可 channel
 *   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.RereferenceTool`
 *   **參數**:
     *   `method` (字串): "average" 或特定的通道名稱。
@@ -98,9 +98,11 @@
 
 ### `set_montage`
 *   **功能描述**: 設定 EEG 通道的空間位置 (Montage)，這對於繪製拓樸圖 (Topomap) 是必須的。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.SetMontageTool`
+*   **Python 對應**: `XBrainLab.llm.tools.real.preprocess_real.RealSetMontageTool`
+*   **後端方法**: `study.set_channels(mapped_chs, mapped_positions)`
 *   **參數**:
     *   `montage_name` (字串, 必填): 標準 Montage 名稱，例如 `"standard_1020"`, `"standard_1005"`。
+    *   *Agent 備註: 系統會自動嘗試將數據集通道名稱對應到標準位置 (Case Insensitive, removing 'EEG', 'REF' etc.)*
 
 
 ---
@@ -189,7 +191,7 @@
 
 **Agent 推理與 Tool Call 序列**:
 
-1.  **Exploration**: 
+1.  **Exploration**:
     - Call `list_files(directory="/data/bcic/", pattern="*.gdf")` -> 獲得 `['A01T.gdf', 'A02T.gdf', 'A03T.gdf']`
     - Call `list_files(directory="/data/bcic/label", pattern="*.mat")` -> 獲得 `['A01T.mat', 'A02T.mat', 'A03T.mat']`
 2.  **Logic**: Agent 分析發現檔名一致 ("A01T" 對應 "A01T")。
@@ -200,4 +202,3 @@
 5.  **Preprocessing**: Call `apply_bandpass_filter(low_freq=4, high_freq=40)`
 6.  **Model**: Call `set_model(model_name="EEGNet")`
 7.  **Training**: Call `configure_training(...)` -> `generate_dataset(...)` -> `start_training()`
-
