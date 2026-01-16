@@ -41,7 +41,9 @@ def test_visualization_panel_init(mock_main_window, qtbot):
 def test_visualization_panel_refresh_data(mock_main_window, qtbot):
     """Test refresh_data recreates widgets."""
     # Mock Trainer to return some plans
-    mock_main_window.study.trainer.get_training_plan_holders.return_value = [MagicMock()]
+    mock_plan = MagicMock()
+    mock_plan.model_holder.target_model.__name__ = "TestModel"
+    mock_main_window.study.trainer.get_training_plan_holders.return_value = [mock_plan]
     
     with patch('XBrainLab.ui.visualization.panel.SaliencyMapWidget', side_effect=DummyWidget) as MockMap, \
          patch('XBrainLab.ui.visualization.panel.SaliencyTopographicMapWidget', side_effect=DummyWidget) as MockTopo, \
@@ -54,11 +56,12 @@ def test_visualization_panel_refresh_data(mock_main_window, qtbot):
         
         panel.refresh_data()
         
-        # Verify widgets were re-created (Init + Refresh = 2 calls)
-        assert MockMap.call_count == 2
-        assert MockTopo.call_count == 2
-        assert MockSpec.call_count == 2
-        assert Mock3D.call_count == 2
+        # Verify widgets were NOT re-created (Init = 1 call)
+        # refresh_data only updates combos, does not re-instantiate widgets
+        assert MockMap.call_count == 1
+        assert MockTopo.call_count == 1
+        assert MockSpec.call_count == 1
+        assert Mock3D.call_count == 1
 
 def test_visualization_panel_set_montage(mock_main_window, qtbot):
     """Test set_montage logic."""

@@ -57,6 +57,17 @@ def test_pipeline_integration():
         dataset_mock.get_val_data.return_value = (mock_X, mock_y)
         dataset_mock.get_test_data.return_value = (mock_X, mock_y)
         
+        # Mock indices because SharedMemoryDataset uses them
+        indices = np.arange(n_trials)
+        dataset_mock.get_training_indices.return_value = indices
+        dataset_mock.get_val_indices.return_value = indices
+        dataset_mock.get_test_indices.return_value = indices
+        
+        # Mock masks
+        dataset_mock.train_mask = np.ones(n_trials, dtype=bool)
+        dataset_mock.val_mask = np.ones(n_trials, dtype=bool)
+        dataset_mock.test_mask = np.ones(n_trials, dtype=bool)
+        
         # 3. Setup Model Holder
         # Use a real model class but small parameters
         model_params = {
@@ -69,6 +80,8 @@ def test_pipeline_integration():
         # Mock get_epoch_data().get_model_args() used in TrainingPlanHolder.__init__ loop
         epoch_data_mock = MagicMock()
         epoch_data_mock.get_model_args.return_value = model_params
+        epoch_data_mock.get_data.return_value = mock_X  # Needed for SharedMemoryDataset
+        epoch_data_mock.get_label_list.return_value = mock_y # Needed for SharedMemoryDataset
         dataset_mock.get_epoch_data.return_value = epoch_data_mock
         
         # We need to mock torch.load if ModelHolder tries to load weights, 
@@ -92,7 +105,7 @@ def test_pipeline_integration():
             'repeat_num': 1
         }
         from XBrainLab.backend.training import TRAINING_EVALUATION
-        option_args['evaluation_option'] = TRAINING_EVALUATION.VAL_LOSS
+        option_args['evaluation_option'] = TRAINING_EVALUATION.TEST_ACC
         
         option = TrainingOption(**option_args)
         

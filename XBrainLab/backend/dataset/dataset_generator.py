@@ -106,7 +106,7 @@ class DatasetGenerator:
     def handle_FULL(self) -> None:
         """Wrapper for generating datasets for full scheme.
            Called by :func:`generate`."""
-        name_prefix = "Group"
+        name_prefix = "Fold"
         self.handle(name_prefix)
 
     def split_test(

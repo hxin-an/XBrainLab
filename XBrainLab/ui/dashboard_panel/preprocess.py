@@ -14,18 +14,19 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np
 from scipy.signal import welch
-from XBrainLab.backend import preprocessor as Preprocessor
+import numpy as np
+from scipy.signal import welch
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 
 class ResampleDialog(QDialog):
-    def __init__(self, parent, preprocessed_data_list):
+    def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Resample")
         self.resize(300, 100)
-        self.preprocessor = Preprocessor.Resample(preprocessed_data_list)
-        self.return_data = None
+        self.sfreq = None
         self.init_ui()
         
     def init_ui(self):
@@ -43,23 +44,19 @@ class ResampleDialog(QDialog):
         layout.addWidget(buttons)
         
     def accept(self):
-        try:
-            self.return_data = self.preprocessor.data_preprocess(self.sfreq_spin.value())
-            super().accept()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self.sfreq = self.sfreq_spin.value()
+        super().accept()
 
-    def get_result(self):
-        return self.return_data
+    def get_params(self):
+        return self.sfreq
 
 class EpochingDialog(QDialog):
-    def __init__(self, parent, preprocessed_data_list):
+    def __init__(self, parent, data_list):
         super().__init__(parent)
         self.setWindowTitle("Time Epoching")
         self.resize(400, 500)
-        self.preprocessor = Preprocessor.TimeEpoch(preprocessed_data_list)
-        self.data_list = preprocessed_data_list
-        self.return_data = None
+        self.data_list = data_list
+        self.params = None
         self.init_ui()
         
     def init_ui(self):
@@ -190,27 +187,18 @@ class EpochingDialog(QDialog):
         if self.baseline_check.isChecked():
             baseline = (self.b_min_spin.value(), self.b_max_spin.value())
             
-        try:
-            self.return_data = self.preprocessor.data_preprocess(
-                baseline, selected_events, tmin, tmax
-            )
-            super().accept()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self.params = (baseline, selected_events, tmin, tmax)
+        super().accept()
 
-    def get_result(self):
-        return self.return_data
+    def get_params(self):
+        return self.params
 
 class FilteringDialog(QDialog):
-    def __init__(self, parent, preprocessed_data_list):
+    def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Filtering")
         self.resize(300, 250)
-        
-        # Initialize backend preprocessor
-        self.preprocessor = Preprocessor.Filtering(preprocessed_data_list)
-        self.return_data = None
-        
+        self.params = None
         self.init_ui()
         
     def init_ui(self):
@@ -235,8 +223,6 @@ class FilteringDialog(QDialog):
         
         form_layout.addRow("Lower pass-band (Hz):", self.l_freq_spin)
         form_layout.addRow("Upper pass-band (Hz):", self.h_freq_spin)
-        
-
         
         # Notch Filter
         self.notch_check = QCheckBox("Apply Notch Filter")
@@ -285,27 +271,21 @@ class FilteringDialog(QDialog):
              QMessageBox.warning(self, "Warning", "Please select at least one filter (Bandpass or Notch).")
              return
 
+        self.params = (l_freq, h_freq, notch_freqs)
+        super().accept()
 
-
-        try:
-            self.return_data = self.preprocessor.data_preprocess(l_freq, h_freq, notch_freqs=notch_freqs)
-            super().accept()
-        except Exception as e:
-            logger.error(f"Filtering failed: {e}")
-            QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
-
-    def get_result(self):
-        return self.return_data
+    def get_params(self):
+        return self.params
 
 
 
 class RereferenceDialog(QDialog):
-    def __init__(self, parent, preprocessed_data_list):
+    def __init__(self, parent, data_list):
         super().__init__(parent)
         self.setWindowTitle("Re-reference")
         self.resize(400, 300)
-        self.preprocessor = Preprocessor.Rereference(preprocessed_data_list)
-        self.return_data = None
+        self.data_list = data_list
+        self.params = None
         self.init_ui()
         
     def init_ui(self):
@@ -322,9 +302,8 @@ class RereferenceDialog(QDialog):
         self.chan_list = QListWidget()
         self.chan_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         
-        # Populate channels from first data
-        if self.preprocessor.get_preprocessed_data_list():
-            first_data = self.preprocessor.get_preprocessed_data_list()[0]
+        if self.data_list:
+            first_data = self.data_list[0]
             self.chan_list.addItems(first_data.get_mne().ch_names)
             
         chan_layout.addWidget(self.chan_list)
@@ -340,31 +319,27 @@ class RereferenceDialog(QDialog):
         self.chan_group.setEnabled(not checked)
         
     def accept(self):
-        try:
-            if self.avg_check.isChecked():
-                ref = 'average'
-            else:
-                selected = self.chan_list.selectedItems()
-                if not selected:
-                    QMessageBox.warning(self, "Warning", "Please select at least one channel or use average reference.")
-                    return
-                ref = [item.text() for item in selected]
-                
-            self.return_data = self.preprocessor.data_preprocess(ref_channels=ref)
-            super().accept()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+        if self.avg_check.isChecked():
+            ref = 'average'
+        else:
+            selected = self.chan_list.selectedItems()
+            if not selected:
+                QMessageBox.warning(self, "Warning", "Please select at least one channel or use average reference.")
+                return
+            ref = [item.text() for item in selected]
+            
+        self.params = ref
+        super().accept()
 
-    def get_result(self):
-        return self.return_data
+    def get_params(self):
+        return self.params
 
 class NormalizeDialog(QDialog):
-    def __init__(self, parent, preprocessed_data_list):
+    def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Normalize")
         self.resize(300, 150)
-        self.preprocessor = Preprocessor.Normalize(preprocessed_data_list)
-        self.return_data = None
+        self.params = None
         self.init_ui()
         
     def init_ui(self):
@@ -388,20 +363,19 @@ class NormalizeDialog(QDialog):
         layout.addWidget(buttons)
         
     def accept(self):
-        try:
-            method = "z score" if self.zscore_radio.isChecked() else "minmax"
-            self.return_data = self.preprocessor.data_preprocess(norm=method)
-            super().accept()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+        method = "z score" if self.zscore_radio.isChecked() else "minmax"
+        self.params = method
+        super().accept()
 
-    def get_result(self):
-        return self.return_data
+    def get_params(self):
+        return self.params
 
 class PreprocessPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
+        if parent and hasattr(parent, 'study'):
+             self.controller = PreprocessController(parent.study)
         self.plot_timer = QTimer()
         self.plot_timer.setSingleShot(True)
         self.plot_timer.timeout.connect(self.plot_sample_data)
@@ -714,7 +688,7 @@ class PreprocessPanel(QWidget):
             self.info_panel.update_info()
             
         self.history_list.clear()
-        data_list = self.main_window.study.preprocessed_data_list
+        data_list = self.controller.get_preprocessed_data_list()
         
         is_epoched = False
         if data_list:
@@ -811,11 +785,20 @@ class PreprocessPanel(QWidget):
         self.ax_time.clear()
         self.ax_freq.clear()
         
-        if not self.main_window or not hasattr(self.main_window, 'study'):
+        if not hasattr(self, 'controller') or not self.controller.has_data():
             return
             
-        data_list = self.main_window.study.preprocessed_data_list
-        orig_list = self.main_window.study.loaded_data_list
+        data_list = self.controller.get_preprocessed_data_list()
+        # For original, we might need to expose it via controller or just use study if it's strictly for reference
+        # But better to ask controller.
+        # Let's add get_loaded_data_list to PreprocessController? Or just accept that we need two controllers?
+        # Actually PreprocessController has access to study, we can expose get_loaded_data_list there too or passed in.
+        # But simpler: PreprocessPanel creates PreprocessController.
+        # Controller can have `get_original_data_list`.
+        
+        orig_list = []
+        if hasattr(self, 'controller') and hasattr(self.controller, 'study'):
+             orig_list = self.controller.study.loaded_data_list
         
         if not data_list:
             return
@@ -974,7 +957,8 @@ class PreprocessPanel(QWidget):
             self.canvas_time.draw()
 
     def check_lock(self):
-        if self.main_window and hasattr(self.main_window, 'study') and self.main_window.study.epoch_data:
+        if not hasattr(self, 'controller'): return False
+        if self.controller.is_epoched():
             QMessageBox.warning(self, "Action Blocked", 
                                 "Preprocessing is locked because data has been Epoched.\n"
                                 "Please 'Reset All Preprocessing' to make changes.")
@@ -982,111 +966,113 @@ class PreprocessPanel(QWidget):
         return False
 
     def open_filtering(self):
+        if not hasattr(self, 'controller'): return
         if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+        if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
             
-        dialog = FilteringDialog(self, self.main_window.study.preprocessed_data_list)
+        dialog = FilteringDialog(self)
         if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                # self.main_window.study.preprocess(Preprocessor.Filtering, l_freq=None, h_freq=None) # Log only?
-                # Actually study.preprocess calls the preprocessor. 
-                # Here we already ran it in dialog.
-                # We should probably refactor to let study run it, but current pattern is dialog runs it.
-                # Just update UI.
-                self.update_panel()
-                if self.main_window:
-                    self.main_window.refresh_panels()
-                QMessageBox.information(self, "Success", "Filtering applied.")
+            params = dialog.get_params()
+            if params:
+                l_freq, h_freq, notch_freqs = params
+                try:
+                    self.controller.apply_filter(l_freq, h_freq, notch_freqs)
+                    self.update_panel()
+                    if self.main_window:
+                        self.main_window.refresh_panels()
+                    QMessageBox.information(self, "Success", "Filtering applied.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
 
     def open_resample(self):
+        if not hasattr(self, 'controller'): return
         if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+        if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
             
-        dialog = ResampleDialog(self, self.main_window.study.preprocessed_data_list)
+        dialog = ResampleDialog(self)
         if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                self.update_panel()
-                if self.main_window:
-                    self.main_window.refresh_panels()
-                QMessageBox.information(self, "Success", "Resampling applied.")
+            sfreq = dialog.get_params()
+            if sfreq:
+                try:
+                    self.controller.apply_resample(sfreq)
+                    self.update_panel()
+                    if self.main_window:
+                        self.main_window.refresh_panels()
+                    QMessageBox.information(self, "Success", "Resampling applied.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Resample failed: {e}")
 
     def open_rereference(self):
+        if not hasattr(self, 'controller'): return
         if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+        if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
             
-        dialog = RereferenceDialog(self, self.main_window.study.preprocessed_data_list)
+        data_list = self.controller.get_preprocessed_data_list()
+        # Dialog needs data list to show channel names
+        dialog = RereferenceDialog(self, data_list)
         if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                self.update_panel()
-                if self.main_window:
-                    self.main_window.refresh_panels()
-                QMessageBox.information(self, "Success", "Re-reference applied.")
+            ref_channels = dialog.get_params()
+            if ref_channels:
+                try:
+                    self.controller.apply_rereference(ref_channels)
+                    self.update_panel()
+                    if self.main_window:
+                        self.main_window.refresh_panels()
+                    QMessageBox.information(self, "Success", "Re-reference applied.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Re-reference failed: {e}")
 
     def open_normalize(self):
+        if not hasattr(self, 'controller'): return
         if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+        if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
             
-        dialog = NormalizeDialog(self, self.main_window.study.preprocessed_data_list)
+        dialog = NormalizeDialog(self)
         if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                self.update_panel()
-                if self.main_window:
-                    self.main_window.refresh_panels()
-                QMessageBox.information(self, "Success", "Normalization applied.")
+            method = dialog.get_params()
+            if method:
+                try:
+                    self.controller.apply_normalization(method)
+                    self.update_panel()
+                    if self.main_window:
+                        self.main_window.refresh_panels()
+                    QMessageBox.information(self, "Success", "Normalization applied.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Normalization failed: {e}")
 
     def open_epoching(self):
+        if not hasattr(self, 'controller'): return
         if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+        if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
             
-        dialog = EpochingDialog(self, self.main_window.study.preprocessed_data_list)
+        data_list = self.controller.get_preprocessed_data_list()
+        dialog = EpochingDialog(self, data_list)
         if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                
-                # Lock preprocessing after epoching
-                self.main_window.study.lock_dataset()
-                
-                self.update_panel()
-                if hasattr(self.main_window, 'update_info_panel'):
-                    self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Epoching applied.\nPreprocessing is now LOCKED.")
+            params = dialog.get_params()
+            if params:
+                baseline, selected_events, tmin, tmax = params
+                try:
+                    if self.controller.apply_epoching(baseline, selected_events, tmin, tmax):
+                         self.update_panel()
+                         if hasattr(self.main_window, 'update_info_panel'):
+                            self.main_window.update_info_panel()
+                         QMessageBox.information(self, "Success", "Epoching applied.\nPreprocessing is now LOCKED.")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Epoching failed: {e}")
 
 
 
-    def open_rereference(self):
-        if self.check_lock(): return
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
-            QMessageBox.warning(self, "Warning", "No data loaded.")
-            return
-            
-        dialog = RereferenceDialog(self, self.main_window.study.preprocessed_data_list)
-        if dialog.exec():
-            result = dialog.get_result()
-            if result:
-                self.main_window.study.set_preprocessed_data_list(result)
-                self.update_panel()
-                if hasattr(self.main_window, 'update_info_panel'):
-                    self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Re-referencing applied.")
+
 
     def reset_preprocess(self):
         if not self.check_data_loaded():
@@ -1100,7 +1086,7 @@ class PreprocessPanel(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.main_window.study.reset_preprocess()
+                self.controller.reset_preprocess()
                 self.update_panel()
                 if hasattr(self.main_window, 'update_info_panel'):
                     self.main_window.update_info_panel()
@@ -1110,7 +1096,7 @@ class PreprocessPanel(QWidget):
                 QMessageBox.critical(self, "Error", f"Reset failed: {e}")
 
     def check_data_loaded(self):
-        if not self.main_window or not hasattr(self.main_window, 'study') or not self.main_window.study.preprocessed_data_list:
+        if not hasattr(self, 'controller') or not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded. Please import data first.")
             return False
         return True

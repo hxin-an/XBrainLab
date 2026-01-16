@@ -96,13 +96,10 @@ class AggregateInfoPanel(QGroupBox):
 
         study = self.main_window.study
         
-        use_loaded = True
-        if hasattr(self.main_window, 'stack'):
-            current_index = self.main_window.stack.currentIndex()
-            if current_index != 0 and study.preprocessed_data_list:
-                use_loaded = False
-        
-        data_list = study.loaded_data_list if use_loaded else study.preprocessed_data_list
+        # Always use preprocessed data if available, otherwise loaded data.
+        # This ensures consistent information across all panels.
+        data_list = study.preprocessed_data_list if study.preprocessed_data_list else study.loaded_data_list
+        use_loaded = (data_list is study.loaded_data_list)
         
         # Fallback: If preprocessed is empty but we have epoch_data (meaning we did preprocess),
         # or if we just want to show something, try loaded_data_list as fallback.

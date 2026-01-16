@@ -37,6 +37,9 @@ def test_setup_logger(temp_log_dir):
     assert has_file_handler, "FileHandler not found"
     assert has_stream_handler, "StreamHandler not found"
 
+    for handler in logger.handlers:
+        handler.close()
+
 def test_logger_file_creation(temp_log_dir):
     log_file = os.path.join(temp_log_dir, "test_write.log")
     logger_name = f"WriteLogger_{uuid.uuid4()}"
@@ -69,3 +72,6 @@ def test_logger_singleton_behavior(temp_log_dir):
     
     assert logger1 is logger2
     assert len(logger2.handlers) == initial_handlers # Should not increase
+    
+    for handler in logger1.handlers:
+        handler.close()

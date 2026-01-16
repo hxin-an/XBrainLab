@@ -77,7 +77,51 @@ class TrainingController:
     def validate_ready(self) -> bool:
         """Check if configuration is ready for training."""
         return (
-            self._study.datasets is not None and len(self._study.datasets) > 0 and
-            self._study.model_holder is not None and
-            self._study.training_option is not None
+            self.has_datasets() and
+            self.has_model() and
+            self.has_training_option()
         )
+
+    def get_missing_requirements(self) -> List[str]:
+        """Get a list of missing requirements for training."""
+        missing = []
+        if not self.has_datasets():
+            missing.append("Data Splitting")
+        if not self.has_model():
+            missing.append("Model Selection")
+        if not self.has_training_option():
+            missing.append("Training Settings")
+        return missing
+
+    # --- State Queries ---
+    def has_loaded_data(self) -> bool:
+        return bool(self._study.loaded_data_list)
+
+    def has_epoch_data(self) -> bool:
+        return self._study.epoch_data is not None
+
+    def get_epoch_data(self) -> Any:
+        return self._study.epoch_data
+
+    def has_datasets(self) -> bool:
+        return self._study.datasets is not None and len(self._study.datasets) > 0
+
+    def has_model(self) -> bool:
+        return self._study.model_holder is not None
+
+    def has_training_option(self) -> bool:
+        return self._study.training_option is not None
+
+    # --- Configuration Methods ---
+    def clean_datasets(self, force_update: bool = False) -> None:
+        self._study.clean_datasets(force_update=force_update)
+
+    def apply_data_splitting(self, generator: Any) -> None:
+        """Apply data splitting strategy using the provided generator."""
+        generator.apply(self._study)
+
+    def set_model_holder(self, holder: Any) -> None:
+        self._study.set_model_holder(holder)
+
+    def set_training_option(self, option: Any) -> None:
+        self._study.set_training_option(option)

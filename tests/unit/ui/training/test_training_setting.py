@@ -87,27 +87,23 @@ class TestTrainingSetting:
         mock_study.training_option = mock_option
         parent.study = mock_study
         
-        # Initialize window with real parent
-        window = TrainingSettingWindow(parent)
-        qtbot.addWidget(window)
-        
-        # Verify fields are populated
-        assert window.epoch_entry.text() == "50"
-        assert window.bs_entry.text() == "64"
-        assert window.lr_entry.text() == "0.005"
-        assert window.checkpoint_entry.text() == "10"
-        assert window.repeat_entry.text() == "3"
-        assert window.output_dir == "/tmp/loaded"
-        assert window.output_dir_label.text() == "/tmp/loaded"
-        assert window.use_cpu is False
-        assert window.gpu_idx == 0
-        assert "Adam" in window.opt_label.text()
-        # GPU check depends on parse_device_name logic
-        # If use_cpu is False and gpu_idx is 0, it calls torch.cuda.get_device_name(0)
-        # We should mock torch.cuda.get_device_name
+        # Initialize window with real parent, mocking get_device_name during init/load_settings
         with patch('torch.cuda.get_device_name', return_value="Test GPU"):
-             # Re-load settings to trigger label update with mocked device name
-             window.load_settings()
+             window = TrainingSettingWindow(parent)
+             qtbot.addWidget(window)
+        
+             # Verify fields are populated
+             assert window.epoch_entry.text() == "50"
+             assert window.bs_entry.text() == "64"
+             assert window.lr_entry.text() == "0.005"
+             assert window.checkpoint_entry.text() == "10"
+             assert window.repeat_entry.text() == "3"
+             assert window.output_dir == "/tmp/loaded"
+             assert window.output_dir_label.text() == "/tmp/loaded"
+             assert window.use_cpu is False
+             assert window.gpu_idx == 0
+             assert "Adam" in window.opt_label.text()
+             # GPU check depends on parse_device_name logic
              assert "0 - Test GPU" in window.dev_label.text()
              
         assert window.evaluation_combo.currentText() == "Last Epoch"

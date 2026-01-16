@@ -247,16 +247,21 @@ class MainWindow(QMainWindow):
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
         
-        # Call update_panel if the Preprocess panel is selected
-        if index == 1 and hasattr(self, 'preprocess_panel'):
-            self.preprocess_panel.update_panel()
+        # Unified Update Logic: Always call update_panel() on result
+        target_panel = None
+        if index == 0 and hasattr(self, 'dataset_panel'):
+            target_panel = self.dataset_panel
+        elif index == 1 and hasattr(self, 'preprocess_panel'):
+            target_panel = self.preprocess_panel
+        elif index == 2 and hasattr(self, 'training_panel'):
+            target_panel = self.training_panel
+        elif index == 3 and hasattr(self, 'evaluation_panel'):
+            target_panel = self.evaluation_panel
+        elif index == 4 and hasattr(self, 'visualization_panel'):
+            target_panel = self.visualization_panel
             
-        # Call refresh_data if Evaluation or Visualization panel is selected
-        if index == 3 and hasattr(self, 'evaluation_panel'):
-            self.evaluation_panel.refresh_data()
-            
-        if index == 4 and hasattr(self, 'visualization_panel'):
-            self.visualization_panel.refresh_data()
+        if target_panel and hasattr(target_panel, 'update_panel'):
+            target_panel.update_panel()
 
     def init_panels(self):
         """

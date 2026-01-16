@@ -21,10 +21,8 @@ class VisualizationPanel(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        super().__init__()
-        self.main_window = main_window
-        self.study = main_window.study
-        self.controller = VisualizationController(self.study)
+        # self.study = main_window.study # Decoupled
+        self.controller = VisualizationController(main_window.study)
         self.trainer_map = {}
         self.friendly_map = {}
         
@@ -247,7 +245,7 @@ class VisualizationPanel(QWidget):
         self.friendly_map = {}
         for i, trainer in enumerate(trainers):
             model_name = trainer.model_holder.target_model.__name__
-            friendly_name = f"Group {i+1} ({model_name})"
+            friendly_name = f"Fold {i+1} ({model_name})"
             self.friendly_map[friendly_name] = trainer
             self.plan_combo.addItem(friendly_name)
             
@@ -346,10 +344,10 @@ class VisualizationPanel(QWidget):
 
 
     def set_montage(self):
-        if not self.study.epoch_data:
+        if not self.controller.has_epoch_data():
              QMessageBox.warning(self, "Warning", "No epoch data available.")
              return
-        win = PickMontageWindow(self, self.study.epoch_data.get_channel_names())
+        win = PickMontageWindow(self, self.controller.get_channel_names())
         if win.exec():
             chs, positions = win.get_result()
             if chs is not None and positions is not None:

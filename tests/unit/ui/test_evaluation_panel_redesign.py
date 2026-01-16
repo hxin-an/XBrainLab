@@ -52,6 +52,9 @@ class MockTrainer:
     def __init__(self):
         self.training_plan_holders = [MockPlanHolder("Plan A"), MockPlanHolder("Plan B")]
 
+    def get_training_plan_holders(self):
+        return self.training_plan_holders
+
 class MockStudy:
     def __init__(self):
         self.trainer = MockTrainer()
@@ -120,15 +123,19 @@ def test_evaluation_panel_logic(qtbot):
     
     # Check Model Combo population
     assert panel.model_combo.count() == 2
-    assert panel.model_combo.itemText(0) == "Group 1: Plan A"
+    assert panel.model_combo.itemText(0) == "Fold 1: Plan A"
     
     # Check Run Combo population (defaults to first model)
-    assert panel.run_combo.count() == 2
+    # 2 Repeats + 1 Average option = 3
+    assert panel.run_combo.count() == 3
     assert "Repeat 1 (Finished)" in panel.run_combo.itemText(0)
     assert "Repeat 2" in panel.run_combo.itemText(1) # Not finished
     
-    # Check Metrics Table population (Repeat 1 is finished)
-    assert panel.metrics_table.rowCount() == 3 # 2 classes + macro avg
+    rc = panel.metrics_table.rowCount()
+    print(f"DEBUG: Row Count Actual: {rc}")
+    if rc != 3:
+        pytest.fail(f"Row count mismatch. Expected 3, got {rc}")
+    assert rc == 3
     
     # Mock update_plot for bar chart to verify call
     panel.bar_chart.update_plot = MagicMock()
@@ -140,9 +147,9 @@ def test_evaluation_panel_logic(qtbot):
     
     # Change Model to Plan B
     panel.model_combo.setCurrentIndex(1)
-    assert panel.model_combo.currentText() == "Group 2: Plan B"
-    # Plan B also has 2 records mock
-    assert panel.run_combo.count() == 2
+    assert panel.model_combo.currentText() == "Fold 2: Plan B"
+    # Plan B also has 2 records mock (1 finished), so 3 items (Repeats + Average)
+    assert panel.run_combo.count() == 3
     
     # Test Show Percentage Toggle
     panel.chk_percentage.setChecked(True)

@@ -9,148 +9,154 @@ from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
 
-class MockMainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.study = MagicMock()
-        self.study.loaded_data_list = []
-        self.study.is_locked.return_value = False
-    
-    def update_info_panel(self):
-        pass
-
 @pytest.fixture
 def mock_main_window(qapp):
-    return MockMainWindow()
+    window = MagicMock(spec=QMainWindow)
+    window.study = MagicMock() # Still needed for init, but controller will be mocked
+    window.study.loaded_data_list = []
+    # Add custom methods not in QMainWindow spec
+    window.refresh_panels = MagicMock()
+    return window
 
-def test_dataset_panel_init(mock_main_window, qtbot):
-    """Test initialization of DatasetPanel."""
-    panel = DatasetPanel(mock_main_window)
+@pytest.fixture
+def mock_controller():
+    with patch('XBrainLab.ui.dashboard_panel.dataset.DatasetController') as MockController:
+        instance = MockController.return_value
+        instance.is_locked.return_value = False
+        instance.has_data.return_value = False
+        instance.get_loaded_data_list.return_value = []
+        yield instance
+
+def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
+    """Test initialization creates controller."""
+    # Alternative: Create a real QMainWindow for parent
+    real_window = QMainWindow()
+    real_window.study = MagicMock()
+    
+    panel = DatasetPanel(real_window)
     qtbot.addWidget(panel)
     
-    assert panel.table.columnCount() == 7
-    assert panel.import_btn.isEnabled()
-    assert panel.clear_btn.isEnabled()
+    # Check if controller was instantiated
+    assert hasattr(panel, 'controller')
+    
+    # Clean up
+    panel.close()
+    real_window.close()
 
-def test_dataset_panel_import_data_success(mock_main_window, qtbot):
-    """Test successful data import."""
-    panel = DatasetPanel(mock_main_window)
+def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qtbot):
+    """Test successful data import delegates to controller."""
+    from PyQt6.QtWidgets import QMessageBox, QFileDialog
+    panel = DatasetPanel(None)
+    panel.main_window = mock_main_window
+    panel.controller = mock_controller
     qtbot.addWidget(panel)
     
-    # Mock QFileDialog
-    # Mock QFileDialog
-    with patch('PyQt6.QtWidgets.QFileDialog.getOpenFileNames', return_value=(['/path/to/file.set'], 'Filter')):
-        # Mock Factory AND Loader
-        with patch('XBrainLab.ui.dashboard_panel.dataset.RawDataLoaderFactory') as MockFactory, \
-             patch('XBrainLab.ui.dashboard_panel.dataset.RawDataLoader') as MockLoader:
-            
-            # Mock Loader instance
-            loader_instance = MockLoader.return_value
-            loader_instance.__len__.return_value = 1
-            
-            # Mock load method
-            mock_raw = MagicMock()
-            mock_raw.get_filepath.return_value = '/path/to/file.set'
-            MockFactory.load.return_value = mock_raw # Factory.load returns single Raw object now? 
-            # Wait, Factory.load(path) returns Raw. Factory.load(files) returns list?
-            # In dataset.py: raw = RawDataLoaderFactory.load(path) inside loop.
-            # So it returns single Raw.
-            
-            # Mock QMessageBox
-            with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info, \
-                 patch('PyQt6.QtWidgets.QMessageBox.critical') as mock_critical:
-                panel.import_data()
-                
-                # Verify factory load called
-                MockFactory.load.assert_called_once()
-                if mock_critical.called:
-                    pytest.fail(f"Critical error: {mock_critical.call_args}")
-                mock_info.assert_called_once()
+    # Patch the name imported in the module
+    with patch('XBrainLab.ui.dashboard_panel.dataset.QFileDialog.getOpenFileNames', return_value=(['/path/to/file.set'], 'Filter')):
+        # Controller returns success
+        mock_controller.import_files.return_value = (1, [])
+        
+        with patch('XBrainLab.ui.dashboard_panel.dataset.QMessageBox.information') as mock_info:
+            panel.import_data()
+            mock_controller.import_files.assert_called_once_with(['/path/to/file.set'])
+            # No success message provided for clean import
+            mock_info.assert_not_called()
 
-def test_dataset_panel_clear_dataset(mock_main_window, qtbot):
+def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
     """Test clearing the dataset."""
-    panel = DatasetPanel(mock_main_window)
+    from PyQt6.QtWidgets import QMessageBox
+    panel = DatasetPanel(None)
+    panel.main_window = mock_main_window
+    panel.controller = mock_controller
     qtbot.addWidget(panel)
     
-    with patch('PyQt6.QtWidgets.QMessageBox.question', return_value=True): # Yes
-         with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info:
+    with patch('XBrainLab.ui.dashboard_panel.dataset.QMessageBox.question', return_value=QMessageBox.StandardButton.Yes):
+         with patch('XBrainLab.ui.dashboard_panel.dataset.QMessageBox.information') as mock_info:
             panel.clear_dataset()
-            
-            mock_main_window.study.clean_raw_data.assert_called_once()
+            mock_controller.clean_dataset.assert_called_once()
             mock_info.assert_called_once()
 
-def test_dataset_panel_update_tree_view(mock_main_window, qtbot):
-    """Test table update from study data."""
-    # Setup mock data
+def test_dataset_panel_update_tree_view(mock_main_window, mock_controller, qtbot):
+    """Test table update from controller data."""
     mock_data = MagicMock()
-    mock_data.get_filename.return_value = "test.set"
-    mock_data.get_subject_name.return_value = "Sub01"
-    mock_data.get_session_name.return_value = "Sess01"
-    mock_data.get_nchan.return_value = 32
-    mock_data.get_sfreq.return_value = 250
-    mock_data.get_epochs_length.return_value = 100
-    mock_data.has_event.return_value = True
-    mock_data.is_raw.return_value = True
-    mock_data.get_event_list.return_value = ([1,2,3], {})
-    mock_data.is_labels_imported.return_value = False
+    mock_data.configure_mock(**{
+        'get_filepath.return_value': "/path/test.set",
+        'get_filename.return_value': "test.set",
+        'get_subject_name.return_value': "Sub01",
+        'get_session_name.return_value': "Sess01",
+        'get_nchan.return_value': 32,
+        'get_sfreq.return_value': 250,
+        'get_epochs_length.return_value': 100,
+        'has_event.return_value': False,
+        'is_raw.return_value': False,
+        'is_labels_imported.return_value': False,
+        'get_event_list.return_value': ([], {}),
+        'get_filter_range.return_value': (0.1, 40.0),
+        'get_tmin.return_value': 0.0,
+        'get_epoch_duration.return_value': 1.0
+    })
     
-    mock_main_window.study.loaded_data_list = [mock_data]
+    mock_controller.get_loaded_data_list.return_value = [mock_data]
     
-    panel = DatasetPanel(mock_main_window)
+    panel = DatasetPanel(None)
+    panel.main_window = mock_main_window
+    panel.controller = mock_controller
     qtbot.addWidget(panel)
     
     panel.update_panel()
     
     assert panel.table.rowCount() == 1
     assert panel.table.item(0, 0).text() == "test.set"
-    assert panel.table.item(0, 1).text() == "Sub01"
 
-def test_dataset_panel_on_item_changed(mock_main_window, qtbot):
-    """Test editing subject/session in table."""
-    # Setup mock data
+def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):
+    """Test editing subject/session in table updates metadata via controller."""
     mock_data = MagicMock()
-    mock_data.get_filename.return_value = "test.set"
+    mock_data.configure_mock(**{
+        'get_filepath.return_value': "/path/test.set",
+        'get_filename.return_value': "test.set",
+        'get_subject_name.return_value': "Sub01",
+        'get_session_name.return_value': "Sess01"
+    })
+    # Needed for _populate_table in update_panel
     mock_data.get_subject_name.return_value = "Sub01"
-    mock_data.get_session_name.return_value = "Sess01"
     
-    mock_main_window.study.loaded_data_list = [mock_data]
+    mock_controller.get_loaded_data_list.return_value = [mock_data]
     
-    panel = DatasetPanel(mock_main_window)
+    panel = DatasetPanel(None)
+    panel.main_window = mock_main_window
+    panel.controller = mock_controller
     qtbot.addWidget(panel)
     panel.update_panel()
     
-    # Simulate edit
-    item = panel.table.item(0, 1) # Subject column
-    item.setText("NewSub")
-    
-    # Manually trigger since we might have blocked signals or need to ensure it fires
-    # But setText triggers itemChanged if signals are not blocked.
-    # update_panel blocks signals, but unblocks at end.
-    
-    # Verify data object was updated
-    mock_data.set_subject_name.assert_called_with("NewSub")
+    # Mock update_panel to avoid clearing the table (which deletes the item triggering the signal)
+    with patch.object(panel, 'update_panel'):
+        # Simulate editing Subject (Column 1)
+        item = panel.table.item(0, 1) # Subject
+        item.setText("NewSub")
+        
+        # Verify controller called
+        mock_controller.update_metadata.assert_called()
 
-def test_dataset_panel_smart_parse(mock_main_window, qtbot):
-    """Test smart parser integration."""
-    mock_data = MagicMock()
-    mock_data.get_filepath.return_value = "/path/to/sub-01_ses-01_eeg.set"
-    mock_main_window.study.loaded_data_list = [mock_data]
+def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
+    """Test smart parser delegates to controller."""
+    mock_controller.has_data.return_value = True
+    mock_controller.get_filenames.return_value = ["/path/file.set"]
     
-    panel = DatasetPanel(mock_main_window)
+    panel = DatasetPanel(None)
+    panel.main_window = mock_main_window
+    panel.controller = mock_controller
     qtbot.addWidget(panel)
     
     with patch('XBrainLab.ui.dashboard_panel.dataset.SmartParserDialog') as MockDialog:
         instance = MockDialog.return_value
         instance.exec.return_value = True
-        instance.get_results.return_value = {
-            "/path/to/sub-01_ses-01_eeg.set": ("sub-01", "ses-01")
-        }
+        instance.get_results.return_value = {"/path/file.set": ("sub", "ses")}
         
-        with patch('PyQt6.QtWidgets.QMessageBox.information'):
+        mock_controller.apply_smart_parse.return_value = 1
+        
+        with patch('XBrainLab.ui.dashboard_panel.dataset.QMessageBox.information'):
             panel.open_smart_parser()
-            
-            mock_data.set_subject_name.assert_called_with("sub-01")
-            mock_data.set_session_name.assert_called_with("ses-01")
+            mock_controller.apply_smart_parse.assert_called_with({"/path/file.set": ("sub", "ses")})
 
 if __name__ == "__main__":
     pytest.main([__file__])

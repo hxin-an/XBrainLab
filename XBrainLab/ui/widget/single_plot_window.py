@@ -65,7 +65,7 @@ class SinglePlotWindow(QDialog):
 
     def empty_data_figure(self):
         self.clear_figure()
-        plt.text(.5, .5, 'No data is available.', ha='center', va='center')
+        plt.text(.5, .5, 'No Data Available', ha='center', va='center')
         self.redraw()
 
     def set_figure(self, figure, figsize, dpi):

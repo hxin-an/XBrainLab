@@ -22,6 +22,10 @@ class VisualizationController:
         """Set channel montage in Study."""
         self._study.set_channels(chs, positions)
 
+    def has_epoch_data(self) -> bool:
+        """Check if epoch data is loaded."""
+        return self._study.epoch_data is not None
+
     def get_channel_names(self) -> List[str]:
         """Get channel names from epoch data."""
         if self._study.epoch_data:

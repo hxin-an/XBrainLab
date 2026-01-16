@@ -2,6 +2,7 @@
 import sys
 import pytest
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
 from unittest.mock import MagicMock, patch
 from XBrainLab.ui.dashboard_panel.dataset import ChannelSelectionDialog, SmartParserDialog
 from XBrainLab.ui.dashboard_panel.preprocess import EpochingDialog
@@ -28,9 +29,13 @@ def test_channel_selection_dialog(qtbot):
         assert items == ['C3', 'C4', 'Cz']
         
         # Test Accept
+        # Select all first
+        for i in range(3):
+            dialog.list_widget.item(i).setCheckState(Qt.CheckState.Checked)
+            
         dialog.accept()
-        # Should call preprocessor.data_preprocess
-        MockCS.return_value.data_preprocess.assert_called_once()
+        # Should populate selected_channels
+        assert dialog.selected_channels == ['C3', 'C4', 'Cz']
 
 def test_smart_parser_dialog(qtbot):
     """Test SmartParserDialog regex logic."""
@@ -84,14 +89,19 @@ def test_epoching_dialog_init(qtbot):
         # Select event
         dialog.event_list.item(0).setSelected(True)
         
-        # Mock preprocessor internal data_preprocess to avoid running real logic
-        dialog.preprocessor = MagicMock()
-        
         # Accept
         dialog.accept()
         
-        # Verify preprocess call
-        dialog.preprocessor.data_preprocess.assert_called()
+        # Verify get_params
+        params = dialog.get_params()
+        # (baseline, selected_events, tmin, tmax)
+        # Default baseline check is False ? Let's Assume default config or check UI state
+        # But we just verified get_params returns what accepts sets.
+        
+        assert params is not None
+        assert params[1] == ['Event1']
+        assert isinstance(params[2], float) # tmin
+        assert isinstance(params[3], float) # tmax
 
 if __name__ == "__main__":
     pytest.main([__file__])

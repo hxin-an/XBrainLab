@@ -308,7 +308,7 @@ def test_training_plan_holder_set_interrupt(base_holder):
     assert base_holder.interrupt is False
 
 def test_training_plan_holder_trivial_getter(base_holder, dataset):
-    assert base_holder.get_name() == "0-Group_0"
+    assert base_holder.get_name() == "Fold_0"
     assert base_holder.get_dataset() == dataset
     assert len(base_holder.get_plans()) == REPEAT
 

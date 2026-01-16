@@ -1,103 +1,108 @@
 
 import pytest
-from PyQt6.QtWidgets import QMainWindow
+from PyQt6.QtWidgets import QMainWindow, QMessageBox
 from unittest.mock import MagicMock, patch
 from XBrainLab.ui.training.panel import TrainingPanel
-from XBrainLab.backend.study import Study
 
 class TestTrainingPanel:
     @pytest.fixture
     def panel(self, qtbot):
-        # Mock MainWindow and Study
-        main_window = MagicMock(spec=QMainWindow)
-        main_window.study = MagicMock(spec=Study)
-        # Explicitly set instance attributes that are accessed but not in class spec
-        main_window.study.dataset_generator = MagicMock()
-        main_window.study.model_holder = MagicMock()
-        main_window.study.model_holder.target_model.__name__ = "MockModel"
-        main_window.study.training_option = MagicMock()
-        main_window.study.trainer = MagicMock()
-        main_window.study.loaded_data_list = []
+        # Mock MainWindow
+        main_window = QMainWindow()
+        main_window.study = MagicMock()
         
-        # We need to patch the imports in panel.py because they might be instantiated
-        # But for now let's just instantiate the panel
-        panel = TrainingPanel(main_window)
-        qtbot.addWidget(panel)
-        return panel
+        # Patch Controller used in TrainingPanel.__init__
+        with patch('XBrainLab.ui.training.panel.TrainingController') as MockController:
+            # Setup mock instance
+            mock_controller = MockController.return_value
+            mock_controller.is_training.return_value = False
+            mock_controller.get_epoch_data.return_value = MagicMock()
+            mock_controller.get_trainer.return_value = None
+            mock_controller.has_datasets.return_value = False
+            mock_controller.get_formatted_history.return_value = []
+            
+            panel = TrainingPanel(main_window)
+            qtbot.addWidget(panel)
+            
+            # Attach mock for use in tests
+            panel._mock_controller = mock_controller
+            yield panel
+            
+            # Clean up (but yield hands control, so after test finishes)
+            # Actually since we used yield inside patch default, scope is tricky.
+            # But here I'm creating panel inside context. 
+            # The patch exits when fixture exits? using yield. Yes.
 
     def test_select_model_success(self, panel):
-        # Mock ModelSelectionWindow to return a dummy result
-        mock_result = MagicMock()
-        mock_result.target_model.__name__ = "DummyModel"
-        
-        # Configure study mock to have model_holder
-        panel.study.model_holder = mock_result
+        mock_holder = MagicMock()
+        mock_holder.target_model.__name__ = "DummyModel"
         
         with patch('XBrainLab.ui.training.panel.ModelSelectionWindow') as MockWindow:
             instance = MockWindow.return_value
             instance.exec.return_value = True
-            instance.get_result.return_value = mock_result
+            instance.get_result.return_value = mock_holder
             
-            # Mock QMessageBox to avoid blocking
-            with patch('PyQt6.QtWidgets.QMessageBox.information'):
+            # Use patch specific to the module to capture calls
+            with patch('XBrainLab.ui.training.panel.QMessageBox.information') as mock_info:
                 panel.select_model()
-            
-            # Verify study update
-            panel.study.set_model_holder.assert_called_once_with(mock_result)
+                
+                # Verify controller called
+                panel.controller.set_model_holder.assert_called_once_with(mock_holder)
+                mock_info.assert_called_once()
 
     def test_training_setting_success(self, panel):
-        mock_result = MagicMock()
+        mock_option = MagicMock()
         
         with patch('XBrainLab.ui.training.panel.TrainingSettingWindow') as MockWindow:
             instance = MockWindow.return_value
             instance.exec.return_value = True
-            instance.get_result.return_value = mock_result
+            instance.get_result.return_value = mock_option
             
-            with patch('PyQt6.QtWidgets.QMessageBox.information'):
+            with patch('XBrainLab.ui.training.panel.QMessageBox.information'):
                 panel.training_setting()
                 
-            panel.study.set_training_option.assert_called_once_with(mock_result)
+            panel.controller.set_training_option.assert_called_once_with(mock_option)
 
     def test_start_training_success(self, panel):
-        # Mock trainer and plan holders
-        mock_trainer = MagicMock()
-        mock_trainer.get_training_plan_holders.return_value = [MagicMock()]
-        mock_trainer.is_running.return_value = False
-        panel.study.trainer = mock_trainer
+        # Mock controller methods
+        panel.controller.get_training_plan_holders.return_value = [MagicMock()]
+        # State transitions
+        # 1. First check: False (not running) -> Start
+        # 2. Second check: True (started successfully) -> Timer Start
+        panel.controller.is_training.side_effect = [False, True]
         
-        # Mock model holder for UI update
-        panel.study.model_holder = MagicMock()
-        mock_model = MagicMock()
-        mock_model.__name__ = "TestModel"
-        panel.study.model_holder.target_model = mock_model
-        
-        # Mock QTimer
         panel.timer = MagicMock()
         
-        # Call start_training
-        panel.start_training()
+        with patch('XBrainLab.ui.training.panel.QMessageBox.critical') as mock_crit:
+            panel.start_training()
+            if mock_crit.called:
+                print(f"Critical error: {mock_crit.call_args}")
         
-        # Verify trainer.run called
-        mock_trainer.run.assert_called_once_with(interact=True)
+        panel.controller.start_training.assert_called_once()
         panel.timer.start.assert_called_once()
 
 
     def test_split_data(self, panel):
-        # Mock epoch_data
-        panel.study.epoch_data = MagicMock()
-        panel.study.loaded_data_list = [MagicMock()] # Ensure loaded data exists
-        
-        # Mock DataSplittingSettingWindow
         mock_generator = MagicMock()
         
+        # Ensure imports work for patching
         with patch('XBrainLab.ui.training.panel.DataSplittingSettingWindow') as MockWindow:
             instance = MockWindow.return_value
             instance.exec.return_value = True
             instance.get_result.return_value = mock_generator
             
-            with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_info:
+            with patch('XBrainLab.ui.training.panel.QMessageBox.information') as mock_info:
                 panel.split_data()
                 
-                # Verify generator.apply is called
-                mock_generator.apply.assert_called_once_with(panel.study)
+                panel.controller.apply_data_splitting.assert_called_once_with(mock_generator)
                 mock_info.assert_called_once()
+
+    def test_stop_training(self, panel):
+        panel.controller.is_training.return_value = True
+        panel.stop_training()
+        panel.controller.stop_training.assert_called_once()
+
+    def test_clear_history(self, panel):
+        panel.controller.is_training.return_value = False
+        panel.clear_history()
+        panel.controller.clear_history.assert_called_once()

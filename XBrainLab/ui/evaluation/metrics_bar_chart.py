@@ -24,7 +24,7 @@ class MetricsBarChartWidget(QWidget):
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
         self.ax.set_facecolor('#2d2d2d')
-        self.ax.text(0.5, 0.5, "No Data", color='#666666', ha='center', va='center')
+        self.ax.text(0.5, 0.5, "No Data Available", color='#666666', ha='center', va='center')
         self.ax.axis('off')
         
         self.plot_layout.addWidget(self.canvas)
@@ -41,7 +41,7 @@ class MetricsBarChartWidget(QWidget):
             self.ax.set_facecolor('#2d2d2d')
             
             if not metrics:
-                self.ax.text(0.5, 0.5, "No Data", color='#666666', ha='center', va='center')
+                self.ax.text(0.5, 0.5, "No Data Available", color='#666666', ha='center', va='center')
                 self.ax.axis('off')
                 self.canvas.draw()
                 return

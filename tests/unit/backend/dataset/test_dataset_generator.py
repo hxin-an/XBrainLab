@@ -463,7 +463,7 @@ def test_dataset_generator_failed(
 
 @pytest.mark.parametrize('test_scheme_func_name, expected_name_prefix', [
     ('handle_IND', 'Subject-'),
-    ('handle_FULL', 'Group'),
+    ('handle_FULL', 'Fold'),
 ])
 def test_dataset_generator_name_prefix(
     epochs, # noqa: F811
@@ -505,7 +505,7 @@ def test_dataset_generator_handle_individual(
     result = generator.generate()
     assert len(result) == len(subject_list)
     for i in range(len(result)):
-        assert result[i].get_name() == str(i) + '-Subject-' + str(i + 1) + '_0'
+        assert result[i].get_name() == 'Subject-' + str(i + 1) + '_0'
         X, _ = result[i].get_training_data()
         assert ((X // 1000 * 1000) == ((i + 1) * 100000 + 2 * 1000)).all()
         X, _ = result[i].get_val_data()
@@ -539,7 +539,7 @@ def test_dataset_generator_handle_individual_cross_validation(
                 idx = i * len(session_list) + j
                 assert (
                     result[idx].get_name() ==
-                    str(idx) + '-Subject-' + str(i + 1) + '_' + str(j)
+                    'Subject-' + str(i + 1) + '_' + str(j)
                 )
                 X, _ = result[idx].get_training_data()
                 assert (
@@ -579,7 +579,7 @@ def test_dataset_generator_handle_full(
     result = generator.generate()
     assert len(result) == 1
     result = result[0]
-    assert result.get_name() == '0-Group_0'
+    assert result.get_name() == 'Fold_0'
     X, _ = result.get_training_data()
     assert ((X // 100000 * 100000) != (1 * 100000)).all()
     assert len(X) == block_size * ((len(subject_list) - 1) * (len(session_list) - 1))
@@ -614,7 +614,7 @@ def test_dataset_generator_handle_full_cross_validation(
     assert len(result) == len(subject_list)
     for i in range(len(subject_list)):
 
-        assert result[i].get_name() == str(i) + '-Group_' + str(i)
+        assert result[i].get_name() == 'Fold_' + str(i)
         X, _ = result[i].get_training_data()
         assert ((X // 100000 * 100000) != ((i + 1) * 100000)).all()
         assert (

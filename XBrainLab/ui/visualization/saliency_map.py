@@ -80,7 +80,7 @@ class SaliencyMapWidget(QWidget):
                 self.canvas = FigureCanvas(self.fig)
                 self.plot_layout.addWidget(self.canvas)
             else:
-                self.show_error("No data available.")
+                self.show_error("No Data Available")
                 
         except Exception as e:
             print(f"Error plotting saliency map: {e}")

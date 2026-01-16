@@ -59,7 +59,7 @@ class Dataset:
 
     def get_name(self) -> str:
         """Get the formatted name of the dataset."""
-        return str(self.dataset_id) + '-' + self.name
+        return self.name
 
     def get_ori_name(self) -> str:
         """Get the original name of the dataset."""

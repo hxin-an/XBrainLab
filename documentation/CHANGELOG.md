@@ -2,20 +2,6 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
-## [Unreleased]
-### Added
-- **Data Strategy (OOD Testing)**:
-    - **External Validation Set**: 建立 `external_validation_set.json` (原 Senior Benchmark)，包含 175 個未見過的測試案例 (Basic + Multi-step)。
-    - **Clean RAG Split**: 確立 `gold_set.json` 作為 RAG 教學資料，`external_validation_set.json` 作為評測資料的防止洩漏策略。
-- **Documentation**:
-    - 更新 `KNOWN_ISSUES.md` 標註外部驗證集揭露的工具功能缺失 (Optimizer, Checkpoints)。
-    - 更新 `ROADMAP.md` 整合 RAG 與 Multi-Agent 規劃。
-
-### Changed
-- **Content Cleanup**:
-    - 移除臨時轉換腳本 `convert_senior_benchmark.py` 與原始 CSV 檔案。
-    - 刪除冗餘的 `rag_knowledge_content_plan.md`，內容合併至 Roadmap。
-
 ## [0.3.5] - 2026-01-16
 ### Fixed
 - **Known Issues Resolved**:
@@ -29,6 +15,12 @@
         - 移除 `requirements.txt` 中衝突的 `nvidia-*` 套件。
         - 修正 `pyproject.toml` 中的 Torch 版本至 `2.2.0` (與 Changelog 一致)。
         - 重建 `requirements.txt` 以匹配 `pyproject.toml`。
+    - **Frontend-Backend Separation**:
+        - **Decoupling**: 完成 `DatasetPanel` 與 `PreprocessPanel` 的重構，移除所有對 `Study` 物件的直接存取。
+        - **New Controllers**:
+            - `DatasetController`: 負責資料增刪、Metadata 修改與 Labels 匯入。
+            - `PreprocessController`: 負責濾波、重新取樣、正規化與 Epoching 邏輯。
+        - **Refactoring**: 相關 UI Dialogs (如 `FilteringDialog`) 改為純參數回傳，不再執行後端邏輯。
 
 ### Added
 - **Real Tool Implementation**:
@@ -40,6 +32,11 @@
     - 修復 Windows 環境下的路徑分隔符問題 (`test_preprocess.py`, `test_eval.py`)，確保跨平台測試通過。
     - 修正 UI 整合測試 (`test_ui_integration.py`) 以符合最新的 `VisualizationPanel` 與 `EvaluationPanel` 佈局與 Tab 順序。
     - 修正 `mock_study` Fixture 以避免在某些測試情境下的 Unpacking Error。
+    - 修正 `test_training_setting.py` 在 CPU 環境下錯誤檢查 CUDA 設備導致的測試失敗。
+    - 修正 `test_training_panel.py` 與 `test_visualization_panel.py` 的 Assertion 邏輯以符合實作。
+    - **Training Panel Lock**: 修復 `test_training_panel_lock.py`，正確 Mock Controller 的 `validate_ready` 狀態。
+    - **Dashboard Tests**: 修正 `test_dialogs.py` 以驗證參數回傳而非邏輯執行；修正 `test_preprocess_panel_normalize.py` 的 `is_epoched` 鎖定邏輯。
+    - **Backend Tests**: 修正 `test_training_plan.py` 中對 Dataset Group 命名 (`Group` -> `Fold`) 的預期值。
 - **Cleanup**:
     - 刪除過時且無對應模組的測試檔案 `tests/unit/llm/test_prompts.py`。
 

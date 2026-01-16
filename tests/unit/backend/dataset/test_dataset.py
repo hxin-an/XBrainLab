@@ -21,17 +21,17 @@ def test_dataset(
     dataset = Dataset(epochs, config)
 
     assert dataset.get_epoch_data() == epochs
-    assert dataset.get_name() == '0-'
+    assert dataset.get_name() == ''
 
     dataset = Dataset(epochs, config)
     dataset.set_name('test')
-    assert dataset.get_name() == '1-test'
+    assert dataset.get_name() == 'test'
     assert dataset.get_ori_name() == 'test'
 
     assert dataset.get_all_trial_numbers() == (0, 0, 0)
-    assert dataset.get_treeview_row_info() == ('O', '1-test', 0, 0, 0)
+    assert dataset.get_treeview_row_info() == ('O', 'test', 0, 0, 0)
     dataset.set_selection(False)
-    assert dataset.get_treeview_row_info() == ('X', '1-test', 0, 0, 0)
+    assert dataset.get_treeview_row_info() == ('X', 'test', 0, 0, 0)
     assert dataset.has_set_empty()
 
     X, y = dataset.get_training_data()
