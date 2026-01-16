@@ -13,10 +13,12 @@ class LLMController(QObject):
     Manages conversation history, ReAct loop, and tool execution.
     Separates logic from UI (MainWindow) and Generation (AgentWorker).
     """
+
     # Signals to UI
-    response_ready = pyqtSignal(str, str) # sender, text
-    status_update = pyqtSignal(str)       # status message
-    error_occurred = pyqtSignal(str)      # error message
+    response_ready = pyqtSignal(str, str)  # sender, text
+    status_update = pyqtSignal(str)  # status message
+    error_occurred = pyqtSignal(str)  # error message
+    request_user_interaction = pyqtSignal(str, dict)  # command, params
 
     # Internal signals to Worker
     sig_initialize = pyqtSignal()
@@ -34,7 +36,7 @@ class LLMController(QObject):
         self.worker = AgentWorker()
         self.worker.moveToThread(self.worker_thread)
 
-        self.history = [] # List of {"role": str, "content": str}
+        self.history = []  # List of {"role": str, "content": str}
 
         # Connect worker signals
         self.worker.chunk_received.connect(self._on_chunk_received)
@@ -88,7 +90,7 @@ class LLMController(QObject):
         # Use PromptManager to construct messages
         messages = self.prompt_manager.get_messages(self.history)
 
-        self.current_response = "" # Reset accumulator
+        self.current_response = ""  # Reset accumulator
 
         # Call worker via signal
         self.sig_generate.emit(messages)
@@ -129,26 +131,46 @@ class LLMController(QObject):
         if tool:
             try:
                 result = tool.execute(self.study, **params)
-                self.status_update.emit(f"Tool Result: {result}")
-
-                # Feed result back to LLM
-                self._append_history("user", f"Tool Output: {result}")
-
-                # Loop: Generate again
-                self._generate_response()
-                return
-
             except Exception as e:
                 error_msg = f"Tool execution failed: {e}"
                 self.status_update.emit(error_msg)
                 self._append_history("user", f"Tool Error: {error_msg}")
                 self._generate_response()
                 return
+            else:
+                self._handle_tool_result(result)
+                return
+
         else:
             self.status_update.emit(f"Unknown tool: {command_name}")
             self._append_history("user", f"Error: Unknown tool '{command_name}'")
             self._generate_response()
             return
+
+    def _handle_tool_result(self, result: str):
+        """Processes tool result and decides next step."""
+        # Check for Human-in-the-loop Request
+        if result.startswith("Request:"):
+            # Format: "Request: CommandName params"
+            # e.g. "Request: Verify Montage 'standard_1020'"
+            cmd_part = result.replace("Request:", "").strip()
+
+            # Emit signal to UI to take over
+            self.status_update.emit("Waiting for user interaction...")
+            self.request_user_interaction.emit("confirm_montage", {"context": cmd_part})
+
+            # Pause the Agent Loop (do not call _generate_response)
+            # Record that we are waiting?
+            self._append_history("assistant", f"Requested user interaction: {cmd_part}")
+            return
+
+        self.status_update.emit(f"Tool Result: {result}")
+
+        # Feed result back to LLM
+        self._append_history("user", f"Tool Output: {result}")
+
+        # Loop: Generate again
+        self._generate_response()
 
     def _on_worker_error(self, error_msg):
         self.error_occurred.emit(error_msg)
@@ -157,6 +179,6 @@ class LLMController(QObject):
 
     def close(self):
         """Cleanup thread."""
-        if hasattr(self, 'worker_thread') and self.worker_thread.isRunning():
+        if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
             self.worker_thread.quit()
             self.worker_thread.wait()

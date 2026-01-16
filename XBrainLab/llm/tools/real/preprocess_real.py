@@ -155,7 +155,17 @@ class RealSetMontageTool(BaseSetMontageTool):
                     mapped_positions.append(tuple(ch_pos_dict[real_name]))
 
             if not mapped_chs:
-                return f"Error: No channels matched for montage '{montage_name}'"
+                # If automated matching completely fails, request user intervention
+                return f"Request: Verify Montage '{montage_name}'"
+
+            # Check for partial match (optional, but good for robustness)
+            if len(mapped_chs) < len(current_chs):
+                # Partial match case - debatable if we should auto-proceed or ask.
+                # User requested "Human-in-the-loop", so let's ask if not perfect.
+                return (
+                    f"Request: Verify Montage '{montage_name}' "
+                    f"(Only {len(mapped_chs)}/{len(current_chs)} channels matched)"
+                )
 
             study.set_channels(mapped_chs, mapped_positions)
             return f"Set Montage '{montage_name}' (Matched {len(mapped_chs)} channels)"

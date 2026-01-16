@@ -3,6 +3,15 @@
 所有對本專案的重要變更都將記錄於此文件中。
 
 
+## [0.3.9] - 2026-01-16
+### Added
+- **Human-in-the-loop (HIL) - Montage Verification**:
+    - Implemented interactive confirmation flow for `RealSetMontageTool`.
+    - **Logic**: If channel matching is imperfect (or completely fails), the tool returns a `Request: Verify Montage...` command.
+    - **Controller**: `LLMController` detects this request, emits `request_user_interaction` signal, and pauses the Agent loop.
+    - **UI**: `MainWindow` intercepts the signal and opens `PickMontageWindow` (Montage Picker Dialog) with pre-filled mappings.
+    - **Collaboration**: User manually corrects/confirms the mapping, and the Agent resumes execution automatically.
+
 ## [0.3.8] - 2026-01-16
 ### Refactored
 - **DatasetController**:

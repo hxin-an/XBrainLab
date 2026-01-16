@@ -27,11 +27,13 @@ class MainWindow(QMainWindow):
     The main application window for XBrainLab (PyQt6 version).
 
     This window manages the overall layout, including:
-    - Top Navigation Bar: For switching between main panels (Dataset, Preprocess, Training, etc.).
+    - Top Navigation Bar: For switching between main panels (Dataset, Preprocess, \
+Training, etc.).
     - Stacked Widget: Holds the content of each panel.
     - Dock Widgets: For the AI Assistant and Data Info panel.
     - Agent System: Initializes and manages the background AI agent thread.
     """
+
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
@@ -42,7 +44,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("XBrainLab")
         self.resize(1280, 800)
 
-        self.agent_initialized = False # Flag for lazy loading
+        self.agent_initialized = False  # Flag for lazy loading
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -77,11 +79,10 @@ class MainWindow(QMainWindow):
         # AI Toggle Button
         self.ai_btn = QPushButton("AI Assistant")
         self.ai_btn.setCheckable(True)
-        self.ai_btn.setChecked(False) # Default Off
+        self.ai_btn.setChecked(False)  # Default Off
         self.ai_btn.clicked.connect(self.toggle_ai_dock)
         self.ai_btn.setObjectName("ActionBtn")
         self.top_bar_layout.addWidget(self.ai_btn)
-
 
         main_layout.addWidget(self.top_bar)
 
@@ -91,7 +92,6 @@ class MainWindow(QMainWindow):
 
         # Initialize Panels
         self.init_panels()
-
 
         # Initialize Agent System
         self.init_agent()
@@ -245,9 +245,12 @@ class MainWindow(QMainWindow):
 
         if index == 0:
             btn.setChecked(True)
-        elif index == 1: # This block was added based on the instruction's intent, assuming it was meant to be a conditional check.
-            pass # The original instruction had `self.preprocess_panel.update_panel()d(True)` which is syntactically incorrect and `preprocess_panel` would not exist yet.
-                 # Keeping this as a placeholder for potential future logic, but not adding the incorrect code.
+        elif index == 1:
+            # This block was added based on the instruction's intent.
+            # Assuming it was meant to be a conditional check.
+            pass
+            # The original instruction had invalid syntax.
+            # Keeping this as a placeholder for potential future logic.
 
     def switch_page(self, index):
         self.stack.setCurrentIndex(index)
@@ -256,18 +259,18 @@ class MainWindow(QMainWindow):
 
         # Unified Update Logic: Always call update_panel() on result
         target_panel = None
-        if index == 0 and hasattr(self, 'dataset_panel'):
+        if index == 0 and hasattr(self, "dataset_panel"):
             target_panel = self.dataset_panel
-        elif index == 1 and hasattr(self, 'preprocess_panel'):
+        elif index == 1 and hasattr(self, "preprocess_panel"):
             target_panel = self.preprocess_panel
-        elif index == 2 and hasattr(self, 'training_panel'):
+        elif index == 2 and hasattr(self, "training_panel"):
             target_panel = self.training_panel
-        elif index == 3 and hasattr(self, 'evaluation_panel'):
+        elif index == 3 and hasattr(self, "evaluation_panel"):
             target_panel = self.evaluation_panel
-        elif index == 4 and hasattr(self, 'visualization_panel'):
+        elif index == 4 and hasattr(self, "visualization_panel"):
             target_panel = self.visualization_panel
 
-        if target_panel and hasattr(target_panel, 'update_panel'):
+        if target_panel and hasattr(target_panel, "update_panel"):
             target_panel.update_panel()
 
     def init_panels(self):
@@ -300,11 +303,13 @@ class MainWindow(QMainWindow):
         self.chat_panel = ChatPanel()
         self.chat_dock = QDockWidget("AI Assistant", self)
         self.chat_dock.setWidget(self.chat_panel)
-        self.chat_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
+        self.chat_dock.setAllowedAreas(
+            Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
+        )
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
 
         self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
-        self.chat_dock.hide() # Hide by default
+        self.chat_dock.hide()  # Hide by default
 
     def start_agent_system(self):
         """
@@ -314,7 +319,7 @@ class MainWindow(QMainWindow):
         if self.agent_initialized:
             return
 
-        from XBrainLab.llm.agent.controller import LLMController
+        from XBrainLab.llm.agent.controller import LLMController  # noqa: PLC0415
 
         # 2. Create Controller
         self.agent_controller = LLMController(self.study)
@@ -322,9 +327,17 @@ class MainWindow(QMainWindow):
         # 3. Connect Signals
         self.chat_panel.send_message.connect(self.handle_user_input)
 
-        self.agent_controller.response_ready.connect(lambda sender, text: self.chat_panel.append_message(sender, text))
+        self.agent_controller.response_ready.connect(
+            lambda sender, text: self.chat_panel.append_message(sender, text)
+        )
+        self.agent_controller.status_update.connect(self.chat_panel.set_status)
         self.agent_controller.status_update.connect(self.chat_panel.set_status)
         self.agent_controller.error_occurred.connect(self.handle_agent_error)
+        self.agent_controller.request_user_interaction.connect(
+            self.handle_user_interaction
+        )
+
+        # Initialize
 
         # Initialize
         self.agent_controller.initialize()
@@ -335,12 +348,14 @@ class MainWindow(QMainWindow):
         if not self.agent_initialized:
             # Show Warning
             reply = QMessageBox.warning(
-                self, "Activate AI Assistant",
+                self,
+                "Activate AI Assistant",
                 "You are about to activate the AI Assistant.\n\n"
-                "This feature uses an LLM (Large Language Model) which requires significant system resources (GPU/VRAM).\n"
+                "This feature uses an LLM (Large Language Model) which requires "
+                "significant system resources (GPU/VRAM).\n"
                 "It may slow down other operations on lower-end systems.\n"
                 "Do you want to proceed?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
 
             if reply == QMessageBox.StandardButton.Yes:
@@ -348,28 +363,68 @@ class MainWindow(QMainWindow):
                 self.chat_dock.show()
                 self.ai_btn.setChecked(True)
             else:
-                self.ai_btn.setChecked(False) # Revert check state
+                self.ai_btn.setChecked(False)  # Revert check state
                 return
+        elif self.chat_dock.isVisible():
+            self.chat_dock.close()
         else:
-            if self.chat_dock.isVisible():
-                self.chat_dock.close()
-            else:
-                self.chat_dock.show()
+            self.chat_dock.show()
 
     def update_ai_btn_state(self, visible):
         self.ai_btn.blockSignals(True)
         self.ai_btn.setChecked(visible)
         self.ai_btn.blockSignals(False)
 
-
     def update_info_panel(self):
-        if hasattr(self, 'info_panel'):
+        if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
     def handle_user_input(self, text):
         # Forward to controller
-        if hasattr(self, 'agent_controller'):
+        if hasattr(self, "agent_controller"):
             self.agent_controller.handle_user_input(text)
+
+    def handle_user_interaction(self, command, params):
+        """Dispatcher for Human-in-the-loop requests."""
+        if command == "confirm_montage":
+            # Open Montage Picker
+            self.open_montage_picker_dialog(params)
+
+    def open_montage_picker_dialog(self, params):
+        if not self.study.epoch_data:
+            self.chat_panel.append_message(
+                "System", "Error: No epoch data available for montage."
+            )
+            return
+
+        from XBrainLab.ui.visualization.montage_picker import (  # noqa: PLC0415
+            PickMontageWindow,
+        )
+
+        # Get channel names from backend
+        chs = self.study.epoch_data.get_mne().info["ch_names"]
+
+        dialog = PickMontageWindow(self, chs)
+        if dialog.exec():
+            # Get result from dialog and save to study
+            chs, positions = dialog.get_result()
+            if chs and positions is not None:
+                self.study.set_channels(chs, positions)
+
+                # Resume Agent
+                self.chat_panel.append_message("User", "Montage Confirmed.")
+                self.agent_controller.handle_user_input("Montage Confirmed.")
+            else:
+                self.chat_panel.append_message(
+                    "System", "Error: No valid montage configuration returned."
+                )
+                self.agent_controller.handle_user_input("Montage Selection Failed.")
+        else:
+            # User Cancelled
+            self.chat_panel.append_message("User", "Operation Cancelled.")
+            self.agent_controller.handle_user_input(
+                "Montage Selection Cancelled by User."
+            )
 
     def handle_agent_error(self, error_msg):
         self.chat_panel.set_status("Error")
@@ -378,31 +433,32 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         logger.info("Closing application...")
-        if hasattr(self, 'agent_controller'):
+        if hasattr(self, "agent_controller"):
             self.agent_controller.close()
         super().closeEvent(event)
 
     def refresh_panels(self):
         """Refresh all panels to synchronize data."""
         # Update Dataset Panel (which updates its own Aggregate Info)
-        if hasattr(self, 'dataset_panel'):
+        if hasattr(self, "dataset_panel"):
             self.dataset_panel.update_panel()
 
         # Update Preprocess Panel
-        if hasattr(self, 'preprocess_panel'):
+        if hasattr(self, "preprocess_panel"):
             self.preprocess_panel.update_panel()
 
         # Update Training Panel
-        if hasattr(self, 'training_panel'):
+        if hasattr(self, "training_panel"):
             self.training_panel.update_info()
 
         # Update Evaluation Panel
-        if hasattr(self, 'evaluation_panel'):
+        if hasattr(self, "evaluation_panel"):
             self.evaluation_panel.update_info()
 
         # Update Visualization Panel
-        if hasattr(self, 'visualization_panel'):
+        if hasattr(self, "visualization_panel"):
             self.visualization_panel.update_info()
+
 
 def global_exception_handler(exctype, value, traceback):
     if issubclass(exctype, KeyboardInterrupt):
@@ -416,8 +472,8 @@ def global_exception_handler(exctype, value, traceback):
     msg.setWindowTitle("Error")
     msg.exec()
 
+
 # Only set exception hook if not running under pytest
-import sys
 
 if "pytest" not in sys.modules:
     sys.excepthook = global_exception_handler
