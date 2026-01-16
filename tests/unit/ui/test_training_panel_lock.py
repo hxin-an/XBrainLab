@@ -2,8 +2,11 @@
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
-from PyQt6.QtWidgets import QApplication, QWidget, QGroupBox
+
+from PyQt6.QtWidgets import QApplication, QGroupBox, QWidget
+
 from XBrainLab.ui.training.panel import TrainingPanel
+
 
 class TestTrainingPanelLock(unittest.TestCase):
     @classmethod
@@ -15,16 +18,16 @@ class TestTrainingPanelLock(unittest.TestCase):
 
     # Patch modules referenced during Panel init
     @patch('XBrainLab.ui.training.panel.AggregateInfoPanel')
-    @patch('XBrainLab.ui.training.panel.TrainingController') 
+    @patch('XBrainLab.ui.training.panel.TrainingController')
     def setUp(self, MockController, MockInfoPanel):
         # Info Panel Mock
         fake_panel = QGroupBox()
         MockInfoPanel.return_value = fake_panel
-        
+
         # Controller Mock
         self.mock_controller = MockController.return_value
         self.mock_controller.is_training.return_value = False
-        
+
         # Default state: Not ready
         self.mock_controller.validate_ready.return_value = False
         self.mock_controller.get_missing_requirements.return_value = ["Data", "Model"]
@@ -32,17 +35,17 @@ class TestTrainingPanelLock(unittest.TestCase):
         self.mock_controller.get_model_holder.return_value = None
         self.mock_controller.get_training_option.return_value = None
         self.mock_controller.get_formatted_history.return_value = []
-        
+
         # Mock Window
         self.mock_window = QWidget()
         self.mock_window.study = MagicMock()
-        
+
         self.panel = TrainingPanel(self.mock_window)
         # Manually attach the mock controller if needed (though init uses the class mock)
-        # panel.controller is already our mock_controller thanks to patch.start logic if used, 
+        # panel.controller is already our mock_controller thanks to patch.start logic if used,
         # but here we use arg injection which patches the CLASS.
         # So panel.controller = MockController() returns self.mock_controller.
-        self.panel.controller = self.mock_controller 
+        self.panel.controller = self.mock_controller
 
     def test_start_button_locked_initially(self):
         # Initially, no config
@@ -54,10 +57,10 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Set configurations
         self.mock_controller.validate_ready.return_value = True
         self.mock_controller.get_missing_requirements.return_value = []
-        
+
         # Trigger check
         self.panel.check_ready_to_train()
-        
+
         self.assertTrue(self.panel.btn_start.isEnabled())
         self.assertEqual(self.panel.btn_start.toolTip(), "Start Training")
 
@@ -65,16 +68,16 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Partial
         self.mock_controller.validate_ready.return_value = False
         self.mock_controller.get_missing_requirements.return_value = ["Model"]
-        
+
         self.panel.check_ready_to_train()
         self.assertFalse(self.panel.btn_start.isEnabled())
-        
+
         # Check tooltips if needed, but enabled state is primary
-        
+
         # Ready
         self.mock_controller.validate_ready.return_value = True
         self.mock_controller.get_missing_requirements.return_value = []
-        
+
         self.panel.check_ready_to_train()
         self.assertTrue(self.panel.btn_start.isEnabled())
 
@@ -82,17 +85,17 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Setup ready state
         self.mock_controller.validate_ready.return_value = True
         self.mock_controller.get_missing_requirements.return_value = []
-        
+
         self.panel.check_ready_to_train()
         self.assertTrue(self.panel.btn_start.isEnabled())
-        
+
         # Simulate start (disable) calling manually or via logic
         self.panel.btn_start.setEnabled(False)
         self.assertFalse(self.panel.btn_start.isEnabled())
-        
+
         # Simulate finish
         self.panel.training_finished()
-        
+
         # Should be enabled again
         self.assertTrue(self.panel.btn_start.isEnabled())
 
@@ -100,34 +103,34 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Setup ready state
         self.mock_controller.validate_ready.return_value = True
         self.panel.check_ready_to_train()
-        
+
         # Start training
         self.mock_controller.is_training.side_effect = [False, True]
-        
+
         # Mock plan generation success using controller methods check?
         # start_training calls controller.start_training()
-        
+
         # We need to mock QTimer for start_training
         self.panel.timer = MagicMock()
-        
+
         self.panel.start_training()
-        
+
         # Button should remain enabled (if queueing is allowed/logic dictates)
         # Original test said: "Button should remain enabled"
         # Let's check panel.py start_training logic:
         # It calls btn_stop.setEnabled(True)
         # It calls check_ready_to_train() at the end.
         # check_ready_to_train sets btn_start.setEnabled(True) if ready.
-        
+
         self.assertTrue(self.panel.btn_start.isEnabled())
-        
+
         # Simulate running
         self.mock_controller.is_training.return_value = True
         self.mock_controller.is_training.side_effect = None
-        
+
         # Click again (queueing)
         self.panel.start_training()
-        
+
         # Button should still be enabled
         self.assertTrue(self.panel.btn_start.isEnabled())
 

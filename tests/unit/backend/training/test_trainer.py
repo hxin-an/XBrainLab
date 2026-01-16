@@ -31,10 +31,10 @@ def test_trainer(training_plan_holders):
     assert trainer.get_training_plan_holders() == training_plan_holders
     assert trainer.get_progress_text() == 'Pending'
     holder = training_plan_holders[-1]
-    
+
     with patch.object(holder, 'set_interrupt') as interrupt_mock, \
          patch.object(holder, 'clear_interrupt') as clear_interrupt_mock:
-        
+
         def interrupt():
             assert trainer.get_progress_text() == 'Interrupting'
         interrupt_mock.side_effect = interrupt
@@ -58,7 +58,7 @@ def test_trainer_custom_progress_text(training_plan_holders):
 def test_trainer_run(training_plan_holders, interact):
     from unittest.mock import patch
     trainer = Trainer(training_plan_holders)
-    
+
     with patch.object(trainer, 'job') as job_mock:
         def job():
             import threading
@@ -87,16 +87,16 @@ def test_trainer_job(training_plan_holders):
         nonlocal counter
         assert trainer.get_progress_text() == 'Now training: Fake' + str(counter)
         counter += 1
-    
+
     # We need to patch 'train' on EACH holder instance.
     # Since training_plan_holders is a list of instances, we can patch them individually.
     # But patch.object works on the object.
-    
+
     patches = [patch.object(holder, 'train', side_effect=train) for holder in training_plan_holders]
-    
+
     # Start all patches
     mocks = [p.start() for p in patches]
-    
+
     try:
         trainer.job()
         for m in mocks:
@@ -111,7 +111,7 @@ def test_trainer_interrupt(training_plan_holders):
     from unittest.mock import patch
     trainer = Trainer(training_plan_holders)
     holder = training_plan_holders[0]
-    
+
     with patch.object(holder, 'train') as train_mock:
         trainer.set_interrupt()
         trainer.job()

@@ -2,8 +2,8 @@ import mne
 import numpy as np
 import pytest
 
-from XBrainLab.backend.study import Study
 from XBrainLab.backend.load_data import Raw, RawDataLoader
+from XBrainLab.backend.study import Study
 
 from .test_raw import _generate_mne, _set_event
 
@@ -80,7 +80,7 @@ def test_raw_data_loader_append_error():
     assert len(raw_data_loader) == 1
 
     from XBrainLab.backend.exceptions import DataMismatchError
-    
+
     with pytest.raises(DataMismatchError, match=r".*channel numbers inconsistent.*"):
         raw_data_loader.append(raw_miss_channel)
 

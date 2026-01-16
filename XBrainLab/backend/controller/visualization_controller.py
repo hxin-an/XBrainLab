@@ -1,8 +1,11 @@
-from typing import List, Optional, Tuple, Dict
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import Trainer, TrainingPlanHolder
+from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record.eval import EvalRecord
+
 
 class VisualizationController:
     """
@@ -47,19 +50,19 @@ class VisualizationController:
         plans = trainer_holder.get_plans()
         # Filter for plans with valid eval records
         records = [p.get_eval_record() for p in plans if p.get_eval_record() is not None]
-        
+
         if not records:
             return None
-            
+
         base = records[0]
-        
+
         def avg_dict(attr_name):
             result = {}
             # attributes like 'gradient', 'smoothgrad' are dictionaries
             base_attr = getattr(base, attr_name)
             if not base_attr:
                 return {}
-                
+
             keys = base_attr.keys()
             for k in keys:
                 # Stack arrays from all records and compute mean
@@ -72,7 +75,7 @@ class VisualizationController:
         avg_smoothgrad = avg_dict('smoothgrad')
         avg_smoothgrad_sq = avg_dict('smoothgrad_sq')
         avg_vargrad = avg_dict('vargrad')
-        
+
         return EvalRecord(
             label=base.label,
             output=base.output, # Output might differ per run, but here we assume consistent shape/classes

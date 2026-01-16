@@ -1,13 +1,19 @@
 
 import unittest
-from unittest.mock import patch, MagicMock
-from XBrainLab.backend.load_data.raw_data_loader import (
-    load_fif_file, load_edf_file, load_bdf_file, load_cnt_file, load_brainvision_file
-)
+from unittest.mock import MagicMock, patch
+
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.load_data.raw_data_loader import (
+    load_bdf_file,
+    load_brainvision_file,
+    load_cnt_file,
+    load_edf_file,
+    load_fif_file,
+)
+
 
 class TestLoaders(unittest.TestCase):
-    
+
     def setUp(self):
         # Patch validate_type to bypass strict type checking for mocks
         self.patcher = patch('XBrainLab.backend.load_data.raw.validate_type')

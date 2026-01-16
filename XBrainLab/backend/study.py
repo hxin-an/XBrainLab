@@ -123,7 +123,7 @@ class Study:
             logger.info("Restoring loaded data from backup (Undoing Channel Selection)")
             self.loaded_data_list = self.backup_loaded_data_list
             self.backup_loaded_data_list = None
-            # Unlock if it was locked by channel selection? 
+            # Unlock if it was locked by channel selection?
             # Usually reset_preprocess implies we want to start over preprocessing.
             # Channel selection locks it. If we undo it, we might want to unlock?
             # But clean_raw_data unlocks. Here we are not calling clean_raw_data.
@@ -249,7 +249,7 @@ class Study:
             TrainingPlanHolder(model_holder, dataset, option, self.saliency_params)
             for dataset in datasets
         ]
-        
+
         if append and self.trainer:
             self.trainer.add_training_plan_holders(training_plan_holders)
             logger.info(f"Appended {len(training_plan_holders)} training plans")
@@ -338,7 +338,7 @@ class Study:
             ValueError: If no valid trainer has been generated.
         """
         return self.saliency_params
-    
+
     def set_saliency_params(self, saliency_params) -> None:
         """Set saliency parameters for saliency computation.
 

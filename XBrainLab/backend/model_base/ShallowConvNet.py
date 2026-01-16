@@ -27,7 +27,7 @@ class ShallowConvNet(nn.Module):
         self.temporal_filter = 40
         self.spatial_filter = 40
         self.kernel = math.ceil(sfreq * 0.1)
-        
+
         # Validate minimum samples requirement
         # ShallowConvNet requires: Conv1(kernel=0.1*sf) + AvgPool(pool_len)
         min_samples = self.kernel + pool_len

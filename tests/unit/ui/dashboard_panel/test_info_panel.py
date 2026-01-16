@@ -1,9 +1,10 @@
 
+from unittest.mock import MagicMock
+
 import pytest
-from PyQt6.QtWidgets import QTableWidget
-from unittest.mock import MagicMock, patch
+
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
-from XBrainLab.backend.load_data import DataType
+
 
 @pytest.fixture
 def mock_main_window():
@@ -25,7 +26,7 @@ def panel(qtbot, mock_main_window):
 def test_init(panel):
     assert panel.title() == "Aggregate Information"
     assert panel.table.rowCount() == 13 # 13 keys
-    
+
 def test_update_info_no_data(panel, mock_main_window):
     panel.update_info()
     # Check "Total Files" is "-"
@@ -43,11 +44,11 @@ def test_update_info_loaded_data(panel, mock_main_window):
     d1.get_sfreq.return_value = 250.0
     d1.get_filter_range.return_value = (0.5, 40.0)
     d1.get_event_list.return_value = (None, {'EventA': 1})
-    
+
     mock_main_window.study.loaded_data_list = [d1]
-    
+
     panel.update_info()
-    
+
     # Checks
     assert panel.table.item(panel.row_map["Type"], 1).text() == "raw"
     assert panel.table.item(panel.row_map["Total Files"], 1).text() == "1"
@@ -58,7 +59,7 @@ def test_update_info_preprocessed_priority(panel, mock_main_window):
     # Loaded data exists but we should use preprocessed
     d_load = MagicMock()
     mock_main_window.study.loaded_data_list = [d_load]
-    
+
     d_pre = MagicMock()
     d_pre.get_subject_name.return_value = "Sub1"
     d_pre.get_session_name.return_value = "Ses1"
@@ -70,11 +71,11 @@ def test_update_info_preprocessed_priority(panel, mock_main_window):
     d_pre.get_filter_range.return_value = (1.0, 50.0)
     d_pre.get_event_list.return_value = (None, {'EventB': 2})
     d_pre.get_epochs_length.return_value = 100
-    
+
     mock_main_window.study.preprocessed_data_list = [d_pre]
-    
+
     panel.update_info()
-    
+
     assert panel.table.item(panel.row_map["Type"], 1).text() == "epochs"
     assert panel.table.item(panel.row_map["Channel"], 1).text() == "16"
     assert panel.table.item(panel.row_map["Total Epochs"], 1).text() == "100"
@@ -83,11 +84,11 @@ def test_update_info_fallback(panel, mock_main_window):
     # Preprocessed empty, Epoch data exists, fallback to loaded
     mock_main_window.study.preprocessed_data_list = []
     mock_main_window.study.epoch_data = MagicMock() # Exists
-    
+
     d_load = MagicMock()
     d_load.is_raw.return_value = True
     d_load.get_subject_name.return_value = "SubFallback"
-    
+
     # Configure so checks don't crash
     d_load.get_session_name.return_value = ""
     d_load.get_epochs_length.return_value = 0
@@ -95,11 +96,11 @@ def test_update_info_fallback(panel, mock_main_window):
     d_load.get_sfreq.return_value = 1
     d_load.get_filter_range.return_value = (0,0)
     d_load.get_event_list.return_value = (None, {})
-    
+
     mock_main_window.study.loaded_data_list = [d_load]
-    
+
     panel.update_info()
-    
+
     # Should show loaded data info
     assert panel.table.item(panel.row_map["Subjects"], 1).text() == "1"
 
@@ -115,8 +116,8 @@ def test_update_info_duration_calc_error(panel, mock_main_window):
     d1.get_sfreq.return_value = 1
     d1.get_filter_range.return_value = (0,0)
     d1.get_event_list.return_value = (None, {})
-    
+
     mock_main_window.study.preprocessed_data_list = [d1]
-    
+
     panel.update_info()
     assert panel.table.item(panel.row_map["duration (sec)"], 1).text() == "?"

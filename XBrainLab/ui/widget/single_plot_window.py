@@ -1,36 +1,37 @@
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QWidget, QSizePolicy
-from PyQt6.QtCore import Qt
 import matplotlib
+from PyQt6.QtWidgets import QDialog, QSizePolicy, QVBoxLayout
+
 # Only force QtAgg if we are not in a headless testing environment (Agg)
 if matplotlib.get_backend().lower() != 'agg':
     try:
         matplotlib.use('QtAgg')
     except ImportError:
         pass
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+
 
 class SinglePlotWindow(QDialog):
     PLOT_COUNTER = 0
     def __init__(self, parent, figsize=None, dpi=None, title='Plot'):
         super().__init__(parent)
         self.setWindowTitle(title)
-        
+
         if figsize is None:
             figsize = (6.4, 4.8)
         if dpi is None:
             dpi = 100
-            
+
         self.figsize = figsize
         self.dpi = dpi
-        
+
         self.layout = QVBoxLayout(self)
         self.figure_canvas = None
         self.plot_number = None
-        
+
         self.init_figure()
-        
+
         # Resize logic (approximate)
         width = int(figsize[0] * dpi)
         height = int(figsize[1] * dpi)
@@ -42,7 +43,7 @@ class SinglePlotWindow(QDialog):
     def init_figure(self):
         self.plot_number = f'SinglePlotWindow-{SinglePlotWindow.PLOT_COUNTER}'
         SinglePlotWindow.PLOT_COUNTER += 1
-        
+
         figure = plt.figure(num=self.plot_number, figsize=self.figsize, dpi=self.dpi)
         self.set_figure(figure, self.figsize, self.dpi)
         self.active_figure()
@@ -81,12 +82,12 @@ class SinglePlotWindow(QDialog):
         self.figure_canvas = FigureCanvasQTAgg(figure)
         self.figure_canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.figure_canvas.updateGeometry()
-        
+
         self.toolbar = NavigationToolbar(self.figure_canvas, self)
-        
+
         self.layout.addWidget(self.toolbar)
         self.layout.addWidget(self.figure_canvas)
-        
+
         self.fig_param = {'fig': figure, 'figsize': figsize, 'dpi': dpi}
 
     def redraw(self):

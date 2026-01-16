@@ -5,9 +5,6 @@ import pytest
 import torch
 from matplotlib import pyplot as plt
 
-from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
-from XBrainLab.backend.utils import set_seed
-
 from tests.unit.backend.training.test_training_plan import (
     CLASS_NUM,
     FakeModel,
@@ -19,6 +16,13 @@ from tests.unit.backend.training.test_training_plan import (
     training_option,  # noqa: F401
     y,  # noqa: F401
 )
+from XBrainLab.backend.training.record import (
+    EvalRecord,
+    RecordKey,
+    TrainRecord,
+    TrainRecordKey,
+)
+from XBrainLab.backend.utils import set_seed
 
 
 def test_train_record(
@@ -76,8 +80,8 @@ def test_train_record_init_dir(
     # The unique_id logic in TrainRecord uses model.__class__.__name__
     # FakeModel name is FakeModel
     # plan_id is None by default
-    
-    # Let's verify target_path attribute instead of reconstructing the path logic here, 
+
+    # Let's verify target_path attribute instead of reconstructing the path logic here,
     # or ensure we match the logic exactly.
     assert os.path.exists(record.target_path)
     assert os.path.isdir(record.target_path)

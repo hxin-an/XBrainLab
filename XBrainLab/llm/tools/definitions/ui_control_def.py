@@ -1,6 +1,8 @@
 
 from typing import Any, Dict
+
 from ..base import BaseTool
+
 
 class BaseSwitchPanelTool(BaseTool):
     @property
@@ -13,7 +15,7 @@ class BaseSwitchPanelTool(BaseTool):
             "type": "object",
             "properties": {
                 "panel_name": {
-                    "type": "string", 
+                    "type": "string",
                     "enum": ["dashboard", "dataset", "preprocess", "training", "visualization"],
                     "description": "The name of the panel to switch to."
                 },

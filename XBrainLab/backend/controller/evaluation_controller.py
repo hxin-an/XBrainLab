@@ -1,11 +1,12 @@
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
-import torch
 from torchinfo import summary
 
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import Trainer, TrainingPlanHolder
+from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record import EvalRecord, TrainRecord
+
 
 class EvaluationController:
     """
@@ -32,25 +33,25 @@ class EvaluationController:
 
         all_labels = []
         all_outputs = []
-        
+
         for r in records:
             if r.eval_record:
                 all_labels.append(r.eval_record.label)
                 all_outputs.append(r.eval_record.output)
-        
+
         if not all_labels:
             return None, None, {}
 
         # Concatenate for pooling
         pooled_labels = np.concatenate(all_labels)
         pooled_outputs = np.concatenate(all_outputs)
-        
+
         # Calculate metrics on pooled data
         # We create a temporary EvalRecord to calculate metrics
         # Note: Gradients are passed as empty dicts as we don't need them for metrics here
         temp_record = EvalRecord(pooled_labels, pooled_outputs, {}, {}, {}, {}, {})
         metrics = temp_record.get_per_class_metrics()
-        
+
         return pooled_labels, pooled_outputs, metrics
 
     def get_model_summary_str(self, plan: TrainingPlanHolder, record: Optional[TrainRecord] = None) -> str:
@@ -65,22 +66,22 @@ class EvaluationController:
                 # We need input shape to initialize some models or just for summary
                 args = plan.dataset.get_epoch_data().get_model_args()
                 model_instance = plan.model_holder.get_model(args).to(plan.option.get_device())
-            
+
             # Get input shape
-            # We need to access dataset to get shape. 
+            # We need to access dataset to get shape.
             # Controller assumes backend objects are accessible via plan.
             X, _ = plan.dataset.get_training_data()
             # Assuming X is [N, C, T]
             train_shape = (plan.option.bs, 1, *X.shape[-2:])
-            
+
             summary_str = str(summary(
                 model_instance, input_size=train_shape, verbose=0
             ))
-            
+
             if record:
                 summary_str = f"=== Run: {record.get_name()} ===\n" + summary_str
-                
+
             return summary_str
-            
+
         except Exception as e:
             return f"Error generating summary: {e}"

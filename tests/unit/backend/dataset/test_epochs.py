@@ -149,7 +149,7 @@ def test_epochs_info(epochs):
     # The data was initialized with base + events[i, 0]
     # We can check if the first epoch's data is consistent
     assert epochs.get_data()[0, 0, 0] == 101000 + 0 # subject 1 (idx 0) * 100000 + session 1 (idx 0) * 1000 + event 0
-    
+
     assert epochs.get_label_number() == len(event_id)
     assert epochs.get_channel_names() == ch_names
     assert np.isclose(epochs.get_epoch_duration(), epoch_duration)
@@ -318,6 +318,7 @@ def test_epochs_get_real_num_not_implemented(epochs):
 
 from unittest.mock import patch
 
+
 @pytest.mark.parametrize('selected_num', np.arange(block_size + 2))
 @pytest.mark.parametrize('is_partial', [False, True])
 def test_epochs_pick(epochs, selected_num, is_partial):
@@ -332,7 +333,7 @@ def test_epochs_pick(epochs, selected_num, is_partial):
     value = 0
     split_unit = 0
     group_idx = 0
-    
+
     with patch.object(epochs, '_get_real_num', return_value=selected_num):
         ret, new_mask = epochs._pick(
             target_type, mask, clean_mask, value, split_unit, group_idx
@@ -557,24 +558,24 @@ def test_epochs_pick_subject(epochs):
     # Test picking subjects without mocks
     mask = np.ones(epochs.get_data_length(), dtype=bool)
     clean_mask = None
-    
+
     # Pick 1 subject
     selected_mask, remaining_mask = epochs.pick_subject(
         mask, clean_mask, 1, SplitUnit.NUMBER, 0
     )
-    
+
     # Verify selection
     selected_subjects = epochs.get_subject_list()[selected_mask]
     unique_selected = np.unique(selected_subjects)
     assert len(unique_selected) == 1
     assert sum(selected_mask) == block_size * len(session_list) # 1 subject * sessions * trials
-    
+
     # Check that selected and remaining cover the original mask (which was all True)
     # Note: mask might be modified in-place inside pick_subject depending on implementation,
     # so we check if their union is all True.
     assert (selected_mask | remaining_mask).all()
     assert not (selected_mask & remaining_mask).any()
-    
+
     # Pick 50% subjects (Ratio 0.5) -> Should pick 1 out of 3 (int(3*0.5)=1)
     mask = np.ones(epochs.get_data_length(), dtype=bool)
     selected_mask, remaining_mask = epochs.pick_subject(
@@ -588,18 +589,18 @@ def test_epochs_pick_session(epochs):
     # Test picking sessions without mocks
     mask = np.ones(epochs.get_data_length(), dtype=bool)
     clean_mask = None
-    
+
     # Pick 1 session
     selected_mask, remaining_mask = epochs.pick_session(
         mask, clean_mask, 1, SplitUnit.NUMBER, 0
     )
-    
+
     # Verify selection
     selected_sessions = epochs.get_session_list()[selected_mask]
     unique_selected = np.unique(selected_sessions)
     assert len(unique_selected) == 1
     assert sum(selected_mask) == block_size * len(subject_list) # 1 session * subjects * trials
-    
+
     # Pick specific session manually
     mask = np.ones(epochs.get_data_length(), dtype=bool)
     # Session list is [0, 1] mapped from ['1', '2']

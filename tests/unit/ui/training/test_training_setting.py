@@ -1,11 +1,17 @@
-import pytest
-from PyQt6.QtWidgets import QDialog, QLineEdit, QPushButton, QComboBox, QTableWidget, QTableWidgetItem, QWidget
 from unittest.mock import MagicMock, patch
+
+import pytest
 import torch
-from XBrainLab.ui.training.training_setting import (
-    TrainingSettingWindow, SetOptimizerWindow, SetDeviceWindow
+from PyQt6.QtWidgets import (
+    QWidget,
 )
-from XBrainLab.backend.training import TRAINING_EVALUATION
+
+from XBrainLab.ui.training.training_setting import (
+    SetDeviceWindow,
+    SetOptimizerWindow,
+    TrainingSettingWindow,
+)
+
 
 class TestTrainingSetting:
     @pytest.fixture
@@ -25,7 +31,7 @@ class TestTrainingSetting:
         assert window.output_dir == "./output"
         assert window.optim == torch.optim.Adam
         assert window.use_cpu == True
-        
+
     def test_set_values_and_confirm(self, window):
         # Set simple values
         window.epoch_entry.setText("10")
@@ -33,22 +39,22 @@ class TestTrainingSetting:
         window.lr_entry.setText("0.001")
         window.checkpoint_entry.setText("5")
         window.repeat_entry.setText("1")
-        
+
         # Mock Optimizer and Device setting (since they open dialogs)
         window.optim = MagicMock()
         window.optim_params = {}  # lr is separate parameter
         window.use_cpu = True
         window.gpu_idx = None
         window.output_dir = "/tmp/output"
-        
+
         # Select Evaluation
         window.evaluation_combo.setCurrentIndex(0)
-        
+
         # Confirm
         with patch.object(window, 'accept') as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
-            
+
         # Verify result
         option = window.get_result()
         assert option.epoch == 10
@@ -69,7 +75,7 @@ class TestTrainingSetting:
         parent = QWidget()
         mock_study = MagicMock()
         mock_option = MagicMock()
-        
+
         # Configure option
         mock_option.epoch = 50
         mock_option.bs = 64
@@ -83,15 +89,15 @@ class TestTrainingSetting:
         mock_option.optim.__name__ = "Adam"
         mock_option.optim_params = {}  # lr is separate parameter
         mock_option.evaluation_option.value = "Last Epoch"
-        
+
         mock_study.training_option = mock_option
         parent.study = mock_study
-        
+
         # Initialize window with real parent, mocking get_device_name during init/load_settings
         with patch('torch.cuda.get_device_name', return_value="Test GPU"):
              window = TrainingSettingWindow(parent)
              qtbot.addWidget(window)
-        
+
              # Verify fields are populated
              assert window.epoch_entry.text() == "50"
              assert window.bs_entry.text() == "64"
@@ -105,7 +111,7 @@ class TestTrainingSetting:
              assert "Adam" in window.opt_label.text()
              # GPU check depends on parse_device_name logic
              assert "0 - Test GPU" in window.dev_label.text()
-             
+
         assert window.evaluation_combo.currentText() == "Last Epoch"
 class TestSetOptimizer:
     @pytest.fixture
@@ -131,13 +137,13 @@ class TestSetOptimizer:
         # Inject mock target
         mock_target = MagicMock()
         window.algo_map['Adam'] = mock_target
-        
+
         with patch.object(window, 'accept') as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
-            
+
         mock_target.assert_called()
-                
+
         optim, params = window.get_result()
         assert optim == mock_target
         assert isinstance(params, dict)
@@ -161,7 +167,7 @@ class TestSetDevice:
         with patch.object(window, 'accept') as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
-            
+
         use_cpu, gpu_idx = window.get_result()
         assert use_cpu is True
         assert gpu_idx is None
@@ -171,7 +177,7 @@ class TestSetDevice:
         with patch.object(window, 'accept') as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
-            
+
         use_cpu, gpu_idx = window.get_result()
         assert use_cpu is False
         assert gpu_idx == 0

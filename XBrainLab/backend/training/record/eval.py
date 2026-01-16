@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import torch
-from sklearn.metrics import roc_auc_score, precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
 
 def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
@@ -71,7 +71,7 @@ class EvalRecord:
         path = os.path.join(target_path, 'eval')
         if not os.path.exists(path):
             return None
-            
+
         try:
             data = torch.load(path, weights_only=False)
             return cls(
@@ -99,7 +99,7 @@ class EvalRecord:
         np.savetxt(
             target_path, data, delimiter=',', newline='\n',
             header=header, comments='')
-        
+
 
     def export_saliency(self, method:str, target_path: str) -> None:
         """ Export saliency map as torch file.
@@ -153,7 +153,7 @@ class EvalRecord:
             (confusion.sum() * confusion.sum())
         )
         return (P0 - Pe) / (1 - Pe)
-    
+
     def get_per_class_metrics(self) -> dict:
         """Get per-class precision, recall, f1-score, and support.
 
@@ -165,11 +165,11 @@ class EvalRecord:
         y_pred = self.output.argmax(axis=1)
         class_num = self.output.shape[1]
         labels = np.arange(class_num)
-        
+
         precision, recall, f1, support = precision_recall_fscore_support(
             y_true, y_pred, labels=labels, zero_division=0
         )
-        
+
         metrics = {}
         for i in labels:
             metrics[int(i)] = {
@@ -178,7 +178,7 @@ class EvalRecord:
                 'f1-score': f1[i],
                 'support': int(support[i])
             }
-            
+
         # Calculate macro average
         metrics['macro_avg'] = {
             'precision': np.mean(precision),
@@ -186,13 +186,13 @@ class EvalRecord:
             'f1-score': np.mean(f1),
             'support': int(np.sum(support))
         }
-        
+
         return metrics
-    
+
     def get_gradient(self, labelIndex: int) -> np.ndarray:
         """Return gradient of model by class index."""
         return self.gradient[labelIndex]
-    
+
     def get_gradient_input(self, labelIndex: int) -> np.ndarray:
         """Return gradient times input of model by class index."""
         return self.gradient_input[labelIndex]
@@ -200,11 +200,11 @@ class EvalRecord:
     def get_smoothgrad(self, labelIndex: int) -> np.ndarray:
         """Return smoothgrad of model by class index."""
         return self.smoothgrad[labelIndex]
-    
-    def get_smoothgrad_sq(self, labelIndex: int) -> np.ndarray: 
+
+    def get_smoothgrad_sq(self, labelIndex: int) -> np.ndarray:
         """Return smoothgrad squared of model by class index."""
         return self.smoothgrad_sq[labelIndex]
-    
+
     def get_vargrad(self, labelIndex: int) -> np.ndarray:
         """Return vargrad of model by class index."""
         return self.vargrad[labelIndex]

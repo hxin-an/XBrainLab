@@ -1,9 +1,11 @@
+
 import mne
-import os
-from XBrainLab.backend.load_data import Raw, DataType
-from XBrainLab.backend.utils.logger import logger
+
+from XBrainLab.backend.exceptions import FileCorruptedError
+from XBrainLab.backend.load_data import DataType, Raw
 from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
-from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
+from XBrainLab.backend.utils.logger import logger
+
 
 def load_set_file(filepath):
     """
@@ -12,7 +14,7 @@ def load_set_file(filepath):
     """
     data_type = None
     selected_data = None
-    
+
     # Try loading as Raw first (default assumption for now)
     try:
         selected_data = mne.io.read_raw_eeglab(
@@ -44,7 +46,7 @@ def load_set_file(filepath):
         # Wrap in XBrainLab Raw object
         raw_wrapper = Raw(filepath, selected_data)
         return raw_wrapper
-    
+
     return None
 
 def load_gdf_file(filepath):
@@ -54,16 +56,16 @@ def load_gdf_file(filepath):
     try:
         # GDF is typically loaded as Raw
         selected_data = mne.io.read_raw_gdf(filepath, preload=False)
-        
+
         if selected_data:
             # Wrap in XBrainLab Raw object
             raw_wrapper = Raw(filepath, selected_data)
             return raw_wrapper
-            
+
     except Exception as e:
         logger.error(f"Failed to load GDF file {filepath}: {e}", exc_info=True)
         raise FileCorruptedError(filepath, str(e))
-    
+
     return None
 
 def load_fif_file(filepath):

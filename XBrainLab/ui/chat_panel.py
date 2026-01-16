@@ -1,7 +1,14 @@
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QTextEdit, QLineEdit, QPushButton, QHBoxLayout, QLabel
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+
 
 class ChatPanel(QWidget):
     """
@@ -30,7 +37,7 @@ class ChatPanel(QWidget):
         self.input_field = QLineEdit()
         self.input_field.setPlaceholderText("Type your instruction here...")
         self.input_field.returnPressed.connect(self.on_send)
-        
+
         self.send_btn = QPushButton("Send")
         self.send_btn.clicked.connect(self.on_send)
 
@@ -42,11 +49,11 @@ class ChatPanel(QWidget):
         text = self.input_field.text().strip()
         if not text:
             return
-        
+
         # Display user message
         self.append_message("User", text)
         self.input_field.clear()
-        
+
         # Emit signal
         self.send_message.emit(text)
         self.set_status("Thinking...")
@@ -57,19 +64,19 @@ class ChatPanel(QWidget):
 
     def start_agent_message(self):
         """Prepares the chat display for a new agent message."""
-        self.chat_display.append(f"<b style='color:green'>Agent:</b> ")
+        self.chat_display.append("<b style='color:green'>Agent:</b> ")
         # We don't add a newline yet so chunks can be appended directly
-    
+
     def on_chunk_received(self, text):
         """Appends a chunk of text to the chat display."""
         # Move cursor to end
         cursor = self.chat_display.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         self.chat_display.setTextCursor(cursor)
-        
+
         # Insert text
         self.chat_display.insertPlainText(text)
-        
+
         # Ensure scroll to bottom
         scrollbar = self.chat_display.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())

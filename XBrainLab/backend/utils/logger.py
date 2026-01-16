@@ -1,17 +1,18 @@
 import logging
 import os
-from logging.handlers import RotatingFileHandler
 import sys
+from logging.handlers import RotatingFileHandler
+
 
 def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
     """
     Sets up a logger with both console and file handlers.
-    
+
     Args:
         name (str): Name of the logger.
         log_file (str): Path to the log file.
         level (int): Logging level (default: logging.INFO).
-        
+
     Returns:
         logging.Logger: Configured logger instance.
     """

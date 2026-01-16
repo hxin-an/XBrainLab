@@ -1,6 +1,6 @@
 
-import pytest
 from XBrainLab.llm.agent.parser import CommandParser
+
 
 def test_valid_json_command():
     text = """
@@ -33,7 +33,7 @@ def test_malformed_json():
 def test_json_without_markdown():
     # Some models might output raw JSON without markdown code blocks
     # The current parser expects markdown, so this might fail or return None depending on implementation.
-    # If we want to support raw JSON, we'd need to update the parser. 
+    # If we want to support raw JSON, we'd need to update the parser.
     # For now, let's assume strict markdown requirement.
     text = '{"command": "test"}'
     result = CommandParser.parse(text)

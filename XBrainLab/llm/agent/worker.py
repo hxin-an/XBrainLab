@@ -1,7 +1,9 @@
-from PyQt6.QtCore import QThread, pyqtSignal, QObject
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
+
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.engine import LLMEngine
+
 
 class GenerationThread(QThread):
     """Thread for running LLM generation without blocking UI."""
@@ -45,23 +47,23 @@ class AgentWorker(QObject):
         try:
             logger.info("Initializing Local LLM Engine...")
             self.log.emit("Loading AI Model (this may take a while)...")
-            
+
             # Initialize Engine
             # TODO: Allow user to configure model path via UI settings
-            config = LLMConfig() 
+            config = LLMConfig()
             self.engine = LLMEngine(config)
-            
+
             # Load model in a separate thread to not freeze UI completely
             # For simplicity in this step, we might block briefly or need another thread
-            # But LLMEngine.load_model is called lazily in generate_stream usually, 
+            # But LLMEngine.load_model is called lazily in generate_stream usually,
             # or we can force it here. Let's force it but warn user.
             self.engine.load_model()
-            
+
             self.log.emit("AI Model Loaded.")
             logger.info("Local Agent initialized successfully")
         except Exception as e:
             logger.error("Failed to initialize Agent", exc_info=True)
-            self.error.emit(f"Model Load Error: {str(e)}")
+            self.error.emit(f"Model Load Error: {e!s}")
 
     def generate_from_messages(self, messages):
         """Run generation with full message history."""

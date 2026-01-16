@@ -1,4 +1,10 @@
-from XBrainLab.backend.dataset.option import SplitUnit, TrainingType, SplitByType, ValSplitByType
+from XBrainLab.backend.dataset.option import (
+    SplitByType,
+    SplitUnit,
+    TrainingType,
+    ValSplitByType,
+)
+
 
 def test_split_unit():
     assert SplitUnit.RATIO.value == 'Ratio'

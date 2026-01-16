@@ -1,30 +1,40 @@
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    QTableWidget, QTableWidgetItem, QHeaderView, QMenu, QMenuBar,
-    QMessageBox
+    QDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMenuBar,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
 )
-from PyQt6.QtCore import QTimer, Qt
+
 from XBrainLab.backend.training import Trainer
 from XBrainLab.backend.visualization import PlotType
+
 from ..widget import PlotFigureWindow
+
 
 class TrainingManagerWindow(QDialog):
     def __init__(self, parent, trainer):
         super().__init__(parent)
         self.setWindowTitle("Training Manager")
         self.resize(800, 400)
-        
+
         self.trainer = trainer
         self.training_plan_holders = trainer.get_training_plan_holders()
-        
+
         self.check_data()
         self.init_ui()
-        
+
         # Start update loop
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_loop)
         self.timer.start(100)
-        
+
         if trainer.is_running():
             self.start_training()
 
@@ -36,7 +46,7 @@ class TrainingManagerWindow(QDialog):
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        
+
         # Menu Bar (Simulated or real QMenuBar)
         # QDialog doesn't have menuBar() by default, but we can add one
         menubar = QMenuBar()
@@ -46,7 +56,7 @@ class TrainingManagerWindow(QDialog):
         plot_menu.addAction("AUC", self.plot_auc)
         plot_menu.addAction("Learning Rate", self.plot_lr)
         layout.setMenuBar(menubar)
-        
+
         # Table
         self.plan_table = QTableWidget()
         columns = ['Plan name', 'Status', 'Epoch', 'lr', 'loss', 'acc (%)',
@@ -55,29 +65,29 @@ class TrainingManagerWindow(QDialog):
         self.plan_table.setHorizontalHeaderLabels(columns)
         self.plan_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.plan_table)
-        
+
         # Status Bar
         self.status_bar = QLabel("IDLE")
         layout.addWidget(self.status_bar)
-        
+
         # Buttons
         btn_layout = QHBoxLayout()
         self.start_btn = QPushButton("start")
         self.start_btn.clicked.connect(self.start_training)
         btn_layout.addWidget(self.start_btn)
-        
+
         self.stop_btn = QPushButton("stop")
         self.stop_btn.clicked.connect(self.stop_training)
         btn_layout.addWidget(self.stop_btn)
-        
+
         layout.addLayout(btn_layout)
-        
+
         self.update_table()
 
     def plot_loss(self):
         win = PlotFigureWindow(self, self.training_plan_holders, PlotType.LOSS, title="Loss Plot")
         win.show()
-        # We need to keep a reference or exec? 
+        # We need to keep a reference or exec?
         # PlotFigureWindow is a QDialog (SinglePlotWindow is QDialog).
         # If we want non-modal, use show(). But we need to keep reference if it's local var.
         # But here win is local. It might be garbage collected.
@@ -121,7 +131,7 @@ class TrainingManagerWindow(QDialog):
     def update_loop(self):
         if not self.isVisible():
             return
-            
+
         self.update_table()
         if not self.trainer.is_running() and not self.start_btn.isEnabled():
             self.finish_training()
@@ -132,7 +142,7 @@ class TrainingManagerWindow(QDialog):
                 plan.get_name(), plan.get_training_status(),
                 str(plan.get_training_epoch()), *[str(x) for x in plan.get_training_evaluation()]
             )
-            
+
         if self.plan_table.rowCount() == 0:
             self.plan_table.setRowCount(len(self.training_plan_holders))
             for i, plan in enumerate(self.training_plan_holders):
@@ -144,5 +154,5 @@ class TrainingManagerWindow(QDialog):
                 values = get_table_values(plan)
                 for j, val in enumerate(values):
                     self.plan_table.setItem(i, j, QTableWidgetItem(str(val)))
-        
+
         self.status_bar.setText(self.trainer.get_progress_text())

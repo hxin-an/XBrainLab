@@ -1,6 +1,8 @@
 
-from typing import Any, Dict, List
+from typing import Any, Dict
+
 from ..base import BaseTool
+
 
 class BaseListFilesTool(BaseTool):
     @property
@@ -30,8 +32,8 @@ class BaseLoadDataTool(BaseTool):
             "type": "object",
             "properties": {
                 "paths": {
-                    "type": "array", 
-                    "items": {"type": "string"}, 
+                    "type": "array",
+                    "items": {"type": "string"},
                     "description": "List of absolute file paths or directory paths to load."
                 }
             },

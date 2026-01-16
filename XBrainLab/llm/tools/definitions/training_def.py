@@ -1,6 +1,8 @@
 
 from typing import Any, Dict
+
 from ..base import BaseTool
+
 
 class BaseSetModelTool(BaseTool):
     @property

@@ -1,14 +1,22 @@
 
 from typing import Any, Dict, List
+
 from ..definitions.preprocess_def import (
-    BaseStandardPreprocessTool, BaseBandPassFilterTool, BaseNotchFilterTool,
-    BaseResampleTool, BaseNormalizeTool, BaseRereferenceTool, 
-    BaseChannelSelectionTool, BaseSetMontageTool, BaseEpochDataTool
+    BaseBandPassFilterTool,
+    BaseChannelSelectionTool,
+    BaseEpochDataTool,
+    BaseNormalizeTool,
+    BaseNotchFilterTool,
+    BaseRereferenceTool,
+    BaseResampleTool,
+    BaseSetMontageTool,
+    BaseStandardPreprocessTool,
 )
 
+
 class MockStandardPreprocessTool(BaseStandardPreprocessTool):
-    def execute(self, study: Any, l_freq: float = 4.0, h_freq: float = 40.0, 
-                notch_freq: float = 50.0, rereference: str = None, 
+    def execute(self, study: Any, l_freq: float = 4.0, h_freq: float = 40.0,
+                notch_freq: float = 50.0, rereference: str = None,
                 resample_rate: int = None, normalize_method: str = None) -> str:
         return f"Applied standard preprocessing pipeline (BP: {l_freq}-{h_freq}Hz, Notch: {notch_freq}Hz)."
 

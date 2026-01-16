@@ -1,6 +1,8 @@
-from PyQt6.QtWidgets import QGroupBox, QGridLayout, QLabel, QWidget, QVBoxLayout, QSizePolicy, QHBoxLayout, QFrame
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QGroupBox, QSizePolicy, QVBoxLayout
+
 from XBrainLab.backend.load_data import DataType
+
 
 class AggregateInfoPanel(QGroupBox):
     def __init__(self, parent=None):
@@ -8,7 +10,7 @@ class AggregateInfoPanel(QGroupBox):
         self.main_window = None
         if parent and hasattr(parent, 'study'):
             self.main_window = parent
-             
+
         self.init_ui()
 
     def init_ui(self):
@@ -16,10 +18,10 @@ class AggregateInfoPanel(QGroupBox):
         main_layout = QVBoxLayout(self)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         main_layout.setContentsMargins(0, 8, 0, 0) # Space for title
-        
+
         # Use QTableWidget to match TrainingPanel's Configuration Summary
-        from PyQt6.QtWidgets import QTableWidget, QHeaderView, QTableWidgetItem
-        
+        from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
+
         self.table = QTableWidget()
         self.table.setColumnCount(2)
         self.table.verticalHeader().setVisible(False)
@@ -36,51 +38,51 @@ class AggregateInfoPanel(QGroupBox):
             }
             QTableWidget::item {
                 padding: 4px;
-                border: none; 
+                border: none;
             }
         """)
-        
+
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        
+
         keys = [
             "Type", "Total Files", "Subjects", "Sessions", "Total Epochs", "Total Events",
-            "Channel", "Sample rate", "tmin (sec)", "duration (sec)", 
+            "Channel", "Sample rate", "tmin (sec)", "duration (sec)",
             "Highpass", "Lowpass", "Classes"
         ]
-        
+
         self.table.setRowCount(len(keys))
         self.row_map = {}
-        
+
         for i, key in enumerate(keys):
             # Key Item
             key_item = QTableWidgetItem(key)
             key_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.table.setItem(i, 0, key_item)
-            
+
             # Value Item
             val_item = QTableWidgetItem("-")
             val_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             val_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.table.setItem(i, 1, val_item)
-            
+
             self.row_map[key] = i
 
         main_layout.addWidget(self.table)
-        
+
         # Set height based on content
         self.table.verticalHeader().setDefaultSectionSize(25)
-        
+
         # Set height based on content
         # 25px per row + 2px for borders/margins (tight fit)
-        total_height = len(keys) * 25 + 2 
+        total_height = len(keys) * 25 + 2
         self.table.setMinimumHeight(150) # Allow shrinking
         self.table.setMaximumHeight(total_height + 5) # Minimal buffer
-        
+
         # Limit the GroupBox height so it doesn't consume extra space when expanded
         # Table height + padding for GroupBox title (approx 20px) + margins (approx 10px)
-        self.setMaximumHeight(total_height + 35) 
-        
+        self.setMaximumHeight(total_height + 35)
+
         self.setMinimumWidth(200)
         # Use Expanding to ensure it takes up available space up to MaximumHeight
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
@@ -95,12 +97,12 @@ class AggregateInfoPanel(QGroupBox):
             return
 
         study = self.main_window.study
-        
+
         # Always use preprocessed data if available, otherwise loaded data.
         # This ensures consistent information across all panels.
         data_list = study.preprocessed_data_list if study.preprocessed_data_list else study.loaded_data_list
         use_loaded = (data_list is study.loaded_data_list)
-        
+
         # Fallback: If preprocessed is empty but we have epoch_data (meaning we did preprocess),
         # or if we just want to show something, try loaded_data_list as fallback.
         # This handles the case where preprocessed_data_list might be cleared or not yet populated
@@ -115,7 +117,7 @@ class AggregateInfoPanel(QGroupBox):
                  # Let's fallback to loaded_data_list if preprocessed is empty but loaded is not.
                  if study.loaded_data_list:
                      data_list = study.loaded_data_list
-        
+
         if not data_list:
             self.reset_labels()
             return
@@ -126,9 +128,9 @@ class AggregateInfoPanel(QGroupBox):
 
         total_epochs = 0
         total_events = 0
-        
+
         first_data = data_list[0]
-        
+
         for data in data_list:
             subject_set.add(data.get_subject_name())
             session_set.add(data.get_session_name())
@@ -141,7 +143,7 @@ class AggregateInfoPanel(QGroupBox):
                 logger.warning(f"Failed to get event list for data: {e}")
 
             total_epochs += data.get_epochs_length()
-            
+
             try:
                 if data.is_raw():
                     events, _ = data.get_event_list()
@@ -152,10 +154,10 @@ class AggregateInfoPanel(QGroupBox):
             except Exception as e:
                 from XBrainLab.backend.utils.logger import logger
                 logger.warning(f"Failed to count events: {e}")
-            
+
         tmin = "None"
         duration = "None"
-        
+
         if not first_data.is_raw():
             tmin = str(first_data.get_tmin())
             try:
@@ -186,7 +188,6 @@ class AggregateInfoPanel(QGroupBox):
     def set_val(self, key, value):
         if key in self.row_map:
             row = self.row_map[key]
-            from PyQt6.QtWidgets import QTableWidgetItem
             item = self.table.item(row, 1)
             if item:
                 item.setText(value)

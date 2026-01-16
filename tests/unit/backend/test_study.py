@@ -2,7 +2,6 @@
 import mne
 import pytest
 
-from XBrainLab.backend.study import Study
 from XBrainLab.backend.dataset import (
     Dataset,
     DatasetGenerator,
@@ -11,6 +10,7 @@ from XBrainLab.backend.dataset import (
 )
 from XBrainLab.backend.load_data import Raw, RawDataLoader
 from XBrainLab.backend.preprocessor import PreprocessBase
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TRAINING_EVALUATION, ModelHolder, TrainingOption
 
 
@@ -202,7 +202,7 @@ def test_study_generate_plan(trainer_study, force_update):
     from unittest.mock import patch
     with patch('XBrainLab.backend.training.TrainingPlanHolder.__init__', return_value=None) as holder_mock, \
          patch('XBrainLab.backend.training.Trainer.__init__', return_value=None) as trainer_mock:
-        
+
         trainer_study.datasets = [1, 2, 3]
         trainer_study.training_option = 2
         trainer_study.model_holder = 3
@@ -267,9 +267,9 @@ def test_study_export_output_csv(trainer_study, has_record, has_eval):
         trainer_study.trainer.record = record
     else:
         trainer_study.trainer.record = None
-    
+
     trainer_study.trainer.return_plan = has_record
-    
+
     if not has_record:
         with pytest.raises(ValueError):
             trainer_study.export_output_csv('test', '1', '2')
@@ -308,12 +308,12 @@ def test_study_saliency_params():
     params = {'method': {'param': 1}}
     study.set_saliency_params(params)
     assert study.get_saliency_params() == params
-    
+
     # Test propagation to trainer
     class FakePlanHolder:
         def set_saliency_params(self, params):
             self.params = params
-            
+
     holder = FakePlanHolder()
     class FakeTrainer:
         def get_training_plan_holders(self):

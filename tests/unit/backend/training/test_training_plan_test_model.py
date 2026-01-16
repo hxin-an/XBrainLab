@@ -129,16 +129,16 @@ def test_eval_model(dataloader, y, full_y):
     from unittest.mock import patch
     model = FakeModel()
     model.eval()
-    
+
     saliency_params = {
         'SmoothGrad': {'nt_samples': 1, 'stdevs': 0.1},
         'SmoothGrad_Squared': {'nt_samples': 1, 'stdevs': 0.1},
         'VarGrad': {'nt_samples': 1, 'stdevs': 0.1}
     }
-    
+
     with patch('XBrainLab.backend.training.record.eval.EvalRecord.__init__', return_value=None) as eval_record_mock, \
          patch.object(model, 'eval') as eval_model_mock:
-        
+
         result = _eval_model(model, dataloader, saliency_params)
         eval_model_mock.assert_called()
 
@@ -148,7 +148,7 @@ def test_eval_model(dataloader, y, full_y):
         called_y = args[0]
         called_output = args[1]
         called_gradient = args[2]
-        
+
         assert np.array_equal(called_y, y)
         assert np.array_equal(called_output.argmax(axis=-1), full_y)
         assert len(called_gradient) == CLASS_NUM

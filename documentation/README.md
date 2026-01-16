@@ -58,8 +58,28 @@ poetry run python run.py
 本專案提供多種 Poetry 指令來執行不同層級的測試。
 
 ### 執行測試
+本專案已整合 **Poe the Poet**，強烈建議使用簡化指令：
+
 ```bash
-# 執行後端單元測試 (推薦優先執行)
+# [驗證] 執行 Real Tools End-to-End 驗證流程 (Load -> Preprocess -> Train)
+poe verify
+
+# [測試] 執行 Real Tools 單元測試
+poe test-real
+
+# [測試] 執行所有單元測試
+poe test-unit
+
+# [測試] 執行完整專案測試 (包含 Backend, UI, LLM)
+poe test-all
+
+# [清理] 清除輸出目錄
+poe clean
+```
+
+或是使用原始 Poetry 指令：
+```bash
+# 執行後端單元測試
 poetry run test-backend
 
 # 執行 UI 單元測試
@@ -68,10 +88,10 @@ poetry run test-ui
 # 執行 LLM Agent 相關測試
 poetry run test-llm
 
-# 執行遠端/Headless 環境安全測試 (跳過需螢幕顯示的 UI 測試)
+# 執行遠端/Headless 環境安全測試
 poetry run test-remote
 
-# 執行 LLM Agent 認知能力基準測試 (Benchmark)
+# 執行 LLM Agent 認知能力基準測試
 poetry run benchmark-llm
 ```
 

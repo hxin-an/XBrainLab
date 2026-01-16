@@ -39,6 +39,7 @@ def test_dataset_generator(
 
 from unittest.mock import patch
 
+
 @pytest.mark.parametrize('split_type, mock_target', [
     (SplitByType.SESSION, 'pick_session'),
     (SplitByType.SESSION_IND, 'pick_session'),
@@ -68,7 +69,7 @@ def test_dataset_generator_split_test(
     test_mask = np.zeros(epochs.get_data_length(), dtype=bool)
     test_mask[:3] = True
     expected_next_mask = np.array([False, True, False, True, False])
-    
+
     with patch.object(epochs, mock_target, return_value=(test_mask, expected_next_mask)) as split_func_mock:
         dataset = Dataset(epochs, config)
         group_idx = 0
@@ -122,7 +123,7 @@ def test_dataset_generator_split_test_list(
     test_mask = np.zeros(epochs.get_data_length(), dtype=bool)
     test_mask[:3] = True
     expected_next_mask = np.zeros(epochs.get_data_length(), dtype=bool)
-    
+
     with patch.object(epochs, mock_target, return_value=(test_mask, expected_next_mask)) as split_func_mock:
         dataset = Dataset(epochs, config)
         group_idx = 0
@@ -167,7 +168,7 @@ def test_dataset_generator_split_test_empty(
 
     test_mask = np.zeros(epochs.get_data_length(), dtype=bool)
     expected_next_mask = np.array([False, True, False, True, False])
-    
+
     with patch.object(epochs, mock_target, return_value=(test_mask, expected_next_mask)) as split_func_mock:
         dataset = Dataset(epochs, config)
         group_idx = 0
@@ -336,7 +337,7 @@ def test_dataset_generator_split_validation(
     test_mask = np.zeros(epochs.get_data_length(), dtype=bool)
     test_mask[:3] = True
     expected_next_mask = np.array([False, True, False, True, False])
-    
+
     with patch.object(epochs, mock_target, return_value=(test_mask, expected_next_mask)) as split_func_mock:
         group_idx = 0
         generator.split_validate(dataset, group_idx)
@@ -507,11 +508,11 @@ def test_dataset_generator_handle_individual(
     for i in range(len(result)):
         assert result[i].get_name() == 'Subject-' + str(i + 1) + '_0'
         X, _ = result[i].get_training_data()
-        assert ((X // 1000 * 1000) == ((i + 1) * 100000 + 2 * 1000)).all()
+        assert (((i + 1) * 100000 + 2 * 1000) == (X // 1000 * 1000)).all()
         X, _ = result[i].get_val_data()
-        assert ((X // 1000 * 1000) == ((i + 1) * 100000 + 2 * 1000)).all()
+        assert (((i + 1) * 100000 + 2 * 1000) == (X // 1000 * 1000)).all()
         X, _ = result[i].get_test_data()
-        assert ((X // 1000 * 1000) == ((i + 1) * 100000 + 1 * 1000)).all()
+        assert (((i + 1) * 100000 + 1 * 1000) == (X // 1000 * 1000)).all()
 
 def test_dataset_generator_handle_individual_cross_validation(
     epochs, # noqa: F811
@@ -543,18 +544,18 @@ def test_dataset_generator_handle_individual_cross_validation(
                 )
                 X, _ = result[idx].get_training_data()
                 assert (
-                    (X // 1000 * 1000) ==
-                    ((i + 1) * 100000 + ((j + 1) % len(session_list) + 1) * 1000)
+                    ((i + 1) * 100000 + ((j + 1) % len(session_list) + 1) * 1000) ==
+                    (X // 1000 * 1000)
                 ).all()
                 X, _ = result[idx].get_val_data()
                 assert (
-                    (X // 1000 * 1000) ==
-                    ((i + 1) * 100000 + ((j + 1) % len(session_list) + 1) * 1000)
+                    ((i + 1) * 100000 + ((j + 1) % len(session_list) + 1) * 1000) ==
+                    (X // 1000 * 1000)
                 ).all()
                 X, _ = result[idx].get_test_data()
                 assert (
-                    (X // 1000 * 1000) ==
-                    ((i + 1) * 100000 + ((j) % len(session_list) + 1) * 1000)
+                    ((i + 1) * 100000 + ((j) % len(session_list) + 1) * 1000) ==
+                    (X // 1000 * 1000)
                 ).all()
 
 def test_dataset_generator_handle_full(
@@ -616,16 +617,16 @@ def test_dataset_generator_handle_full_cross_validation(
 
         assert result[i].get_name() == 'Fold_' + str(i)
         X, _ = result[i].get_training_data()
-        assert ((X // 100000 * 100000) != ((i + 1) * 100000)).all()
+        assert (((i + 1) * 100000) != (X // 100000 * 100000)).all()
         assert (
             len(X) ==
             block_size * ((len(subject_list) - 1) * (len(session_list) - 1))
         )
         X, _ = result[i].get_val_data()
-        assert ((X // 100000 * 100000) != ((i + 1) * 100000)).all()
+        assert (((i + 1) * 100000) != (X // 100000 * 100000)).all()
         assert len(X) == block_size * ((len(subject_list) - 1) * 1)
         X, _ = result[i].get_test_data()
-        assert ((X // 100000 * 100000) == ((i + 1) * 100000)).all()
+        assert (((i + 1) * 100000) == (X // 100000 * 100000)).all()
         assert len(X) == block_size * len(session_list)
 
 @pytest.mark.parametrize('train_type, handle_func_name', [
@@ -649,7 +650,7 @@ def test_dataset_generator_generate(
     generator = DatasetGenerator(epochs, config)
     def handle():
         generator.datasets = datasets
-    
+
     with patch.object(generator, handle_func_name, side_effect=handle) as handle_mock:
         if has_error:
             with pytest.raises(ValueError):
@@ -733,7 +734,7 @@ def test_dataset_generator_prepare_reuslt(
         if not isinstance(datasets[i], Dataset):
             datasets[i] = datasets[i](epochs)
     generator.datasets = datasets
-    
+
     with patch.object(generator, 'generate'):
         if has_error:
             with pytest.raises(ValueError):

@@ -1,9 +1,11 @@
 
+import logging
+from threading import Thread
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
-from threading import Thread
+
 from .config import LLMConfig
-import logging
 
 logger = logging.getLogger("XBrainLab.LLM")
 
@@ -25,17 +27,17 @@ class LLMEngine:
         logger.info(f"Loading model: {self.config.model_name} on {self.config.device}")
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.config.model_name, 
+                self.config.model_name,
                 cache_dir=self.config.cache_dir
             )
-            
+
             # Load model with optional quantization
             model_kwargs = {
                 "device_map": self.config.device,
                 "cache_dir": self.config.cache_dir,
                 "trust_remote_code": True
             }
-            
+
             if self.config.load_in_4bit:
                 # Requires bitsandbytes
                 model_kwargs["load_in_4bit"] = True
@@ -44,13 +46,13 @@ class LLMEngine:
                     model_kwargs["torch_dtype"] = torch.float16
 
             self.model = AutoModelForCausalLM.from_pretrained(
-                self.config.model_name, 
+                self.config.model_name,
                 **model_kwargs
             )
-            
+
             self.is_loaded = True
             logger.info("Model loaded successfully.")
-            
+
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise e
@@ -58,10 +60,10 @@ class LLMEngine:
     def generate_stream(self, messages: list):
         """
         Generates response in a streaming fashion.
-        
+
         Args:
             messages: List of dicts [{'role': 'user', 'content': '...'}, ...]
-        
+
         Yields:
             str: Decoded text chunks.
         """
@@ -70,15 +72,15 @@ class LLMEngine:
 
         # Apply chat template
         prompt = self.tokenizer.apply_chat_template(
-            messages, 
-            tokenize=False, 
+            messages,
+            tokenize=False,
             add_generation_prompt=True
         )
-        
+
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-        
+
         streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
-        
+
         generation_kwargs = dict(
             inputs,
             streamer=streamer,

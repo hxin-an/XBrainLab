@@ -5,14 +5,15 @@ Provides functions referenced in pyproject.toml for running specific subsets of 
 """
 
 import os
-import sys
 import subprocess
+import sys
+
 
 def run_pytest(args):
     """Run pytest with given arguments."""
     cmd = ["pytest"] + args
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, check=False)
     sys.exit(result.returncode)
 
 def backend():
@@ -37,7 +38,7 @@ def run_remote_tests():
     print("Running Remote/Headless Tests (Backend + LLM)...")
     os.environ["MPLBACKEND"] = "Agg"
     # Run everything except the 'ui' directory or specific known failing files
-    # For now, we explicitly run backend and llm. 
+    # For now, we explicitly run backend and llm.
     # If there are integration tests that are safe, those should be added too.
     run_pytest(["tests/unit/backend", "tests/unit/llm"])
 

@@ -1,32 +1,32 @@
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QMessageBox
-)
-from PyQt6.QtCore import Qt, QTimer
-from .plot_3d_head import Saliency3D
 import pyvistaqt
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+from .plot_3d_head import Saliency3D
+
 
 class Saliency3DPlotWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.init_ui()
-        
+
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Plot Area
         self.plot_container = QWidget()
         self.plot_layout = QVBoxLayout(self.plot_container)
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Initial Placeholder
         lbl = QLabel("Select a plan and method to visualize")
         lbl.setStyleSheet("color: #666666; font-size: 14px;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
-        
+
         layout.addWidget(self.plot_container, stretch=1)
-        
+
         self.plotter_widget = None
 
     def show_error(self, msg):
@@ -45,9 +45,9 @@ class Saliency3DPlotWidget(QWidget):
 
     def clear_plot(self):
         # Remove existing widgets
-        for i in reversed(range(self.plot_layout.count())): 
+        for i in reversed(range(self.plot_layout.count())):
             self.plot_layout.itemAt(i).widget().setParent(None)
-            
+
         # Clean up plotter if exists
         if self.plotter_widget:
             try:
@@ -59,23 +59,23 @@ class Saliency3DPlotWidget(QWidget):
     def update_plot(self, plan, trainer, method, absolute, eval_record):
         try:
             self.clear_plot()
-            
+
             # Get Data
             if eval_record is None:
                 eval_record = plan.get_eval_record()
-                
+
             if not eval_record:
                 raise ValueError("No evaluation record found.")
-                
+
             epoch_data = trainer.get_dataset().get_epoch_data()
-            
+
             # Montage Check
             if epoch_data.get_montage_position() is None:
                 self.show_message("Please Set Montage First\n(Go to Configuration -> Set Montage)")
                 return
-            
+
             # Event Selection (Default to first event for now, or add event selector to main panel?)
-            # The main panel doesn't have an event selector. 
+            # The main panel doesn't have an event selector.
             # We can default to the first event, or add a small combo inside the plot area?
             # For now, let's use the first event.
             events = list(epoch_data.event_id.keys())
@@ -83,23 +83,23 @@ class Saliency3DPlotWidget(QWidget):
                 self.show_error("No events found in dataset.")
                 return
             selected_event = events[0]
-            
+
             # Instantiate Saliency3D
             # Note: Saliency3D currently creates a pv.Plotter internally.
             # We need to modify it or extract logic to use pyvistaqt.QtInteractor.
             # Or we can just use the existing logic but pass the QtInteractor as the plotter?
-            
+
             # Let's create the QtInteractor first
             self.plotter_widget = pyvistaqt.QtInteractor(self.plot_container)
             self.plot_layout.addWidget(self.plotter_widget)
-            
+
             # Force initialization of the interactor to prevent _FakeEventHandler error
             if hasattr(self.plotter_widget, 'interactor'):
                 self.plotter_widget.interactor.Initialize()
-            
+
             # Defer the actual plotting to ensure the widget is ready and interactor is initialized
             QTimer.singleShot(100, lambda: self._do_3d_plot(eval_record, epoch_data, selected_event))
-            
+
         except Exception as e:
             print(f"Error initializing 3D plot: {e}")
             self.show_error(f"Error: {e}")
@@ -119,5 +119,5 @@ class Saliency3DPlotWidget(QWidget):
             # or try to show error if widget is still valid
             if self.isVisible():
                  self.show_error(f"Error during plotting: {e}")
-            
+
 

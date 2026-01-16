@@ -56,18 +56,18 @@ class EditEventId(PreprocessBase):
                 raise ValueError("Event id can only be edited for epoched data")
 
     def get_preprocess_desc(self, new_event_ids: dict[str, int]):
-        return f"Update event ids"
+        return "Update event ids"
 
     def _data_preprocess(self, preprocessed_data: Raw, new_event_ids: dict[str, int]):
         # update parent event data
         events, event_id = preprocessed_data.get_event_list()
-        
+
         has_change = False
         for name, new_id in new_event_ids.items():
             if name in event_id and event_id[name] != new_id:
                 has_change = True
                 break
-        
+
         assert has_change, "No Event Id updated."
 
         new_events, new_event_id = events.copy(), {}

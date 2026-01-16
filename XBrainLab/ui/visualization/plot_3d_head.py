@@ -1,17 +1,18 @@
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pyvista as pv
-#from pyvista.plotting import _vtk
-from scipy.spatial import ConvexHull
-import os
 import requests
 
+#from pyvista.plotting import _vtk
+from scipy.spatial import ConvexHull
 
 bgcolor = '#2d2d2d'#'#F8F5F1'#lightslategray'
 mesh_scale_scalar = 0.8
 
 checkboxKwargs = {
-    'size' : 20, 
+    'size' : 20,
     'border_size' : 5,
     'color_on' : '#456071',
     'color_off' : bgcolor,
@@ -38,16 +39,16 @@ class Saliency3D:
         # Go up two levels to XBrainLab root: ui/visualization -> ui -> XBrainLab
         project_root = os.path.dirname(os.path.dirname(current_dir))
         model_dir = os.path.join(project_root, 'backend', 'visualization', '3Dmodel')
-        
+
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
-            
+
         fn_ply = ['brain.ply','head.ply']
         # Correct URL: XBrainLab.backend.visualization is a directory in the repo
         # https://github.com/CECNL/XBrainLab/tree/main/XBrainLab/backend/visualization/3Dmodel
         # Raw: https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab/backend/visualization/3Dmodel/
         gitrepo_loc = 'https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab/backend/visualization/3Dmodel/'
-        
+
         for fn in fn_ply:
             file_path = os.path.join(model_dir, fn)
             # Check if file exists and is valid (size > 1KB)
@@ -65,7 +66,7 @@ class Saliency3D:
 
         head_path = os.path.join(model_dir, 'head.ply')
         brain_path = os.path.join(model_dir, 'brain.ply')
-        
+
         if os.path.exists(head_path):
             mesh_head = pv.read(head_path)
         else:
@@ -74,7 +75,7 @@ class Saliency3D:
             # Try to find it in the old location as a fallback?
             # Or just raise error.
             raise FileNotFoundError(f"Head model not found at {head_path}")
-            
+
         if os.path.exists(brain_path):
             mesh_brain = pv.read(brain_path)
         else:
@@ -113,10 +114,10 @@ class Saliency3D:
             self.plotter.clear() # Clear existing actors
         else:
             self.plotter = pv.Plotter(window_size=[750, 750])
-            
+
         self.plotter.background_color = bgcolor
 
-        scaling = np.ones(3) * mesh_scale_scalar 
+        scaling = np.ones(3) * mesh_scale_scalar
         self.head = mesh_head.scale(scaling, inplace=True)
         self.brain = mesh_brain.scale(scaling * 0.001, inplace=True).triangulate()
         self.saliency_cap = ChannelConvexHull(self.pos_on_3d).scale(scaling, inplace=True)
@@ -170,7 +171,7 @@ class Saliency3D:
 
     def get3dHeadPlot(self):
         self.plotter.add_camera_orientation_widget()
-        
+
         self.plotter.add_slider_widget(
             callback=lambda val: self('timestamp', int(val)),
             rng=[1, self.max_time], value=1,
@@ -206,10 +207,10 @@ class Saliency3D:
         self.plotter.camera.zoom(0.8)
 
         self.channelActor = [self.plotter.add_mesh(ch, color='w') for ch in self.chs]
-        
+
         # Initialize scalars in the mesh
         self.saliency_cap['scalars'] = self.scalar
-        
+
         self.plotter.add_mesh(
             self.saliency_cap, opacity=0.8,
             scalars='scalars', cmap=self.cmap, show_scalar_bar=False

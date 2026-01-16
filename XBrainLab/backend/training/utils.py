@@ -1,5 +1,7 @@
 import inspect
+
 import torch
+
 
 def get_optimizer_classes():
     """Returns a dictionary of available PyTorch optimizer classes."""
@@ -12,17 +14,17 @@ def get_optimizer_params(optimizer_class):
     """
     sigs = inspect.signature(optimizer_class.__init__)
     params = list(sigs.parameters)[2:] # skip self and params/lr usually
-    
+
     result = []
     for param in params:
         if 'lr' in param:
             continue
-        
+
         default_val = ""
-        if (sigs.parameters[param].default != inspect._empty and 
+        if (sigs.parameters[param].default != inspect._empty and
             sigs.parameters[param].default is not None):
             default_val = str(sigs.parameters[param].default)
-            
+
         result.append((param, default_val))
     return result
 

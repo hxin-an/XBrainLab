@@ -18,7 +18,7 @@ def test_model_holder():
     }
     pretrained_weight_path = 'test.pth'
     holder = ModelHolder(target_model, model_params_map, pretrained_weight_path)
-    
+
     with patch('torch.load', return_value='state_dict'):
         model = holder.get_model({'c': 3})
 

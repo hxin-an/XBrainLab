@@ -83,7 +83,7 @@ def test_edit_event_id_raw(raw): # noqa: F811
 
 def test_edit_event_id_epoch(epoch):
     processor = preprocessor.EditEventId([epoch])
-    
+
     # Test no update
     with pytest.raises(AssertionError, match="No Event Id updated."):
         processor.data_preprocess({'a': 1, 'b': 2, 'c': 3, 'd': 4})
@@ -102,7 +102,7 @@ def test_edit_event_id_epoch(epoch):
     processor.data_preprocess({'a': 1, 'b': 2, 'c': 5, 'd': 5})
     result = processor.get_preprocessed_data_list()[0]
     _, event_id = result.get_event_list()
-    
+
     # Check if 'c' and 'd' are merged into 'c/d' or 'd/c' with ID 5
     assert len(event_id) == 3
     assert event_id['a'] == 1
@@ -117,14 +117,14 @@ def test_edit_event_id_epoch(epoch):
 @pytest.mark.parametrize('target_str', ['raw', 'epoch'])
 def test_export(target_str, request):
     from unittest.mock import patch
-    
+
     target = request.getfixturevalue(target_str)
     # to ensure history is not empty
     processor2 = preprocessor.ChannelSelection([target])
     processor2.data_preprocess(['Fp1', 'Fp2'])
 
     processor = preprocessor.Export(processor2.get_preprocessed_data_list())
-    
+
     with patch('scipy.io.savemat') as mocked_savemat:
         processor.data_preprocess('tests/test_data')
 
@@ -285,7 +285,7 @@ def test_normalization_z_score(target_str, request):
     processor = preprocessor.Normalize([target])
     processor.data_preprocess('z score')
     result = processor.get_preprocessed_data_list()[0]
-    
+
     data = result.get_mne().get_data()
     # Check if mean is close to 0 and std is close to 1 for each channel/epoch
     if target_str == 'raw':
@@ -305,7 +305,7 @@ def test_normalization_minmax(target_str, request):
     processor = preprocessor.Normalize([target])
     processor.data_preprocess('minmax')
     result = processor.get_preprocessed_data_list()[0]
-    
+
     data = result.get_mne().get_data()
     # Check if min is 0 and max is 1 for each channel/epoch
     if target_str == 'raw':

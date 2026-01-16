@@ -1,8 +1,9 @@
 from typing import TYPE_CHECKING, List, Optional
 
+from XBrainLab.backend.exceptions import DataMismatchError
+
 from ..utils import validate_list_type, validate_type
 from .raw import Raw
-from XBrainLab.backend.exceptions import DataMismatchError
 
 if TYPE_CHECKING: # pragma: no cover
     from .. import Study

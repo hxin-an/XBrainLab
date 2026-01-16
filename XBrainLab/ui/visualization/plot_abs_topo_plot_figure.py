@@ -1,5 +1,7 @@
 from PyQt6.QtWidgets import QMessageBox
+
 from .plot_abs_plot_figure import PlotABSFigureWindow
+
 
 class PlotTopoABSFigureWindow(PlotABSFigureWindow):
     def check_data(self):

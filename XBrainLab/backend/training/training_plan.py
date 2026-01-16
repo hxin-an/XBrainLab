@@ -1,20 +1,19 @@
 from __future__ import annotations
 
+import datetime
 import time
-import datetime
-import datetime
 import traceback
 from enum import Enum
 
 import numpy as np
 import torch
 import torch.utils.data as Data
-from captum.attr import Saliency, NoiseTunnel
+from captum.attr import NoiseTunnel, Saliency
 from sklearn.metrics import roc_auc_score
 
 from ..dataset import Dataset
-from ..visualization import supported_saliency_methods
 from ..utils import set_seed, validate_type
+from ..visualization import supported_saliency_methods
 from .model_holder import ModelHolder
 from .option import TRAINING_EVALUATION, TrainingOption
 from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
@@ -112,7 +111,7 @@ def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_pa
 
         inputs.requires_grad=True
         batch_gradient = saliency_inst.attribute(inputs, target=label_list[-1].tolist(), abs=False).detach().cpu().numpy()
-        
+
         gradient_list.append(batch_gradient)
         gradient_input_list.append(np.multiply(inputs.detach().cpu().numpy(), batch_gradient))
         smoothgrad_list.append(
@@ -139,7 +138,7 @@ def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_pa
     smoothgrad_list = np.concatenate(smoothgrad_list)
     smoothgrad_sq_list = np.concatenate(smoothgrad_sq_list)
     vargrad_list = np.concatenate(vargrad_list)
-        
+
     gradient_list = {
         i: gradient_list[np.where(label_list==i)]
         for i in range(output_list.shape[-1])
@@ -152,7 +151,7 @@ def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_pa
         i: smoothgrad_list[np.where(label_list==i)]
         for i in range(output_list.shape[-1])
     }
-    smoothgrad_sq_list = {        
+    smoothgrad_sq_list = {
         i: smoothgrad_sq_list[np.where(label_list==i)]
         for i in range(output_list.shape[-1])
     }
@@ -169,10 +168,10 @@ class SharedMemoryDataset(Data.Dataset):
         self.labels = labels
         self.indices = indices
         self.device = device
-        
+
     def __len__(self):
         return len(self.indices)
-        
+
     def __getitem__(self, idx):
         real_idx = self.indices[idx]
         # Data is transferred to device only when accessed (saves VRAM)
@@ -192,11 +191,11 @@ def to_holder(
 
     if len(indices) == 0:
         return None
-    
+
     # Use SharedMemoryDataset to avoid copying numpy arrays (saves RAM)
     # and to load to GPU on-the-fly (saves VRAM).
     dataset = SharedMemoryDataset(data, labels, indices, dev)
-    
+
     dataloader = Data.DataLoader(
         dataset,
         batch_size=bs,
@@ -239,7 +238,7 @@ class TrainingPlanHolder:
         self,
         model_holder: ModelHolder,
         dataset: Dataset,
-        option: TrainingOption, 
+        option: TrainingOption,
         saliency_params: dict,
     ):
         self.model_holder = model_holder
@@ -266,7 +265,7 @@ class TrainingPlanHolder:
                 if "Output size is too small" in str(e) or "Epoch duration is too short" in str(e):
                     model_name = self.model_holder.target_model.__name__
                     raise ValueError(
-                        f"Failed to create model '{model_name}': {str(e)}"
+                        f"Failed to create model '{model_name}': {e!s}"
                     )
                 raise e
             self.train_record_list.append(
@@ -292,7 +291,7 @@ class TrainingPlanHolder:
                 'stdevs': 1.0
             }
             self.saliency_params = {algo: params for algo in supported_saliency_methods}
-        
+
         validate_type(self.model_holder, ModelHolder, 'model_holder')
         validate_type(self.dataset, Dataset, 'dataset')
         validate_type(self.option, TrainingOption, 'option')
@@ -323,11 +322,11 @@ class TrainingPlanHolder:
         """Return the data loader for training, validation and testing"""
         bs = self.option.bs
         dev = self.option.get_device()
-        
+
         # Access full data once (Reference)
         full_data = self.dataset.get_epoch_data().get_data()
         full_labels = self.dataset.get_epoch_data().get_label_list()
-        
+
         # Get indices from masks
         train_idx = np.where(self.dataset.train_mask)[0]
         val_idx = np.where(self.dataset.val_mask)[0]
@@ -406,7 +405,7 @@ class TrainingPlanHolder:
             target, target_loader = self.get_eval_pair(
                 train_record, valLoader, testLoader
             )
-            
+
             # Fallback: If no validation/test data, use training data for evaluation/visualization
             if not target_loader and trainLoader:
                 target_loader = trainLoader
@@ -501,7 +500,7 @@ class TrainingPlanHolder:
             train_record.get_epoch() % self.option.checkpoint_epoch == 0
         ):
             train_record.export_checkpoint()
-        
+
         # CLEAR VRAM to prevent linear memory growth
         torch.cuda.empty_cache()
 
@@ -530,7 +529,7 @@ class TrainingPlanHolder:
     def get_saliency_params(self) -> dict:
         """Return the saliency computation parameters"""
         return self.saliency_params
-    
+
     # setter
     def set_saliency_params(self, saliency_params)-> None:
         """Set the saliency computation parameters"""
@@ -608,7 +607,7 @@ class TrainingPlanHolder:
             target, target_loader = self.get_eval_pair(
                 train_record, valLoader, testLoader
             )
-            
+
             # Fallback: If no validation/test data, use training data for evaluation/visualization
             if not target_loader and trainLoader:
                 target_loader = trainLoader
@@ -725,7 +724,7 @@ class TrainingPlanHolder:
     def get_saliency_params(self) -> dict:
         """Return the saliency computation parameters"""
         return self.saliency_params
-    
+
     # setter
     def set_saliency_params(self, saliency_params)-> None:
         """Set the saliency computation parameters"""

@@ -1,7 +1,9 @@
 from enum import Enum
+
 from .data_loader import RawDataLoader
 from .event_loader import EventLoader
 from .raw import Raw
+
 
 class DataType(Enum):
     RAW = 'raw'

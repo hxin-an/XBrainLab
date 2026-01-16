@@ -1,17 +1,12 @@
 from __future__ import annotations
 
 import os
-import re
-import traceback
-from enum import Enum
 
 import mne
 import numpy as np
 
 from ..utils import validate_type
 from ..utils.filename_parser import FilenameParser
-
-
 
 
 class Raw:
@@ -82,7 +77,7 @@ class Raw:
         """
         filename = self.get_filename()
         sub, sess = FilenameParser.parse_by_named_regex(filename, regex)
-        
+
         if sub != "-":
             self.set_subject_name(sub)
         if sess != "-":

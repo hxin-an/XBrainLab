@@ -1,4 +1,3 @@
-import traceback
 
 import mne
 import numpy as np
@@ -36,7 +35,6 @@ def test_add_preprocess(raw):
     raw.add_preprocess('test')
     assert raw.get_preprocess_history() == ['test']
 
-from unittest.mock import patch
 
 def test_parse_filename(raw):
     raw.parse_filename('sub-(?P<subject>[^_]*)_ses-(?P<session>[^_]*)_.*')
@@ -55,11 +53,11 @@ def test_file_info(raw):
 def test_labels_imported_status(raw):
     # Default should be False
     assert raw.is_labels_imported() is False
-    
+
     # Set to True
     raw.set_labels_imported(True)
     assert raw.is_labels_imported() is True
-    
+
     # Set back to False
     raw.set_labels_imported(False)
     assert raw.is_labels_imported() is False

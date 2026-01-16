@@ -1,8 +1,10 @@
 
 import sys
-import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget
 from unittest.mock import MagicMock, patch
+
+import pytest
+from PyQt6.QtWidgets import QApplication, QMainWindow
+
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
 
 # Ensure QApplication exists
@@ -30,11 +32,11 @@ def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtb
     # Use real objects for inheritance check
     real_window = QMainWindow()
     real_window.study = MagicMock()
-    
+
     panel = PreprocessPanel(real_window)
     qtbot.addWidget(panel)
     assert hasattr(panel, 'controller')
-    
+
     panel.close()
     real_window.close()
 
@@ -45,16 +47,16 @@ def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
     panel.main_window = mock_main_window
     panel.controller = mock_controller
     qtbot.addWidget(panel)
-    
+
     with patch.object(panel, 'plot_sample_data'): # Mock plotting
         with patch('XBrainLab.ui.dashboard_panel.preprocess.FilteringDialog') as MockDialog:
             instance = MockDialog.return_value
             instance.exec.return_value = True
             instance.get_params.return_value = (1.0, 40.0, 50.0) # l_freq, h_freq, notch
-            
+
             with patch('XBrainLab.ui.dashboard_panel.preprocess.QMessageBox.information') as mock_info:
                 panel.open_filtering()
-                
+
                 mock_controller.apply_filter.assert_called_with(1.0, 40.0, 50.0)
                 mock_info.assert_called_once()
 
@@ -65,16 +67,16 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
     panel.main_window = mock_main_window
     panel.controller = mock_controller
     qtbot.addWidget(panel)
-    
+
     with patch.object(panel, 'plot_sample_data'):
         with patch('XBrainLab.ui.dashboard_panel.preprocess.ResampleDialog') as MockDialog:
             instance = MockDialog.return_value
             instance.exec.return_value = True
             instance.get_params.return_value = 256.0
-            
+
             with patch('XBrainLab.ui.dashboard_panel.preprocess.QMessageBox.information') as mock_info:
                 panel.open_resample()
-                
+
                 mock_controller.apply_resample.assert_called_with(256.0)
                 mock_info.assert_called_once()
 
@@ -85,18 +87,18 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
     panel.main_window = mock_main_window
     panel.controller = mock_controller
     qtbot.addWidget(panel)
-    
+
     with patch.object(panel, 'plot_sample_data'):
         with patch('XBrainLab.ui.dashboard_panel.preprocess.EpochingDialog') as MockDialog:
             instance = MockDialog.return_value
             instance.exec.return_value = True
             instance.get_params.return_value = ((0.0, 0.1), ['Event1'], -0.2, 0.5)
-            
+
             mock_controller.apply_epoching.return_value = True
-            
+
             with patch('XBrainLab.ui.dashboard_panel.preprocess.QMessageBox.information') as mock_info:
                 panel.open_epoching()
-                
+
                 mock_controller.apply_epoching.assert_called_with((0.0, 0.1), ['Event1'], -0.2, 0.5)
                 # Should show success message
                 mock_info.assert_called_once()
@@ -108,7 +110,7 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
     panel.main_window = mock_main_window
     panel.controller = mock_controller
     qtbot.addWidget(panel)
-    
+
     from PyQt6.QtWidgets import QMessageBox
     with patch.object(panel, 'plot_sample_data'):
         # Patch the imported name in preprocess module

@@ -1,7 +1,9 @@
 
+
 import pytest
-from unittest.mock import MagicMock
+
 from XBrainLab.llm.agent.prompt_manager import PromptManager
+
 
 # Mock Tool
 class MockTool:
@@ -37,7 +39,7 @@ def test_add_context(manager):
     msg = manager.get_system_message()
     assert "Additional Context:" in msg
     assert "User prefers dark mode." in msg
-    
+
     # Test clearing
     manager.clear_context()
     msg = manager.get_system_message()
@@ -48,13 +50,13 @@ def test_sliding_window(manager):
     history = []
     for i in range(15):
         history.append({"role": "user", "content": f"msg {i}"})
-        
+
     messages = manager.get_messages(history)
-    
+
     # 1 system + 10 history = 11
     assert len(messages) == 11
     assert messages[0]['role'] == 'system'
-    
+
     # Check if we kept the *last* 10
     # The first history message in result should be "msg 5" (0-4 dropped)
     assert messages[1]['content'] == "msg 5"

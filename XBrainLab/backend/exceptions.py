@@ -1,6 +1,5 @@
 class XBrainLabError(Exception):
     """Base class for exceptions in XBrainLab."""
-    pass
 
 class FileCorruptedError(XBrainLabError):
     """Exception raised when a file is corrupted or cannot be read."""

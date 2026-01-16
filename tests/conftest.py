@@ -2,10 +2,10 @@
 # Previously, this file mocked mne, captum, and torch, which caused import errors.
 
 import sys
-import torch # Pre-load torch to prevent Qt/OpenMP conflict crash
-import pytest
 from unittest.mock import MagicMock, patch
-from PyQt6.QtWidgets import QMessageBox, QDialog, QWidget
+
+import pytest
+from PyQt6.QtWidgets import QDialog, QMessageBox
 
 # --- MOCK VISUALIZATION LIBRARIES ---
 # This must be done at module level to prevent import errors during test collection
@@ -17,7 +17,7 @@ class MockBackgroundPlotter(MagicMock):
         self.app_window = MagicMock()
         self.ren_win = MagicMock()
         self.interactor = MagicMock()
-    
+
     def add_mesh(self, *args, **kwargs): pass
     def add_text(self, *args, **kwargs): pass
     def show(self): pass
@@ -46,11 +46,11 @@ def mock_ui_blocking():
          patch('PyQt6.QtWidgets.QMessageBox.question') as mock_quest, \
          patch('PyQt6.QtWidgets.QMessageBox.exec', return_value=QMessageBox.StandardButton.Ok) as mock_msg_exec, \
          patch('PyQt6.QtWidgets.QDialog.exec', return_value=QDialog.DialogCode.Accepted) as mock_dlg_exec:
-        
+
         # Configure defaults
         mock_quest.return_value = QMessageBox.StandardButton.Yes
-        
-        
+
+
         yield
 
 @pytest.fixture(scope="session", autouse=True)

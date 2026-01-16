@@ -1,6 +1,7 @@
 import mne
 import numpy as np
 
+
 def get_builtin_montages():
     """Returns a list of built-in MNE montages."""
     return mne.channels.get_builtin_montages()

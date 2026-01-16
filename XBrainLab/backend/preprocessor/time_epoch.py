@@ -44,19 +44,19 @@ class TimeEpoch(PreprocessBase):
         tmax: float
     ):
         raw_events, raw_event_id = preprocessed_data.get_event_list()
-        
+
         selected_event_id = {}
         for event_name in selected_event_names:
             if event_name in raw_event_id:
                 selected_event_id[event_name] = raw_event_id[event_name]
-        
+
         selection_mask = np.zeros(raw_events.shape[0], dtype=bool)
         for event_name in selected_event_id:
             selection_mask = np.logical_or(
                 selection_mask, raw_events[:, -1]==selected_event_id[event_name]
             )
         selected_events = raw_events[selection_mask]
-        
+
         if(len(selected_events) == 0):
             available = list(raw_event_id.keys())
             raise ValueError(f"No event markers found. Selected: {selected_event_names}. Available: {available}")
@@ -65,12 +65,12 @@ class TimeEpoch(PreprocessBase):
             raise ValueError("Data is already epoched. Cannot perform TimeEpoch on epoched data.")
 
         data = mne.Epochs(
-            preprocessed_data.get_mne(), 
-            selected_events, 
-            event_id=selected_event_id, 
-            tmin=tmin, 
-            tmax=tmax, 
-            baseline=baseline, 
+            preprocessed_data.get_mne(),
+            selected_events,
+            event_id=selected_event_id,
+            tmin=tmin,
+            tmax=tmax,
+            baseline=baseline,
             preload=True,
             event_repeated='drop'
         )
@@ -80,5 +80,5 @@ class TimeEpoch(PreprocessBase):
         # with the original (larger) raw events list.
         preprocessed_data.raw_events = None
         preprocessed_data.raw_event_id = None
-        
+
         preprocessed_data.set_mne(data)

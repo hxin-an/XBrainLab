@@ -1,24 +1,31 @@
 import sys
+
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QStackedWidget, QMessageBox, QDockWidget, QPushButton, QFrame, QSizePolicy
+    QDockWidget,
+    QFrame,
+    QHBoxLayout,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon, QAction
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.chat_panel import ChatPanel
 from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
-from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
-from XBrainLab.ui.training.panel import TrainingPanel
 from XBrainLab.ui.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.training.panel import TrainingPanel
 from XBrainLab.ui.visualization.panel import VisualizationPanel
+
 
 class MainWindow(QMainWindow):
     """
     The main application window for XBrainLab (PyQt6 version).
-    
+
     This window manages the overall layout, including:
     - Top Navigation Bar: For switching between main panels (Dataset, Preprocess, Training, etc.).
     - Stacked Widget: Holds the content of each panel.
@@ -34,21 +41,21 @@ class MainWindow(QMainWindow):
         self.study = study
         self.setWindowTitle("XBrainLab")
         self.resize(1280, 800)
-        
+
         self.agent_initialized = False # Flag for lazy loading
-        
+
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
-        
+
         # Central Widget & Main Layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         # Vertical Layout: Top Bar | Main Content
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # 1. Top Navigation Bar
         self.top_bar = QFrame()
         self.top_bar.setObjectName("TopBar")
@@ -56,7 +63,7 @@ class MainWindow(QMainWindow):
         self.top_bar_layout = QHBoxLayout(self.top_bar)
         self.top_bar_layout.setContentsMargins(10, 0, 10, 0)
         self.top_bar_layout.setSpacing(10)
-        
+
         # Navigation Buttons
         self.nav_btns = []
         self.add_nav_btn("Dataset", 0, "Dataset")
@@ -64,9 +71,9 @@ class MainWindow(QMainWindow):
         self.add_nav_btn("Training", 2, "Training")
         self.add_nav_btn("Evaluation", 3, "Evaluation")
         self.add_nav_btn("Visualization", 4, "Visualization")
-        
+
         self.top_bar_layout.addStretch()
-        
+
         # AI Toggle Button
         self.ai_btn = QPushButton("AI Assistant")
         self.ai_btn.setCheckable(True)
@@ -75,20 +82,20 @@ class MainWindow(QMainWindow):
         self.ai_btn.setObjectName("ActionBtn")
         self.top_bar_layout.addWidget(self.ai_btn)
 
-        
+
         main_layout.addWidget(self.top_bar)
-        
+
         # 2. Stacked Widget (Content Area)
         self.stack = QStackedWidget()
         main_layout.addWidget(self.stack)
-        
+
         # Initialize Panels
         self.init_panels()
 
-        
+
         # Initialize Agent System
         self.init_agent()
-        
+
         logger.info("MainWindow initialized")
 
     def apply_vscode_theme(self):
@@ -108,7 +115,7 @@ class MainWindow(QMainWindow):
                 background-color: #333333;
                 border-bottom: 1px solid #252526;
             }
-            
+
             /* Nav Buttons (Tabs style) */
             QPushButton#NavButton {
                 background-color: transparent;
@@ -128,7 +135,7 @@ class MainWindow(QMainWindow):
                 border-bottom: 2px solid #007acc;
                 background-color: #1e1e1e;
             }
-            
+
             /* Action Buttons (Import, AI) */
             QPushButton#ActionBtn {
                 background-color: #0e639c;
@@ -148,12 +155,12 @@ class MainWindow(QMainWindow):
                 background-color: #094771;
                 border: 1px solid #007acc;
             }
-            
+
             /* Content Area */
             QStackedWidget {
                 background-color: #1e1e1e;
             }
-            
+
             /* Standard Widgets */
             QLabel { color: #cccccc; }
             QGroupBox {
@@ -192,7 +199,7 @@ class MainWindow(QMainWindow):
                 padding: 5px;
                 color: #cccccc;
             }
-            
+
             /* Card Widget */
             QFrame#CardWidget {
                 background-color: #252526;
@@ -207,7 +214,7 @@ class MainWindow(QMainWindow):
                 border-bottom: 1px solid #3e3e42;
                 margin-bottom: 5px;
             }
-            
+
             /* Modern Buttons in Cards */
             QPushButton {
                 background-color: #3e3e42;
@@ -226,16 +233,16 @@ class MainWindow(QMainWindow):
         """)
 
     def add_nav_btn(self, name, index, text):
-        btn = QPushButton(text) 
+        btn = QPushButton(text)
         btn.setToolTip(name)
         btn.setCheckable(True)
         btn.setObjectName("NavButton")
-        
+
         btn.clicked.connect(lambda: self.switch_page(index))
-        
+
         self.top_bar_layout.addWidget(btn)
         self.nav_btns.append(btn)
-        
+
         if index == 0:
             btn.setChecked(True)
         elif index == 1: # This block was added based on the instruction's intent, assuming it was meant to be a conditional check.
@@ -246,7 +253,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
-        
+
         # Unified Update Logic: Always call update_panel() on result
         target_panel = None
         if index == 0 and hasattr(self, 'dataset_panel'):
@@ -259,7 +266,7 @@ class MainWindow(QMainWindow):
             target_panel = self.evaluation_panel
         elif index == 4 and hasattr(self, 'visualization_panel'):
             target_panel = self.visualization_panel
-            
+
         if target_panel and hasattr(target_panel, 'update_panel'):
             target_panel.update_panel()
 
@@ -271,19 +278,19 @@ class MainWindow(QMainWindow):
         # 0. Dataset
         self.dataset_panel = DatasetPanel(self)
         self.stack.addWidget(self.dataset_panel)
-        
+
         # 1. Preprocess
         self.preprocess_panel = PreprocessPanel(self)
         self.stack.addWidget(self.preprocess_panel)
-        
+
         # 2. Training
         self.training_panel = TrainingPanel(self)
         self.stack.addWidget(self.training_panel)
-        
+
         # 3. Evaluation
         self.evaluation_panel = EvaluationPanel(self)
         self.stack.addWidget(self.evaluation_panel)
-        
+
         # 4. Visualization
         self.visualization_panel = VisualizationPanel(self)
         self.stack.addWidget(self.visualization_panel)
@@ -295,7 +302,7 @@ class MainWindow(QMainWindow):
         self.chat_dock.setWidget(self.chat_panel)
         self.chat_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
-        
+
         self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
         self.chat_dock.hide() # Hide by default
 
@@ -308,20 +315,20 @@ class MainWindow(QMainWindow):
             return
 
         from XBrainLab.llm.agent.controller import LLMController
-        
+
         # 2. Create Controller
         self.agent_controller = LLMController(self.study)
-        
+
         # 3. Connect Signals
         self.chat_panel.send_message.connect(self.handle_user_input)
-        
+
         self.agent_controller.response_ready.connect(lambda sender, text: self.chat_panel.append_message(sender, text))
         self.agent_controller.status_update.connect(self.chat_panel.set_status)
         self.agent_controller.error_occurred.connect(self.handle_agent_error)
-        
+
         # Initialize
         self.agent_controller.initialize()
-        
+
         self.agent_initialized = True
 
     def toggle_ai_dock(self):
@@ -335,7 +342,7 @@ class MainWindow(QMainWindow):
                 "Do you want to proceed?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
-            
+
             if reply == QMessageBox.StandardButton.Yes:
                 self.start_agent_system()
                 self.chat_dock.show()
@@ -380,19 +387,19 @@ class MainWindow(QMainWindow):
         # Update Dataset Panel (which updates its own Aggregate Info)
         if hasattr(self, 'dataset_panel'):
             self.dataset_panel.update_panel()
-            
+
         # Update Preprocess Panel
         if hasattr(self, 'preprocess_panel'):
             self.preprocess_panel.update_panel()
-            
+
         # Update Training Panel
         if hasattr(self, 'training_panel'):
             self.training_panel.update_info()
-            
+
         # Update Evaluation Panel
         if hasattr(self, 'evaluation_panel'):
             self.evaluation_panel.update_info()
-            
+
         # Update Visualization Panel
         if hasattr(self, 'visualization_panel'):
             self.visualization_panel.update_info()
@@ -411,5 +418,6 @@ def global_exception_handler(exctype, value, traceback):
 
 # Only set exception hook if not running under pytest
 import sys
+
 if "pytest" not in sys.modules:
     sys.excepthook = global_exception_handler

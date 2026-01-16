@@ -1,5 +1,5 @@
-import pytest
 from XBrainLab.backend.evaluation.metric import Metric
+
 
 def test_metric_enum_values():
     assert Metric.ACC.value == 'Accuracy (%)'

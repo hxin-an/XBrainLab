@@ -148,7 +148,7 @@ class Dataset:
     # train
     def get_training_data(self) -> tuple[np.ndarray, np.ndarray]:
         """Return the training data and label.
-        
+
         WARNING: This creates a COPY of the data, doubling RAM usage.
         For training, use get_training_indices() and SharedMemoryDataset instead.
         """

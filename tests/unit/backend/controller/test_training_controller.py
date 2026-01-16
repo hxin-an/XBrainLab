@@ -1,7 +1,10 @@
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, patch
+
 from XBrainLab.backend.controller.training_controller import TrainingController
 from XBrainLab.backend.study import Study
+
 
 class TestTrainingController:
     @pytest.fixture

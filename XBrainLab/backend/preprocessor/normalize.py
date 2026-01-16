@@ -17,7 +17,7 @@ class Normalize(PreprocessBase):
         preprocessed_data.get_mne().load_data()
         if norm == "z score":
             if preprocessed_data.is_raw():
-                arrdata =  preprocessed_data.get_mne()._data.copy() 
+                arrdata =  preprocessed_data.get_mne()._data.copy()
                 preprocessed_data.get_mne()._data = (arrdata - np.multiply(
                     arrdata.mean(axis=-1)[:, None], np.ones_like(arrdata)
                 )) / np.multiply(

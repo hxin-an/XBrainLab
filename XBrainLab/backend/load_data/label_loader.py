@@ -1,18 +1,21 @@
 import os
+
 import numpy as np
 import scipy.io
+
 from XBrainLab.backend.utils.logger import logger
+
 
 def load_label_file(filepath: str) -> np.ndarray:
     """
     Load label data from a file (.txt or .mat).
-    
+
     Args:
         filepath: Path to the label file.
-        
+
     Returns:
         np.ndarray: 1D array of labels.
-        
+
     Raises:
         ValueError: If file format is not supported or loading fails.
     """
@@ -32,7 +35,7 @@ def _load_txt(path: str) -> np.ndarray:
     """Load labels from a text file (space-separated integers)."""
     labels = []
     try:
-        with open(path, 'r') as f:
+        with open(path) as f:
             for line in f:
                 parts = line.strip().split()
                 for p in parts:
@@ -51,17 +54,17 @@ def _load_mat(path: str) -> np.ndarray:
         mat = scipy.io.loadmat(path)
         # Filter out __header__, __version__, __globals__
         vars = [k for k in mat.keys() if not k.startswith('__')]
-        
+
         if not vars:
             raise ValueError("No variables found in .mat file")
-            
+
         # Pick the first valid variable
         var_name = vars[0]
         data = mat[var_name]
-        
+
         # Robust shape handling (migrated from EventLoader)
         label_list = np.array(data).astype(np.int32)
-        
+
         # Handle (n, 1) and (1, n)
         if len(label_list.shape) == 2:
             if label_list.shape[0] == 1:
@@ -78,12 +81,12 @@ def _load_mat(path: str) -> np.ndarray:
                  # Original code raised ValueError for non-3 columns if not 1D.
                  # Let's try to flatten if it looks like a list
                  return label_list.flatten()
-                 
+
         elif len(label_list.shape) == 1:
             return label_list
         else:
             return label_list.flatten()
-        
+
     except Exception as e:
         logger.error(f"Failed to load mat file {path}: {e}")
         raise ValueError(f"Invalid .mat file: {e}")
@@ -98,19 +101,19 @@ def _load_csv_tsv(path: str):
     try:
         sep = '\t' if path.endswith('.tsv') else ','
         df = pd.read_csv(path, sep=sep)
-        
+
         # Normalize column names
         df.columns = [c.lower().strip() for c in df.columns]
-        
+
         # Check for timestamp columns
         time_cols = ['time', 'latency', 'onset']
         label_cols = ['label', 'trial_type', 'type']
         duration_cols = ['duration']
-        
+
         found_time = next((c for c in time_cols if c in df.columns), None)
         found_label = next((c for c in label_cols if c in df.columns), None)
         found_duration = next((c for c in duration_cols if c in df.columns), None)
-        
+
         if found_time and found_label:
             # Timestamp Mode
             result = []
@@ -133,7 +136,7 @@ def _load_csv_tsv(path: str):
                 # Try to guess? Or raise error?
                 # Let's assume first column
                 return df.iloc[:, 0].values
-                
+
     except Exception as e:
         logger.error(f"Failed to load csv/tsv file {path}: {e}")
         raise ValueError(f"Failed to load csv/tsv file: {e}")

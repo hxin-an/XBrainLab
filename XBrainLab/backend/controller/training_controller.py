@@ -1,6 +1,8 @@
-from typing import List, Optional, Any
+from typing import Any, List, Optional
+
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import Trainer, TrainingPlanHolder
+from XBrainLab.backend.training import Trainer
+
 
 class TrainingController:
     """
@@ -21,10 +23,10 @@ class TrainingController:
         """
         if self.is_training():
             return
-            
+
         # Generate plan (append=True to keep history)
         self._study.generate_plan(force_update=True, append=True)
-        
+
         # Start training in interactive mode (threaded)
         self._study.train(interact=True)
 
@@ -37,7 +39,7 @@ class TrainingController:
         """Clear all training history."""
         if self.is_training():
             raise RuntimeError("Cannot clear history while training is running")
-            
+
         if self._study.trainer:
             self._study.trainer.clear_history()
 
@@ -56,7 +58,7 @@ class TrainingController:
 
         history = []
         holders = trainer.get_training_plan_holders()
-        
+
         for plan_idx, plan in enumerate(holders):
             group_id = plan_idx + 1
             model_name = plan.model_holder.target_model.__name__

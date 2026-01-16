@@ -1,10 +1,16 @@
 
-import pytest
 from unittest.mock import MagicMock
-from XBrainLab.llm.tools.mock.dataset_mock import MockLoadDataTool, MockListFilesTool
-from XBrainLab.llm.tools.mock.preprocess_mock import MockStandardPreprocessTool, MockSetMontageTool
+
+import pytest
+
+from XBrainLab.llm.tools.mock.dataset_mock import MockListFilesTool, MockLoadDataTool
+from XBrainLab.llm.tools.mock.preprocess_mock import (
+    MockSetMontageTool,
+    MockStandardPreprocessTool,
+)
 from XBrainLab.llm.tools.mock.training_mock import MockSetModelTool
 from XBrainLab.llm.tools.mock.ui_control_mock import MockSwitchPanelTool
+
 
 @pytest.fixture
 def mock_study():
@@ -36,11 +42,11 @@ def test_training_tools(mock_study):
 
 def test_ui_control_tools(mock_study):
     tool = MockSwitchPanelTool()
-    
+
     # Test basic switch
     result = tool.execute(mock_study, panel_name="training")
     assert "Switched UI view to training panel" in result
-    
+
     # Test switch with view_mode
     result = tool.execute(mock_study, panel_name="visualization", view_mode="saliency_map")
     assert "showing saliency_map" in result

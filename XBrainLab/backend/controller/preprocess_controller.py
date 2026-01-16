@@ -1,6 +1,7 @@
+
 from XBrainLab.backend import preprocessor as Preprocessor
 from XBrainLab.backend.utils.logger import logger
-import copy
+
 
 class PreprocessController:
     """
@@ -43,7 +44,7 @@ class PreprocessController:
         data_list = self.study.preprocessed_data_list
         if not data_list:
             raise ValueError("No data to preprocess.")
-            
+
         processor = processor_class(data_list)
         try:
             result = processor.data_preprocess(*args, **kwargs)

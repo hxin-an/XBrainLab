@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from PyQt6.QtWidgets import QMainWindow, QWidget
+
+import pytest
+from PyQt6.QtWidgets import QWidget
+
 from XBrainLab.ui.main_window import MainWindow
+
 
 @pytest.fixture
 def mock_study():
@@ -13,25 +16,25 @@ def main_window(mock_study, qtbot):
     with patch('XBrainLab.ui.main_window.MainWindow.init_panels') as mock_init_panels, \
          patch('XBrainLab.ui.main_window.MainWindow.init_agent') as mock_init_agent, \
          patch('XBrainLab.ui.main_window.MainWindow.apply_vscode_theme'):
-        
+
         window = MainWindow(mock_study)
-        
+
         # Manually attach mock panels
         window.dataset_panel = MagicMock(spec=QWidget)
         window.dataset_panel.update_panel = MagicMock()
-        
+
         window.preprocess_panel = MagicMock(spec=QWidget)
         window.preprocess_panel.update_panel = MagicMock()
-        
+
         window.training_panel = MagicMock(spec=QWidget)
         window.training_panel.update_panel = MagicMock()
-        
+
         window.evaluation_panel = MagicMock(spec=QWidget)
         window.evaluation_panel.update_panel = MagicMock()
-        
+
         window.visualization_panel = MagicMock(spec=QWidget)
         window.visualization_panel.update_panel = MagicMock()
-        
+
         qtbot.addWidget(window)
         return window
 

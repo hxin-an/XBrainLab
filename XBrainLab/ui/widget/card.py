@@ -1,5 +1,6 @@
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel, QGraphicsDropShadowEffect
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout
+
 
 class CardWidget(QFrame):
     def __init__(self, title, parent=None):
@@ -23,7 +24,7 @@ class CardWidget(QFrame):
         self.content_layout = QVBoxLayout()
         self.content_layout.setSpacing(10)
         self.layout.addLayout(self.content_layout)
-        
+
         # Add Shadow
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(15)

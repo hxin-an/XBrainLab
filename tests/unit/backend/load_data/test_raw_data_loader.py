@@ -1,7 +1,10 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_set_file
-from XBrainLab.backend.load_data import Raw, DataType
+
 
 class TestRawDataLoaderUnit:
     """
@@ -16,10 +19,10 @@ class TestRawDataLoaderUnit:
         # Setup mock return value
         mock_raw = MagicMock()
         mock_read_gdf.return_value = mock_raw
-        
+
         # Execute
         result = load_gdf_file("dummy.gdf")
-        
+
         # Verify
         mock_read_gdf.assert_called_once_with("dummy.gdf", preload=False)
         assert isinstance(result, Raw)
@@ -30,7 +33,7 @@ class TestRawDataLoaderUnit:
         """Test GDF loading failure handling."""
         # Setup mock to raise exception
         mock_read_gdf.side_effect = Exception("File corrupted")
-        
+
         # Execute & Verify
         from XBrainLab.backend.exceptions import FileCorruptedError
         with pytest.raises(FileCorruptedError):
@@ -42,9 +45,9 @@ class TestRawDataLoaderUnit:
         """Test successful SET loading as Raw."""
         mock_raw = MagicMock()
         mock_read_eeglab.return_value = mock_raw
-        
+
         result = load_set_file("dummy.set")
-        
+
         mock_read_eeglab.assert_called_once()
         assert isinstance(result, Raw)
         assert result.get_mne() == mock_raw
@@ -59,9 +62,9 @@ class TestRawDataLoaderUnit:
         # Epochs loading succeeds
         mock_epochs = MagicMock()
         mock_read_epochs.return_value = mock_epochs
-        
+
         result = load_set_file("epochs.set")
-        
+
         mock_read_raw.assert_called_once()
         mock_read_epochs.assert_called_once()
         assert isinstance(result, Raw)

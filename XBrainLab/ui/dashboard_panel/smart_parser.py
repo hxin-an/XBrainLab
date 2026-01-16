@@ -1,13 +1,29 @@
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QComboBox, QTableWidget, QTableWidgetItem, QPushButton, 
-    QHeaderView, QGroupBox, QFormLayout, QMessageBox, QRadioButton, QButtonGroup,
-    QSpinBox, QStackedWidget, QWidget
-)
-from PyQt6.QtCore import Qt, QSettings
-import re
 import os
+import re
+
+from PyQt6.QtCore import QSettings, Qt
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QSpinBox,
+    QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from XBrainLab.backend.utils.filename_parser import FilenameParser
+
 
 class SmartParserDialog(QDialog):
     def __init__(self, filenames, parent=None):
@@ -16,95 +32,95 @@ class SmartParserDialog(QDialog):
         self.resize(1000, 700)
         self.filenames = filenames
         self.parsed_data = {} # filename -> (subject, session)
-        
+
         self.init_ui()
         self.load_settings() # Load previous settings
         self.update_preview()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        
+
         # 1. Configuration Area
         config_group = QGroupBox("Parsing Method")
         config_layout = QVBoxLayout()
-        
+
         # Mode Selection
         mode_layout = QHBoxLayout()
         self.mode_group = QButtonGroup(self)
-        
+
         self.radio_split = QRadioButton("Simple Split (Recommended)")
         self.radio_regex = QRadioButton("Advanced Regex")
         self.radio_folder = QRadioButton("Folder Structure")
         self.radio_fixed = QRadioButton("Fixed Position (No Separator)")
-        
+
         self.mode_group.addButton(self.radio_split, 0)
         self.mode_group.addButton(self.radio_regex, 1)
         self.mode_group.addButton(self.radio_folder, 2)
         self.mode_group.addButton(self.radio_fixed, 3)
-        
+
         self.radio_split.setChecked(True)
         self.radio_split.toggled.connect(self.toggle_mode)
         self.radio_regex.toggled.connect(self.toggle_mode)
         self.radio_folder.toggled.connect(self.toggle_mode)
         self.radio_fixed.toggled.connect(self.toggle_mode)
-        
+
         mode_layout.addWidget(self.radio_split)
         mode_layout.addWidget(self.radio_fixed)
         mode_layout.addWidget(self.radio_regex)
         mode_layout.addWidget(self.radio_folder)
         mode_layout.addStretch()
         config_layout.addLayout(mode_layout)
-        
+
         # Settings Stack
         self.settings_stack = QStackedWidget()
-        
+
         # --- Page 0: Split Settings ---
         page_split = QWidget()
         layout_split = QFormLayout(page_split)
-        
+
         self.split_sep_combo = QComboBox()
         self.split_sep_combo.addItems(["Underscore (_)", "Hyphen (-)", "Space ( )", "Dot (.)"])
         self.split_sep_combo.currentIndexChanged.connect(self.update_preview)
-        
+
         self.split_sub_idx = QSpinBox()
         self.split_sub_idx.setRange(1, 10)
         self.split_sub_idx.setValue(1)
         self.split_sub_idx.setPrefix("Part ")
         self.split_sub_idx.valueChanged.connect(self.update_preview)
-        
+
         self.split_sess_idx = QSpinBox()
         self.split_sess_idx.setRange(1, 10)
         self.split_sess_idx.setValue(2)
         self.split_sess_idx.setPrefix("Part ")
         self.split_sess_idx.valueChanged.connect(self.update_preview)
-        
+
         layout_split.addRow("Separator:", self.split_sep_combo)
         layout_split.addRow("Subject is:", self.split_sub_idx)
         layout_split.addRow("Session is:", self.split_sess_idx)
-        
+
         self.settings_stack.addWidget(page_split)
-        
+
         # --- Page 1: Regex Settings ---
         page_regex = QWidget()
         layout_regex = QFormLayout(page_regex)
-        
+
         self.regex_preset_combo = QComboBox()
         self.regex_preset_combo.addItems([
             "Custom",
-            "Subject_Session (e.g. Sub01_Ses01)", 
+            "Subject_Session (e.g. Sub01_Ses01)",
             "BIDS (sub-01_ses-01)"
         ])
         self.regex_preset_combo.currentIndexChanged.connect(self.on_regex_preset_changed)
-        
+
         self.regex_input = QLineEdit()
         self.regex_input.setPlaceholderText(r"(.*)_(.*)")
         self.regex_input.textChanged.connect(self.update_preview)
-        
+
         self.regex_sub_idx = QSpinBox()
         self.regex_sub_idx.setRange(1, 10)
         self.regex_sub_idx.setPrefix("Group ")
         self.regex_sub_idx.valueChanged.connect(self.update_preview)
-        
+
         self.regex_sess_idx = QSpinBox()
         self.regex_sess_idx.setRange(1, 10)
         self.regex_sess_idx.setValue(2)
@@ -115,83 +131,83 @@ class SmartParserDialog(QDialog):
         layout_regex.addRow("Regex Pattern:", self.regex_input)
         layout_regex.addRow("Subject Group:", self.regex_sub_idx)
         layout_regex.addRow("Session Group:", self.regex_sess_idx)
-        
+
         self.settings_stack.addWidget(page_regex)
-        
+
         # --- Page 2: Folder Settings ---
         page_folder = QWidget()
         layout_folder = QVBoxLayout(page_folder)
         layout_folder.addWidget(QLabel("Automatically extracts metadata from parent folder names."))
         layout_folder.addWidget(QLabel("Structure assumed: .../Subject/Session/filename.gdf"))
         layout_folder.addStretch()
-        
+
         self.settings_stack.addWidget(page_folder)
-        
+
         # --- Page 3: Fixed Position Settings ---
         page_fixed = QWidget()
         layout_fixed = QFormLayout(page_fixed)
-        
+
         self.fixed_sub_start = QSpinBox()
         self.fixed_sub_start.setRange(1, 50)
         self.fixed_sub_start.setValue(1)
         self.fixed_sub_start.valueChanged.connect(self.update_preview)
-        
+
         self.fixed_sub_len = QSpinBox()
         self.fixed_sub_len.setRange(1, 50)
         self.fixed_sub_len.setValue(3)
         self.fixed_sub_len.valueChanged.connect(self.update_preview)
-        
+
         self.fixed_sess_start = QSpinBox()
         self.fixed_sess_start.setRange(1, 50)
         self.fixed_sess_start.setValue(4)
         self.fixed_sess_start.valueChanged.connect(self.update_preview)
-        
+
         self.fixed_sess_len = QSpinBox()
         self.fixed_sess_len.setRange(1, 50)
         self.fixed_sess_len.setValue(1)
         self.fixed_sess_len.valueChanged.connect(self.update_preview)
-        
+
         sub_layout = QHBoxLayout()
         sub_layout.addWidget(QLabel("Start:"))
         sub_layout.addWidget(self.fixed_sub_start)
         sub_layout.addWidget(QLabel("Length:"))
         sub_layout.addWidget(self.fixed_sub_len)
-        
+
         sess_layout = QHBoxLayout()
         sess_layout.addWidget(QLabel("Start:"))
         sess_layout.addWidget(self.fixed_sess_start)
         sess_layout.addWidget(QLabel("Length:"))
         sess_layout.addWidget(self.fixed_sess_len)
-        
+
         layout_fixed.addRow("Subject (e.g. 'A01'):", sub_layout)
         layout_fixed.addRow("Session (e.g. 'T'):", sess_layout)
-        
+
         self.settings_stack.addWidget(page_fixed)
-        
+
         config_layout.addWidget(self.settings_stack)
-        
+
         config_group.setLayout(config_layout)
         layout.addWidget(config_group)
-        
+
         # 2. Preview Table
         self.table = QTableWidget()
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(["Filename", "Extracted Subject", "Extracted Session"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
-        
+
         # 3. Buttons
         btn_layout = QHBoxLayout()
         self.apply_btn = QPushButton("Apply to Dataset")
         self.apply_btn.clicked.connect(self.accept)
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
-        
+
         btn_layout.addStretch()
         btn_layout.addWidget(self.cancel_btn)
         btn_layout.addWidget(self.apply_btn)
         layout.addLayout(btn_layout)
-        
+
         self.toggle_mode() # Init visibility
 
     def toggle_mode(self):
@@ -215,10 +231,10 @@ class SmartParserDialog(QDialog):
     def update_preview(self):
         self.table.setRowCount(len(self.filenames))
         self.parsed_data = {}
-        
+
         sep_map = {0: '_', 1: '-', 2: ' ', 3: '.'}
         sep = sep_map.get(self.split_sep_combo.currentIndex(), '_')
-        
+
         regex = None
         if self.radio_regex.isChecked():
             try:
@@ -230,19 +246,19 @@ class SmartParserDialog(QDialog):
             filename = os.path.basename(filepath)
             # Remove extension for easier parsing
             name_no_ext = os.path.splitext(filename)[0]
-            
+
             self.table.setItem(row, 0, QTableWidgetItem(filename))
-            
+
             sub = "-"
             sess = "-"
-            
+
             if self.radio_split.isChecked():
                 sub, sess = FilenameParser.parse_by_split(
-                    filename, sep, 
-                    self.split_sub_idx.value(), 
+                    filename, sep,
+                    self.split_sub_idx.value(),
                     self.split_sess_idx.value()
                 )
-                    
+
             elif self.radio_regex.isChecked():
                 # Note: FilenameParser.parse_by_regex now handles extension stripping internally
                 # We pass the raw regex pattern string
@@ -251,10 +267,10 @@ class SmartParserDialog(QDialog):
                     self.regex_sub_idx.value(),
                     self.regex_sess_idx.value()
                 )
-                        
+
             elif self.radio_folder.isChecked():
                 sub, sess = FilenameParser.parse_by_folder(filepath)
-                    
+
             elif self.radio_fixed.isChecked():
                 sub, sess = FilenameParser.parse_by_fixed_position(
                     filename,
@@ -267,7 +283,7 @@ class SmartParserDialog(QDialog):
             # Update Table
             sub_item = QTableWidgetItem(sub)
             sess_item = QTableWidgetItem(sess)
-            
+
             # Highlight if found
             if sub != "-":
                 sub_item.setBackground(Qt.GlobalColor.darkGreen)
@@ -275,10 +291,10 @@ class SmartParserDialog(QDialog):
             if sess != "-":
                 sess_item.setBackground(Qt.GlobalColor.darkBlue)
                 sess_item.setForeground(Qt.GlobalColor.white)
-                
+
             self.table.setItem(row, 1, sub_item)
             self.table.setItem(row, 2, sess_item)
-            
+
             if sub != "-" or sess != "-":
                 self.parsed_data[filepath] = (sub, sess)
 
@@ -291,21 +307,21 @@ class SmartParserDialog(QDialog):
 
     def save_settings(self):
         settings = QSettings("XBrainLab", "SmartParser")
-        
+
         # Save Mode
         settings.setValue("mode", self.mode_group.checkedId())
-        
+
         # Save Split Settings
         settings.setValue("split_sep", self.split_sep_combo.currentIndex())
         settings.setValue("split_sub_idx", self.split_sub_idx.value())
         settings.setValue("split_sess_idx", self.split_sess_idx.value())
-        
+
         # Save Regex Settings
         settings.setValue("regex_preset", self.regex_preset_combo.currentIndex())
         settings.setValue("regex_pattern", self.regex_input.text())
         settings.setValue("regex_sub_idx", self.regex_sub_idx.value())
         settings.setValue("regex_sess_idx", self.regex_sess_idx.value())
-        
+
         # Save Fixed Settings
         settings.setValue("fixed_sub_start", self.fixed_sub_start.value())
         settings.setValue("fixed_sub_len", self.fixed_sub_len.value())
@@ -314,24 +330,24 @@ class SmartParserDialog(QDialog):
 
     def load_settings(self):
         settings = QSettings("XBrainLab", "SmartParser")
-        
+
         # Load Mode
         mode_id = settings.value("mode", 0, type=int)
         button = self.mode_group.button(mode_id)
         if button:
             button.setChecked(True)
-            
+
         # Load Split Settings
         self.split_sep_combo.setCurrentIndex(settings.value("split_sep", 0, type=int))
         self.split_sub_idx.setValue(settings.value("split_sub_idx", 1, type=int))
         self.split_sess_idx.setValue(settings.value("split_sess_idx", 2, type=int))
-        
+
         # Load Regex Settings
         self.regex_preset_combo.setCurrentIndex(settings.value("regex_preset", 0, type=int))
         self.regex_input.setText(settings.value("regex_pattern", "", type=str))
         self.regex_sub_idx.setValue(settings.value("regex_sub_idx", 1, type=int))
         self.regex_sess_idx.setValue(settings.value("regex_sess_idx", 2, type=int))
-        
+
         # Load Fixed Settings
         self.fixed_sub_start.setValue(settings.value("fixed_sub_start", 1, type=int))
         self.fixed_sub_len.setValue(settings.value("fixed_sub_len", 3, type=int))

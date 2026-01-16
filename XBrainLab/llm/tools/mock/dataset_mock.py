@@ -1,10 +1,15 @@
 
 from typing import Any, Dict, List
+
 from ..definitions.dataset_def import (
-    BaseListFilesTool, BaseLoadDataTool, 
-    BaseAttachLabelsTool, BaseClearDatasetTool, BaseGetDatasetInfoTool, 
-    BaseGenerateDatasetTool
+    BaseAttachLabelsTool,
+    BaseClearDatasetTool,
+    BaseGenerateDatasetTool,
+    BaseGetDatasetInfoTool,
+    BaseListFilesTool,
+    BaseLoadDataTool,
 )
+
 
 class MockListFilesTool(BaseListFilesTool):
     def execute(self, study: Any, directory: str, pattern: str = "*") -> str:
@@ -27,6 +32,6 @@ class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):
         return "Dataset Info: 2 files loaded, 250Hz, 22 channels."
 
 class MockGenerateDatasetTool(BaseGenerateDatasetTool):
-    def execute(self, study: Any, test_ratio: float = 0.2, val_ratio: float = 0.2, 
+    def execute(self, study: Any, test_ratio: float = 0.2, val_ratio: float = 0.2,
                 split_strategy: str = "trial", training_mode: str = "individual") -> str:
         return f"Generated dataset (Split: {split_strategy}, Mode: {training_mode})."

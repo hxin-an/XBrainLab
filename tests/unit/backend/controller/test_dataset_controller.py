@@ -1,8 +1,11 @@
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, call
+
 from XBrainLab.backend.controller.dataset_controller import DatasetController
-from XBrainLab.backend.exceptions import UnsupportedFormatError, FileCorruptedError
+from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
+
 
 @pytest.fixture
 def mock_study():
@@ -39,16 +42,16 @@ def test_import_files_success(controller, mock_study):
         mock_raw = MagicMock()
         mock_raw.get_filepath.return_value = "test.edf"
         MockFactory.load.return_value = mock_raw
-        
+
         # Mock RawDataLoader (the list wrapper)
         # Note: In the controller code: loader = RawDataLoader(existing_data)
         # We need to verify that loader.append is called and loader.apply is called.
         with patch('XBrainLab.backend.controller.dataset_controller.RawDataLoader') as MockLoader:
             loader_instance = MockLoader.return_value
             loader_instance.__iter__.return_value = iter([]) # No duplicates initially
-            
+
             count, errors = controller.import_files(["test.edf"])
-            
+
             assert count == 1
             assert len(errors) == 0
             MockFactory.load.assert_called_with("test.edf")
@@ -60,19 +63,19 @@ def test_import_files_duplicate(controller, mock_study):
     mock_existing = MagicMock()
     mock_existing.get_filepath.return_value = "test.edf"
     mock_study.loaded_data_list = [mock_existing]
-    
+
     with patch('XBrainLab.backend.controller.dataset_controller.RawDataLoader') as MockLoader:
         loader_instance = MockLoader.return_value
-        # The controller iterates over the loader to check duplicates. 
+        # The controller iterates over the loader to check duplicates.
         # Since we passed existing_data to constructor, the loader typically holds it.
         # But we mocked the class return value. We need to simulate the loader containing the file.
         # The controller does: if any(d.get_filepath() == path for d in loader):
         mock_item = MagicMock()
         mock_item.get_filepath.return_value = "test.edf"
         loader_instance.__iter__.return_value = iter([mock_item])
-        
+
         count, errors = controller.import_files(["test.edf"])
-        
+
         assert count == 0
         assert len(errors) == 0 # Skipped, not error
 
@@ -84,7 +87,7 @@ def test_import_files_errors(controller, mock_study):
             count, errors = controller.import_files(["bad.xyz"])
             assert count == 0
             assert "Unsupported format" in errors[0]
-            
+
         # 2. FileCorruptedError
         MockFactory.load.side_effect = FileCorruptedError("Corrupt")
         with patch('XBrainLab.backend.controller.dataset_controller.RawDataLoader'):
@@ -98,7 +101,7 @@ def test_import_files_errors(controller, mock_study):
             count, errors = controller.import_files(["error.edf"])
             assert count == 0
             assert "Unknown" in errors[0]
-            
+
         # 4. None Return
         MockFactory.load.side_effect = None
         MockFactory.load.return_value = None
@@ -114,18 +117,18 @@ def test_clean_dataset(controller, mock_study):
 def test_remove_files(controller, mock_study):
     d1, d2, d3 = MagicMock(), MagicMock(), MagicMock()
     mock_study.loaded_data_list = [d1, d2, d3]
-    
+
     controller.remove_files([0, 2])
-    
+
     # Should call set_loaded_data_list with [d2]
     mock_study.set_loaded_data_list.assert_called_with([d2], force_update=True)
 
 def test_update_metadata(controller, mock_study):
     d1 = MagicMock()
     mock_study.loaded_data_list = [d1]
-    
+
     controller.update_metadata(0, subject="Sub1", session="Ses1")
-    
+
     d1.set_subject_name.assert_called_with("Sub1")
     d1.set_session_name.assert_called_with("Ses1")
     mock_study.reset_preprocess.assert_called_with(force_update=True)
@@ -141,30 +144,30 @@ def test_apply_smart_parse(controller, mock_study):
     d1.get_filepath.return_value = "/path/sub-01.edf"
     d2 = MagicMock()
     d2.get_filepath.return_value = "/path/sub-02.edf"
-    
+
     mock_study.loaded_data_list = [d1, d2]
-    
+
     results = {
         "/path/sub-01.edf": ("01", "01"),
         "/path/sub-02.edf": ("02", "-") # Session unchanged
     }
-    
+
     count = controller.apply_smart_parse(results)
-    
+
     assert count == 2
     d1.set_subject_name.assert_called_with("01")
     d1.set_session_name.assert_called_with("01")
     d2.set_subject_name.assert_called_with("02")
     d2.set_session_name.assert_not_called()
-    
+
     mock_study.reset_preprocess.assert_called_with(force_update=True)
 
 def test_apply_channel_selection(controller, mock_study):
     with patch('XBrainLab.backend.controller.dataset_controller.Preprocessor.ChannelSelection') as MockCS:
         instance = MockCS.return_value
         instance.data_preprocess.return_value = True
-        
+
         result = controller.apply_channel_selection(['C3', 'C4'])
-        
+
         assert result is True
         instance.data_preprocess.assert_called_with(['C3', 'C4'])

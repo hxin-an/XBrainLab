@@ -34,7 +34,7 @@ class EEGNet(nn.Module):
         self.sf = sfreq
         self.n_class = n_classes
         self.half_sf = math.floor(self.sf/2)
-        
+
         # Validate minimum samples requirement
         # EEGNet requires: Conv1(kernel=sf/2) -> AvgPool(4) -> Conv3(kernel=sf/16) -> AvgPool(8)
         # Approximate minimum: sf/2 + 4 + (sf/16)*4 + 32

@@ -1,6 +1,7 @@
 import os
 import re
-from typing import Tuple, Optional
+from typing import Tuple
+
 
 class FilenameParser:
     """
@@ -12,38 +13,38 @@ class FilenameParser:
     def parse_by_split(filename: str, separator: str, sub_idx: int, sess_idx: int) -> Tuple[str, str]:
         """
         Parse filename by splitting with a separator.
-        
+
         Args:
             filename: The filename (with or without extension).
             separator: The character to split by (e.g., '_', '-').
             sub_idx: 1-based index for Subject part.
             sess_idx: 1-based index for Session part.
-            
+
         Returns:
             (subject, session) or ("-", "-") if not found.
         """
         name_no_ext = os.path.splitext(filename)[0]
         parts = name_no_ext.split(separator)
-        
+
         sub = "-"
         sess = "-"
-        
+
         # Convert 1-based index to 0-based
         s_i = sub_idx - 1
         se_i = sess_idx - 1
-        
+
         if 0 <= s_i < len(parts):
             sub = parts[s_i]
         if 0 <= se_i < len(parts):
             sess = parts[se_i]
-            
+
         return sub, sess
 
     @staticmethod
     def parse_by_regex(filename: str, pattern: str, sub_group: int, sess_group: int) -> Tuple[str, str]:
         """
         Parse filename using Regular Expression.
-        
+
         Args:
             filename: The filename.
             pattern: The regex pattern string.
@@ -52,10 +53,10 @@ class FilenameParser:
         """
         # Remove extension for easier parsing, similar to split method
         name_no_ext = os.path.splitext(filename)[0]
-        
+
         sub = "-"
         sess = "-"
-        
+
         try:
             regex = re.compile(pattern)
             match = regex.search(name_no_ext)
@@ -68,7 +69,7 @@ class FilenameParser:
                     sess = match.group(sess_group)
         except Exception:
             pass
-            
+
         return sub, sess
 
     @staticmethod
@@ -79,14 +80,14 @@ class FilenameParser:
         """
         sub = "-"
         sess = "-"
-        
+
         try:
             parent_dir = os.path.dirname(filepath)
             parent_name = os.path.basename(parent_dir)
             grandparent_dir = os.path.dirname(parent_dir)
             grandparent_name = os.path.basename(grandparent_dir)
-            
-            # Heuristic: if parent looks like a session (contains 'ses'), 
+
+            # Heuristic: if parent looks like a session (contains 'ses'),
             # use grandparent as Subject.
             if "ses" in parent_name.lower():
                 sess = parent_name
@@ -97,14 +98,14 @@ class FilenameParser:
                 sess = "-"
         except Exception:
             pass
-            
+
         return sub, sess
 
     @staticmethod
     def parse_by_fixed_position(filename: str, sub_start: int, sub_len: int, sess_start: int, sess_len: int) -> Tuple[str, str]:
         """
         Parse filename by fixed character positions.
-        
+
         Args:
             filename: The filename.
             sub_start: 1-based start index for Subject.
@@ -115,7 +116,7 @@ class FilenameParser:
         name_no_ext = os.path.splitext(filename)[0]
         sub = "-"
         sess = "-"
-        
+
         try:
             # Subject (1-based -> 0-based)
             s_start = sub_start - 1
@@ -123,7 +124,7 @@ class FilenameParser:
                 extracted = name_no_ext[s_start : s_start + sub_len]
                 if extracted:
                     sub = extracted
-                
+
             # Session (1-based -> 0-based)
             se_start = sess_start - 1
             if se_start >= 0 and se_start < len(name_no_ext):
@@ -132,34 +133,34 @@ class FilenameParser:
                     sess = extracted
         except Exception:
             pass
-            
+
         return sub, sess
 
     @staticmethod
     def parse_by_named_regex(filename: str, pattern: str) -> Tuple[str, str]:
         """
         Parse filename using Named Regular Expression (e.g. (?P<subject>...)).
-        
+
         Args:
             filename: The filename.
             pattern: The regex pattern string with named groups 'subject' and 'session'.
-            
+
         Returns:
             (subject, session) or ("-", "-") if not found.
         """
         # Remove extension for easier parsing
         name_no_ext = os.path.splitext(filename)[0]
-        
+
         sub = "-"
         sess = "-"
-        
+
         try:
             regex = re.compile(pattern)
             match = regex.match(filename)
             # Try matching full filename first, if not, try name without extension
             if not match:
                 match = regex.match(name_no_ext)
-                
+
             if match:
                 groupdict = match.groupdict()
                 if 'subject' in groupdict:
@@ -168,5 +169,5 @@ class FilenameParser:
                     sess = groupdict['session']
         except Exception:
             pass
-            
+
         return sub, sess

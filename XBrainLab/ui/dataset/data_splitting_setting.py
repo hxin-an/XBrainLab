@@ -1,13 +1,28 @@
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, 
-    QPushButton, QCheckBox, QFrame, QGridLayout, QWidget
-)
-from PyQt6.QtGui import QPainter, QColor, QBrush
-from PyQt6.QtCore import Qt
-import numpy as np
 from enum import Enum
-from XBrainLab.backend.dataset import Epochs, SplitByType, TrainingType, ValSplitByType, DataSplittingConfig
-from .data_splitting import DataSplittingWindow, DataSplitterHolder
+
+import numpy as np
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QBrush, QColor, QPainter
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from XBrainLab.backend.dataset import (
+    DataSplittingConfig,
+    SplitByType,
+    TrainingType,
+    ValSplitByType,
+)
+
+from .data_splitting import DataSplitterHolder, DataSplittingWindow
+
 
 class DrawColor(Enum):
     TRAIN = QColor('DodgerBlue')
@@ -73,7 +88,7 @@ class DrawRegion:
             np.logical_not(filter_idx)
         self.to_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y] += \
             filter_idx * rhs.from_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y]
-        
+
         # Simplified boundary checks (might need full logic from original if buggy)
         if self.to_x > 0 and (self.to_canvas[self.to_x - 1, self.from_y:self.to_y] == self.from_canvas[self.to_x - 1, self.from_y:self.to_y]).all():
             self.to_x -= 1
@@ -121,53 +136,53 @@ class PreviewCanvas(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
+
         w = self.width() - 100
         h = self.height() - 50
         left = 50
         top = 20
-        
+
         delta_x = w / self.session_num
         delta_y = h / self.subject_num
-        
+
         # Draw regions
         for region, color in self.regions:
             painter.setBrush(QBrush(color.value))
             painter.setPen(Qt.PenStyle.NoPen)
-            
+
             for i in range(region.from_x, region.to_x):
                 for j in range(region.from_y, region.to_y):
                     if region.from_canvas[i, j] == region.to_canvas[i, j]:
                         continue
-                    
+
                     x1 = left + delta_x * (i + region.from_canvas[i, j])
                     y1 = top + delta_y * j
                     x2 = left + delta_x * (i + region.to_canvas[i, j])
                     y2 = top + delta_y * (j + 1)
-                    
+
                     painter.drawRect(int(x1), int(y1), int(x2-x1), int(y2-y1))
-                    
+
         # Draw box
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(Qt.GlobalColor.white) # Assuming dark theme
         painter.drawRect(left, top, int(w), int(h))
-        
+
         # Grid lines
         painter.setPen(Qt.PenStyle.DashLine)
         for i in range(1, self.subject_num):
             d = top + h / self.subject_num * i
             painter.drawLine(left, int(d), int(left + w), int(d))
-            
+
         for i in range(1, self.session_num):
             d = left + w / self.session_num * i
             painter.drawLine(int(d), top, int(d), int(top + h))
-            
+
         # Labels
         painter.setPen(Qt.GlobalColor.white)
-        
+
         # X-axis Label
         painter.drawText(int(left + w/2 - 20), int(top + h + 20), "Session")
-        
+
         # Y-axis Label (Rotated)
         painter.save()
         # Translate to the position where we want the center of the text
@@ -176,7 +191,7 @@ class PreviewCanvas(QWidget):
         # Draw text. Since we translated and rotated, (0,0) is the pivot.
         # We center the text horizontally (which is vertical on screen)
         # Assuming text width is approx 40-50px
-        painter.drawText(-25, 0, "Subject") 
+        painter.drawText(-25, 0, "Subject")
         painter.restore()
 
 class DataSplittingSettingWindow(QDialog):
@@ -185,27 +200,27 @@ class DataSplittingSettingWindow(QDialog):
         self.setWindowTitle("Data splitting")
         self.resize(800, 500)
         self.epoch_data = epoch_data
-        
+
         self.subject_num = 5
         self.session_num = 5
         self.train_region = DrawRegion(self.session_num, self.subject_num)
         self.val_region = DrawRegion(self.session_num, self.subject_num)
         self.test_region = DrawRegion(self.session_num, self.subject_num)
-        
+
         self.step2_window = None
         self.result = None
-        
+
         self.init_ui()
         self.update_preview()
 
     def init_ui(self):
         layout = QHBoxLayout(self)
-        
+
         # Left: Preview
         left_layout = QVBoxLayout()
         self.canvas = PreviewCanvas(self)
         left_layout.addWidget(self.canvas)
-        
+
         # Legend
         legend_layout = QHBoxLayout()
         for name, color in [("Training", DrawColor.TRAIN), ("Validation", DrawColor.VAL), ("Testing", DrawColor.TEST)]:
@@ -215,40 +230,40 @@ class DataSplittingSettingWindow(QDialog):
             legend_layout.addWidget(QLabel(name))
         left_layout.addLayout(legend_layout)
         layout.addLayout(left_layout, stretch=1)
-        
+
         # Right: Options
         right_layout = QVBoxLayout()
-        
+
         # Training Type
         right_layout.addWidget(QLabel("Training Type"))
         self.train_type_combo = QComboBox()
         self.train_type_combo.addItems([i.value for i in TrainingType])
         self.train_type_combo.currentTextChanged.connect(self.update_preview)
         right_layout.addWidget(self.train_type_combo)
-        
+
         # Testing Set
         right_layout.addWidget(QLabel("Testing Set"))
         self.test_combo = QComboBox()
         self.test_combo.addItems([i.value for i in SplitByType])
         self.test_combo.currentTextChanged.connect(self.update_preview)
         right_layout.addWidget(self.test_combo)
-        
+
         self.cv_check = QCheckBox("Cross Validation")
         right_layout.addWidget(self.cv_check)
-        
+
         # Validation Set
         right_layout.addWidget(QLabel("Validation Set"))
         self.val_combo = QComboBox()
         self.val_combo.addItems([i.value for i in ValSplitByType])
         self.val_combo.currentTextChanged.connect(self.update_preview)
         right_layout.addWidget(self.val_combo)
-        
+
         right_layout.addStretch()
-        
+
         self.btn_confirm = QPushButton("Confirm")
         self.btn_confirm.clicked.connect(self.confirm)
         right_layout.addWidget(self.btn_confirm)
-        
+
         layout.addLayout(right_layout)
 
     def update_preview(self, *args):
@@ -256,20 +271,20 @@ class DataSplittingSettingWindow(QDialog):
         self.train_region = DrawRegion(self.session_num, self.subject_num)
         self.val_region = DrawRegion(self.session_num, self.subject_num)
         self.test_region = DrawRegion(self.session_num, self.subject_num)
-        
+
         # Handle Data
         train_type = self.train_type_combo.currentText()
         if train_type == TrainingType.FULL.value:
             self.train_region.set_to(self.session_num, self.subject_num, 0, 1)
         elif train_type == TrainingType.IND.value:
             self.train_region.set_to(self.session_num, 1, 0, 1)
-            
+
         self.handle_testing()
         self.train_region.mask(self.test_region)
-        
+
         self.handle_validation()
         self.train_region.mask(self.val_region)
-        
+
         self.canvas.set_regions([
             (self.train_region, DrawColor.TRAIN),
             (self.val_region, DrawColor.VAL),
@@ -280,7 +295,7 @@ class DataSplittingSettingWindow(QDialog):
         test_type = self.test_combo.currentText()
         ref = DrawRegion(self.train_region.w, self.train_region.h)
         ref.copy(self.train_region)
-        
+
         if test_type in [SplitByType.SESSION.value, SplitByType.SESSION_IND.value]:
             is_ind = (test_type == SplitByType.SESSION_IND.value)
             if is_ind:
@@ -291,7 +306,7 @@ class DataSplittingSettingWindow(QDialog):
             self.test_region.set_to_ref(ref.to_x, ref.to_y, ref)
             if is_ind:
                 self.train_region.mask(tmp)
-                
+
         elif test_type in [SplitByType.TRIAL.value, SplitByType.TRIAL_IND.value]:
             is_ind = (test_type == SplitByType.TRIAL_IND.value)
             if is_ind:
@@ -302,7 +317,7 @@ class DataSplittingSettingWindow(QDialog):
             self.test_region.decrease_w_head(0.8)
             if is_ind:
                 self.train_region.mask(tmp)
-                
+
         elif test_type in [SplitByType.SUBJECT.value, SplitByType.SUBJECT_IND.value]:
             is_ind = (test_type == SplitByType.SUBJECT_IND.value)
             if is_ind:
@@ -335,25 +350,25 @@ class DataSplittingSettingWindow(QDialog):
             if i.value == self.train_type_combo.currentText():
                 train_type = i
                 break
-                
+
         # Get Val Types
         val_type_list = []
         for i in ValSplitByType:
             if i.value == self.val_combo.currentText():
                 val_type_list.append(i)
                 break
-                
+
         # Get Test Types
         test_type_list = []
         for i in SplitByType:
             if i.value == self.test_combo.currentText():
                 test_type_list.append(i)
                 break
-        
+
         # Create DataSplitter instances for val and test
         val_splitters = [DataSplitterHolder(True, t) for t in val_type_list]
         test_splitters = [DataSplitterHolder(True, t) for t in test_type_list]
-        
+
         # Create DataSplittingConfig directly with backend class
         config = DataSplittingConfig(
             train_type=train_type,
@@ -361,7 +376,7 @@ class DataSplittingSettingWindow(QDialog):
             val_splitter_list=val_splitters,
             test_splitter_list=test_splitters
         )
-        
+
         self.step2_window = DataSplittingWindow(
             self.parent(), "Data Splitting Step 2", self.epoch_data, config
         )

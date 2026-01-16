@@ -1,6 +1,7 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_set_file
+
 
 @patch('XBrainLab.backend.load_data.raw.validate_type')
 @patch('mne.io.read_raw_gdf')

@@ -1,6 +1,7 @@
+import numpy as np
+
 from ..load_data import Raw
 from .base import PreprocessBase
-import numpy as np
 
 
 class Resample(PreprocessBase):
@@ -18,16 +19,16 @@ class Resample(PreprocessBase):
         if preprocessed_data.is_raw():
             events, event_id = preprocessed_data.get_event_list()
             old_sfreq = preprocessed_data.get_sfreq()
-            
+
             # MNE resample modifies in-place and returns the instance (usually)
             # It does NOT reliably return (inst, events) tuple across versions/methods
             # So we manually resample events if they exist
-            
+
             # So we manually resample events if they exist
-            
+
             new_mne = preprocessed_data.get_mne().resample(sfreq=sfreq, events=None)
             preprocessed_data.set_mne(new_mne)
-            
+
             if len(events) > 0:
                 ratio = sfreq / old_sfreq
                 new_events = events.copy()

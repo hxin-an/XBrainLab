@@ -288,7 +288,7 @@ def test_training_plan_holder_get_eval_model_by_lastest_model(
     test_loader = None
     seed = set_seed()
     model = model_holder.get_model({})
-    
+
     with patch.object(model, 'state_dict', return_value='test'):
         training_option.evaluation_option = TRAINING_EVALUATION.LAST_EPOCH
         record = TrainRecord(
@@ -323,14 +323,14 @@ def test_training_plan_holder_one_epoch(base_holder, interrupt):
     criterion = train_record.criterion
 
     fake_test_result = {'test': 'test'}
-    
+
     with patch.object(train_record, 'update_train') as update_train_mock, \
          patch.object(train_record, 'update_eval') as update_val_mock, \
          patch.object(train_record, 'update_test') as update_test_mock, \
          patch.object(train_record, 'update_statistic') as update_statistic_mock, \
          patch.object(train_record, 'export_checkpoint') as export_checkpoint_mock, \
          patch('XBrainLab.backend.training.training_plan._test_model', return_value=fake_test_result):
-        
+
         if interrupt:
             base_holder.set_interrupt()
 
@@ -376,7 +376,7 @@ def test_training_plan_holder_train_one_repeat(base_holder):
 
     def set_interrupt(*args, **kwargs):
         base_holder.set_interrupt()
-    
+
     with patch.object(base_holder, 'train_one_epoch', side_effect=set_interrupt) as train_one_epoch_mock, \
          patch.object(train_record, 'export_checkpoint') as export_checkpoint_mock:
 
@@ -403,7 +403,7 @@ def test_training_plan_holder_train_one_repeat_status(base_holder):
         assert base_holder.get_epoch_progress_text() == str(epoch_counter) + " / 50"
         for i in base_holder.get_training_evaluation():
             assert i != "-"
-    
+
     with patch.object(base_holder, 'train_one_epoch', side_effect=train_one_epoch_side_effect) as train_one_epoch_mock:
         train_record = base_holder.train_record_list[0]
         for i in base_holder.get_training_evaluation():
@@ -491,11 +491,11 @@ def test_training_plan_holder_train(base_holder):
 def test_training_plan_holder_train_status(base_holder):
     from unittest.mock import patch
     original_train_one_repeat = base_holder.train_one_repeat
-    
+
     def train_one_repeat_side_effect(*args, **kwargs):
         base_holder.set_interrupt()
         original_train_one_repeat(*args, **kwargs)
-    
+
     with patch.object(base_holder, 'train_one_repeat', side_effect=train_one_repeat_side_effect) as train_one_repeat_mock:
         base_holder.train()
         assert base_holder.is_finished() is False
@@ -507,7 +507,7 @@ def test_training_plan_holder_train_error(base_holder):
     from unittest.mock import patch
     def train_one_repeat_side_effect(*args, **kwargs):
         raise RuntimeError("test")
-    
+
     with patch.object(base_holder, 'train_one_repeat', side_effect=train_one_repeat_side_effect) as train_one_repeat_mock:
         base_holder.train()
         assert base_holder.is_finished() is False
@@ -516,14 +516,14 @@ def test_training_plan_holder_train_error(base_holder):
 
 def test_test_model_metrics():
     from XBrainLab.backend.training.training_plan import _test_model
-    
+
     # Setup
     model = FakeModel()
     criterion = torch.nn.CrossEntropyLoss()
-    
+
     # Create dummy data
     # 2 batches, batch size 2
-    # Batch 1: 
+    # Batch 1:
     #   Input: random
     #   Labels: [0, 1]
     #   Preds: [[10, 0, 0, 0], [0, 10, 0, 0]] -> Argmax: [0, 1] (Correct)
@@ -531,9 +531,9 @@ def test_test_model_metrics():
     #   Input: random
     #   Labels: [2, 3]
     #   Preds: [[0, 0, 10, 0], [0, 10, 0, 0]] -> Argmax: [2, 1] (1 Correct, 1 Wrong)
-    
+
     # Total: 4 samples, 3 correct -> Acc = 75%
-    
+
     class MockDataset(torch.utils.data.Dataset):
         def __len__(self):
             return 4
@@ -544,38 +544,38 @@ def test_test_model_metrics():
     # We need to mock the model call to return specific predictions
     # But FakeModel is simple linear. Let's just mock the forward pass or use specific weights.
     # Easier: Mock the model object itself to return specific outputs
-    
+
     mock_model = torch.nn.Linear(4, 4) # Dummy
-    
+
     # Batch 1 outputs (indices 0, 1) -> Labels 0, 1
     out1 = torch.tensor([[10.0, 0.0, 0.0, 0.0], [0.0, 10.0, 0.0, 0.0]])
     # Batch 2 outputs (indices 2, 3) -> Labels 2, 3
     out2 = torch.tensor([[0.0, 0.0, 10.0, 0.0], [0.0, 10.0, 0.0, 0.0]]) # Last one wrong (pred 1, label 3)
-    
+
     from unittest.mock import Mock
     mock_model = Mock()
     mock_model.eval.return_value = None
     mock_model.side_effect = [out1, out2]
-    
+
     # DataLoader
     # We need a dataloader that yields 2 batches
     # Inputs don't matter as we mock model output
     inputs = torch.randn(2, 4)
     labels1 = torch.tensor([0, 1])
     labels2 = torch.tensor([2, 3])
-    
+
     loader = [(inputs, labels1), (inputs, labels2)]
-    
+
     # Run
     result = _test_model(mock_model, loader, criterion)
-    
+
     assert result[RecordKey.ACC] == 75.0
     assert RecordKey.AUC in result
     assert RecordKey.LOSS in result
 
 def test_training_plan_holder_init_error(base_holder, model_holder, dataset, training_option):
     from unittest.mock import patch
-    
+
     # Mock model_holder.get_model to raise RuntimeError
     with patch.object(model_holder, 'get_model', side_effect=RuntimeError("Given input size: (16x1x1). Calculated output size: (16x1x0). Output size is too small")):
         args = {
@@ -584,11 +584,11 @@ def test_training_plan_holder_init_error(base_holder, model_holder, dataset, tra
             'option': training_option,
             'saliency_params': {}
         }
-        
+
         # Should raise ValueError with specific message (now includes model name)
         with pytest.raises(ValueError, match="Failed to create model.*Output size is too small"):
             TrainingPlanHolder(**args)
-            
+
     # Verify other RuntimeErrors are re-raised
     with patch.object(model_holder, 'get_model', side_effect=RuntimeError("Other error")):
         with pytest.raises(RuntimeError, match="Other error"):

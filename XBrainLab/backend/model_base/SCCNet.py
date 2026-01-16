@@ -24,7 +24,7 @@ class SCCNet(nn.Module):
         self.sf = sfreq
         self.n_class = n_classes
         self.octsf = int(math.floor(self.sf*0.1))
-        
+
         # Validate minimum samples requirement
         # SCCNet requires: Conv2 padding + AvgPool(sf/2)
         min_samples = int(self.sf / 2) + 1

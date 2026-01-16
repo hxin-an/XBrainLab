@@ -21,9 +21,9 @@ mne = "^1.6.0"
 pymatreader = "^1.0.0"
 
 # Deep Learning Core (Required for Backend & LLM)
-torch = "^2.2.0"
-torchvision = "^0.17.0"
-torchaudio = "^2.2.0"
+torch = "^2.3.0"
+torchvision = "^0.18.0"
+torchaudio = "^2.3.0"
 captum = "^0.7.0"
 
 # Utilities
@@ -58,6 +58,7 @@ ruff = "^0.1.0"
 black = "^24.0.0"
 pre-commit = "^3.6.0"
 isort = "^5.13.0"
+poethepoet = "^0.40.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.0"
@@ -116,3 +117,10 @@ test-llm = "scripts.run_tests:run_llm_tests"
 test-remote = "scripts.run_tests:run_remote_tests"
 benchmark-llm = "scripts.benchmark.eval_agent:run_benchmark_cli"
 # test-all = "scripts.run_tests:all_tests"
+
+[tool.poe.tasks]
+verify = "python scripts/verify_real_tools.py"
+test-unit = "pytest tests/unit"
+test-real = "pytest tests/unit/llm/tools/real"
+clean = { cmd = "rm -rf output", help = "Remove output directory" }
+test-all = "pytest"

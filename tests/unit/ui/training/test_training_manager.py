@@ -1,9 +1,12 @@
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from PyQt6.QtWidgets import QMessageBox
-from unittest.mock import MagicMock, patch
-from XBrainLab.ui.training.training_manager import TrainingManagerWindow
+
 from XBrainLab.backend.training import Trainer
+from XBrainLab.ui.training.training_manager import TrainingManagerWindow
+
 
 class TestTrainingManager:
     @pytest.fixture
@@ -26,12 +29,12 @@ class TestTrainingManager:
         assert window.windowTitle() == "Training Manager"
         assert window.trainer == mock_trainer
         assert window.start_btn.isEnabled()
-        
+
     def test_start_training(self, window, mock_trainer):
         mock_trainer.is_running.return_value = False
-        
+
         window.start_training()
-        
+
         mock_trainer.run.assert_called_once_with(interact=True)
         assert not window.start_btn.isEnabled()
 
@@ -42,7 +45,7 @@ class TestTrainingManager:
             window.stop_training()
             mock_warn.assert_called_once()
             mock_trainer.set_interrupt.assert_not_called()
-            
+
         # Case 2: Running
         mock_trainer.is_running.return_value = True
         window.stop_training()
@@ -52,11 +55,11 @@ class TestTrainingManager:
         # Simulate training finished
         window.start_btn.setEnabled(False) # Simulate running state
         mock_trainer.is_running.return_value = False
-        
+
         with patch.object(QMessageBox, 'information') as mock_info:
             window.show() # Must be visible for update_loop
             window.update_loop()
-            
+
             assert window.start_btn.isEnabled()
             assert window.status_bar.text() == "IDLE"
             mock_info.assert_called_once()
@@ -68,11 +71,11 @@ class TestTrainingManager:
         plan.get_training_status.return_value = "Running"
         plan.get_training_epoch.return_value = 10
         plan.get_training_evaluation.return_value = [0.01, 0.5, 99.0, 0.8, 0.02, 98.0, 0.7]
-        
+
         window.training_plan_holders = [plan]
-        
+
         window.update_table()
-        
+
         assert window.plan_table.rowCount() == 1
         assert window.plan_table.item(0, 0).text() == "Plan1"
         assert window.plan_table.item(0, 1).text() == "Running"

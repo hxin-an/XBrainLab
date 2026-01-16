@@ -66,7 +66,7 @@ class TrainingOption:
         self.evaluation_option = evaluation_option
         self.repeat_num = repeat_num
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer_name = 'adam' # Default 
+        self.optimizer_name = 'adam' # Default
         self.validate()
 
     def validate(self) -> None:

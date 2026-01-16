@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import time
 from copy import deepcopy
 
@@ -119,7 +118,7 @@ class TrainRecord:
         self.random_state = get_random_state()
         self.start_timestamp = None
         self.end_timestamp = None
-        
+
         # Load existing data if available
         self.load()
 
@@ -127,15 +126,15 @@ class TrainRecord:
         """Initialize the directory to save the record"""
         record_name = self.dataset.get_name()
         repeat_name = self.get_name()
-        
+
         # Construct unique path: output / dataset / model_timestamp / repeat
         model_name = self.model.__class__.__name__
         unique_id = f"{model_name}_{self.plan_id}" if self.plan_id else model_name
-        
+
         target_path = os.path.join(
             self.option.get_output_dir(), record_name, unique_id, repeat_name
         )
-        
+
         # Do NOT backup automatically. Just ensure it exists.
         os.makedirs(target_path, exist_ok=True)
         self.target_path = target_path
@@ -288,7 +287,7 @@ class TrainRecord:
         lines = []
         lines.append(f"=== Training Summary for {self.get_name()} ===")
         lines.append(f"Total Epochs: {self.epoch}")
-        
+
         # Best Performance
         lines.append("\n[Best Performance]")
         for key, val in self.best_record.items():
@@ -297,7 +296,7 @@ class TrainRecord:
             epoch_key = key + "_epoch"
             epoch_val = self.best_record.get(epoch_key, "-")
             lines.append(f"  {key}: {val:.4f} (Epoch {epoch_val})")
-            
+
         # Last Epoch Stats
         lines.append("\n[Last Epoch Statistics]")
         if self.epoch > 0:
@@ -316,7 +315,7 @@ class TrainRecord:
             lines.append(f"  Val Acc:    {fmt(get_val(self.val, RecordKey.ACC), 2)}%")
         else:
             lines.append("  No training data available.")
-            
+
         return "\n".join(lines)
     # figure
     def get_loss_figure(
@@ -503,16 +502,16 @@ class TrainRecord:
 
         ax = fig.add_subplot(111)
         ax.set_title('Confusion matrix', color='#cccccc', pad=20)
-        
+
         # Improved Labels
         ax.set_xlabel('Predicted Label', labelpad=10, color='#cccccc')
         ax.set_ylabel('True Label', labelpad=10, color='#cccccc')
-        
+
         res = ax.imshow(plot_data, cmap='magma', interpolation='nearest')
-        
+
         # Threshold for text color
         threshold = (plot_data.max() + plot_data.min()) / 2
-        
+
         for x in range(classNum):
             for y in range(classNum):
                 val = plot_data[x][y]
@@ -520,28 +519,28 @@ class TrainRecord:
                     annot_color = 'k'
                 else:
                     annot_color = 'w'
-                    
+
                 if show_percentage:
                     text = f"{val:.1%}"
                 else:
                     text = str(int(val))
-                    
+
                 ax.annotate(text, xy=(y, x),
                             horizontalalignment='center',
                             verticalalignment='center',
                             color=annot_color
                             )
-        
+
         # Colorbar
         cbar = fig.colorbar(res)
         cbar.ax.yaxis.set_tick_params(color='#cccccc')
         plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='#cccccc')
-        
+
         # Ticks
         labels = [self.dataset.get_epoch_data().label_map[i] for i in range(classNum)]
         plt.xticks(range(classNum), labels, rotation=0, ha='center') # Horizontal labels
         plt.yticks(range(classNum), labels, va='center') # Vertically centered
-        
+
         # Styling
         ax.tick_params(axis='x', colors='#cccccc')
         ax.tick_params(axis='y', colors='#cccccc')

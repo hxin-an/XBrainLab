@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
+
 from XBrainLab.backend.load_data import EventLoader
+
 from .test_raw import (
     _set_event,
     epoch,  # noqa: F401
@@ -8,6 +10,7 @@ from .test_raw import (
     mne_raw,  # noqa: F401
     raw,  # noqa: F401
 )
+
 
 def test_event_loader_init(raw): # noqa: F811
     _set_event(raw)
@@ -23,19 +26,19 @@ def test_create_event_from_1d_list(raw): # noqa: F811
     event_loader = EventLoader(raw)
     # Simulate labels loaded from label_loader (1D list/array)
     event_loader.label_list = [1, 2, 3, 4]
-    
+
     # Mock existing events to allow sync (needed for create_event to proceed to name check)
     raw.set_event(np.zeros((4, 3), dtype=int), {str(i): i for i in range(4)})
-    
+
     with pytest.raises(ValueError, match='Event name cannot be empty.'):
         event_loader.create_event({1: ''})
 
     # Map 1->new 1, 2->new 2, etc.
     mapping = {1: 'new 1', 2: 'new 2', 3: 'new 3', 4: 'new 4'}
-    
+
     # Mock existing events to allow sync
     raw.set_event(np.zeros((4, 3), dtype=int), {str(i): i for i in range(4)})
-    
+
     event_loader.create_event(mapping)
     event_loader.apply()
 
@@ -60,11 +63,11 @@ def test_create_event_from_nx3_array(raw): # noqa: F811
         [30, 0, 3],
         [40, 0, 4]
     ])
-    
+
     mapping = {1: 'new 1', 2: 'new 2', 3: 'new 3', 4: 'new 4'}
     event_loader.create_event(mapping)
     event_loader.apply()
-    
+
     events, event_id = raw.get_event_list()
     assert len(events) == 4
     assert events[0, 0] == 10 # Should preserve timestamps
@@ -75,11 +78,11 @@ def test_create_event_inconsistent(epoch): # noqa: F811
     # If we provide label list with different length, it should fail
     event_loader = EventLoader(epoch)
     # Assuming mock epoch has length != 1
-    event_loader.label_list = [1] 
-    
+    event_loader.label_list = [1]
+
     # We need to check what is the length of mock epoch
     # Based on previous test code, it seemed to expect failure
-    
+
     # Note: create_event checks consistency for Epochs
     # But now it truncates, so it should NOT raise ValueError
     # Unless epoch has NO events?

@@ -1,6 +1,7 @@
 
 import json
 
+
 class PromptManager:
     """
     Manages the construction of prompts for the LLM Agent.
@@ -44,10 +45,10 @@ If no tool is needed, just reply normally.
         """Constructs the full system prompt with tools and context."""
         tools_str = self._format_tools()
         prompt = self.system_template.format(tools_str=tools_str)
-        
+
         if self.context_notes:
             prompt += "\n\nAdditional Context:\n" + "\n".join(self.context_notes)
-            
+
         return prompt
 
     def add_context(self, text: str):
@@ -64,10 +65,10 @@ If no tool is needed, just reply normally.
         Applies sliding window to history if needed.
         """
         messages = [{"role": "system", "content": self.get_system_message()}]
-        
+
         # Sliding Window: Keep only the last 10 messages
         # Ideally this should be token-based, but count-based is safe for now.
         recent_history = history[-10:]
         messages.extend(recent_history)
-        
+
         return messages

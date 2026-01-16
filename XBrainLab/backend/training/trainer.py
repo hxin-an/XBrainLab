@@ -57,14 +57,14 @@ class Trainer:
         while self.current_idx < len(self.training_plan_holders):
             if self.interrupt:
                 break
-            
+
             plan_holder = self.training_plan_holders[self.current_idx]
             self.progress_text = Status.TRAIN.value.format(plan_holder.get_name())
-            
+
             plan_holder.train()
-            
+
             self.current_idx += 1
-            
+
         self.progress_text = Status.PENDING
         self.job_thread = None
 

@@ -1,8 +1,10 @@
 
 import json
 import re
-from typing import Optional, Tuple, Dict, Any
+from typing import Any, Dict, Optional, Tuple
+
 from XBrainLab.backend.utils.logger import logger
+
 
 class CommandParser:
     """Parses LLM output to extract commands."""
@@ -36,10 +38,10 @@ class CommandParser:
                     return None
 
             data = json.loads(json_str)
-            
+
             if "command" in data and "parameters" in data:
                 return data["command"], data["parameters"]
-            
+
             return None
 
         except json.JSONDecodeError:

@@ -94,7 +94,7 @@ def test_option(kwargs, has_error):
     with patch('torch.cuda.is_available', return_value=True), \
          patch('torch.cuda.device_count', return_value=2), \
          patch('torch.cuda.get_device_name', return_value='test_gpu'):
-        
+
         if has_error:
             with pytest.raises(ValueError):
                 option = TrainingOption(**args)
