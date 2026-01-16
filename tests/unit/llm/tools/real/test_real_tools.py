@@ -86,11 +86,13 @@ class TestRealDatasetTools:
     def test_list_files(self, mock_study):
         tool = RealListFilesTool()
         # Use temp dir or mock os
-        with patch("os.listdir", return_value=["A.gdf", "B.txt"]):
-            with patch("os.path.exists", return_value=True):
-                res = tool.execute(mock_study, directory="/tmp", pattern="*.gdf")
-                assert "A.gdf" in res
-                assert "B.txt" not in res
+        with (
+            patch("os.listdir", return_value=["A.gdf", "B.txt"]),
+            patch("os.path.exists", return_value=True),
+        ):
+            res = tool.execute(mock_study, directory="/tmp", pattern="*.gdf")
+            assert "A.gdf" in res
+            assert "B.txt" not in res
 
     def test_load_data(self, mock_study):
         tool = RealLoadDataTool()
@@ -116,7 +118,7 @@ class TestRealDatasetTools:
         with patch(
             "XBrainLab.backend.load_data.label_loader.load_label_file",
             return_value=[[1, 0, 1]],
-        ) as mock_load:
+        ):
             res = tool.execute(mock_study, mapping={"A.gdf": "/labels/A.mat"})
             assert "Attached labels to 1 files" in res
             assert mock_raw.events == [[1, 0, 1]]

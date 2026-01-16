@@ -2,19 +2,6 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
-## [Unreleased]
-### Added
-- **Data Strategy (OOD Testing)**:
-    - **External Validation Set**: 建立 `external_validation_set.json` (原 Senior Benchmark)，包含 175 個未見過的測試案例 (Basic + Multi-step)。
-    - **Clean RAG Split**: 確立 `gold_set.json` 作為 RAG 教學資料，`external_validation_set.json` 作為評測資料的防止洩漏策略。
-- **Documentation**:
-    - 更新 `KNOWN_ISSUES.md` 標註外部驗證集揭露的工具功能缺失 (Optimizer, Checkpoints)。
-    - 更新 `ROADMAP.md` 整合 RAG 與 Multi-Agent 規劃。
-
-### Changed
-- **Content Cleanup**:
-    - 移除臨時轉換腳本 `convert_senior_benchmark.py` 與原始 CSV 檔案。
-    - 刪除冗餘的 `rag_knowledge_content_plan.md`，內容合併至 Roadmap。
 
 ## [0.3.7] - 2026-01-16
 ### Added

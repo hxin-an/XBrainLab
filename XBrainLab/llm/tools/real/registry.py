@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Type
+from typing import ClassVar
 
 import torch
 
@@ -18,13 +18,13 @@ class ToolRegistry:
     Used by Real Tools to resolve user/agent inputs to Python objects.
     """
 
-    _MODELS: Dict[str, Type[torch.nn.Module]] = {
+    _MODELS: ClassVar[dict[str, type[torch.nn.Module]]] = {
         "eegnet": EEGNet,
         "sccnet": SCCNet,
         "shallowconvnet": ShallowConvNet,
     }
 
-    _PREPROCESSORS: Dict[str, Type] = {
+    _PREPROCESSORS: ClassVar[dict[str, type]] = {
         "bandpass": Filtering,  # Maps to Filtering class
         "notch": Filtering,  # Maps to Filtering class
         "resample": Resample,
@@ -32,23 +32,23 @@ class ToolRegistry:
         "epoch": TimeEpoch,
     }
 
-    _OPTIMIZERS: Dict[str, Type[torch.optim.Optimizer]] = {
+    _OPTIMIZERS: ClassVar[dict[str, type[torch.optim.Optimizer]]] = {
         "adam": torch.optim.Adam,
         "sgd": torch.optim.SGD,
         "adamw": torch.optim.AdamW,
     }
 
     @classmethod
-    def get_model_class(cls, name: str) -> Optional[Type[torch.nn.Module]]:
+    def get_model_class(cls, name: str) -> type[torch.nn.Module] | None:
         """Get model class by name (case-insensitive)."""
         return cls._MODELS.get(name.lower())
 
     @classmethod
-    def get_preprocessor_class(cls, name: str) -> Optional[Type]:
+    def get_preprocessor_class(cls, name: str) -> type | None:
         """Get preprocessor class by name (case-insensitive)."""
         return cls._PREPROCESSORS.get(name.lower())
 
     @classmethod
-    def get_optimizer_class(cls, name: str) -> Type[torch.optim.Optimizer]:
+    def get_optimizer_class(cls, name: str) -> type[torch.optim.Optimizer]:
         """Get optimizer class by name (case-insensitive), default to Adam."""
         return cls._OPTIMIZERS.get(name.lower(), torch.optim.Adam)

@@ -1,5 +1,5 @@
 import os
-from typing import Any, List
+from typing import Any
 
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -9,9 +9,8 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
-from XBrainLab.backend.load_data.factory import (
-    RawDataLoaderFactory,
-)
+from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
+from XBrainLab.backend.load_data.label_loader import load_label_file
 
 from ..definitions.dataset_def import (
     BaseAttachLabelsTool,
@@ -24,7 +23,7 @@ from ..definitions.dataset_def import (
 
 
 class RealListFilesTool(BaseListFilesTool):
-    def execute(self, study: Any, directory: str, pattern: str = None) -> str:
+    def execute(self, study: Any, directory: str, pattern: str | None = None) -> str:
         if not os.path.exists(directory):
             return f"Error: Directory '{directory}' does not exist."
 
@@ -32,12 +31,8 @@ class RealListFilesTool(BaseListFilesTool):
             files = []
             for f in os.listdir(directory):
                 # Simple pattern logic (extension based)
-                if pattern:
-                    # pattern is glob, e.g. *.gdf. Simple matching:
-                    if pattern.startswith("*"):
-                        ext = pattern[1:]
-                        if not f.endswith(ext):
-                            continue
+                if pattern and pattern.startswith("*") and not f.endswith(pattern[1:]):
+                    continue
                 files.append(f)
             return str(files)
         except Exception as e:
@@ -45,7 +40,7 @@ class RealListFilesTool(BaseListFilesTool):
 
 
 class RealLoadDataTool(BaseLoadDataTool):
-    def execute(self, study: Any, paths: List[str]) -> str:
+    def execute(self, study: Any, paths: list[str]) -> str:
         if not paths:
             return "Error: paths list cannot be empty."
 
@@ -53,7 +48,8 @@ class RealLoadDataTool(BaseLoadDataTool):
         errors = []
         raw_list = []
 
-        # NOTE: Backend expects 'Raw' objects, not paths if calling set_loaded_data_list directly?
+        # NOTE: Backend expects 'Raw' objects, not paths if calling
+        # set_loaded_data_list directly?
         # No, LoadData logic is usually: Load Raw -> set to study
         # study.load_raw_data_list? study.py doesn't have it.
         # study.set_loaded_data_list expects List[Raw].
@@ -69,7 +65,7 @@ class RealLoadDataTool(BaseLoadDataTool):
                     loaded_count += 1
                 else:
                     errors.append(f"{p}: Loaded None")
-            except Exception as e:
+            except Exception as e:  # noqa: PERF203
                 errors.append(f"{p}: {e!s}")
 
         if raw_list:
@@ -80,14 +76,14 @@ class RealLoadDataTool(BaseLoadDataTool):
 
 
 class RealAttachLabelsTool(BaseAttachLabelsTool):
-    def execute(self, study: Any, mapping: dict, label_format: str = None) -> str:
+    def execute(
+        self, study: Any, mapping: dict, label_format: str | None = None
+    ) -> str:
         # Check if we have loaded data
         if not study.loaded_data_list:
             return "Error: No raw data loaded in Study."
 
         success_count = 0
-
-        from XBrainLab.backend.load_data.label_loader import load_label_file
 
         for raw in study.loaded_data_list:
             # Find filename in mapping
@@ -188,7 +184,10 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
             datasets = generator.generate()
             study.set_datasets(datasets)
 
-            return f"Dataset successfully generated. Count: {len(datasets)} (Test: {test_ratio}, Val: {val_ratio})."
+            return (
+                f"Dataset successfully generated. Count: {len(datasets)} "
+                f"(Test: {test_ratio}, Val: {val_ratio})."
+            )
 
         except Exception as e:
             return f"Dataset generation failed: {e!s}"

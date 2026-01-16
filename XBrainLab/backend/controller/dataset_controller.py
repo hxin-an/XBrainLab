@@ -43,7 +43,7 @@ class DatasetController:
         except Exception as e:
             # If existing data is invalid, specialized handling might be needed
             # For now propagate error or return specific status
-            raise ValueError(f"Existing dataset inconsistent: {e}")
+            raise ValueError(f"Existing dataset inconsistent: {e}") from e
 
         success_count = 0
         errors = []
@@ -87,9 +87,7 @@ class DatasetController:
         """Removes files at specified indices."""
         current_list = self.study.loaded_data_list
         to_remove = []
-        for idx in indices:
-            if idx < len(current_list):
-                to_remove.append(current_list[idx])
+        to_remove = [current_list[idx] for idx in indices if idx < len(current_list)]
 
         new_list = [d for d in current_list if d not in to_remove]
         self.study.set_loaded_data_list(new_list, force_update=True)
@@ -104,7 +102,8 @@ class DatasetController:
             if session is not None:
                 data.set_session_name(session)
 
-            # Sync to study to trigger updates if necessary (often metadata-only doesn't strictly require it,
+            # Sync to study to trigger updates if necessary
+            # (often metadata-only doesn't strictly require it,
             # but resetting preprocess ensures consistency)
             self.study.reset_preprocess(force_update=True)
 
@@ -142,15 +141,15 @@ class DatasetController:
         try:
             # Performs processing
             result = preprocessor.data_preprocess(selected_channels)
-
-            # Apply changes
-            self.study.backup_loaded_data()
-            self.study.set_loaded_data_list(result, force_update=True)
-            self.study.lock_dataset()
-            return True
         except Exception as e:
             logger.error(f"Channel selection failed: {e}")
             raise e
+
+        # Apply changes
+        self.study.backup_loaded_data()
+        self.study.set_loaded_data_list(result, force_update=True)
+        self.study.lock_dataset()
+        return True
 
     def get_filenames(self):
         """Returns list of filepaths for loaded data."""

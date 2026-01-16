@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from XBrainLab.backend.preprocessor.channel_selection import ChannelSelection
 
@@ -32,8 +32,8 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
         l_freq: float = 4,
         h_freq: float = 40,
         notch_freq: float = 50,
-        rereference: str = None,
-        resample_rate: int = None,
+        rereference: str | None = None,
+        resample_rate: int | None = None,
         normalize_method: str = "z-score",
     ) -> str:
         # Apply strict sequence
@@ -57,9 +57,10 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
             if normalize_method:
                 study.preprocess(Normalize, method=normalize_method)
 
-            return "Standard preprocessing applied successfully."
         except Exception as e:
             return f"Preprocessing failed: {e!s}"
+
+        return "Standard preprocessing applied successfully."
 
 
 class RealBandPassFilterTool(BaseBandPassFilterTool):
@@ -93,14 +94,15 @@ class RealRereferenceTool(BaseRereferenceTool):
 
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
-    def execute(self, study: Any, channels: List[str]) -> str:
+    def execute(self, study: Any, channels: list[str]) -> str:
         study.preprocess(ChannelSelection, channels=channels)
         return f"Selected {len(channels)} channels."
 
 
 class RealSetMontageTool(BaseSetMontageTool):
     def execute(self, study: Any, montage_name: str) -> str:
-        # Assuming MNE set_montage logic is embedded in ChannelSelection or separate utility?
+        # Assuming MNE set_montage logic is embedded in ChannelSelection
+        # or separate utility?
         # Backend check: study.set_channels usage?
         # Actually set_channels takes (chs, positions).
         # We need a way to Convert 'standard_1020' to positions.
@@ -114,7 +116,10 @@ class RealSetMontageTool(BaseSetMontageTool):
             # Usually standard montage is applied to Raw.
             pass
 
-        return "SetMontage not fully implemented in Study API yet (requires MNE integration)."
+        return (
+            "SetMontage not fully implemented in Study API yet "
+            "(requires MNE integration)."
+        )
 
 
 class RealEpochDataTool(BaseEpochDataTool):
@@ -124,12 +129,13 @@ class RealEpochDataTool(BaseEpochDataTool):
         t_min: float = -0.1,
         t_max: float = 1.0,
         event_id: Any = None,
-        baseline: List[float] = None,
+        baseline: list[float] | None = None,
     ) -> str:
         try:
             # Check arguments mapping to TimeEpoch constructor
             # Backend TimeEpoch._data_preprocess signature:
-            # (self, preprocessed_data: Raw, baseline: list, selected_event_names: list, tmin: float, tmax: float)
+            # (self, preprocessed_data: Raw, baseline: list, selected_event_names: list,
+            #  tmin: float, tmax: float)
 
             # 1. Handle "all events" if event_id is None
             # We need to manually inspect the data to find all available events
@@ -153,7 +159,8 @@ class RealEpochDataTool(BaseEpochDataTool):
                     return "Error: No events found in data to epoch on."
 
             # 2. Call Preprocess
-            # Note: arguments must match _data_preprocess signature exactly if passed via **kargs
+            # Note: arguments must match _data_preprocess signature exactly
+            # if passed via **kargs
             study.preprocess(
                 TimeEpoch,
                 tmin=t_min,
@@ -161,6 +168,7 @@ class RealEpochDataTool(BaseEpochDataTool):
                 selected_event_names=selected_names,
                 baseline=list(baseline) if baseline else None,
             )
-            return f"Data epoched: [{t_min}, {t_max}]s. Events: {selected_names}"
         except Exception as e:
             return f"Epoching failed: {e!s}"
+
+        return f"Data epoched: [{t_min}, {t_max}]s. Events: {selected_names}"

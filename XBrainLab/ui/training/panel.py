@@ -1,6 +1,9 @@
+import datetime
+import time
+
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
@@ -17,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.controller.training_controller import TrainingController
+from XBrainLab.backend.training.record.train import RecordKey, TrainRecordKey
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 
 from ..dataset.data_splitting_setting import DataSplittingSettingWindow
@@ -182,8 +186,6 @@ class TrainingPanel(QWidget):
         self.init_ui()
 
         # Timer for polling training status
-        from PyQt6.QtCore import QTimer
-
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_loop)
         self.training_completed_shown = False  # Track if completion message was shown
@@ -222,7 +224,8 @@ class TrainingPanel(QWidget):
         self.log_text.setReadOnly(True)
         self.log_text.setPlaceholderText("Training logs will appear here...")
         self.log_text.setStyleSheet(
-            "background-color: #1e1e1e; border: 1px solid #333; color: #aaa; font-family: monospace;"
+            "background-color: #1e1e1e; border: 1px solid #333; "
+            "color: #aaa; font-family: monospace;"
         )
         self.tabs.addTab(self.log_text, "Log")
 
@@ -484,7 +487,8 @@ class TrainingPanel(QWidget):
                 self,
                 "No Epoched Data",
                 "Please perform epoching in the Preprocess panel first.\n\n"
-                "Dataset splitting requires epoched data to generate training, validation, and test sets.",
+                "Dataset splitting requires epoched data to generate training, "
+                "validation, and test sets.",
             )
             return
 
@@ -504,7 +508,8 @@ class TrainingPanel(QWidget):
                 reply = QMessageBox.question(
                     self,
                     "Reset Training Data",
-                    "Applying new data splitting will clear existing datasets and training history.\n\n"
+                    "Applying new data splitting will clear existing datasets and "
+                    "training history.\n\n"
                     "Do you want to continue?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No,
@@ -536,7 +541,8 @@ class TrainingPanel(QWidget):
         if win.exec():
             # No need to reset trainer anymore, allowing multi-experiment history
             self.study.set_model_holder(win.get_result())
-            # ModelHolder doesn't have model_name, use get_model_desc_str() or target_model.__name__
+            # ModelHolder doesn't have model_name, use get_model_desc_str()
+            # or target_model.__name__
             model_name = self.study.model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
             self.check_ready_to_train()
@@ -629,7 +635,7 @@ class TrainingPanel(QWidget):
             group_name = data["group_name"]
             run_name = data["run_name"]
             model_name = data["model_name"]
-            is_plan_active = data["is_active"]
+            # is_plan_active = data["is_active"]  # Unused
             is_current_run = data.get("is_current_run", False)
 
             # Store mapping
@@ -651,7 +657,8 @@ class TrainingPanel(QWidget):
                 status = "Stopped"
 
             # Helper to set item text safely
-            def set_item(col, text):
+            # Helper to set item text safely
+            def set_item(col, text, row_idx=row_idx):
                 item = self.history_table.item(row_idx, col)
                 if not item:
                     item = QTableWidgetItem()
@@ -676,11 +683,6 @@ class TrainingPanel(QWidget):
                         return 0.0
                 return 0.0
 
-            from XBrainLab.backend.training.record.train import (
-                RecordKey,
-                TrainRecordKey,
-            )
-
             train_loss = get_last(TrainRecordKey.LOSS, record.train)
             train_acc = get_last(TrainRecordKey.ACC, record.train)
             val_loss = get_last(RecordKey.LOSS, record.val)
@@ -696,19 +698,13 @@ class TrainingPanel(QWidget):
             set_item(8, val_acc_str)
             set_item(9, f"{lr:.6f}")
 
-            import datetime
-            import time
-
             time_str = "-"
 
             start_ts = getattr(record, "start_timestamp", None)
             end_ts = getattr(record, "end_timestamp", None)
 
             if start_ts:
-                if end_ts:
-                    duration = end_ts - start_ts
-                else:
-                    duration = time.time() - start_ts
+                duration = end_ts - start_ts if end_ts else time.time() - start_ts
 
                 # Format duration as HH:MM:SS
                 m, s = divmod(int(duration), 60)
@@ -746,7 +742,8 @@ class TrainingPanel(QWidget):
                     # Log
                     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
                     log_msg = (
-                        f"[{timestamp}] {group_name} {record.get_name()} Epoch {epoch}: "
+                        f"[{timestamp}] {group_name} {record.get_name()} "
+                        f"Epoch {epoch}: "
                         f"Loss={train_loss:.4f}, Acc={train_acc:.2f}%, "
                         f"Val Loss={val_loss_str}, Val Acc={val_acc_str}"
                     )
@@ -760,7 +757,7 @@ class TrainingPanel(QWidget):
 
         row = selected_items[0].row()
         if row in self.row_map:
-            plan, record = self.row_map[row]
+            _, record = self.row_map[row]
             self.current_plotting_record = record
             self.refresh_plot(record)
 
@@ -770,8 +767,7 @@ class TrainingPanel(QWidget):
         self.tab_loss.clear()
 
         # Re-populate data
-        from XBrainLab.backend.training.record.train import RecordKey, TrainRecordKey
-
+        # Re-populate data
         epochs = len(record.train[TrainRecordKey.ACC])
         for i in range(epochs):
             epoch = i + 1

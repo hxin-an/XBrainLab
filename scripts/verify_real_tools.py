@@ -8,46 +8,26 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(PROJECT_ROOT)
 sys.path.append(os.getcwd())
 
-# Setup Output Directory
-OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-LOG_FILE = os.path.join(OUTPUT_DIR, "verification_log.txt")
-
-# Clear existing log
-if os.path.exists(LOG_FILE):
-    os.remove(LOG_FILE)
-
-# Setup Logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-logger = logging.getLogger(__name__)
-
-from XBrainLab.backend.load_data.raw_data_loader import (
+# Import Real Tools (Moved up, but ignore E402 for path setup)
+from XBrainLab.backend.load_data.raw_data_loader import (  # noqa: E402
     RawDataLoaderFactory,
     load_gdf_file,
 )
-from XBrainLab.backend.study import Study
+from XBrainLab.backend.study import Study  # noqa: E402
 
 # Register loaders
 RawDataLoaderFactory.register_loader(".gdf", load_gdf_file)
 
-# Import Real Tools
-from XBrainLab.llm.tools.real.dataset_real import (
+from XBrainLab.llm.tools.real.dataset_real import (  # noqa: E402
     RealGenerateDatasetTool,
     RealGetDatasetInfoTool,
     RealLoadDataTool,
 )
-from XBrainLab.llm.tools.real.preprocess_real import (
+from XBrainLab.llm.tools.real.preprocess_real import (  # noqa: E402
     RealBandPassFilterTool,
     RealEpochDataTool,
 )
-from XBrainLab.llm.tools.real.training_real import (
+from XBrainLab.llm.tools.real.training_real import (  # noqa: E402
     RealConfigureTrainingTool,
     RealSetModelTool,
     RealStartTrainingTool,
@@ -55,6 +35,26 @@ from XBrainLab.llm.tools.real.training_real import (
 
 
 def run_verification():
+    # Setup Output Directory
+    OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    LOG_FILE = os.path.join(OUTPUT_DIR, "verification_log.txt")
+
+    # Clear existing log
+    if os.path.exists(LOG_FILE):
+        os.remove(LOG_FILE)
+
+    # Setup Logger
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(LOG_FILE, encoding="utf-8"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+    logger = logging.getLogger(__name__)
+
     logger.info("Initializing Study...")
     study = Study()
 

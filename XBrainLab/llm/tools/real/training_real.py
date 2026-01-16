@@ -18,17 +18,22 @@ class RealSetModelTool(BaseSetModelTool):
 
         model_class = ToolRegistry.get_model_class(model_name)
         if not model_class:
-            return f"Error: Unknown model '{model_name}'. Supported: {list(ToolRegistry._MODELS.keys())}"
+            return (
+                f"Error: Unknown model '{model_name}'. "
+                f"Supported: {list(ToolRegistry._MODELS.keys())}"
+            )
 
         try:
             # Create ModelHolder with the resolved class
             # Note: We might need default params or empty dict if not provided by tool
-            # Current BaseSetModelTool doesn't accept params via LLM yet, usually assumes defaults
+            # Current BaseSetModelTool doesn't accept params via LLM yet,
+            # usually assumes defaults
             holder = ModelHolder(model_class, model_params_map={})
             study.set_model_holder(holder)
-            return f"Model successfully set to {model_name}."
         except Exception as e:
             return f"Failed to set model {model_name}: {e!s}"
+
+        return f"Model successfully set to {model_name}."
 
 
 class RealConfigureTrainingTool(BaseConfigureTrainingTool):
@@ -65,9 +70,13 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
             )
 
             study.set_training_option(option)
-            return f"Training configured: {option.get_optim_name()} on {option.get_device_name()}, Epochs: {epoch}."
         except Exception as e:
             return f"Failed to configure training: {e!s}"
+
+        return (
+            f"Training configured: {option.get_optim_name()} on "
+            f"{option.get_device_name()}, Epochs: {epoch}."
+        )
 
 
 class RealStartTrainingTool(BaseStartTrainingTool):
@@ -76,14 +85,18 @@ class RealStartTrainingTool(BaseStartTrainingTool):
             # 1. Generate Plan (Backend requirement)
             # append=True allows adding to existing experiments if needed,
             # but usually for a new run we might want clean state?
-            # Controller uses append=True. Let's stick to generating a fresh plan if none exists?
-            # Safe default: force_update=True to ensure consistency with current settings
+            # Controller uses append=True. Let's stick to generating a fresh plan
+            # if none exists?
+            # Safe default: force_update=True to ensure consistency with
+            # current settings
             study.generate_plan(force_update=True)
 
             # 2. Start Training
-            # interact=True allows running in a separate thread (non-blocking for UI/Agent)
+            # interact=True allows running in a separate thread
+            # (non-blocking for UI/Agent)
             study.train(interact=True)
 
-            return "Training started successfully (Background Thread)."
         except Exception as e:
             return f"Failed to start training: {e!s}"
+
+        return "Training started successfully (Background Thread)."
