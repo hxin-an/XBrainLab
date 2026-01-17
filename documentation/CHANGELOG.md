@@ -9,7 +9,8 @@
 - **Gemini API Support**: Native integration using `google-genai` SDK (v2).
 - **OpenAI API Support**: Compatible with GPT-4o, DeepSeek, and vLLM.
 - **Verification Scripts**: Added `scripts/verify_api_llm.py` and `scripts/verify_gemini_llm.py`.
-- **Poe Tasks**: Added `verify-api` and `verify-gemini` commands.
+- **Utility Scripts**: Added `scripts/list_gemini_models.py` to fetch available models.
+- **Poe Tasks**: Added `verify-api`, `verify-gemini`, and `list-models` commands.
 - **Configuration**: Added `.env` support with `python-dotenv` for secure API key management.
 
 ### Changed

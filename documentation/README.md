@@ -85,6 +85,9 @@ poe verify-api
 
 # 驗證 Gemini
 poe verify-gemini
+
+# [工具] 列出可用模型 (包含 Preview 版)
+poe list-models
 ```
 
 ## 測試 (Testing)

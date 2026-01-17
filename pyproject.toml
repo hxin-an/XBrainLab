@@ -127,5 +127,6 @@ test-unit = "pytest tests/unit"
 test-real = "pytest tests/unit/llm/tools/real"
 verify-api = "python scripts/verify_api_llm.py"
 verify-gemini = "python scripts/verify_gemini_llm.py"
+list-models = "python scripts/list_gemini_models.py"
 clean = { cmd = "rm -rf output", help = "Remove output directory" }
 test-all = "pytest"

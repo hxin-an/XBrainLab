@@ -13,17 +13,19 @@ def main():
     print("=== XBrainLab Gemini API Verification ===")
 
     # 1. Ask for credentials
-    api_key = input("Enter Google Gemini API Key: ").strip()
+    # 1. Check for credentials
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY")
-
+        api_key = input("Enter Google Gemini API Key: ").strip()
+    
     if not api_key:
         print("Error: No API Key provided.")
         return
+    else:
+        print(f"Using API Key: {api_key[:4]}...{api_key[-4:]}")
 
-    model_name = input("Enter Model Name (default: gemini-1.5-flash): ").strip()
-    if not model_name:
-        model_name = "gemini-1.5-flash"
+    model_name = os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash")
+    # Optional prompt override could go here but let's keep it simple for auto-run
 
     # 2. Setup Config
     config = LLMConfig()

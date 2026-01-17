@@ -24,11 +24,11 @@ class LLMConfig:
     cache_dir: str = os.path.join(os.path.dirname(__file__), "models")
 
     # API Configuration
-    inference_mode: str = "local"  # 'local', 'api', or 'gemini'
+    inference_mode: str = os.getenv("INFERENCE_MODE", "local")  # 'local', 'api', or 'gemini'
     api_key: str = os.getenv("OPENAI_API_KEY", "")
     base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     api_model_name: str = "gpt-4o"  # or 'deepseek-chat', etc.
 
     # Gemini Configuration
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    gemini_model_name: str = "gemini-1.5-flash"
+    gemini_model_name: str = "gemini-2.0-flash"
