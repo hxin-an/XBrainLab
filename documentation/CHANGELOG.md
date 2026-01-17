@@ -3,6 +3,21 @@
 所有對本專案的重要變更都將記錄於此文件中。
 
 
+## [0.4.2] - 2026-01-17
+### Added
+- **代碼品質工具**: 引入 `detect-secrets` 來防止機密洩漏，並建立了 `.secrets.baseline` 基準檔案以處理現有的誤報。
+
+### Fixed
+- **Linting 錯誤修復**: 全面修復了 `ruff` 和 `pre-commit` 檢測到的代碼風格與質量問題：
+    - **RUF043**: 將測試檔案中包含正則表達式 (Regex) 的字串統一改為 Python 原始字串 (`r"..."`)，避免轉義字符問題。
+    - **PLC0415**: 將原本位於函數內部的 `import` 語句移至檔案頂部，符合 PEP 8 標準。
+    - **RUF059**: 將未使用的解包變數（如 `_events`, `_remaining_mask`）加上底線前綴，明確表示忽略。
+    - **B905**: 為 `zip()` 函數添加了 `strict=False` 參數，明確指定在長度不一致時的行為（保持向後兼容）。
+- **CI/CD 穩定性**: 解決了所有 `pre-commit` hook 的報錯，確保代碼提交流程暢通。
+
+### Removed
+- 移除了開發過程中產生的臨時調試腳本與日誌檔案 (`lint_fix_plan.txt`, `pytest_log.txt`, `debug_list_gemini_models.py` 等)。
+
 ## [0.4.1] - 2026-01-17
 ### Refactored
 - **Frontend-Backend Separation**:
