@@ -1,4 +1,3 @@
-
 import pytest
 
 from XBrainLab.ui.dashboard_panel.smart_parser import SmartParserDialog
@@ -12,7 +11,7 @@ def dialog(qtbot):
 
     # Reset to known state (Split Mode, Default indices)
     dlg.radio_split.setChecked(True)
-    dlg.split_sep_combo.setCurrentIndex(0) # Underscore
+    dlg.split_sep_combo.setCurrentIndex(0)  # Underscore
     dlg.split_sub_idx.setValue(1)
     dlg.split_sess_idx.setValue(2)
 
@@ -20,6 +19,7 @@ def dialog(qtbot):
     dlg.update_preview()
 
     return dlg
+
 
 def test_smart_parser_init(dialog):
     """Test initialization and default state."""
@@ -32,6 +32,7 @@ def test_smart_parser_init(dialog):
     item_sess = dialog.table.item(0, 2)
     assert item_sub.text() == "Sub01"
     assert item_sess.text() == "Ses01"
+
 
 def test_smart_parser_change_mode(dialog, qtbot):
     """Test switching modes updates the stack and preview."""
@@ -47,6 +48,7 @@ def test_smart_parser_change_mode(dialog, qtbot):
     item_sub = dialog.table.item(0, 1)
     assert item_sub.text() == "Sub01"
 
+
 def test_smart_parser_split_settings(dialog, qtbot):
     """Test changing split settings."""
     # Change separator to Hyphen (index 1)
@@ -58,11 +60,12 @@ def test_smart_parser_split_settings(dialog, qtbot):
     assert item_sub.text() == "Sub01_Ses01"
 
     # Change indices
-    dialog.split_sep_combo.setCurrentIndex(0) # Back to underscore
-    dialog.split_sub_idx.setValue(2) # Subject is now 2nd part (Ses01)
+    dialog.split_sep_combo.setCurrentIndex(0)  # Back to underscore
+    dialog.split_sub_idx.setValue(2)  # Subject is now 2nd part (Ses01)
 
     item_sub = dialog.table.item(0, 1)
     assert item_sub.text() == "Ses01"
+
 
 def test_smart_parser_results(dialog):
     """Test get_results returns correct dictionary."""
@@ -71,6 +74,7 @@ def test_smart_parser_results(dialog):
     # Key is full path (which was just filename in init)
     assert "Sub01_Ses01.gdf" in results
     assert results["Sub01_Ses01.gdf"] == ("Sub01", "Ses01")
+
 
 def test_smart_parser_save_load_settings(dialog):
     """Test settings persistence."""

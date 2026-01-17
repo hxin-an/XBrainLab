@@ -16,13 +16,17 @@ class Visualizer:
         dpi: figure dpi
         fig: figure to plot on. If None, a new figure will be created
     """
+
     MIN_LABEL_NUMBER_FOR_MULTI_ROW = 2
-    def __init__(self,
-                 eval_record: EvalRecord,
-                 epoch_data: Epochs,
-                 figsize: tuple = (6.4, 4.8),
-                 dpi: int = 100,
-                 fig: Figure = None):
+
+    def __init__(
+        self,
+        eval_record: EvalRecord,
+        epoch_data: Epochs,
+        figsize: tuple = (6.4, 4.8),
+        dpi: int = 100,
+        fig: Figure = None,
+    ):
         self.eval_record = eval_record
         self.epoch_data = epoch_data
         self.figsize = figsize
@@ -38,10 +42,9 @@ class Visualizer:
         plt.clf()
         return self._get_plt(*args, **kwargs)
 
-
     def get_saliency(self, saliency_name, labelIndex: int) -> np.ndarray:
         """Return gradient of model by class index."""
-        if saliency_name !=None:
+        if saliency_name is not None:
             if saliency_name == "Gradient":
                 return self.eval_record.get_gradient(labelIndex)
             elif saliency_name == "Gradient * Input":

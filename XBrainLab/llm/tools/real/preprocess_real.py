@@ -160,8 +160,8 @@ class RealSetMontageTool(BaseSetMontageTool):
 
             # Check for partial match (optional, but good for robustness)
             if len(mapped_chs) < len(current_chs):
-                # Partial match case - debatable if we should auto-proceed or ask.
-                # User requested "Human-in-the-loop", so let's ask if not perfect.
+                # Partial match detected. Per "Human-in-the-loop" requirement, request
+                # user verification.
                 return (
                     f"Request: Verify Montage '{montage_name}' "
                     f"(Only {len(mapped_chs)}/{len(current_chs)} channels matched)"

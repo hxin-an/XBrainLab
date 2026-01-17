@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -31,22 +30,26 @@ def test_val_generation():
 
     # Create Config
     test_splitter = DataSplitter(SplitByType.DISABLE, "0", SplitUnit.RATIO)
-    val_splitter = DataSplitter(ValSplitByType.SUBJECT, "1", SplitUnit.MANUAL) # Use index 1 for S2
+    val_splitter = DataSplitter(
+        ValSplitByType.SUBJECT, "1", SplitUnit.MANUAL
+    )  # Use index 1 for S2
 
     config = DataSplittingConfig(
         train_type=TrainingType.FULL,
         is_cross_validation=False,
         val_splitter_list=[val_splitter],
-        test_splitter_list=[test_splitter]
+        test_splitter_list=[test_splitter],
     )
 
     # Create Generator
-    with patch('XBrainLab.backend.dataset.dataset_generator.validate_type'):
+    with patch("XBrainLab.backend.dataset.dataset_generator.validate_type"):
         generator = DatasetGenerator(epoch_data, config)
 
     # Generate
-    with patch('XBrainLab.backend.dataset.dataset_generator.validate_type'), \
-         patch('XBrainLab.backend.dataset.dataset.validate_type'):
+    with (
+        patch("XBrainLab.backend.dataset.dataset_generator.validate_type"),
+        patch("XBrainLab.backend.dataset.dataset.validate_type"),
+    ):
         generator.apply(MagicMock())
 
     # Check Dataset
@@ -72,6 +75,7 @@ def test_val_generation():
         print("FAILURE: Validation mask is empty!")
     else:
         print("SUCCESS: Validation mask populated.")
+
 
 if __name__ == "__main__":
     test_val_generation()

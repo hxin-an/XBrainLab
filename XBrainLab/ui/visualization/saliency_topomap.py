@@ -1,3 +1,5 @@
+import traceback
+
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -23,13 +25,19 @@ class SaliencyTopographicMapWidget(QWidget):
 
         # Initial Placeholder
         self.fig = Figure(figsize=(5, 4), dpi=100)
-        self.fig.patch.set_facecolor('#2d2d2d')
+        self.fig.patch.set_facecolor("#2d2d2d")
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#2d2d2d')
-        self.ax.text(0.5, 0.5, "Select a plan and method to visualize",
-                     color='#666666', ha='center', va='center')
-        self.ax.axis('off')
+        self.ax.set_facecolor("#2d2d2d")
+        self.ax.text(
+            0.5,
+            0.5,
+            "Select a plan and method to visualize",
+            color="#666666",
+            ha="center",
+            va="center",
+        )
+        self.ax.axis("off")
 
         self.plot_layout.addWidget(self.canvas)
         layout.addWidget(self.plot_container, stretch=1)
@@ -61,31 +69,31 @@ class SaliencyTopographicMapWidget(QWidget):
                 eval_record = plan.get_eval_record()
 
             if not eval_record:
-                raise ValueError("No evaluation record found.")
+                raise ValueError("No evaluation record found.")  # noqa: TRY301
 
             epoch_data = trainer.get_dataset().get_epoch_data()
 
             # Montage Check
             if epoch_data.get_montage_position() is None:
-                self.show_message("Please Set Montage First\n(Go to Configuration -> Set Montage)")
+                self.show_message(
+                    "Please Set Montage First\n(Go to Configuration -> Set Montage)"
+                )
                 return
 
             # Instantiate Visualizer
             # Clear existing matplotlib figures to avoid conflict with previous canvas
-            plt.close('all')
+            plt.close("all")
             plt.figure()
 
-            visualizer = VisualizerType.SaliencyTopoMap.value(
-                eval_record, epoch_data
-            )
+            visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epoch_data)
 
             # Get Figure
             self.fig = visualizer.get_plt(method=method, absolute=absolute)
 
             if self.fig:
                 # Apply Dark Theme
-                self.fig.patch.set_facecolor('#2d2d2d')
-                for ax in self.fig.axes:
+                self.fig.patch.set_facecolor("#2d2d2d")
+                for _ax in self.fig.axes:
                     # Topomap axes are complex, but we can try to style what we can
                     # ax.set_facecolor('#2d2d2d') # Often fails for topomap
                     pass
@@ -97,7 +105,6 @@ class SaliencyTopographicMapWidget(QWidget):
                 self.show_error("No Data Available")
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             print(f"Error plotting topomap: {e}")
             self.show_error(f"Error: {e}")

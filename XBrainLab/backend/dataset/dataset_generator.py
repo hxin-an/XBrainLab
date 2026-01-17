@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, List, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -7,8 +8,9 @@ from .data_splitter import DataSplittingConfig
 from .dataset import Dataset, Epochs
 from .option import SplitByType, TrainingType, ValSplitByType
 
-if TYPE_CHECKING: # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     from ..study import Study
+
 
 class DatasetGenerator:
     """Class for generating dataset from epoch data and splitting configuration.
@@ -29,11 +31,12 @@ class DatasetGenerator:
         val_splitter_list: List[`DataSplitter`]
             List of splitters for validation set
     """
+
     def __init__(
         self,
         epoch_data: Epochs,
         config: DataSplittingConfig,
-        datasets: Optional[List[Dataset]] = None
+        datasets: list[Dataset] | None = None,
     ):
         validate_type(epoch_data, Epochs, "epoch_data")
         validate_type(config, DataSplittingConfig, "config")
@@ -94,27 +97,26 @@ class DatasetGenerator:
         In split_test, the remaining_mask is set to False
         to discard all epochs that are dependent to the current test set
     """
+
     def handle_IND(self) -> None:
         """Wrapper for generating datasets for individual scheme.
-           Called by :func:`generate`."""
+        Called by :func:`generate`."""
         for subject_idx in range(len(self.epoch_data.get_subject_index_list())):
             name_prefix = f"Subject-{self.epoch_data.get_subject_name(subject_idx)}"
+
             def hook(dataset, subject_idx=subject_idx):
                 dataset.set_remaining_by_subject_idx(subject_idx)
+
             self.handle(name_prefix, hook)
 
     def handle_FULL(self) -> None:
         """Wrapper for generating datasets for full scheme.
-           Called by :func:`generate`."""
+        Called by :func:`generate`."""
         name_prefix = "Fold"
         self.handle(name_prefix)
 
     def split_test(
-        self,
-        dataset: Dataset,
-        group_idx: int,
-        mask: np.ndarray,
-        clean_mask: np.ndarray
+        self, dataset: Dataset, group_idx: int, mask: np.ndarray, clean_mask: np.ndarray
     ) -> np.ndarray:
         """Split the test set of the dataset.
 
@@ -143,29 +145,33 @@ class DatasetGenerator:
                     self.preview_failed = True
                     raise ValueError("Preview failed")
                 # session
-                if (test_splitter.split_type in (
-                    SplitByType.SESSION ,SplitByType.SESSION_IND
-                )):
+                if test_splitter.split_type in (
+                    SplitByType.SESSION,
+                    SplitByType.SESSION_IND,
+                ):
                     split_func = self.epoch_data.pick_session
                 # label
-                elif (test_splitter.split_type in (
-                    SplitByType.TRIAL, SplitByType.TRIAL_IND
-                )):
+                elif test_splitter.split_type in (
+                    SplitByType.TRIAL,
+                    SplitByType.TRIAL_IND,
+                ):
                     split_func = self.epoch_data.pick_trial
                 # subject
-                elif (test_splitter.split_type in (
-                    SplitByType.SUBJECT, SplitByType.SUBJECT_IND
-                )):
+                elif test_splitter.split_type in (
+                    SplitByType.SUBJECT,
+                    SplitByType.SUBJECT_IND,
+                ):
                     split_func = self.epoch_data.pick_subject
                 elif test_splitter.split_type == SplitByType.DISABLE:
                     continue
                 else:
                     raise NotImplementedError
                 mask, excluded = split_func(
-                    mask=mask, clean_mask=clean_mask,
+                    mask=mask,
+                    clean_mask=clean_mask,
                     value=test_splitter.get_value(),
                     split_unit=test_splitter.get_split_unit(),
-                    group_idx=group_idx
+                    group_idx=group_idx,
                 )
                 # save for next cross validation
                 if idx == 0:
@@ -176,11 +182,11 @@ class DatasetGenerator:
                 if not mask.any():
                     break
                 # independent
-                if (test_splitter.split_type in (
+                if test_splitter.split_type in (
                     SplitByType.SESSION_IND,
                     SplitByType.TRIAL_IND,
-                    SplitByType.SUBJECT_IND
-                )):
+                    SplitByType.SUBJECT_IND,
+                ):
                     dataset.discard_remaining_mask(excluded)
                 idx += 1
         if idx > 0:
@@ -220,18 +226,22 @@ class DatasetGenerator:
                 else:
                     raise NotImplementedError
                 mask, _ = split_func(
-                    mask=mask, clean_mask=None,
+                    mask=mask,
+                    clean_mask=None,
                     value=val_splitter.get_value(),
                     split_unit=val_splitter.get_split_unit(),
-                    group_idx=group_idx
+                    group_idx=group_idx,
                 )
                 idx += 1
         if idx > 0:
             if not mask.any():
-                print("WARNING: Validation set is empty! Please check your splitting configuration.")
+                print(
+                    "WARNING: Validation set is empty! Please check your "
+                    "splitting configuration."
+                )
             dataset.set_val(mask)
 
-    def handle(self, name_prefix: str, dataset_hook: Optional[callable] = None) -> None:
+    def handle(self, name_prefix: str, dataset_hook: Callable | None = None) -> None:
         """Internal function for generating datasets
 
         Args:
@@ -240,9 +250,8 @@ class DatasetGenerator:
         """
         group_idx = 0
         remaining_mask = None
-        while (
-            (remaining_mask is None) or
-            (self.config.is_cross_validation and remaining_mask.any())
+        while (remaining_mask is None) or (
+            self.config.is_cross_validation and remaining_mask.any()
         ):
             dataset = Dataset(self.epoch_data, self.config)
             dataset.set_name(f"{name_prefix}_{group_idx}")
@@ -261,11 +270,11 @@ class DatasetGenerator:
             self.datasets.append(dataset)
             group_idx += 1
 
-    def generate(self) -> List[Dataset]:
+    def generate(self) -> list[Dataset]:
         """Internal function for calling the dataset generation function."""
         if not self.is_clean():
             raise ValueError(
-                'Dataset generation is not clean. Reset the generator and try again.'
+                "Dataset generation is not clean. Reset the generator and try again."
             )
         if self.datasets:
             return self.datasets
@@ -304,7 +313,7 @@ class DatasetGenerator:
 
         # check if dataset is empty
         if len(self.datasets) == 0:
-            raise ValueError('No valid dataset is generated')
+            raise ValueError("No valid dataset is generated")
         self.done = True
         return self.datasets
 
@@ -319,10 +328,11 @@ class DatasetGenerator:
         self.preview_failed = False
         Dataset.SEQ = 0
 
-    def apply(self, study: 'Study') -> None:
+    def apply(self, study: "Study") -> None:
         """Apply the generated datasets to the study."""
         from ..study import Study
-        validate_type(study, Study, 'study')
+
+        validate_type(study, Study, "study")
         self.prepare_reuslt()
         study.set_datasets(self.datasets)
         study.dataset_generator = self

@@ -2,9 +2,10 @@ from XBrainLab.backend.evaluation.metric import Metric
 
 
 def test_metric_enum_values():
-    assert Metric.ACC.value == 'Accuracy (%)'
-    assert Metric.AUC.value == 'Area under ROC-curve'
-    assert Metric.KAPPA.value == 'kappa value'
+    assert Metric.ACC.value == "Accuracy (%)"
+    assert Metric.AUC.value == "Area under ROC-curve"
+    assert Metric.KAPPA.value == "kappa value"
+
 
 def test_metric_enum_members():
     members = list(Metric)

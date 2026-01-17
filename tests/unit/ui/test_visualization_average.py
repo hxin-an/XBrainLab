@@ -25,11 +25,11 @@ def get_averaged_record(trainer):
             result[k] = np.mean(np.stack(arrays), axis=0)
         return result
 
-    avg_gradient = avg_dict('gradient')
-    avg_gradient_input = avg_dict('gradient_input')
-    avg_smoothgrad = avg_dict('smoothgrad')
-    avg_smoothgrad_sq = avg_dict('smoothgrad_sq')
-    avg_vargrad = avg_dict('vargrad')
+    avg_gradient = avg_dict("gradient")
+    avg_gradient_input = avg_dict("gradient_input")
+    avg_smoothgrad = avg_dict("smoothgrad")
+    avg_smoothgrad_sq = avg_dict("smoothgrad_sq")
+    avg_vargrad = avg_dict("vargrad")
 
     return EvalRecord(
         label=base.label,
@@ -38,8 +38,9 @@ def get_averaged_record(trainer):
         gradient_input=avg_gradient_input,
         smoothgrad=avg_smoothgrad,
         smoothgrad_sq=avg_smoothgrad_sq,
-        vargrad=avg_vargrad
+        vargrad=avg_vargrad,
     )
+
 
 class TestAveraging(unittest.TestCase):
     def test_average_logic(self):
@@ -84,5 +85,6 @@ class TestAveraging(unittest.TestCase):
 
         print("Averaging test passed!")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

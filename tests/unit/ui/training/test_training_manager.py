@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,7 +19,9 @@ class TestTrainingManager:
     @pytest.fixture
     def window(self, qtbot, mock_trainer):
         # Mock Trainer check in __init__
-        with patch('XBrainLab.ui.training.training_manager.isinstance', return_value=True):
+        with patch(
+            "XBrainLab.ui.training.training_manager.isinstance", return_value=True
+        ):
             window = TrainingManagerWindow(None, mock_trainer)
             qtbot.addWidget(window)
             return window
@@ -41,7 +42,7 @@ class TestTrainingManager:
     def test_stop_training(self, window, mock_trainer):
         # Case 1: Not running
         mock_trainer.is_running.return_value = False
-        with patch.object(QMessageBox, 'warning') as mock_warn:
+        with patch.object(QMessageBox, "warning") as mock_warn:
             window.stop_training()
             mock_warn.assert_called_once()
             mock_trainer.set_interrupt.assert_not_called()
@@ -53,11 +54,11 @@ class TestTrainingManager:
 
     def test_update_loop_finish(self, window, mock_trainer):
         # Simulate training finished
-        window.start_btn.setEnabled(False) # Simulate running state
+        window.start_btn.setEnabled(False)  # Simulate running state
         mock_trainer.is_running.return_value = False
 
-        with patch.object(QMessageBox, 'information') as mock_info:
-            window.show() # Must be visible for update_loop
+        with patch.object(QMessageBox, "information") as mock_info:
+            window.show()  # Must be visible for update_loop
             window.update_loop()
 
             assert window.start_btn.isEnabled()
@@ -70,7 +71,15 @@ class TestTrainingManager:
         plan.get_name.return_value = "Plan1"
         plan.get_training_status.return_value = "Running"
         plan.get_training_epoch.return_value = 10
-        plan.get_training_evaluation.return_value = [0.01, 0.5, 99.0, 0.8, 0.02, 98.0, 0.7]
+        plan.get_training_evaluation.return_value = [
+            0.01,
+            0.5,
+            99.0,
+            0.8,
+            0.02,
+            98.0,
+            0.7,
+        ]
 
         window.training_plan_holders = [plan]
 

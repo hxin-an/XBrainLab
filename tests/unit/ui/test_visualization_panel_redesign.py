@@ -5,24 +5,33 @@ from unittest.mock import MagicMock, patch
 from PyQt6.QtWidgets import QLabel, QWidget
 
 # Mock backend modules before importing UI
-sys.modules['XBrainLab.backend.visualization'] = MagicMock()
-sys.modules['XBrainLab.backend.visualization.VisualizerType'] = MagicMock()
-sys.modules['XBrainLab.backend.visualization.supported_saliency_methods'] = ['SmoothGrad']
+sys.modules["XBrainLab.backend.visualization"] = MagicMock()
+sys.modules["XBrainLab.backend.visualization.VisualizerType"] = MagicMock()
+sys.modules["XBrainLab.backend.visualization.supported_saliency_methods"] = [
+    "SmoothGrad"
+]
 
 # Import UI components
-from XBrainLab.ui.visualization.panel import VisualizationPanel
-from XBrainLab.ui.visualization.saliency_3Dplot import Saliency3DPlotWidget
-from XBrainLab.ui.visualization.saliency_map import SaliencyMapWidget
-from XBrainLab.ui.visualization.saliency_spectrogram import SaliencySpectrogramWidget
-from XBrainLab.ui.visualization.saliency_topomap import SaliencyTopographicMapWidget
+from XBrainLab.ui.visualization.panel import VisualizationPanel  # noqa: E402
+from XBrainLab.ui.visualization.saliency_3Dplot import (  # noqa: E402
+    Saliency3DPlotWidget,
+)
+from XBrainLab.ui.visualization.saliency_map import SaliencyMapWidget  # noqa: E402
+from XBrainLab.ui.visualization.saliency_spectrogram import (  # noqa: E402
+    SaliencySpectrogramWidget,
+)
+from XBrainLab.ui.visualization.saliency_topomap import (  # noqa: E402
+    SaliencyTopographicMapWidget,
+)
 
 # app = QApplication(sys.argv) # REMOVED
+
 
 @unittest.skip("Segfaults in headless environment due to VTK/Qt interaction")
 class TestVisualizationPanelRedesign(unittest.TestCase):
     def setUp(self):
         # Patch AggregateInfoPanel
-        self.patcher_info = patch('XBrainLab.ui.visualization.panel.AggregateInfoPanel')
+        self.patcher_info = patch("XBrainLab.ui.visualization.panel.AggregateInfoPanel")
         self.MockAggregateInfoPanel = self.patcher_info.start()
         # Make sure the mock instance is a QWidget so layout.addWidget accepts it
         self.MockAggregateInfoPanel.return_value = QWidget()
@@ -62,7 +71,7 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
 
         # Initialize Panel
         self.panel = VisualizationPanel(self.mock_main_window)
-        self.panel.show() # Ensure isVisible checks work
+        self.panel.show()  # Ensure isVisible checks work
 
     def tearDown(self):
         self.panel.close()
@@ -85,27 +94,29 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
     def test_unified_controls(self):
         """Test if unified controls update state."""
         # Check Plan Combo Population
-        self.assertEqual(self.panel.plan_combo.count(), 2) # "Select a plan", "Group 1 (TestModel)"
+        self.assertEqual(
+            self.panel.plan_combo.count(), 2
+        )  # "Select a plan", "Group 1 (TestModel)"
 
         # Select Plan
         self.panel.plan_combo.setCurrentIndex(1)
 
         # Check Run Combo Population
-        self.assertEqual(self.panel.run_combo.count(), 3) # Run 1, Run 2, Average
+        self.assertEqual(self.panel.run_combo.count(), 3)  # Run 1, Run 2, Average
 
         # Select Run
-        self.panel.run_combo.setCurrentIndex(0) # Run 1
+        self.panel.run_combo.setCurrentIndex(0)  # Run 1
 
         # Verify friendly map
         friendly_name = self.panel.plan_combo.currentText()
         self.assertIn(friendly_name, self.panel.friendly_map)
         self.assertEqual(self.panel.friendly_map[friendly_name], self.mock_trainer)
 
-    @patch.object(SaliencyMapWidget, 'update_plot')
+    @patch.object(SaliencyMapWidget, "update_plot")
     def test_update_plot_call(self, mock_update_plot):
         """Test if changing controls calls update_plot on active widget."""
         # Setup
-        self.panel.tabs.setCurrentIndex(0) # Saliency Map
+        self.panel.tabs.setCurrentIndex(0)  # Saliency Map
         self.panel.plan_combo.setCurrentIndex(1)
         self.panel.run_combo.setCurrentIndex(0)
 
@@ -120,10 +131,10 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
         self.assertEqual(args[1], self.mock_trainer)
         self.assertEqual(args[4], self.mock_eval_record)
 
-    @patch.object(SaliencySpectrogramWidget, 'update_plot')
+    @patch.object(SaliencySpectrogramWidget, "update_plot")
     def test_spectrogram_update(self, mock_update_plot):
         """Test Spectrogram update call."""
-        self.panel.tabs.setCurrentIndex(1) # Spectrogram
+        self.panel.tabs.setCurrentIndex(1)  # Spectrogram
         self.panel.on_update()
         mock_update_plot.assert_called()
 
@@ -147,7 +158,7 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
     def test_refresh_data(self):
         """Test refresh_data method."""
         # Should call refresh_combos
-        with patch.object(self.panel, 'refresh_combos') as mock_refresh:
+        with patch.object(self.panel, "refresh_combos") as mock_refresh:
             self.panel.refresh_data()
             mock_refresh.assert_called_once()
 
@@ -158,45 +169,53 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
         # Case 1: No Montage
         self.mock_epoch_data.get_montage_position.return_value = None
 
-        widget.update_plot(self.mock_plan1, self.mock_trainer, "Gradient", False, self.mock_eval_record)
+        widget.update_plot(
+            self.mock_plan1, self.mock_trainer, "Gradient", False, self.mock_eval_record
+        )
 
         # Verify Error Message
         # The widget clears layout and adds a QLabel
-        last_widget = widget.plot_layout.itemAt(widget.plot_layout.count()-1).widget()
+        last_widget = widget.plot_layout.itemAt(widget.plot_layout.count() - 1).widget()
         self.assertIsInstance(last_widget, QLabel)
         self.assertIn("Please Set Montage First", last_widget.text())
 
-    @patch('XBrainLab.ui.visualization.saliency_topomap.plt')
+    @patch("XBrainLab.ui.visualization.saliency_topomap.plt")
     def test_topomap_plotting(self, mock_plt):
         """Test Topomap plotting logic (figure clearing)."""
         widget = self.panel.tab_topo
 
         # Setup Montage
-        self.mock_epoch_data.get_montage_position.return_value = [[0,0,0]]
+        self.mock_epoch_data.get_montage_position.return_value = [[0, 0, 0]]
 
         # Mock Visualizer
-        with patch('XBrainLab.backend.visualization.VisualizerType') as MockVizType:
+        with patch("XBrainLab.backend.visualization.VisualizerType") as MockVizType:
             mock_viz_instance = MagicMock()
             MockVizType.SaliencyTopoMap.value.return_value = mock_viz_instance
-            mock_viz_instance.get_plt.return_value = MagicMock() # Return a mock figure
+            mock_viz_instance.get_plt.return_value = MagicMock()  # Return a mock figure
 
-            widget.update_plot(self.mock_plan1, self.mock_trainer, "Gradient", False, self.mock_eval_record)
+            widget.update_plot(
+                self.mock_plan1,
+                self.mock_trainer,
+                "Gradient",
+                False,
+                self.mock_eval_record,
+            )
 
             # Verify plt.close('all') and plt.figure() called
-            mock_plt.close.assert_called_with('all')
+            mock_plt.close.assert_called_with("all")
             mock_plt.figure.assert_called_once()
 
-    @patch('XBrainLab.ui.visualization.saliency_3Dplot.pyvistaqt')
-    @patch('XBrainLab.ui.visualization.saliency_3Dplot.QTimer')
-    @patch('XBrainLab.ui.visualization.plot_3d_head.pv')
-    @patch('XBrainLab.ui.visualization.plot_3d_head.os.path')
+    @patch("XBrainLab.ui.visualization.saliency_3Dplot.pyvistaqt")
+    @patch("XBrainLab.ui.visualization.saliency_3Dplot.QTimer")
+    @patch("XBrainLab.ui.visualization.plot_3d_head.pv")
+    @patch("XBrainLab.ui.visualization.plot_3d_head.os.path")
     def test_3d_embedding(self, mock_path, mock_pv, mock_qtimer, mock_pyvistaqt):
         """Test if 3D Plot embeds QtInteractor and defers plotting."""
         widget = self.panel.tab_3d
 
         # Setup Montage (Required)
-        self.mock_epoch_data.get_montage_position.return_value = [[0,0,0]]
-        self.mock_epoch_data.event_id = {'Event1': 0}
+        self.mock_epoch_data.get_montage_position.return_value = [[0, 0, 0]]
+        self.mock_epoch_data.event_id = {"Event1": 0}
 
         # Mock QtInteractor to return a real QWidget
         mock_pyvistaqt.QtInteractor.return_value = QWidget()
@@ -211,11 +230,19 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
 
         # Mock Saliency3D class to avoid actual plotting logic
         # We need to mock Saliency3D inside the module where it's used
-        with patch('XBrainLab.ui.visualization.saliency_3Dplot.Saliency3D') as MockSaliency3D:
+        with patch(
+            "XBrainLab.ui.visualization.saliency_3Dplot.Saliency3D"
+        ) as MockSaliency3D:
             # Setup QTimer to run immediately
             mock_qtimer.singleShot.side_effect = lambda delay, func: func()
 
-            widget.update_plot(self.mock_plan1, self.mock_trainer, "Gradient", False, self.mock_eval_record)
+            widget.update_plot(
+                self.mock_plan1,
+                self.mock_trainer,
+                "Gradient",
+                False,
+                self.mock_eval_record,
+            )
 
             # Verify QtInteractor created
             mock_pyvistaqt.QtInteractor.assert_called_once()
@@ -223,10 +250,12 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
             # Verify QTimer called
             mock_qtimer.singleShot.assert_called_once()
 
-            # Verify Saliency3D instantiated with plotter (because QTimer ran immediately)
+            # Verify Saliency3D instantiated with plotter
+            # (because QTimer ran immediately)
             MockSaliency3D.assert_called_once()
             _, kwargs = MockSaliency3D.call_args
-            self.assertIn('plotter', kwargs)
+            self.assertIn("plotter", kwargs)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

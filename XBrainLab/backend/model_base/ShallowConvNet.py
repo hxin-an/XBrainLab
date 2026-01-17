@@ -14,14 +14,9 @@ class ShallowConvNet(nn.Module):
         samples: Number of samples.
         sfreq: Sampling frequency.
     """
+
     def __init__(
-        self,
-        n_classes,
-        channels,
-        samples,
-        sfreq,
-        pool_len=75,
-        pool_stride=15
+        self, n_classes, channels, samples, sfreq, pool_len=75, pool_stride=15
     ):
         super().__init__()
         self.temporal_filter = 40
@@ -38,20 +33,21 @@ class ShallowConvNet(nn.Module):
                 f"Epoch duration is too short for ShallowConvNet. "
                 f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
                 f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
-                f"Please increase epoch length (tmax-tmin) to at least {min_duration:.2f}s or use a lower sampling frequency."
+                f"Please increase epoch length (tmax-tmin) to at least "
+                f"{min_duration:.2f}s or use a lower sampling frequency."
             )
         self.conv1 = nn.Conv2d(1, self.temporal_filter, (1, self.kernel), bias=False)
         self.conv2 = nn.Conv2d(
             self.temporal_filter, self.spatial_filter, (channels, 1), bias=False
         )
-        self.Bn1   = nn.BatchNorm2d(self.spatial_filter)
+        self.Bn1 = nn.BatchNorm2d(self.spatial_filter)
         # self.SquareLayer = square_layer()
         self.AvgPool1 = nn.AvgPool2d((1, pool_len), stride=(1, pool_stride))
         # self.LogLayer = Log_layer()
         self.Drop1 = nn.Dropout(0.5)
         fc_inSize = self._get_size(channels, samples)[1]
         self.classifier = nn.Linear(fc_inSize, n_classes, bias=True)
-        #self.softmax = nn.Softmax()
+        # self.softmax = nn.Softmax()
 
     def forward(self, x):
         if len(x.shape) != 4:
@@ -59,15 +55,16 @@ class ShallowConvNet(nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.Bn1(x)
-        x = x ** 2
+        x = x**2
         x = self.AvgPool1(x)
         x = torch.log(x)
         x = self.Drop1(x)
         x = x.view(x.size()[0], -1)
         x = self.classifier(x)
 
-        #x = self.softmax(x)
+        # x = self.softmax(x)
         return x
+
     def _get_size(self, ch, tsamp):
         data = torch.ones((1, 1, ch, tsamp))
         x = self.conv1(data)

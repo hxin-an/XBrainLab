@@ -31,12 +31,7 @@ class WindowEpoch(PreprocessBase):
     def get_preprocess_desc(self, duration: float, overlap: float):
         return f"Epoching {duration}s ({overlap}s overlap) by sliding window"
 
-    def _data_preprocess(
-        self,
-        preprocessed_data: Raw,
-        duration: float,
-        overlap: float
-    ):
+    def _data_preprocess(self, preprocessed_data: Raw, duration: float, overlap: float):
         mne_data = preprocessed_data.get_mne()
         duration = float(duration)
         overlap = 0.0 if overlap == "" else float(overlap)

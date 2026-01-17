@@ -7,7 +7,7 @@
 測試 `XBrainLab.llm.agent.parser.CommandParser` 的解析邏輯。
 
 ### Case 1.1: Valid JSON Command
-*   **Input**: 
+*   **Input**:
     ```text
     Sure, I can help with that.
     ```json
@@ -24,7 +24,7 @@
 *   **Expected Output**: `None`
 
 ### Case 1.3: Malformed JSON
-*   **Input**: 
+*   **Input**:
     ```text
     ```json
     { "command": "load_data", "parameters": { ... broken ...
@@ -83,7 +83,7 @@
 
 ### Case 4.1: User Input Handling
 *   **Action**: Call `handle_user_input("Hello")`.
-*   **Expected**: 
+*   **Expected**:
     *   "Hello" added to `history`.
     *   `sig_generate` signal emitted.
 

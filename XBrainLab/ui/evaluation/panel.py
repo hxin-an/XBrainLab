@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.controller.evaluation_controller import EvaluationController
+from XBrainLab.backend.training.record import EvalRecord
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 from XBrainLab.ui.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.evaluation.metrics_bar_chart import MetricsBarChartWidget
@@ -21,15 +23,13 @@ class EvaluationPanel(QWidget):
         super().__init__()
         self.main_window = main_window
         # self.study = main_window.study # Decoupled
-        from XBrainLab.backend.controller.evaluation_controller import (
-            EvaluationController,
-        )
+
         self.controller = EvaluationController(main_window.study)
         self.init_ui()
 
     def update_panel(self):
         """Update panel content when switched to."""
-        if hasattr(self, 'info_panel'):
+        if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
         # Update Model Combo
@@ -39,16 +39,16 @@ class EvaluationPanel(QWidget):
         plans = self.controller.get_plans()
         if plans:
             for i, plan in enumerate(plans):
-                self.model_combo.addItem(f"Fold {i+1}: {plan.get_name()}", plan)
+                self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
 
             if self.model_combo.count() > 0:
                 self.model_combo.setCurrentIndex(0)
-                self.on_model_changed(0) # Manually trigger update for runs
+                self.on_model_changed(0)  # Manually trigger update for runs
         else:
             self.model_combo.addItem("No Data Available")
             self.run_combo.clear()
-            self.matrix_widget.update_plot(None) # Clear plot
-            self.bar_chart.update_plot({}) # Clear bar chart
+            self.matrix_widget.update_plot(None)  # Clear plot
+            self.bar_chart.update_plot({})  # Clear bar chart
             self.metrics_table.update_data({})
             self.summary_text.clear()
 
@@ -56,10 +56,12 @@ class EvaluationPanel(QWidget):
 
     def on_model_changed(self, index):
         """Handle model selection change."""
-        if index < 0: return
+        if index < 0:
+            return
 
         plan = self.model_combo.currentData()
-        if not plan: return
+        if not plan:
+            return
 
         # Update Run Combo
         self.run_combo.blockSignals(True)
@@ -71,7 +73,7 @@ class EvaluationPanel(QWidget):
         # Add Individual Runs
         for i, record in enumerate(records):
             status = " (Finished)" if record.is_finished() else ""
-            self.run_combo.addItem(f"Repeat {i+1}{status}", record)
+            self.run_combo.addItem(f"Repeat {i + 1}{status}", record)
 
         # Add Average Option if we have finished runs
         if finished_records:
@@ -93,60 +95,60 @@ class EvaluationPanel(QWidget):
         # Handle Average
         if data == "average":
             plan = self.model_combo.currentData()
-            if not plan: return
+            if not plan:
+                return
 
-            pooled_labels, pooled_outputs, metrics = self.controller.get_pooled_eval_result(plan)
+            (
+                pooled_labels,
+                pooled_outputs,
+                metrics,
+            ) = self.controller.get_pooled_eval_result(plan)
 
             if pooled_labels is None:
                 return
 
             # Create proxy record for Matrix plotting
-            # We need to construct a lightweight object that mimics the interface expected by ConfusionMatrixWidget
-            # ConfusionMatrixWidget calls record.get_confusion_figure usually, or we can update it to accept raw data.
+            # We need to construct a lightweight object that mimics the interface
+            # expected by ConfusionMatrixWidget
+            # ConfusionMatrixWidget calls record.get_confusion_figure usually, or we
+            # can update it to accept raw data.
             # But simpler to keep widget interface same and pass a proxy here.
 
-            from XBrainLab.backend.training.record import EvalRecord
+            # But simpler to keep widget interface same and pass a proxy here.
 
             class ProxyRecord:
                 def __init__(self, labels, outputs):
                     self.eval_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
 
                 def get_confusion_figure(self, fig=None, show_percentage=False):
-                    # Reuse static method if available or instantiate TrainRecord dynamically
-                    # Wait, TrainRecord.get_confusion_figure is instance method.
-                    # We can use a helper or modify the widget.
-                    # Actually, we can use the first record of the plan as a "host" for the plotting logic?
+                    # Reuse static method if available or instantiate TrainRecord
+                    # dynamically
                     pass
 
-            # Update Matrix
-            # Hack: The ConfusionMatrixWidget.update_plot(record) calls record.get_confusion_figure(self.figure, ...)
-            # We can create a temporary object that has get_confusion_figure method.
-
-            # Strategy: Use one real record but patch its eval_record momentarily? No, not thread safe/clean.
-            # Better: Let the controller return a full ProxyRecord object that has the method?
-            # Or better: The controller just returns data, and we construct the plot here?
-            # Or we pass the data to widget.
-
-            # Let's see ConfusionMatrixWidget implementation via assumption (or I can read it if needed).
-            # But wait, I see logic in lines 259-286 of original file attempting to create DummyRecord.
-            # I should reuse that concept but cleaner.
-
-            # Actually, let's use the first available finished record in the plan to drive the plot,
+            # Use the first finished record in the plan as a template/host for the
+            # plotting logic.
+            # This allows reusing the visualization code without mocking the entire
+            # object structure.
             # but substitute its data.
-            template_record = [r for r in plan.get_plans() if r.is_finished()][0]
+            template_record = next(r for r in plan.get_plans() if r.is_finished())
 
             class PooledRecordWrapper:
                 def __init__(self, original, labels, outputs):
                     self.original = original
                     self.eval_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
-                    self.dataset = original.dataset # Needed for class names
+                    self.dataset = original.dataset  # Needed for class names
 
                 def get_confusion_figure(self, fig=None, show_percentage=False):
                     # Delegate finding class names etc to original class method?
-                    # `TrainRecord.get_confusion_figure` heavily depends on `self.dataset`
-                    return self.original.__class__.get_confusion_figure(self, fig, show_percentage=show_percentage)
+                    # `TrainRecord.get_confusion_figure` heavily depends on
+                    # `self.dataset`
+                    return self.original.__class__.get_confusion_figure(
+                        self, fig, show_percentage=show_percentage
+                    )
 
-            proxy_record = PooledRecordWrapper(template_record, pooled_labels, pooled_outputs)
+            proxy_record = PooledRecordWrapper(
+                template_record, pooled_labels, pooled_outputs
+            )
 
             show_pct = self.chk_percentage.isChecked()
             self.matrix_widget.update_plot(proxy_record, show_percentage=show_pct)
@@ -173,7 +175,7 @@ class EvaluationPanel(QWidget):
 
         plan = self.model_combo.currentData()
         if plan:
-             self.update_model_summary(plan, record=record)
+            self.update_model_summary(plan, record=record)
 
     def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
@@ -186,7 +188,7 @@ class EvaluationPanel(QWidget):
 
     def update_info(self):
         """Update the aggregate info panel."""
-        if hasattr(self, 'info_panel'):
+        if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
     def init_ui(self):
@@ -277,7 +279,8 @@ class EvaluationPanel(QWidget):
         right_panel = QWidget()
         right_panel.setFixedWidth(260)
         right_panel.setObjectName("RightPanel")
-        right_panel.setStyleSheet("""
+        right_panel.setStyleSheet(
+            """
             #RightPanel {
                 background-color: #252526;
                 border-left: 1px solid #3e3e42;
@@ -306,14 +309,16 @@ class EvaluationPanel(QWidget):
             QPushButton:hover {
                 background-color: #4e4e52;
             }
-        """)
+        """
+        )
 
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20)
 
         # Aggregate Info
         self.info_panel = AggregateInfoPanel(self.main_window)
-        self.info_panel.setStyleSheet("""
+        self.info_panel.setStyleSheet(
+            """
             QGroupBox {
                 background-color: transparent;
                 border: none;
@@ -331,7 +336,8 @@ class EvaluationPanel(QWidget):
                 color: #cccccc;
                 font-weight: normal;
             }
-        """)
+        """
+        )
         right_layout.addWidget(self.info_panel)
 
         right_layout.addStretch()
@@ -339,5 +345,3 @@ class EvaluationPanel(QWidget):
         # Add to main layout
         main_layout.addWidget(left_widget, stretch=1)
         main_layout.addWidget(right_panel, stretch=0)
-
-

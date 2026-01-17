@@ -1,4 +1,3 @@
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
@@ -24,7 +23,8 @@ class MetricsTableWidget(QTableWidget):
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
         # Dark mode friendly style
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QTableWidget {
                 background-color: #252526;
                 color: #cccccc;
@@ -44,7 +44,8 @@ class MetricsTableWidget(QTableWidget):
                 background-color: #094771;
                 color: white;
             }
-        """)
+        """
+        )
 
     def update_data(self, metrics: dict):
         """Update table with metrics data.
@@ -58,15 +59,15 @@ class MetricsTableWidget(QTableWidget):
             return
 
         # Sort keys to ensure order (integers first, then macro_avg)
-        keys = sorted([k for k in metrics.keys() if isinstance(k, int)])
+        keys = sorted([k for k in metrics if isinstance(k, int)])
 
         # Add per-class rows
         for class_idx in keys:
             self._add_row(str(class_idx), metrics[class_idx])
 
         # Add Macro Avg row
-        if 'macro_avg' in metrics:
-            self._add_row("Macro Avg", metrics['macro_avg'], is_summary=True)
+        if "macro_avg" in metrics:
+            self._add_row("Macro Avg", metrics["macro_avg"], is_summary=True)
 
     def _add_row(self, label: str, data: dict, is_summary: bool = False):
         row = self.rowCount()
@@ -85,7 +86,9 @@ class MetricsTableWidget(QTableWidget):
             return item
 
         self.setItem(row, 0, create_item(label, is_bold=is_summary))
-        self.setItem(row, 1, create_item(f"{data['precision']:.4f}", is_bold=is_summary))
+        self.setItem(
+            row, 1, create_item(f"{data['precision']:.4f}", is_bold=is_summary)
+        )
         self.setItem(row, 2, create_item(f"{data['recall']:.4f}", is_bold=is_summary))
         self.setItem(row, 3, create_item(f"{data['f1-score']:.4f}", is_bold=is_summary))
-        self.setItem(row, 4, create_item(str(data['support']), is_bold=is_summary))
+        self.setItem(row, 4, create_item(str(data["support"]), is_bold=is_summary))

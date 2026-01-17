@@ -1,4 +1,3 @@
-
 import sys
 from unittest.mock import patch
 
@@ -15,6 +14,7 @@ from XBrainLab.ui.dashboard_panel.import_label import (
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
 
+
 def test_import_label_dialog_init(qtbot):
     """Test initialization of ImportLabelDialog."""
     dialog = ImportLabelDialog()
@@ -23,23 +23,33 @@ def test_import_label_dialog_init(qtbot):
     assert dialog.file_list.count() == 0
     assert dialog.map_table.rowCount() == 0
 
+
 def test_import_label_dialog_load_file(qtbot):
     """Test loading label files."""
     dialog = ImportLabelDialog()
     qtbot.addWidget(dialog)
 
     # Mock QFileDialog and load_label_file
-    with patch('PyQt6.QtWidgets.QFileDialog.getOpenFileNames', return_value=(['/path/to/labels.txt'], 'Filter')):
-        with patch('XBrainLab.ui.dashboard_panel.import_label.load_label_file', return_value=[1, 2, 1]):
-            dialog.browse_files()
+    with (
+        patch(
+            "PyQt6.QtWidgets.QFileDialog.getOpenFileNames",
+            return_value=(["/path/to/labels.txt"], "Filter"),
+        ),
+        patch(
+            "XBrainLab.ui.dashboard_panel.import_label.load_label_file",
+            return_value=[1, 2, 1],
+        ),
+    ):
+        dialog.browse_files()
 
-            assert dialog.file_list.count() == 1
-            assert "labels.txt" in dialog.label_data_map
-            assert dialog.label_data_map["labels.txt"] == [1, 2, 1]
+        assert dialog.file_list.count() == 1
+        assert "labels.txt" in dialog.label_data_map
+        assert dialog.label_data_map["labels.txt"] == [1, 2, 1]
 
-            # Check unique labels updated
-            assert dialog.unique_labels == [1, 2]
-            assert dialog.map_table.rowCount() == 2
+        # Check unique labels updated
+        assert dialog.unique_labels == [1, 2]
+        assert dialog.map_table.rowCount() == 2
+
 
 def test_import_label_dialog_accept_success(qtbot):
     """Test accepting the dialog returns correct results."""
@@ -51,16 +61,17 @@ def test_import_label_dialog_accept_success(qtbot):
     dialog.update_unique_labels()
 
     # Set mapping names
-    dialog.map_table.item(0, 1).setText("Event A") # Code 1
-    dialog.map_table.item(1, 1).setText("Event B") # Code 2
+    dialog.map_table.item(0, 1).setText("Event A")  # Code 1
+    dialog.map_table.item(1, 1).setText("Event B")  # Code 2
 
-    with patch.object(QDialog, 'accept') as mock_accept:
+    with patch.object(QDialog, "accept") as mock_accept:
         dialog.accept()
         mock_accept.assert_called_once()
 
     labels, mapping = dialog.get_results()
     assert labels == {"file1.txt": [1, 2]}
     assert mapping == {1: "Event A", 2: "Event B"}
+
 
 def test_event_filter_dialog(qtbot):
     """Test EventFilterDialog logic."""
@@ -70,17 +81,18 @@ def test_event_filter_dialog(qtbot):
 
     # Check initial state (all checked by default if no settings)
     # We mocked QSettings in the class? No, it uses real QSettings.
-    # Let's assume default behavior or check items.
+    # Assume default behavior or check items.
 
     # Select only Event1
     dialog.set_all_checked(False)
     dialog.list_widget.item(0).setCheckState(Qt.CheckState.Checked)
 
-    with patch.object(QDialog, 'accept') as mock_accept:
+    with patch.object(QDialog, "accept") as mock_accept:
         dialog.accept()
         mock_accept.assert_called_once()
 
     assert dialog.get_selected_ids() == ["Event1"]
+
 
 def test_label_mapping_dialog(qtbot):
     """Test LabelMappingDialog auto-sort logic."""
@@ -100,12 +112,13 @@ def test_label_mapping_dialog(qtbot):
     assert "sub02_labels.txt" in label_item_1.text()
 
     # Check mapping result
-    with patch.object(QDialog, 'accept') as mock_accept:
+    with patch.object(QDialog, "accept"):
         dialog.accept()
 
     mapping = dialog.get_mapping()
     assert mapping["/path/sub01.set"] == "/path/sub01_labels.txt"
     assert mapping["/path/sub02.set"] == "/path/sub02_labels.txt"
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

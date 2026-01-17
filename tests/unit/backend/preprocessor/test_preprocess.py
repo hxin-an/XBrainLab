@@ -1,3 +1,6 @@
+import os
+from unittest.mock import patch
+
 import mne
 import numpy as np
 import pytest
@@ -15,22 +18,24 @@ from .test_base import (
 # epoch
 @pytest.fixture
 def mne_epoch():
-    mne_raw = _generate_mne(base_fs, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg')
+    mne_raw = _generate_mne(base_fs, ["Fp1", "Fp2", "F3", "F4"], "eeg")
 
     events = np.array([[1, 0, 1], [2, 0, 2], [3, 0, 3], [4, 0, 4]])
-    event_id = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
+    event_id = {"a": 1, "b": 2, "c": 3, "d": 4}
     epochs = mne.Epochs(
         mne_raw, events, event_id, tmin=0, tmax=5, baseline=None, preload=True
     )
     return epochs
 
+
 @pytest.fixture
 def epoch(mne_epoch):
-    path = 'tests/test_data/sub-01_ses-01_task-rest_eeg.fif'
+    path = "tests/test_data/sub-01_ses-01_task-rest_eeg.fif"
     return Raw(path, mne_epoch)
 
+
 # edit event
-@pytest.mark.parametrize('target', ['raw', 'epoch'])
+@pytest.mark.parametrize("target", ["raw", "epoch"])
 def test_channel_selection(target, request):
     target = request.getfixturevalue(target)
     processor = preprocessor.ChannelSelection([target])
@@ -38,107 +43,111 @@ def test_channel_selection(target, request):
     with pytest.raises(ValueError):
         processor.data_preprocess([])
 
-    processor.data_preprocess(['Fp1', 'Fp2'])
+    processor.data_preprocess(["Fp1", "Fp2"])
     result = processor.get_preprocessed_data_list()[0]
     assert target.get_nchan() == 4
     assert result.get_nchan() == 2
-    assert result.get_preprocess_history()[0] == 'Select 2 Channel'
+    assert result.get_preprocess_history()[0] == "Select 2 Channel"
 
-def test_edit_event_name_raw(raw): # noqa: F811
+
+def test_edit_event_name_raw(raw):  # noqa: F811
     with pytest.raises(
-        ValueError, match="Event name can only be edited for epoched data"
+        ValueError, match=r"Event name can only be edited for epoched data"
     ):
         preprocessor.EditEventName([raw])
+
 
 def test_edit_event_name_epoch(epoch):
     processor = preprocessor.EditEventName([epoch])
     with pytest.raises(
-        AssertionError, match="New event name not found in old event name."
+        AssertionError, match=r"New event name not found in old event name."
     ):
-        processor.data_preprocess({'ff': 'a'})
-    with pytest.raises(AssertionError, match="No Event name updated."):
-        processor.data_preprocess({'a': 'a', 'b': 'b', 'c': 'c', 'd': 'd'})
-    with pytest.raises(ValueError, match="Duplicate event name: d"):
-        processor.data_preprocess({'a': 'a', 'b': 'b', 'c': 'd', 'd': 'd'})
+        processor.data_preprocess({"ff": "a"})
+    with pytest.raises(AssertionError, match=r"No Event name updated."):
+        processor.data_preprocess({"a": "a", "b": "b", "c": "c", "d": "d"})
+    with pytest.raises(ValueError, match=r"Duplicate event name: d"):
+        processor.data_preprocess({"a": "a", "b": "b", "c": "d", "d": "d"})
 
     # all match
-    processor.data_preprocess({'a': 'a', 'b': 'b', 'c': 'c', 'd': 'e'})
+    processor.data_preprocess({"a": "a", "b": "b", "c": "c", "d": "e"})
     result = processor.get_preprocessed_data_list()[0]
-    assert epoch.get_event_name_list_str() == 'a,b,c,d'
-    assert result.get_event_name_list_str() == 'a,b,c,e'
-    assert result.get_preprocess_history()[0] == 'Update 1 event names'
+    assert epoch.get_event_name_list_str() == "a,b,c,d"
+    assert result.get_event_name_list_str() == "a,b,c,e"
+    assert result.get_preprocess_history()[0] == "Update 1 event names"
 
     # miss at new event
-    processor.data_preprocess({'a': 'a', 'b': 'b', 'e': 'f'})
+    processor.data_preprocess({"a": "a", "b": "b", "e": "f"})
     result = processor.get_preprocessed_data_list()[0]
-    assert epoch.get_event_name_list_str() == 'a,b,c,d'
-    assert result.get_event_name_list_str() == 'a,b,c,f'
-    assert result.get_preprocess_history()[1] == 'Update 1 event names'
+    assert epoch.get_event_name_list_str() == "a,b,c,d"
+    assert result.get_event_name_list_str() == "a,b,c,f"
+    assert result.get_preprocess_history()[1] == "Update 1 event names"
 
-def test_edit_event_id_raw(raw): # noqa: F811
+
+def test_edit_event_id_raw(raw):  # noqa: F811
     with pytest.raises(
-        ValueError, match="Event id can only be edited for epoched data"
+        ValueError, match=r"Event id can only be edited for epoched data"
     ):
         preprocessor.EditEventId([raw])
+
 
 def test_edit_event_id_epoch(epoch):
     processor = preprocessor.EditEventId([epoch])
 
     # Test no update
-    with pytest.raises(AssertionError, match="No Event Id updated."):
-        processor.data_preprocess({'a': 1, 'b': 2, 'c': 3, 'd': 4})
+    with pytest.raises(AssertionError, match=r"No Event Id updated."):
+        processor.data_preprocess({"a": 1, "b": 2, "c": 3, "d": 4})
 
     # Test simple update
-    processor.data_preprocess({'a': 10, 'b': 20, 'c': 30, 'd': 40})
+    processor.data_preprocess({"a": 10, "b": 20, "c": 30, "d": 40})
     result = processor.get_preprocessed_data_list()[0]
     _, event_id = result.get_event_list()
-    assert event_id == {'a': 10, 'b': 20, 'c': 30, 'd': 40}
-    assert result.get_preprocess_history()[0] == 'Update event ids'
+    assert event_id == {"a": 10, "b": 20, "c": 30, "d": 40}
+    assert result.get_preprocess_history()[0] == "Update event ids"
 
     # Test merge update (duplicate new IDs)
     # Reset processor with fresh epoch
     processor = preprocessor.EditEventId([epoch])
     # Merge 'c' (3) and 'd' (4) into ID 5
-    processor.data_preprocess({'a': 1, 'b': 2, 'c': 5, 'd': 5})
+    processor.data_preprocess({"a": 1, "b": 2, "c": 5, "d": 5})
     result = processor.get_preprocessed_data_list()[0]
     _, event_id = result.get_event_list()
 
     # Check if 'c' and 'd' are merged into 'c/d' or 'd/c' with ID 5
     assert len(event_id) == 3
-    assert event_id['a'] == 1
-    assert event_id['b'] == 2
+    assert event_id["a"] == 1
+    assert event_id["b"] == 2
     # The key for ID 5 should be a combination of 'c' and 'd'
-    merged_key = [k for k, v in event_id.items() if v == 5][0]
-    assert 'c' in merged_key and 'd' in merged_key
-    assert result.get_preprocess_history()[0] == 'Update event ids'
+    merged_key = next(k for k, v in event_id.items() if v == 5)
+    assert "c" in merged_key and "d" in merged_key
+    assert result.get_preprocess_history()[0] == "Update event ids"
+
 
 # export
 # export
-@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+@pytest.mark.parametrize("target_str", ["raw", "epoch"])
 def test_export(target_str, request):
-    from unittest.mock import patch
-
     target = request.getfixturevalue(target_str)
     # to ensure history is not empty
     processor2 = preprocessor.ChannelSelection([target])
-    processor2.data_preprocess(['Fp1', 'Fp2'])
+    processor2.data_preprocess(["Fp1", "Fp2"])
 
     processor = preprocessor.Export(processor2.get_preprocessed_data_list())
 
-    with patch('scipy.io.savemat') as mocked_savemat:
-        processor.data_preprocess('tests/test_data')
+    with patch("scipy.io.savemat") as mocked_savemat:
+        processor.data_preprocess("tests/test_data")
 
         args, _ = mocked_savemat.call_args
-        import os
-        expected_path = os.path.join('tests/test_data', 'Sub-0_Sess-0.mat')
+
+        expected_path = os.path.join("tests/test_data", "Sub-0_Sess-0.mat")
         assert args[0] == expected_path
-        assert 'x' in args[1]
-        if target_str == 'epoch':
-            assert 'y' in args[1]
-        assert 'history' in args[1]
+        assert "x" in args[1]
+        if target_str == "epoch":
+            assert "y" in args[1]
+        assert "history" in args[1]
+
 
 # filtering
-@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+@pytest.mark.parametrize("target_str", ["raw", "epoch"])
 def test_filtering(target_str, request):
     target = request.getfixturevalue(target_str)
     processor = preprocessor.Filtering([target])
@@ -147,10 +156,11 @@ def test_filtering(target_str, request):
     result = processor.get_preprocessed_data_list()[0]
     assert target.get_filter_range() == (0, base_fs / 2)
     assert result.get_filter_range() == (1, fs)
-    assert result.get_preprocess_history()[0] == 'Filtering 1 ~ ' + str(fs) + ' Hz'
+    assert result.get_preprocess_history()[0] == "Filtering 1 ~ " + str(fs) + " Hz"
+
 
 # resample
-@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+@pytest.mark.parametrize("target_str", ["raw", "epoch"])
 def test_resample(target_str, request):
     target = request.getfixturevalue(target_str)
     processor = preprocessor.Resample([target])
@@ -159,10 +169,10 @@ def test_resample(target_str, request):
     result = processor.get_preprocessed_data_list()[0]
     assert target.get_sfreq() == base_fs
     assert result.get_sfreq() == fs
-    assert result.get_preprocess_history()[-1] == 'Resample to ' + str(fs) + 'Hz'
+    assert result.get_preprocess_history()[-1] == "Resample to " + str(fs) + "Hz"
 
     events = np.array([[15, 0, 1], [20, 0, 2], [30, 0, 3], [40, 0, 4]])
-    event_id = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
+    event_id = {"a": 1, "b": 2, "c": 3, "d": 4}
     # add event
     target.set_event(events, event_id)
 
@@ -171,124 +181,143 @@ def test_resample(target_str, request):
     processor.data_preprocess(fs)
     result = processor.get_preprocessed_data_list()[0]
     assert result.get_sfreq() == fs
-    assert result.get_preprocess_history()[-1] == 'Resample to ' + str(fs) + 'Hz'
+    assert result.get_preprocess_history()[-1] == "Resample to " + str(fs) + "Hz"
     # onset doesn't matter for already epoched data
-    if target_str == 'raw':
+    if target_str == "raw":
         new_events, _ = result.get_event_list()
         assert np.allclose(new_events[:, 0] * 5, events[:, 0])
 
+
 # epoch
-@pytest.mark.parametrize('method', [preprocessor.TimeEpoch, preprocessor.WindowEpoch])
+@pytest.mark.parametrize("method", [preprocessor.TimeEpoch, preprocessor.WindowEpoch])
 def test_epoch_wrong_type(method, epoch):
-    with pytest.raises(ValueError, match="Only raw data can be epoched, got epochs"):
+    with pytest.raises(ValueError, match=r"Only raw data can be epoched, got epochs"):
         method([epoch])
 
-@pytest.mark.parametrize('method', [preprocessor.TimeEpoch, preprocessor.WindowEpoch])
-def test_epoch_wrong_events(method, raw): # noqa: F811
-    with pytest.raises(ValueError, match="No event markers found.*"):
+
+@pytest.mark.parametrize("method", [preprocessor.TimeEpoch, preprocessor.WindowEpoch])
+def test_epoch_wrong_events(method, raw):  # noqa: F811
+    with pytest.raises(ValueError, match=r"No event markers found.*"):
         method([raw])
 
-def test_sliding_epoch_error(raw): # noqa: F811
+
+def test_sliding_epoch_error(raw):  # noqa: F811
     events = np.array([[1, 0, 1], [2, 0, 2], [3, 0, 3], [4, 0, 4]])
-    event_id = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
+    event_id = {"a": 1, "b": 2, "c": 3, "d": 4}
     raw.set_event(events, event_id)
-    with pytest.raises(ValueError, match="Should only contain single event label.*"):
+    with pytest.raises(ValueError, match=r"Should only contain single event label.*"):
         preprocessor.WindowEpoch([raw])
+
 
 # time epoch
 @pytest.fixture
 def annotated_raw():
-    info = mne.create_info(ch_names=['Fp1', 'Fp2'],
-                           sfreq=1,
-                           ch_types='eeg')
-    data = np.array([[1, 3, 5, 7, 9, 11, 13, 15, 17, 19],
-                     [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]])
+    info = mne.create_info(ch_names=["Fp1", "Fp2"], sfreq=1, ch_types="eeg")
+    data = np.array(
+        [[1, 3, 5, 7, 9, 11, 13, 15, 17, 19], [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]]
+    )
     mne_raw = mne.io.RawArray(data, info)
-    annotated_raw = Raw('tests/test_data/sub-01_ses-01_task-rest_eeg.fif', mne_raw)
+    annotated_raw = Raw("tests/test_data/sub-01_ses-01_task-rest_eeg.fif", mne_raw)
     events = np.array([[1, 0, 1], [3, 0, 2], [5, 0, 3], [7, 0, 4]])
-    event_id = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
+    event_id = {"a": 1, "b": 2, "c": 3, "d": 4}
     annotated_raw.set_event(events, event_id)
     return annotated_raw
 
+
 def test_time_epoch_no_epochs(annotated_raw):
     processor = preprocessor.TimeEpoch([annotated_raw])
-    with pytest.raises(ValueError, match="No event markers found."):
+    with pytest.raises(ValueError, match=r"No event markers found."):
         processor.data_preprocess(
-            baseline=None, selected_event_names=['g'], tmin=0, tmax=1
+            baseline=None, selected_event_names=["g"], tmin=0, tmax=1
         )
 
 
 def test_time_epoch_without_baseline(annotated_raw):
     processor = preprocessor.TimeEpoch([annotated_raw])
     processor.data_preprocess(
-        baseline=None, selected_event_names=['a', 'b', 'c', 'd'], tmin=0, tmax=1
+        baseline=None, selected_event_names=["a", "b", "c", "d"], tmin=0, tmax=1
     )
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == 'a,b,c,d'
+    assert result.get_event_name_list_str() == "a,b,c,d"
     assert result.get_mne().get_data().shape == (4, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
-        np.array([[[3, 5], [4, 6]], [[7, 9], [8, 10]],
-                  [[11, 13], [12, 14]], [[15, 17], [16, 18]]])
+        np.array(
+            [
+                [[3, 5], [4, 6]],
+                [[7, 9], [8, 10]],
+                [[11, 13], [12, 14]],
+                [[15, 17], [16, 18]],
+            ]
+        ),
     )
     assert (
-        result.get_preprocess_history()[0] ==
-        'Epoching 0 ~ 1 by event (None baseline)'
+        result.get_preprocess_history()[0] == "Epoching 0 ~ 1 by event (None baseline)"
     )
+
 
 def test_time_epoch_with_baseline(annotated_raw):
     processor = preprocessor.TimeEpoch([annotated_raw])
     processor.data_preprocess(
-        baseline=(-1, 0),
-        selected_event_names=['a', 'b', 'c', 'd'],
-        tmin=0, tmax=1
+        baseline=(-1, 0), selected_event_names=["a", "b", "c", "d"], tmin=0, tmax=1
     )
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == 'a,b,c,d'
+    assert result.get_event_name_list_str() == "a,b,c,d"
     assert result.get_mne().get_data().shape == (4, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
-        np.array([[[0, 2], [0, 2]], [[0, 2], [0, 2]],
-                  [[0, 2], [0, 2]], [[0, 2], [0, 2]]])
+        np.array(
+            [[[0, 2], [0, 2]], [[0, 2], [0, 2]], [[0, 2], [0, 2]], [[0, 2], [0, 2]]]
+        ),
     )
     assert (
-        result.get_preprocess_history()[0] ==
-        'Epoching 0 ~ 1 by event ((-1, 0) baseline)'
+        result.get_preprocess_history()[0]
+        == "Epoching 0 ~ 1 by event ((-1, 0) baseline)"
     )
+
 
 def test_window_epoch(annotated_raw):
     events = np.array([[0, 0, 1]])
-    event_id = {'a': 1}
+    event_id = {"a": 1}
     annotated_raw.set_event(events, event_id)
     processor = preprocessor.WindowEpoch([annotated_raw])
     processor.data_preprocess(duration=2, overlap=1)
     result = processor.get_preprocessed_data_list()[0]
-    assert result.get_event_name_list_str() == 'a'
+    assert result.get_event_name_list_str() == "a"
     assert result.get_mne().get_data().shape == (9, 2, 2)
     assert np.allclose(
         result.get_mne().get_data(),
-        np.array([[[1, 3], [2, 4]], [[3, 5], [4, 6]],
-                  [[5, 7], [6, 8]], [[7, 9], [8, 10]],
-                  [[9, 11], [10, 12]], [[11, 13], [12, 14]],
-                  [[13, 15], [14, 16]], [[15, 17], [16, 18]],
-                  [[17, 19], [18, 20]]])
+        np.array(
+            [
+                [[1, 3], [2, 4]],
+                [[3, 5], [4, 6]],
+                [[5, 7], [6, 8]],
+                [[7, 9], [8, 10]],
+                [[9, 11], [10, 12]],
+                [[11, 13], [12, 14]],
+                [[13, 15], [14, 16]],
+                [[15, 17], [16, 18]],
+                [[17, 19], [18, 20]],
+            ]
+        ),
     )
     assert (
-        result.get_preprocess_history()[0] ==
-        'Epoching 2s (1s overlap) by sliding window'
+        result.get_preprocess_history()[0]
+        == "Epoching 2s (1s overlap) by sliding window"
     )
 
+
 # normalization
-@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+@pytest.mark.parametrize("target_str", ["raw", "epoch"])
 def test_normalization_z_score(target_str, request):
     target = request.getfixturevalue(target_str)
     processor = preprocessor.Normalize([target])
-    processor.data_preprocess('z score')
+    processor.data_preprocess("z score")
     result = processor.get_preprocessed_data_list()[0]
 
     data = result.get_mne().get_data()
     # Check if mean is close to 0 and std is close to 1 for each channel/epoch
-    if target_str == 'raw':
+    if target_str == "raw":
         # (n_channels, n_times)
         assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
         assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
@@ -297,18 +326,19 @@ def test_normalization_z_score(target_str, request):
         assert np.allclose(data.mean(axis=-1), 0, atol=1e-7)
         assert np.allclose(data.std(axis=-1), 1, atol=1e-7)
 
-    assert result.get_preprocess_history()[-1] == 'z score normalization'
+    assert result.get_preprocess_history()[-1] == "z score normalization"
 
-@pytest.mark.parametrize('target_str', ['raw', 'epoch'])
+
+@pytest.mark.parametrize("target_str", ["raw", "epoch"])
 def test_normalization_minmax(target_str, request):
     target = request.getfixturevalue(target_str)
     processor = preprocessor.Normalize([target])
-    processor.data_preprocess('minmax')
+    processor.data_preprocess("minmax")
     result = processor.get_preprocessed_data_list()[0]
 
     data = result.get_mne().get_data()
     # Check if min is 0 and max is 1 for each channel/epoch
-    if target_str == 'raw':
+    if target_str == "raw":
         # (n_channels, n_times)
         assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
         assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
@@ -317,4 +347,4 @@ def test_normalization_minmax(target_str, request):
         assert np.allclose(data.min(axis=-1), 0, atol=1e-7)
         assert np.allclose(data.max(axis=-1), 1, atol=1e-7)
 
-    assert result.get_preprocess_history()[-1] == 'minmax normalization'
+    assert result.get_preprocess_history()[-1] == "minmax normalization"

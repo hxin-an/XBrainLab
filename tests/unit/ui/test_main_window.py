@@ -2,6 +2,7 @@ import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.main_window import MainWindow
 
 
@@ -12,8 +13,6 @@ def qapp():
         app = QApplication([])
     yield app
 
-from XBrainLab.backend.study import Study
-
 
 @pytest.fixture
 def main_window(qapp, qtbot):
@@ -22,14 +21,20 @@ def main_window(qapp, qtbot):
     qtbot.addWidget(window)
     return window
 
-@pytest.mark.skip(reason="Segfaults in headless env due to Visualization/Qt interaction")
+
+@pytest.mark.skip(
+    reason="Segfaults in headless env due to Visualization/Qt interaction"
+)
 def test_mainwindow_launch(main_window, qtbot):
     """Smoke test: Ensure MainWindow launches and is visible."""
     main_window.show()
     qtbot.waitUntil(lambda: main_window.isVisible())
     assert main_window.isVisible()
 
-@pytest.mark.skip(reason="Segfaults in headless env due to Visualization/Qt interaction")
+
+@pytest.mark.skip(
+    reason="Segfaults in headless env due to Visualization/Qt interaction"
+)
 def test_navigation(main_window, qtbot):
     """Test that clicking navigation buttons switches the stacked widget page."""
     # Define expected mapping: Button Text -> Stack Index
@@ -40,7 +45,7 @@ def test_navigation(main_window, qtbot):
         "Preprocess": 1,
         "Training": 2,
         "Evaluation": 3,
-        "Visualization": 4
+        "Visualization": 4,
     }
 
     for btn_text, expected_index in nav_map.items():
@@ -57,8 +62,9 @@ def test_navigation(main_window, qtbot):
         qtbot.mouseClick(btn, Qt.MouseButton.LeftButton)
 
         # Verify stack index
-        assert main_window.stack.currentIndex() == expected_index, \
+        assert main_window.stack.currentIndex() == expected_index, (
             f"Failed to switch to {btn_text} (Index {expected_index})"
+        )
 
         # Verify button is checked
         assert btn.isChecked(), f"Button '{btn_text}' should be checked."

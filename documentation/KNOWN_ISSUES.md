@@ -8,7 +8,7 @@
 - [x] **Missing Training Parameters (訓練參數缺失)**：
     - **問題**：`configure_training` 工具不支援 `optimizer` (Adam/SGD) 與 `save_checkpoints_every` (Epochs) 參數。
     - **狀態**：已修復 (v0.3.5)。已更新 `TrainingOption` 與工具鏈。
-    
+
 - [x] **Training VRAM Leak (記憶體洩漏)**：
     - **問題**：`train_one_epoch` 中雖然已加入 `.detach().cpu()`，但在 Epoch 結束後未呼叫 `torch.cuda.empty_cache()`，長時訓練仍可能累積片段記憶體。
     - **狀態**：已修復 (v0.3.5)。已加入 `empty_cache`。

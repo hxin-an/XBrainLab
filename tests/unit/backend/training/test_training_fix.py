@@ -1,19 +1,18 @@
-
 import os
 import shutil
 import sys
 import unittest
 from unittest.mock import MagicMock
 
-sys.modules['captum'] = MagicMock()
-sys.modules['captum.attr'] = MagicMock()
+sys.modules["captum"] = MagicMock()
+sys.modules["captum.attr"] = MagicMock()
 
 
-import torch
+import torch  # noqa: E402
 
-from XBrainLab.backend.dataset import Dataset, Epochs
-from XBrainLab.backend.training import ModelHolder, TrainingOption
-from XBrainLab.backend.training.training_plan import TrainingPlanHolder
+from XBrainLab.backend.dataset import Dataset, Epochs  # noqa: E402
+from XBrainLab.backend.training import ModelHolder, TrainingOption  # noqa: E402
+from XBrainLab.backend.training.training_plan import TrainingPlanHolder  # noqa: E402
 
 
 class TestTrainingFix(unittest.TestCase):
@@ -46,11 +45,16 @@ class TestTrainingFix(unittest.TestCase):
     def test_unique_output_path(self):
         # Create two plans sequentially
         plan1 = TrainingPlanHolder(
-            self.mock_model_holder, self.mock_dataset, self.mock_option, self.saliency_params
+            self.mock_model_holder,
+            self.mock_dataset,
+            self.mock_option,
+            self.saliency_params,
         )
 
-        # Simulate a small delay to ensure timestamp difference if resolution is high enough
-        # (Though our format is seconds, so we might need to mock datetime if it runs too fast)
+        # Simulate a small delay to ensure timestamp difference if resolution is
+        # high enough
+        # (Though our format is seconds, so we might need to mock datetime if
+        # it runs too fast)
         # For now, let's just check the structure.
 
         record1 = plan1.get_plans()[0]
@@ -62,7 +66,8 @@ class TestTrainingFix(unittest.TestCase):
         # It should be in the path
 
         # Create another plan
-        # We can mock datetime to ensure different time if needed, but let's see if it works naturally
+        # We can mock datetime to ensure different time if needed, but let's
+        # see if it works naturally
         # or we can manually inspect the path structure.
 
         # Verify structure: output / dataset / model_timestamp / repeat
@@ -74,5 +79,6 @@ class TestTrainingFix(unittest.TestCase):
         if os.path.exists("/tmp/xbrainlab_test_output"):
             shutil.rmtree("/tmp/xbrainlab_test_output")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

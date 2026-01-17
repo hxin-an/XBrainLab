@@ -1,4 +1,3 @@
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -9,7 +8,9 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -35,10 +36,6 @@ class ChannelSelectionDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Channel Selection")
         self.resize(300, 400)
-    def __init__(self, parent, data_list):
-        super().__init__(parent)
-        self.setWindowTitle("Channel Selection")
-        self.resize(300, 400)
         self.data_list = data_list
         self.selected_channels = []
         self.init_ui()
@@ -54,7 +51,6 @@ class ChannelSelectionDialog(QDialog):
         if self.data_list:
             channels = self.data_list[0].get_mne().ch_names
             for ch in channels:
-                from PyQt6.QtWidgets import QListWidgetItem
                 item = QListWidgetItem(ch)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked)
@@ -73,7 +69,9 @@ class ChannelSelectionDialog(QDialog):
         layout.addLayout(btn_layout)
 
         # Dialog Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -100,6 +98,7 @@ class ChannelSelectionDialog(QDialog):
     def get_result(self):
         return self.selected_channels
 
+
 class DatasetPanel(QWidget):
     """
     Panel for managing the dataset.
@@ -111,13 +110,13 @@ class DatasetPanel(QWidget):
     - Channel Selection: Filter channels.
     - Table View: Display loaded files and their metadata.
     """
+
     def __init__(self, parent=None):
         super().__init__(parent)
-    def __init__(self, parent=None):
-        super().__init__(parent)
+
         self.main_window = parent
-        if parent and hasattr(parent, 'study'):
-             self.controller = DatasetController(parent.study)
+        if parent and hasattr(parent, "study"):
+            self.controller = DatasetController(parent.study)
         self.init_ui()
 
     def init_ui(self):
@@ -129,13 +128,16 @@ class DatasetPanel(QWidget):
         # --- Left Side: File List Table ---
         self.table = QTableWidget()
         self.table.setColumnCount(7)
-        self.table.setHorizontalHeaderLabels([
-            "Filename", "Subject", "Session", "Channels",
-            "Sfreq", "Epochs", "Events"
-        ])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setHorizontalHeaderLabels(
+            ["Filename", "Subject", "Session", "Channels", "Sfreq", "Epochs", "Events"]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection) # Allow multiple selection
+        self.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )  # Allow multiple selection
         self.table.itemChanged.connect(self.on_item_changed)
 
         # Context Menu
@@ -148,10 +150,11 @@ class DatasetPanel(QWidget):
         # --- Right Side: Info & Controls ---
         # --- Right Side: Info & Controls ---
         right_panel = QWidget()
-        right_panel.setFixedWidth(260) # Increased width
+        right_panel.setFixedWidth(260)  # Increased width
         # Slightly lighter gray with border
         right_panel.setObjectName("RightPanel")
-        right_panel.setStyleSheet("""
+        right_panel.setStyleSheet(
+            """
             #RightPanel {
                 background-color: #252526;
                 border-left: 1px solid #3e3e42;
@@ -188,21 +191,27 @@ class DatasetPanel(QWidget):
             QPushButton:pressed {
                 background-color: #007acc;
             }
-        """)
+        """
+        )
 
         right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(10, 20, 10, 20) # Reduced margins for wider buttons
+        right_layout.setContentsMargins(
+            10, 20, 10, 20
+        )  # Reduced margins for wider buttons
 
         # 0. Logo Removed
 
         # 1. Aggregate Info (Replaces Getting Started)
         self.info_panel = AggregateInfoPanel(self.main_window)
-        # Style it to match the panel look (transparent background if needed, but AggregateInfoPanel is a GroupBox)
+        # Style it to match the panel look (transparent background if needed, but
+        # AggregateInfoPanel is a GroupBox)
         # We might need to adjust its style slightly or let it inherit.
         # AggregateInfoPanel sets its own title "Aggregate Information".
 
-        # Remove the default border/background from AggregateInfoPanel to match our minimal style
-        self.info_panel.setStyleSheet("""
+        # Remove the default border/background from AggregateInfoPanel to match our
+        # minimal style
+        self.info_panel.setStyleSheet(
+            """
             QGroupBox {
                 background-color: transparent;
                 border: none;
@@ -220,7 +229,8 @@ class DatasetPanel(QWidget):
                 color: #cccccc;
                 font-weight: normal;
             }
-        """)
+        """
+        )
 
         right_layout.addWidget(self.info_panel, stretch=1)
 
@@ -238,7 +248,7 @@ class DatasetPanel(QWidget):
         # 2. Dataset Actions Group
         actions_group = QGroupBox("OPERATIONS")
         actions_layout = QVBoxLayout(actions_group)
-        actions_layout.setContentsMargins(0, 10, 0, 0) # Maximize width
+        actions_layout.setContentsMargins(0, 10, 0, 0)  # Maximize width
 
         self.import_btn = QPushButton("Import Data")
         self.import_btn.setToolTip("Load .set or .gdf files")
@@ -265,7 +275,8 @@ class DatasetPanel(QWidget):
         # Channel Selection (Moved here, Green)
         self.chan_select_btn = QPushButton("Channel Selection")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
-        self.chan_select_btn.setStyleSheet("""
+        self.chan_select_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #1b5e20;
                 color: #a5d6a7;
@@ -280,14 +291,16 @@ class DatasetPanel(QWidget):
                 color: #555555;
                 border: 1px solid #3e3e42;
             }
-        """)
+        """
+        )
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
         exec_layout.addWidget(self.chan_select_btn)
 
         # 4. Danger Zone (Button Only)
         self.clear_btn = QPushButton("Clear Dataset")
         # Match Preprocess Reset Button Style
-        self.clear_btn.setStyleSheet("""
+        self.clear_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #4a1818;
                 color: #ff9999;
@@ -296,14 +309,15 @@ class DatasetPanel(QWidget):
             QPushButton:hover {
                 background-color: #602020;
             }
-        """)
+        """
+        )
         self.clear_btn.setToolTip("Remove all loaded data")
         self.clear_btn.clicked.connect(self.clear_dataset)
         exec_layout.addWidget(self.clear_btn)
 
         right_layout.addWidget(exec_group)
 
-        right_layout.addStretch() # Push everything to top
+        right_layout.addStretch()  # Push everything to top
 
         main_layout.addWidget(right_panel)
 
@@ -311,12 +325,17 @@ class DatasetPanel(QWidget):
         """
         Opens a file dialog to select and import EEG data files.
         """
-        if not hasattr(self, 'controller'): return
+        if not hasattr(self, "controller"):
+            return
 
         if self.controller.is_locked():
-            QMessageBox.warning(self, "Import Blocked",
-                                "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
-                                "Please 'Clear Dataset' before importing new data.")
+            QMessageBox.warning(
+                self,
+                "Import Blocked",
+                "Dataset is locked because Channel Selection (or other operations) has "
+                "been applied.\n"
+                "Please 'Clear Dataset' before importing new data.",
+            )
             return
 
         filter_str = (
@@ -342,28 +361,31 @@ class DatasetPanel(QWidget):
             return
 
         # Apply Changes
-        if success_count > 0:
-            if self.main_window:
-                self.main_window.refresh_panels()
+        if success_count > 0 and self.main_window:
+            self.main_window.refresh_panels()
 
         # Report Errors
         if errors:
             error_msg = "\n".join(errors[:10])
             if len(errors) > 10:
-                error_msg += f"\n...and {len(errors)-10} more errors."
+                error_msg += f"\n...and {len(errors) - 10} more errors."
 
             QMessageBox.warning(
-                self, "Import Warnings",
-                f"Successfully loaded {success_count} files.\n\nFailed to load {len(errors)} files:\n{error_msg}"
+                self,
+                "Import Warnings",
+                f"Successfully loaded {success_count} files.\n\nFailed to load "
+                f"{len(errors)} files:\n{error_msg}",
             )
         elif success_count == 0 and not errors:
-             if filepaths:
-                 QMessageBox.information(self, "Info", "No new files were loaded (duplicates ignored).")
+            if filepaths:
+                QMessageBox.information(
+                    self, "Info", "No new files were loaded (duplicates ignored)."
+                )
 
     def show_context_menu(self, pos):
         menu = QMenu(self)
 
-        selected_rows = sorted(set(index.row() for index in self.table.selectedIndexes()))
+        selected_rows = sorted({index.row() for index in self.table.selectedIndexes()})
         if not selected_rows:
             return
 
@@ -382,12 +404,17 @@ class DatasetPanel(QWidget):
             self.remove_selected_files(selected_rows)
 
     def open_smart_parser(self):
-        if not hasattr(self, 'controller'): return
+        if not hasattr(self, "controller"):
+            return
 
         if self.controller.is_locked():
-            QMessageBox.warning(self, "Action Blocked",
-                                "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
-                                "Please 'Clear Dataset' before modifying metadata.")
+            QMessageBox.warning(
+                self,
+                "Action Blocked",
+                "Dataset is locked because Channel Selection (or other operations) has "
+                "been applied.\n"
+                "Please 'Clear Dataset' before modifying metadata.",
+            )
             return
 
         if not self.controller.has_data():
@@ -406,10 +433,13 @@ class DatasetPanel(QWidget):
             if self.main_window:
                 self.main_window.refresh_panels()
 
-            QMessageBox.information(self, "Success", f"Updated metadata for {count} files.")
+            QMessageBox.information(
+                self, "Success", f"Updated metadata for {count} files."
+            )
 
     def open_channel_selection(self):
-        if not hasattr(self, 'controller'): return
+        if not hasattr(self, "controller"):
+            return
 
         if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
@@ -417,18 +447,24 @@ class DatasetPanel(QWidget):
 
         # Check lock
         if self.controller.is_locked():
-             QMessageBox.warning(self, "Action Blocked",
-                                "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
-                                "Please 'Reset All Preprocessing' to undo Channel Selection or 'Clear Dataset' to start over.")
-             return
+            QMessageBox.warning(
+                self,
+                "Action Blocked",
+                "Dataset is locked because Channel Selection (or other operations) has "
+                "been applied.\n"
+                "Please 'Reset All Preprocessing' to undo Channel Selection or "
+                "'Clear Dataset' to start over.",
+            )
+            return
 
         # Warning before proceeding
         reply = QMessageBox.question(
-            self, "Warning",
+            self,
+            "Warning",
             "Performing Channel Selection will modify the dataset.\n"
             "You can undo this later using 'Reset All Preprocessing'.\n\n"
             "Do you want to proceed?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.No:
             return
@@ -442,44 +478,65 @@ class DatasetPanel(QWidget):
                 try:
                     self.controller.apply_channel_selection(result)
                     self.update_panel()
-                    QMessageBox.information(self, "Success", "Channel selection applied.")
+                    QMessageBox.information(
+                        self, "Success", "Channel selection applied."
+                    )
                 except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Channel selection failed: {e}")
+                    QMessageBox.critical(
+                        self, "Error", f"Channel selection failed: {e}"
+                    )
 
     def import_label(self):
         """
-        Imports labels from external files (e.g., .mat, .csv) and applies them to the loaded data.
+        Imports labels from external files (e.g., .mat, .csv) and applies them to
+        the loaded data.
         """
         try:
-            if not hasattr(self, 'controller'): return
+            if not hasattr(self, "controller"):
+                return
 
             if self.controller.is_locked():
-                QMessageBox.warning(self, "Import Blocked",
-                                    "Dataset is locked because Channel Selection (or other operations) has been applied.\n"
-                                    "Please 'Clear Dataset' or 'Reset Preprocessing' before importing labels.")
+                QMessageBox.warning(
+                    self,
+                    "Import Blocked",
+                    "Dataset is locked because Channel Selection (or other operations) "
+                    "has been applied.\n"
+                    "Please 'Clear Dataset' or 'Reset Preprocessing' before importing "
+                    "labels.",
+                )
                 return
 
             # 1. Select Files
             target_files = self._get_target_files_for_import()
-            if not target_files: return
+            if not target_files:
+                return
 
             # 2. Select Label File
             dialog = ImportLabelDialog(self)
-            if not dialog.exec(): return
+            if not dialog.exec():
+                return
             label_map, mapping = dialog.get_results()
-            if label_map is None: return
+            if label_map is None:
+                return
 
             # Check Mode (Timestamp vs Sequence)
-            first_labels = list(label_map.values())[0]
-            is_timestamp_mode = isinstance(first_labels, list) and len(first_labels) > 0 and isinstance(first_labels[0], dict)
+            first_labels = next(iter(label_map.values()))
+            is_timestamp_mode = (
+                isinstance(first_labels, list)
+                and len(first_labels) > 0
+                and isinstance(first_labels[0], dict)
+            )
 
             selected_event_names = None
 
             if not is_timestamp_mode:
                 # Sequence Mode: Filter Events
                 target_count = len(first_labels)
-                selected_event_names = self._filter_events_for_import(target_files, target_count)
-                if selected_event_names is False: return # User cancelled
+                selected_event_names = self._filter_events_for_import(
+                    target_files, target_count
+                )
+                if selected_event_names is False:
+                    return  # User cancelled
 
             # 4. Distribute Labels
             is_batch_mode = len(label_map) > 1
@@ -490,68 +547,82 @@ class DatasetPanel(QWidget):
                 data_filepaths = [d.get_filepath() for d in target_files]
                 label_filenames = list(label_map.keys())
 
-                mapping_dialog = LabelMappingDialog(self, data_filepaths, label_filenames)
-                if not mapping_dialog.exec(): return
+                mapping_dialog = LabelMappingDialog(
+                    self, data_filepaths, label_filenames
+                )
+                if not mapping_dialog.exec():
+                    return
 
                 file_mapping = mapping_dialog.get_mapping()
                 count = self.controller.apply_labels_batch(
                     target_files, label_map, file_mapping, mapping, selected_event_names
                 )
+            # Legacy Mode
+            elif is_timestamp_mode:
+                label_fname = next(iter(label_map.keys()))
+                file_mapping = {d.get_filepath(): label_fname for d in target_files}
+                count = self.controller.apply_labels_batch(
+                    target_files, label_map, file_mapping, mapping, selected_event_names
+                )
             else:
-                # Legacy Mode
-                if is_timestamp_mode:
-                     label_fname = list(label_map.keys())[0]
-                     file_mapping = {d.get_filepath(): label_fname for d in target_files}
-                     count = self.controller.apply_labels_batch(
-                        target_files, label_map, file_mapping, mapping, selected_event_names
-                     )
+                labels = next(iter(label_map.values()))
+                label_count = len(labels)
+
+                total_epochs = sum(
+                    self.controller.get_epoch_count(d, selected_event_names)
+                    for d in target_files
+                )
+
+                if label_count == total_epochs and total_epochs > 0:
+                    count = self.controller.apply_labels_legacy(
+                        target_files, labels, mapping, selected_event_names
+                    )
                 else:
-                    labels = list(label_map.values())[0]
-                    label_count = len(labels)
+                    reply = QMessageBox.question(
+                        self,
+                        "Mismatch Detected",
+                        f"Total labels ({label_count}) != Total epochs "
+                        f"({total_epochs}).\n"
+                        "Do you want to FORCE import?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    )
 
-                    total_epochs = sum(self.controller.get_epoch_count(d, selected_event_names) for d in target_files)
-
-                    if label_count == total_epochs and total_epochs > 0:
+                    if reply == QMessageBox.StandardButton.Yes:
                         count = self.controller.apply_labels_legacy(
-                            target_files, labels, mapping, selected_event_names
+                            target_files,
+                            labels,
+                            mapping,
+                            selected_event_names,
+                            force_import=True,
                         )
                     else:
-                        reply = QMessageBox.question(
-                            self, "Mismatch Detected",
-                            f"Total labels ({label_count}) != Total epochs ({total_epochs}).\n"
-                            "Do you want to FORCE import?",
-                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                        )
-
-                        if reply == QMessageBox.StandardButton.Yes:
-                            count = self.controller.apply_labels_legacy(
-                                target_files, labels, mapping, selected_event_names, force_import=True
-                            )
-                        else:
-                            count = 0
+                        count = 0
 
             if count > 0:
                 self.update_panel()
-                QMessageBox.information(self, "Success", f"Applied labels to {count} files.")
+                QMessageBox.information(
+                    self, "Success", f"Applied labels to {count} files."
+                )
 
         except Exception as e:
             logger.error(f"Import label failed: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to import labels: {e}")
 
     def _get_target_files_for_import(self):
-        selected_rows = sorted(set(index.row() for index in self.table.selectedIndexes()))
+        selected_rows = sorted({index.row() for index in self.table.selectedIndexes()})
         if not selected_rows:
             reply = QMessageBox.question(
-                self, "Import Label",
+                self,
+                "Import Label",
                 "No files selected. Apply labels to ALL loaded files?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
                 selected_rows = range(self.table.rowCount())
             else:
                 return []
 
-        if not hasattr(self, 'controller') or not self.controller.has_data():
+        if not hasattr(self, "controller") or not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return []
 
@@ -565,7 +636,9 @@ class DatasetPanel(QWidget):
             None: no filtering needed/applied
             False: user cancelled
         """
-        raw_files_with_events = [d for d in target_files if d.is_raw() and d.has_event()]
+        raw_files_with_events = [
+            d for d in target_files if d.is_raw() and d.has_event()
+        ]
         if not raw_files_with_events:
             return None
 
@@ -575,7 +648,7 @@ class DatasetPanel(QWidget):
                 _, ev_ids = d.get_raw_event_list()
                 if ev_ids:
                     unique_names.update(ev_ids.keys())
-            except:
+            except Exception:  # noqa: PERF203
                 pass
 
         if not unique_names:
@@ -583,15 +656,19 @@ class DatasetPanel(QWidget):
 
         # Sort numerically if possible, else alphabetically
         try:
-            sorted_names = sorted(list(unique_names), key=lambda x: int(x) if x.isdigit() else x)
-        except:
-            sorted_names = sorted(list(unique_names))
+            sorted_names = sorted(
+                unique_names, key=lambda x: int(x) if x.isdigit() else x
+            )
+        except Exception:
+            sorted_names = sorted(unique_names)
 
         # Smart Filter Suggestion using Controller
         suggested_names = []
         if target_count is not None and len(raw_files_with_events) > 0:
             d = raw_files_with_events[0]
-            suggested_ids = self.controller.get_smart_filter_suggestions(d, target_count)
+            suggested_ids = self.controller.get_smart_filter_suggestions(
+                d, target_count
+            )
 
             # Map IDs back to names
             _, ev_ids = d.get_raw_event_list()
@@ -602,7 +679,7 @@ class DatasetPanel(QWidget):
 
         # Apply suggestions
         if suggested_names:
-             filter_dialog.set_selection(suggested_names)
+            filter_dialog.set_selection(suggested_names)
 
         if filter_dialog.exec():
             selected = set(filter_dialog.get_selected_ids())
@@ -611,11 +688,10 @@ class DatasetPanel(QWidget):
 
         return False
 
-
-
     def batch_set_attribute(self, rows, attr_name):
-        from PyQt6.QtWidgets import QInputDialog
-        text, ok = QInputDialog.getText(self, f"Batch Set {attr_name}", f"Enter {attr_name}:")
+        text, ok = QInputDialog.getText(
+            self, f"Batch Set {attr_name}", f"Enter {attr_name}:"
+        )
         if ok and text:
             for row in rows:
                 if attr_name == "Subject":
@@ -626,13 +702,14 @@ class DatasetPanel(QWidget):
             self.update_panel()
 
     def remove_selected_files(self, rows):
-        if not hasattr(self, 'controller'):
+        if not hasattr(self, "controller"):
             return
 
         reply = QMessageBox.question(
-            self, "Confirm Remove",
+            self,
+            "Confirm Remove",
             f"Are you sure you want to remove {len(rows)} files?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
@@ -643,26 +720,33 @@ class DatasetPanel(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to remove files: {e}")
 
     def apply_loader(self, loader):
-        if self.main_window and hasattr(self.main_window, 'study'):
+        if self.main_window and hasattr(self.main_window, "study"):
             try:
                 # Use force_update=True to allow updating the dataset (e.g. appending)
-                # This will reset downstream steps (preprocess, etc.) which is expected behavior
+                # This will reset downstream steps (preprocess, etc.) which is
+                # expected behavior
                 loader.apply(self.controller.study, force_update=True)
                 self.update_panel()
-                QMessageBox.information(self, "Success", f"Dataset updated. Total files: {len(loader)}")
+                QMessageBox.information(
+                    self, "Success", f"Dataset updated. Total files: {len(loader)}"
+                )
             except Exception as e:
                 logger.error("Failed to apply data", exc_info=True)
                 QMessageBox.critical(self, "Error", f"Failed to apply data: {e}")
 
     def clear_dataset(self):
         """Clear Dataset"""
-        if self.message_box_confirm("Confirm Clear", "Are you sure you want to clear the entire dataset?"):
+        if self.message_box_confirm(
+            "Confirm Clear", "Are you sure you want to clear the entire dataset?"
+        ):
             self.clear_dataset_action()
 
     def message_box_confirm(self, title, text):
         reply = QMessageBox.question(
-            self, title, text,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self,
+            title,
+            text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         return reply == QMessageBox.StandardButton.Yes
 
@@ -675,7 +759,7 @@ class DatasetPanel(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to clear dataset: {e}")
 
     def update_panel(self):
-        if not hasattr(self, 'controller'):
+        if not hasattr(self, "controller"):
             return
 
         data_list = self.controller.get_loaded_data_list()
@@ -685,11 +769,11 @@ class DatasetPanel(QWidget):
         #     self.tips_group.setVisible(not bool(data_list))
 
         # 1. Update Table
-        if hasattr(self, 'info_panel'):
+        if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
         self.table.clearContents()
-        self.table.blockSignals(True) # Prevent itemChanged triggering during update
+        self.table.blockSignals(True)  # Prevent itemChanged triggering during update
         self.table.setRowCount(0)
 
         if data_list:
@@ -731,17 +815,22 @@ class DatasetPanel(QWidget):
                             count = len(events)
                         else:
                             count = data.get_epochs_length()
-                    except:
+                    except Exception:
                         count = "?"
 
                     item_ev = QTableWidgetItem(f"Yes ({count})")
 
-                    # Color logic: Green if imported labels, Default (Gray/Black) if original
+                    # Color logic: Green if imported labels, Default (Gray/Black) if
+                    # original
                     if data.is_labels_imported():
-                        logger.info(f"File {data.get_filename()} has imported labels. Setting green.")
+                        logger.info(
+                            f"File {data.get_filename()} has imported labels. "
+                            "Setting green."
+                        )
                         item_ev.setForeground(Qt.GlobalColor.green)
                     else:
-                        # Use default color (or explicitly set to something neutral if needed)
+                        # Use default color (or explicitly set to something neutral if
+                        # needed)
                         # Setting to None usually resets to default theme color
                         # item_ev.setForeground(Qt.GlobalColor.white)
 
@@ -764,29 +853,38 @@ class DatasetPanel(QWidget):
         # if hasattr(self.main_window, 'update_info_panel'):
         #     self.main_window.update_info_panel()
 
-        # 2. Update Global Info Panel (Redundant, handled by refresh_panels or individual updates)
+        # 2. Update Global Info Panel (Redundant, handled by refresh_panels or
+        # individual updates)
         # if self.main_window and hasattr(self.main_window, 'update_info_panel'):
         #     self.main_window.update_info_panel()
 
         # 3. Update Channel Selection Button State
-        if self.main_window and hasattr(self.main_window, 'study'):
+        if self.main_window and hasattr(self.main_window, "study"):
             is_locked = self.controller.is_locked()
-            if hasattr(self, 'chan_select_btn'):
-                # self.chan_select_btn.setEnabled(not is_locked) # Keep enabled to show warning
+            if hasattr(self, "chan_select_btn"):
+                # self.chan_select_btn.setEnabled(not is_locked) # Keep enabled to
+                # show warning
                 if is_locked:
-                    self.chan_select_btn.setToolTip("Dataset is locked. Click to see details.")
+                    self.chan_select_btn.setToolTip(
+                        "Dataset is locked. Click to see details."
+                    )
                 else:
                     self.chan_select_btn.setToolTip("Select specific channels to keep")
 
         # 4. Update Smart Parse Button State
-        if self.main_window and hasattr(self.main_window, 'study'):
+        if self.main_window and hasattr(self.main_window, "study"):
             is_locked = self.controller.is_locked()
-            if hasattr(self, 'smart_parse_btn'):
-                # self.smart_parse_btn.setEnabled(not is_locked) # Keep enabled to show warning
+            if hasattr(self, "smart_parse_btn"):
+                # self.smart_parse_btn.setEnabled(not is_locked) # Keep enabled to
+                # show warning
                 if is_locked:
-                    self.smart_parse_btn.setToolTip("Dataset is locked. Click to see details.")
+                    self.smart_parse_btn.setToolTip(
+                        "Dataset is locked. Click to see details."
+                    )
                 else:
-                    self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
+                    self.smart_parse_btn.setToolTip(
+                        "Auto-extract Subject/Session from filenames"
+                    )
 
     def on_item_changed(self, item):
         row = item.row()
@@ -801,11 +899,11 @@ class DatasetPanel(QWidget):
 
         new_value = item.text()
 
-        if col == 1: # Subject
-            if hasattr(self, 'controller'):
+        if col == 1:  # Subject
+            if hasattr(self, "controller"):
                 self.controller.update_metadata(row, subject=new_value)
-            self.update_panel() # Refresh aggregates
-        elif col == 2: # Session
-            if hasattr(self, 'controller'):
+            self.update_panel()  # Refresh aggregates
+        elif col == 2:  # Session
+            if hasattr(self, "controller"):
                 self.controller.update_metadata(row, session=new_value)
-            self.update_panel() # Refresh aggregates
+            self.update_panel()  # Refresh aggregates

@@ -1,4 +1,3 @@
-
 import json
 
 
@@ -7,6 +6,7 @@ class PromptManager:
     Manages the construction of prompts for the LLM Agent.
     Handles System Prompt, Tool Definitions, Context Injection, and History Management.
     """
+
     def __init__(self, tools: list):
         self.tools = tools
         self.system_template = """You are XBrainLab Assistant.
@@ -36,7 +36,7 @@ If no tool is needed, just reply normally.
             tool_def = {
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": tool.parameters
+                "parameters": tool.parameters,
             }
             tool_descs.append(json.dumps(tool_def, indent=2))
         return "\n".join(tool_descs)

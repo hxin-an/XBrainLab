@@ -1,4 +1,3 @@
-
 import unittest
 
 import numpy as np
@@ -36,7 +35,7 @@ class TestEvalMetrics(unittest.TestCase):
             gradient_input=self.dummy_grad,
             smoothgrad=self.dummy_grad,
             smoothgrad_sq=self.dummy_grad,
-            vargrad=self.dummy_grad
+            vargrad=self.dummy_grad,
         )
 
     def test_per_class_metrics(self):
@@ -57,20 +56,22 @@ class TestEvalMetrics(unittest.TestCase):
         # Recall = 3 / 4 = 0.75
 
         # Verify Class 0
-        self.assertAlmostEqual(metrics[0]['precision'], 2/3)
-        self.assertAlmostEqual(metrics[0]['recall'], 2/3)
-        self.assertEqual(metrics[0]['support'], 3)
+        self.assertAlmostEqual(metrics[0]["precision"], 2 / 3)
+        self.assertAlmostEqual(metrics[0]["recall"], 2 / 3)
+        self.assertEqual(metrics[0]["support"], 3)
 
         # Verify Class 2
-        self.assertEqual(metrics[2]['precision'], 0.75)
-        self.assertEqual(metrics[2]['recall'], 0.75)
-        self.assertEqual(metrics[2]['support'], 4)
+        self.assertEqual(metrics[2]["precision"], 0.75)
+        self.assertEqual(metrics[2]["recall"], 0.75)
+        self.assertEqual(metrics[2]["support"], 4)
 
         # Verify Macro Avg
-        # Precision Avg = (2/3 + 2/3 + 0.75) / 3 = (1.333 + 0.75) / 3 = 2.0833 / 3 = 0.6944...
-        expected_macro_p = (2/3 + 2/3 + 0.75) / 3
-        self.assertAlmostEqual(metrics['macro_avg']['precision'], expected_macro_p)
-        self.assertEqual(metrics['macro_avg']['support'], 10)
+        # Precision Avg = (2/3 + 2/3 + 0.75) / 3 = (1.333 + 0.75) / 3 =
+        # 2.0833 / 3 = 0.6944...
+        expected_macro_p = (2 / 3 + 2 / 3 + 0.75) / 3
+        self.assertAlmostEqual(metrics["macro_avg"]["precision"], expected_macro_p)
+        self.assertEqual(metrics["macro_avg"]["support"], 10)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

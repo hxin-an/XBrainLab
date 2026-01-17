@@ -1,5 +1,3 @@
-from typing import Dict, List, Optional, Tuple
-
 import numpy as np
 
 from XBrainLab.backend.study import Study
@@ -12,16 +10,19 @@ class VisualizationController:
     Controller for handling visualization operations and data retrieval.
     Decouples UI from direct Study/Backend manipulation.
     """
+
     def __init__(self, study: Study):
         self._study = study
 
-    def get_trainers(self) -> List[TrainingPlanHolder]:
+    def get_trainers(self) -> list[TrainingPlanHolder]:
         """Get list of training plan holders (groups)."""
         if self._study.trainer:
             return self._study.trainer.get_training_plan_holders()
         return []
 
-    def set_montage(self, chs: List[str], positions: List[Tuple[float, float, float]]) -> None:
+    def set_montage(
+        self, chs: list[str], positions: list[tuple[float, float, float]]
+    ) -> None:
         """Set channel montage in Study."""
         self._study.set_channels(chs, positions)
 
@@ -29,27 +30,31 @@ class VisualizationController:
         """Check if epoch data is loaded."""
         return self._study.epoch_data is not None
 
-    def get_channel_names(self) -> List[str]:
+    def get_channel_names(self) -> list[str]:
         """Get channel names from epoch data."""
         if self._study.epoch_data:
             return self._study.epoch_data.get_channel_names()
         return []
 
-    def get_saliency_params(self) -> Dict:
+    def get_saliency_params(self) -> dict:
         """Get current saliency parameters."""
         return self._study.get_saliency_params()
 
-    def set_saliency_params(self, params: Dict) -> None:
+    def set_saliency_params(self, params: dict) -> None:
         """Set saliency parameters in Study."""
         self._study.set_saliency_params(params)
 
-    def get_averaged_record(self, trainer_holder: TrainingPlanHolder) -> Optional[EvalRecord]:
+    def get_averaged_record(
+        self, trainer_holder: TrainingPlanHolder
+    ) -> EvalRecord | None:
         """
         Compute average EvalRecord from all finished runs in a plan holder.
         """
         plans = trainer_holder.get_plans()
         # Filter for plans with valid eval records
-        records = [p.get_eval_record() for p in plans if p.get_eval_record() is not None]
+        records = [
+            p.get_eval_record() for p in plans if p.get_eval_record() is not None
+        ]
 
         if not records:
             return None
@@ -70,18 +75,20 @@ class VisualizationController:
                 result[k] = np.mean(np.stack(arrays), axis=0)
             return result
 
-        avg_gradient = avg_dict('gradient')
-        avg_gradient_input = avg_dict('gradient_input')
-        avg_smoothgrad = avg_dict('smoothgrad')
-        avg_smoothgrad_sq = avg_dict('smoothgrad_sq')
-        avg_vargrad = avg_dict('vargrad')
+        avg_gradient = avg_dict("gradient")
+        avg_gradient_input = avg_dict("gradient_input")
+        avg_smoothgrad = avg_dict("smoothgrad")
+        avg_smoothgrad_sq = avg_dict("smoothgrad_sq")
+        avg_vargrad = avg_dict("vargrad")
 
         return EvalRecord(
             label=base.label,
-            output=base.output, # Output might differ per run, but here we assume consistent shape/classes
+            # Output might differ per run, but here we assume consistent
+            # shape/classes
+            output=base.output,
             gradient=avg_gradient,
             gradient_input=avg_gradient_input,
             smoothgrad=avg_smoothgrad,
             smoothgrad_sq=avg_smoothgrad_sq,
-            vargrad=avg_vargrad
+            vargrad=avg_vargrad,
         )

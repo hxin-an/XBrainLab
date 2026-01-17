@@ -1,6 +1,5 @@
 import threading
 from enum import Enum
-from typing import List
 
 from ..utils import validate_list_type
 from .training_plan import TrainingPlanHolder
@@ -8,10 +7,12 @@ from .training_plan import TrainingPlanHolder
 
 class Status(Enum):
     """Utility class for training status"""
-    PENDING = 'Pending'
-    INIT = 'Initializing'
-    INTING = 'Interrupting'
-    TRAIN = 'Now training: {}'
+
+    PENDING = "Pending"
+    INIT = "Initializing"
+    INTING = "Interrupting"
+    TRAIN = "Now training: {}"
+
 
 class Trainer:
     """Class for storing training options and training models
@@ -26,9 +27,10 @@ class Trainer:
         job_thread: :class:`threading.Thread`
             Thread for training in background
     """
-    def __init__(self, training_plan_holders: List[TrainingPlanHolder]):
+
+    def __init__(self, training_plan_holders: list[TrainingPlanHolder]):
         validate_list_type(
-            training_plan_holders, TrainingPlanHolder, 'training_plan_holders'
+            training_plan_holders, TrainingPlanHolder, "training_plan_holders"
         )
         self.interrupt = False
         self.progress_text = Status.PENDING
@@ -40,7 +42,7 @@ class Trainer:
         """Add a new training plan to the queue"""
         self.training_plan_holders.append(plan)
 
-    def add_training_plan_holders(self, plans: List[TrainingPlanHolder]) -> None:
+    def add_training_plan_holders(self, plans: list[TrainingPlanHolder]) -> None:
         """Add a list of training plans to the queue"""
         self.training_plan_holders.extend(plans)
 
@@ -111,7 +113,7 @@ class Trainer:
         elif self.is_running():
             raise RuntimeError("Training still in progress")
 
-    def get_training_plan_holders(self) -> List[TrainingPlanHolder]:
+    def get_training_plan_holders(self) -> list[TrainingPlanHolder]:
         """Get list of training plan holders"""
         return self.training_plan_holders
 

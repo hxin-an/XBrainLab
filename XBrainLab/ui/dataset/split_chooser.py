@@ -21,7 +21,9 @@ class ManualSplitChooser(QDialog):
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
-        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.list_widget.setSelectionMode(
+            QAbstractItemView.SelectionMode.MultiSelection
+        )
 
         for item in self.choices:
             # item can be tuple (id, name) or just value
@@ -32,7 +34,9 @@ class ManualSplitChooser(QDialog):
 
         layout.addWidget(self.list_widget)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

@@ -8,17 +8,18 @@ from XBrainLab.backend.preprocessor import Rereference
 
 @pytest.fixture
 def mock_raw_data():
-    info = mne.create_info(ch_names=['Fz', 'Cz', 'Pz'], sfreq=100, ch_types='eeg')
+    info = mne.create_info(ch_names=["Fz", "Cz", "Pz"], sfreq=100, ch_types="eeg")
     data = np.random.randn(3, 1000)
     raw = mne.io.RawArray(data, info)
     x_raw = Raw("dummy.gdf", raw)
     return x_raw
 
+
 def test_rereference_average(mock_raw_data):
     proc = Rereference([mock_raw_data])
 
     # Apply average reference
-    proc.data_preprocess(ref_channels='average')
+    proc.data_preprocess(ref_channels="average")
 
     processed = proc.get_preprocessed_data_list()[0]
     data = processed.get_mne().get_data()
@@ -29,11 +30,12 @@ def test_rereference_average(mock_raw_data):
 
     assert "Average" in processed.get_preprocess_history()[-1]
 
+
 def test_rereference_specific_channel(mock_raw_data):
     proc = Rereference([mock_raw_data])
 
     # Use Cz (index 1) as reference
-    proc.data_preprocess(ref_channels=['Cz'])
+    proc.data_preprocess(ref_channels=["Cz"])
 
     processed = proc.get_preprocessed_data_list()[0]
     data = processed.get_mne().get_data()

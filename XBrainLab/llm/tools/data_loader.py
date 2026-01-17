@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict
+from typing import Any
 
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.load_data.raw_data_loader import load_raw_data
@@ -20,16 +20,16 @@ class LoadDataTool(BaseTool):
         return "Load an EEG data file (e.g., .gdf, .set) into the study."
 
     @property
-    def parameters(self) -> Dict[str, Any]:
+    def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
                 "filepath": {
                     "type": "string",
-                    "description": "The absolute path to the data file."
+                    "description": "The absolute path to the data file.",
                 }
             },
-            "required": ["filepath"]
+            "required": ["filepath"],
         }
 
     def execute(self, study: Any, filepath: str) -> str:
@@ -54,9 +54,14 @@ class LoadDataTool(BaseTool):
                 try:
                     study.set_loaded_data_list(current_data)
                 except ValueError as e:
-                    return f"Error: {e}. Please use the 'clear_dataset' tool first to reset the study."
+                    return (
+                        f"Error: {e}. Please use the 'clear_dataset' tool first to "
+                        f"reset the study."
+                    )
 
-                return f"Successfully loaded {filepath}. Total files: {len(current_data)}"
+                return (
+                    f"Successfully loaded {filepath}. Total files: {len(current_data)}"
+                )
             else:
                 return f"Error: Failed to load {filepath} (Unknown error)"
 

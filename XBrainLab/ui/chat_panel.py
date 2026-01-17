@@ -14,7 +14,8 @@ class ChatPanel(QWidget):
     """
     A simple chat interface for the Agent.
     """
-    send_message = pyqtSignal(str) # Signal to send user input to MainWindow/Agent
+
+    send_message = pyqtSignal(str)  # Signal to send user input to MainWindow/Agent
 
     def __init__(self):
         super().__init__()

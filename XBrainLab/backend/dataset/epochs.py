@@ -12,9 +12,11 @@ from .option import SplitUnit
 
 class TrialSelectionSequence(Enum):
     """Utility class for trial selection sequence in dataset splitting."""
-    SESSION = 'session'
-    SUBJECT = 'subject'
-    Label = 'label'
+
+    SESSION = "session"
+    SUBJECT = "subject"
+    Label = "label"
+
 
 class Epochs:
     """Class for storing epoch data.
@@ -51,11 +53,12 @@ class Epochs:
         idx: np.ndarray
             List of epoch index within each preprocessed data.
     """
+
     def __init__(self, preprocessed_data_list: list[Raw]):
         validate_list_type(
             instance_list=preprocessed_data_list,
             type_class=Raw,
-            message_name='preprocessed_data_list'
+            message_name="preprocessed_data_list",
         )
         for preprocessed_data in preprocessed_data_list:
             if preprocessed_data.is_raw():
@@ -66,11 +69,10 @@ class Epochs:
 
         self.sfreq = None
         # maps
-        self.subject_map = {} # index: subject name
-        self.session_map = {} # index: session name
-        self.label_map = {}   # {int(event_id): 'description'}
-        self.event_id = {}    # {'event_name': int(event_id)}
-        #
+        self.subject_map = {}  # index: subject name
+        self.session_map = {}  # index: session name
+        self.label_map = {}  # {int(event_id): 'description'}
+        self.event_id = {}  # {'event_name': int(event_id)}
         self.ch_names = []
         self.channel_position = None
 
@@ -87,7 +89,7 @@ class Epochs:
             _, event_id = preprocessed_data.get_event_list()
             self.event_id.update(event_id)
         ## fix
-        fixed_event_id  = {}
+        fixed_event_id = {}
         for event_name in self.event_id:
             fixed_event_id[event_name] = len(fixed_event_id)
         ## update
@@ -101,10 +103,11 @@ class Epochs:
             event_id = old_event_id.copy()
             old_labels = old_events[:, 2].copy()
 
-            if sorted(list(old_event_id.values())) != list(range(len(old_event_id))):
+            if sorted(old_event_id.values()) != list(range(len(old_event_id))):
                 for old_event_name, old_event_label in old_event_id.items():
-                    events[:, 2][old_labels == old_event_label] = \
-                        fixed_event_id[old_event_name]
+                    events[:, 2][old_labels == old_event_label] = fixed_event_id[
+                        old_event_name
+                    ]
                     event_id[old_event_name] = fixed_event_id[old_event_name]
             preprocessed_data.set_event(events, event_id)
 
@@ -131,13 +134,13 @@ class Epochs:
 
             self.subject = np.concatenate((self.subject, [subject_idx] * epoch_len))
             self.session = np.concatenate((self.session, [session_idx] * epoch_len))
-            self.label   = np.concatenate((self.label,   data.events[:, 2]))
-            self.idx     = np.concatenate((self.idx,     range(epoch_len)))
+            self.label = np.concatenate((self.label, data.events[:, 2]))
+            self.idx = np.concatenate((self.idx, range(epoch_len)))
             if len(self.data) == 0:
                 self.data = data.get_data()
             else:
-                self.data = np.concatenate((self.data,    data.get_data()))
-            self.sfreq = data.info['sfreq']
+                self.data = np.concatenate((self.data, data.get_data()))
+            self.sfreq = data.info["sfreq"]
             self.ch_names = data.info.ch_names.copy()
 
         self.session_map = {map_session[i]: i for i in map_session}
@@ -274,6 +277,7 @@ class Epochs:
             (In pick_trial) The index of trial is discarded
                             ecause it is meaningless so far.
     """
+
     def _generate_mask_target(self, mask: np.ndarray) -> dict:
         """Return mask-counter pair, group by label, subject, and session.
 
@@ -295,13 +299,15 @@ class Epochs:
                     filter_preview_mask[label_idx][subject_idx] = {}
                 for session_idx in unique_session_idx:
                     filter_mask = (
-                        (self.label == label_idx) &
-                        (self.subject == subject_idx) &
-                        (self.session == session_idx)
+                        (self.label == label_idx)
+                        & (self.subject == subject_idx)
+                        & (self.session == session_idx)
                     )
                     target_filter_mask = filter_mask & mask
-                    filter_preview_mask[label_idx][subject_idx][session_idx] = \
-                        [target_filter_mask, 0]
+                    filter_preview_mask[label_idx][subject_idx][session_idx] = [
+                        target_filter_mask,
+                        0,
+                    ]
         return filter_preview_mask
 
     def _get_filtered_mask_pair(self, filter_preview_mask: dict) -> list:
@@ -320,7 +326,7 @@ class Epochs:
         sequence = [
             TrialSelectionSequence.SESSION,
             TrialSelectionSequence.SUBJECT,
-            TrialSelectionSequence.Label
+            TrialSelectionSequence.Label,
         ]
         for a in np.unique(getattr(self, f"get_{sequence[0].value}_list")()):
             for b in np.unique(getattr(self, f"get_{sequence[1].value}_list")()):
@@ -347,23 +353,22 @@ class Epochs:
         Returns:
             Updated mask-counter pair.
         """
-        for label_idx in filter_preview_mask:
-            unique_subject_idx = filter_preview_mask[label_idx]
-            for subject_idx in unique_subject_idx:
-                unique_session_idx = unique_subject_idx[subject_idx]
-                for session_idx in unique_session_idx:
-                    filtered_mask_pair = unique_session_idx[session_idx]
+        for unique_subject_idx in filter_preview_mask.values():
+            for unique_session_idx in unique_subject_idx.values():
+                for filtered_mask_pair in unique_session_idx.values():
                     filtered_mask_pair[1] += sum(filtered_mask_pair[0] & pos)
                     filtered_mask_pair[0] &= np.logical_not(pos)
         return filter_preview_mask
 
-    def _get_real_num(self,
-                     target_type: np.ndarray,
-                     value: float | list[int],
-                     split_unit: SplitUnit,
-                     mask: np.ndarray,
-                     clean_mask: np.ndarray,
-                     group_idx: int) -> int:
+    def _get_real_num(
+        self,
+        target_type: np.ndarray,
+        value: float | list[int],
+        split_unit: SplitUnit,
+        mask: np.ndarray,
+        clean_mask: np.ndarray,
+        group_idx: int,
+    ) -> int:
         """Return number of epochs to be selected.
 
         Args:
@@ -399,13 +404,15 @@ class Epochs:
         num = int(num)
         return num
 
-    def _pick(self,
-             target_type: np.ndarray,
-             mask: np.ndarray,
-             clean_mask: np.ndarray,
-             value: float | list[int],
-             split_unit: SplitUnit,
-             group_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    def _pick(
+        self,
+        target_type: np.ndarray,
+        mask: np.ndarray,
+        clean_mask: np.ndarray,
+        value: float | list[int],
+        split_unit: SplitUnit,
+        group_idx: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return mask of selected epochs by splitting option and target type.
 
         Args:
@@ -436,7 +443,7 @@ class Epochs:
                 return ret, mask
             target = target_type[filtered_mask_pair[0]]
             if len(target) > 0:
-                pos = (mask & (target_type == target[-1]))
+                pos = mask & (target_type == target[-1])
                 ret |= pos
                 mask &= np.logical_not(pos)
                 self._update_mask_target(filter_preview_mask, pos)
@@ -445,10 +452,9 @@ class Epochs:
                 num -= 1
         return ret, mask
 
-    def _pick_manual(self,
-                    target_type: np.ndarray,
-                    mask: np.ndarray,
-                    value: list[int]) -> tuple[np.ndarray, np.ndarray]:
+    def _pick_manual(
+        self, target_type: np.ndarray, mask: np.ndarray, value: list[int]
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return mask of selected epochs by manual selection.
 
         Args:
@@ -464,17 +470,19 @@ class Epochs:
         """
         ret = mask & False
         for v in value:
-            pos = (mask & (target_type == v))
+            pos = mask & (target_type == v)
             ret |= pos
             mask &= np.logical_not(pos)
         return ret, mask
 
-    def pick_subject(self,
-                     mask: np.ndarray,
-                     clean_mask: np.ndarray,
-                     value: float | list[int],
-                     split_unit: SplitUnit,
-                     group_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    def pick_subject(
+        self,
+        mask: np.ndarray,
+        clean_mask: np.ndarray,
+        value: float | list[int],
+        split_unit: SplitUnit,
+        group_idx: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return mask of epochs selected by subject.
 
         Args:
@@ -500,12 +508,14 @@ class Epochs:
                 target_type, mask, clean_mask, value, split_unit, group_idx
             )
 
-    def pick_session(self,
-                     mask: np.ndarray,
-                     clean_mask: np.ndarray,
-                     value: float | list[int],
-                     split_unit: SplitUnit,
-                     group_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    def pick_session(
+        self,
+        mask: np.ndarray,
+        clean_mask: np.ndarray,
+        value: float | list[int],
+        split_unit: SplitUnit,
+        group_idx: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return mask of epochs selected by session.
 
         Args:
@@ -532,12 +542,14 @@ class Epochs:
                 target_type, mask, clean_mask, value, split_unit, group_idx
             )
 
-    def pick_trial(self,
-                   mask: np.ndarray,
-                   clean_mask: np.ndarray,
-                   value: float | list[int],
-                   split_unit: SplitUnit,
-                   group_idx: int) -> tuple[np.ndarray, np.ndarray]:
+    def pick_trial(
+        self,
+        mask: np.ndarray,
+        clean_mask: np.ndarray,
+        value: float | list[int],
+        split_unit: SplitUnit,
+        group_idx: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Return mask of epochs selected by trial.
 
         Args:
@@ -597,16 +609,18 @@ class Epochs:
     # train
     def get_model_args(self):
         """Return args for model initialization."""
-        return  {'n_classes': len(self.label_map),
-                 'channels': len(self.ch_names),
-                 'samples': self.data.shape[-1],
-                 'sfreq': self.sfreq}
+        return {
+            "n_classes": len(self.label_map),
+            "channels": len(self.ch_names),
+            "samples": self.data.shape[-1],
+            "sfreq": self.sfreq,
+        }
 
     def get_data(self) -> np.ndarray:
         """Return data."""
         return self.data
 
-    #eval
+    # eval
     def get_label_number(self) -> int:
         """Return number of labels."""
         return len(self.label_map)
@@ -617,7 +631,7 @@ class Epochs:
 
     def get_epoch_duration(self) -> float:
         """Return duration of each epoch in seconds."""
-        return np.round(self.data.shape[-1]/self.sfreq, 2)
+        return np.round(self.data.shape[-1] / self.sfreq, 2)
 
     def set_channels(self, ch_names: list[str], channel_position: list) -> None:
         """Set channel names and positions.

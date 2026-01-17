@@ -6,7 +6,8 @@ from .plot_abs_plot_figure import PlotABSFigureWindow
 class PlotTopoABSFigureWindow(PlotABSFigureWindow):
     def check_data(self):
         super().check_data()
-        # In PyQt we might not want to raise exceptions in check_data if it crashes the app,
+        # In PyQt we might not want to raise exceptions in check_data if it crashes the
+        # app,
         # but let's follow the logic.
         if self.trainers:
             epoch_data = self.trainers[0].get_dataset().get_epoch_data()

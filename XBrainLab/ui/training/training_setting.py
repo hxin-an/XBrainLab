@@ -42,7 +42,7 @@ class TrainingSettingWindow(QDialog):
         self.training_option = None
         self.output_dir = "./output"  # Default output directory
         self.optim_classes = get_optimizer_classes()
-        self.optim = self.optim_classes.get('Adam')  # Default optimizer: Adam
+        self.optim = self.optim_classes.get("Adam")  # Default optimizer: Adam
         self.optim_params = {}  # Default: no extra params (lr is separate)
         self.use_cpu = True  # Default: use CPU
         self.gpu_idx = None
@@ -55,7 +55,7 @@ class TrainingSettingWindow(QDialog):
         self.load_settings()
 
     def load_settings(self):
-        if hasattr(self.parent(), 'study') and self.parent().study.training_option:
+        if hasattr(self.parent(), "study") and self.parent().study.training_option:
             opt = self.parent().study.training_option
             self.epoch_entry.setText(str(opt.epoch))
             self.bs_entry.setText(str(opt.bs))
@@ -140,7 +140,9 @@ class TrainingSettingWindow(QDialog):
         layout.addLayout(form_layout)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -174,14 +176,17 @@ class TrainingSettingWindow(QDialog):
 
         try:
             self.training_option = TrainingOption(
-                self.output_dir, self.optim, self.optim_params,
-                self.use_cpu, self.gpu_idx,
+                self.output_dir,
+                self.optim,
+                self.optim_params,
+                self.use_cpu,
+                self.gpu_idx,
                 self.epoch_entry.text(),
                 self.bs_entry.text(),
                 self.lr_entry.text(),
                 self.checkpoint_entry.text(),
                 evaluation_option,
-                self.repeat_entry.text()
+                self.repeat_entry.text(),
             )
             self.accept()
         except Exception as e:
@@ -222,19 +227,23 @@ class SetOptimizerWindow(QDialog):
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        self.params_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.params_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         group_layout.addWidget(self.params_table)
         layout.addWidget(group)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
         # Init with first algo
         if self.algo_map:
-            self.on_algo_select(list(self.algo_map.keys())[0])
+            self.on_algo_select(next(iter(self.algo_map.keys())))
 
     def on_algo_select(self, algo_name):
         target = self.algo_map[algo_name]
@@ -262,9 +271,9 @@ class SetOptimizerWindow(QDialog):
                 if value_text:
                     if len(value_text.split()) > 1:
                         value = [float(v) for v in value_text.split()]
-                    elif value_text == 'True':
+                    elif value_text == "True":
                         value = True
-                    elif value_text == 'False':
+                    elif value_text == "False":
                         value = False
                     else:
                         value = float(value_text)
@@ -313,7 +322,9 @@ class SetDeviceWindow(QDialog):
 
         layout.addWidget(self.device_list)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -323,7 +334,7 @@ class SetDeviceWindow(QDialog):
         if row == -1:
             return
 
-        self.use_cpu = (row == 0)
+        self.use_cpu = row == 0
         if row > 0:
             self.gpu_idx = row - 1
         self.accept()

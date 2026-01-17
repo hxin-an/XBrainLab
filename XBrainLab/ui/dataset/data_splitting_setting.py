@@ -25,9 +25,10 @@ from .data_splitting import DataSplitterHolder, DataSplittingWindow
 
 
 class DrawColor(Enum):
-    TRAIN = QColor('DodgerBlue')
-    VAL = QColor('LightBlue')
-    TEST = QColor('green')
+    TRAIN = QColor("DodgerBlue")
+    VAL = QColor("LightBlue")
+    TEST = QColor("green")
+
 
 class DrawRegion:
     def __init__(self, w, h):
@@ -52,16 +53,18 @@ class DrawRegion:
     def set_to_ref(self, x, y, ref):
         self.to_x = x
         self.to_y = y
-        self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y] = \
-            ref.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y]
-        self.to_canvas[self.from_x:self.to_x, self.from_y:self.to_y] = \
-            ref.to_canvas[self.from_x:self.to_x, self.from_y:self.to_y]
+        self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
+            ref.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
+        )
+        self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
+            ref.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
+        )
 
     def set_to(self, x, y, from_w, to_w):
         self.to_x = x
         self.to_y = y
-        self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y] = from_w
-        self.to_canvas[self.from_x:self.to_x, self.from_y:self.to_y] = to_w
+        self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = from_w
+        self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = to_w
 
     def change_to(self, x, y):
         self.to_x = x
@@ -69,49 +72,57 @@ class DrawRegion:
 
     def mask(self, rhs):
         idx = (
-            rhs.from_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y] !=
-            rhs.to_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y]
+            rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
+            != rhs.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
         )
         filter_idx = (
-            idx &
-            (
-                self.from_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y] <=
-                rhs.from_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y]
-            ) &
-            (
-                rhs.from_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y] <=
-                self.to_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y]
+            idx
+            & (
+                self.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
+                <= rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
+            )
+            & (
+                rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
+                <= self.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
             )
         )
 
-        self.to_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y] *= \
-            np.logical_not(filter_idx)
-        self.to_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y] += \
-            filter_idx * rhs.from_canvas[rhs.from_x:rhs.to_x, rhs.from_y:rhs.to_y]
+        self.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y] *= np.logical_not(
+            filter_idx
+        )
+        self.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y] += (
+            filter_idx * rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
+        )
 
         # Simplified boundary checks (might need full logic from original if buggy)
-        if self.to_x > 0 and (self.to_canvas[self.to_x - 1, self.from_y:self.to_y] == self.from_canvas[self.to_x - 1, self.from_y:self.to_y]).all():
+        if (
+            self.to_x > 0
+            and (
+                self.to_canvas[self.to_x - 1, self.from_y : self.to_y]
+                == self.from_canvas[self.to_x - 1, self.from_y : self.to_y]
+            ).all()
+        ):
             self.to_x -= 1
-        if self.to_y > 0 and (self.to_canvas[self.from_x:self.to_x, self.to_y - 1] == self.from_canvas[self.from_x:self.to_x, self.to_y - 1]).all():
+        if (
+            self.to_y > 0
+            and (
+                self.to_canvas[self.from_x : self.to_x, self.to_y - 1]
+                == self.from_canvas[self.from_x : self.to_x, self.to_y - 1]
+            ).all()
+        ):
             self.to_y -= 1
 
     def decrease_w_tail(self, w):
-        self.to_canvas[self.from_x:self.to_x, self.from_y:self.to_y] = \
-            (
-                (self.to_canvas[self.from_x:self.to_x, self.from_y:self.to_y] -
-                 self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y]) *
-                 w +
-                 self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y]
-            )
+        self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
+            self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
+            - self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
+        ) * w + self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
 
     def decrease_w_head(self, w):
-        self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y] = \
-            (
-                (self.to_canvas[self.from_x:self.to_x, self.from_y:self.to_y] -
-                 self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y]) *
-                 w +
-                 self.from_canvas[self.from_x:self.to_x, self.from_y:self.to_y]
-            )
+        self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
+            self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
+            - self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
+        ) * w + self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
 
     def copy(self, rhs):
         self.from_x = rhs.from_x
@@ -121,11 +132,12 @@ class DrawRegion:
         self.from_canvas = rhs.from_canvas.copy()
         self.to_canvas = rhs.to_canvas.copy()
 
+
 class PreviewCanvas(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.setMinimumSize(400, 200)
-        self.regions = [] # List of (DrawRegion, DrawColor)
+        self.regions = []  # List of (DrawRegion, DrawColor)
         self.subject_num = 5
         self.session_num = 5
 
@@ -160,11 +172,11 @@ class PreviewCanvas(QWidget):
                     x2 = left + delta_x * (i + region.to_canvas[i, j])
                     y2 = top + delta_y * (j + 1)
 
-                    painter.drawRect(int(x1), int(y1), int(x2-x1), int(y2-y1))
+                    painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
 
         # Draw box
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(Qt.GlobalColor.white) # Assuming dark theme
+        painter.setPen(Qt.GlobalColor.white)  # Assuming dark theme
         painter.drawRect(left, top, int(w), int(h))
 
         # Grid lines
@@ -181,18 +193,19 @@ class PreviewCanvas(QWidget):
         painter.setPen(Qt.GlobalColor.white)
 
         # X-axis Label
-        painter.drawText(int(left + w/2 - 20), int(top + h + 20), "Session")
+        painter.drawText(int(left + w / 2 - 20), int(top + h + 20), "Session")
 
         # Y-axis Label (Rotated)
         painter.save()
         # Translate to the position where we want the center of the text
-        painter.translate(15, top + h/2)
+        painter.translate(15, top + h / 2)
         painter.rotate(-90)
         # Draw text. Since we translated and rotated, (0,0) is the pivot.
         # We center the text horizontally (which is vertical on screen)
         # Assuming text width is approx 40-50px
         painter.drawText(-25, 0, "Subject")
         painter.restore()
+
 
 class DataSplittingSettingWindow(QDialog):
     def __init__(self, parent, epoch_data):
@@ -223,7 +236,11 @@ class DataSplittingSettingWindow(QDialog):
 
         # Legend
         legend_layout = QHBoxLayout()
-        for name, color in [("Training", DrawColor.TRAIN), ("Validation", DrawColor.VAL), ("Testing", DrawColor.TEST)]:
+        for name, color in [
+            ("Training", DrawColor.TRAIN),
+            ("Validation", DrawColor.VAL),
+            ("Testing", DrawColor.TEST),
+        ]:
             lbl_color = QLabel("  ")
             lbl_color.setStyleSheet(f"background-color: {color.value.name()};")
             legend_layout.addWidget(lbl_color)
@@ -285,11 +302,13 @@ class DataSplittingSettingWindow(QDialog):
         self.handle_validation()
         self.train_region.mask(self.val_region)
 
-        self.canvas.set_regions([
-            (self.train_region, DrawColor.TRAIN),
-            (self.val_region, DrawColor.VAL),
-            (self.test_region, DrawColor.TEST)
-        ])
+        self.canvas.set_regions(
+            [
+                (self.train_region, DrawColor.TRAIN),
+                (self.val_region, DrawColor.VAL),
+                (self.test_region, DrawColor.TEST),
+            ]
+        )
 
     def handle_testing(self):
         test_type = self.test_combo.currentText()
@@ -297,7 +316,7 @@ class DataSplittingSettingWindow(QDialog):
         ref.copy(self.train_region)
 
         if test_type in [SplitByType.SESSION.value, SplitByType.SESSION_IND.value]:
-            is_ind = (test_type == SplitByType.SESSION_IND.value)
+            is_ind = test_type == SplitByType.SESSION_IND.value
             if is_ind:
                 tmp = DrawRegion(self.train_region.w, self.train_region.h)
                 tmp.copy(ref)
@@ -308,7 +327,7 @@ class DataSplittingSettingWindow(QDialog):
                 self.train_region.mask(tmp)
 
         elif test_type in [SplitByType.TRIAL.value, SplitByType.TRIAL_IND.value]:
-            is_ind = (test_type == SplitByType.TRIAL_IND.value)
+            is_ind = test_type == SplitByType.TRIAL_IND.value
             if is_ind:
                 tmp = DrawRegion(ref.w, ref.h)
                 tmp.copy(ref)
@@ -319,7 +338,7 @@ class DataSplittingSettingWindow(QDialog):
                 self.train_region.mask(tmp)
 
         elif test_type in [SplitByType.SUBJECT.value, SplitByType.SUBJECT_IND.value]:
-            is_ind = (test_type == SplitByType.SUBJECT_IND.value)
+            is_ind = test_type == SplitByType.SUBJECT_IND.value
             if is_ind:
                 tmp = DrawRegion(self.train_region.w, self.train_region.h)
                 tmp.copy(ref)
@@ -333,15 +352,23 @@ class DataSplittingSettingWindow(QDialog):
         val_type = self.val_combo.currentText()
         if val_type == ValSplitByType.SESSION.value:
             self.val_region.copy(self.train_region)
-            self.val_region.set_from(self.train_region.to_x - 1, self.train_region.from_y)
-            self.val_region.set_to_ref(self.train_region.to_x, self.train_region.to_y, self.train_region)
+            self.val_region.set_from(
+                self.train_region.to_x - 1, self.train_region.from_y
+            )
+            self.val_region.set_to_ref(
+                self.train_region.to_x, self.train_region.to_y, self.train_region
+            )
         elif val_type == ValSplitByType.TRIAL.value:
             self.val_region.copy(self.train_region)
             self.val_region.decrease_w_head(0.8)
         elif val_type == ValSplitByType.SUBJECT.value:
             self.val_region.copy(self.train_region)
-            self.val_region.set_from(self.train_region.from_x, self.train_region.to_y - 1)
-            self.val_region.set_to_ref(self.train_region.to_x, self.train_region.to_y, self.train_region)
+            self.val_region.set_from(
+                self.train_region.from_x, self.train_region.to_y - 1
+            )
+            self.val_region.set_to_ref(
+                self.train_region.to_x, self.train_region.to_y, self.train_region
+            )
 
     def confirm(self):
         # Get Training Type
@@ -374,7 +401,7 @@ class DataSplittingSettingWindow(QDialog):
             train_type=train_type,
             is_cross_validation=self.cv_check.isChecked(),
             val_splitter_list=val_splitters,
-            test_splitter_list=test_splitters
+            test_splitter_list=test_splitters,
         )
 
         self.step2_window = DataSplittingWindow(

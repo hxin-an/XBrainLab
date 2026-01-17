@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any
 
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import Trainer
@@ -9,6 +9,7 @@ class TrainingController:
     Controller for handling training operations and state management.
     Decouples UI from direct Study/Backend manipulation.
     """
+
     def __init__(self, study: Study):
         self._study = study
 
@@ -43,11 +44,11 @@ class TrainingController:
         if self._study.trainer:
             self._study.trainer.clear_history()
 
-    def get_trainer(self) -> Optional[Trainer]:
+    def get_trainer(self) -> Trainer | None:
         """Access the underlying trainer (usually for polling status)."""
         return self._study.trainer
 
-    def get_formatted_history(self) -> List[dict]:
+    def get_formatted_history(self) -> list[dict]:
         """
         Get structured training history for UI display.
         Returns a list of dictionaries suitable for table display.
@@ -62,29 +63,30 @@ class TrainingController:
         for plan_idx, plan in enumerate(holders):
             group_id = plan_idx + 1
             model_name = plan.model_holder.target_model.__name__
-            is_active_plan = (trainer.is_running() and trainer.current_idx == plan_idx)
+            is_active_plan = trainer.is_running() and trainer.current_idx == plan_idx
 
             for run_idx, record in enumerate(plan.get_plans()):
-                history.append({
-                    'plan': plan,
-                    'record': record,
-                    'group_name': f"Group {group_id}",
-                    'run_name': f"{run_idx + 1}",
-                    'model_name': model_name,
-                    'is_active': is_active_plan,
-                    'is_current_run': (is_active_plan and plan.get_training_repeat() == record.repeat)
-                })
+                history.append(
+                    {
+                        "plan": plan,
+                        "record": record,
+                        "group_name": f"Group {group_id}",
+                        "run_name": f"{run_idx + 1}",
+                        "model_name": model_name,
+                        "is_active": is_active_plan,
+                        "is_current_run": (
+                            is_active_plan
+                            and plan.get_training_repeat() == record.repeat
+                        ),
+                    }
+                )
         return history
 
     def validate_ready(self) -> bool:
         """Check if configuration is ready for training."""
-        return (
-            self.has_datasets() and
-            self.has_model() and
-            self.has_training_option()
-        )
+        return self.has_datasets() and self.has_model() and self.has_training_option()
 
-    def get_missing_requirements(self) -> List[str]:
+    def get_missing_requirements(self) -> list[str]:
         """Get a list of missing requirements for training."""
         missing = []
         if not self.has_datasets():

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import time
 import traceback
 from enum import Enum
@@ -20,9 +21,7 @@ from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
 
 
 def _test_model(
-    model: torch.nn.Module,
-    dataLoader: Data.DataLoader,
-    criterion: torch.nn.Module
+    model: torch.nn.Module, dataLoader: Data.DataLoader, criterion: torch.nn.Module
 ) -> dict[str, float]:
     """Test model on given data loader
 
@@ -58,29 +57,36 @@ def _test_model(
                 y_pred = torch.cat((y_pred, outputs.detach().cpu()))
 
         try:
-            if y_pred.size()[-1] <=2:
-                auc = roc_auc_score(y_true.clone().detach().cpu().numpy(),
-                torch.nn.functional.softmax(
-                    y_pred, dim=1
-                ).clone().detach().cpu().numpy()[:, 1])
+            if y_pred.size()[-1] <= 2:
+                auc = roc_auc_score(
+                    y_true.clone().detach().cpu().numpy(),
+                    torch.nn.functional.softmax(y_pred, dim=1)
+                    .clone()
+                    .detach()
+                    .cpu()
+                    .numpy()[:, 1],
+                )
             else:
-                auc = roc_auc_score(y_true.clone().detach().cpu().numpy(),
-                torch.nn.functional.softmax(
-                    y_pred, dim=1
-                ).clone().detach().cpu().numpy(), multi_class='ovr')
+                auc = roc_auc_score(
+                    y_true.clone().detach().cpu().numpy(),
+                    torch.nn.functional.softmax(y_pred, dim=1)
+                    .clone()
+                    .detach()
+                    .cpu()
+                    .numpy(),
+                    multi_class="ovr",
+                )
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"Failed to calculate AUC in test: {e}")
 
     running_loss /= len(dataLoader)
     acc = correct / total_count * 100
-    return {
-        RecordKey.ACC: acc,
-        RecordKey.AUC: auc,
-        RecordKey.LOSS: running_loss
-    }
+    return {RecordKey.ACC: acc, RecordKey.AUC: auc, RecordKey.LOSS: running_loss}
 
-def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_params:dict) -> EvalRecord:
+
+def _eval_model(
+    model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_params: dict
+) -> EvalRecord:
     """Evaluate model on given data loader
 
     Evaluate model and compute saliency map for each class
@@ -109,25 +115,50 @@ def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_pa
         output_list.append(outputs.detach().cpu().numpy())
         label_list.append(labels.detach().cpu().numpy())
 
-        inputs.requires_grad=True
-        batch_gradient = saliency_inst.attribute(inputs, target=label_list[-1].tolist(), abs=False).detach().cpu().numpy()
+        inputs.requires_grad = True
+        batch_gradient = (
+            saliency_inst.attribute(inputs, target=label_list[-1].tolist(), abs=False)
+            .detach()
+            .cpu()
+            .numpy()
+        )
 
         gradient_list.append(batch_gradient)
-        gradient_input_list.append(np.multiply(inputs.detach().cpu().numpy(), batch_gradient))
+        gradient_input_list.append(
+            np.multiply(inputs.detach().cpu().numpy(), batch_gradient)
+        )
         smoothgrad_list.append(
             noise_tunnel_inst.attribute(
-                inputs, target=label_list[-1].tolist(), nt_type='smoothgrad', **saliency_params['SmoothGrad']
-            ).detach().cpu().numpy()
+                inputs,
+                target=label_list[-1].tolist(),
+                nt_type="smoothgrad",
+                **saliency_params["SmoothGrad"],
+            )
+            .detach()
+            .cpu()
+            .numpy()
         )
         smoothgrad_sq_list.append(
             noise_tunnel_inst.attribute(
-                inputs, target=label_list[-1].tolist(), nt_type='smoothgrad_sq', **saliency_params['SmoothGrad_Squared']
-            ).detach().cpu().numpy()
+                inputs,
+                target=label_list[-1].tolist(),
+                nt_type="smoothgrad_sq",
+                **saliency_params["SmoothGrad_Squared"],
+            )
+            .detach()
+            .cpu()
+            .numpy()
         )
         vargrad_list.append(
             noise_tunnel_inst.attribute(
-                inputs, target=label_list[-1].tolist(), nt_type='vargrad', **saliency_params['VarGrad']
-            ).detach().cpu().numpy()
+                inputs,
+                target=label_list[-1].tolist(),
+                nt_type="vargrad",
+                **saliency_params["VarGrad"],
+            )
+            .detach()
+            .cpu()
+            .numpy()
         )
 
     label_list = np.concatenate(label_list)
@@ -140,30 +171,41 @@ def _eval_model(model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_pa
     vargrad_list = np.concatenate(vargrad_list)
 
     gradient_list = {
-        i: gradient_list[np.where(label_list==i)]
+        i: gradient_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
     gradient_input_list = {
-        i: gradient_input_list[np.where(label_list==i)]
+        i: gradient_input_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
     smoothgrad_list = {
-        i: smoothgrad_list[np.where(label_list==i)]
+        i: smoothgrad_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
     smoothgrad_sq_list = {
-        i: smoothgrad_sq_list[np.where(label_list==i)]
+        i: smoothgrad_sq_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
     vargrad_list = {
-        i: vargrad_list[np.where(label_list==i)]
-        for i in range(output_list.shape[-1])
+        i: vargrad_list[np.where(label_list == i)] for i in range(output_list.shape[-1])
     }
-    return EvalRecord(label_list, output_list, gradient_list, gradient_input_list, smoothgrad_list, smoothgrad_sq_list, vargrad_list)
+    return EvalRecord(
+        label_list,
+        output_list,
+        gradient_list,
+        gradient_input_list,
+        smoothgrad_list,
+        smoothgrad_sq_list,
+        vargrad_list,
+    )
+
 
 class SharedMemoryDataset(Data.Dataset):
     """Dataset that references original data to save RAM/VRAM."""
-    def __init__(self, data: np.ndarray, labels: np.ndarray, indices: np.ndarray, device: str):
+
+    def __init__(
+        self, data: np.ndarray, labels: np.ndarray, indices: np.ndarray, device: str
+    ):
         self.data = data
         self.labels = labels
         self.indices = indices
@@ -179,13 +221,14 @@ class SharedMemoryDataset(Data.Dataset):
         y = torch.tensor(self.labels[real_idx]).long().to(self.device)
         return x, y
 
+
 def to_holder(
     data: np.ndarray,
     labels: np.ndarray,
     indices: np.ndarray,
     dev: str,
     bs: int,
-    shuffle: bool = False
+    shuffle: bool = False,
 ) -> Data.DataLoader | None:
     """Convert data to torch dataloader using SharedMemoryDataset"""
 
@@ -196,20 +239,19 @@ def to_holder(
     # and to load to GPU on-the-fly (saves VRAM).
     dataset = SharedMemoryDataset(data, labels, indices, dev)
 
-    dataloader = Data.DataLoader(
-        dataset,
-        batch_size=bs,
-        shuffle=shuffle
-    )
+    dataloader = Data.DataLoader(dataset, batch_size=bs, shuffle=shuffle)
     return dataloader
+
 
 class Status(Enum):
     """Utility class for training status"""
-    DONE = 'Finished'
-    PENDING = 'Pending'
-    INIT = 'Initializing {}'
-    EVAL = 'Evaluating {}'
-    TRAIN = 'Training {}'
+
+    DONE = "Finished"
+    PENDING = "Pending"
+    INIT = "Initializing {}"
+    EVAL = "Evaluating {}"
+    TRAIN = "Training {}"
+
 
 class TrainingPlanHolder:
     """class for storing training plan
@@ -234,6 +276,7 @@ class TrainingPlanHolder:
         status: str
             Training status
     """
+
     def __init__(
         self,
         model_holder: ModelHolder,
@@ -261,40 +304,43 @@ class TrainingPlanHolder:
                     self.dataset.get_epoch_data().get_model_args()
                 )
             except (RuntimeError, ValueError) as e:
-                # Catch both RuntimeError (from PyTorch) and ValueError (from our validation)
-                if "Output size is too small" in str(e) or "Epoch duration is too short" in str(e):
+                # Catch both RuntimeError (from PyTorch) and ValueError (from our
+                # validation)
+                if "Output size is too small" in str(
+                    e
+                ) or "Epoch duration is too short" in str(e):
                     model_name = self.model_holder.target_model.__name__
                     raise ValueError(
                         f"Failed to create model '{model_name}': {e!s}"
-                    )
-                raise e
+                    ) from e
+                raise
             self.train_record_list.append(
                 TrainRecord(
-                    repeat=i, dataset=self.dataset, model=model,
-                    option=self.option, seed=seed, plan_id=self.plan_id
+                    repeat=i,
+                    dataset=self.dataset,
+                    model=model,
+                    option=self.option,
+                    seed=seed,
+                    plan_id=self.plan_id,
                 )
             )
 
     def check_data(self) -> None:
         """Check whether the training plan is valid"""
         if not self.dataset:
-            raise ValueError('No valid dataset is generated')
+            raise ValueError("No valid dataset is generated")
         if not self.option:
-            raise ValueError('No valid training setting is generated')
+            raise ValueError("No valid training setting is generated")
         if not self.model_holder:
-            raise ValueError('No valid model is selected')
+            raise ValueError("No valid model is selected")
         if not self.saliency_params:
-            print('No saliency parameter is set, using default parameters.')
-            params = {
-                'nt_samples': 5,
-                'nt_samples_batch_size': None,
-                'stdevs': 1.0
-            }
-            self.saliency_params = {algo: params for algo in supported_saliency_methods}
+            print("No saliency parameter is set, using default parameters.")
+            params = {"nt_samples": 5, "nt_samples_batch_size": None, "stdevs": 1.0}
+            self.saliency_params = dict.fromkeys(supported_saliency_methods, params)
 
-        validate_type(self.model_holder, ModelHolder, 'model_holder')
-        validate_type(self.dataset, Dataset, 'dataset')
-        validate_type(self.option, TrainingOption, 'option')
+        validate_type(self.model_holder, ModelHolder, "model_holder")
+        validate_type(self.dataset, Dataset, "dataset")
+        validate_type(self.option, TrainingOption, "option")
         self.option.validate()
 
     # interact
@@ -341,7 +387,7 @@ class TrainingPlanHolder:
         self,
         train_record: TrainRecord,
         valLoader: Data.DataLoader,
-        testLoader: Data.DataLoader
+        testLoader: Data.DataLoader,
     ) -> tuple[torch.nn.Module, Data.DataLoader]:
         """Return the model and data loader for evaluation based on given option"""
         target_model = target_loader = None
@@ -350,19 +396,19 @@ class TrainingPlanHolder:
         ).to(self.option.get_device())
         target_loader = testLoader or valLoader
         if self.option.evaluation_option == TRAINING_EVALUATION.VAL_LOSS:
-            model = getattr(train_record, f'best_val_{RecordKey.LOSS}_model')
+            model = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
             if model:
                 target_model.load_state_dict(model)
             else:
                 target_model = None
         elif self.option.evaluation_option == TRAINING_EVALUATION.TEST_ACC:
-            model = getattr(train_record, f'best_test_{RecordKey.ACC}_model')
+            model = getattr(train_record, f"best_test_{RecordKey.ACC}_model")
             if model:
                 target_model.load_state_dict(model)
             else:
                 target_model = None
         elif self.option.evaluation_option == TRAINING_EVALUATION.TEST_AUC:
-            model = getattr(train_record, f'best_test_{RecordKey.AUC}_model')
+            model = getattr(train_record, f"best_test_{RecordKey.AUC}_model")
             if model:
                 target_model.load_state_dict(model)
             else:
@@ -387,7 +433,7 @@ class TrainingPlanHolder:
         model = train_record.get_training_model(device=self.option.get_device())
         trainLoader, valLoader, testLoader = self.get_loader()
         if self.option.epoch > 0 and not trainLoader:
-            raise ValueError('No Training Data')
+            raise ValueError("No Training Data")
         optimizer = train_record.optim
         criterion = train_record.criterion
         self.status = Status.TRAIN.value.format(train_record.get_name())
@@ -396,8 +442,13 @@ class TrainingPlanHolder:
             if self.interrupt:
                 break
             self.train_one_epoch(
-                model, trainLoader, valLoader, testLoader,
-                optimizer, criterion, train_record
+                model,
+                trainLoader,
+                valLoader,
+                testLoader,
+                optimizer,
+                criterion,
+                train_record,
             )
 
         if train_record.epoch == self.option.epoch:
@@ -406,7 +457,8 @@ class TrainingPlanHolder:
                 train_record, valLoader, testLoader
             )
 
-            # Fallback: If no validation/test data, use training data for evaluation/visualization
+            # Fallback: If no validation/test data, use training data for
+            # evaluation/visualization
             if not target_loader and trainLoader:
                 target_loader = trainLoader
                 if not target:
@@ -419,14 +471,16 @@ class TrainingPlanHolder:
 
         train_record.export_checkpoint()
 
-    def train_one_epoch(self,
-                        model: torch.nn.Module,
-                        trainLoader: Data.DataLoader,
-                        valLoader: Data.DataLoader,
-                        testLoader: Data.DataLoader,
-                        optimizer: torch.optim.Optimizer,
-                        criterion: torch.nn.Module,
-                        train_record: TrainRecord) -> None:
+    def train_one_epoch(
+        self,
+        model: torch.nn.Module,
+        trainLoader: Data.DataLoader,
+        valLoader: Data.DataLoader,
+        testLoader: Data.DataLoader,
+        optimizer: torch.optim.Optimizer,
+        criterion: torch.nn.Module,
+        train_record: TrainRecord,
+    ) -> None:
         """Train one epoch of the training plan"""
         start_time = time.time()
         running_loss = 0.0
@@ -456,30 +510,43 @@ class TrainingPlanHolder:
             running_loss += loss.item()
 
         try:
-            if y_pred.size()[-1] <=2:
-                train_auc = roc_auc_score(y_true.clone().detach().cpu().numpy(),
-                torch.nn.functional.softmax(
-                    y_pred, dim=1
-                ).clone().detach().cpu().numpy()[:, 1])
+            if y_pred.size()[-1] <= 2:
+                train_auc = roc_auc_score(
+                    y_true.clone().detach().cpu().numpy(),
+                    torch.nn.functional.softmax(y_pred, dim=1)
+                    .clone()
+                    .detach()
+                    .cpu()
+                    .numpy()[:, 1],
+                )
             else:
-                train_auc = roc_auc_score(y_true.clone().detach().cpu().numpy(),
-                torch.nn.functional.softmax(
-                    y_pred, dim=1
-                ).clone().detach().cpu().numpy(), multi_class='ovr')
+                train_auc = roc_auc_score(
+                    y_true.clone().detach().cpu().numpy(),
+                    torch.nn.functional.softmax(y_pred, dim=1)
+                    .clone()
+                    .detach()
+                    .cpu()
+                    .numpy(),
+                    multi_class="ovr",
+                )
         except Exception as e:
             # first few epochs in binary classification
             # might not be able to compute score
-            import logging
-            logging.getLogger(__name__).debug(f"Failed to calculate AUC in train (epoch {train_record.epoch}): {e}")
+            # might not be able to compute score
 
+            logging.getLogger(__name__).debug(
+                f"Failed to calculate AUC in train (epoch {train_record.epoch}): {e}"
+            )
 
         running_loss /= len(trainLoader)
         train_acc = correct / total_count * 100
-        train_record.update_train({
-            RecordKey.LOSS: running_loss,
-            RecordKey.ACC: train_acc,
-            RecordKey.AUC: train_auc
-        })
+        train_record.update_train(
+            {
+                RecordKey.LOSS: running_loss,
+                RecordKey.ACC: train_acc,
+                RecordKey.AUC: train_auc,
+            }
+        )
 
         if valLoader:
             test_result = _test_model(model, valLoader, criterion)
@@ -491,13 +558,18 @@ class TrainingPlanHolder:
             test_result = _test_model(model, testLoader, criterion)
             train_record.update_test(test_result)
 
-        train_record.update_statistic({
-            TrainRecordKey.LR: optimizer.param_groups[0]['lr'],
-            TrainRecordKey.TIME: trainingTime
-        })
+        train_record.update_statistic(
+            {
+                TrainRecordKey.LR: optimizer.param_groups[0]["lr"],
+                TrainRecordKey.TIME: trainingTime,
+            }
+        )
+
+        train_record.step()
+
         if (
-            self.option.checkpoint_epoch and
-            train_record.get_epoch() % self.option.checkpoint_epoch == 0
+            self.option.checkpoint_epoch
+            and train_record.get_epoch() % self.option.checkpoint_epoch == 0
         ):
             train_record.export_checkpoint()
 
@@ -531,16 +603,16 @@ class TrainingPlanHolder:
         return self.saliency_params
 
     # setter
-    def set_saliency_params(self, saliency_params)-> None:
+    def set_saliency_params(self, saliency_params) -> None:
         """Set the saliency computation parameters"""
         self.saliency_params = saliency_params
         for i in range(self.option.repeat_num):
             train_record = self.train_record_list[i]
-            trainLoader, valLoader, testLoader = self.get_loader()
+            _, valLoader, testLoader = self.get_loader()
             target, target_loader = self.get_eval_pair(
                 train_record, valLoader, testLoader
             )
-            if target is not None: # model is trained
+            if target is not None:  # model is trained
                 eval_record = _eval_model(target, target_loader, self.saliency_params)
                 self.train_record_list[i].set_eval_record(eval_record)
 
@@ -570,203 +642,7 @@ class TrainingPlanHolder:
         """
         record = self.train_record_list[self.get_training_repeat()]
 
-        lr = train_loss = train_acc = train_auc = \
-            val_loss = val_acc = val_auc = '-'
-        if len(record.train[TrainRecordKey.LR]) > 0:
-            lr = record.train[TrainRecordKey.LR][-1]
-        if len(record.train[TrainRecordKey.LOSS]) > 0:
-            train_loss = record.train[TrainRecordKey.LOSS][-1]
-        if len(record.train[TrainRecordKey.AUC]) > 0:
-            train_auc = record.train[TrainRecordKey.AUC][-1]
-        if len(record.train[TrainRecordKey.ACC]) > 0:
-            train_acc = record.train[TrainRecordKey.ACC][-1]
-        if len(record.val[RecordKey.LOSS]) > 0:
-            val_loss = record.val[RecordKey.LOSS][-1]
-        if len(record.val[RecordKey.ACC]) > 0:
-            val_acc = record.val[RecordKey.ACC][-1]
-        if len(record.val[RecordKey.AUC]) > 0:
-            val_auc = record.val[RecordKey.AUC][-1]
-        return lr, train_loss, train_acc, train_auc, val_loss, val_acc, val_auc
-        trainLoader, valLoader, testLoader = self.get_loader()
-        if self.option.epoch > 0 and not trainLoader:
-            raise ValueError('No Training Data')
-        optimizer = train_record.optim
-        criterion = train_record.criterion
-        self.status = Status.TRAIN.value.format(train_record.get_name())
-        # train one epoch
-        while train_record.epoch < self.option.epoch:
-            if self.interrupt:
-                break
-            self.train_one_epoch(
-                model, trainLoader, valLoader, testLoader,
-                optimizer, criterion, train_record
-            )
-
-        if train_record.epoch == self.option.epoch:
-            self.status = Status.EVAL.value.format(train_record.get_name())
-            target, target_loader = self.get_eval_pair(
-                train_record, valLoader, testLoader
-            )
-
-            # Fallback: If no validation/test data, use training data for evaluation/visualization
-            if not target_loader and trainLoader:
-                target_loader = trainLoader
-                if not target:
-                    target = train_record.model
-                    target.eval()
-
-            if target and target_loader:
-                eval_record = _eval_model(target, target_loader, self.saliency_params)
-                train_record.set_eval_record(eval_record)
-
-        train_record.export_checkpoint()
-
-    def train_one_epoch(self,
-                        model: torch.nn.Module,
-                        trainLoader: Data.DataLoader,
-                        valLoader: Data.DataLoader,
-                        testLoader: Data.DataLoader,
-                        optimizer: torch.optim.Optimizer,
-                        criterion: torch.nn.Module,
-                        train_record: TrainRecord) -> None:
-        """Train one epoch of the training plan"""
-        start_time = time.time()
-        running_loss = 0.0
-        model.train()
-        correct = 0
-        total_count = 0
-        train_auc = 0
-        y_true, y_pred = None, None
-        # train one mini batch
-        for inputs, labels in trainLoader:
-            if self.interrupt:
-                return
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            correct += (outputs.argmax(axis=1) == labels).float().sum().item()
-            if y_true is None or y_pred is None:
-                y_true = labels
-                y_pred = outputs
-            else:
-                y_true = torch.cat((y_true, labels))
-                y_pred = torch.cat((y_pred, outputs))
-            total_count += len(labels)
-            running_loss += loss.item()
-
-        try:
-            if y_pred.size()[-1] <=2:
-                train_auc = roc_auc_score(y_true.clone().detach().cpu().numpy(),
-                torch.nn.functional.softmax(
-                    y_pred, dim=1
-                ).clone().detach().cpu().numpy()[:, 1])
-            else:
-                train_auc = roc_auc_score(y_true.clone().detach().cpu().numpy(),
-                torch.nn.functional.softmax(
-                    y_pred, dim=1
-                ).clone().detach().cpu().numpy(), multi_class='ovr')
-        except Exception:
-            # first few epochs in binary classification
-            # might not be able to compute score
-            pass
-
-
-        running_loss /= len(trainLoader)
-        train_acc = correct / total_count * 100
-        train_record.update_train({
-            RecordKey.LOSS: running_loss,
-            RecordKey.ACC: train_acc,
-            RecordKey.AUC: train_auc
-        })
-
-        if valLoader:
-            test_result = _test_model(model, valLoader, criterion)
-            train_record.update_eval(test_result)
-
-        trainingTime = time.time() - start_time
-
-        if testLoader:
-            test_result = _test_model(model, testLoader, criterion)
-            train_record.update_test(test_result)
-
-        train_record.update_statistic({
-            TrainRecordKey.LR: optimizer.param_groups[0]['lr'],
-            TrainRecordKey.TIME: trainingTime
-        })
-        train_record.step()
-        if (
-            self.option.checkpoint_epoch and
-            train_record.get_epoch() % self.option.checkpoint_epoch == 0
-        ):
-            train_record.export_checkpoint()
-
-    def clear_interrupt(self) -> None:
-        """Clear the interrupt flag and error status"""
-        self.error = None
-        self.interrupt = False
-
-    # getter
-    def get_name(self) -> str:
-        """Return the name of the training plan"""
-        return self.dataset.get_name()
-
-    def get_dataset(self) -> Dataset:
-        """Get the dataset of the training plan"""
-        return self.dataset
-
-    def get_plans(self) -> list[TrainRecord]:
-        """Get the training records of the training plan"""
-        return self.train_record_list
-
-    def get_saliency_params(self) -> dict:
-        """Return the saliency computation parameters"""
-        return self.saliency_params
-
-    # setter
-    def set_saliency_params(self, saliency_params)-> None:
-        """Set the saliency computation parameters"""
-        self.saliency_params = saliency_params
-        for i in range(self.option.repeat_num):
-            train_record = self.train_record_list[i]
-            trainLoader, valLoader, testLoader = self.get_loader()
-            target, target_loader = self.get_eval_pair(
-                train_record, valLoader, testLoader
-            )
-            if target is not None: # model is trained
-                eval_record = _eval_model(target, target_loader, self.saliency_params)
-                self.train_record_list[i].set_eval_record(eval_record)
-
-    # status
-    def get_training_status(self) -> str:
-        """Return the training status"""
-        if self.error:
-            return self.error
-        return self.status
-
-    def get_training_repeat(self) -> int:
-        """Return the index of the current training repetition"""
-        for i in range(self.option.repeat_num):
-            if not self.train_record_list[i].is_finished():
-                break
-        return i
-
-    def get_training_epoch(self) -> int:
-        """Return the current epoch of the training plan"""
-        return self.train_record_list[self.get_training_repeat()].get_epoch()
-
-    def get_training_evaluation(self) -> tuple:
-        """Return the evaluation result of the training plan
-
-        Return:
-            Tuple of lr, train_loss, train_acc, train_auc, val_loss, val_acc
-        """
-        record = self.train_record_list[self.get_training_repeat()]
-
-        lr = train_loss = train_acc = train_auc = \
-            val_loss = val_acc = val_auc = '-'
+        lr = train_loss = train_acc = train_auc = val_loss = val_acc = val_auc = "-"
         if len(record.train[TrainRecordKey.LR]) > 0:
             lr = record.train[TrainRecordKey.LR][-1]
         if len(record.train[TrainRecordKey.LOSS]) > 0:
@@ -798,11 +674,11 @@ class TrainingPlanHolder:
         """Return the best accuracy achieved during training"""
         record = self.train_record_list[self.get_training_repeat()]
         # Check validation accuracy first
-        best_val_acc = record.best_record.get(f'best_val_{RecordKey.ACC}', -1)
+        best_val_acc = record.best_record.get(f"best_val_{RecordKey.ACC}", -1)
         if best_val_acc != -1:
             return best_val_acc
         # Fallback to test accuracy
-        best_test_acc = record.best_record.get(f'best_test_{RecordKey.ACC}', -1)
+        best_test_acc = record.best_record.get(f"best_test_{RecordKey.ACC}", -1)
         if best_test_acc != -1:
             return best_test_acc
         # Fallback to current accuracy if no best recorded (e.g. early epoch)

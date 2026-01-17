@@ -16,19 +16,23 @@ from .eval import EvalRecord, calculate_confusion
 
 class RecordKey:
     "Utility class for accessing the statistics of the testing record"
-    LOSS = 'loss'
-    ACC = 'accuracy'
-    AUC = 'auc'
+
+    LOSS = "loss"
+    ACC = "accuracy"
+    AUC = "auc"
 
     def __iter__(self):
         keys = dir(self)
-        keys = [getattr(self, key) for key in keys if not key.startswith('_')]
+        keys = [getattr(self, key) for key in keys if not key.startswith("_")]
         return iter(keys)
+
 
 class TrainRecordKey(RecordKey):
     "Utility class for accessing the statistics of the training record"
-    TIME = 'time'
-    LR = 'lr'
+
+    TIME = "time"
+    LR = "lr"
+
 
 class TrainRecord:
     """Class for recording statistics during training
@@ -78,6 +82,7 @@ class TrainRecord:
         random_state: tuple
             Random state for reproducibility
     """
+
     def __init__(
         self,
         repeat: int,
@@ -85,7 +90,7 @@ class TrainRecord:
         model: torch.nn.Module,
         option: TrainingOption,
         seed: int,
-        plan_id: str = None
+        plan_id: str | None = None,
     ):
         self.repeat = repeat
         self.dataset = dataset
@@ -95,23 +100,20 @@ class TrainRecord:
         self.model = model
         self.optim = self.option.get_optim(model)
         self.criterion = self.option.criterion
-        #
         self.eval_record = None
         for key in RecordKey():
-            setattr(self, 'best_val_' + key + '_model', None)
-            setattr(self, 'best_test_' + key + '_model', None)
-        #
+            setattr(self, "best_val_" + key + "_model", None)
+            setattr(self, "best_test_" + key + "_model", None)
         self.train = {i: [] for i in TrainRecordKey()}
         self.val = {i: [] for i in RecordKey()}
         self.test = {i: [] for i in RecordKey()}
         self.best_record = {}
-        for record_type in ['val', 'test']:
+        for record_type in ["val", "test"]:
             for key in RecordKey():
-                self.best_record[f'best_{record_type}_{key}'] = -1
-                self.best_record[f'best_{record_type}_{key}_epoch'] = None
-            self.best_record[f'best_{record_type}_' + RecordKey.LOSS] = torch.inf
+                self.best_record[f"best_{record_type}_{key}"] = -1
+                self.best_record[f"best_{record_type}_{key}_epoch"] = None
+            self.best_record[f"best_{record_type}_" + RecordKey.LOSS] = torch.inf
 
-        #
         self.epoch = 0
         self.target_path = None
         self.init_dir()
@@ -165,7 +167,7 @@ class TrainRecord:
     def is_finished(self) -> bool:
         """Check if the training is finished"""
         return self.get_epoch() >= self.option.epoch and self.eval_record is not None
-    #
+
     def append_record(self, val: any, arr: list) -> None:
         """Internal function for appending a value to a statistic array
 
@@ -184,47 +186,43 @@ class TrainRecord:
 
     def update(self, update_type: str, test_result: dict[str, float]) -> None:
         """Append the statistics of given type the current epoch"""
-        for key in test_result:
-            self.append_record(test_result[key], getattr(self, update_type)[key])
+        for key, value in test_result.items():
+            self.append_record(value, getattr(self, update_type)[key])
             should_update = False
-            if 'loss' in key:
-                if (
-                    test_result[key] <=
-                    self.best_record['best_' + update_type + '_' + key]
-                ):
+            if "loss" in key:
+                if value <= self.best_record["best_" + update_type + "_" + key]:
                     should_update = True
-            elif (
-                    test_result[key] >=
-                    self.best_record['best_' + update_type + '_' + key]
-                ):
-                    should_update = True
+            elif value >= self.best_record["best_" + update_type + "_" + key]:
+                should_update = True
             if should_update:
-                self.best_record['best_' + update_type + '_' + key] = test_result[key]
-                self.best_record['best_' + update_type + '_' + key + '_epoch'] = \
+                self.best_record["best_" + update_type + "_" + key] = value
+                self.best_record["best_" + update_type + "_" + key + "_epoch"] = (
                     self.get_epoch()
+                )
                 setattr(
-                    self, 'best_' + update_type + '_' + key + '_model',
-                    deepcopy(self.model.state_dict())
+                    self,
+                    "best_" + update_type + "_" + key + "_model",
+                    deepcopy(self.model.state_dict()),
                 )
 
     def update_eval(self, test_result: dict[str, float]) -> None:
         """Append the validation statistics of the current epoch and
         update the best model"""
-        self.update('val', test_result)
+        self.update("val", test_result)
 
     def update_test(self, test_result: dict[str, float]) -> None:
         """Append the test statistics of the current epoch and update the best model"""
-        self.update('test', test_result)
+        self.update("test", test_result)
 
     def update_train(self, test_result: dict[str, float]) -> None:
         """Append the training statistics of the current epoch"""
-        for key in test_result:
-            self.append_record(test_result[key], self.train[key])
+        for key, value in test_result.items():
+            self.append_record(value, self.train[key])
 
     def update_statistic(self, statistic: dict[str, float]) -> None:
         """Append the statistics of the current epoch"""
-        for key in statistic:
-            self.append_record(statistic[key], self.train[key])
+        for key, value in statistic.items():
+            self.append_record(value, self.train[key])
 
     def step(self) -> None:
         """Move to the next epoch"""
@@ -233,31 +231,29 @@ class TrainRecord:
     def set_eval_record(self, eval_record: EvalRecord) -> None:
         """Set the evaluation record when training is finished"""
         self.eval_record = eval_record
-    #
+
     def export_checkpoint(self) -> None:
         """Export the checkpoint of the training record"""
         epoch = len(self.train[RecordKey.LOSS])
         if self.eval_record:
             self.eval_record.export(self.target_path)
-        for best_type in ['val', 'test']:
+        for best_type in ["val", "test"]:
             for key in RecordKey():
-                full_key = 'best_' + best_type + '_' + key + '_model'
+                full_key = "best_" + best_type + "_" + key + "_model"
                 model = getattr(self, full_key)
                 if model:
                     torch.save(model, os.path.join(self.target_path, full_key))
 
-        fname = f'Epoch-{epoch}-model'
+        fname = f"Epoch-{epoch}-model"
         torch.save(self.model.state_dict(), os.path.join(self.target_path, fname))
-        #
         record = {
-            'train': self.train,
-            'val': self.val,
-            'test': self.test,
-            'best_record': self.best_record,
-            'seed': self.seed
+            "train": self.train,
+            "val": self.val,
+            "test": self.test,
+            "best_record": self.best_record,
+            "seed": self.seed,
         }
-        torch.save(record, os.path.join(self.target_path, 'record'))
-
+        torch.save(record, os.path.join(self.target_path, "record"))
 
     def load(self) -> None:
         """Load training record from disk if exists"""
@@ -265,15 +261,15 @@ class TrainRecord:
             return
 
         # Load record dict
-        record_path = os.path.join(self.target_path, 'record')
+        record_path = os.path.join(self.target_path, "record")
         if os.path.exists(record_path):
             try:
                 data = torch.load(record_path, weights_only=False)
-                self.train = data['train']
-                self.val = data['val']
-                self.test = data['test']
-                self.best_record = data['best_record']
-                self.seed = data['seed']
+                self.train = data["train"]
+                self.val = data["val"]
+                self.test = data["test"]
+                self.best_record = data["best_record"]
+                self.seed = data["seed"]
                 # Restore epoch from train loss length
                 self.epoch = len(self.train[RecordKey.LOSS])
             except Exception as e:
@@ -301,6 +297,7 @@ class TrainRecord:
         lines.append("\n[Last Epoch Statistics]")
         if self.epoch > 0:
             idx = -1
+
             def get_val(d, k):
                 return d[k][idx] if len(d[k]) > 0 else "N/A"
 
@@ -317,12 +314,10 @@ class TrainRecord:
             lines.append("  No training data available.")
 
         return "\n".join(lines)
+
     # figure
     def get_loss_figure(
-        self,
-        fig: Figure = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100
+        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure:
         """Return the line chart of loss during training
 
@@ -339,30 +334,27 @@ class TrainRecord:
         val_loss_list = self.val[RecordKey.LOSS]
         test_loss_list = self.test[RecordKey.LOSS]
         if (
-            len(training_loss_list) == 0 and
-            len(val_loss_list) == 0 and
-            len(test_loss_list) == 0
+            len(training_loss_list) == 0
+            and len(val_loss_list) == 0
+            and len(test_loss_list) == 0
         ):
             return None
 
         if len(training_loss_list) > 0:
-            plt.plot(training_loss_list, 'g', label='Training loss')
+            plt.plot(training_loss_list, "g", label="Training loss")
         if len(val_loss_list) > 0:
-            plt.plot(val_loss_list, 'b', label='validation loss')
+            plt.plot(val_loss_list, "b", label="validation loss")
         if len(test_loss_list) > 0:
-            plt.plot(test_loss_list, 'r', label='testing loss')
-        plt.title('Training loss')
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        _ = plt.legend(loc='center left')
+            plt.plot(test_loss_list, "r", label="testing loss")
+        plt.title("Training loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        _ = plt.legend(loc="center left")
 
         return fig
 
     def get_acc_figure(
-        self,
-        fig: Figure = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100
+        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure:
         """Return the line chart of accuracy during training
 
@@ -379,30 +371,27 @@ class TrainRecord:
         val_acc_list = self.val[RecordKey.ACC]
         test_acc_list = self.test[RecordKey.ACC]
         if (
-            len(training_acc_list) == 0 and
-            len(val_acc_list) == 0 and
-            len(test_acc_list) == 0
+            len(training_acc_list) == 0
+            and len(val_acc_list) == 0
+            and len(test_acc_list) == 0
         ):
             return None
 
         if len(training_acc_list) > 0:
-            plt.plot(training_acc_list, 'g', label='Training accuracy')
+            plt.plot(training_acc_list, "g", label="Training accuracy")
         if len(val_acc_list) > 0:
-            plt.plot(val_acc_list, 'b', label='validation accuracy')
+            plt.plot(val_acc_list, "b", label="validation accuracy")
         if len(test_acc_list) > 0:
-            plt.plot(test_acc_list, 'r', label='testing accuracy')
-        plt.title('Training Accuracy')
-        plt.xlabel('Epochs')
-        plt.ylabel('Accuracy (%)')
-        _ = plt.legend(loc='upper left')
+            plt.plot(test_acc_list, "r", label="testing accuracy")
+        plt.title("Training Accuracy")
+        plt.xlabel("Epochs")
+        plt.ylabel("Accuracy (%)")
+        _ = plt.legend(loc="upper left")
 
         return fig
 
     def get_auc_figure(
-        self,
-        fig: Figure = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100
+        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure:
         """Return the line chart of auc during training
 
@@ -421,30 +410,27 @@ class TrainRecord:
         val_auc_list = self.val[RecordKey.AUC]
         test_auc_list = self.test[RecordKey.AUC]
         if (
-            len(training_auc_list) == 0 and
-            len(val_auc_list) == 0 and
-            len(test_auc_list) == 0
+            len(training_auc_list) == 0
+            and len(val_auc_list) == 0
+            and len(test_auc_list) == 0
         ):
             return None
 
         if len(training_auc_list) > 0:
-            plt.plot(training_auc_list, 'g', label='Training AUC')
+            plt.plot(training_auc_list, "g", label="Training AUC")
         if len(val_auc_list) > 0:
-            plt.plot(val_auc_list, 'b', label='validation AUC')
+            plt.plot(val_auc_list, "b", label="validation AUC")
         if len(test_auc_list) > 0:
-            plt.plot(test_auc_list, 'r', label='testing AUC')
-        plt.title('Training AUC')
-        plt.xlabel('Epochs')
-        plt.ylabel('AUC')
-        _ = plt.legend(loc='upper left')
+            plt.plot(test_auc_list, "r", label="testing AUC")
+        plt.title("Training AUC")
+        plt.xlabel("Epochs")
+        plt.ylabel("AUC")
+        _ = plt.legend(loc="upper left")
 
         return fig
 
     def get_lr_figure(
-        self,
-        fig: Figure = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100
+        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure:
         """Return the line chart of learning rate during training
 
@@ -461,10 +447,10 @@ class TrainRecord:
         if len(lr_list) == 0:
             return None
 
-        plt.plot(lr_list, 'g')
-        plt.title('Learning Rate')
-        plt.xlabel('Epochs')
-        plt.ylabel('lr')
+        plt.plot(lr_list, "g")
+        plt.title("Learning Rate")
+        plt.xlabel("Epochs")
+        plt.ylabel("lr")
         return fig
 
     def get_confusion_figure(
@@ -472,7 +458,7 @@ class TrainRecord:
         fig: Figure = None,
         figsize: tuple = (6.4, 4.8),
         dpi: int = 100,
-        show_percentage: bool = False
+        show_percentage: bool = False,
     ) -> Figure:
         """Return the confusion matrix of the evaluation record
 
@@ -501,13 +487,13 @@ class TrainRecord:
             plot_data = confusion
 
         ax = fig.add_subplot(111)
-        ax.set_title('Confusion matrix', color='#cccccc', pad=20)
+        ax.set_title("Confusion matrix", color="#cccccc", pad=20)
 
         # Improved Labels
-        ax.set_xlabel('Predicted Label', labelpad=10, color='#cccccc')
-        ax.set_ylabel('True Label', labelpad=10, color='#cccccc')
+        ax.set_xlabel("Predicted Label", labelpad=10, color="#cccccc")
+        ax.set_ylabel("True Label", labelpad=10, color="#cccccc")
 
-        res = ax.imshow(plot_data, cmap='magma', interpolation='nearest')
+        res = ax.imshow(plot_data, cmap="magma", interpolation="nearest")
 
         # Threshold for text color
         threshold = (plot_data.max() + plot_data.min()) / 2
@@ -515,37 +501,35 @@ class TrainRecord:
         for x in range(classNum):
             for y in range(classNum):
                 val = plot_data[x][y]
-                if val > threshold:
-                    annot_color = 'k'
-                else:
-                    annot_color = 'w'
+                annot_color = "k" if val > threshold else "w"
 
-                if show_percentage:
-                    text = f"{val:.1%}"
-                else:
-                    text = str(int(val))
+                text = f"{val:.1%}" if show_percentage else str(int(val))
 
-                ax.annotate(text, xy=(y, x),
-                            horizontalalignment='center',
-                            verticalalignment='center',
-                            color=annot_color
-                            )
+                ax.annotate(
+                    text,
+                    xy=(y, x),
+                    horizontalalignment="center",
+                    verticalalignment="center",
+                    color=annot_color,
+                )
 
         # Colorbar
         cbar = fig.colorbar(res)
-        cbar.ax.yaxis.set_tick_params(color='#cccccc')
-        plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='#cccccc')
+        cbar.ax.yaxis.set_tick_params(color="#cccccc")
+        plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="#cccccc")
 
         # Ticks
         labels = [self.dataset.get_epoch_data().label_map[i] for i in range(classNum)]
-        plt.xticks(range(classNum), labels, rotation=0, ha='center') # Horizontal labels
-        plt.yticks(range(classNum), labels, va='center') # Vertically centered
+        plt.xticks(
+            range(classNum), labels, rotation=0, ha="center"
+        )  # Horizontal labels
+        plt.yticks(range(classNum), labels, va="center")  # Vertically centered
 
         # Styling
-        ax.tick_params(axis='x', colors='#cccccc')
-        ax.tick_params(axis='y', colors='#cccccc')
+        ax.tick_params(axis="x", colors="#cccccc")
+        ax.tick_params(axis="y", colors="#cccccc")
         for spine in ax.spines.values():
-            spine.set_edgecolor('#444444')
+            spine.set_edgecolor("#444444")
 
         # Ensure tight layout handles labels correctly
         fig.tight_layout()

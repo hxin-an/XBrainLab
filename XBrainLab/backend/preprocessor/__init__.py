@@ -10,15 +10,15 @@ from .time_epoch import TimeEpoch
 from .window_epoch import WindowEpoch
 
 __all__ = [
-    'PreprocessBase',
-    'ChannelSelection',
-    'Normalize',
-    'Filtering',
-    'Resample',
-    'TimeEpoch',
-    'WindowEpoch',
-    'EditEventName',
-    'EditEventId',
-    'Export',
-    'Rereference'
+    "ChannelSelection",
+    "EditEventId",
+    "EditEventName",
+    "Export",
+    "Filtering",
+    "Normalize",
+    "PreprocessBase",
+    "Rereference",
+    "Resample",
+    "TimeEpoch",
+    "WindowEpoch",
 ]

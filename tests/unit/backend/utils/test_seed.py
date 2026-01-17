@@ -10,6 +10,7 @@ def test_set_seed():
     assert isinstance(result, int)
     assert seed.set_seed(seed_target) == seed_target
 
+
 def test_get_random_state():
     result = seed.get_random_state()
     tuple_length = 3
@@ -18,6 +19,7 @@ def test_get_random_state():
     assert isinstance(result[0], torch.ByteTensor)
     assert isinstance(result[1], tuple)
     assert isinstance(result[2], tuple)
+
 
 def test_set_random_state():
     state = seed.get_random_state()
@@ -28,7 +30,7 @@ def test_set_random_state():
     # random
     assert state[1] == result[1]
     # numpy
-    for s, r in zip(state[2], result[2]):
+    for s, r in zip(state[2], result[2], strict=False):
         if isinstance(s, np.ndarray):
             assert (s == r).all()
         else:

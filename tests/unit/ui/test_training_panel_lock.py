@@ -1,4 +1,3 @@
-
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
@@ -17,8 +16,8 @@ class TestTrainingPanelLock(unittest.TestCase):
             cls.app = QApplication.instance()
 
     # Patch modules referenced during Panel init
-    @patch('XBrainLab.ui.training.panel.AggregateInfoPanel')
-    @patch('XBrainLab.ui.training.panel.TrainingController')
+    @patch("XBrainLab.ui.training.panel.AggregateInfoPanel")
+    @patch("XBrainLab.ui.training.panel.TrainingController")
     def setUp(self, MockController, MockInfoPanel):
         # Info Panel Mock
         fake_panel = QGroupBox()
@@ -31,7 +30,9 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Default state: Not ready
         self.mock_controller.validate_ready.return_value = False
         self.mock_controller.get_missing_requirements.return_value = ["Data", "Model"]
-        self.mock_controller.has_datasets.return_value = False # Keep for safety if referenced elsewhere
+        self.mock_controller.has_datasets.return_value = (
+            False  # Keep for safety if referenced elsewhere
+        )
         self.mock_controller.get_model_holder.return_value = None
         self.mock_controller.get_training_option.return_value = None
         self.mock_controller.get_formatted_history.return_value = []
@@ -41,8 +42,10 @@ class TestTrainingPanelLock(unittest.TestCase):
         self.mock_window.study = MagicMock()
 
         self.panel = TrainingPanel(self.mock_window)
-        # Manually attach the mock controller if needed (though init uses the class mock)
-        # panel.controller is already our mock_controller thanks to patch.start logic if used,
+        # Manually attach the mock controller if needed (though init
+        # uses the class mock)
+        # panel.controller is already our mock_controller thanks to
+        # patch.start logic if used,
         # but here we use arg injection which patches the CLASS.
         # So panel.controller = MockController() returns self.mock_controller.
         self.panel.controller = self.mock_controller
@@ -134,5 +137,6 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Button should still be enabled
         self.assertTrue(self.panel.btn_start.isEnabled())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

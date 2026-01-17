@@ -26,9 +26,11 @@ def set_seed(seed: int | None = None) -> int:
 
     return seed
 
+
 def get_random_state() -> tuple:
     """Returns the random state of torch, random and numpy"""
     return torch.get_rng_state(), random.getstate(), np.random.get_state()
+
 
 def set_random_state(state: tuple) -> None:
     """Sets the random state of torch, random and numpy"""

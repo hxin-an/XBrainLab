@@ -15,6 +15,8 @@ from XBrainLab import Study
 from XBrainLab.backend.model_base import EEGNet, SCCNet
 from XBrainLab.backend.training import TRAINING_EVALUATION, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.ui.training.panel import MetricTab
+from XBrainLab.ui.training.training_setting import TrainingSettingWindow
 
 
 @pytest.fixture
@@ -26,12 +28,12 @@ def real_training_option():
         optim_params={},  # Bug fix: lr should NOT be in optim_params
         use_cpu=True,
         gpu_idx=None,
-        epoch='5',
-        bs='4',
-        lr='0.001',  # lr is passed separately
-        checkpoint_epoch='1',
+        epoch="5",
+        bs="4",
+        lr="0.001",  # lr is passed separately
+        checkpoint_epoch="1",
         evaluation_option=TRAINING_EVALUATION.TEST_ACC,
-        repeat_num='1'
+        repeat_num="1",
     )
 
 
@@ -40,7 +42,7 @@ class TestTrainingOptionBugFix:
 
     def test_optim_params_should_not_contain_lr(self, real_training_option):
         """Verify optim_params doesn't contain 'lr' to avoid duplication."""
-        assert 'lr' not in real_training_option.optim_params
+        assert "lr" not in real_training_option.optim_params
         assert real_training_option.lr == 0.001
 
     def test_get_optim_no_duplicate_lr(self, real_training_option):
@@ -51,30 +53,30 @@ class TestTrainingOptionBugFix:
         optimizer = real_training_option.get_optim(model)
 
         assert optimizer is not None
-        assert optimizer.param_groups[0]['lr'] == 0.001
+        assert optimizer.param_groups[0]["lr"] == 0.001
 
     def test_optim_with_extra_params(self):
         """Test optimizer with additional parameters (not lr)."""
         option = TrainingOption(
             output_dir="./test_output",
             optim=torch.optim.Adam,
-            optim_params={'weight_decay': 0.01, 'amsgrad': True},
+            optim_params={"weight_decay": 0.01, "amsgrad": True},
             use_cpu=True,
             gpu_idx=None,
-            epoch='5',
-            bs='4',
-            lr='0.001',
-            checkpoint_epoch='1',
+            epoch="5",
+            bs="4",
+            lr="0.001",
+            checkpoint_epoch="1",
             evaluation_option=TRAINING_EVALUATION.TEST_ACC,
-            repeat_num='1'
+            repeat_num="1",
         )
 
         model = torch.nn.Linear(10, 2)
         optimizer = option.get_optim(model)
 
-        assert optimizer.param_groups[0]['lr'] == 0.001
-        assert optimizer.param_groups[0]['weight_decay'] == 0.01
-        assert optimizer.param_groups[0]['amsgrad'] == True
+        assert optimizer.param_groups[0]["lr"] == 0.001
+        assert optimizer.param_groups[0]["weight_decay"] == 0.01
+        assert optimizer.param_groups[0]["amsgrad"] is True
 
 
 class TestModelHolderBugFix:
@@ -85,12 +87,12 @@ class TestModelHolderBugFix:
         holder = ModelHolder(EEGNet, {})
 
         # Bug fix: ModelHolder has target_model (class), not model_name (string)
-        assert hasattr(holder, 'target_model')
+        assert hasattr(holder, "target_model")
         assert holder.target_model == EEGNet
-        assert holder.target_model.__name__ == 'EEGNet'
+        assert holder.target_model.__name__ == "EEGNet"
 
         # Should NOT have model_name attribute
-        assert not hasattr(holder, 'model_name')
+        assert not hasattr(holder, "model_name")
 
     def test_access_model_name_correctly(self):
         """Test the correct way to get model name from ModelHolder."""
@@ -98,10 +100,10 @@ class TestModelHolderBugFix:
 
         # Correct way: holder.target_model.__name__
         model_name = holder.target_model.__name__
-        assert model_name == 'SCCNet'
+        assert model_name == "SCCNet"
 
         # Or use the method
-        assert 'SCCNet' in holder.get_model_desc_str()
+        assert "SCCNet" in holder.get_model_desc_str()
 
 
 class TestEpochDurationValidation:
@@ -110,9 +112,9 @@ class TestEpochDurationValidation:
     def test_eegnet_rejects_short_epochs(self):
         """EEGNet should reject epochs shorter than required samples."""
         # EEGNet at 250Hz needs at least 285 samples (1.14 seconds)
-        with pytest.raises(ValueError, match="Epoch duration is too short for EEGNet"):
+        with pytest.raises(ValueError, match=r"Epoch duration is too short for EEGNet"):
             # This should raise during model initialization
-            model = EEGNet(n_classes=2, channels=3, samples=100, sfreq=250)
+            EEGNet(n_classes=2, channels=3, samples=100, sfreq=250)
 
 
 class TestStudyAttributeConsistency:
@@ -123,11 +125,11 @@ class TestStudyAttributeConsistency:
         study = Study()
 
         # Bug fix: Should be training_option
-        assert hasattr(study, 'training_option')
+        assert hasattr(study, "training_option")
         assert study.training_option is None
 
         # Should NOT have training_setting
-        assert not hasattr(study, 'training_setting')
+        assert not hasattr(study, "training_setting")
 
     def test_study_set_training_option(self, real_training_option):
         """Test Study.set_training_option() works correctly."""
@@ -147,18 +149,18 @@ class TestCompleteTrainingWorkflow:
         """Test that invalid training options are caught."""
         # Invalid option: missing optimizer
         with pytest.raises(ValueError, match="Optimizer not set"):
-            option = TrainingOption(
+            TrainingOption(
                 output_dir="./test_output",
                 optim=None,  # Invalid
                 optim_params={},
                 use_cpu=True,
                 gpu_idx=None,
-                epoch='5',
-                bs='4',
-                lr='0.001',
-                checkpoint_epoch='1',
+                epoch="5",
+                bs="4",
+                lr="0.001",
+                checkpoint_epoch="1",
                 evaluation_option=TRAINING_EVALUATION.TEST_ACC,
-                repeat_num='1'
+                repeat_num="1",
             )
 
 
@@ -170,8 +172,8 @@ class TestUITrainingPanelIntegration:
         study = Study()
 
         # This is what the UI code expects
-        assert hasattr(study, 'training_option')
-        assert not hasattr(study, 'training_setting')
+        assert hasattr(study, "training_option")
+        assert not hasattr(study, "training_setting")
 
         # Set a real option
         option = TrainingOption(
@@ -180,12 +182,12 @@ class TestUITrainingPanelIntegration:
             optim_params={},
             use_cpu=True,
             gpu_idx=None,
-            epoch='5',
-            bs='4',
-            lr='0.001',
-            checkpoint_epoch='1',
+            epoch="5",
+            bs="4",
+            lr="0.001",
+            checkpoint_epoch="1",
             evaluation_option=TRAINING_EVALUATION.TEST_ACC,
-            repeat_num='1'
+            repeat_num="1",
         )
         study.set_training_option(option)
 
@@ -198,7 +200,6 @@ class TestTrainingSettingDefaultValues:
 
     def test_training_setting_has_defaults(self, qtbot):
         """Verify default values are set for easier testing."""
-        from XBrainLab.ui.training.training_setting import TrainingSettingWindow
 
         # Use real QWidget instead of MagicMock
         parent = QWidget()
@@ -218,12 +219,11 @@ class TestTrainingSettingDefaultValues:
         # Verify default optimizer and device
         assert window.optim == torch.optim.Adam
         assert window.optim_params == {}  # No lr in params
-        assert window.use_cpu == True
+        assert window.use_cpu is True
         assert window.output_dir == "./output"
 
     def test_confirm_creates_valid_training_option(self, qtbot):
         """Test that confirming with defaults creates valid TrainingOption."""
-        from XBrainLab.ui.training.training_setting import TrainingSettingWindow
 
         # Use real QWidget
         parent = QWidget()
@@ -234,18 +234,17 @@ class TestTrainingSettingDefaultValues:
         qtbot.addWidget(window)
 
         # Use defaults and confirm
-        with patch.object(window, 'accept'):
+        with patch.object(window, "accept"):
             window.confirm()
 
         # Should create valid option without errors
         assert window.training_option is not None
         assert window.training_option.epoch == 10
         assert window.training_option.lr == 0.001
-        assert 'lr' not in window.training_option.optim_params
+        assert "lr" not in window.training_option.optim_params
 
     def test_training_option_epoch_is_int(self, qtbot):
         """Test that training_option.epoch is converted to int for comparisons."""
-        from XBrainLab.ui.training.training_setting import TrainingSettingWindow
 
         parent = QWidget()
         parent.study = MagicMock()
@@ -255,7 +254,7 @@ class TestTrainingSettingDefaultValues:
         qtbot.addWidget(window)
 
         # Confirm with string input (from text fields)
-        with patch.object(window, 'accept'):
+        with patch.object(window, "accept"):
             window.confirm()
 
         # Epoch should be int, not string
@@ -275,7 +274,7 @@ class TestMetricTypeConversion:
     def test_string_metrics_converted_to_float(self):
         """Test that string metrics from trainer are converted to float."""
         # Simulate metrics returned as strings (this was the bug)
-        val_acc = '0.75'
+        val_acc = "0.75"
         best_acc = 0.7
 
         # Convert to float before comparison
@@ -291,7 +290,7 @@ class TestMetricTypeConversion:
 
     def test_none_metrics_handled(self):
         """Test that None metrics are handled gracefully."""
-        metrics = [None, '0.5', None, '0.8', '0.9']
+        metrics = [None, "0.5", None, "0.8", "0.9"]
 
         # Convert with default value for None
         converted = [float(m) if m is not None else 0.0 for m in metrics]
@@ -299,13 +298,16 @@ class TestMetricTypeConversion:
         assert converted == [0.0, 0.5, 0.0, 0.8, 0.9]
         assert all(isinstance(m, float) for m in converted)
 
-    @pytest.mark.parametrize("metric_str,expected", [
-        ('0.001', 0.001),
-        ('0.5', 0.5),
-        ('0.8', 0.8),
-        ('0.9', 0.9),
-        ('1.0', 1.0),
-    ])
+    @pytest.mark.parametrize(
+        "metric_str,expected",
+        [
+            ("0.001", 0.001),
+            ("0.5", 0.5),
+            ("0.8", 0.8),
+            ("0.9", 0.9),
+            ("1.0", 1.0),
+        ],
+    )
     def test_various_string_metrics_converted(self, metric_str, expected):
         """Test conversion of various string metric values."""
         converted = float(metric_str)
@@ -316,7 +318,13 @@ class TestMetricTypeConversion:
         """Test converting all 7 metrics that trainer returns."""
         # Simulate trainer output (all strings)
         lr, loss, acc, auc, val_loss, val_acc, val_auc = (
-            '0.001', '0.5', '0.8', '0.9', '0.6', '0.75', '0.85'
+            "0.001",
+            "0.5",
+            "0.8",
+            "0.9",
+            "0.6",
+            "0.75",
+            "0.85",
         )
 
         # Convert all to float
@@ -329,7 +337,10 @@ class TestMetricTypeConversion:
         val_auc = float(val_auc) if val_auc is not None else 0.0
 
         # All should be float
-        assert all(isinstance(m, float) for m in [lr, loss, acc, auc, val_loss, val_acc, val_auc])
+        assert all(
+            isinstance(m, float)
+            for m in [lr, loss, acc, auc, val_loss, val_acc, val_auc]
+        )
 
         # Comparisons should work
         assert val_acc > 0.7
@@ -341,7 +352,6 @@ class TestMetricTabHistoryManagement:
 
     def test_clear_resets_history_lists(self, qtbot):
         """Test that clear() resets epochs, train_vals, val_vals."""
-        from XBrainLab.ui.training.panel import MetricTab
 
         tab = MetricTab("Accuracy", color="#4CAF50")
         qtbot.addWidget(tab)
@@ -364,7 +374,6 @@ class TestMetricTabHistoryManagement:
 
     def test_history_accumulates_correctly(self, qtbot):
         """Test that history accumulates over multiple updates."""
-        from XBrainLab.ui.training.panel import MetricTab
 
         tab = MetricTab("Loss", color="#F44336")
         qtbot.addWidget(tab)
@@ -388,7 +397,6 @@ class TestMetricTabHistoryManagement:
 
     def test_new_training_after_clear(self, qtbot):
         """Test that new training session works after clear."""
-        from XBrainLab.ui.training.panel import MetricTab
 
         tab = MetricTab("AUC", color="#2196F3")
         qtbot.addWidget(tab)
@@ -413,5 +421,5 @@ class TestMetricTabHistoryManagement:
         assert len(tab.val_vals) == 3
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

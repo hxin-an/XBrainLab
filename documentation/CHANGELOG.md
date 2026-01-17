@@ -3,6 +3,26 @@
 所有對本專案的重要變更都將記錄於此文件中。
 
 
+## [0.4.1] - 2026-01-17
+### Refactored
+- **Frontend-Backend Separation**:
+    - **Controllers**: Implemented strict separation between UI and Backend logic using `DatasetController`, `TrainingController`, and `VisualizationController`.
+    - **Signals**: Refactored `DatasetController` to use `pyqtSignal` for UI synchronization (`dataChanged`, `datasetLocked`, `importFinished`).
+    - **Cleanup**: Removed legacy UI code that directly manipulated backend state, significantly reducing coupling.
+
+### Fixed
+- **Critical Logic Bugs**:
+    - **Infinite Loop**: Fixed a bug in `training_plan.py` where `train_record.epoch` was not incremented, causing training to hang indefinitely.
+    - **Loader Registration**: Fixed "Unsupported format" error for `.gdf` files by ensuring `raw_data_loader.py` is imported and loaders are registered on startup.
+- **Regressions**:
+    - Fixed `AssertionError` in `test_training_plan.py` caused by duplicate `export_checkpoint` calls.
+    - Fixed `ImportError` in `ui/widget/__init__.py` (missing newline) and removed unused variables in integration tests.
+
+### Optimized
+- **Integration Tests**:
+    - **GPU Acceleration**: Updated `test_pipeline_integration.py` to support "Scenario 3" (Real Logic on GPU).
+    - **Performance**: Reduced test execution time from ~10m to ~8s by using GPU acceleration and reduced synthetic dataset size (4 trials) while maintaining full logical verification (Data->Model->Saliency).
+
 ## [0.4.0] - 2026-01-16
 ### Added
 - **Hybrid Inference Engine**: Support for switching between Local (GPU), OpenAI, and Gemini backends.

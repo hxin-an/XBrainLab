@@ -30,7 +30,7 @@ class TestTrainingSetting:
         assert window.repeat_entry.text() == "1"
         assert window.output_dir == "./output"
         assert window.optim == torch.optim.Adam
-        assert window.use_cpu == True
+        assert window.use_cpu is True
 
     def test_set_values_and_confirm(self, window):
         # Set simple values
@@ -51,7 +51,7 @@ class TestTrainingSetting:
         window.evaluation_combo.setCurrentIndex(0)
 
         # Confirm
-        with patch.object(window, 'accept') as mock_accept:
+        with patch.object(window, "accept") as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
 
@@ -64,7 +64,9 @@ class TestTrainingSetting:
         assert option.use_cpu is True
 
     def test_set_output_dir(self, window):
-        with patch('PyQt6.QtWidgets.QFileDialog.getExistingDirectory', return_value="/tmp/test"):
+        with patch(
+            "PyQt6.QtWidgets.QFileDialog.getExistingDirectory", return_value="/tmp/test"
+        ):
             window.set_output_dir()
             assert window.output_dir == "/tmp/test"
             assert window.output_dir_label.text() == "/tmp/test"
@@ -93,32 +95,35 @@ class TestTrainingSetting:
         mock_study.training_option = mock_option
         parent.study = mock_study
 
-        # Initialize window with real parent, mocking get_device_name during init/load_settings
-        with patch('torch.cuda.get_device_name', return_value="Test GPU"):
-             window = TrainingSettingWindow(parent)
-             qtbot.addWidget(window)
+        # Initialize window with real parent, mocking get_device_name during
+        # init/load_settings
+        with patch("torch.cuda.get_device_name", return_value="Test GPU"):
+            window = TrainingSettingWindow(parent)
+            qtbot.addWidget(window)
 
-             # Verify fields are populated
-             assert window.epoch_entry.text() == "50"
-             assert window.bs_entry.text() == "64"
-             assert window.lr_entry.text() == "0.005"
-             assert window.checkpoint_entry.text() == "10"
-             assert window.repeat_entry.text() == "3"
-             assert window.output_dir == "/tmp/loaded"
-             assert window.output_dir_label.text() == "/tmp/loaded"
-             assert window.use_cpu is False
-             assert window.gpu_idx == 0
-             assert "Adam" in window.opt_label.text()
-             # GPU check depends on parse_device_name logic
-             assert "0 - Test GPU" in window.dev_label.text()
+            # Verify fields are populated
+            assert window.epoch_entry.text() == "50"
+            assert window.bs_entry.text() == "64"
+            assert window.lr_entry.text() == "0.005"
+            assert window.checkpoint_entry.text() == "10"
+            assert window.repeat_entry.text() == "3"
+            assert window.output_dir == "/tmp/loaded"
+            assert window.output_dir_label.text() == "/tmp/loaded"
+            assert window.use_cpu is False
+            assert window.gpu_idx == 0
+            assert "Adam" in window.opt_label.text()
+            # GPU check depends on parse_device_name logic
+            assert "0 - Test GPU" in window.dev_label.text()
 
         assert window.evaluation_combo.currentText() == "Last Epoch"
+
+
 class TestSetOptimizer:
     @pytest.fixture
     def window(self, qtbot):
         # Mock torch.optim members
-        with patch('inspect.getmembers') as mock_members:
-            mock_members.return_value = [('Adam', torch.optim.Adam)]
+        with patch("inspect.getmembers") as mock_members:
+            mock_members.return_value = [("Adam", torch.optim.Adam)]
             window = SetOptimizerWindow(None)
             qtbot.addWidget(window)
             return window
@@ -136,9 +141,9 @@ class TestSetOptimizer:
 
         # Inject mock target
         mock_target = MagicMock()
-        window.algo_map['Adam'] = mock_target
+        window.algo_map["Adam"] = mock_target
 
-        with patch.object(window, 'accept') as mock_accept:
+        with patch.object(window, "accept") as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
 
@@ -148,23 +153,26 @@ class TestSetOptimizer:
         assert optim == mock_target
         assert isinstance(params, dict)
 
+
 class TestSetDevice:
     @pytest.fixture
     def window(self, qtbot):
-        with patch('torch.cuda.device_count', return_value=1):
-            with patch('torch.cuda.get_device_name', return_value="Test GPU"):
-                window = SetDeviceWindow(None)
-                qtbot.addWidget(window)
-                return window
+        with (
+            patch("torch.cuda.device_count", return_value=1),
+            patch("torch.cuda.get_device_name", return_value="Test GPU"),
+        ):
+            window = SetDeviceWindow(None)
+            qtbot.addWidget(window)
+            return window
 
     def test_init(self, window):
-        assert window.device_list.count() == 2 # CPU + 1 GPU
+        assert window.device_list.count() == 2  # CPU + 1 GPU
         assert window.device_list.item(0).text() == "CPU"
         assert "Test GPU" in window.device_list.item(1).text()
 
     def test_confirm_cpu(self, window):
         window.device_list.setCurrentRow(0)
-        with patch.object(window, 'accept') as mock_accept:
+        with patch.object(window, "accept") as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
 
@@ -174,7 +182,7 @@ class TestSetDevice:
 
     def test_confirm_gpu(self, window):
         window.device_list.setCurrentRow(1)
-        with patch.object(window, 'accept') as mock_accept:
+        with patch.object(window, "accept") as mock_accept:
             window.confirm()
             mock_accept.assert_called_once()
 

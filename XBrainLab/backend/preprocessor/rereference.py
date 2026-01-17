@@ -12,7 +12,7 @@ class Rereference(PreprocessBase):
     """
 
     def get_preprocess_desc(self, ref_channels):
-        if ref_channels == 'average':
+        if ref_channels == "average":
             return "Re-reference (Average)"
         return f"Re-reference (Channels: {ref_channels})"
 
@@ -21,4 +21,6 @@ class Rereference(PreprocessBase):
 
         # Apply re-referencing
         # mne.set_eeg_reference returns (inst, ref_data), we just modify inst in-place
-        preprocessed_data.get_mne().set_eeg_reference(ref_channels=ref_channels, verbose=False)
+        preprocessed_data.get_mne().set_eeg_reference(
+            ref_channels=ref_channels, verbose=False
+        )

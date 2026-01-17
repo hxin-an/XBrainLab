@@ -1,5 +1,4 @@
 from copy import deepcopy
-from typing import List
 
 from ..load_data import Raw
 from ..utils import validate_list_type
@@ -12,7 +11,8 @@ class PreprocessBase:
         preprocessed_data_list: List[:class:`XBrainLab.backend.preprocessor.Raw`]
             List of preprocessed data.
     """
-    def __init__(self, preprocessed_data_list: List[Raw]):
+
+    def __init__(self, preprocessed_data_list: list[Raw]):
         self.preprocessed_data_list = deepcopy(preprocessed_data_list)
         self.check_data()
 
@@ -21,13 +21,14 @@ class PreprocessBase:
 
         Raises:
             ValueError: If the data is either empty,
-                        not a list of :class:`XBrainLab.backend.preprocessor.Raw` or not valid.
+                        not a list of :class:`XBrainLab.backend.preprocessor.Raw`
+                        or not valid.
         """
         if not self.preprocessed_data_list:
             raise ValueError("No valid data is loaded")
-        validate_list_type(self.preprocessed_data_list, Raw, 'preprocessed_data_list')
+        validate_list_type(self.preprocessed_data_list, Raw, "preprocessed_data_list")
 
-    def get_preprocessed_data_list(self) -> List[Raw]:
+    def get_preprocessed_data_list(self) -> list[Raw]:
         """Get the preprocessed data list."""
         return self.preprocessed_data_list
 
@@ -35,7 +36,7 @@ class PreprocessBase:
         """Return description of the preprocess."""
         raise NotImplementedError
 
-    def data_preprocess(self, *args, **kargs) -> List[Raw]:
+    def data_preprocess(self, *args, **kargs) -> list[Raw]:
         """Wrapper for :meth:`_data_preprocess`."""
         for preprocessed_data in self.preprocessed_data_list:
             self._data_preprocess(preprocessed_data, *args, **kargs)

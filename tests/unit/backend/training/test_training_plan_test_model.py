@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 import torch
@@ -11,9 +13,9 @@ from XBrainLab.backend.training.training_plan import (
 )
 
 
-@pytest.mark.parametrize('shuffle', [True, False])
+@pytest.mark.parametrize("shuffle", [True, False])
 def test_to_holder(shuffle):
-    device = 'cpu'
+    device = "cpu"
     length = 3000
     X = np.arange(length).reshape(-1, 1)
     y = np.arange(length)
@@ -36,14 +38,16 @@ def test_to_holder(shuffle):
     else:
         torch.testing.assert_close(sample_x, sequence)
 
+
 def test_to_holder_empty():
     X = np.array([])
     y = np.array([])
     indices = np.array([])
-    device = 'cpu'
+    device = "cpu"
     bs = 128
     shuffle = True
     assert to_holder(X, y, indices, device, bs, shuffle) is None
+
 
 CLASS_NUM = 4
 ERROR_NUM = 3
@@ -51,6 +55,7 @@ SAMPLE_NUM = CLASS_NUM
 REPEAT = 5
 TOTAL_NUM = SAMPLE_NUM * REPEAT
 BS = 2
+
 
 class FakeModel(torch.nn.Module):
     def __init__(self):
@@ -64,9 +69,11 @@ class FakeModel(torch.nn.Module):
         x = x.squeeze(1)
         return x
 
+
 @pytest.fixture
 def full_y():
     return np.arange(SAMPLE_NUM).repeat(REPEAT)
+
 
 @pytest.fixture
 def y(full_y):
@@ -74,6 +81,7 @@ def y(full_y):
     y[:ERROR_NUM] += 1
     y[:ERROR_NUM] %= CLASS_NUM
     return y
+
 
 @pytest.fixture
 def dataloader(full_y, y):
@@ -90,10 +98,11 @@ def dataloader(full_y, y):
     for idx, gt in enumerate(full_y):
         X[idx, gt] = 1
 
-    device = 'cpu'
+    device = "cpu"
     shuffle = False
     indices = np.arange(TOTAL_NUM)
     return to_holder(X, y, indices, device, BS, shuffle)
+
 
 @pytest.fixture
 def loss_avg():
@@ -106,44 +115,44 @@ def loss_avg():
     ).item()
     loss = np.ones(TOTAL_NUM) * correct_loss
     loss[:ERROR_NUM] = error_loss
-    loss_avg = [
-        loss[i:i+BS].mean()
-        for i in range(0, TOTAL_NUM, BS)
-    ]
+    loss_avg = [loss[i : i + BS].mean() for i in range(0, TOTAL_NUM, BS)]
     loss_avg = np.array(loss_avg).mean()
     return loss_avg
+
 
 def test_test_model(dataloader, loss_avg):
     model = FakeModel()
     criterion = torch.nn.CrossEntropyLoss()
     test_dict = _test_model(model, dataloader, criterion)
 
-    assert test_dict.keys() == {'loss', 'accuracy', 'auc'}
-    assert test_dict['accuracy'] == (TOTAL_NUM - ERROR_NUM) / (TOTAL_NUM) * 100
-    assert np.isclose(test_dict['loss'], loss_avg)
-
-
+    assert test_dict.keys() == {"loss", "accuracy", "auc"}
+    assert test_dict["accuracy"] == (TOTAL_NUM - ERROR_NUM) / (TOTAL_NUM) * 100
+    assert np.isclose(test_dict["loss"], loss_avg)
 
 
 def test_eval_model(dataloader, y, full_y):
-    from unittest.mock import patch
     model = FakeModel()
     model.eval()
 
     saliency_params = {
-        'SmoothGrad': {'nt_samples': 1, 'stdevs': 0.1},
-        'SmoothGrad_Squared': {'nt_samples': 1, 'stdevs': 0.1},
-        'VarGrad': {'nt_samples': 1, 'stdevs': 0.1}
+        "SmoothGrad": {"nt_samples": 1, "stdevs": 0.1},
+        "SmoothGrad_Squared": {"nt_samples": 1, "stdevs": 0.1},
+        "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
     }
 
-    with patch('XBrainLab.backend.training.record.eval.EvalRecord.__init__', return_value=None) as eval_record_mock, \
-         patch.object(model, 'eval') as eval_model_mock:
-
+    with (
+        patch(
+            "XBrainLab.backend.training.record.eval.EvalRecord.__init__",
+            return_value=None,
+        ) as eval_record_mock,
+        patch.object(model, "eval") as eval_model_mock,
+    ):
         result = _eval_model(model, dataloader, saliency_params)
         eval_model_mock.assert_called()
 
         assert isinstance(result, EvalRecord)
-        # EvalRecord now takes 7 arguments: label, output, gradient, gradient_input, smoothgrad, smoothgrad_sq, vargrad
+        # EvalRecord now takes 7 arguments: label, output, gradient,
+        # gradient_input, smoothgrad, smoothgrad_sq, vargrad
         args = eval_record_mock.call_args[0]
         called_y = args[0]
         called_output = args[1]
@@ -157,7 +166,7 @@ def test_eval_model(dataloader, y, full_y):
             (REPEAT - ERROR_NUM, CLASS_NUM),
             (REPEAT + ERROR_NUM, CLASS_NUM),
             (REPEAT, CLASS_NUM),
-            (REPEAT, CLASS_NUM)
+            (REPEAT, CLASS_NUM),
         ]
-        for g, expected_shape in zip(called_gradient, expected_list):
+        for g, expected_shape in zip(called_gradient, expected_list, strict=False):
             assert called_gradient[g].shape == expected_shape

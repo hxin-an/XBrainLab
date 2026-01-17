@@ -37,11 +37,11 @@ XBrainLab 是在 **本地端 (Local GPU)** 運行的。
 graph LR
     User --> Input
     Input --> Router{Intent?}
-    
+
     Router -- "Action" --> Coord[Coordinator Persona]
     Router -- "Analysis" --> Analyst[Analyst Persona]
     Router -- "Learn" --> Tutor[Tutor Persona]
-    
+
     Coord & Analyst & Tutor --> LLM[Single LLM Engine]
 ```
 

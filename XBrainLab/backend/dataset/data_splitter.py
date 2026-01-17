@@ -19,12 +19,13 @@ class DataSplitter:
         text: str
             String representation of :attr:`split_type`
     """
+
     def __init__(
         self,
         split_type: SplitByType | ValSplitByType,
         value_var: str | None = None,
         split_unit: SplitUnit | None = None,
-        is_option: bool = True
+        is_option: bool = True,
     ):
         validate_type(split_type, (SplitByType, ValSplitByType), "split_type")
         if split_unit:
@@ -63,7 +64,7 @@ class DataSplitter:
         # manual: should be list of int separated by space
         elif self.split_unit == SplitUnit.MANUAL:
             val = str(self.value_var).strip()
-            vals = val.split(' ')
+            vals = val.split(" ")
             return all(not (len(val.strip()) > 0 and not val.isdigit()) for val in vals)
         else:
             raise NotImplementedError
@@ -82,9 +83,7 @@ class DataSplitter:
             raise ValueError("Splitter is not valid")
         if self.split_unit == SplitUnit.MANUAL:
             return [
-                int(i)
-                for i in self.value_var.strip().split(' ')
-                if len(i.strip()) > 0
+                int(i) for i in self.value_var.strip().split(" ") if len(i.strip()) > 0
             ]
         else:
             return float(self.value_var)
@@ -107,6 +106,7 @@ class DataSplitter:
         """Get string representation of :attr:`split_type`."""
         return f"{self.split_type.__class__.__name__}.{self.split_type.name}"
 
+
 class DataSplittingConfig:
     """Utility class for storing data splitting configuration for a training scheme.
 
@@ -120,19 +120,20 @@ class DataSplittingConfig:
         test_splitter_list: List[:class:`DataSplitter`]
             list of DataSplitter for test set
     """
+
     def __init__(
         self,
         train_type: TrainingType,
         is_cross_validation: bool,
         val_splitter_list: list[DataSplitter],
-        test_splitter_list: list[DataSplitter]
+        test_splitter_list: list[DataSplitter],
     ):
         validate_type(train_type, TrainingType, "train_type")
         validate_type(is_cross_validation, bool, "is_cross_validation")
         validate_list_type(val_splitter_list, DataSplitter, "val_splitter_list")
         validate_list_type(test_splitter_list, DataSplitter, "test_splitter_list")
 
-        self.train_type = train_type # TrainingType
+        self.train_type = train_type  # TrainingType
         self.is_cross_validation = is_cross_validation
         self.val_splitter_list = val_splitter_list
         self.test_splitter_list = test_splitter_list
@@ -144,4 +145,3 @@ class DataSplittingConfig:
     def get_train_type_repr(self) -> str:
         """Get string representation of :attr:`train_type`."""
         return f"{self.train_type.__class__.__name__}.{self.train_type.name}"
-

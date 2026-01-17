@@ -6,7 +6,7 @@ import pytest
 from PyQt6.QtCore import Qt
 
 # Ensure XBrainLab is in path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from XBrainLab.ui.main_window import MainWindow
 
@@ -42,6 +42,7 @@ def mock_study():
 
     return study
 
+
 def test_mainwindow_launch(qtbot, mock_study):
     """Test that MainWindow launches without error."""
     window = MainWindow(mock_study)
@@ -52,6 +53,7 @@ def test_mainwindow_launch(qtbot, mock_study):
     window.show()
     assert window.isVisible()
     window.close()
+
 
 def test_navigation(qtbot, mock_study):
     """Test navigation between main panels."""
@@ -80,6 +82,7 @@ def test_navigation(qtbot, mock_study):
 
     window.close()
 
+
 def test_evaluation_panel_init(qtbot, mock_study):
     """Test EvaluationPanel initialization and tab loading."""
     window = MainWindow(mock_study)
@@ -89,7 +92,8 @@ def test_evaluation_panel_init(qtbot, mock_study):
     window.switch_page(3)
     eval_panel = window.evaluation_panel
 
-    # Check widgets exist (Matrix and Metrics Table are now separate/in different layout)
+    # Check widgets exist (Matrix and Metrics Table are now separate/in
+    # different layout)
     assert eval_panel.matrix_widget is not None
     assert eval_panel.metrics_table is not None
 
@@ -99,6 +103,7 @@ def test_evaluation_panel_init(qtbot, mock_study):
     assert eval_panel.bottom_tabs.tabText(1) == "Model Summary"
 
     window.close()
+
 
 def test_visualization_panel_init(qtbot, mock_study):
     """Test VisualizationPanel initialization and tab loading."""

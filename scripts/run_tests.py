@@ -11,30 +11,38 @@ import sys
 
 def run_pytest(args):
     """Run pytest with given arguments."""
-    cmd = ["pytest"] + args
+    cmd = ["pytest", *args]
     print(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False)
     sys.exit(result.returncode)
 
+
 def backend():
     """Run backend unit tests."""
     print("Running Backend Tests...")
-    # Using Agg backend to prevent UI issues if code accidentally imports matplotlib.pyplot
+    # Using Agg backend to prevent UI issues if code accidentally imports
+    # matplotlib.pyplot
     os.environ["MPLBACKEND"] = "Agg"
     run_pytest(["tests/unit/backend"])
+
 
 def ui():
     """Run UI unit tests."""
     print("Running UI Tests...")
     run_pytest(["tests/unit/ui"])
 
+
 def run_llm_tests():
     """Run LLM unit tests."""
     print("Running LLM Tests...")
     run_pytest(["tests/unit/llm"])
 
+
 def run_remote_tests():
-    """Run tests suitable for remote/headless environment (skips UI that requires display)."""
+    """
+    Run tests suitable for remote/headless environment (skips UI that requires
+    display).
+    """
     print("Running Remote/Headless Tests (Backend + LLM)...")
     os.environ["MPLBACKEND"] = "Agg"
     # Run everything except the 'ui' directory or specific known failing files
@@ -42,10 +50,12 @@ def run_remote_tests():
     # If there are integration tests that are safe, those should be added too.
     run_pytest(["tests/unit/backend", "tests/unit/llm"])
 
+
 def all_tests():
     """Run all tests."""
     print("Running All Tests...")
     run_pytest(["tests"])
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

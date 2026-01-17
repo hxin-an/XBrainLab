@@ -2,6 +2,7 @@ import mne
 import numpy as np
 import pytest
 
+from XBrainLab.backend.exceptions import DataMismatchError
 from XBrainLab.backend.load_data import Raw, RawDataLoader
 from XBrainLab.backend.study import Study
 
@@ -9,7 +10,7 @@ from .test_raw import _generate_mne, _set_event
 
 
 def test_raw_data_loader():
-    raw = Raw('tests/0.fif', _generate_mne(500, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg'))
+    raw = Raw("tests/0.fif", _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg"))
     assert len(RawDataLoader()) == 0
     # no event check removed
     # with pytest.raises(ValueError):
@@ -20,26 +21,34 @@ def test_raw_data_loader():
     # check empty list creation
     assert len(RawDataLoader()) == 0
 
+
 def test_raw_data_loader_validate():
     with pytest.raises(ValueError):
         assert RawDataLoader().validate()
 
+
 def _generate_epoch(name, raw_mne, duration):
     events = np.array([[1, 0, 1], [2, 0, 2], [3, 0, 3], [4, 0, 4]])
-    event_id = {'a': 1, 'b': 2, 'c': 3, 'd': 4}
+    event_id = {"a": 1, "b": 2, "c": 3, "d": 4}
     return Raw(
-        f'tests/{name}.fif',
+        f"tests/{name}.fif",
         mne.Epochs(
-            raw_mne, events, event_id,
-            tmin=0, tmax=duration, baseline=None, preload=True
-        )
+            raw_mne,
+            events,
+            event_id,
+            tmin=0,
+            tmax=duration,
+            baseline=None,
+            preload=True,
+        ),
     )
 
+
 def test_raw_data_loader_append():
-    raw_mne = _generate_mne(500, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg')
-    raw_1 = _generate_epoch('1', raw_mne, 0.1)
+    raw_mne = _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg")
+    raw_1 = _generate_epoch("1", raw_mne, 0.1)
     raw_2 = _generate_epoch(
-        '2', _generate_mne(500, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg'), 0.1
+        "2", _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg"), 0.1
     )
 
     _set_event(raw_1)
@@ -58,28 +67,24 @@ def test_raw_data_loader_append():
 
 
 def test_raw_data_loader_append_error():
-    raw_mne = _generate_mne(500, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg')
-    raw_1 = _generate_epoch('1', raw_mne, 0.1)
+    raw_mne = _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg")
+    raw_1 = _generate_epoch("1", raw_mne, 0.1)
 
     _set_event(raw_1)
 
     raw_miss_channel = _generate_epoch(
-        'mc',
-        _generate_mne(500, ['Fp1', 'Fp2', 'F3'], 'eeg'), 0.1
+        "mc", _generate_mne(500, ["Fp1", "Fp2", "F3"], "eeg"), 0.1
     )
     raw_miss_sf = _generate_epoch(
-        'ms',
-        _generate_mne(5, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg'), 0.1
+        "ms", _generate_mne(5, ["Fp1", "Fp2", "F3", "F4"], "eeg"), 0.1
     )
-    raw_miss_duration = _generate_epoch('ms', raw_mne, 0.2)
-    raw_miss_type = Raw('test/mt.fif', raw_mne)
+    raw_miss_duration = _generate_epoch("ms", raw_mne, 0.2)
+    raw_miss_type = Raw("test/mt.fif", raw_mne)
 
     raw_data_loader = RawDataLoader()
     raw_data_loader.append(raw_1)
 
     assert len(raw_data_loader) == 1
-
-    from XBrainLab.backend.exceptions import DataMismatchError
 
     with pytest.raises(DataMismatchError, match=r".*channel numbers inconsistent.*"):
         raw_data_loader.append(raw_miss_channel)
@@ -93,9 +98,10 @@ def test_raw_data_loader_append_error():
     with pytest.raises(DataMismatchError, match=r".*duration inconsistent.*"):
         raw_data_loader.append(raw_miss_duration)
 
+
 def test_apply():
-    raw_mne = _generate_mne(500, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg')
-    raw = Raw('test/mt.fif', raw_mne)
+    raw_mne = _generate_mne(500, ["Fp1", "Fp2", "F3", "F4"], "eeg")
+    raw = Raw("test/mt.fif", raw_mne)
     _set_event(raw)
 
     lab = Study()

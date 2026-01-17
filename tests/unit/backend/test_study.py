@@ -1,3 +1,4 @@
+from unittest.mock import patch
 
 import mne
 import pytest
@@ -17,15 +18,18 @@ from XBrainLab.backend.training import TRAINING_EVALUATION, ModelHolder, Trainin
 def test_study_load_data():
     assert isinstance(Study().get_raw_data_loader(), RawDataLoader)
 
+
 @pytest.fixture
 def loaded_data_list():
-    mne_data = mne.io.RawArray([[0]], mne.create_info(['test'], 100))
-    return [Raw('test', mne_data)]
+    mne_data = mne.io.RawArray([[0]], mne.create_info(["test"], 100))
+    return [Raw("test", mne_data)]
+
 
 @pytest.fixture
 def loaded_epoch_data_list():
-    mne_data = mne.EpochsArray([[[0]]], mne.create_info(['test'], 100))
-    return [Raw('test', mne_data)]
+    mne_data = mne.EpochsArray([[[0]]], mne.create_info(["test"], 100))
+    return [Raw("test", mne_data)]
+
 
 def _test_study_set_loaded_data_list_raise(study, loaded_data_list, force_update):
     if force_update:
@@ -36,11 +40,13 @@ def _test_study_set_loaded_data_list_raise(study, loaded_data_list, force_update
         study.clean_raw_data()
         study.set_loaded_data_list(loaded_data_list, force_update)
 
-@pytest.mark.parametrize('force_update', [True, False])
+
+@pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_loaded_data_list(loaded_data_list, force_update):
     study = Study()
     study.set_loaded_data_list(loaded_data_list, force_update)
     _test_study_set_loaded_data_list_raise(study, loaded_data_list, force_update)
+
 
 def _test_study_set_preprocessed_data_list_raise(study, loaded_data_list, force_update):
     if force_update or not study.datasets:
@@ -54,26 +60,20 @@ def _test_study_set_preprocessed_data_list_raise(study, loaded_data_list, force_
 
 class FakePreprocessBase(PreprocessBase):
     def get_preprocess_desc(self):
-        return 'test'
-    def _data_preprocess(self, preprocessed_data):
-        preprocessed_data.filepath = 'new'
+        return "test"
 
-@pytest.mark.parametrize('force_update', [True, False])
+    def _data_preprocess(self, preprocessed_data):
+        preprocessed_data.filepath = "new"
+
+
+@pytest.mark.parametrize("force_update", [True, False])
 @pytest.mark.parametrize(
-    'loaded_data_list_target, loaded_data_list_is_raw',
-    [
-        ("loaded_data_list", True),
-        ("loaded_epoch_data_list", False)
-    ]
+    "loaded_data_list_target, loaded_data_list_is_raw",
+    [("loaded_data_list", True), ("loaded_epoch_data_list", False)],
 )
-@pytest.mark.parametrize(
-    'test_hook',
-    [_test_study_set_loaded_data_list_raise]
-)
+@pytest.mark.parametrize("test_hook", [_test_study_set_loaded_data_list_raise])
 def test_study_set_preprocessed_data_list(
-    loaded_data_list_target, loaded_data_list_is_raw, force_update,
-    test_hook,
-    request
+    loaded_data_list_target, loaded_data_list_is_raw, force_update, test_hook, request
 ):
     loaded_data_list = request.getfixturevalue(loaded_data_list_target)
     study = Study()
@@ -84,15 +84,18 @@ def test_study_set_preprocessed_data_list(
     else:
         assert study.epoch_data is not None
     study.preprocess(FakePreprocessBase)
-    assert study.preprocessed_data_list[0].get_filepath() == 'new'
+    assert study.preprocessed_data_list[0].get_filepath() == "new"
     study.reset_preprocess()
-    assert study.preprocessed_data_list[0].get_filepath() == 'test'
+    assert study.preprocessed_data_list[0].get_filepath() == "test"
     test_hook(study, loaded_data_list, force_update)
+
 
 def test_study_get_datasets_generator(loaded_epoch_data_list):
     config = DataSplittingConfig(
-        TrainingType.FULL, is_cross_validation=False,
-        val_splitter_list=[], test_splitter_list=[]
+        TrainingType.FULL,
+        is_cross_validation=False,
+        val_splitter_list=[],
+        test_splitter_list=[],
     )
     study = Study()
     study.set_loaded_data_list(loaded_epoch_data_list)
@@ -108,28 +111,27 @@ def _test_study_set_datasets_raise(study, dataset, force_update):
         study.clean_datasets()
         study.set_datasets([dataset], force_update)
 
-@pytest.mark.parametrize('force_update', [True, False])
+
+@pytest.mark.parametrize("force_update", [True, False])
 @pytest.mark.parametrize(
-    'loaded_data_list_target',
-    ["loaded_data_list", "loaded_epoch_data_list"]
+    "loaded_data_list_target", ["loaded_data_list", "loaded_epoch_data_list"]
 )
 @pytest.mark.parametrize(
-    'test_hook',
+    "test_hook",
     [
         _test_study_set_loaded_data_list_raise,
-        _test_study_set_preprocessed_data_list_raise
-    ]
+        _test_study_set_preprocessed_data_list_raise,
+    ],
 )
 def test_study_set_datasets(
-    loaded_data_list_target, force_update,
-    loaded_epoch_data_list,
-    test_hook,
-    request
+    loaded_data_list_target, force_update, loaded_epoch_data_list, test_hook, request
 ):
     loaded_data_list = request.getfixturevalue(loaded_data_list_target)
     config = DataSplittingConfig(
-        TrainingType.FULL, is_cross_validation=False,
-        val_splitter_list=[], test_splitter_list=[]
+        TrainingType.FULL,
+        is_cross_validation=False,
+        val_splitter_list=[],
+        test_splitter_list=[],
     )
     study = Study()
     study.set_loaded_data_list(loaded_epoch_data_list)
@@ -144,13 +146,16 @@ class FakeRecord:
     def export_csv(self, filepath):
         self.filepath = filepath
 
+
 class FakePlan:
     def __init__(self, name, real_name, record=None):
         self.name = name
         self.real_name = real_name
         self.record = record
+
     def get_eval_record(self):
         return self.record
+
 
 class FakeTrainer:
     def __init__(self, record=None):
@@ -159,15 +164,20 @@ class FakeTrainer:
         self.interrupt = False
         self.return_plan = False
         self.record = record
+
     def run(self, interact=False):
         self.running = True
         self.interact = interact
+
     def set_interrupt(self):
         self.interrupt = True
+
     def is_running(self):
         return self.running
+
     def clean(self, force_update):
         pass
+
     def get_real_training_plan(self, name, real_name):
         if self.return_plan:
             return FakePlan(name, real_name, self.record)
@@ -181,28 +191,35 @@ def trainer_study():
     study.trainer = FakeTrainer()
     return study
 
-@pytest.mark.parametrize('force_update', [True, False])
+
+@pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_training_option(trainer_study, force_update):
     option = TrainingOption(
-        'test', int, 0, True, None, 1, 1, 1, 1, TRAINING_EVALUATION.TEST_ACC, 1
+        "test", int, 0, True, None, 1, 1, 1, 1, TRAINING_EVALUATION.TEST_ACC, 1
     )
     # Since we allow multi-experiment history, this should not raise ValueError anymore
     trainer_study.set_training_option(option, force_update)
     assert trainer_study.training_option == option
 
-@pytest.mark.parametrize('force_update', [True, False])
+
+@pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_model_holder(trainer_study, force_update):
     holder = ModelHolder(int, 0)
     # Since we allow multi-experiment history, this should not raise ValueError anymore
     trainer_study.set_model_holder(holder, force_update)
     assert trainer_study.model_holder == holder
 
-@pytest.mark.parametrize('force_update', [True, False])
-def test_study_generate_plan(trainer_study, force_update):
-    from unittest.mock import patch
-    with patch('XBrainLab.backend.training.TrainingPlanHolder.__init__', return_value=None) as holder_mock, \
-         patch('XBrainLab.backend.training.Trainer.__init__', return_value=None) as trainer_mock:
 
+@pytest.mark.parametrize("force_update", [True, False])
+def test_study_generate_plan(trainer_study, force_update):
+    with (
+        patch(
+            "XBrainLab.backend.training.TrainingPlanHolder.__init__", return_value=None
+        ) as holder_mock,
+        patch(
+            "XBrainLab.backend.training.Trainer.__init__", return_value=None
+        ) as trainer_mock,
+    ):
         trainer_study.datasets = [1, 2, 3]
         trainer_study.training_option = 2
         trainer_study.model_holder = 3
@@ -221,17 +238,18 @@ def test_study_generate_plan(trainer_study, force_update):
             assert called_args[0] == 3
             assert called_args[1] == (i + 1)
             assert called_args[2] == 2
-            assert called_args[3] is None # saliency_params
+            assert called_args[3] is None  # saliency_params
 
         trainer_mock.assert_called_once()
 
+
 @pytest.mark.parametrize(
-    'missing_part, complain',
+    "missing_part, complain",
     [
-        ['datasets', 'dataset'],
-        ['training_option', 'training option'],
-        ['model_holder', 'model holder']
-    ]
+        ["datasets", "dataset"],
+        ["training_option", "training option"],
+        ["model_holder", "model holder"],
+    ],
 )
 def test_study_generate_plan_missing_options(missing_part, complain):
     study = Study()
@@ -240,8 +258,9 @@ def test_study_generate_plan_missing_options(missing_part, complain):
     study.model_holder = 3
     setattr(study, missing_part, None)
 
-    with pytest.raises(ValueError, match=f".*{complain}.*"):
+    with pytest.raises(ValueError, match=rf".*{complain}.*"):
         study.generate_plan()
+
 
 def test_study_training(trainer_study):
     assert not trainer_study.is_training()
@@ -249,6 +268,7 @@ def test_study_training(trainer_study):
     assert trainer_study.is_training()
     trainer_study.stop_training()
     assert trainer_study.trainer.interrupt
+
 
 def test_study_training_not_set():
     study = Study()
@@ -259,8 +279,9 @@ def test_study_training_not_set():
     with pytest.raises(ValueError):
         study.stop_training()
 
-@pytest.mark.parametrize('has_record', [True, False])
-@pytest.mark.parametrize('has_eval', [True, False])
+
+@pytest.mark.parametrize("has_record", [True, False])
+@pytest.mark.parametrize("has_eval", [True, False])
 def test_study_export_output_csv(trainer_study, has_record, has_eval):
     record = FakeRecord()
     if has_eval:
@@ -272,40 +293,44 @@ def test_study_export_output_csv(trainer_study, has_record, has_eval):
 
     if not has_record:
         with pytest.raises(ValueError):
-            trainer_study.export_output_csv('test', '1', '2')
+            trainer_study.export_output_csv("test", "1", "2")
         return
     if not has_eval:
         with pytest.raises(ValueError):
-            trainer_study.export_output_csv('test', '1', '2')
+            trainer_study.export_output_csv("test", "1", "2")
         return
-    trainer_study.export_output_csv('test', '1', '2')
-    assert record.filepath == 'test'
+    trainer_study.export_output_csv("test", "1", "2")
+    assert record.filepath == "test"
 
 
 def test_study_export_output_csv_not_set():
     study = Study()
     with pytest.raises(ValueError):
-        study.export_output_csv('test', 'test', 'test')
+        study.export_output_csv("test", "test", "test")
+
 
 def test_study_set_channels():
     class FakeEpochData:
         def set_channels(self, channels, channel_types):
             self.channels = channels
             self.channel_types = channel_types
+
     study = Study()
     study.epoch_data = FakeEpochData()
     study.set_channels([1], [2])
     assert study.epoch_data.channels == [1]
     assert study.epoch_data.channel_types == [2]
 
+
 def test_study_set_channels_not_set():
     study = Study()
     with pytest.raises(ValueError):
         study.set_channels([], [])
 
+
 def test_study_saliency_params():
     study = Study()
-    params = {'method': {'param': 1}}
+    params = {"method": {"param": 1}}
     study.set_saliency_params(params)
     assert study.get_saliency_params() == params
 
@@ -315,6 +340,7 @@ def test_study_saliency_params():
             self.params = params
 
     holder = FakePlanHolder()
+
     class FakeTrainer:
         def get_training_plan_holders(self):
             return [holder]

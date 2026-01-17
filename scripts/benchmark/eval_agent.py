@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -37,7 +38,7 @@ class BenchmarkRunner(QObject):
 
         # We need to initialize the worker first (this loads the model)
         # We'll use a loop to wait for initialization
-        init_loop = QEventLoop()
+        # init_loop = QEventLoop()
 
         def on_status(msg):
             print(f"[Init]: {msg}")
@@ -60,24 +61,22 @@ class BenchmarkRunner(QObject):
         # We will proceed blindly after a short wait, allowing the inference call
         # to trigger the loading lazily if needed (AgentWorker does lazy load).
 
-
-
         # Category stats
         category_stats = {}
         failed_details = []
 
         for case in self.test_cases:
-            case_id = case['id']
+            case_id = case["id"]
             # Default to 'unknown' if category missing
-            category = case.get('category', 'unknown')
+            category = case.get("category", "unknown")
 
             if category not in category_stats:
                 category_stats[category] = {"passed": 0, "total": 0}
 
             category_stats[category]["total"] += 1
 
-            user_input = case['input']
-            expected_tools = case['expected_tool_calls']
+            user_input = case["input"]
+            expected_tools = case["expected_tool_calls"]
 
             print(f"\nRunning Case [{case_id}]: {user_input}")
 
@@ -93,43 +92,54 @@ class BenchmarkRunner(QObject):
                 print("  [FAIL]")
                 print(f"   Expected: {expected_tools}")
                 print(f"   Actual:   {captured_tools}")
-                failed_details.append({
-                    "id": case_id,
-                    "input": user_input,
-                    "expected": expected_tools,
-                    "actual": captured_tools
-                })
+                failed_details.append(
+                    {
+                        "id": case_id,
+                        "input": user_input,
+                        "expected": expected_tools,
+                        "actual": captured_tools,
+                    }
+                )
 
         # Generate Report
-        from datetime import datetime
+        # from datetime import datetime
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         report_lines = []
         report_lines.append("BENCHMARK REPORT")
-        report_lines.append(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report_lines.append(
+            f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
         report_lines.append(f"Total Cases: {total}")
-        report_lines.append(f"Passed: {passed} ({passed/total*100:.1f}%)")
-        report_lines.append("="*60)
-        report_lines.append(f"{'Category':<15} | {'Passed':<8} | {'Total':<8} | {'Acc':<6}")
+        report_lines.append(f"Passed: {passed} ({passed / total * 100:.1f}%)")
+        report_lines.append("=" * 60)
+        report_lines.append(
+            f"{'Category':<15} | {'Passed':<8} | {'Total':<8} | {'Acc':<6}"
+        )
         report_lines.append("-" * 60)
 
         for cat, stats in sorted(category_stats.items()):
-            p = stats['passed']
-            t = stats['total']
-            acc = (p/t)*100 if t > 0 else 0
+            p = stats["passed"]
+            t = stats["total"]
+            acc = (p / t) * 100 if t > 0 else 0
             report_lines.append(f"{cat:<15} | {p:<8} | {t:<8} | {acc:.1f}%")
 
         report_lines.append("-" * 60)
-        report_lines.append(f"{'TOTAL':<15} | {passed:<8} | {total:<8} | {passed/total*100:.1f}%")
-        report_lines.append("="*60)
+        report_lines.append(
+            f"{'TOTAL':<15} | {passed:<8} | {total:<8} | {passed / total * 100:.1f}%"
+        )
+        report_lines.append("=" * 60)
 
         if failed_details:
             report_lines.append("\nFAILED CASES ANALYSIS")
-            report_lines.append("="*60)
+            report_lines.append("=" * 60)
             for fail in failed_details:
                 report_lines.append(f"Case ID: {fail['id']}")
                 report_lines.append(f"Input:   {fail['input']}")
-                report_lines.append(f"Expected: {json.dumps(fail['expected'], indent=2)}")
+                report_lines.append(
+                    f"Expected: {json.dumps(fail['expected'], indent=2)}"
+                )
                 report_lines.append(f"Actual:   {json.dumps(fail['actual'], indent=2)}")
                 report_lines.append("-" * 40)
 
@@ -173,7 +183,7 @@ class BenchmarkRunner(QObject):
             # BUT we don't quit the loop immediately if we expect multiple tools?
             # Complexity: The Agent loop is recursive.
             # Let's simplify: Quit on first tool call for single-turn cases.
-            if len(captured) >= 1: # Adjust logic for multi-tool later
+            if len(captured) >= 1:  # Adjust logic for multi-tool later
                 loop.quit()
 
         self.controller._execute_tool = mock_execute
@@ -205,27 +215,30 @@ class BenchmarkRunner(QObject):
         return captured
 
     def check_match(self, expected, actual):
-        if not expected and not actual: return True
-        if not expected or not actual: return False
+        if not expected and not actual:
+            return True
+        if not expected or not actual:
+            return False
 
         # Relaxed match: Check if the first expected tool appears in actual list
         # Because actual might have extra parameters or order diffs
         e = expected[0]
         a = actual[0]
 
-        if e['tool_name'] != a['tool_name']:
+        if e["tool_name"] != a["tool_name"]:
             return False
 
         # Check params subset
-        for k, v in e['parameters'].items():
-            if k not in a['parameters']:
+        for k, v in e["parameters"].items():
+            if k not in a["parameters"]:
                 return False
             # Simple equality check, might need better logic for floats/paths
-            if str(a['parameters'][k]) != str(v):
+            if str(a["parameters"][k]) != str(v):
                 # Allow minor formatting diffs if needed
                 return False
 
         return True
+
 
 def run_benchmark_cli():
     # Force offscreen for headless
@@ -240,6 +253,7 @@ def run_benchmark_cli():
     QTimer.singleShot(100, runner.run)
 
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     run_benchmark_cli()

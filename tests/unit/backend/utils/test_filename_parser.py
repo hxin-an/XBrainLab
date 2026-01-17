@@ -1,25 +1,23 @@
-
 from XBrainLab.backend.utils.filename_parser import FilenameParser
 
 
 class TestFilenameParser:
-
     def test_parse_by_split(self):
         filename = "Sub01_Ses02_Task.gdf"
 
         # Test standard case
-        sub, sess = FilenameParser.parse_by_split(filename, '_', 1, 2)
+        sub, sess = FilenameParser.parse_by_split(filename, "_", 1, 2)
         assert sub == "Sub01"
         assert sess == "Ses02"
 
         # Test out of bounds
-        sub, sess = FilenameParser.parse_by_split(filename, '_', 10, 11)
+        sub, sess = FilenameParser.parse_by_split(filename, "_", 10, 11)
         assert sub == "-"
         assert sess == "-"
 
         # Test different separator
         filename_hyphen = "Sub01-Ses02.gdf"
-        sub, sess = FilenameParser.parse_by_split(filename_hyphen, '-', 1, 2)
+        sub, sess = FilenameParser.parse_by_split(filename_hyphen, "-", 1, 2)
         assert sub == "Sub01"
         assert sess == "Ses02"
 
@@ -41,7 +39,8 @@ class TestFilenameParser:
         # Mock path
         filepath = "/data/Subject01/Session02/data.gdf"
 
-        # Note: parse_by_folder uses os.path.dirname, so we need full paths or at least relative dirs
+        # Note: parse_by_folder uses os.path.dirname, so we need full paths
+        # or at least relative dirs
         sub, sess = FilenameParser.parse_by_folder(filepath)
         # Logic: parent=Session02 (contains 'ses'?), grandparent=Subject01
         # 'Session02' doesn't contain 'ses' (case sensitive? code says .lower())

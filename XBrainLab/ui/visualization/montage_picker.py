@@ -77,7 +77,9 @@ class PickMontageWindow(QDialog):
 
         # Reset Saved Button (for demoing Smart Match)
         self.btn_reset_saved = QPushButton("Reset Saved")
-        self.btn_reset_saved.setToolTip("Clear saved settings for this montage and re-run Smart Match")
+        self.btn_reset_saved.setToolTip(
+            "Clear saved settings for this montage and re-run Smart Match"
+        )
         self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
         top_layout.addWidget(self.btn_reset_saved)
 
@@ -87,14 +89,20 @@ class PickMontageWindow(QDialog):
         self.table = QTableWidget()
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Dataset Channel", "Montage Channel"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
 
         layout.addWidget(self.table)
 
         # Bottom: Dialog Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -106,14 +114,14 @@ class PickMontageWindow(QDialog):
         if self.montage_combo.currentText():
             self.on_montage_select(self.montage_combo.currentText())
         elif self.montage_list:
-             self.on_montage_select(self.montage_list[0])
+            self.on_montage_select(self.montage_list[0])
 
     def init_table(self):
         self.table.setRowCount(len(self.channel_names))
         for i, ch_name in enumerate(self.channel_names):
             # Column 0: Dataset Channel (Read-only)
             item = QTableWidgetItem(ch_name)
-            item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable) # Make read-only
+            item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable)  # Make read-only
             self.table.setItem(i, 0, item)
 
             # Column 1: Will be populated with ComboBoxes later
@@ -121,7 +129,7 @@ class PickMontageWindow(QDialog):
     def on_montage_select(self, montage_name):
         try:
             positions = get_montage_positions(montage_name)
-            self.montage_channels = list(positions['ch_pos'].keys())
+            self.montage_channels = list(positions["ch_pos"].keys())
 
             # Reset anchors for new montage
             self.anchors.clear()
@@ -156,12 +164,12 @@ class PickMontageWindow(QDialog):
                     idx = combo.findText(saved_mapping[dataset_ch])
                     if idx != -1:
                         combo.setCurrentIndex(idx)
-                        self.anchors.add(row) # Mark as anchor
+                        self.anchors.add(row)  # Mark as anchor
                         continue
 
                 # If no saved setting, use Smart Match
                 if self.smart_match(combo, dataset_ch):
-                    self.anchors.add(row) # Mark as anchor
+                    self.anchors.add(row)  # Mark as anchor
 
             # 2. Run initial batch Sequential Fill to fill gaps
             self.initial_sequential_fill()
@@ -170,7 +178,9 @@ class PickMontageWindow(QDialog):
             for row in range(self.table.rowCount()):
                 combo = self.table.cellWidget(row, 1)
                 # Use lambda with captured row to identify source
-                combo.currentIndexChanged.connect(lambda idx, r=row: self.on_channel_changed(r, idx))
+                combo.currentIndexChanged.connect(
+                    lambda idx, r=row: self.on_channel_changed(r, idx)
+                )
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to load montage: {e}")
@@ -178,7 +188,7 @@ class PickMontageWindow(QDialog):
     def initial_sequential_fill(self):
         """Run a one-pass sequential fill for initialization."""
         # Sort anchors by row index
-        sorted_anchors = sorted(list(self.anchors))
+        sorted_anchors = sorted(self.anchors)
 
         if not sorted_anchors:
             return
@@ -189,7 +199,7 @@ class PickMontageWindow(QDialog):
             curr_ch = curr_combo.currentText()
 
             if i < len(sorted_anchors) - 1:
-                next_row = sorted_anchors[i+1]
+                next_row = sorted_anchors[i + 1]
                 fill_range = range(curr_row + 1, next_row)
             else:
                 fill_range = range(curr_row + 1, self.table.rowCount())
@@ -206,11 +216,12 @@ class PickMontageWindow(QDialog):
                     target_ch = self.montage_channels[target_montage_idx]
                     combo = self.table.cellWidget(target_row, 1)
 
-                    # Only fill if not an anchor (though logic above ensures we are between anchors)
+                    # Only fill if not an anchor (though logic above ensures we are
+                    # between anchors)
                     # And check if empty? No, initial fill should fill gaps.
                     if target_row not in self.anchors:
-                         idx = combo.findText(target_ch)
-                         if idx != -1:
+                        idx = combo.findText(target_ch)
+                        if idx != -1:
                             combo.setCurrentIndex(idx)
                             # Do NOT add to anchors
                 offset += 1
@@ -223,12 +234,16 @@ class PickMontageWindow(QDialog):
         target = target_name.lower().strip()
 
         # Clean target name
-        clean_target = target.replace('eeg', '').replace('ref', '').replace('-', '').strip()
+        clean_target = (
+            target.replace("eeg", "").replace("ref", "").replace("-", "").strip()
+        )
 
         best_match_idx = -1
 
         # 1. Exact Match (Case Insensitive)
-        idx = combo.findText(target_name, Qt.MatchFlag.MatchFixedString | Qt.MatchFlag.MatchCaseSensitive)
+        idx = combo.findText(
+            target_name, Qt.MatchFlag.MatchFixedString | Qt.MatchFlag.MatchCaseSensitive
+        )
         if idx != -1:
             best_match_idx = idx
         else:
@@ -238,7 +253,7 @@ class PickMontageWindow(QDialog):
                 best_match_idx = idx
             else:
                 # 3. Fuzzy / Cleaned Match
-                for i in range(1, combo.count()): # Skip empty first item
+                for i in range(1, combo.count()):  # Skip empty first item
                     item_text = combo.itemText(i).lower()
                     if item_text == clean_target:
                         best_match_idx = i
@@ -258,7 +273,8 @@ class PickMontageWindow(QDialog):
         """
         # If user manually changed this, it becomes an anchor
         # But we need to distinguish manual change vs cascade change
-        # Since we block signals during cascade (or use a flag), we can assume this call is manual/explicit
+        # Since we block signals during cascade (or use a flag), we can assume this call
+        # is manual/explicit
         # Wait, setCurrentIndex triggers this signal.
         # We need to block signals when cascading.
 
@@ -297,7 +313,8 @@ class PickMontageWindow(QDialog):
             if target_montage_idx < len(self.montage_channels):
                 target_ch = self.montage_channels[target_montage_idx]
 
-                # Set the combo WITHOUT triggering signal (to avoid recursion and marking as anchor)
+                # Set the combo WITHOUT triggering signal (to avoid recursion and
+                # marking as anchor)
                 idx = target_combo.findText(target_ch)
                 if idx != -1:
                     target_combo.blockSignals(True)
@@ -331,7 +348,12 @@ class PickMontageWindow(QDialog):
         # Reload montage (triggers Smart Match since settings are gone)
         self.on_montage_select(montage_name)
 
-        QMessageBox.information(self, "Reset", f"Saved settings for '{montage_name}' have been cleared.\nSmart Match has been re-applied.")
+        QMessageBox.information(
+            self,
+            "Reset",
+            f"Saved settings for '{montage_name}' have been cleared.\n"
+            f"Smart Match has been re-applied.",
+        )
 
     def confirm(self):
         selected_map = {}
@@ -346,8 +368,8 @@ class PickMontageWindow(QDialog):
                     selected_map[dataset_ch] = selected_montage_ch
 
         if not selected_map:
-             QMessageBox.warning(self, "Warning", "No channels mapped.")
-             return
+            QMessageBox.warning(self, "Warning", "No channels mapped.")
+            return
 
         # Save settings
         self.settings.setValue("last_montage", montage_name)

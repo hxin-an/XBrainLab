@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,15 +15,17 @@ def mock_study():
     study.model_holder.target_model.__name__ = "MockModel"
     return study
 
+
 def test_ui_refresh_on_tab_switch(qtbot, mock_study):
     """Test that switching tabs triggers refresh_data/update_panel on panels."""
     # Patch the panel classes to avoid real instantiation and side effects
-    with patch('XBrainLab.ui.main_window.DatasetPanel') as MockDatasetPanel, \
-         patch('XBrainLab.ui.main_window.PreprocessPanel') as MockPreprocessPanel, \
-         patch('XBrainLab.ui.main_window.TrainingPanel') as MockTrainingPanel, \
-         patch('XBrainLab.ui.main_window.VisualizationPanel') as MockVisPanel, \
-         patch('XBrainLab.ui.main_window.EvaluationPanel') as MockEvalPanel:
-
+    with (
+        patch("XBrainLab.ui.main_window.DatasetPanel") as MockDatasetPanel,
+        patch("XBrainLab.ui.main_window.PreprocessPanel") as MockPreprocessPanel,
+        patch("XBrainLab.ui.main_window.TrainingPanel") as MockTrainingPanel,
+        patch("XBrainLab.ui.main_window.VisualizationPanel") as MockVisPanel,
+        patch("XBrainLab.ui.main_window.EvaluationPanel") as MockEvalPanel,
+    ):
         # Configure mocks to return real QWidgets so addWidget works
         MockDatasetPanel.return_value = QWidget()
         MockPreprocessPanel.return_value = QWidget()
@@ -46,8 +47,6 @@ def test_ui_refresh_on_tab_switch(qtbot, mock_study):
         # Access the instances created by MainWindow
         # Note: MainWindow assigns self.dataset_panel = DatasetPanel(...)
         dataset_panel = window.dataset_panel
-        preprocess_panel = window.preprocess_panel
-        training_panel = window.training_panel
         vis_panel = window.visualization_panel
         eval_panel = window.evaluation_panel
 
@@ -65,7 +64,8 @@ def test_ui_refresh_on_tab_switch(qtbot, mock_study):
         #   window.evaluation_panel.refresh_data.assert_called_once()
         # This implies Index 3 is Evaluation.
 
-        # Actually, `switch_page` in `MainWindow` calls `update_panel()` or `refresh_data()` depending on panel type.
+        # Actually, `switch_page` in `MainWindow` calls `update_panel()` or
+        # `refresh_data()` depending on panel type.
         # My refactoring added `update_panel()` to all panels in `switch_page`.
         # So we should expect `update_panel()` or `refresh_data()` to be called.
 
@@ -82,10 +82,11 @@ def test_ui_refresh_on_tab_switch(qtbot, mock_study):
         eval_panel.update_panel.reset_mock()
         vis_panel.update_panel.reset_mock()
 
-        window.switch_page(0) # Dataset
+        window.switch_page(0)  # Dataset
         eval_panel.update_panel.assert_not_called()
         vis_panel.update_panel.assert_not_called()
         dataset_panel.update_panel.assert_called()
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

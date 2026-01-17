@@ -8,18 +8,18 @@ from XBrainLab.backend.preprocessor.base import PreprocessBase
 base_fs = 500
 base_duration = 10
 
-def _generate_mne(fs, ch_names, ch_types, length = base_duration):
-    info = mne.create_info(ch_names=ch_names,
-                           sfreq=fs,
-                           ch_types=ch_types)
+
+def _generate_mne(fs, ch_names, ch_types, length=base_duration):
+    info = mne.create_info(ch_names=ch_names, sfreq=fs, ch_types=ch_types)
     data = np.random.RandomState(0).randn(len(ch_names), fs * length)
     return mne.io.RawArray(data, info)
+
 
 # raw without event
 @pytest.fixture
 def raw():
-    mne_raw = _generate_mne(base_fs, ['Fp1', 'Fp2', 'F3', 'F4'], 'eeg')
-    return Raw('tests/test_data/sub-01_ses-01_task-rest_eeg.fif', mne_raw)
+    mne_raw = _generate_mne(base_fs, ["Fp1", "Fp2", "F3", "F4"], "eeg")
+    return Raw("tests/test_data/sub-01_ses-01_task-rest_eeg.fif", mne_raw)
 
 
 def test_base(raw):

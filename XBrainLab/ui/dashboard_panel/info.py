@@ -1,14 +1,22 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QGroupBox, QSizePolicy, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QGroupBox,
+    QHeaderView,
+    QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
 
 from XBrainLab.backend.load_data import DataType
+from XBrainLab.backend.utils.logger import logger
 
 
 class AggregateInfoPanel(QGroupBox):
     def __init__(self, parent=None):
         super().__init__("Aggregate Information", parent)
         self.main_window = None
-        if parent and hasattr(parent, 'study'):
+        if parent and hasattr(parent, "study"):
             self.main_window = parent
 
         self.init_ui()
@@ -17,10 +25,9 @@ class AggregateInfoPanel(QGroupBox):
         # Main Layout for the GroupBox
         main_layout = QVBoxLayout(self)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        main_layout.setContentsMargins(0, 8, 0, 0) # Space for title
+        main_layout.setContentsMargins(0, 8, 0, 0)  # Space for title
 
         # Use QTableWidget to match TrainingPanel's Configuration Summary
-        from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
 
         self.table = QTableWidget()
         self.table.setColumnCount(2)
@@ -29,7 +36,8 @@ class AggregateInfoPanel(QGroupBox):
         self.table.setShowGrid(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        self.table.setStyleSheet("""
+        self.table.setStyleSheet(
+            """
             QTableWidget {
                 background-color: #2d2d2d;
                 border: 1px solid #3e3e42;
@@ -40,15 +48,30 @@ class AggregateInfoPanel(QGroupBox):
                 padding: 4px;
                 border: none;
             }
-        """)
+        """
+        )
 
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
 
         keys = [
-            "Type", "Total Files", "Subjects", "Sessions", "Total Epochs", "Total Events",
-            "Channel", "Sample rate", "tmin (sec)", "duration (sec)",
-            "Highpass", "Lowpass", "Classes"
+            "Type",
+            "Total Files",
+            "Subjects",
+            "Sessions",
+            "Total Epochs",
+            "Total Events",
+            "Channel",
+            "Sample rate",
+            "tmin (sec)",
+            "duration (sec)",
+            "Highpass",
+            "Lowpass",
+            "Classes",
         ]
 
         self.table.setRowCount(len(keys))
@@ -63,7 +86,9 @@ class AggregateInfoPanel(QGroupBox):
             # Value Item
             val_item = QTableWidgetItem("-")
             val_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-            val_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            val_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
             self.table.setItem(i, 1, val_item)
 
             self.row_map[key] = i
@@ -76,47 +101,61 @@ class AggregateInfoPanel(QGroupBox):
         # Set height based on content
         # 25px per row + 2px for borders/margins (tight fit)
         total_height = len(keys) * 25 + 2
-        self.table.setMinimumHeight(150) # Allow shrinking
-        self.table.setMaximumHeight(total_height + 5) # Minimal buffer
+        self.table.setMinimumHeight(150)  # Allow shrinking
+        self.table.setMaximumHeight(total_height + 5)  # Minimal buffer
 
         # Limit the GroupBox height so it doesn't consume extra space when expanded
-        # Table height + padding for GroupBox title (approx 20px) + margins (approx 10px)
+        # Table height + padding for GroupBox title (approx 20px) + margins
+        # (approx 10px)
         self.setMaximumHeight(total_height + 35)
 
         self.setMinimumWidth(200)
         # Use Expanding to ensure it takes up available space up to MaximumHeight
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        self.table.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.table.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+        )
 
     def set_main_window(self, main_window):
         self.main_window = main_window
         self.update_info()
 
     def update_info(self):
-        if not self.main_window or not hasattr(self.main_window, 'study'):
+        if not self.main_window or not hasattr(self.main_window, "study"):
             return
 
         study = self.main_window.study
 
         # Always use preprocessed data if available, otherwise loaded data.
         # This ensures consistent information across all panels.
-        data_list = study.preprocessed_data_list if study.preprocessed_data_list else study.loaded_data_list
-        use_loaded = (data_list is study.loaded_data_list)
+        data_list = (
+            study.preprocessed_data_list
+            if study.preprocessed_data_list
+            else study.loaded_data_list
+        )
+        use_loaded = data_list is study.loaded_data_list
 
-        # Fallback: If preprocessed is empty but we have epoch_data (meaning we did preprocess),
+        # Fallback: If preprocessed is empty but we have epoch_data (meaning we did
+        # preprocess),
         # or if we just want to show something, try loaded_data_list as fallback.
-        # This handles the case where preprocessed_data_list might be cleared or not yet populated
+        # This handles the case where preprocessed_data_list might be cleared or not
+        # yet populated
         # but the user expects to see *some* info.
         # Specifically for the reported issue: "epoched data disappeared".
-        # If epoch_data exists, we should definitely show info based on it or its source.
-        if not data_list and not use_loaded:
-             if study.epoch_data:
-                 # If we have epoch data, we can try to use its raw_list if accessible,
-                 # or fallback to loaded_data_list if preprocessed is empty.
-                 # Epochs object usually holds reference to data.
-                 # Let's fallback to loaded_data_list if preprocessed is empty but loaded is not.
-                 if study.loaded_data_list:
-                     data_list = study.loaded_data_list
+        # If epoch_data exists, we should definitely show info based on it or its
+        # source.
+        if (
+            not data_list
+            and not use_loaded
+            and study.epoch_data
+            and study.loaded_data_list
+        ):
+            # If we have epoch data, we can try to use its raw_list if accessible,
+            # or fallback to loaded_data_list if preprocessed is empty.
+            # Epochs object usually holds reference to data.
+            # Let's fallback to loaded_data_list if preprocessed is empty but loaded is
+            # not.
+            data_list = study.loaded_data_list
 
         if not data_list:
             self.reset_labels()
@@ -139,7 +178,6 @@ class AggregateInfoPanel(QGroupBox):
                 if event_id:
                     classes_set.update(event_id)
             except Exception as e:
-                from XBrainLab.backend.utils.logger import logger
                 logger.warning(f"Failed to get event list for data: {e}")
 
             total_epochs += data.get_epochs_length()
@@ -152,7 +190,6 @@ class AggregateInfoPanel(QGroupBox):
                 else:
                     total_events += data.get_epochs_length()
             except Exception as e:
-                from XBrainLab.backend.utils.logger import logger
                 logger.warning(f"Failed to count events: {e}")
 
         tmin = "None"
@@ -161,10 +198,12 @@ class AggregateInfoPanel(QGroupBox):
         if not first_data.is_raw():
             tmin = str(first_data.get_tmin())
             try:
-                dur_val = int(first_data.get_epoch_duration() * 100 / first_data.get_sfreq()) / 100
+                dur_val = (
+                    int(first_data.get_epoch_duration() * 100 / first_data.get_sfreq())
+                    / 100
+                )
                 duration = str(dur_val)
             except Exception as e:
-                from XBrainLab.backend.utils.logger import logger
                 logger.warning(f"Failed to calc duration: {e}")
                 duration = "?"
 

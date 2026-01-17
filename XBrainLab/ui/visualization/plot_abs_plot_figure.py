@@ -10,14 +10,21 @@ class PlotABSFigureWindow(PlotFigureWindow):
         trainers,
         plot_type,
         figsize=None,
-        title='Plot',
+        title="Plot",
         plan_name=None,
         real_plan_name=None,
         saliency_name=None,
-        absolute=None
+        absolute=None,
     ):
         super().__init__(
-            parent, trainers, plot_type, figsize, title, plan_name, real_plan_name, saliency_name
+            parent,
+            trainers,
+            plot_type,
+            figsize,
+            title,
+            plan_name,
+            real_plan_name,
+            saliency_name,
         )
 
         self.absolute_chk = QCheckBox("absolute value")
@@ -40,7 +47,8 @@ class PlotABSFigureWindow(PlotFigureWindow):
 
         epoch_data = self.trainer.get_dataset().get_epoch_data()
 
-        # Instantiate the visualizer class (plot_type is a class or enum value pointing to class)
+        # Instantiate the visualizer class (plot_type is a class or enum value pointing
+        # to class)
         # In original code: self.plot_type.value(...)
         # Assuming plot_type is an Enum where value is the class
         plot_visualizer = self.plot_type.value(
@@ -49,6 +57,6 @@ class PlotABSFigureWindow(PlotFigureWindow):
 
         figure = plot_visualizer.get_plt(
             method=self.saliency_combo.currentText(),
-            absolute=self.absolute_chk.isChecked()
+            absolute=self.absolute_chk.isChecked(),
         )
         return figure

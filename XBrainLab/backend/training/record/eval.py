@@ -35,7 +35,17 @@ class EvalRecord:
                   class index as key.
             Gradient of model by class index.
     """
-    def __init__(self, label: np.ndarray, output: np.ndarray, gradient: dict, gradient_input:dict, smoothgrad: dict, smoothgrad_sq: dict, vargrad:dict) -> None:
+
+    def __init__(
+        self,
+        label: np.ndarray,
+        output: np.ndarray,
+        gradient: dict,
+        gradient_input: dict,
+        smoothgrad: dict,
+        smoothgrad_sq: dict,
+        vargrad: dict,
+    ) -> None:
         self.label = label
         self.output = output
         self.gradient = gradient
@@ -51,37 +61,37 @@ class EvalRecord:
             target_path: Path to save evaluation result.
         """
         record = {
-            'label': self.label,
-            'output': self.output,
-            'gradient': self.gradient,
-            'gradient_input': self.gradient_input,
-            'smoothgrad': self.smoothgrad,
-            'smoothgrad_sq': self.smoothgrad_sq,
-            'vargrad': self.vargrad
+            "label": self.label,
+            "output": self.output,
+            "gradient": self.gradient,
+            "gradient_input": self.gradient_input,
+            "smoothgrad": self.smoothgrad,
+            "smoothgrad_sq": self.smoothgrad_sq,
+            "vargrad": self.vargrad,
         }
-        torch.save(record, os.path.join(target_path, 'eval'))
+        torch.save(record, os.path.join(target_path, "eval"))
 
     @classmethod
-    def load(cls, target_path: str) -> 'EvalRecord | None':
+    def load(cls, target_path: str) -> "EvalRecord | None":
         """Load evaluation result from torch file.
 
         Args:
             target_path: Path to load evaluation result.
         """
-        path = os.path.join(target_path, 'eval')
+        path = os.path.join(target_path, "eval")
         if not os.path.exists(path):
             return None
 
         try:
             data = torch.load(path, weights_only=False)
             return cls(
-                label=data['label'],
-                output=data['output'],
-                gradient=data.get('gradient', {}),
-                gradient_input=data.get('gradient_input', {}),
-                smoothgrad=data.get('smoothgrad', {}),
-                smoothgrad_sq=data.get('smoothgrad_sq', {}),
-                vargrad=data.get('vargrad', {})
+                label=data["label"],
+                output=data["output"],
+                gradient=data.get("gradient", {}),
+                gradient_input=data.get("gradient_input", {}),
+                smoothgrad=data.get("smoothgrad", {}),
+                smoothgrad_sq=data.get("smoothgrad_sq", {}),
+                vargrad=data.get("vargrad", {}),
             )
         except Exception as e:
             print(f"Failed to load EvalRecord: {e}")
@@ -95,14 +105,13 @@ class EvalRecord:
         """
         data = np.c_[self.output, self.label, self.output.argmax(axis=1)]
         index_header_str = ",".join([str(i) for i in range(self.output.shape[1])])
-        header = f'{index_header_str},ground_truth,predict'
+        header = f"{index_header_str},ground_truth,predict"
         np.savetxt(
-            target_path, data, delimiter=',', newline='\n',
-            header=header, comments='')
+            target_path, data, delimiter=",", newline="\n", header=header, comments=""
+        )
 
-
-    def export_saliency(self, method:str, target_path: str) -> None:
-        """ Export saliency map as torch file.
+    def export_saliency(self, method: str, target_path: str) -> None:
+        """Export saliency map as torch file.
         Args:
             method: saliency type to be exported.
             target_path: Path to save saliency map.
@@ -118,29 +127,30 @@ class EvalRecord:
         elif method == "VarGrad":
             saliency = self.vargrad
         return saliency
-    #
+
     def get_acc(self) -> float:
         """Get accuracy of the model."""
         return sum(self.output.argmax(axis=1) == self.label) / len(self.label)
 
     def get_auc(self) -> float:
         """Get auc of the model."""
-        if torch.nn.functional.softmax(
-            torch.Tensor(self.output), dim=1
-        ).numpy().shape[-1] <=2:
+        if (
+            torch.nn.functional.softmax(torch.Tensor(self.output), dim=1)
+            .numpy()
+            .shape[-1]
+            <= 2
+        ):
             return roc_auc_score(
                 self.label,
-                torch.nn.functional.softmax(
-                    torch.Tensor(self.output), dim=1
-                ).numpy()[:, -1]
+                torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy()[
+                    :, -1
+                ],
             )
         else:
             return roc_auc_score(
                 self.label,
-                torch.nn.functional.softmax(
-                    torch.Tensor(self.output), dim=1
-                ).numpy(),
-                multi_class='ovr'
+                torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy(),
+                multi_class="ovr",
             )
 
     def get_kappa(self) -> float:
@@ -148,10 +158,9 @@ class EvalRecord:
         confusion = calculate_confusion(self.output, self.label)
         classNum = len(confusion)
         P0 = np.diagonal(confusion).sum() / confusion.sum()
-        Pe = (
-            sum([confusion[:, i].sum() * confusion[i].sum() for i in range(classNum)]) /
-            (confusion.sum() * confusion.sum())
-        )
+        Pe = sum(
+            [confusion[:, i].sum() * confusion[i].sum() for i in range(classNum)]
+        ) / (confusion.sum() * confusion.sum())
         return (P0 - Pe) / (1 - Pe)
 
     def get_per_class_metrics(self) -> dict:
@@ -173,18 +182,18 @@ class EvalRecord:
         metrics = {}
         for i in labels:
             metrics[int(i)] = {
-                'precision': precision[i],
-                'recall': recall[i],
-                'f1-score': f1[i],
-                'support': int(support[i])
+                "precision": precision[i],
+                "recall": recall[i],
+                "f1-score": f1[i],
+                "support": int(support[i]),
             }
 
         # Calculate macro average
-        metrics['macro_avg'] = {
-            'precision': np.mean(precision),
-            'recall': np.mean(recall),
-            'f1-score': np.mean(f1),
-            'support': int(np.sum(support))
+        metrics["macro_avg"] = {
+            "precision": np.mean(precision),
+            "recall": np.mean(recall),
+            "f1-score": np.mean(f1),
+            "support": int(np.sum(support)),
         }
 
         return metrics

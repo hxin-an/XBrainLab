@@ -57,7 +57,9 @@ class TestOnlySettingWindow(QDialog):
         layout.addLayout(form_layout)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -77,9 +79,7 @@ class TestOnlySettingWindow(QDialog):
     def confirm(self):
         try:
             self.training_option = TestOnlyOption(
-                self.output_dir,
-                self.use_cpu, self.gpu_idx,
-                self.bs_entry.text()
+                self.output_dir, self.use_cpu, self.gpu_idx, self.bs_entry.text()
             )
             self.accept()
         except Exception as e:

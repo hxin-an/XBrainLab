@@ -15,6 +15,9 @@ from XBrainLab import Study
 from XBrainLab.backend.model_base import SCCNet
 from XBrainLab.backend.training import TRAINING_EVALUATION, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
+from XBrainLab.ui.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.training.panel import MetricTab, TrainingPanel
+from XBrainLab.ui.visualization.panel import VisualizationPanel
 
 
 @pytest.fixture
@@ -26,12 +29,12 @@ def real_training_option():
         optim_params={},
         use_cpu=True,
         gpu_idx=None,
-        epoch='2',  # Minimal epochs for fast testing
-        bs='4',
-        lr='0.001',
-        checkpoint_epoch='1',
+        epoch="2",  # Minimal epochs for fast testing
+        bs="4",
+        lr="0.001",
+        checkpoint_epoch="1",
         evaluation_option=TRAINING_EVALUATION.TEST_ACC,
-        repeat_num='1'
+        repeat_num="1",
     )
 
 
@@ -39,10 +42,12 @@ class TestTrainingPanelRealUsage:
     """Test TrainingPanel with realistic user workflow."""
 
     def test_repeated_training_no_duplicate_messages(self, qtbot, real_training_option):
-        """Verify that training completion message only shows once, not on every update."""
-        from XBrainLab.ui.training.panel import TrainingPanel
-
+        """
+        Verify that training completion message only shows once,
+        not on every update.
+        """
         # Setup study with real option
+
         study = Study()
         study.set_training_option(real_training_option)
         model_holder = ModelHolder(SCCNet, {})
@@ -55,14 +60,14 @@ class TestTrainingPanelRealUsage:
         qtbot.addWidget(panel)
 
         # Verify flag is initialized
-        assert hasattr(panel, 'training_completed_shown')
-        assert panel.training_completed_shown == False
+        assert hasattr(panel, "training_completed_shown")
+        assert panel.training_completed_shown is False
 
         # Simulate starting training
         panel.training_completed_shown = False
 
         # Simulate multiple calls to training_finished (like update_loop does)
-        with patch('PyQt6.QtWidgets.QMessageBox.information') as mock_msg:
+        with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_msg:
             panel.training_finished()
             assert mock_msg.call_count == 1, "First call should show message"
 
@@ -75,8 +80,6 @@ class TestTrainingPanelRealUsage:
 
     def test_start_training_resets_completion_flag(self, qtbot, real_training_option):
         """Verify that starting new training resets the completion flag."""
-        from XBrainLab.ui.training.panel import TrainingPanel
-
         study = Study()
         study.set_training_option(real_training_option)
         model_holder = ModelHolder(SCCNet, {})
@@ -103,11 +106,10 @@ class TestTrainingPanelRealUsage:
         panel.start_training()
 
         # Flag should be reset
-        assert panel.training_completed_shown == False
+        assert panel.training_completed_shown is False
 
     def test_update_loop_type_safety(self, qtbot, real_training_option):
         """Verify that update_loop handles type conversions correctly."""
-        from XBrainLab.ui.training.panel import TrainingPanel
 
         study = Study()
         study.set_training_option(real_training_option)
@@ -126,7 +128,15 @@ class TestTrainingPanelRealUsage:
         # Simulate get_training_epoch returning int
         mock_plan.get_training_epoch.return_value = 1
         mock_plan.get_training_status.return_value = "Running"
-        mock_plan.get_training_evaluation.return_value = (0.001, 0.5, 0.8, 0.9, 0.6, 0.75, 0.85)
+        mock_plan.get_training_evaluation.return_value = (
+            0.001,
+            0.5,
+            0.8,
+            0.9,
+            0.6,
+            0.75,
+            0.85,
+        )
 
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
@@ -138,8 +148,13 @@ class TestTrainingPanelRealUsage:
         # Mock get_plans
         mock_record = MagicMock()
         mock_record.get_epoch.return_value = 1
-        mock_record.train = {'loss': [0.5], 'accuracy': [0.8], 'auc': [0.9], 'lr': [0.001]}
-        mock_record.val = {'loss': [0.6], 'accuracy': [0.75], 'auc': [0.85]}
+        mock_record.train = {
+            "loss": [0.5],
+            "accuracy": [0.8],
+            "auc": [0.9],
+            "lr": [0.001],
+        }
+        mock_record.val = {"loss": [0.6], "accuracy": [0.75], "auc": [0.85]}
         mock_plan.get_plans.return_value = [mock_record]
         mock_plan.option.epoch = 10
 
@@ -163,7 +178,6 @@ class TestEvaluationPanelIntegration:
 
     def test_evaluation_panel_with_no_trainer(self, qtbot):
         """Verify evaluation panel handles missing trainer gracefully."""
-        from XBrainLab.ui.evaluation.panel import EvaluationPanel
 
         study = Study()
         # No trainer set
@@ -182,7 +196,6 @@ class TestEvaluationPanelIntegration:
 
     def test_evaluation_panel_with_trainer(self, qtbot):
         """Verify evaluation panel can access trainer data."""
-        from XBrainLab.ui.evaluation.panel import EvaluationPanel
 
         study = Study()
 
@@ -190,8 +203,10 @@ class TestEvaluationPanelIntegration:
         mock_trainer = MagicMock()
         mock_plan = MagicMock()
         mock_plan.get_name.return_value = "TestPlan"  # Add required method
-        mock_trainer.training_plan_holders = [mock_plan] # Attribute, not method
-        mock_trainer.get_training_plan_holders.return_value = [mock_plan] # Keep for legacy check if needed
+        mock_trainer.training_plan_holders = [mock_plan]  # Attribute, not method
+        mock_trainer.get_training_plan_holders.return_value = [
+            mock_plan
+        ]  # Keep for legacy check if needed
         study.trainer = mock_trainer
 
         parent = QWidget()
@@ -211,7 +226,8 @@ class TestEvaluationPanelIntegration:
             # But update_logic iterates plans
 
         except TypeError:
-            # If initialization fails due to other mocks properties (like widget parents), ignore for now
+            # If initialization fails due to other mocks properties
+            # (like widget parents), ignore for now
             # but ideally we fix the mocks.
             pass
 
@@ -221,7 +237,6 @@ class TestVisualizationPanelIntegration:
 
     def test_visualization_panel_initialization(self, qtbot):
         """Verify visualization panel initializes without errors."""
-        from XBrainLab.ui.visualization.panel import VisualizationPanel
 
         study = Study()
 
@@ -240,7 +255,6 @@ class TestTrainingWorkflowWithUI:
 
     def test_progress_bar_calculation_with_string_epoch(self, qtbot):
         """Test that progress bar works even if epoch types are mixed."""
-        from XBrainLab.ui.training.panel import TrainingPanel
 
         # Create option with string epoch (as from UI input)
         study = Study()
@@ -250,12 +264,12 @@ class TestTrainingWorkflowWithUI:
             optim_params={},
             use_cpu=True,
             gpu_idx=None,
-            epoch='10',  # String input
-            bs='4',
-            lr='0.001',
-            checkpoint_epoch='1',
+            epoch="10",  # String input
+            bs="4",
+            lr="0.001",
+            checkpoint_epoch="1",
             evaluation_option=TRAINING_EVALUATION.TEST_ACC,
-            repeat_num='1'
+            repeat_num="1",
         )
         study.set_training_option(option)
 
@@ -274,7 +288,15 @@ class TestTrainingWorkflowWithUI:
         mock_plan = MagicMock()
         mock_plan.get_training_epoch.return_value = 5
         mock_plan.get_training_status.return_value = "Running"
-        mock_plan.get_training_evaluation.return_value = (0.001, 0.5, 0.8, 0.9, 0.6, 0.75, 0.85)
+        mock_plan.get_training_evaluation.return_value = (
+            0.001,
+            0.5,
+            0.8,
+            0.9,
+            0.6,
+            0.75,
+            0.85,
+        )
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
         mock_trainer.is_running.return_value = True
@@ -286,8 +308,13 @@ class TestTrainingWorkflowWithUI:
         # Mock get_plans
         mock_record = MagicMock()
         mock_record.get_epoch.return_value = 5
-        mock_record.train = {'loss': [0.5], 'accuracy': [0.8], 'auc': [0.9], 'lr': [0.001]}
-        mock_record.val = {'loss': [0.6], 'accuracy': [0.75], 'auc': [0.85]}
+        mock_record.train = {
+            "loss": [0.5],
+            "accuracy": [0.8],
+            "auc": [0.9],
+            "lr": [0.001],
+        }
+        mock_record.val = {"loss": [0.6], "accuracy": [0.75], "auc": [0.85]}
         mock_plan.get_plans.return_value = [mock_record]
         mock_plan.option.epoch = 10
         study.trainer = mock_trainer
@@ -303,7 +330,6 @@ class TestTrainingWorkflowWithUI:
 
     def test_metric_tab_accumulates_history(self, qtbot):
         """Test that MetricTab correctly accumulates training history."""
-        from XBrainLab.ui.training.panel import MetricTab
 
         tab = MetricTab("Accuracy", color="#4CAF50")
         qtbot.addWidget(tab)
@@ -333,7 +359,6 @@ class TestTrainingWorkflowWithUI:
 
     def test_update_loop_handles_string_metrics(self, qtbot, real_training_option):
         """Test that update_loop handles string metrics from trainer correctly."""
-        from XBrainLab.ui.training.panel import TrainingPanel
 
         study = Study()
         study.set_training_option(real_training_option)
@@ -351,7 +376,15 @@ class TestTrainingWorkflowWithUI:
         mock_plan.get_training_epoch.return_value = 1
         mock_plan.get_training_status.return_value = "Running"
         # Return string values to simulate the actual bug
-        mock_plan.get_training_evaluation.return_value = ('0.001', '0.5', '0.8', '0.9', '0.6', '0.75', '0.85')
+        mock_plan.get_training_evaluation.return_value = (
+            "0.001",
+            "0.5",
+            "0.8",
+            "0.9",
+            "0.6",
+            "0.75",
+            "0.85",
+        )
 
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
@@ -368,15 +401,23 @@ class TestTrainingWorkflowWithUI:
         mock_record.is_finished.return_value = False
         mock_record.get_epoch.return_value = 1
         # Use string values in record to simulate the issue
-        mock_record.train = {'loss': ['0.5'], 'accuracy': ['0.8'], 'auc': ['0.9'], 'lr': ['0.001']}
-        mock_record.val = {'loss': ['0.6'], 'accuracy': ['0.75'], 'auc': ['0.85']}
+        mock_record.train = {
+            "loss": ["0.5"],
+            "accuracy": ["0.8"],
+            "auc": ["0.9"],
+            "lr": ["0.001"],
+        }
+        mock_record.val = {"loss": ["0.6"], "accuracy": ["0.75"], "auc": ["0.85"]}
         mock_plan.get_plans.return_value = [mock_record]
         mock_plan.option.epoch = 10
         study.trainer = mock_trainer
 
         # This should NOT raise TypeError about '>' comparison
         try:
-            print(f"DEBUG: plan.get_epoch_progress_text() = {mock_plan.get_epoch_progress_text()}")
+            print(
+                f"DEBUG: plan.get_epoch_progress_text() = "
+                f"{mock_plan.get_epoch_progress_text()}"
+            )
             panel.update_loop()
         except TypeError as e:
             if "'>' not supported" in str(e):
@@ -391,7 +432,6 @@ class TestTrainingWorkflowWithUI:
 
     def test_metric_tab_only_shows_one_point_initially(self, qtbot):
         """Test that plots show proper line progression, not just one point."""
-        from XBrainLab.ui.training.panel import MetricTab
 
         tab = MetricTab("Accuracy", color="#4CAF50")
         qtbot.addWidget(tab)
@@ -414,5 +454,5 @@ class TestTrainingWorkflowWithUI:
         assert len(tab.val_vals) == 3
 
 
-if __name__ == '__main__':
-    pytest.main([__file__, '-v', '--tb=short'])
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])

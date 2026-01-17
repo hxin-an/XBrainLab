@@ -17,7 +17,7 @@ def main():
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         api_key = input("Enter Google Gemini API Key: ").strip()
-    
+
     if not api_key:
         print("Error: No API Key provided.")
         return

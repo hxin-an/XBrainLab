@@ -27,11 +27,7 @@ class TimeEpoch(PreprocessBase):
                 )
 
     def get_preprocess_desc(
-        self,
-        baseline: list,
-        selected_event_names: list,
-        tmin: float,
-        tmax: float
+        self, baseline: list, selected_event_names: list, tmin: float, tmax: float
     ):
         return f"Epoching {tmin} ~ {tmax} by event ({baseline} baseline)"
 
@@ -41,7 +37,7 @@ class TimeEpoch(PreprocessBase):
         baseline: list,
         selected_event_names: list,
         tmin: float,
-        tmax: float
+        tmax: float,
     ):
         raw_events, raw_event_id = preprocessed_data.get_event_list()
 
@@ -51,18 +47,23 @@ class TimeEpoch(PreprocessBase):
                 selected_event_id[event_name] = raw_event_id[event_name]
 
         selection_mask = np.zeros(raw_events.shape[0], dtype=bool)
-        for event_name in selected_event_id:
+        for event_id in selected_event_id.values():
             selection_mask = np.logical_or(
-                selection_mask, raw_events[:, -1]==selected_event_id[event_name]
+                selection_mask, raw_events[:, -1] == event_id
             )
         selected_events = raw_events[selection_mask]
 
-        if(len(selected_events) == 0):
+        if len(selected_events) == 0:
             available = list(raw_event_id.keys())
-            raise ValueError(f"No event markers found. Selected: {selected_event_names}. Available: {available}")
+            raise ValueError(
+                f"No event markers found. Selected: {selected_event_names}. "
+                f"Available: {available}"
+            )
 
         if not preprocessed_data.is_raw():
-            raise ValueError("Data is already epoched. Cannot perform TimeEpoch on epoched data.")
+            raise ValueError(
+                "Data is already epoched. Cannot perform TimeEpoch on epoched data."
+            )
 
         data = mne.Epochs(
             preprocessed_data.get_mne(),
@@ -72,12 +73,11 @@ class TimeEpoch(PreprocessBase):
             tmax=tmax,
             baseline=baseline,
             preload=True,
-            event_repeated='drop'
+            event_repeated="drop",
         )
 
-
-        # FIX: Clear raw events to prevent set_mne from overwriting the correct epoch events
-        # with the original (larger) raw events list.
+        # FIX: Clear raw events to prevent set_mne from overwriting the correct
+        # epoch events with the original (larger) raw events list.
         preprocessed_data.raw_events = None
         preprocessed_data.raw_event_id = None
 

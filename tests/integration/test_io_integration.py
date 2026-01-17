@@ -7,8 +7,9 @@ from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
 
 # Path to the small test data provided in the repo
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'data'))
-GDF_FILE = os.path.join(TEST_DATA_DIR, 'A01T.gdf')
+TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
+
 
 class TestIOIntegration:
     """
@@ -40,21 +41,22 @@ class TestIOIntegration:
 
         # 4. Check shape
         n_channels = raw.get_nchan()
-        # n_times might vary if not preloaded vs preloaded, but get_data() returns full array
+        # n_times might vary if not preloaded vs preloaded,
+        # but get_data() returns full array
         assert data.shape[0] == n_channels
         assert data.shape[1] > 0
 
     def test_load_non_existent_file(self):
         """Test loading a file that does not exist."""
-        fake_path = os.path.join(TEST_DATA_DIR, 'non_existent.gdf')
+        fake_path = os.path.join(TEST_DATA_DIR, "non_existent.gdf")
         with pytest.raises((FileCorruptedError, FileNotFoundError)):
             load_gdf_file(fake_path)
 
     def test_load_invalid_extension(self):
         """Test loading a file with wrong extension."""
         # Create a dummy text file
-        dummy_path = os.path.join(TEST_DATA_DIR, 'dummy.txt')
-        with open(dummy_path, 'w') as f:
+        dummy_path = os.path.join(TEST_DATA_DIR, "dummy.txt")
+        with open(dummy_path, "w") as f:
             f.write("This is not a GDF file.")
 
         try:

@@ -1,4 +1,3 @@
-
 from unittest.mock import patch
 
 import pytest
@@ -12,12 +11,13 @@ class DummyModel:
     def __init__(self, param1=10, param2=0.5, param3="test"):
         pass
 
+
 class TestModelSelection:
     @pytest.fixture
     def dialog(self, qtbot):
         # Mock model_base members
-        with patch('inspect.getmembers') as mock_getmembers:
-            mock_getmembers.return_value = [('DummyModel', DummyModel)]
+        with patch("inspect.getmembers") as mock_getmembers:
+            mock_getmembers.return_value = [("DummyModel", DummyModel)]
 
             dialog = ModelSelectionWindow(None)
             qtbot.addWidget(dialog)
@@ -39,16 +39,16 @@ class TestModelSelection:
             val = dialog.params_table.item(row, 1).text()
             params[name] = val
 
-        assert params['param1'] == '10'
-        assert params['param2'] == '0.5'
-        assert params['param3'] == 'test'
+        assert params["param1"] == "10"
+        assert params["param2"] == "0.5"
+        assert params["param3"] == "test"
 
     def test_confirm(self, dialog):
         # Modify a parameter
         dialog.params_table.setItem(0, 1, QTableWidgetItem("20"))
 
         # Click OK
-        with patch.object(dialog, 'accept') as mock_accept:
+        with patch.object(dialog, "accept") as mock_accept:
             dialog.confirm()
             mock_accept.assert_called_once()
 
@@ -56,17 +56,17 @@ class TestModelSelection:
         holder = dialog.get_result()
         assert holder is not None
         assert holder.target_model == DummyModel
-        assert holder.model_params_map['param1'] == 20
-        assert holder.model_params_map['param2'] == 0.5
-        assert holder.model_params_map['param3'] == 'test'
+        assert holder.model_params_map["param1"] == 20
+        assert holder.model_params_map["param2"] == 0.5
+        assert holder.model_params_map["param3"] == "test"
 
     def test_load_weight(self, dialog):
-        with patch('PyQt6.QtWidgets.QFileDialog.getOpenFileName') as mock_open:
-            mock_open.return_value = ('/path/to/weight.pth', 'Model Weights (*)')
+        with patch("PyQt6.QtWidgets.QFileDialog.getOpenFileName") as mock_open:
+            mock_open.return_value = ("/path/to/weight.pth", "Model Weights (*)")
 
             dialog.load_pretrained_weight()
 
-            assert dialog.pretrained_weight_path == '/path/to/weight.pth'
+            assert dialog.pretrained_weight_path == "/path/to/weight.pth"
             assert dialog.weight_btn.text() == "clear"
 
             # Click again to clear

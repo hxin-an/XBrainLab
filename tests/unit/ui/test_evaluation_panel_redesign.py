@@ -1,8 +1,8 @@
-
 import sys
 from unittest.mock import MagicMock
 
 import pytest
+from matplotlib.figure import Figure
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -26,10 +26,26 @@ class MockEvalRecord:
 
     def get_per_class_metrics(self):
         return {
-            0: {'precision': 0.8, 'recall': 0.9, 'f1-score': 0.85, 'support': 10},
-            1: {'precision': 0.7, 'recall': 0.6, 'f1-score': 0.65, 'support': 10},
-            'macro_avg': {'precision': 0.75, 'recall': 0.75, 'f1-score': 0.75, 'support': 20}
+            0: {
+                "precision": 0.8,
+                "recall": 0.9,
+                "f1-score": 0.85,
+                "support": 10,
+            },
+            1: {
+                "precision": 0.7,
+                "recall": 0.6,
+                "f1-score": 0.65,
+                "support": 10,
+            },
+            "macro_avg": {
+                "precision": 0.75,
+                "recall": 0.75,
+                "f1-score": 0.75,
+                "support": 20,
+            },
         }
+
 
 class MockTrainRecord:
     def __init__(self, finished=True):
@@ -41,8 +57,9 @@ class MockTrainRecord:
 
     def get_confusion_figure(self, show_percentage=False):
         # Return a dummy figure
-        from matplotlib.figure import Figure
+
         return Figure()
+
 
 class MockPlanHolder:
     def __init__(self, name="Test Plan"):
@@ -55,12 +72,17 @@ class MockPlanHolder:
     def get_plans(self):
         return self.records
 
+
 class MockTrainer:
     def __init__(self):
-        self.training_plan_holders = [MockPlanHolder("Plan A"), MockPlanHolder("Plan B")]
+        self.training_plan_holders = [
+            MockPlanHolder("Plan A"),
+            MockPlanHolder("Plan B"),
+        ]
 
     def get_training_plan_holders(self):
         return self.training_plan_holders
+
 
 class MockStudy:
     def __init__(self):
@@ -68,14 +90,16 @@ class MockStudy:
         self.loaded_data_list = []
         self.preprocessed_data_list = []
 
+
 class MockMainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.study = MockStudy()
 
+
 def test_evaluation_panel_layout(qtbot):
     """Test the layout of the redesigned EvaluationPanel."""
-    app = QApplication.instance() or QApplication(sys.argv)
+    QApplication.instance() or QApplication(sys.argv)
 
     main_window = MockMainWindow()
     panel = EvaluationPanel(main_window)
@@ -87,7 +111,7 @@ def test_evaluation_panel_layout(qtbot):
 
     # Check Groups existence
     groups = panel.findChildren(QGroupBox)
-    assert len(groups) >= 2 # Matrix + Metrics (and possibly others inside sidebar)
+    assert len(groups) >= 2  # Matrix + Metrics (and possibly others inside sidebar)
 
     # Check Matrix Widget
     matrix_widget = panel.findChild(ConfusionMatrixWidget)
@@ -114,9 +138,10 @@ def test_evaluation_panel_layout(qtbot):
     assert isinstance(run_combo, QComboBox)
     assert isinstance(chk_percentage, QCheckBox)
 
+
 def test_evaluation_panel_logic(qtbot):
     """Test the logic of the EvaluationPanel."""
-    app = QApplication.instance() or QApplication(sys.argv)
+    QApplication.instance() or QApplication(sys.argv)
 
     main_window = MockMainWindow()
     panel = EvaluationPanel(main_window)
@@ -136,7 +161,7 @@ def test_evaluation_panel_logic(qtbot):
     # 2 Repeats + 1 Average option = 3
     assert panel.run_combo.count() == 3
     assert "Repeat 1 (Finished)" in panel.run_combo.itemText(0)
-    assert "Repeat 2" in panel.run_combo.itemText(1) # Not finished
+    assert "Repeat 2" in panel.run_combo.itemText(1)  # Not finished
 
     rc = panel.metrics_table.rowCount()
     print(f"DEBUG: Row Count Actual: {rc}")
@@ -149,8 +174,8 @@ def test_evaluation_panel_logic(qtbot):
 
     # Change Run to Repeat 2 (Not finished)
     panel.run_combo.setCurrentIndex(1)
-    assert panel.metrics_table.rowCount() == 0 # Should be empty
-    panel.bar_chart.update_plot.assert_called_with({}) # Should be cleared
+    assert panel.metrics_table.rowCount() == 0  # Should be empty
+    panel.bar_chart.update_plot.assert_called_with({})  # Should be cleared
 
     # Change Model to Plan B
     panel.model_combo.setCurrentIndex(1)
@@ -161,6 +186,7 @@ def test_evaluation_panel_logic(qtbot):
     # Test Show Percentage Toggle
     panel.chk_percentage.setChecked(True)
     panel.chk_percentage.setChecked(False)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -1,4 +1,3 @@
-
 from XBrainLab.backend import preprocessor as Preprocessor
 from XBrainLab.backend.utils.logger import logger
 
@@ -8,6 +7,7 @@ class PreprocessController:
     Controller for managing preprocessing operations.
     Handles Filtering, Resampling, Re-referencing, Normalization, and Epoching.
     """
+
     def __init__(self, study):
         self.study = study
 
@@ -49,19 +49,23 @@ class PreprocessController:
         try:
             result = processor.data_preprocess(*args, **kwargs)
             self.study.set_preprocessed_data_list(result)
-            return True
         except Exception as e:
             logger.error(f"Preprocessing failed: {e}")
             raise e
+        return True
 
     def apply_filter(self, l_freq, h_freq, notch_freqs=None):
-        return self._apply_processor(Preprocessor.Filtering, l_freq, h_freq, notch_freqs=notch_freqs)
+        return self._apply_processor(
+            Preprocessor.Filtering, l_freq, h_freq, notch_freqs=notch_freqs
+        )
 
     def apply_resample(self, sfreq):
         return self._apply_processor(Preprocessor.Resample, sfreq)
 
     def apply_rereference(self, ref_channels):
-        return self._apply_processor(Preprocessor.Rereference, ref_channels=ref_channels)
+        return self._apply_processor(
+            Preprocessor.Rereference, ref_channels=ref_channels
+        )
 
     def apply_normalization(self, method):
         return self._apply_processor(Preprocessor.Normalize, norm=method)
@@ -71,15 +75,17 @@ class PreprocessController:
         events = set()
         for data in self.study.preprocessed_data_list:
             try:
-                evs, ev_ids = data.get_event_list()
+                _, ev_ids = data.get_event_list()
                 if ev_ids:
                     events.update(ev_ids.keys())
-            except:
+            except:  # noqa: E722, PERF203
                 pass
-        return sorted(list(events))
+        return sorted(events)
 
     def apply_epoching(self, baseline, selected_events, tmin, tmax):
-        result = self._apply_processor(Preprocessor.TimeEpoch, baseline, selected_events, tmin, tmax)
+        result = self._apply_processor(
+            Preprocessor.TimeEpoch, baseline, selected_events, tmin, tmax
+        )
         if result:
             self.study.lock_dataset()
         return result

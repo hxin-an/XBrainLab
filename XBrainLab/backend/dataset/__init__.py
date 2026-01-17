@@ -5,13 +5,13 @@ from .epochs import Epochs
 from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
 
 __all__ = [
-    'Epochs',
-    'DataSplitter',
-    'DataSplittingConfig',
-    'DatasetGenerator',
-    'Dataset',
-    'SplitUnit',
-    'TrainingType',
-    'SplitByType',
-    'ValSplitByType'
+    "DataSplitter",
+    "DataSplittingConfig",
+    "Dataset",
+    "DatasetGenerator",
+    "Epochs",
+    "SplitByType",
+    "SplitUnit",
+    "TrainingType",
+    "ValSplitByType",
 ]

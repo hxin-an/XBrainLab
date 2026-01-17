@@ -23,13 +23,19 @@ class ConfusionMatrixWidget(QWidget):
 
         # Initial Placeholder
         self.fig = Figure(figsize=(5, 4), dpi=100)
-        self.fig.patch.set_facecolor('#2d2d2d')
+        self.fig.patch.set_facecolor("#2d2d2d")
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#2d2d2d')
-        self.ax.text(0.5, 0.5, "Select a group to view Confusion Matrix",
-                     color='#666666', ha='center', va='center')
-        self.ax.axis('off')
+        self.ax.set_facecolor("#2d2d2d")
+        self.ax.text(
+            0.5,
+            0.5,
+            "Select a group to view Confusion Matrix",
+            color="#666666",
+            ha="center",
+            va="center",
+        )
+        self.ax.axis("off")
 
         self.plot_layout.addWidget(self.canvas)
         layout.addWidget(self.plot_container)
@@ -51,44 +57,47 @@ class ConfusionMatrixWidget(QWidget):
                 return
 
             # Get the plotting function
-            # If plan is TrainingPlanHolder, it might not have get_confusion_figure directly?
+            # If plan is TrainingPlanHolder, it might not have get_confusion_figure
+            # directly?
             # Wait, TrainingPlanHolder usually delegates or we need to pass TrainRecord.
             # The backend method get_confusion_figure is in TrainRecord.
             # So 'plan' argument here should ideally be a TrainRecord.
 
-            if hasattr(plan, 'get_confusion_figure'):
+            if hasattr(plan, "get_confusion_figure"):
                 target_func = plan.get_confusion_figure
-            elif hasattr(plan, 'get_plans'):
+            elif hasattr(plan, "get_plans"):
                 # Fallback if a PlanHolder is passed: use the first record
                 # But ideally the caller should pass the specific record.
                 records = plan.get_plans()
                 if records:
                     target_func = records[0].get_confusion_figure
                 else:
-                    raise ValueError("Plan has no records")
+                    raise ValueError("Plan has no records")  # noqa: TRY301
             else:
                 # Try getattr with PlotType value just in case
                 target_func = getattr(plan, self.plot_type.value, None)
 
             if not target_func:
-                raise ValueError(f"Object {type(plan)} has no method for confusion matrix")
+                raise ValueError(  # noqa: TRY301
+                    f"Object {type(plan)} has no method for confusion matrix"
+                )
 
             # Call the function with show_percentage
             self.fig = target_func(show_percentage=show_percentage)
 
             if self.fig:
                 # Apply Dark Theme
-                self.fig.patch.set_facecolor('#2d2d2d')
+                self.fig.patch.set_facecolor("#2d2d2d")
                 ax = self.fig.gca()
-                ax.set_facecolor('#2d2d2d')
+                ax.set_facecolor("#2d2d2d")
 
                 # Style text elements
                 # Axis labels and title
-                ax.title.set_color('#cccccc')
-                ax.xaxis.label.set_color('#cccccc')
-                ax.yaxis.label.set_color('#cccccc')
-                ax.tick_params(axis='x', colors='#cccccc')
-                ax.tick_params(axis='y', colors='#cccccc')
+                ax.title.set_color("#cccccc")
+                ax.xaxis.label.set_color("#cccccc")
+                ax.yaxis.label.set_color("#cccccc")
+                ax.tick_params(axis="x", colors="#cccccc")
+                ax.tick_params(axis="y", colors="#cccccc")
 
                 # Re-create canvas
                 self.canvas = FigureCanvas(self.fig)
@@ -105,4 +114,3 @@ class ConfusionMatrixWidget(QWidget):
         lbl.setStyleSheet(f"color: {color};")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
-

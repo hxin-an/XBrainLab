@@ -10,12 +10,12 @@ from .trainer import Trainer
 from .training_plan import TrainingPlanHolder
 
 __all__ = [
-    'ModelHolder',
-    'TrainingOption',
-    'TestOnlyOption',
-    'TRAINING_EVALUATION',
-    'parse_device_name',
-    'parse_optim_name',
-    'TrainingPlanHolder',
-    'Trainer',
+    "TRAINING_EVALUATION",
+    "ModelHolder",
+    "TestOnlyOption",
+    "Trainer",
+    "TrainingOption",
+    "TrainingPlanHolder",
+    "parse_device_name",
+    "parse_optim_name",
 ]

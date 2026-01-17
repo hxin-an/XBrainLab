@@ -1,4 +1,3 @@
-
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -6,7 +5,7 @@ import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
 from XBrainLab.backend.dataset import Epochs
-from XBrainLab.ui.training.panel import TrainingPanel
+from XBrainLab.ui.training.panel import MetricTab, TrainingPanel
 
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
@@ -44,8 +43,10 @@ def test_training_panel_start_training_success():
     # Trigger Start Training
     # Should NOT raise exception now
     # Should NOT raise exception now
-    with patch('PyQt6.QtWidgets.QMessageBox.critical') as mock_critical, \
-         patch('PyQt6.QtWidgets.QMessageBox.warning') as mock_warning:
+    with (
+        patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+        patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+    ):
         panel.start_training()
 
         if mock_critical.called:
@@ -60,20 +61,23 @@ def test_training_panel_start_training_success():
     mock_study.train.assert_called()
 
     # Verify timer started - simulated check
-    # In this mock setup, is_training() remains False so timer might not start unless we mock side_effect.
+    # In this mock setup, is_training() remains False so timer might not
+    # start unless we mock side_effect.
     # But checking if called is main goal.
     if mock_study.is_training.return_value:
         assert panel.timer.isActive()
+
 
 def test_metric_tab_methods_exist():
     """
     Verify MetricTab now has the required methods.
     """
-    from XBrainLab.ui.training.panel import MetricTab
+
     tab = MetricTab("Test")
 
     assert hasattr(tab, "update_plot")
     assert hasattr(tab, "clear")
+
 
 def test_training_panel_split_data_success():
     """
@@ -96,7 +100,7 @@ def test_training_panel_split_data_success():
     panel = TrainingPanel(main_window)
     panel.show()
 
-    with patch('XBrainLab.ui.training.panel.DataSplittingSettingWindow') as MockWindow:
+    with patch("XBrainLab.ui.training.panel.DataSplittingSettingWindow") as MockWindow:
         # Mock exec to return True
         MockWindow.return_value.exec.return_value = True
 
@@ -106,8 +110,10 @@ def test_training_panel_split_data_success():
         # (parent=panel, epoch_data=mock_study.epoch_data)
         MockWindow.assert_called_with(panel, mock_study.epoch_data)
 
+
 if __name__ == "__main__":
     pytest.main([__file__])
+
 
 def test_training_panel_stop_training():
     """
@@ -134,9 +140,11 @@ def test_training_panel_stop_training():
 
     # Verify stop_training called on study (since Study is mocked)
     mock_study.stop_training.assert_called_once()
-    # mock_trainer.set_interrupt is NOT called because Study is mocked and doesn't execute real logic
+    # mock_trainer.set_interrupt is NOT called because Study is mocked and
+    # doesn't execute real logic
     # Status label removed in redesign? No, status is in table.
     # assert panel.status_label.text() == "Stopping..." # Removed in redesign
+
 
 def test_training_panel_update_loop_metrics():
     """
@@ -160,8 +168,10 @@ def test_training_panel_update_loop_metrics():
     # (lr, loss, acc, auc, val_loss, val_acc, val_auc)
     # Note: get_training_evaluation signature might differ, checking panel.py usage
     # It uses record.train[key][-1] etc.
-    # The test mocks mock_plan.get_training_evaluation but panel.py uses record directly?
-    # Panel uses: holders = trainer.get_training_plan_holders(), then plan.get_plans() -> records
+    # The test mocks mock_plan.get_training_evaluation but panel.py uses
+    # record directly?
+    # Panel uses: holders = trainer.get_training_plan_holders(),
+    # then plan.get_plans() -> records
     # The test setup seems to mock plan methods that might not be used anymore?
     # Let's see if we need to update the test logic too.
     # Panel uses:
@@ -178,8 +188,8 @@ def test_training_panel_update_loop_metrics():
     mock_record.get_epoch.return_value = 1
     mock_record.is_finished.return_value = False
     mock_record.repeat = 0
-    mock_record.train = {'loss': [0.5], 'accuracy': [0.8], 'lr': [0.001]}
-    mock_record.val = {'loss': [0.6], 'accuracy': [0.75]}
+    mock_record.train = {"loss": [0.5], "accuracy": [0.8], "lr": [0.001]}
+    mock_record.val = {"loss": [0.6], "accuracy": [0.75]}
 
     mock_plan.get_plans.return_value = [mock_record]
     mock_plan.get_training_repeat.return_value = 0
@@ -218,6 +228,7 @@ def test_training_panel_update_loop_metrics():
     # assert panel.best_acc == 0.75 # Removed
     # assert "0.75" in panel.acc_label.text() # Removed
 
+
 def test_training_panel_finished():
     """
     Test that training_finished resets UI state.
@@ -238,6 +249,7 @@ def test_training_panel_finished():
     assert panel.btn_start.isEnabled()
     assert not panel.btn_stop.isEnabled()
 
+
 def test_training_panel_split_data_no_epoch_data():
     """Test split_data warns when epoch_data is None."""
     mock_study = MagicMock()
@@ -255,7 +267,7 @@ def test_training_panel_split_data_no_epoch_data():
     main_window.study = mock_study
     panel = TrainingPanel(main_window)
 
-    with patch('PyQt6.QtWidgets.QMessageBox.warning') as mock_warn:
+    with patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warn:
         panel.split_data()
 
         # Should show warning about no epoched data
@@ -263,6 +275,7 @@ def test_training_panel_split_data_no_epoch_data():
         call_args = mock_warn.call_args[0]
         assert "No Epoched Data" in call_args[1]
         assert "epoching" in call_args[2]
+
 
 def test_training_panel_split_data_with_epoch_data():
     """Test split_data opens window when epoch_data exists."""
@@ -282,7 +295,7 @@ def test_training_panel_split_data_with_epoch_data():
     main_window.study = mock_study
     panel = TrainingPanel(main_window)
 
-    with patch('XBrainLab.ui.training.panel.DataSplittingSettingWindow') as MockWin:
+    with patch("XBrainLab.ui.training.panel.DataSplittingSettingWindow") as MockWin:
         instance = MockWin.return_value
         instance.exec.return_value = False  # User cancels
 

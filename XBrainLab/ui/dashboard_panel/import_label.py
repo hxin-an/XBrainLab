@@ -29,7 +29,7 @@ class ImportLabelDialog(QDialog):
         self.setWindowTitle("Import Labels")
         self.resize(500, 400)
 
-        self.label_data_map = {} # {filename: label_array}
+        self.label_data_map = {}  # {filename: label_array}
         self.unique_labels = []
 
         self.init_ui()
@@ -76,7 +76,9 @@ class ImportLabelDialog(QDialog):
         self.map_table = QTableWidget()
         self.map_table.setColumnCount(2)
         self.map_table.setHorizontalHeaderLabels(["Code", "Event Name"])
-        self.map_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.map_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         map_layout.addWidget(self.map_table)
 
         map_group.setLayout(map_layout)
@@ -87,13 +89,17 @@ class ImportLabelDialog(QDialog):
         layout.addWidget(self.info_label)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
     def browse_files(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open Label Files", "", "Label Files (*.txt *.mat *.csv *.tsv)")
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Open Label Files", "", "Label Files (*.txt *.mat *.csv *.tsv)"
+        )
         if not paths:
             return
 
@@ -130,16 +136,15 @@ class ImportLabelDialog(QDialog):
 
     def load_file(self, path):
         filename = os.path.basename(path)
-        try:
-            labels = load_label_file(path)
-            if labels is not None:
-                self.label_data_map[filename] = labels
-        except Exception as e:
-            raise e # Let caller handle or re-raise
+        labels = load_label_file(path)
+        if labels is not None:
+            self.label_data_map[filename] = labels
 
-    # Removed load_txt and load_mat as they are now in XBrainLab.backend.load_data.label_loader
+    # Removed load_txt and load_mat as they are now in
+    # XBrainLab.backend.load_data.label_loader
 
-    # Removed on_var_changed and process_labels as they are refactored into update_unique_labels
+    # Removed on_var_changed and process_labels as they are refactored into
+    # update_unique_labels
 
     def update_unique_labels(self):
         """
@@ -148,10 +153,13 @@ class ImportLabelDialog(QDialog):
         """
         all_labels = []
         for labels in self.label_data_map.values():
-            if isinstance(labels, list) and len(labels) > 0 and isinstance(labels[0], dict):
+            if (
+                isinstance(labels, list)
+                and len(labels) > 0
+                and isinstance(labels[0], dict)
+            ):
                 # Timestamp Mode: Extract 'label' from dicts
-                for item in labels:
-                    all_labels.append(item['label'])
+                all_labels.extend(item["label"] for item in labels)
             else:
                 # Sequence Mode: labels is ndarray
                 all_labels.extend(labels)
@@ -163,7 +171,10 @@ class ImportLabelDialog(QDialog):
             return
 
         self.unique_labels = sorted(np.unique(all_labels))
-        self.info_label.setText(f"Loaded {len(all_labels)} labels from {len(self.label_data_map)} files. Found {len(self.unique_labels)} unique codes.")
+        self.info_label.setText(
+            f"Loaded {len(all_labels)} labels from {len(self.label_data_map)} files. "
+            f"Found {len(self.unique_labels)} unique codes."
+        )
 
         # Preserve existing mapping if possible
         current_mapping = {}
@@ -175,7 +186,7 @@ class ImportLabelDialog(QDialog):
                     code = int(code_item.text())
                     name = name_item.text()
                     current_mapping[code] = name
-                except:
+                except Exception:
                     pass
 
         # Populate Table
@@ -223,12 +234,13 @@ class ImportLabelDialog(QDialog):
 
         super().accept()
 
+
 class EventFilterDialog(QDialog):
     def __init__(self, parent, event_names):
         super().__init__(parent)
         self.setWindowTitle("Filter GDF Events")
         self.resize(300, 400)
-        self.event_names = event_names # Already sorted list of strings
+        self.event_names = event_names  # Already sorted list of strings
         self.selected_names = []
         self.settings = QSettings("XBrainLab", "EventFilter")
         self.init_ui()
@@ -278,7 +290,9 @@ class EventFilterDialog(QDialog):
         layout.addLayout(btn_layout)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -295,7 +309,11 @@ class EventFilterDialog(QDialog):
 
         # Toggle based on the first item's state
         first_state = selected_items[0].checkState()
-        new_state = Qt.CheckState.Unchecked if first_state == Qt.CheckState.Checked else Qt.CheckState.Checked
+        new_state = (
+            Qt.CheckState.Unchecked
+            if first_state == Qt.CheckState.Checked
+            else Qt.CheckState.Checked
+        )
 
         for item in selected_items:
             item.setCheckState(new_state)
@@ -355,21 +373,24 @@ class EventFilterDialog(QDialog):
             if item.text() in names:
                 item.setCheckState(Qt.CheckState.Checked)
 
+
 class LabelMappingDialog(QDialog):
     def __init__(self, parent, data_files, label_files):
         super().__init__(parent)
         self.setWindowTitle("Map Labels to Data Files")
         self.resize(600, 400)
-        self.data_files = data_files # List of data file paths/names
-        self.label_files = label_files # List of label file paths/names
-        self.mapping = {} # {data_filename: label_filename}
+        self.data_files = data_files  # List of data file paths/names
+        self.label_files = label_files  # List of label file paths/names
+        self.mapping = {}  # {data_filename: label_filename}
 
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("Drag and drop Label files (Right) to align with Data files (Left):"))
+        layout.addWidget(
+            QLabel("Drag and drop Label files (Right) to align with Data files (Left):")
+        )
 
         # Main layout for lists
         lists_layout = QHBoxLayout()
@@ -378,11 +399,16 @@ class LabelMappingDialog(QDialog):
         data_layout = QVBoxLayout()
         data_layout.addWidget(QLabel("Data Files (Fixed)"))
         self.data_list = QListWidget()
-        self.data_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection) # Allow selection for highlighting
+        self.data_list.setSelectionMode(
+            QListWidget.SelectionMode.SingleSelection
+        )  # Allow selection for highlighting
         self.data_list.setUniformItemSizes(True)
         self.data_list.setAlternatingRowColors(True)
-        self.data_list.setStyleSheet("QListWidget::item { height: 25px; }") # Enforce height
-        # self.data_list.setEnabled(False) # Don't disable, just make non-selectable? Or just visual.
+        self.data_list.setStyleSheet(
+            "QListWidget::item { height: 25px; }"
+        )  # Enforce height
+        # self.data_list.setEnabled(False) # Don't disable, just make non-selectable?
+        # Or just visual.
         # Better to keep enabled for scrolling, but disallow drag/drop
         for f in self.data_files:
             self.data_list.addItem(os.path.basename(f))
@@ -396,14 +422,16 @@ class LabelMappingDialog(QDialog):
         self.label_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         self.label_list.setUniformItemSizes(True)
         self.label_list.setAlternatingRowColors(True)
-        self.label_list.setStyleSheet("QListWidget::item { height: 25px; }") # Enforce height
+        self.label_list.setStyleSheet(
+            "QListWidget::item { height: 25px; }"
+        )  # Enforce height
 
         # Auto-sort label files to match data files
         sorted_labels = self.auto_sort_labels()
 
         for f in sorted_labels:
             item = QListWidgetItem(os.path.basename(f) if f else "-- No Label --")
-            item.setData(Qt.ItemDataRole.UserRole, f) # Store full path/key
+            item.setData(Qt.ItemDataRole.UserRole, f)  # Store full path/key
             if not f:
                 item.setForeground(Qt.GlobalColor.gray)
             self.label_list.addItem(item)
@@ -414,14 +442,20 @@ class LabelMappingDialog(QDialog):
         layout.addLayout(lists_layout)
 
         # Sync scrolling
-        self.data_list.verticalScrollBar().valueChanged.connect(self.label_list.verticalScrollBar().setValue)
-        self.label_list.verticalScrollBar().valueChanged.connect(self.data_list.verticalScrollBar().setValue)
+        self.data_list.verticalScrollBar().valueChanged.connect(
+            self.label_list.verticalScrollBar().setValue
+        )
+        self.label_list.verticalScrollBar().valueChanged.connect(
+            self.data_list.verticalScrollBar().setValue
+        )
 
         # Sync selection for visual alignment
         self.data_list.currentRowChanged.connect(self.label_list.setCurrentRow)
         self.label_list.currentRowChanged.connect(self.data_list.setCurrentRow)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -443,7 +477,8 @@ class LabelMappingDialog(QDialog):
             best_match_idx = -1
 
             for j, label_file in enumerate(self.label_files):
-                if j in used_indices: continue
+                if j in used_indices:
+                    continue
 
                 label_name = os.path.basename(label_file)
                 label_stem = os.path.splitext(label_name)[0]
@@ -452,32 +487,28 @@ class LabelMappingDialog(QDialog):
                 if data_stem in label_name or label_stem in data_name:
                     best_match = label_file
                     best_match_idx = j
-                    break # Take first match?
+                    break  # Take first match?
 
             if best_match:
                 aligned_labels[i] = best_match
                 used_indices.add(best_match_idx)
 
         # 2. Fill gaps with remaining labels
-        remaining_labels = [f for j, f in enumerate(self.label_files) if j not in used_indices]
+        remaining_labels = [
+            f for j, f in enumerate(self.label_files) if j not in used_indices
+        ]
 
-        # If we have more data files than labels, some will be None (handled by None init)
-        # If we have more labels than data files, we append them?
-        # But the lists should ideally be same length for 1-to-1 alignment.
-        # Let's append remaining labels to the end of the list if there's space,
-        # or extend the list if needed (though data list is fixed length).
-
-        # Fill None slots with remaining labels
+        # If we have more data files than labels, some will be None (handled by None
+        # init)
+        # Fill empty slots in data file mapping with remaining labels first
         rem_idx = 0
         for i in range(len(aligned_labels)):
             if aligned_labels[i] is None and rem_idx < len(remaining_labels):
                 aligned_labels[i] = remaining_labels[rem_idx]
                 rem_idx += 1
 
-        # If still remaining labels, append them?
-        # The user can drag them up. But data list won't have corresponding entry.
-        # We should probably add placeholders to data list or just let label list be longer.
-        # Let's let label list be longer.
+        # Append remaining unmapped labels to the end of the list.
+        # This allows the user to manually rearrange them if needed.
         while rem_idx < len(remaining_labels):
             aligned_labels.append(remaining_labels[rem_idx])
             rem_idx += 1
@@ -489,7 +520,7 @@ class LabelMappingDialog(QDialog):
         # Map based on index
         count = min(self.data_list.count(), self.label_list.count())
         for i in range(count):
-            data_file = self.data_files[i] # data list is fixed order
+            data_file = self.data_files[i]  # data list is fixed order
             label_item = self.label_list.item(i)
             label_file = label_item.data(Qt.ItemDataRole.UserRole)
 

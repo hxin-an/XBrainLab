@@ -190,7 +190,8 @@ class GeminiBackend(BaseBackend):
         if not self.client:
             self.load()
 
-        # Convert messages to Gemini SDK format if needed, OR relies on SDK's auto-handling
+        # Convert messages to Gemini SDK format if needed, OR relies on SDK's
+        # auto-handling
         # The new SDK 'chats.create' creates a session.
         # We need to construct history from previous messages.
 

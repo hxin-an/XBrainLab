@@ -1,6 +1,3 @@
-
-from typing import List
-
 from .base import BaseTool
 
 # Import Mock Tools
@@ -37,6 +34,7 @@ from .real.training_real import (
 
 # ... (Previous imports)
 
+
 def get_tool_by_name(name: str) -> BaseTool:
     """
     Returns the tool instance with the given name.
@@ -46,50 +44,68 @@ def get_tool_by_name(name: str) -> BaseTool:
             return tool
     return None
 
-def get_all_tools(mode: str = 'mock') -> List[BaseTool]:
+
+def get_all_tools(mode: str = "mock") -> list[BaseTool]:
     """
     Factory function to get all tools based on the mode.
     """
-    if mode == 'mock':
+    if mode == "mock":
         return [
             # Dataset
-            MockListFilesTool(), MockLoadDataTool(),
-            MockAttachLabelsTool(), MockClearDatasetTool(), MockGetDatasetInfoTool(),
+            MockListFilesTool(),
+            MockLoadDataTool(),
+            MockAttachLabelsTool(),
+            MockClearDatasetTool(),
+            MockGetDatasetInfoTool(),
             MockGenerateDatasetTool(),
-
             # Preprocess
-            MockStandardPreprocessTool(), MockBandPassFilterTool(), MockNotchFilterTool(),
-            MockResampleTool(), MockNormalizeTool(), MockRereferenceTool(),
-            MockChannelSelectionTool(), MockSetMontageTool(), MockEpochDataTool(),
-
+            MockStandardPreprocessTool(),
+            MockBandPassFilterTool(),
+            MockNotchFilterTool(),
+            MockResampleTool(),
+            MockNormalizeTool(),
+            MockRereferenceTool(),
+            MockChannelSelectionTool(),
+            MockSetMontageTool(),
+            MockEpochDataTool(),
             # Training
-            MockSetModelTool(), MockConfigureTrainingTool(), MockStartTrainingTool(),
-
+            MockSetModelTool(),
+            MockConfigureTrainingTool(),
+            MockStartTrainingTool(),
             # UI Control
-            MockSwitchPanelTool()
+            MockSwitchPanelTool(),
         ]
-    elif mode == 'real':
+    elif mode == "real":
         return [
             # Dataset (Reusing Mock for now if Real not ready, or Todo)
             # For now we only implemented Real Training Tools as requested
-            MockListFilesTool(), MockLoadDataTool(),
-            MockAttachLabelsTool(), MockClearDatasetTool(), MockGetDatasetInfoTool(),
+            MockListFilesTool(),
+            MockLoadDataTool(),
+            MockAttachLabelsTool(),
+            MockClearDatasetTool(),
+            MockGetDatasetInfoTool(),
             MockGenerateDatasetTool(),
-
             # Preprocess
-            MockStandardPreprocessTool(), MockBandPassFilterTool(), MockNotchFilterTool(),
-            MockResampleTool(), MockNormalizeTool(), MockRereferenceTool(),
-            MockChannelSelectionTool(), MockSetMontageTool(), MockEpochDataTool(),
-
+            MockStandardPreprocessTool(),
+            MockBandPassFilterTool(),
+            MockNotchFilterTool(),
+            MockResampleTool(),
+            MockNormalizeTool(),
+            MockRereferenceTool(),
+            MockChannelSelectionTool(),
+            MockSetMontageTool(),
+            MockEpochDataTool(),
             # Training - REAL
-            RealSetModelTool(), RealConfigureTrainingTool(), RealStartTrainingTool(),
-
+            RealSetModelTool(),
+            RealConfigureTrainingTool(),
+            RealStartTrainingTool(),
             # UI Control
-            MockSwitchPanelTool()
+            MockSwitchPanelTool(),
         ]
     else:
         raise ValueError(f"Unknown tool mode: {mode}")
 
+
 # Default to mock for now, or read from env
 # In the future, this can be dynamic.
-AVAILABLE_TOOLS = get_all_tools(mode='mock')
+AVAILABLE_TOOLS = get_all_tools(mode="mock")

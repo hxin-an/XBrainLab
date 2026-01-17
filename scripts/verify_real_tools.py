@@ -9,16 +9,16 @@ sys.path.append(PROJECT_ROOT)
 sys.path.append(os.getcwd())
 
 # Import Real Tools
-from XBrainLab.backend.load_data.raw_data_loader import (  # noqa: E402
+from XBrainLab.backend.load_data.raw_data_loader import (
     RawDataLoaderFactory,
     load_gdf_file,
 )
-from XBrainLab.backend.study import Study  # noqa: E402
+from XBrainLab.backend.study import Study
 
 # Register loaders
 RawDataLoaderFactory.register_loader(".gdf", load_gdf_file)
 
-from XBrainLab.llm.tools.real.dataset_real import (  # noqa: E402
+from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
     RealClearDatasetTool,
     RealGenerateDatasetTool,
@@ -26,7 +26,7 @@ from XBrainLab.llm.tools.real.dataset_real import (  # noqa: E402
     RealListFilesTool,
     RealLoadDataTool,
 )
-from XBrainLab.llm.tools.real.preprocess_real import (  # noqa: E402
+from XBrainLab.llm.tools.real.preprocess_real import (
     RealBandPassFilterTool,
     RealChannelSelectionTool,
     RealEpochDataTool,
@@ -35,12 +35,12 @@ from XBrainLab.llm.tools.real.preprocess_real import (  # noqa: E402
     RealRereferenceTool,
     RealResampleTool,
 )
-from XBrainLab.llm.tools.real.training_real import (  # noqa: E402
+from XBrainLab.llm.tools.real.training_real import (
     RealConfigureTrainingTool,
     RealSetModelTool,
     RealStartTrainingTool,
 )
-from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool  # noqa: E402
+from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 
 
 def run_verification():

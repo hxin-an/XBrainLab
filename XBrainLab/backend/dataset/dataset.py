@@ -32,11 +32,13 @@ class Dataset:
         is_selected: bool
             Whether the dataset is selected
     """
+
     SEQ = 0
+
     def __init__(self, epoch_data: Epochs, config: DataSplittingConfig):
         validate_type(epoch_data, Epochs, "epoch_data")
         validate_type(config, DataSplittingConfig, "config")
-        self.name = ''
+        self.name = ""
         self.epoch_data = epoch_data
         self.config = config
         self.dataset_id = Dataset.SEQ
@@ -88,7 +90,7 @@ class Dataset:
             )
         """
         train_number, val_number, test_number = self.get_all_trial_numbers()
-        selected = 'O' if self.is_selected else 'X'
+        selected = "O" if self.is_selected else "X"
         name = self.get_name()
         return selected, name, train_number, val_number, test_number
 
@@ -138,9 +140,7 @@ class Dataset:
 
     ## filter
     def intersection_with_subject_by_idx(
-        self,
-        mask: np.ndarray,
-        idx: int
+        self, mask: np.ndarray, idx: int
     ) -> np.ndarray:
         """Return the intersection of the mask and the mask of target subject."""
         return mask & self.epoch_data.pick_subject_mask_by_idx(idx)

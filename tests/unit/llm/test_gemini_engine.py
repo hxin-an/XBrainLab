@@ -10,7 +10,7 @@ from XBrainLab.llm.core.engine import GeminiBackend, LLMEngine
 def gemini_config():
     config = LLMConfig()
     config.inference_mode = "gemini"
-    config.gemini_api_key = "gemini-test-key"
+    config.gemini_api_key = "gemini-test-key"  # pragma: allowlist secret
     config.gemini_model_name = "gemini-mock"
     return config
 
@@ -27,7 +27,10 @@ def test_gemini_backend_load_initializes_client(gemini_config):
         engine = LLMEngine(gemini_config)
         engine.load_model()
         # Verify Client is initialized with key
-        mock_genai.Client.assert_called_once_with(api_key="gemini-test-key")
+        # Verify Client is initialized with key
+        mock_genai.Client.assert_called_once_with(
+            api_key="gemini-test-key"  # pragma: allowlist secret
+        )
 
 
 def test_gemini_generate_stream(gemini_config):

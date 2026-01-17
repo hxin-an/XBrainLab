@@ -6,24 +6,28 @@ from torch import nn
 
 class TRAINING_EVALUATION(Enum):
     """Utility class for model selection option"""
-    VAL_LOSS = 'Best validation loss'
-    TEST_AUC = 'Best testing AUC'
-    TEST_ACC = 'Best testing performance'
-    LAST_EPOCH = 'Last Epoch'
+
+    VAL_LOSS = "Best validation loss"
+    TEST_AUC = "Best testing AUC"
+    TEST_ACC = "Best testing performance"
+    LAST_EPOCH = "Last Epoch"
+
 
 def parse_device_name(use_cpu: bool, gpu_idx: int) -> str:
     """Return device description string"""
     if use_cpu:
-        return 'cpu'
+        return "cpu"
     if gpu_idx is not None:
-        return f'{gpu_idx} - {torch.cuda.get_device_name(gpu_idx)}'
-    raise ValueError('Device not set')
+        return f"{gpu_idx} - {torch.cuda.get_device_name(gpu_idx)}"
+    raise ValueError("Device not set")
+
 
 def parse_optim_name(optim: type, optim_params: dict) -> str:
     """Return optimizer description string, including optimizer name and parameters"""
     option_list = [f"{i}={optim_params[i]}" for i in optim_params if optim_params[i]]
-    options = ', '.join(option_list)
+    options = ", ".join(option_list)
     return f"{optim.__name__} ({options})"
+
 
 class TrainingOption:
     """Utility class for storing training options
@@ -42,18 +46,21 @@ class TrainingOption:
         repeat_num: Number of repeats
         criterion: Loss function
     """
-    def __init__(self,
-                 output_dir: str,
-                 optim: type,
-                 optim_params: dict,
-                 use_cpu: bool,
-                 gpu_idx: int,
-                 epoch: int,
-                 bs: int,
-                 lr: float,
-                 checkpoint_epoch: int,
-                 evaluation_option: TRAINING_EVALUATION,
-                 repeat_num: int):
+
+    def __init__(
+        self,
+        output_dir: str,
+        optim: type,
+        optim_params: dict,
+        use_cpu: bool,
+        gpu_idx: int,
+        epoch: int,
+        bs: int,
+        lr: float,
+        checkpoint_epoch: int,
+        evaluation_option: TRAINING_EVALUATION,
+        repeat_num: int,
+    ):
         self.output_dir = output_dir
         self.optim = optim
         self.optim_params = optim_params
@@ -66,7 +73,7 @@ class TrainingOption:
         self.evaluation_option = evaluation_option
         self.repeat_num = repeat_num
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer_name = 'adam' # Default
+        self.optimizer_name = "adam"  # Default
         self.validate()
 
     def validate(self) -> None:
@@ -77,15 +84,15 @@ class TrainingOption:
         """
         reason = None
         if self.output_dir is None:
-            reason = 'Output directory not set'
-        if self.optim  is None or self.optim_params is None:
-            reason = 'Optimizer not set'
+            reason = "Output directory not set"
+        if self.optim is None or self.optim_params is None:
+            reason = "Optimizer not set"
         if self.use_cpu is None:
-            reason = 'Device not set'
+            reason = "Device not set"
         if not self.use_cpu and self.gpu_idx is None:
-            reason = 'Device not set'
+            reason = "Device not set"
         if self.evaluation_option is None:
-            reason = 'Evaluation option not set'
+            reason = "Evaluation option not set"
 
         def check_num(i):
             """Return True if i is not a number"""
@@ -96,19 +103,18 @@ class TrainingOption:
             else:
                 return False
 
-
         if self.gpu_idx is not None and check_num(self.gpu_idx):
-            reason = 'Invalid gpu_idx'
+            reason = "Invalid gpu_idx"
         if check_num(self.epoch):
-            reason = 'Invalid epoch'
+            reason = "Invalid epoch"
         if check_num(self.bs):
-            reason = 'Invalid batch size'
+            reason = "Invalid batch size"
         if check_num(self.lr):
-            reason = 'Invalid learning rate'
+            reason = "Invalid learning rate"
         if check_num(self.checkpoint_epoch):
-            reason = 'Invalid checkpoint epoch'
+            reason = "Invalid checkpoint epoch"
         if check_num(self.repeat_num) or int(self.repeat_num) <= 0:
-            reason = 'Invalid repeat number'
+            reason = "Invalid repeat number"
 
         if reason:
             raise ValueError(reason)
@@ -131,7 +137,7 @@ class TrainingOption:
 
     def get_optim_desc_str(self) -> str:
         """Return optimizer description string,
-           including optimizer name and parameters"""
+        including optimizer name and parameters"""
         return parse_optim_name(self.optim, self.optim_params)
 
     def get_device_name(self) -> str:
@@ -141,7 +147,7 @@ class TrainingOption:
     def get_device(self) -> str:
         """Return device name used by PyTorch"""
         if self.use_cpu:
-            return 'cpu'
+            return "cpu"
         return f"cuda:{self.gpu_idx}"
 
     def get_evaluation_option_repr(self) -> str:
@@ -156,7 +162,7 @@ class TrainingOption:
 
 
 class TestOnlyOption(TrainingOption):
-    __test__ = False # Not a test case
+    __test__ = False  # Not a test case
     """Utility class for storing test-only options
 
     Parameters:
@@ -165,10 +171,20 @@ class TestOnlyOption(TrainingOption):
         gpu_idx: GPU index
         bs: Batch size
     """
+
     def __init__(self, output_dir: str, use_cpu: bool, gpu_idx: int, bs: int):
         super().__init__(
-            output_dir, None, None, use_cpu, gpu_idx, 0, bs, 0, 0,
-            TRAINING_EVALUATION.LAST_EPOCH, 1
+            output_dir,
+            None,
+            None,
+            use_cpu,
+            gpu_idx,
+            0,
+            bs,
+            0,
+            0,
+            TRAINING_EVALUATION.LAST_EPOCH,
+            1,
         )
         self.validate()
 
@@ -180,11 +196,11 @@ class TestOnlyOption(TrainingOption):
         """
         reason = None
         if self.output_dir is None:
-            reason = 'Output directory not set'
+            reason = "Output directory not set"
         if self.use_cpu is None:
-            reason = 'Device not set'
+            reason = "Device not set"
         if not self.use_cpu and self.gpu_idx is None:
-            reason = 'Device not set'
+            reason = "Device not set"
 
         def check_num(i):
             """Return True if i is not a number"""
@@ -196,9 +212,9 @@ class TestOnlyOption(TrainingOption):
                 return False
 
         if self.gpu_idx is not None and check_num(self.gpu_idx):
-            reason = 'Invalid gpu_idx'
+            reason = "Invalid gpu_idx"
         if check_num(self.bs):
-            reason = 'Invalid batch size'
+            reason = "Invalid batch size"
 
         if reason:
             raise ValueError(reason)
@@ -213,17 +229,17 @@ class TestOnlyOption(TrainingOption):
         return None
 
     def get_optim_name(self):
-        return '-'
+        return "-"
 
     def get_optim_desc_str(self):
-        return '-'
+        return "-"
 
     def get_device_name(self):
         return parse_device_name(self.use_cpu, self.gpu_idx)
 
     def get_device(self):
         if self.use_cpu:
-            return 'cpu'
+            return "cpu"
         return f"cuda:{self.gpu_idx}"
 
     def get_evaluation_option_repr(self):

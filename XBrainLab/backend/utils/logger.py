@@ -27,18 +27,22 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
     # Avoid adding handlers multiple times if setup_logger is called repeatedly
     # Check if we already have a RotatingFileHandler attached to this log file
     for h in logger.handlers:
-        if isinstance(h, RotatingFileHandler) and h.baseFilename == os.path.abspath(log_file):
+        if isinstance(h, RotatingFileHandler) and h.baseFilename == os.path.abspath(
+            log_file
+        ):
             return logger
 
     # Formatter
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # File Handler (Rotating)
     # Max size 5MB, keep 5 backup files
-    file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+    file_handler = RotatingFileHandler(
+        log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
+    )
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)
 
@@ -51,6 +55,7 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
     logger.addHandler(console_handler)
 
     return logger
+
 
 # Create a default logger instance
 logger = setup_logger()

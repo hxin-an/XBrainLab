@@ -61,10 +61,7 @@ class ExportSaliencyWindow(QDialog):
 
         if plan_name != "---":
             trainer = self.trainer_map[plan_name]
-            self.real_plan_opt = {
-                plan.get_name(): plan
-                for plan in trainer.get_plans()
-            }
+            self.real_plan_opt = {plan.get_name(): plan for plan in trainer.get_plans()}
             self.repeat_combo.addItems(list(self.real_plan_opt.keys()))
         else:
             self.real_plan_opt = {}
@@ -74,7 +71,9 @@ class ExportSaliencyWindow(QDialog):
         self.method_combo.addItem("---")
 
         if repeat_name != "---":
-            self.method_combo.addItems(['Gradient', 'Gradient * Input', *supported_saliency_methods])
+            self.method_combo.addItems(
+                ["Gradient", "Gradient * Input", *supported_saliency_methods]
+            )
 
     def select_location(self):
         plan_name = self.plan_combo.currentText()
@@ -96,9 +95,9 @@ class ExportSaliencyWindow(QDialog):
             saliency = eval_record.export_saliency(method_name, file_location)
 
             file_name = [plan_name, repeat_name, method_name]
-            output_path = os.path.join(file_location, '_'.join(file_name) + '.pickle')
+            output_path = os.path.join(file_location, "_".join(file_name) + ".pickle")
 
-            with open(output_path, 'wb') as fp:
+            with open(output_path, "wb") as fp:
                 pickle.dump(saliency, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
             QMessageBox.information(self, "Success", f"Exported to {output_path}")

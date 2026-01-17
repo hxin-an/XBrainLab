@@ -1,3 +1,5 @@
+import numpy as np
+
 from ..load_data import Raw
 from .base import PreprocessBase
 
@@ -20,7 +22,9 @@ class Filtering(PreprocessBase):
 
         return ", ".join(desc_parts)
 
-    def _data_preprocess(self, preprocessed_data: Raw, l_freq: float, h_freq: float, notch_freqs=None):
+    def _data_preprocess(
+        self, preprocessed_data: Raw, l_freq: float, h_freq: float, notch_freqs=None
+    ):
         preprocessed_data.get_mne().load_data()
         mne_data = preprocessed_data.get_mne()
 
@@ -30,7 +34,6 @@ class Filtering(PreprocessBase):
 
         # Apply Notch
         if notch_freqs is not None:
-            import numpy as np
             if isinstance(notch_freqs, (int, float)):
                 notch_freqs = np.array([notch_freqs])
             mne_data = mne_data.notch_filter(freqs=notch_freqs)

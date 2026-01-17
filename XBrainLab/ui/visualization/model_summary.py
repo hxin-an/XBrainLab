@@ -25,7 +25,8 @@ class ModelSummaryWindow(QDialog):
     def check_data(self):
         if not self.trainers:
             QMessageBox.warning(self, "Warning", "No valid training plan is generated")
-            # We don't reject here immediately to allow window to show empty state if needed,
+            # We don't reject here immediately to allow window to show empty state if
+            # needed,
             # but usually this is called before showing.
 
     def init_ui(self):
@@ -46,7 +47,7 @@ class ModelSummaryWindow(QDialog):
         # Center: Summary Text
         self.summary_text = QTextEdit()
         self.summary_text.setReadOnly(True)
-        self.summary_text.setFontFamily("Courier New") # Monospace for alignment
+        self.summary_text.setFontFamily("Courier New")  # Monospace for alignment
         layout.addWidget(self.summary_text)
 
     def on_plan_select(self, plan_name):
@@ -66,14 +67,15 @@ class ModelSummaryWindow(QDialog):
             # Original code: train_shape = (self.trainer.option.bs, 1, *X.shape[-2:])
             # We need to be careful about dimensions.
             # If X is [N, C, T], shape[-2:] is (C, T).
-            # If model expects (Batch, 1, C, T) (e.g. EEGNet often treats channels as spatial dim), then this is correct.
+            # If model expects (Batch, 1, C, T) (e.g. EEGNet often treats channels as
+            # spatial dim), then this is correct.
             # But let's trust the original logic.
 
             train_shape = (trainer.option.bs, 1, *X.shape[-2:])
 
-            summary_str = str(summary(
-                model_instance, input_size=train_shape, verbose=0
-            ))
+            summary_str = str(
+                summary(model_instance, input_size=train_shape, verbose=0)
+            )
 
             self.summary_text.setText(summary_str)
 

@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,6 +15,7 @@ from XBrainLab.llm.tools.mock.ui_control_mock import MockSwitchPanelTool
 def mock_study():
     return MagicMock()
 
+
 def test_dataset_tools(mock_study):
     tool = MockLoadDataTool()
     result = tool.execute(mock_study, paths=["/tmp/test.gdf"])
@@ -26,6 +26,7 @@ def test_dataset_tools(mock_study):
     result = tool.execute(mock_study, directory="/data")
     assert "['A01T.gdf'" in result
 
+
 def test_preprocess_tools(mock_study):
     tool = MockStandardPreprocessTool()
     result = tool.execute(mock_study)
@@ -35,10 +36,12 @@ def test_preprocess_tools(mock_study):
     result = tool.execute(mock_study, montage_name="standard_1020")
     assert "Set montage to standard_1020" in result
 
+
 def test_training_tools(mock_study):
     tool = MockSetModelTool()
     result = tool.execute(mock_study, model_name="EEGNet")
     assert "Model set to EEGNet" in result
+
 
 def test_ui_control_tools(mock_study):
     tool = MockSwitchPanelTool()
@@ -48,5 +51,7 @@ def test_ui_control_tools(mock_study):
     assert "Switched UI view to training panel" in result
 
     # Test switch with view_mode
-    result = tool.execute(mock_study, panel_name="visualization", view_mode="saliency_map")
+    result = tool.execute(
+        mock_study, panel_name="visualization", view_mode="saliency_map"
+    )
     assert "showing saliency_map" in result

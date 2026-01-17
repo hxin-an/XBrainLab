@@ -1,11 +1,11 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 from XBrainLab.backend.exceptions import DataMismatchError
 
 from ..utils import validate_list_type, validate_type
 from .raw import Raw
 
-if TYPE_CHECKING: # pragma: no cover
+if TYPE_CHECKING:  # pragma: no cover
     from .. import Study
 
 
@@ -17,7 +17,8 @@ class RawDataLoader(list):
     Parameters:
         raw_data_list: List of loaded raw data.
     """
-    def __init__(self, raw_data_list: Optional[List[Raw]]=None):
+
+    def __init__(self, raw_data_list: list[Raw] | None = None):
         if raw_data_list is None:
             raw_data_list = []
         validate_list_type(raw_data_list, Raw, "raw_data_list")
@@ -65,30 +66,29 @@ class RawDataLoader(list):
             ValueError: If the loaded raw data is inconsistent with
                         the raw data in the dataset.
         """
-        validate_type(raw, Raw, 'raw')
+        validate_type(raw, Raw, "raw")
         # valide if the dataset is empty
         if not self:
             return
         # check channel number
         if self[idx].get_nchan() != raw.get_nchan():
             raise DataMismatchError(
-                f'Dataset channel numbers inconsistent (got {raw.get_nchan()}).'
+                f"Dataset channel numbers inconsistent (got {raw.get_nchan()})."
             )
         # check sfreq
         if self[idx].get_sfreq() != raw.get_sfreq():
             raise DataMismatchError(
-                f'Dataset sample frequency inconsistent (got {raw.get_sfreq()}).'
+                f"Dataset sample frequency inconsistent (got {raw.get_sfreq()})."
             )
         # check same data type
         if self[idx].is_raw() != raw.is_raw():
-            raise DataMismatchError('Dataset type inconsistent.')
+            raise DataMismatchError("Dataset type inconsistent.")
         # check epoch trial size
-        if (
-            not raw.is_raw() and
-            (self[idx].get_epoch_duration() != raw.get_epoch_duration())
+        if not raw.is_raw() and (
+            self[idx].get_epoch_duration() != raw.get_epoch_duration()
         ):
             raise DataMismatchError(
-                f'Epoch duration inconsistent (got {raw.get_epoch_duration()}).'
+                f"Epoch duration inconsistent (got {raw.get_epoch_duration()})."
             )
 
     def append(self, raw: Raw) -> None:
@@ -100,14 +100,16 @@ class RawDataLoader(list):
         self.check_loaded_data_consistency(raw)
         super().append(raw)
 
-    def apply(self, study: 'Study', force_update: bool = False) -> None:
+    def apply(self, study: "Study", force_update: bool = False) -> None:
         """Apply the loaded raw data to the study.
 
         Args:
             study: XBrainLab Study to apply the loaded raw data.
-            force_update: Whether to force override and clear the data of following steps.
+            force_update: Whether to force override and clear the data of
+                following steps.
         """
         from ..study import Study
-        validate_type(study, Study, 'study')
+
+        validate_type(study, Study, "study")
         self.validate()
         study.set_loaded_data_list(self, force_update=force_update)

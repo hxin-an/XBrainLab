@@ -14,11 +14,13 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.ui.chat_panel import ChatPanel
 from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
 from XBrainLab.ui.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.training.panel import TrainingPanel
+from XBrainLab.ui.visualization.montage_picker import PickMontageWindow
 from XBrainLab.ui.visualization.panel import VisualizationPanel
 
 
@@ -99,7 +101,8 @@ Training, etc.).
         logger.info("MainWindow initialized")
 
     def apply_vscode_theme(self):
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QMainWindow {
                 background-color: #1e1e1e;
                 color: #cccccc;
@@ -230,7 +233,8 @@ Training, etc.).
             QPushButton:pressed {
                 background-color: #007acc;
             }
-        """)
+        """
+        )
 
     def add_nav_btn(self, name, index, text):
         btn = QPushButton(text)
@@ -319,8 +323,6 @@ Training, etc.).
         if self.agent_initialized:
             return
 
-        from XBrainLab.llm.agent.controller import LLMController  # noqa: PLC0415
-
         # 2. Create Controller
         self.agent_controller = LLMController(self.study)
 
@@ -396,10 +398,6 @@ Training, etc.).
                 "System", "Error: No epoch data available for montage."
             )
             return
-
-        from XBrainLab.ui.visualization.montage_picker import (  # noqa: PLC0415
-            PickMontageWindow,
-        )
 
         # Get channel names from backend
         chs = self.study.epoch_data.get_mne().info["ch_names"]

@@ -10,7 +10,7 @@ from XBrainLab.llm.core.engine import APIBackend, LLMEngine
 def api_config():
     config = LLMConfig()
     config.inference_mode = "api"
-    config.api_key = "sk-test"
+    config.api_key = "sk-test"  # pragma: allowlist secret
     config.api_model_name = "gpt-mock"
     return config
 
@@ -19,7 +19,7 @@ def test_engine_initializes_api_backend(api_config):
     with patch("XBrainLab.llm.core.engine.OpenAI"):
         engine = LLMEngine(api_config)
         assert isinstance(engine.backend, APIBackend)
-        assert engine.backend.config.api_key == "sk-test"
+        assert engine.backend.config.api_key == "sk-test"  # pragma: allowlist secret
 
 
 def test_api_backend_load_uses_key(api_config):
@@ -27,7 +27,8 @@ def test_api_backend_load_uses_key(api_config):
         engine = LLMEngine(api_config)
         engine.load_model()
         MockClient.assert_called_once_with(
-            api_key="sk-test", base_url=api_config.base_url
+            api_key="sk-test",  # pragma: allowlist secret
+            base_url=api_config.base_url,
         )
 
 

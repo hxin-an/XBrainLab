@@ -34,8 +34,8 @@ class Raw:
     """
 
     def __init__(self, filepath: str, mne_data: mne.io.BaseRaw | mne.BaseEpochs):
-        validate_type(filepath, str, 'filepath')
-        validate_type(mne_data, (mne.io.BaseRaw, mne.BaseEpochs), 'mne_data')
+        validate_type(filepath, str, "filepath")
+        validate_type(mne_data, (mne.io.BaseRaw, mne.BaseEpochs), "mne_data")
         self.filepath = filepath
         self.mne_data = mne_data
         self.preprocess_history = []
@@ -107,8 +107,8 @@ class Raw:
                     (onset, immediately preceding sample, event_id).
             event_id: Raw event id. Same as `mne` format, {event_name: event_id}.
         """
-        validate_type(events, np.ndarray, 'events')
-        validate_type(event_id, dict, 'event_id')
+        validate_type(events, np.ndarray, "events")
+        validate_type(event_id, dict, "event_id")
         assert len(events.shape) == 2 and events.shape[1] == 3
         if not self.is_raw():
             assert self.get_epochs_length() == len(events)
@@ -124,15 +124,13 @@ class Raw:
             data: New mne data.
         """
         # set loaded event to new data
-        if (
-            isinstance(data, mne.epochs.BaseEpochs) and
-            self.raw_event_id
-        ):
+        if isinstance(data, mne.epochs.BaseEpochs) and self.raw_event_id:
             # check event consistency
             if len(self.raw_events) != len(data.events):
                 print(
-                    'UserWarning: Number of events from loaded label file and selected events for epoching are inconsistent.'
-                    'Please proceed with caution.'
+                    "UserWarning: Number of events from loaded label file and "
+                    "selected events for epoching are inconsistent."
+                    "Please proceed with caution."
                 )
             data.events = self.raw_events
             data.event_id = self.raw_event_id
@@ -163,15 +161,15 @@ class Raw:
 
     def get_nchan(self) -> int:
         """Return the number of channels of :attr:`mne_data`."""
-        return self.mne_data.info['nchan']
+        return self.mne_data.info["nchan"]
 
     def get_sfreq(self) -> float:
         """Return the sample frequency of :attr:`mne_data`."""
-        return self.mne_data.info['sfreq']
+        return self.mne_data.info["sfreq"]
 
     def get_filter_range(self) -> tuple[float, float]:
         """Return the filter range of :attr:`mne_data`."""
-        return self.mne_data.info['highpass'], self.mne_data.info['lowpass']
+        return self.mne_data.info["highpass"], self.mne_data.info["lowpass"]
 
     def get_epochs_length(self) -> int:
         """Return the number of epochs."""
@@ -205,10 +203,8 @@ class Raw:
         try:
             events = mne.find_events(self.mne_data, verbose=False)
             if len(events) == 0:
-                raise ValueError("No events found on stim channel")
-            event_ids = {
-                str(e): e for e in np.unique(events[:, -1])
-            }
+                raise ValueError("No events found on stim channel")  # noqa: TRY301
+            event_ids = {str(e): e for e in np.unique(events[:, -1])}
         except Exception:
             try:
                 return mne.events_from_annotations(self.mne_data, verbose=False)
@@ -230,22 +226,20 @@ class Raw:
     def has_event(self) -> bool:
         """Return whether the data has event."""
         _, event_id = self.get_event_list()
-        if event_id:
-            return True
-        return False
+        return bool(event_id)
 
     def has_event_str(self) -> str:
         """Return whether the data has event in string format."""
         if self.has_event():
-            return 'yes'
-        return 'no'
+            return "yes"
+        return "no"
 
     def get_event_name_list_str(self) -> str:
         """Return the event name list in string format. Separated by comma."""
         if not self.has_event():
-            return 'None'
+            return "None"
         _, event_id = self.get_event_list()
-        return ','.join([str(e) for e in event_id])
+        return ",".join([str(e) for e in event_id])
 
     # misc
     def get_row_info(self) -> tuple[str, str, str, int, float, int, str]:
@@ -264,6 +258,8 @@ class Raw:
             self.get_filename(),
             self.get_subject_name(),
             self.get_session_name(),
-            channel, sfreq, epochs, has_event
+            channel,
+            sfreq,
+            epochs,
+            has_event,
         )
-

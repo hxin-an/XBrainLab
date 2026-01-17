@@ -8,7 +8,7 @@
 
 ### 1. 為什麼選擇 Qdrant？
 *   **效能 (Performance)**: 基於 **Rust** 編寫，查詢速度極快，記憶體管理優異。
-*   **部署彈性 (Deployment)**: 
+*   **部署彈性 (Deployment)**:
     *   **Local Mode (On-disk)**: 這是我們最需要的模式。不需要 Docker，不需要 Server，只需 `pip install qdrant-client`，即可直接將向量存儲在本地檔案系統 (`/path/to/storage`)。
     *   **Server Mode**: 未來若需擴展，可無縫遷移至 Docker/Cloud 版本。
 *   **LangChain 整合**: `langchain-qdrant` 提供了成熟的整合，支援 Filter 搜尋 (Metadata Filtering)，這對我們的「分析師 Agent」(需要根據檔案類型過濾) 非常重要。

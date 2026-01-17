@@ -13,10 +13,10 @@ class PlotFigureWindow(SinglePlotWindow):
         trainers,
         plot_type,
         figsize=None,
-        title='Plot',
+        title="Plot",
         plan_name=None,
         real_plan_name=None,
-        saliency_name=None
+        saliency_name=None,
     ):
         super().__init__(parent, figsize, title=title)
         self.trainers = trainers
@@ -50,7 +50,8 @@ class PlotFigureWindow(SinglePlotWindow):
 
     def check_data(self):
         if not isinstance(self.trainers, list) or len(self.trainers) == 0:
-            # In PyQt we might want to show a message box, but init shouldn't block/fail ideally
+            # In PyQt we might want to show a message box, but init shouldn't
+            # block/fail ideally
             pass
 
     def init_ui(self):
@@ -60,21 +61,23 @@ class PlotFigureWindow(SinglePlotWindow):
 
         # Plan
         self.plan_combo = QComboBox()
-        self.plan_combo.addItem('Select a plan')
+        self.plan_combo.addItem("Select a plan")
         self.plan_combo.addItems(list(self.trainer_map.keys()))
         self.plan_combo.currentTextChanged.connect(self.on_plan_select)
         selector_layout.addWidget(self.plan_combo)
 
         # Real Plan (Repeat)
         self.real_plan_combo = QComboBox()
-        self.real_plan_combo.addItem('Select repeat')
+        self.real_plan_combo.addItem("Select repeat")
         self.real_plan_combo.currentTextChanged.connect(self.on_real_plan_select)
         selector_layout.addWidget(self.real_plan_combo)
 
         # Saliency
         self.saliency_combo = QComboBox()
-        self.saliency_combo.addItem('Select saliency method')
-        self.saliency_combo.addItems(['Gradient', 'Gradient * Input', *supported_saliency_methods])
+        self.saliency_combo.addItem("Select saliency method")
+        self.saliency_combo.addItems(
+            ["Gradient", "Gradient * Input", *supported_saliency_methods]
+        )
         self.saliency_combo.currentTextChanged.connect(self.on_saliency_method_select)
         selector_layout.addWidget(self.saliency_combo)
 
@@ -87,7 +90,7 @@ class PlotFigureWindow(SinglePlotWindow):
         self.trainer = None
 
         self.real_plan_combo.clear()
-        self.real_plan_combo.addItem('Select repeat')
+        self.real_plan_combo.addItem("Select repeat")
 
         if plan_name not in self.trainer_map:
             return
@@ -107,7 +110,7 @@ class PlotFigureWindow(SinglePlotWindow):
 
     def on_saliency_method_select(self, method_name):
         self.set_selection(False)
-        if method_name == 'Select saliency method':
+        if method_name == "Select saliency method":
             return
         # self.add_plot_command()
         self.recreate_fig()
@@ -135,12 +138,15 @@ class PlotFigureWindow(SinglePlotWindow):
             else:
                 self.plot_gap += 1
                 if self.plot_gap < MAX_PLOT_GAP:
-                    self.current_plot = True # Keep waiting
+                    self.current_plot = True  # Keep waiting
                 else:
                     self.plot_gap = 0
                     update_progress = self.plan_to_plot.get_epoch()
 
-                    if (update_progress != self.update_progress or self.plan_to_plot.is_finished()):
+                    if (
+                        update_progress != self.update_progress
+                        or self.plan_to_plot.is_finished()
+                    ):
                         self.update_progress = update_progress
                         self.show_drawing()
 
@@ -159,7 +165,7 @@ class PlotFigureWindow(SinglePlotWindow):
                             self.empty_data_figure()
 
                     if not self.plan_to_plot.is_finished():
-                        self.current_plot = True # Keep updating if running
+                        self.current_plot = True  # Keep updating if running
                     # self.redraw() # Redraw handled above
 
         if counter == self.drawCounter:
@@ -177,5 +183,5 @@ class PlotFigureWindow(SinglePlotWindow):
 
     def recreate_fig(self, *args, current_plot=True):
         self.update_progress = -1
-        self.current_plot = current_plot # Force re-check in loop
-        self.plot_gap = 100 # Force immediate update
+        self.current_plot = current_plot  # Force re-check in loop
+        self.plot_gap = 100  # Force immediate update

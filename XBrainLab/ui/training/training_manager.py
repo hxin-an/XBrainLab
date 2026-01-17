@@ -1,3 +1,5 @@
+import contextlib
+
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QDialog,
@@ -59,11 +61,23 @@ class TrainingManagerWindow(QDialog):
 
         # Table
         self.plan_table = QTableWidget()
-        columns = ['Plan name', 'Status', 'Epoch', 'lr', 'loss', 'acc (%)',
-                   'auc', 'val_loss', 'val_acc (%)', 'val_auc']
+        columns = [
+            "Plan name",
+            "Status",
+            "Epoch",
+            "lr",
+            "loss",
+            "acc (%)",
+            "auc",
+            "val_loss",
+            "val_acc (%)",
+            "val_auc",
+        ]
         self.plan_table.setColumnCount(len(columns))
         self.plan_table.setHorizontalHeaderLabels(columns)
-        self.plan_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.plan_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         layout.addWidget(self.plan_table)
 
         # Status Bar
@@ -85,27 +99,30 @@ class TrainingManagerWindow(QDialog):
         self.update_table()
 
     def plot_loss(self):
-        win = PlotFigureWindow(self, self.training_plan_holders, PlotType.LOSS, title="Loss Plot")
+        win = PlotFigureWindow(
+            self, self.training_plan_holders, PlotType.LOSS, title="Loss Plot"
+        )
         win.show()
-        # We need to keep a reference or exec?
-        # PlotFigureWindow is a QDialog (SinglePlotWindow is QDialog).
-        # If we want non-modal, use show(). But we need to keep reference if it's local var.
-        # But here win is local. It might be garbage collected.
-        # Let's assign to self or make it modal.
-        # Original code didn't seem to block.
-        # Let's try exec() for now or keep list of windows.
+        # Keep reference to the window to prevent garbage collection if non-modal.
+        # Using exec() blocks to ensure the window persists until closed.
         win.exec()
 
     def plot_acc(self):
-        win = PlotFigureWindow(self, self.training_plan_holders, PlotType.ACCURACY, title="Accuracy Plot")
+        win = PlotFigureWindow(
+            self, self.training_plan_holders, PlotType.ACCURACY, title="Accuracy Plot"
+        )
         win.exec()
 
     def plot_auc(self):
-        win = PlotFigureWindow(self, self.training_plan_holders, PlotType.AUC, title="AUC Plot")
+        win = PlotFigureWindow(
+            self, self.training_plan_holders, PlotType.AUC, title="AUC Plot"
+        )
         win.exec()
 
     def plot_lr(self):
-        win = PlotFigureWindow(self, self.training_plan_holders, PlotType.LR, title="Learning Rate Plot")
+        win = PlotFigureWindow(
+            self, self.training_plan_holders, PlotType.LR, title="Learning Rate Plot"
+        )
         win.exec()
 
     def start_training(self):
@@ -117,10 +134,8 @@ class TrainingManagerWindow(QDialog):
         if not self.trainer.is_running():
             QMessageBox.warning(self, "Warning", "No training is in progress")
             return
-        try:
+        with contextlib.suppress(Exception):
             self.trainer.set_interrupt()
-        except Exception:
-            pass
 
     def finish_training(self):
         self.start_btn.setEnabled(True)
@@ -139,8 +154,10 @@ class TrainingManagerWindow(QDialog):
     def update_table(self):
         def get_table_values(plan):
             return (
-                plan.get_name(), plan.get_training_status(),
-                str(plan.get_training_epoch()), *[str(x) for x in plan.get_training_evaluation()]
+                plan.get_name(),
+                plan.get_training_status(),
+                str(plan.get_training_epoch()),
+                *[str(x) for x in plan.get_training_evaluation()],
             )
 
         if self.plan_table.rowCount() == 0:

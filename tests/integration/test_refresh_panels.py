@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,6 +10,7 @@ def mock_study():
     study = MagicMock()
     # Mock necessary attributes for MainWindow init if any
     return study
+
 
 def test_refresh_panels(qtbot, mock_study):
     """Test that refresh_panels calls update methods on all child panels."""
@@ -34,6 +34,7 @@ def test_refresh_panels(qtbot, mock_study):
     window.training_panel.update_info.assert_called_once()
     window.evaluation_panel.update_info.assert_called_once()
     window.visualization_panel.update_info.assert_called_once()
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.exceptions import FileCorruptedError
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_set_file
 
@@ -12,8 +13,8 @@ class TestRawDataLoaderUnit:
     Uses mocking to avoid actual file I/O.
     """
 
-    @patch('XBrainLab.backend.load_data.raw.validate_type')
-    @patch('XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf')
+    @patch("XBrainLab.backend.load_data.raw.validate_type")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf")
     def test_load_gdf_success(self, mock_read_gdf, mock_validate):
         """Test successful GDF loading with mocked MNE."""
         # Setup mock return value
@@ -28,19 +29,20 @@ class TestRawDataLoaderUnit:
         assert isinstance(result, Raw)
         assert result.get_mne() == mock_raw
 
-    @patch('XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf')
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf")
     def test_load_gdf_failure(self, mock_read_gdf):
         """Test GDF loading failure handling."""
         # Setup mock to raise exception
         mock_read_gdf.side_effect = Exception("File corrupted")
 
         # Execute & Verify
-        from XBrainLab.backend.exceptions import FileCorruptedError
+        # Execute & Verify
+
         with pytest.raises(FileCorruptedError):
             load_gdf_file("corrupted.gdf")
 
-    @patch('XBrainLab.backend.load_data.raw.validate_type')
-    @patch('XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_eeglab')
+    @patch("XBrainLab.backend.load_data.raw.validate_type")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_eeglab")
     def test_load_set_raw_success(self, mock_read_eeglab, mock_validate):
         """Test successful SET loading as Raw."""
         mock_raw = MagicMock()
@@ -52,10 +54,12 @@ class TestRawDataLoaderUnit:
         assert isinstance(result, Raw)
         assert result.get_mne() == mock_raw
 
-    @patch('XBrainLab.backend.load_data.raw.validate_type')
-    @patch('XBrainLab.backend.load_data.raw_data_loader.mne.io.read_epochs_eeglab')
-    @patch('XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_eeglab')
-    def test_load_set_fallback_to_epochs(self, mock_read_raw, mock_read_epochs, mock_validate):
+    @patch("XBrainLab.backend.load_data.raw.validate_type")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_epochs_eeglab")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_eeglab")
+    def test_load_set_fallback_to_epochs(
+        self, mock_read_raw, mock_read_epochs, mock_validate
+    ):
         """Test fallback to Epochs when Raw loading fails with TypeError."""
         # Raw loading fails
         mock_read_raw.side_effect = TypeError("Not a raw file")

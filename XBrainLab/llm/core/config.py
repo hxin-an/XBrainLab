@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -21,14 +21,22 @@ class LLMConfig:
 
     # Paths
     # Store models inside the project directory: XBrainLab/llm/models
-    cache_dir: str = os.path.join(os.path.dirname(__file__), "models")
+    cache_dir: str = field(
+        default_factory=lambda: os.path.join(os.path.dirname(__file__), "models")
+    )
 
     # API Configuration
-    inference_mode: str = os.getenv("INFERENCE_MODE", "local")  # 'local', 'api', or 'gemini'
-    api_key: str = os.getenv("OPENAI_API_KEY", "")
-    base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    inference_mode: str = field(
+        default_factory=lambda: os.getenv("INFERENCE_MODE", "local")
+    )  # 'local', 'api', or 'gemini'
+    api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
+    base_url: str = field(
+        default_factory=lambda: os.getenv(
+            "OPENAI_BASE_URL", "https://api.openai.com/v1"
+        )
+    )
     api_model_name: str = "gpt-4o"  # or 'deepseek-chat', etc.
 
     # Gemini Configuration
-    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     gemini_model_name: str = "gemini-2.0-flash"

@@ -1,6 +1,5 @@
 import os
 import re
-from typing import Tuple
 
 
 class FilenameParser:
@@ -10,7 +9,9 @@ class FilenameParser:
     """
 
     @staticmethod
-    def parse_by_split(filename: str, separator: str, sub_idx: int, sess_idx: int) -> Tuple[str, str]:
+    def parse_by_split(
+        filename: str, separator: str, sub_idx: int, sess_idx: int
+    ) -> tuple[str, str]:
         """
         Parse filename by splitting with a separator.
 
@@ -41,7 +42,9 @@ class FilenameParser:
         return sub, sess
 
     @staticmethod
-    def parse_by_regex(filename: str, pattern: str, sub_group: int, sess_group: int) -> Tuple[str, str]:
+    def parse_by_regex(
+        filename: str, pattern: str, sub_group: int, sess_group: int
+    ) -> tuple[str, str]:
         """
         Parse filename using Regular Expression.
 
@@ -73,7 +76,7 @@ class FilenameParser:
         return sub, sess
 
     @staticmethod
-    def parse_by_folder(filepath: str) -> Tuple[str, str]:
+    def parse_by_folder(filepath: str) -> tuple[str, str]:
         """
         Parse metadata from parent folder names.
         Assumes structure like: .../Subject/Session/filename.gdf
@@ -102,7 +105,9 @@ class FilenameParser:
         return sub, sess
 
     @staticmethod
-    def parse_by_fixed_position(filename: str, sub_start: int, sub_len: int, sess_start: int, sess_len: int) -> Tuple[str, str]:
+    def parse_by_fixed_position(
+        filename: str, sub_start: int, sub_len: int, sess_start: int, sess_len: int
+    ) -> tuple[str, str]:
         """
         Parse filename by fixed character positions.
 
@@ -137,7 +142,7 @@ class FilenameParser:
         return sub, sess
 
     @staticmethod
-    def parse_by_named_regex(filename: str, pattern: str) -> Tuple[str, str]:
+    def parse_by_named_regex(filename: str, pattern: str) -> tuple[str, str]:
         """
         Parse filename using Named Regular Expression (e.g. (?P<subject>...)).
 
@@ -163,10 +168,10 @@ class FilenameParser:
 
             if match:
                 groupdict = match.groupdict()
-                if 'subject' in groupdict:
-                    sub = groupdict['subject']
-                if 'session' in groupdict:
-                    sess = groupdict['session']
+                if "subject" in groupdict:
+                    sub = groupdict["subject"]
+                if "session" in groupdict:
+                    sess = groupdict["session"]
         except Exception:
             pass
 

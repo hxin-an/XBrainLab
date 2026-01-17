@@ -1,4 +1,3 @@
-
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -13,9 +12,11 @@ def mock_study():
     study.trainer = MagicMock()
     return study
 
+
 @pytest.fixture
 def controller(mock_study):
     return EvaluationController(mock_study)
+
 
 def test_get_plans(controller, mock_study):
     # Case 1: Trainer exists
@@ -27,14 +28,16 @@ def test_get_plans(controller, mock_study):
     mock_study.trainer = None
     assert controller.get_plans() == []
 
+
 def test_get_pooled_eval_result_empty(controller, mock_study):
     plan = MagicMock()
-    plan.get_plans.return_value = [] # No records
+    plan.get_plans.return_value = []  # No records
 
-    l, o, m = controller.get_pooled_eval_result(plan)
-    assert l is None
+    labels, o, m = controller.get_pooled_eval_result(plan)
+    assert labels is None
     assert o is None
     assert m == {}
+
 
 def test_get_pooled_eval_result_success(controller, mock_study):
     # Setup records
@@ -53,21 +56,24 @@ def test_get_pooled_eval_result_success(controller, mock_study):
 
     # Needs to mock EvalRecord inside the controller logic
     # The controller does: temp_record = EvalRecord(...)
-    with patch('XBrainLab.backend.controller.evaluation_controller.EvalRecord') as MockRecord:
+    with patch(
+        "XBrainLab.backend.controller.evaluation_controller.EvalRecord"
+    ) as MockRecord:
         instance = MockRecord.return_value
-        instance.get_per_class_metrics.return_value = {'acc': 0.9}
+        instance.get_per_class_metrics.return_value = {"acc": 0.9}
 
         labels, outputs, metrics = controller.get_pooled_eval_result(plan)
 
         # Check concatenation happened
         assert len(labels) == 4
         assert len(outputs) == 4
-        assert metrics == {'acc': 0.9}
+        assert metrics == {"acc": 0.9}
 
         # Verify call to EvalRecord
         # Should have concatenated arrays
         args = MockRecord.call_args[0]
         assert np.array_equal(args[0], np.array([0, 1, 1, 0]))
+
 
 def test_get_model_summary_str_from_record(controller):
     plan = MagicMock()
@@ -75,7 +81,9 @@ def test_get_model_summary_str_from_record(controller):
     record.model = MagicMock()
     record.get_name.return_value = "Run 1"
 
-    with patch('XBrainLab.backend.controller.evaluation_controller.summary') as mock_summary:
+    with patch(
+        "XBrainLab.backend.controller.evaluation_controller.summary"
+    ) as mock_summary:
         mock_summary.return_value = "Model Summary"
 
         # Setup dataset shape
@@ -86,6 +94,7 @@ def test_get_model_summary_str_from_record(controller):
         assert "=== Run: Run 1 ===" in s
         assert "Model Summary" in s
 
+
 def test_get_model_summary_str_new_model(controller):
     plan = MagicMock()
     plan.dataset.get_epoch_data().get_model_args.return_value = {}
@@ -94,12 +103,15 @@ def test_get_model_summary_str_new_model(controller):
     mock_model = MagicMock()
     plan.model_holder.get_model.return_value = mock_model
 
-    with patch('XBrainLab.backend.controller.evaluation_controller.summary') as mock_summary:
+    with patch(
+        "XBrainLab.backend.controller.evaluation_controller.summary"
+    ) as mock_summary:
         mock_summary.return_value = "Fresh Model"
 
         s = controller.get_model_summary_str(plan, None)
         assert "Fresh Model" in s
         assert "=== Run:" not in s
+
 
 def test_get_model_summary_error(controller):
     plan = MagicMock()

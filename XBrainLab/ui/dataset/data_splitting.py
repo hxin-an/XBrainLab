@@ -19,12 +19,15 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.dataset import (
     DatasetGenerator,
     DataSplitter,
+    SplitByType,
     SplitUnit,
+    ValSplitByType,
 )
 
 from .split_chooser import ManualSplitChooser
 
 DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
+
 
 class DataSplitterHolder(DataSplitter):
     def __init__(self, is_option, split_type):
@@ -47,6 +50,7 @@ class DataSplitterHolder(DataSplitter):
         # State is already updated via setters.
         # No need to "commit" state or cache validation.
         pass
+
 
 class DataSplittingWindow(QDialog):
     def __init__(self, parent, title, epoch_data, config):
@@ -74,7 +78,7 @@ class DataSplittingWindow(QDialog):
         # Left: Tree
         left_layout = QVBoxLayout()
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(['select', 'name', 'train', 'val', 'test'])
+        self.tree.setHeaderLabels(["select", "name", "train", "val", "test"])
         left_layout.addWidget(self.tree)
 
         self.btn_info = QPushButton("Show info")
@@ -109,7 +113,9 @@ class DataSplittingWindow(QDialog):
         val_layout = QGridLayout(val_group)
         self.val_widgets = []
 
-        split_unit_list = [i.value for i in SplitUnit if i not in [SplitUnit.KFOLD, SplitUnit.MANUAL]]
+        split_unit_list = [
+            i.value for i in SplitUnit if i not in [SplitUnit.KFOLD, SplitUnit.MANUAL]
+        ]
         val_splitter_list, test_splitter_list = self.config.get_splitter_option()
         self.val_splitter_list = val_splitter_list
         self.test_splitter_list = test_splitter_list
@@ -129,12 +135,16 @@ class DataSplittingWindow(QDialog):
                 else:
                     opts.append(SplitUnit.MANUAL.value)
                 combo.addItems(opts)
-                combo.currentTextChanged.connect(lambda t, s=splitter: self.on_split_type_change(s, t))
-                val_layout.addWidget(combo, row+1, 0)
+                combo.currentTextChanged.connect(
+                    lambda t, s=splitter: self.on_split_type_change(s, t)
+                )
+                val_layout.addWidget(combo, row + 1, 0)
 
                 entry = QLineEdit(DEFAULT_SPLIT_ENTRY_VALUE)
-                entry.textChanged.connect(lambda t, s=splitter: self.on_entry_change(s, t))
-                val_layout.addWidget(entry, row+1, 1)
+                entry.textChanged.connect(
+                    lambda t, s=splitter: self.on_entry_change(s, t)
+                )
+                val_layout.addWidget(entry, row + 1, 1)
 
                 # Init splitter vars
                 splitter.set_split_unit_var(combo.currentText())
@@ -170,12 +180,16 @@ class DataSplittingWindow(QDialog):
                 else:
                     opts.append(SplitUnit.MANUAL.value)
                 combo.addItems(opts)
-                combo.currentTextChanged.connect(lambda t, s=splitter: self.on_split_type_change(s, t))
-                test_layout.addWidget(combo, row+1, 0)
+                combo.currentTextChanged.connect(
+                    lambda t, s=splitter: self.on_split_type_change(s, t)
+                )
+                test_layout.addWidget(combo, row + 1, 0)
 
                 entry = QLineEdit(DEFAULT_SPLIT_ENTRY_VALUE)
-                entry.textChanged.connect(lambda t, s=splitter: self.on_entry_change(s, t))
-                test_layout.addWidget(entry, row+1, 1)
+                entry.textChanged.connect(
+                    lambda t, s=splitter: self.on_entry_change(s, t)
+                )
+                test_layout.addWidget(entry, row + 1, 1)
 
                 splitter.set_split_unit_var(combo.currentText())
                 splitter.set_entry_var(entry.text())
@@ -207,15 +221,27 @@ class DataSplittingWindow(QDialog):
     def handle_manual_split(self, splitter):
         # Logic to open ManualSplitChooser
         # Need to determine choices based on split_type
-        from XBrainLab.backend.dataset import SplitByType, ValSplitByType
+        # Need to determine choices based on split_type
 
         choices = []
-        if splitter.split_type in [SplitByType.SESSION, SplitByType.SESSION_IND, ValSplitByType.SESSION]:
+        if splitter.split_type in [
+            SplitByType.SESSION,
+            SplitByType.SESSION_IND,
+            ValSplitByType.SESSION,
+        ]:
             choices = list(self.epoch_data.get_session_map().items())
-        elif splitter.split_type in [SplitByType.TRIAL, SplitByType.TRIAL_IND, ValSplitByType.TRIAL]:
+        elif splitter.split_type in [
+            SplitByType.TRIAL,
+            SplitByType.TRIAL_IND,
+            ValSplitByType.TRIAL,
+        ]:
             choices = list(range(self.epoch_data.get_data_length()))
             choices = [(c, c) for c in choices]
-        elif splitter.split_type in [SplitByType.SUBJECT, SplitByType.SUBJECT_IND, ValSplitByType.SUBJECT]:
+        elif splitter.split_type in [
+            SplitByType.SUBJECT,
+            SplitByType.SUBJECT_IND,
+            ValSplitByType.SUBJECT,
+        ]:
             choices = list(self.epoch_data.get_subject_map().items())
 
         dlg = ManualSplitChooser(self, choices)
@@ -235,7 +261,9 @@ class DataSplittingWindow(QDialog):
                 idx = [s for s in self.val_splitter_list if s.is_option].index(splitter)
                 self.val_widgets[idx][1].setText(value)
             elif splitter in self.test_splitter_list:
-                idx = [s for s in self.test_splitter_list if s.is_option].index(splitter)
+                idx = [s for s in self.test_splitter_list if s.is_option].index(
+                    splitter
+                )
                 self.test_widgets[idx][1].setText(value)
 
     def preview(self):
@@ -262,11 +290,14 @@ class DataSplittingWindow(QDialog):
 
     def update_table(self):
         if self.dataset_generator and self.dataset_generator.preview_failed:
-             self.tree.clear()
-             item = QTreeWidgetItem(self.tree)
-             item.setText(1, "Nan")
+            self.tree.clear()
+            item = QTreeWidgetItem(self.tree)
+            item.setText(1, "Nan")
         elif len(self.datasets) > 0:
-            if self.tree.topLevelItemCount() == 1 and self.tree.topLevelItem(0).text(0) == "...":
+            if (
+                self.tree.topLevelItemCount() == 1
+                and self.tree.topLevelItem(0).text(0) == "..."
+            ):
                 self.tree.clear()
 
             current_count = self.tree.topLevelItemCount()
@@ -280,13 +311,22 @@ class DataSplittingWindow(QDialog):
 
     def show_info(self):
         item = self.tree.currentItem()
-        if not item: return
+        if not item:
+            return
         idx = self.tree.indexOfTopLevelItem(item)
-        if idx < 0 or idx >= len(self.datasets): return
+        if idx < 0 or idx >= len(self.datasets):
+            return
 
         target = self.datasets[idx]
         # Show info window (Not implemented here, but could be another dialog)
-        QMessageBox.information(self, "Info", f"Dataset: {target.name}\nTrain: {sum(target.train_mask)}\nVal: {sum(target.val_mask)}\nTest: {sum(target.test_mask)}")
+        QMessageBox.information(
+            self,
+            "Info",
+            f"Dataset: {target.name}\n"
+            f"Train: {sum(target.train_mask)}\n"
+            f"Val: {sum(target.val_mask)}\n"
+            f"Test: {sum(target.test_mask)}",
+        )
 
     def confirm(self):
         if self.preview_worker and self.preview_worker.is_alive():

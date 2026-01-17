@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 
@@ -31,10 +32,10 @@ class SmartParserDialog(QDialog):
         self.setWindowTitle("Smart Metadata Parser")
         self.resize(1000, 700)
         self.filenames = filenames
-        self.parsed_data = {} # filename -> (subject, session)
+        self.parsed_data = {}  # filename -> (subject, session)
 
         self.init_ui()
-        self.load_settings() # Load previous settings
+        self.load_settings()  # Load previous settings
         self.update_preview()
 
     def init_ui(self):
@@ -79,7 +80,9 @@ class SmartParserDialog(QDialog):
         layout_split = QFormLayout(page_split)
 
         self.split_sep_combo = QComboBox()
-        self.split_sep_combo.addItems(["Underscore (_)", "Hyphen (-)", "Space ( )", "Dot (.)"])
+        self.split_sep_combo.addItems(
+            ["Underscore (_)", "Hyphen (-)", "Space ( )", "Dot (.)"]
+        )
         self.split_sep_combo.currentIndexChanged.connect(self.update_preview)
 
         self.split_sub_idx = QSpinBox()
@@ -105,12 +108,12 @@ class SmartParserDialog(QDialog):
         layout_regex = QFormLayout(page_regex)
 
         self.regex_preset_combo = QComboBox()
-        self.regex_preset_combo.addItems([
-            "Custom",
-            "Subject_Session (e.g. Sub01_Ses01)",
-            "BIDS (sub-01_ses-01)"
-        ])
-        self.regex_preset_combo.currentIndexChanged.connect(self.on_regex_preset_changed)
+        self.regex_preset_combo.addItems(
+            ["Custom", "Subject_Session (e.g. Sub01_Ses01)", "BIDS (sub-01_ses-01)"]
+        )
+        self.regex_preset_combo.currentIndexChanged.connect(
+            self.on_regex_preset_changed
+        )
 
         self.regex_input = QLineEdit()
         self.regex_input.setPlaceholderText(r"(.*)_(.*)")
@@ -137,8 +140,12 @@ class SmartParserDialog(QDialog):
         # --- Page 2: Folder Settings ---
         page_folder = QWidget()
         layout_folder = QVBoxLayout(page_folder)
-        layout_folder.addWidget(QLabel("Automatically extracts metadata from parent folder names."))
-        layout_folder.addWidget(QLabel("Structure assumed: .../Subject/Session/filename.gdf"))
+        layout_folder.addWidget(
+            QLabel("Automatically extracts metadata from parent folder names.")
+        )
+        layout_folder.addWidget(
+            QLabel("Structure assumed: .../Subject/Session/filename.gdf")
+        )
         layout_folder.addStretch()
 
         self.settings_stack.addWidget(page_folder)
@@ -192,8 +199,12 @@ class SmartParserDialog(QDialog):
         # 2. Preview Table
         self.table = QTableWidget()
         self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Filename", "Extracted Subject", "Extracted Session"])
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setHorizontalHeaderLabels(
+            ["Filename", "Extracted Subject", "Extracted Session"]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         layout.addWidget(self.table)
 
         # 3. Buttons
@@ -208,7 +219,7 @@ class SmartParserDialog(QDialog):
         btn_layout.addWidget(self.apply_btn)
         layout.addLayout(btn_layout)
 
-        self.toggle_mode() # Init visibility
+        self.toggle_mode()  # Init visibility
 
     def toggle_mode(self):
         if self.radio_split.isChecked():
@@ -223,29 +234,26 @@ class SmartParserDialog(QDialog):
         self.update_preview()
 
     def on_regex_preset_changed(self, index):
-        if index == 1: # Subject_Session
+        if index == 1:  # Subject_Session
             self.regex_input.setText(r"([^_]+)_([^_]+)")
-        elif index == 2: # BIDS
+        elif index == 2:  # BIDS
             self.regex_input.setText(r"sub-([^_]+)_ses-([^_]+)")
 
     def update_preview(self):
         self.table.setRowCount(len(self.filenames))
         self.parsed_data = {}
 
-        sep_map = {0: '_', 1: '-', 2: ' ', 3: '.'}
-        sep = sep_map.get(self.split_sep_combo.currentIndex(), '_')
+        sep_map = {0: "_", 1: "-", 2: " ", 3: "."}
+        sep = sep_map.get(self.split_sep_combo.currentIndex(), "_")
 
-        regex = None
         if self.radio_regex.isChecked():
-            try:
-                regex = re.compile(self.regex_input.text())
-            except:
-                pass
+            with contextlib.suppress(Exception):
+                re.compile(self.regex_input.text())
 
         for row, filepath in enumerate(self.filenames):
             filename = os.path.basename(filepath)
             # Remove extension for easier parsing
-            name_no_ext = os.path.splitext(filename)[0]
+            os.path.splitext(filename)[0]
 
             self.table.setItem(row, 0, QTableWidgetItem(filename))
 
@@ -254,18 +262,21 @@ class SmartParserDialog(QDialog):
 
             if self.radio_split.isChecked():
                 sub, sess = FilenameParser.parse_by_split(
-                    filename, sep,
+                    filename,
+                    sep,
                     self.split_sub_idx.value(),
-                    self.split_sess_idx.value()
+                    self.split_sess_idx.value(),
                 )
 
             elif self.radio_regex.isChecked():
-                # Note: FilenameParser.parse_by_regex now handles extension stripping internally
+                # Note: FilenameParser.parse_by_regex now handles extension stripping
+                # internally
                 # We pass the raw regex pattern string
                 sub, sess = FilenameParser.parse_by_regex(
-                    filename, self.regex_input.text(),
+                    filename,
+                    self.regex_input.text(),
                     self.regex_sub_idx.value(),
-                    self.regex_sess_idx.value()
+                    self.regex_sess_idx.value(),
                 )
 
             elif self.radio_folder.isChecked():
@@ -277,7 +288,7 @@ class SmartParserDialog(QDialog):
                     self.fixed_sub_start.value(),
                     self.fixed_sub_len.value(),
                     self.fixed_sess_start.value(),
-                    self.fixed_sess_len.value()
+                    self.fixed_sess_len.value(),
                 )
 
             # Update Table
@@ -302,7 +313,7 @@ class SmartParserDialog(QDialog):
         return self.parsed_data
 
     def accept(self):
-        self.save_settings() # Save settings on apply
+        self.save_settings()  # Save settings on apply
         super().accept()
 
     def save_settings(self):
@@ -343,7 +354,9 @@ class SmartParserDialog(QDialog):
         self.split_sess_idx.setValue(settings.value("split_sess_idx", 2, type=int))
 
         # Load Regex Settings
-        self.regex_preset_combo.setCurrentIndex(settings.value("regex_preset", 0, type=int))
+        self.regex_preset_combo.setCurrentIndex(
+            settings.value("regex_preset", 0, type=int)
+        )
         self.regex_input.setText(settings.value("regex_pattern", "", type=str))
         self.regex_sub_idx.setValue(settings.value("regex_sub_idx", 1, type=int))
         self.regex_sess_idx.setValue(settings.value("regex_sess_idx", 2, type=int))

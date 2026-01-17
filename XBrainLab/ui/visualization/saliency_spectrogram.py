@@ -22,13 +22,19 @@ class SaliencySpectrogramWidget(QWidget):
 
         # Initial Placeholder
         self.fig = Figure(figsize=(5, 4), dpi=100)
-        self.fig.patch.set_facecolor('#2d2d2d')
+        self.fig.patch.set_facecolor("#2d2d2d")
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_facecolor('#2d2d2d')
-        self.ax.text(0.5, 0.5, "Select a plan and method to visualize",
-                     color='#666666', ha='center', va='center')
-        self.ax.axis('off')
+        self.ax.set_facecolor("#2d2d2d")
+        self.ax.text(
+            0.5,
+            0.5,
+            "Select a plan and method to visualize",
+            color="#666666",
+            ha="center",
+            va="center",
+        )
+        self.ax.axis("off")
 
         self.plot_layout.addWidget(self.canvas)
         layout.addWidget(self.plot_container, stretch=1)
@@ -52,7 +58,7 @@ class SaliencySpectrogramWidget(QWidget):
                 eval_record = plan.get_eval_record()
 
             if not eval_record:
-                raise ValueError("No evaluation record found.")
+                raise ValueError("No evaluation record found.")  # noqa: TRY301
 
             epoch_data = trainer.get_dataset().get_epoch_data()
 
@@ -67,15 +73,15 @@ class SaliencySpectrogramWidget(QWidget):
 
             if self.fig:
                 # Apply Dark Theme
-                self.fig.patch.set_facecolor('#2d2d2d')
+                self.fig.patch.set_facecolor("#2d2d2d")
                 for ax in self.fig.axes:
-                    ax.set_facecolor('#2d2d2d')
-                    ax.tick_params(colors='#cccccc')
+                    ax.set_facecolor("#2d2d2d")
+                    ax.tick_params(colors="#cccccc")
                     for spine in ax.spines.values():
-                        spine.set_color('#555555')
-                    ax.xaxis.label.set_color('#cccccc')
-                    ax.yaxis.label.set_color('#cccccc')
-                    ax.title.set_color('#cccccc')
+                        spine.set_color("#555555")
+                    ax.xaxis.label.set_color("#cccccc")
+                    ax.yaxis.label.set_color("#cccccc")
+                    ax.title.set_color("#cccccc")
 
                 # Re-create canvas
                 self.canvas = FigureCanvas(self.fig)

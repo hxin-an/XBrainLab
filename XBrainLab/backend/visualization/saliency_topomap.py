@@ -11,6 +11,7 @@ class SaliencyTopoMapViz(Visualizer):
     Args:
         absolute: whether to plot absolute value of saliency
     """
+
     def _get_plt(self, method, absolute: bool) -> plt:
         positions = self.epoch_data.get_montage_position()
         chs = self.epoch_data.get_channel_names()
@@ -26,23 +27,24 @@ class SaliencyTopoMapViz(Visualizer):
             # no test data for this label
             if len(saliency) == 0:
                 continue
-            kwargs = {'pos': positions[:, 0:2],
-                        'ch_type': 'eeg',
-                        'sensors': False,
-                        'names': chs,
-                        'axes': ax,
-                        'show': False,
-                        'extrapolate': 'local',
-                        'outlines': 'head',
-                        'sphere': (0.0, -0.02, 0.0, 0.12),
-                        }
+            kwargs = {
+                "pos": positions[:, 0:2],
+                "ch_type": "eeg",
+                "sensors": False,
+                "names": chs,
+                "axes": ax,
+                "show": False,
+                "extrapolate": "local",
+                "outlines": "head",
+                "sphere": (0.0, -0.02, 0.0, 0.12),
+            }
 
             if absolute:
                 saliency = np.abs(saliency).mean(axis=0)
-                cmap = 'Reds'
+                cmap = "Reds"
             else:
                 saliency = saliency.mean(axis=0)
-                cmap = 'coolwarm'
+                cmap = "coolwarm"
 
             # average over time
             data = saliency.mean(axis=1)
@@ -52,8 +54,11 @@ class SaliencyTopoMapViz(Visualizer):
                 data += np.random.normal(0, 1e-10, data.shape)
 
             im, _ = mne.viz.plot_topomap(data=data, cmap=cmap, **kwargs)
-            cbar = plt.colorbar(im, orientation='vertical')
+            cbar = plt.colorbar(im, orientation="vertical")
             cbar.ax.get_yaxis().set_ticks([])
-            plt.title(f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}", color='white')
+            plt.title(
+                f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}",
+                color="white",
+            )
         plt.tight_layout()
         return plt.gcf()

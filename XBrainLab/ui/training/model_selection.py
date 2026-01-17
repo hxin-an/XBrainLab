@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend import model_base
 from XBrainLab.backend.training import ModelHolder
 
-ARG_DICT_SKIP_SET = {'self', 'n_classes', 'channels', 'samples', 'sfreq'}
+ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
+
 
 class ModelSelectionWindow(QDialog):
     def __init__(self, parent):
@@ -33,7 +34,9 @@ class ModelSelectionWindow(QDialog):
         self.model_holder = None
 
         # Fetch model list
-        self.model_map = {m[0]: m[1] for m in inspect.getmembers(model_base, inspect.isclass)}
+        self.model_map = {
+            m[0]: m[1] for m in inspect.getmembers(model_base, inspect.isclass)
+        }
         self.model_list = list(self.model_map.keys())
 
         self.init_ui()
@@ -56,7 +59,9 @@ class ModelSelectionWindow(QDialog):
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        self.params_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.params_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         group_layout.addWidget(self.params_table)
         layout.addWidget(self.params_group)
 
@@ -71,7 +76,9 @@ class ModelSelectionWindow(QDialog):
         layout.addLayout(weight_layout)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -115,7 +122,9 @@ class ModelSelectionWindow(QDialog):
             self.weight_btn.setText("load")
             return
 
-        filepath, _ = QFileDialog.getOpenFileName(self, "Select Pretrained Weight", filter="Model Weights (*)")
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Select Pretrained Weight", filter="Model Weights (*)"
+        )
         if filepath:
             self.pretrained_weight_path = filepath
             self.weight_label.setText(os.path.basename(filepath))
@@ -134,11 +143,11 @@ class ModelSelectionWindow(QDialog):
                 if value_text:
                     if value_text.isdigit():
                         value = int(value_text)
-                    elif value_text.replace('.', '', 1).isdigit():
+                    elif value_text.replace(".", "", 1).isdigit():
                         value = float(value_text)
-                    elif value_text == 'True':
+                    elif value_text == "True":
                         value = True
-                    elif value_text == 'False':
+                    elif value_text == "False":
                         value = False
                     else:
                         value = value_text

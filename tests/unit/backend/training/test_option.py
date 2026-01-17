@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 import torch
 
@@ -10,15 +12,17 @@ from XBrainLab.backend.training import (
 )
 
 
-@pytest.mark.parametrize("use_cpu, gpu_idx, expected", [
-    (True, None, "cpu"),
-    (True, 0, "cpu"),
-    (False, 0, "0 - test"),
-    (False, 1, "1 - test"),
-    (False, None, None),
-])
+@pytest.mark.parametrize(
+    "use_cpu, gpu_idx, expected",
+    [
+        (True, None, "cpu"),
+        (True, 0, "cpu"),
+        (False, 0, "0 - test"),
+        (False, 1, "1 - test"),
+        (False, None, None),
+    ],
+)
 def test_parse_device_name(use_cpu, gpu_idx, expected):
-    from unittest.mock import patch
     with patch("torch.cuda.get_device_name", return_value="test"):
         if expected is None:
             with pytest.raises(ValueError):
@@ -26,75 +30,77 @@ def test_parse_device_name(use_cpu, gpu_idx, expected):
         else:
             assert parse_device_name(use_cpu, gpu_idx) == expected
 
+
 class FakeOptim:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+
 
 class FakeModel(torch.nn.Module):
     def __init__(self):
         super().__init__()
         self.fc = torch.nn.Linear(4, 4)
 
+
 def test_parse_optim_name():
     target = FakeOptim
-    params_map = {
-        'a': 1,
-        'b': 2
-    }
-    assert parse_optim_name(target, params_map) == 'FakeOptim (a=1, b=2)'
+    params_map = {"a": 1, "b": 2}
+    assert parse_optim_name(target, params_map) == "FakeOptim (a=1, b=2)"
 
-@pytest.mark.parametrize("kwargs, has_error", [
-    ({'output_dir': None}, True),
-    ({'optim': None}, True),
-    ({'optim_params': None}, True),
 
-    ({'use_cpu': None, 'gpu_idx': None}, True),
-    ({'use_cpu': None, 'gpu_idx': 1}, True),
-    ({'use_cpu': False, 'gpu_idx': None}, True),
-    ({'use_cpu': False, 'gpu_idx': 1}, False),
-    ({'use_cpu': False, 'gpu_idx': 'cuda:0'}, True),
-    ({'use_cpu': True, 'gpu_idx': None}, False),
-    ({'use_cpu': True, 'gpu_idx': 1}, False),
-
-    ({'epoch': 10.5}, False),
-    ({'epoch': 10}, False),
-    ({'epoch': -5}, False),
-    ({'epoch': "error"}, True),
-    ({'epoch': None}, True),
-    ({'bs': None}, True),
-    ({'bs': "error"}, True),
-    ({'lr': None}, True),
-    ({'lr': "error"}, True),
-    ({'checkpoint_epoch': None}, True),
-    ({'checkpoint_epoch': 0}, False),
-    ({'checkpoint_epoch': "error"}, True),
-    ({'evaluation_option': None}, True),
-    ({'repeat_num': None}, True),
-    ({'repeat_num': "error"}, True),
-])
+@pytest.mark.parametrize(
+    "kwargs, has_error",
+    [
+        ({"output_dir": None}, True),
+        ({"optim": None}, True),
+        ({"optim_params": None}, True),
+        ({"use_cpu": None, "gpu_idx": None}, True),
+        ({"use_cpu": None, "gpu_idx": 1}, True),
+        ({"use_cpu": False, "gpu_idx": None}, True),
+        ({"use_cpu": False, "gpu_idx": 1}, False),
+        ({"use_cpu": False, "gpu_idx": "cuda:0"}, True),
+        ({"use_cpu": True, "gpu_idx": None}, False),
+        ({"use_cpu": True, "gpu_idx": 1}, False),
+        ({"epoch": 10.5}, False),
+        ({"epoch": 10}, False),
+        ({"epoch": -5}, False),
+        ({"epoch": "error"}, True),
+        ({"epoch": None}, True),
+        ({"bs": None}, True),
+        ({"bs": "error"}, True),
+        ({"lr": None}, True),
+        ({"lr": "error"}, True),
+        ({"checkpoint_epoch": None}, True),
+        ({"checkpoint_epoch": 0}, False),
+        ({"checkpoint_epoch": "error"}, True),
+        ({"evaluation_option": None}, True),
+        ({"repeat_num": None}, True),
+        ({"repeat_num": "error"}, True),
+    ],
+)
 def test_option(kwargs, has_error):
-    from unittest.mock import patch
     args = {
-        'output_dir': 'ok',
-        'optim': FakeOptim,
-        'optim_params': {'a': 1, 'b': 2},
-        'use_cpu': False,
-        'gpu_idx': 0,
-        'epoch': 10,
-        'bs': 20,
-        'lr': 0.01,
-        'checkpoint_epoch': 10,
-        'evaluation_option': TRAINING_EVALUATION.VAL_LOSS,
-        'repeat_num': 5
+        "output_dir": "ok",
+        "optim": FakeOptim,
+        "optim_params": {"a": 1, "b": 2},
+        "use_cpu": False,
+        "gpu_idx": 0,
+        "epoch": 10,
+        "bs": 20,
+        "lr": 0.01,
+        "checkpoint_epoch": 10,
+        "evaluation_option": TRAINING_EVALUATION.VAL_LOSS,
+        "repeat_num": 5,
     }
 
     for k in kwargs:
         args[k] = kwargs[k]
 
-    with patch('torch.cuda.is_available', return_value=True), \
-         patch('torch.cuda.device_count', return_value=2), \
-         patch('torch.cuda.get_device_name', return_value='test_gpu'):
-
+    with (
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.device_count", return_value=2),
+        patch("torch.cuda.get_device_name", return_value="test_gpu"),
+    ):
         if has_error:
             with pytest.raises(ValueError):
                 option = TrainingOption(**args)
@@ -102,17 +108,16 @@ def test_option(kwargs, has_error):
 
         option = TrainingOption(**args)
 
-
-        assert option.get_output_dir() == 'ok'
+        assert option.get_output_dir() == "ok"
         assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.VAL_LOSS"
-        if args['use_cpu'] or (not args['use_cpu'] and torch.cuda.is_available()):
+        if args["use_cpu"] or (not args["use_cpu"] and torch.cuda.is_available()):
             assert option.get_device_name() == parse_device_name(
-                args['use_cpu'], args['gpu_idx']
+                args["use_cpu"], args["gpu_idx"]
             )
-        if args['use_cpu']:
+        if args["use_cpu"]:
             assert option.get_device() == "cpu"
         else:
-            assert option.get_device() == "cuda:" + str(args['gpu_idx'])
+            assert option.get_device() == "cuda:" + str(args["gpu_idx"])
 
         assert option.get_optim_name() == "FakeOptim"
         assert option.get_optim_desc_str() == parse_optim_name(
@@ -123,49 +128,45 @@ def test_option(kwargs, has_error):
         optim_instance = option.get_optim(model)
         assert isinstance(optim_instance, FakeOptim)
 
-        for k in args['optim_params']:
+        for k in args["optim_params"]:
             assert (
-                k in optim_instance.kwargs and
-                optim_instance.kwargs[k] == args['optim_params'][k]
+                k in optim_instance.kwargs
+                and optim_instance.kwargs[k] == args["optim_params"][k]
             )
-        assert optim_instance.kwargs['lr'] == args['lr']
+        assert optim_instance.kwargs["lr"] == args["lr"]
 
-        model_params = optim_instance.kwargs['params']
+        model_params = optim_instance.kwargs["params"]
         expected_model_params = model.parameters()
-        for p, e in zip(model_params, expected_model_params):
+        for p, e in zip(model_params, expected_model_params, strict=True):
             torch.testing.assert_close(p, e)
 
 
-@pytest.mark.parametrize("kwargs, has_error", [
-    ({'output_dir': None}, True),
-
-    ({'use_cpu': None, 'gpu_idx': None}, True),
-    ({'use_cpu': None, 'gpu_idx': 1}, True),
-    ({'use_cpu': False, 'gpu_idx': None}, True),
-    ({'use_cpu': False, 'gpu_idx': 1}, False),
-    ({'use_cpu': False, 'gpu_idx': 'cuda:0'}, True),
-    ({'use_cpu': True, 'gpu_idx': None}, False),
-    ({'use_cpu': True, 'gpu_idx': 1}, False),
-
-    ({'bs': None}, True),
-    ({'bs': "error"}, True),
-])
+@pytest.mark.parametrize(
+    "kwargs, has_error",
+    [
+        ({"output_dir": None}, True),
+        ({"use_cpu": None, "gpu_idx": None}, True),
+        ({"use_cpu": None, "gpu_idx": 1}, True),
+        ({"use_cpu": False, "gpu_idx": None}, True),
+        ({"use_cpu": False, "gpu_idx": 1}, False),
+        ({"use_cpu": False, "gpu_idx": "cuda:0"}, True),
+        ({"use_cpu": True, "gpu_idx": None}, False),
+        ({"use_cpu": True, "gpu_idx": 1}, False),
+        ({"bs": None}, True),
+        ({"bs": "error"}, True),
+    ],
+)
 def test_test_only_option(kwargs, has_error):
-    from unittest.mock import patch
-    args = {
-        'output_dir': 'ok',
-        'use_cpu': False,
-        'gpu_idx': 0,
-        'bs': 20
-    }
+    args = {"output_dir": "ok", "use_cpu": False, "gpu_idx": 0, "bs": 20}
 
     for k in kwargs:
         args[k] = kwargs[k]
 
-    with patch('torch.cuda.is_available', return_value=True), \
-         patch('torch.cuda.device_count', return_value=2), \
-         patch('torch.cuda.get_device_name', return_value='test_gpu'):
-
+    with (
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.device_count", return_value=2),
+        patch("torch.cuda.get_device_name", return_value="test_gpu"),
+    ):
         if has_error:
             with pytest.raises(ValueError):
                 option = TestOnlyOption(**args)
@@ -173,18 +174,17 @@ def test_test_only_option(kwargs, has_error):
 
         option = TestOnlyOption(**args)
 
-
-        assert option.get_output_dir() == 'ok'
+        assert option.get_output_dir() == "ok"
         assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.LAST_EPOCH"
 
-        if args['use_cpu'] or (not args['use_cpu'] and torch.cuda.is_available()):
-           assert option.get_device_name() == parse_device_name(
-               args['use_cpu'], args['gpu_idx']
+        if args["use_cpu"] or (not args["use_cpu"] and torch.cuda.is_available()):
+            assert option.get_device_name() == parse_device_name(
+                args["use_cpu"], args["gpu_idx"]
             )
-        if args['use_cpu']:
+        if args["use_cpu"]:
             assert option.get_device() == "cpu"
         else:
-            assert option.get_device() == "cuda:" + str(args['gpu_idx'])
+            assert option.get_device() == "cuda:" + str(args["gpu_idx"])
 
         assert option.get_optim_name() == "-"
         assert option.get_optim_desc_str() == "-"

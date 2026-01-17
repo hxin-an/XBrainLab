@@ -1,10 +1,12 @@
 """Test to reproduce the epoch duration bug when generating training plan."""
+
 from unittest.mock import Mock
 
 import pytest
 import torch
 
 from XBrainLab.backend.dataset import Dataset, Epochs
+from XBrainLab.backend.model_base import EEGNet, SCCNet, ShallowConvNet
 from XBrainLab.backend.training import ModelHolder, TrainingOption, TrainingPlanHolder
 from XBrainLab.backend.training.option import TRAINING_EVALUATION
 
@@ -14,15 +16,14 @@ def test_epoch_duration_too_short():
 
     This test reproduces the bug: When samples are too few for model architecture.
     """
-    from XBrainLab.backend.model_base import EEGNet
 
     # Create mock epoch data with very short duration
     mock_epoch = Mock(spec=Epochs)
     mock_epoch.get_model_args.return_value = {
-        'n_classes': 10,
-        'channels': 16,
-        'samples': 1,  # Way too short!
-        'sfreq': 250.0
+        "n_classes": 10,
+        "channels": 16,
+        "samples": 1,  # Way too short!
+        "sfreq": 250.0,
     }
 
     # Create a mock dataset
@@ -30,14 +31,11 @@ def test_epoch_duration_too_short():
     mock_dataset.get_epoch_data.return_value = mock_epoch
 
     # Create model holder for EEGNet
-    model_holder = ModelHolder(
-        target_model=EEGNet,
-        model_params_map={}
-    )
+    model_holder = ModelHolder(target_model=EEGNet, model_params_map={})
 
     # Create training option
     training_option = TrainingOption(
-        output_dir='./test_output',
+        output_dir="./test_output",
         optim=torch.optim.Adam,
         optim_params={},
         use_cpu=True,
@@ -47,7 +45,7 @@ def test_epoch_duration_too_short():
         lr=0.001,
         checkpoint_epoch=1,
         evaluation_option=TRAINING_EVALUATION.LAST_EPOCH,
-        repeat_num=1
+        repeat_num=1,
     )
 
     # Try to create training plan - should raise ValueError with clear message
@@ -64,12 +62,11 @@ def test_epoch_duration_too_short():
 
 def test_minimum_samples_required():
     """Test to verify minimum samples validation for each model."""
-    from XBrainLab.backend.model_base import EEGNet, SCCNet, ShallowConvNet
 
     test_cases = [
-        ('EEGNet', EEGNet, {'F1': 8, 'F2': 16, 'D': 2}),
-        ('SCCNet', SCCNet, {'Ns': 22}),
-        ('ShallowConvNet', ShallowConvNet, {'pool_len': 75, 'pool_stride': 15}),
+        ("EEGNet", EEGNet, {"F1": 8, "F2": 16, "D": 2}),
+        ("SCCNet", SCCNet, {"Ns": 22}),
+        ("ShallowConvNet", ShallowConvNet, {"pool_len": 75, "pool_stride": 15}),
     ]
 
     sfreq = 250.0
@@ -86,10 +83,10 @@ def test_minimum_samples_required():
                 channels=channels,
                 samples=1,  # Way too short
                 sfreq=sfreq,
-                **model_params
+                **model_params,
             )
             print(f"  ✗ {model_name} should have raised ValueError for samples=1")
-            assert False, f"{model_name} did not validate minimum samples"
+            raise AssertionError(f"{model_name} did not validate minimum samples")
         except ValueError as e:
             error_msg = str(e)
             assert "Epoch duration is too short" in error_msg
@@ -105,12 +102,15 @@ def test_minimum_samples_required():
                     channels=channels,
                     samples=samples,
                     sfreq=sfreq,
-                    **model_params
+                    **model_params,
                 )
                 # Try forward pass
                 x = torch.randn(2, 1, channels, samples)
                 output = model(x)
-                print(f"  ✓ {model_name} works with samples={samples}, output shape: {output.shape}")
+                print(
+                    f"  ✓ {model_name} works with samples={samples}, "
+                    f"output shape: {output.shape}"
+                )
                 break
             except (RuntimeError, ValueError) as e:
                 if "too short" in str(e).lower() or "too small" in str(e).lower():

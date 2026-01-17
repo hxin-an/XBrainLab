@@ -1,7 +1,6 @@
-
 import json
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
 
@@ -10,7 +9,7 @@ class CommandParser:
     """Parses LLM output to extract commands."""
 
     @staticmethod
-    def parse(text: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    def parse(text: str) -> tuple[str, dict[str, Any]] | None:
         """
         Extracts a JSON command block from the text.
         Expected format:
@@ -30,10 +29,10 @@ class CommandParser:
             else:
                 # 2. Try to find raw JSON object if no code block
                 # This is a simple heuristic: find first { and last }
-                start = text.find('{')
-                end = text.rfind('}')
+                start = text.find("{")
+                end = text.rfind("}")
                 if start != -1 and end != -1 and end > start:
-                    json_str = text[start:end+1]
+                    json_str = text[start : end + 1]
                 else:
                     return None
 
@@ -42,7 +41,7 @@ class CommandParser:
             if "command" in data and "parameters" in data:
                 return data["command"], data["parameters"]
 
-            return None
+            return None  # noqa: TRY300
 
         except json.JSONDecodeError:
             logger.warning("Failed to parse JSON from LLM output")

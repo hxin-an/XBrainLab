@@ -46,7 +46,9 @@ class ResampleDialog(QDialog):
         form.addRow("Sampling Rate (Hz):", self.sfreq_spin)
         layout.addLayout(form)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -57,6 +59,7 @@ class ResampleDialog(QDialog):
 
     def get_params(self):
         return self.sfreq
+
 
 class EpochingDialog(QDialog):
     def __init__(self, parent, data_list):
@@ -81,13 +84,13 @@ class EpochingDialog(QDialog):
         for data in self.data_list:
             try:
                 # Use get_event_list which prioritizes imported/resampled events
-                evs, ev_ids = data.get_event_list()
+                _, ev_ids = data.get_event_list()
                 if ev_ids:
                     events.update(ev_ids.keys())
-            except:
+            except Exception:  # noqa: PERF203
                 pass
 
-        for ev in sorted(list(events)):
+        for ev in sorted(events):
             self.event_list.addItem(ev)
 
         event_layout.addWidget(self.event_list)
@@ -147,7 +150,9 @@ class EpochingDialog(QDialog):
         param_group.setLayout(form)
         layout.addWidget(param_group)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -168,18 +173,20 @@ class EpochingDialog(QDialog):
         # Most models need at least 1.0-1.2s at typical sampling rates
         if duration < 1.0:
             self.warning_label.setText(
-                "Warning: Epoch duration < 1.0s may be too short for some models (EEGNet, SCCNet, ShallowConvNet). "
-                "Consider using at least 1.2s to avoid errors during training plan generation."
+                "Warning: Epoch duration < 1.0s may be too short for some models "
+                "(EEGNet, SCCNet, ShallowConvNet). "
+                "Consider using at least 1.2s to avoid errors during training plan "
+                "generation."
             )
             self.warning_label.show()
         elif duration < 1.2:
             self.warning_label.setText(
-                "Note: Epoch duration < 1.2s may cause issues with high sampling rates (>250Hz)."
+                "Note: Epoch duration < 1.2s may cause issues with high sampling rates "
+                "(>250Hz)."
             )
             self.warning_label.show()
         else:
             self.warning_label.hide()
-
 
     def accept(self):
         selected_items = self.event_list.selectedItems()
@@ -200,6 +207,7 @@ class EpochingDialog(QDialog):
 
     def get_params(self):
         return self.params
+
 
 class FilteringDialog(QDialog):
     def __init__(self, parent):
@@ -222,12 +230,12 @@ class FilteringDialog(QDialog):
         self.l_freq_spin = QDoubleSpinBox()
         self.l_freq_spin.setRange(0, 1000)
         self.l_freq_spin.setDecimals(2)
-        self.l_freq_spin.setValue(1.0) # Default
+        self.l_freq_spin.setValue(1.0)  # Default
 
         self.h_freq_spin = QDoubleSpinBox()
         self.h_freq_spin.setRange(0, 1000)
         self.h_freq_spin.setDecimals(2)
-        self.h_freq_spin.setValue(40.0) # Default
+        self.h_freq_spin.setValue(40.0)  # Default
 
         form_layout.addRow("Lower pass-band (Hz):", self.l_freq_spin)
         form_layout.addRow("Upper pass-band (Hz):", self.h_freq_spin)
@@ -239,14 +247,16 @@ class FilteringDialog(QDialog):
 
         self.notch_spin = QDoubleSpinBox()
         self.notch_spin.setRange(0, 1000)
-        self.notch_spin.setValue(50.0) # Default 50Hz
+        self.notch_spin.setValue(50.0)  # Default 50Hz
         self.notch_spin.setEnabled(False)
         form_layout.addRow("Notch Frequency (Hz):", self.notch_spin)
 
         layout.addLayout(form_layout)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -267,24 +277,29 @@ class FilteringDialog(QDialog):
             h_freq = self.h_freq_spin.value()
 
             # Validate
-            if l_freq >= h_freq and h_freq > 0:
-                 QMessageBox.warning(self, "Invalid Input", "Lower freq must be less than Upper freq.")
-                 return
+            if l_freq >= h_freq > 0:
+                QMessageBox.warning(
+                    self, "Invalid Input", "Lower freq must be less than Upper freq."
+                )
+                return
 
         notch_freqs = None
         if self.notch_check.isChecked():
             notch_freqs = self.notch_spin.value()
 
         if l_freq is None and h_freq is None and notch_freqs is None:
-             QMessageBox.warning(self, "Warning", "Please select at least one filter (Bandpass or Notch).")
-             return
+            QMessageBox.warning(
+                self,
+                "Warning",
+                "Please select at least one filter (Bandpass or Notch).",
+            )
+            return
 
         self.params = (l_freq, h_freq, notch_freqs)
         super().accept()
 
     def get_params(self):
         return self.params
-
 
 
 class RereferenceDialog(QDialog):
@@ -318,7 +333,9 @@ class RereferenceDialog(QDialog):
         self.chan_group.setLayout(chan_layout)
         layout.addWidget(self.chan_group)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -328,11 +345,15 @@ class RereferenceDialog(QDialog):
 
     def accept(self):
         if self.avg_check.isChecked():
-            ref = 'average'
+            ref = "average"
         else:
             selected = self.chan_list.selectedItems()
             if not selected:
-                QMessageBox.warning(self, "Warning", "Please select at least one channel or use average reference.")
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    "Please select at least one channel or use average reference.",
+                )
                 return
             ref = [item.text() for item in selected]
 
@@ -341,6 +362,7 @@ class RereferenceDialog(QDialog):
 
     def get_params(self):
         return self.params
+
 
 class NormalizeDialog(QDialog):
     def __init__(self, parent):
@@ -365,7 +387,9 @@ class NormalizeDialog(QDialog):
         self.method_group.setLayout(method_layout)
         layout.addWidget(self.method_group)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -378,12 +402,13 @@ class NormalizeDialog(QDialog):
     def get_params(self):
         return self.params
 
+
 class PreprocessPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
-        if parent and hasattr(parent, 'study'):
-             self.controller = PreprocessController(parent.study)
+        if parent and hasattr(parent, "study"):
+            self.controller = PreprocessController(parent.study)
         self.plot_timer = QTimer()
         self.plot_timer.setSingleShot(True)
         self.plot_timer.timeout.connect(self.plot_sample_data)
@@ -398,7 +423,8 @@ class PreprocessPanel(QWidget):
         right_panel = QWidget()
         right_panel.setFixedWidth(260)
         right_panel.setObjectName("RightPanel")
-        right_panel.setStyleSheet("""
+        right_panel.setStyleSheet(
+            """
             #RightPanel {
                 background-color: #252526;
                 border-left: 1px solid #3e3e42;
@@ -435,7 +461,8 @@ class PreprocessPanel(QWidget):
             QPushButton:pressed {
                 background-color: #007acc;
             }
-        """)
+        """
+        )
 
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(10, 20, 10, 20)
@@ -444,12 +471,15 @@ class PreprocessPanel(QWidget):
 
         # 1. Aggregate Info (Replaces Getting Started)
         self.info_panel = AggregateInfoPanel(self.main_window)
-        # Style it to match the panel look (transparent background if needed, but AggregateInfoPanel is a GroupBox)
+        # Style it to match the panel look (transparent background if needed, but
+        # AggregateInfoPanel is a GroupBox)
         # We might need to adjust its style slightly or let it inherit.
         # AggregateInfoPanel sets its own title "Aggregate Information".
 
-        # Remove the default border/background from AggregateInfoPanel to match our minimal style
-        self.info_panel.setStyleSheet("""
+        # Remove the default border/background from AggregateInfoPanel to match our
+        # minimal style
+        self.info_panel.setStyleSheet(
+            """
             QGroupBox {
                 background-color: transparent;
                 border: none;
@@ -467,7 +497,8 @@ class PreprocessPanel(QWidget):
                 color: #cccccc;
                 font-weight: normal;
             }
-        """)
+        """
+        )
 
         right_layout.addWidget(self.info_panel, stretch=1)
 
@@ -514,7 +545,8 @@ class PreprocessPanel(QWidget):
 
         # Epoching Button (Moved here, Green)
         self.btn_epoch = QPushButton("Epoching")
-        self.btn_epoch.setStyleSheet("""
+        self.btn_epoch.setStyleSheet(
+            """
             QPushButton {
                 background-color: #1b5e20;
                 color: #a5d6a7;
@@ -524,13 +556,15 @@ class PreprocessPanel(QWidget):
                 background-color: #2e7d32;
                 color: white;
             }
-        """)
+        """
+        )
         self.btn_epoch.clicked.connect(self.open_epoching)
         exec_layout.addWidget(self.btn_epoch)
 
         # Reset Button (Styled distinctively but consistent shape)
         self.btn_reset = QPushButton("Reset All Preprocessing")
-        self.btn_reset.setStyleSheet("""
+        self.btn_reset.setStyleSheet(
+            """
             QPushButton {
                 background-color: #4a1818;
                 color: #ff9999;
@@ -539,13 +573,14 @@ class PreprocessPanel(QWidget):
             QPushButton:hover {
                 background-color: #602020;
             }
-        """)
+        """
+        )
         self.btn_reset.clicked.connect(self.reset_preprocess)
         exec_layout.addWidget(self.btn_reset)
 
         right_layout.addWidget(exec_group)
 
-        right_layout.addStretch() # Push everything to top
+        right_layout.addStretch()  # Push everything to top
 
         # --- Right Side: Plot & History ---
         # --- Right Side: Plot & History ---
@@ -566,20 +601,20 @@ class PreprocessPanel(QWidget):
         self.tab_time = QWidget()
         time_layout = QVBoxLayout(self.tab_time)
         self.fig_time = Figure(figsize=(5, 3), dpi=100)
-        self.fig_time.patch.set_facecolor('#2d2d2d')
+        self.fig_time.patch.set_facecolor("#2d2d2d")
         self.canvas_time = FigureCanvas(self.fig_time)
         self.ax_time = self.fig_time.add_subplot(111)
-        self.ax_time.set_facecolor('#2d2d2d')
+        self.ax_time.set_facecolor("#2d2d2d")
         # Style axes
-        self.ax_time.spines['bottom'].set_color('#cccccc')
-        self.ax_time.spines['top'].set_color('#cccccc')
-        self.ax_time.spines['right'].set_color('#cccccc')
-        self.ax_time.spines['left'].set_color('#cccccc')
-        self.ax_time.tick_params(axis='x', colors='#cccccc')
-        self.ax_time.tick_params(axis='y', colors='#cccccc')
-        self.ax_time.yaxis.label.set_color('#cccccc')
-        self.ax_time.xaxis.label.set_color('#cccccc')
-        self.ax_time.title.set_color('#cccccc')
+        self.ax_time.spines["bottom"].set_color("#cccccc")
+        self.ax_time.spines["top"].set_color("#cccccc")
+        self.ax_time.spines["right"].set_color("#cccccc")
+        self.ax_time.spines["left"].set_color("#cccccc")
+        self.ax_time.tick_params(axis="x", colors="#cccccc")
+        self.ax_time.tick_params(axis="y", colors="#cccccc")
+        self.ax_time.yaxis.label.set_color("#cccccc")
+        self.ax_time.xaxis.label.set_color("#cccccc")
+        self.ax_time.title.set_color("#cccccc")
 
         # Add Title and Labels with Units
         self.ax_time.set_title("Time Domain Signal")
@@ -594,20 +629,20 @@ class PreprocessPanel(QWidget):
         self.tab_freq = QWidget()
         freq_layout = QVBoxLayout(self.tab_freq)
         self.fig_freq = Figure(figsize=(5, 3), dpi=100)
-        self.fig_freq.patch.set_facecolor('#2d2d2d')
+        self.fig_freq.patch.set_facecolor("#2d2d2d")
         self.canvas_freq = FigureCanvas(self.fig_freq)
         self.ax_freq = self.fig_freq.add_subplot(111)
-        self.ax_freq.set_facecolor('#2d2d2d')
+        self.ax_freq.set_facecolor("#2d2d2d")
         # Style axes
-        self.ax_freq.spines['bottom'].set_color('#cccccc')
-        self.ax_freq.spines['top'].set_color('#cccccc')
-        self.ax_freq.spines['right'].set_color('#cccccc')
-        self.ax_freq.spines['left'].set_color('#cccccc')
-        self.ax_freq.tick_params(axis='x', colors='#cccccc')
-        self.ax_freq.tick_params(axis='y', colors='#cccccc')
-        self.ax_freq.yaxis.label.set_color('#cccccc')
-        self.ax_freq.xaxis.label.set_color('#cccccc')
-        self.ax_freq.title.set_color('#cccccc')
+        self.ax_freq.spines["bottom"].set_color("#cccccc")
+        self.ax_freq.spines["top"].set_color("#cccccc")
+        self.ax_freq.spines["right"].set_color("#cccccc")
+        self.ax_freq.spines["left"].set_color("#cccccc")
+        self.ax_freq.tick_params(axis="x", colors="#cccccc")
+        self.ax_freq.tick_params(axis="y", colors="#cccccc")
+        self.ax_freq.yaxis.label.set_color("#cccccc")
+        self.ax_freq.xaxis.label.set_color("#cccccc")
+        self.ax_freq.title.set_color("#cccccc")
 
         # Add Title and Labels with Units
         self.ax_freq.set_title("Power Spectral Density")
@@ -632,7 +667,7 @@ class PreprocessPanel(QWidget):
         ctrl_layout.addWidget(QLabel("Y-Scale (uV):"))
         self.yscale_spin = QDoubleSpinBox()
         self.yscale_spin.setRange(0, 5000)
-        self.yscale_spin.setValue(0) # 0 = Auto
+        self.yscale_spin.setValue(0)  # 0 = Auto
         self.yscale_spin.setSpecialValueText("Auto")
         self.yscale_spin.setSingleStep(10)
         self.yscale_spin.valueChanged.connect(self.update_plot_only)
@@ -647,7 +682,7 @@ class PreprocessPanel(QWidget):
         time_nav_layout.addWidget(QLabel("Time / Epoch:"))
 
         self.time_slider = QSlider(Qt.Orientation.Horizontal)
-        self.time_slider.setRange(0, 100) # Placeholder
+        self.time_slider.setRange(0, 100)  # Placeholder
         self.time_slider.valueChanged.connect(self.on_time_slider_changed)
         time_nav_layout.addWidget(self.time_slider)
 
@@ -677,22 +712,24 @@ class PreprocessPanel(QWidget):
 
     def on_time_slider_changed(self, value):
         self.time_spin.blockSignals(True)
-        self.time_spin.setValue(value / 10.0) # Slider is int, spin is float (0.1s step)
+        self.time_spin.setValue(
+            value / 10.0
+        )  # Slider is int, spin is float (0.1s step)
         self.time_spin.blockSignals(False)
-        self.plot_timer.start(50) # Debounce: Wait 50ms before plotting
+        self.plot_timer.start(50)  # Debounce: Wait 50ms before plotting
 
     def on_time_spin_changed(self, value):
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(int(value * 10))
         self.time_slider.blockSignals(False)
-        self.plot_timer.start(50) # Debounce
+        self.plot_timer.start(50)  # Debounce
 
     def update_panel(self):
-        if not self.main_window or not hasattr(self.main_window, 'study'):
+        if not self.main_window or not hasattr(self.main_window, "study"):
             return
 
         # Update History List
-        if hasattr(self, 'info_panel'):
+        if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
         self.history_list.clear()
@@ -716,47 +753,69 @@ class PreprocessPanel(QWidget):
 
             # 2. Update Preprocessing Buttons State
         # Unified Style: Keep buttons enabled but show warning if locked
-        if hasattr(self, 'btn_filter'):
+        if hasattr(self, "btn_filter"):
             # self.btn_filter.setEnabled(not is_epoched)
             if is_epoched:
-                self.btn_filter.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+                self.btn_filter.setToolTip(
+                    "Preprocessing is locked (Data Epoched). Click to see details."
+                )
             else:
                 self.btn_filter.setToolTip("Apply bandpass/notch filters")
 
-        if hasattr(self, 'btn_resample'):
+        if hasattr(self, "btn_resample"):
             # self.btn_resample.setEnabled(not is_epoched)
             if is_epoched:
-                self.btn_resample.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+                self.btn_resample.setToolTip(
+                    "Preprocessing is locked (Data Epoched). Click to see details."
+                )
             else:
                 self.btn_resample.setToolTip("Change sampling rate")
 
-
-
-        if hasattr(self, 'btn_rereference'):
+        if hasattr(self, "btn_rereference"):
             # self.btn_rereference.setEnabled(not is_epoched)
             if is_epoched:
-                self.btn_rereference.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+                self.btn_rereference.setToolTip(
+                    "Preprocessing is locked (Data Epoched). Click to see details."
+                )
             else:
                 self.btn_rereference.setToolTip("Change reference")
 
-        if hasattr(self, 'btn_normalize'):
+        if hasattr(self, "btn_normalize"):
             if is_epoched:
-                self.btn_normalize.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+                self.btn_normalize.setToolTip(
+                    "Preprocessing is locked (Data Epoched). Click to see details."
+                )
             else:
                 self.btn_normalize.setToolTip("Apply Z-Score or Min-Max normalization")
 
-        if hasattr(self, 'btn_epoch'):
+        if hasattr(self, "btn_epoch"):
             # self.btn_epoch.setEnabled(not is_epoched)
             if is_epoched:
                 self.btn_epoch.setText("Epoched (Locked)")
-                self.btn_epoch.setToolTip("Preprocessing is locked (Data Epoched). Click to see details.")
+                self.btn_epoch.setToolTip(
+                    "Preprocessing is locked (Data Epoched). Click to see details."
+                )
                 # Skip Plotting for Epoched Data (as requested)
                 self.history_list.addItem("Preprocessing Locked (Epoched).")
                 self.ax_time.clear()
-                self.ax_time.text(0.5, 0.5, "Data is Epoched\nPreprocessing Locked", ha='center', va='center', color='#cccccc')
+                self.ax_time.text(
+                    0.5,
+                    0.5,
+                    "Data is Epoched\nPreprocessing Locked",
+                    ha="center",
+                    va="center",
+                    color="#cccccc",
+                )
                 self.canvas_time.draw()
                 self.ax_freq.clear()
-                self.ax_freq.text(0.5, 0.5, "Data is Epoched", ha='center', va='center', color='#cccccc')
+                self.ax_freq.text(
+                    0.5,
+                    0.5,
+                    "Data is Epoched",
+                    ha="center",
+                    va="center",
+                    color="#cccccc",
+                )
                 self.canvas_freq.draw()
                 return
             else:
@@ -772,7 +831,11 @@ class PreprocessPanel(QWidget):
                 self.chan_combo.blockSignals(False)
 
                 # Update time range
-                duration = first_data.get_epochs_length() if not first_data.is_raw() else (first_data.get_mne().times[-1])
+                duration = (
+                    first_data.get_epochs_length()
+                    if not first_data.is_raw()
+                    else (first_data.get_mne().times[-1])
+                )
                 self.time_spin.setRange(0, duration)
                 self.time_slider.setRange(0, int(duration * 10))
 
@@ -780,10 +843,14 @@ class PreprocessPanel(QWidget):
         else:
             self.history_list.addItem("No data loaded.")
             self.ax_time.clear()
-            self.ax_time.text(0.5, 0.5, "No Data", ha='center', va='center', color='#cccccc')
+            self.ax_time.text(
+                0.5, 0.5, "No Data", ha="center", va="center", color="#cccccc"
+            )
             self.canvas_time.draw()
             self.ax_freq.clear()
-            self.ax_freq.text(0.5, 0.5, "No Data", ha='center', va='center', color='#cccccc')
+            self.ax_freq.text(
+                0.5, 0.5, "No Data", ha="center", va="center", color="#cccccc"
+            )
             self.canvas_freq.draw()
 
     def update_plot_only(self):
@@ -793,20 +860,23 @@ class PreprocessPanel(QWidget):
         self.ax_time.clear()
         self.ax_freq.clear()
 
-        if not hasattr(self, 'controller') or not self.controller.has_data():
+        if not hasattr(self, "controller") or not self.controller.has_data():
             return
 
         data_list = self.controller.get_preprocessed_data_list()
-        # For original, we might need to expose it via controller or just use study if it's strictly for reference
+        # For original, we might need to expose it via controller or just use study if
+        # it's strictly for reference
         # But better to ask controller.
-        # Let's add get_loaded_data_list to PreprocessController? Or just accept that we need two controllers?
-        # Actually PreprocessController has access to study, we can expose get_loaded_data_list there too or passed in.
+        # Let's add get_loaded_data_list to PreprocessController? Or just accept that
+        # we need two controllers?
+        # Actually PreprocessController has access to study, we can expose
+        # get_loaded_data_list there too or passed in.
         # But simpler: PreprocessPanel creates PreprocessController.
         # Controller can have `get_original_data_list`.
 
         orig_list = []
-        if hasattr(self, 'controller') and hasattr(self.controller, 'study'):
-             orig_list = self.controller.study.loaded_data_list
+        if hasattr(self, "controller") and hasattr(self.controller, "study"):
+            orig_list = self.controller.study.loaded_data_list
 
         if not data_list:
             return
@@ -817,7 +887,8 @@ class PreprocessPanel(QWidget):
             orig_obj = orig_list[0] if orig_list else None
 
             chan_idx = self.chan_combo.currentIndex()
-            if chan_idx < 0: return # No channel selected
+            if chan_idx < 0:
+                return  # No channel selected
             chan_name = self.chan_combo.currentText()
 
             sfreq = raw_obj.get_sfreq()
@@ -827,7 +898,8 @@ class PreprocessPanel(QWidget):
                 is_raw = obj.is_raw()
                 obj_sfreq = obj.get_sfreq()
                 data = obj.get_mne().get_data()
-                if data is None: return None, None
+                if data is None:
+                    return None, None
 
                 if is_raw:
                     start_sample = int(start_time * obj_sfreq)
@@ -837,22 +909,21 @@ class PreprocessPanel(QWidget):
                     # Check bounds
                     if start_sample >= data.shape[1]:
                         return None, None
-                    if end_sample > data.shape[1]:
-                        end_sample = data.shape[1]
+                    end_sample = min(end_sample, data.shape[1])
 
                     y = data[ch_idx, start_sample:end_sample]
                     x = np.arange(start_sample, end_sample) / obj_sfreq
                     return x, y
-                else:
-                    if data.ndim == 3:
-                        # For epochs, start_time is the epoch index
-                        epoch_idx = int(start_time)
-                        if epoch_idx < 0: epoch_idx = 0
-                        if epoch_idx >= data.shape[0]: epoch_idx = data.shape[0] - 1
+                elif data.ndim == 3:
+                    # For epochs, start_time is the epoch index
+                    epoch_idx = int(start_time)
+                    epoch_idx = max(epoch_idx, 0)
+                    if epoch_idx >= data.shape[0]:
+                        epoch_idx = data.shape[0] - 1
 
-                        y = data[epoch_idx, ch_idx, :]
-                        x = obj.get_mne().times
-                        return x, y
+                    y = data[epoch_idx, ch_idx, :]
+                    x = obj.get_mne().times
+                    return x, y
                 return None, None
 
             # Get Current Data
@@ -874,25 +945,38 @@ class PreprocessPanel(QWidget):
                 # x is already time array
 
                 if y_orig_uv is not None:
-                    self.ax_time.plot(x_orig, y_orig_uv, color='gray', alpha=0.5, label='Original')
+                    self.ax_time.plot(
+                        x_orig, y_orig_uv, color="gray", alpha=0.5, label="Original"
+                    )
 
-                self.ax_time.plot(x_curr, y_curr_uv, color='#2196F3', linewidth=1, label='Current')
+                self.ax_time.plot(
+                    x_curr, y_curr_uv, color="#2196F3", linewidth=1, label="Current"
+                )
                 if raw_obj.is_raw():
-                    self.ax_time.set_title(f"{chan_name} (Time)", color='#cccccc')
+                    self.ax_time.set_title(f"{chan_name} (Time)", color="#cccccc")
                 else:
-                    self.ax_time.set_title(f"{chan_name} (Epoch {int(start_t)})", color='#cccccc')
-                self.ax_time.set_xlabel("Time (s)", color='#cccccc')
-                self.ax_time.set_ylabel("Amplitude (uV)", color='#cccccc') # Updated unit
-                legend = self.ax_time.legend(loc='upper right', fontsize='small', facecolor='#2d2d2d', edgecolor='#cccccc')
+                    self.ax_time.set_title(
+                        f"{chan_name} (Epoch {int(start_t)})", color="#cccccc"
+                    )
+                self.ax_time.set_xlabel("Time (s)", color="#cccccc")
+                self.ax_time.set_ylabel(
+                    "Amplitude (uV)", color="#cccccc"
+                )  # Updated unit
+                legend = self.ax_time.legend(
+                    loc="upper right",
+                    fontsize="small",
+                    facecolor="#2d2d2d",
+                    edgecolor="#cccccc",
+                )
                 for text in legend.get_texts():
                     text.set_color("#cccccc")
 
-                self.ax_time.tick_params(axis='x', colors='#cccccc')
-                self.ax_time.tick_params(axis='y', colors='#cccccc')
+                self.ax_time.tick_params(axis="x", colors="#cccccc")
+                self.ax_time.tick_params(axis="y", colors="#cccccc")
                 for spine in self.ax_time.spines.values():
-                    spine.set_color('#cccccc')
+                    spine.set_color("#cccccc")
 
-                self.ax_time.grid(True, linestyle='--', alpha=0.5)
+                self.ax_time.grid(True, linestyle="--", alpha=0.5)
 
                 # Apply Y-Scale
                 y_scale = self.yscale_spin.value()
@@ -917,14 +1001,29 @@ class PreprocessPanel(QWidget):
                                 ev_id = ev[2]
 
                                 if t_start_view <= ev_time <= t_end_view:
-                                    self.ax_time.axvline(x=ev_time, color='#ff9800', linestyle='--', alpha=0.8)
+                                    self.ax_time.axvline(
+                                        x=ev_time,
+                                        color="#ff9800",
+                                        linestyle="--",
+                                        alpha=0.8,
+                                    )
                                     label = id_to_name.get(ev_id, str(ev_id))
-                                    # Place text near top, slightly offset to avoid blocking line
+                                    # Place text near top, slightly offset to avoid
+                                    # blocking line
                                     y_lim = self.ax_time.get_ylim()
                                     y_pos = y_lim[1] - (y_lim[1] - y_lim[0]) * 0.05
                                     # Offset x slightly
                                     x_offset = (t_end_view - t_start_view) * 0.01
-                                    self.ax_time.text(ev_time + x_offset, y_pos, label, color='#ff9800', ha='left', va='bottom', fontsize='small', rotation=0)
+                                    self.ax_time.text(
+                                        ev_time + x_offset,
+                                        y_pos,
+                                        label,
+                                        color="#ff9800",
+                                        ha="left",
+                                        va="bottom",
+                                        fontsize="small",
+                                        rotation=0,
+                                    )
                     except Exception as e:
                         logger.warning(f"Failed to plot events: {e}")
 
@@ -932,50 +1031,77 @@ class PreprocessPanel(QWidget):
             if y_curr is not None:
                 # Calculate PSD (using uV data)
                 def calc_psd(sig):
-                    f, Pxx = welch(sig, fs=sfreq, nperseg=min(len(sig), 256*4))
+                    f, Pxx = welch(sig, fs=sfreq, nperseg=min(len(sig), 256 * 4))
                     return f, Pxx
 
                 f_curr, p_curr = calc_psd(y_curr_uv)
 
                 if y_orig_uv is not None:
                     f_orig, p_orig = calc_psd(y_orig_uv)
-                    self.ax_freq.plot(f_orig, 10 * np.log10(p_orig), color='gray', alpha=0.5, label='Original')
+                    self.ax_freq.plot(
+                        f_orig,
+                        10 * np.log10(p_orig),
+                        color="gray",
+                        alpha=0.5,
+                        label="Original",
+                    )
 
-                self.ax_freq.plot(f_curr, 10 * np.log10(p_curr), color='#2196F3', linewidth=1, label='Current')
-                self.ax_freq.set_title(f"{chan_name} (PSD)", color='#cccccc')
-                self.ax_freq.set_xlabel("Frequency (Hz)", color='#cccccc')
-                self.ax_freq.set_ylabel("Power (dB/Hz)", color='#cccccc') # PSD of uV is uV^2/Hz, log is dB
-                legend = self.ax_freq.legend(loc='upper right', fontsize='small', facecolor='#2d2d2d', edgecolor='#cccccc')
+                self.ax_freq.plot(
+                    f_curr,
+                    10 * np.log10(p_curr),
+                    color="#2196F3",
+                    linewidth=1,
+                    label="Current",
+                )
+                self.ax_freq.set_title(f"{chan_name} (PSD)", color="#cccccc")
+                self.ax_freq.set_xlabel("Frequency (Hz)", color="#cccccc")
+                self.ax_freq.set_ylabel(
+                    "Power (dB/Hz)", color="#cccccc"
+                )  # PSD of uV is uV^2/Hz, log is dB
+                legend = self.ax_freq.legend(
+                    loc="upper right",
+                    fontsize="small",
+                    facecolor="#2d2d2d",
+                    edgecolor="#cccccc",
+                )
                 for text in legend.get_texts():
                     text.set_color("#cccccc")
 
-                self.ax_freq.tick_params(axis='x', colors='#cccccc')
-                self.ax_freq.tick_params(axis='y', colors='#cccccc')
+                self.ax_freq.tick_params(axis="x", colors="#cccccc")
+                self.ax_freq.tick_params(axis="y", colors="#cccccc")
                 for spine in self.ax_freq.spines.values():
-                    spine.set_color('#cccccc')
+                    spine.set_color("#cccccc")
 
-                self.ax_freq.grid(True, linestyle='--', alpha=0.5)
+                self.ax_freq.grid(True, linestyle="--", alpha=0.5)
 
             self.canvas_time.draw()
             self.canvas_freq.draw()
 
         except Exception as e:
             logger.error(f"Plotting failed: {e}")
-            self.ax_time.text(0.5, 0.5, "Plot Error", ha='center', va='center', color='#cccccc')
+            self.ax_time.text(
+                0.5, 0.5, "Plot Error", ha="center", va="center", color="#cccccc"
+            )
             self.canvas_time.draw()
 
     def check_lock(self):
-        if not hasattr(self, 'controller'): return False
+        if not hasattr(self, "controller"):
+            return False
         if self.controller.is_epoched():
-            QMessageBox.warning(self, "Action Blocked",
-                                "Preprocessing is locked because data has been Epoched.\n"
-                                "Please 'Reset All Preprocessing' to make changes.")
+            QMessageBox.warning(
+                self,
+                "Action Blocked",
+                "Preprocessing is locked because data has been Epoched.\n"
+                "Please 'Reset All Preprocessing' to make changes.",
+            )
             return True
         return False
 
     def open_filtering(self):
-        if not hasattr(self, 'controller'): return
-        if self.check_lock(): return
+        if not hasattr(self, "controller"):
+            return
+        if self.check_lock():
+            return
         if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
@@ -995,8 +1121,10 @@ class PreprocessPanel(QWidget):
                     QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
 
     def open_resample(self):
-        if not hasattr(self, 'controller'): return
-        if self.check_lock(): return
+        if not hasattr(self, "controller"):
+            return
+        if self.check_lock():
+            return
         if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
@@ -1015,8 +1143,10 @@ class PreprocessPanel(QWidget):
                     QMessageBox.critical(self, "Error", f"Resample failed: {e}")
 
     def open_rereference(self):
-        if not hasattr(self, 'controller'): return
-        if self.check_lock(): return
+        if not hasattr(self, "controller"):
+            return
+        if self.check_lock():
+            return
         if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
@@ -1037,8 +1167,10 @@ class PreprocessPanel(QWidget):
                     QMessageBox.critical(self, "Error", f"Re-reference failed: {e}")
 
     def open_normalize(self):
-        if not hasattr(self, 'controller'): return
-        if self.check_lock(): return
+        if not hasattr(self, "controller"):
+            return
+        if self.check_lock():
+            return
         if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
@@ -1057,8 +1189,10 @@ class PreprocessPanel(QWidget):
                     QMessageBox.critical(self, "Error", f"Normalization failed: {e}")
 
     def open_epoching(self):
-        if not hasattr(self, 'controller'): return
-        if self.check_lock(): return
+        if not hasattr(self, "controller"):
+            return
+        if self.check_lock():
+            return
         if not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
@@ -1070,33 +1204,36 @@ class PreprocessPanel(QWidget):
             if params:
                 baseline, selected_events, tmin, tmax = params
                 try:
-                    if self.controller.apply_epoching(baseline, selected_events, tmin, tmax):
-                         self.update_panel()
-                         if hasattr(self.main_window, 'update_info_panel'):
+                    if self.controller.apply_epoching(
+                        baseline, selected_events, tmin, tmax
+                    ):
+                        self.update_panel()
+                        if hasattr(self.main_window, "update_info_panel"):
                             self.main_window.update_info_panel()
-                         QMessageBox.information(self, "Success", "Epoching applied.\nPreprocessing is now LOCKED.")
+                        QMessageBox.information(
+                            self,
+                            "Success",
+                            "Epoching applied.\nPreprocessing is now LOCKED.",
+                        )
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Epoching failed: {e}")
-
-
-
-
 
     def reset_preprocess(self):
         if not self.check_data_loaded():
             return
 
         reply = QMessageBox.question(
-            self, "Confirm Reset",
+            self,
+            "Confirm Reset",
             "Are you sure you want to reset all preprocessing steps?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.controller.reset_preprocess()
                 self.update_panel()
-                if hasattr(self.main_window, 'update_info_panel'):
+                if hasattr(self.main_window, "update_info_panel"):
                     self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Preprocessing reset.")
             except Exception as e:
@@ -1104,7 +1241,9 @@ class PreprocessPanel(QWidget):
                 QMessageBox.critical(self, "Error", f"Reset failed: {e}")
 
     def check_data_loaded(self):
-        if not hasattr(self, 'controller') or not self.controller.has_data():
-            QMessageBox.warning(self, "Warning", "No data loaded. Please import data first.")
+        if not hasattr(self, "controller") or not self.controller.has_data():
+            QMessageBox.warning(
+                self, "Warning", "No data loaded. Please import data first."
+            )
             return False
         return True

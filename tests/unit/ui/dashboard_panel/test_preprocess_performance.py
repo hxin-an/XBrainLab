@@ -1,4 +1,4 @@
-
+import contextlib
 from unittest.mock import MagicMock
 
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
@@ -16,10 +16,8 @@ def test_slider_debouncing(qtbot):
 
     # Mock the plot method and reconnect signal
     panel.plot_sample_data = MagicMock()
-    try:
+    with contextlib.suppress(TypeError):
         panel.plot_timer.timeout.disconnect()
-    except TypeError:
-        pass # Signal might not be connected if init failed (unlikely here)
     panel.plot_timer.timeout.connect(panel.plot_sample_data)
 
     # Simulate rapid slider changes
@@ -36,6 +34,7 @@ def test_slider_debouncing(qtbot):
     # Verify plot called ONCE
     assert panel.plot_sample_data.call_count == 1
 
+
 def test_spinbox_debouncing(qtbot):
     """Test that spinbox changes are debounced."""
     mock_parent = MagicMock()
@@ -46,10 +45,8 @@ def test_spinbox_debouncing(qtbot):
     qtbot.addWidget(panel)
 
     panel.plot_sample_data = MagicMock()
-    try:
+    with contextlib.suppress(TypeError):
         panel.plot_timer.timeout.disconnect()
-    except TypeError:
-        pass
     panel.plot_timer.timeout.connect(panel.plot_sample_data)
 
     panel.on_time_spin_changed(1.0)

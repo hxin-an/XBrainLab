@@ -1,4 +1,5 @@
 from PyQt6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QFrame,
@@ -15,6 +16,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.controller.visualization_controller import (
     VisualizationController,
 )
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 
@@ -31,6 +33,7 @@ class VisualizationPanel(QWidget):
     """
     Panel for visualizing data and model explanations with unified controls.
     """
+
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -80,8 +83,8 @@ class VisualizationPanel(QWidget):
         # Method Selector
         ctrl_layout.addWidget(QLabel("Method:"))
         self.method_combo = QComboBox()
-        self.method_combo.addItem('Gradient')
-        self.method_combo.addItem('Gradient * Input')
+        self.method_combo.addItem("Gradient")
+        self.method_combo.addItem("Gradient * Input")
         self.method_combo.addItems(supported_saliency_methods)
         self.method_combo.setStyleSheet(self.get_combo_style())
         self.method_combo.currentTextChanged.connect(self.on_update)
@@ -104,7 +107,6 @@ class VisualizationPanel(QWidget):
         # Signal connected at the end of init_ui to avoid early triggering
 
         # Get trainers for initialization (empty initially)
-        trainers = []
 
         # Tab 1: Saliency Map
         self.tab_map = SaliencyMapWidget(self)
@@ -258,7 +260,7 @@ class VisualizationPanel(QWidget):
         self.friendly_map = {}
         for i, trainer in enumerate(trainers):
             model_name = trainer.model_holder.target_model.__name__
-            friendly_name = f"Fold {i+1} ({model_name})"
+            friendly_name = f"Fold {i + 1} ({model_name})"
             self.friendly_map[friendly_name] = trainer
             self.plan_combo.addItem(friendly_name)
 
@@ -279,16 +281,16 @@ class VisualizationPanel(QWidget):
             trainer = self.friendly_map[text]
             # Add runs
             for i in range(trainer.option.repeat_num):
-                self.run_combo.addItem(f"Run {i+1}")
+                self.run_combo.addItem(f"Run {i + 1}")
             # Add Average
             self.run_combo.addItem("Average")
 
         self.run_combo.blockSignals(False)
 
         if self.run_combo.count() > 0:
-            self.run_combo.setCurrentIndex(0) # Select first run by default
+            self.run_combo.setCurrentIndex(0)  # Select first run by default
         else:
-            self.on_update() # Trigger update to clear if empty
+            self.on_update()  # Trigger update to clear if empty
 
     def refresh_data(self):
         """Called by MainWindow when switching to this panel."""
@@ -312,7 +314,7 @@ class VisualizationPanel(QWidget):
 
         if plan_name not in self.friendly_map or not run_name:
             # Clear or show placeholder
-            if hasattr(current_widget, 'show_error'):
+            if hasattr(current_widget, "show_error"):
                 current_widget.show_error("Please select a Plan and Run.")
             return
 
@@ -325,10 +327,10 @@ class VisualizationPanel(QWidget):
         if run_name == "Average":
             eval_record = self.controller.get_averaged_record(trainer)
             if not eval_record:
-                if hasattr(current_widget, 'show_error'):
+                if hasattr(current_widget, "show_error"):
                     current_widget.show_error("No finished runs to average.")
                 return
-            target_plan = trainer.get_plans()[0] # Dummy plan for context
+            target_plan = trainer.get_plans()[0]  # Dummy plan for context
         else:
             try:
                 run_idx = int(run_name.split(" ")[1]) - 1
@@ -337,29 +339,28 @@ class VisualizationPanel(QWidget):
                     target_plan = plans[run_idx]
                     eval_record = target_plan.get_eval_record()
             except Exception as e:
-                from XBrainLab.backend.utils.logger import logger
                 logger.warning(f"Failed to find plan for run {run_name}: {e}")
 
         if not eval_record:
-            if hasattr(current_widget, 'show_error'):
+            if hasattr(current_widget, "show_error"):
                 current_widget.show_error("Selected run has no evaluation record.")
             return
 
         # Call update_plot on the active widget
-        if hasattr(current_widget, 'update_plot'):
-            current_widget.update_plot(target_plan, trainer, method_name, absolute, eval_record)
+        if hasattr(current_widget, "update_plot"):
+            current_widget.update_plot(
+                target_plan, trainer, method_name, absolute, eval_record
+            )
 
             # Force UI update to ensure plot appears immediately
             current_widget.repaint()
-            from PyQt6.QtWidgets import QApplication
+
             QApplication.processEvents()
-
-
 
     def set_montage(self):
         if not self.controller.has_epoch_data():
-             QMessageBox.warning(self, "Warning", "No epoch data available.")
-             return
+            QMessageBox.warning(self, "Warning", "No epoch data available.")
+            return
         win = PickMontageWindow(self, self.controller.get_channel_names())
         if win.exec():
             chs, positions = win.get_result()
@@ -388,7 +389,7 @@ class VisualizationPanel(QWidget):
 
     def update_info(self):
         """Update the Aggregate Info Panel and refresh combos if needed."""
-        if hasattr(self, 'info_panel'):
+        if hasattr(self, "info_panel"):
             self.info_panel.update_info()
         # Also refresh combos as new training might have finished
         self.refresh_combos()
@@ -396,6 +397,6 @@ class VisualizationPanel(QWidget):
     def update_panel(self):
         """Called when switching to this panel."""
         self.update_info()
-        # Explicitly trigger update to ensure plot is shown even if signals were suppressed
+        # Explicitly trigger update to ensure plot is shown even if signals were
+        # suppressed
         self.on_update()
-
