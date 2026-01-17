@@ -10,10 +10,12 @@
 - **OpenAI API Support**: Compatible with GPT-4o, DeepSeek, and vLLM.
 - **Verification Scripts**: Added `scripts/verify_api_llm.py` and `scripts/verify_gemini_llm.py`.
 - **Poe Tasks**: Added `verify-api` and `verify-gemini` commands.
+- **Configuration**: Added `.env` support with `python-dotenv` for secure API key management.
 
 ### Changed
 - Refactored `LLMEngine` to use a Strategy Pattern (`LocalBackend`, `APIBackend`, `GeminiBackend`).
 - Migrated from deprecated `google-generativeai` to `google-genai`.
+- Updated `README.md` with new `inference_mode` configuration guide.
 
 ## [0.3.9] - 2026-01-16
 ### Added

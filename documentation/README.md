@@ -54,28 +54,38 @@ poetry run python run.py
 ```
 ### 3. LLM 設定 (可選)
 XBrainLab 支援 **Local GPU** (HuggingFace), **OpenAI API**, 與 **Google Gemini API**。
+系統會自動讀取 `.env` 檔案中的設定。
 
-**選項 A: Local GPU (預設)**
-需具備 CUDA 顯卡。模型將自動下載至 `XBrainLab/llm/models`。
+**步驟 1: 建立設定檔**
+複製範例檔案並重新命名為 `.env`：
+```bash
+cp .env.example .env
+```
 
-**選項 B: OpenAI / DeepSeek API**
-1. 設定環境變數：
-   ```bash
-   export OPENAI_API_KEY="sk-..."
-   # 若使用 DeepSeek/vLLM，可自訂 Base URL
-   export OPENAI_BASE_URL="https://api.deepseek.com/v1"
-   ```
-2. 修改 `XBrainLab/llm/core/config.py` 設定 `inference_mode = "api"`。
-3. 驗證連線：`poe verify-api`
+**步驟 2: 填寫 API Key**
+編輯 `.env` 檔案，填入您的 API Key：
+```ini
+# Google Gemini
+GEMINI_API_KEY=AIza...
 
-**選項 C: Google Gemini API (Native)**
-1. 於 [Google AI Studio](https://aistudio.google.com/) 取得 Key。
-2. 設定環境變數：
-   ```bash
-   export GEMINI_API_KEY="AIza..."
-   ```
-3. 修改 `XBrainLab/llm/core/config.py` 設定 `inference_mode = "gemini"`。
-4. 驗證連線：`poe verify-gemini`
+# OpenAI / DeepSeek
+OPENAI_API_KEY=sk-...
+```
+
+**步驟 3: 切換模式**
+您可以在 `.env` 中設定預設模式，或是修改 `XBrainLab/llm/core/config.py`：
+```python
+inference_mode = "gemini"  # 或 "api", "local"
+```
+
+**步驟 4: 驗證連線**
+```bash
+# 驗證 OpenAI/DeepSeek
+poe verify-api
+
+# 驗證 Gemini
+poe verify-gemini
+```
 
 ## 測試 (Testing)
 
