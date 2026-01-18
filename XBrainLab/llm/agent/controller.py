@@ -16,6 +16,8 @@ class LLMController(QObject):
 
     # Signals to UI
     response_ready = pyqtSignal(str, str)  # sender, text
+    chunk_received = pyqtSignal(str)  # New signal for streaming
+    generation_started = pyqtSignal()  # New signal for UI prep
     status_update = pyqtSignal(str)  # status message
     error_occurred = pyqtSignal(str)  # error message
     request_user_interaction = pyqtSignal(str, dict)  # command, params
@@ -92,13 +94,17 @@ class LLMController(QObject):
 
         self.current_response = ""  # Reset accumulator
 
+        # Notify UI to prepare for agent message
+        self.generation_started.emit()
+
         # Call worker via signal
         self.sig_generate.emit(messages)
 
     def _on_chunk_received(self, chunk: str):
         """Accumulate chunk and forward to UI if it's a text response."""
         self.current_response += chunk
-        # ... logic ...
+        # Forward chunk to UI for realtime display
+        self.chunk_received.emit(chunk)
 
     def _on_generation_finished(self):
         """Called when LLM finishes generating one turn."""

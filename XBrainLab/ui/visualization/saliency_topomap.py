@@ -87,7 +87,8 @@ class SaliencyTopographicMapWidget(QWidget):
             epoch_data = trainer.get_dataset().get_epoch_data()
 
             # Montage Check
-            if epoch_data.get_montage_position() is None:
+            positions = epoch_data.get_montage_position()
+            if positions is None or len(positions) == 0:
                 self.show_message(
                     "Please Set Montage First\n(Go to Configuration -> Set Montage)"
                 )

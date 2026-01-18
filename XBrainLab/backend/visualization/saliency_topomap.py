@@ -16,6 +16,16 @@ class SaliencyTopoMapViz(Visualizer):
 
     def _get_plt(self, method, absolute: bool) -> Any:
         positions = self.epoch_data.get_montage_position()
+
+        if positions is None or len(positions) == 0:
+            raise ValueError("No montage positions found. Please set a montage first.")
+
+        # Ensure 2D array
+        # Ensure 2D array
+        if positions.ndim == 1 and positions.size > 0:
+            # Assuming single channel case, though rare for Topomap
+            positions = positions.reshape(1, -1)
+
         chs = self.epoch_data.get_channel_names()
         label_number = self.epoch_data.get_label_number()
 

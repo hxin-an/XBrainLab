@@ -333,11 +333,14 @@ Training, etc.).
         self.agent_controller.response_ready.connect(
             lambda sender, text: self.chat_panel.append_message(sender, text)
         )
-        self.agent_controller.status_update.connect(self.chat_panel.set_status)
+        self.agent_controller.chunk_received.connect(self.chat_panel.on_chunk_received)
         self.agent_controller.status_update.connect(self.chat_panel.set_status)
         self.agent_controller.error_occurred.connect(self.handle_agent_error)
         self.agent_controller.request_user_interaction.connect(
             self.handle_user_interaction
+        )
+        self.agent_controller.generation_started.connect(
+            self.chat_panel.start_agent_message
         )
 
         # Initialize

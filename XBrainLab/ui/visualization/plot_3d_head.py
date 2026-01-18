@@ -92,6 +92,9 @@ class Saliency3D:
         ch_pos = epoch_data.get_montage_position()  # close plt
         electrode = epoch_data.get_channel_names()
 
+        if ch_pos is None or len(ch_pos) == 0:
+            raise ValueError("No montage positions found. Please set a montage first.")
+
         # get electrode pos in 3d
         pos_on_3d = []
         trans = [
@@ -100,10 +103,21 @@ class Saliency3D:
             mesh_head.bounds[5] - 0.10024,
         ]  # trans Cz to [0, 0, 0]
         for ele in electrode:
-            center = ch_pos[electrode.index(ele)] + trans
+            # Safety check for index
+            if ele not in electrode:
+                continue
+            idx = electrode.index(ele)
+            if idx >= len(ch_pos):
+                continue
+
+            center = ch_pos[idx] + trans
             if center[1] > 0:
                 center[2] += 0.007
             pos_on_3d.append(center)
+
+        if not pos_on_3d:
+            raise ValueError("Failed to map any channels to 3D positions.")
+
         self.pos_on_3d = np.asarray(pos_on_3d)
 
         self.chs = [
