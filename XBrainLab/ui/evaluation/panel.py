@@ -189,7 +189,11 @@ class EvaluationPanel(QWidget):
     def update_info(self):
         """Update the aggregate info panel."""
         if hasattr(self, "info_panel"):
-            self.info_panel.update_info()
+            study = self.main_window.study
+            self.info_panel.update_info(
+                loaded_data_list=study.loaded_data_list,
+                preprocessed_data_list=study.preprocessed_data_list,
+            )
 
     def init_ui(self):
         main_layout = QHBoxLayout(self)

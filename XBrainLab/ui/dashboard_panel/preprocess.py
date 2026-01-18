@@ -1235,6 +1235,8 @@ class PreprocessPanel(QWidget):
                 self.controller.reset_preprocess()
                 self.update_panel()
                 if hasattr(self.main_window, "update_info_panel"):
+                    # This might be deprecated, but keeping for compatibility
+                    # if MainWindow uses it
                     self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Preprocessing reset.")
             except Exception as e:

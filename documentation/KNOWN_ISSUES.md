@@ -5,19 +5,106 @@
 ## 高優先級 - 架構問題
 
 ### Architecture Coupling (架構耦合)
-**問題**：
-1. `DatasetController` 繼承 `QObject`，導致 Backend 依賴 PyQt6
-2. `DatasetController` 引入 `XBrainLab.ui.services.label_import_service`（反向依賴）
-3. 部分 UI Panel 繞過 Controller 直接存取 `study` 物件
 
-**影響**：Backend 無法獨立運行、測試需 Qt 環境、未來遷移困難
+**問題 1: Backend 依賴 PyQt6**
+- `DatasetController` 繼承 `QObject`，導致 Backend 依賴 PyQt6
+- 影響：Backend 無法獨立運行、測試需 Qt 環境
+
+**問題 2: Backend 反向引用 UI 層**
+- `DatasetController` 引入 `XBrainLab.ui.services.label_import_service`（反向依賴）
+- `LabelImportService` 錯誤地放在 `ui/services/` 而非 `backend/services/`
+
+**問題 3: TrainingPanel 大量繞過 Controller**
+- `TrainingPanel` 有 20+ 處直接訪問 `self.study`，完全繞過 `TrainingController`
+- 範例：`self.study.datasets`, `self.study.model_holder`, `self.study.clean_datasets()`
+- Controller 形同虛設
+
+**問題 4: AggregateInfoPanel 直接訪問 Study**
+- `ui/dashboard_panel/info.py:131` 直接訪問 `self.main_window.study`
+- 違反信息隱藏原則
+
+**問題 5: Dialog 層耦合**
+- `TrainingSettingWindow` 訪問 `parent.study.training_option`
+- 對話框應通過參數接收數據，而非訪問父組件內部狀態
+
+**問題 6: Agent 層直接持有 Study**
+- `LLMController` 直接持有 Study 引用並傳給所有 Tools
+- 應該透過抽象接口（如 `BackendFacade`）而非具體 Study 類
+
+**問題 7: 假解耦問題**（最隱蔽）
+- 雖然部分 Panel（如 `VisualizationPanel`）註釋了 `self.study`
+- 但仍通過 `main_window.study` 傳遞給 Controller
+- **所有 Controller 都持有 Study 引用**
+- **所有 Panel 都需要 main_window.study**
+- **沒有真正解耦**
+
+**影響**：Backend 無法獨立運行、測試需 Qt 環境、未來遷移困難、無法開發 CLI 工具或 API 服務
 
 **建議**：
-1. 將 `DatasetController` 改用觀察者模式
+1. 實作事件系統（Observer Pattern）取代直接引用
 2. 移動 `LabelImportService` 至 `backend/services/`
-3. 強制所有 UI 透過 Controller 存取 Backend
+3. 重構所有 Panel，移除直接 Study 訪問
+4. Controller 改為不持有 Study，改用事件訂閱
 
-**狀態**：待重構 (ROADMAP Track A Phase 2)
+**預估工作量**：8-10 週全職工作
+
+**狀態**：待重構 (高優先級 - 影響架構根基)
+
+---
+
+## 中優先級 - 代碼質量
+
+### Error Handling Issues (錯誤處理問題)
+
+**問題 1: 過於寬泛的異常捕獲**
+- 發現 **16 處**使用 `except Exception:` 而非具體異常類型
+- 位置：`ui/dashboard_panel/dataset.py` (3處), `backend/load_data/raw.py` (3處), `backend/utils/filename_parser.py` (4處) 等
+- 影響：調試困難，無法針對性處理不同錯誤
+
+**問題 2: 裸 except 子句**
+- `backend/controller/preprocess_controller.py:81` 使用裸 `except:`
+- 風險：會捕獲所有異常包括系統信號，可能導致程式無法正常停止
+- 狀態：高優先級修復
+
+**建議**：
+```python
+# 錯誤示範
+try:
+    operation()
+except Exception:  # 太籠統
+    pass
+
+# 正確做法
+try:
+    operation()
+except FileNotFoundError as e:
+    logger.error(f"檔案不存在: {e}")
+except PermissionError as e:
+    logger.error(f"權限不足: {e}")
+```
+
+**狀態**：待改進（ROADMAP Track A Phase 2）
+
+---
+
+### Logging Insufficiency (日誌記錄不足)
+
+**問題**：
+- 只有 2 個 Backend 文件使用 `logging` 模組
+- 大部分錯誤處理沒有記錄日誌，導致問題難以追蹤
+- 缺少結構化日誌（無法區分不同模組、嚴重級別）
+
+**影響**：
+- 用戶報告 bug 時無法復現
+- 生產環境問題難以調試
+- 預處理操作缺少詳細步驟記錄（已在低優先級中提及）
+
+**建議**：
+1. 為每個模組添加 logger：`logger = logging.getLogger(__name__)`
+2. 所有 except 塊記錄錯誤：`logger.error("...", exc_info=True)`
+3. 關鍵流程記錄 info 級別日誌
+
+**狀態**：待改進（ROADMAP Track A Phase 2）
 
 ---
 
@@ -80,7 +167,7 @@
 
 ---
 
-## 低優先級 - Agent & LLM Tools
+## 中優先級 - 測試覆蓋
 
 ### Real Tools Integration Testing (真實工具整合測試)
 **問題**：Real Tools 單元測試已通過 (19/19)，但尚未通過 LLM Agent Benchmark 驗證
@@ -121,6 +208,57 @@
 
 ### Montage Tool Incomplete Implementation (Montage 工具實作不完整)
 **問題**：`RealSetMontageTool` 已實作自動通道matches邏輯，但未經過充分測試驗證
+
+**具體狀況**：
+- 自動匹配邏輯已完成（大小寫不敏感、前綴清理）
+- Human-in-the-loop 機制已實作（部分匹配時回傳 "Request: Verify Montage"）
+- 缺少針對各種通道命名格式的測試覆蓋
+
+**影響**：Agent 設定 Montage 時可能因通道名稱格式差異導致匹配失敗
+
+**建議**：增加測試案例覆蓋常見通道命名格式（EEG-Fz, Fp1, FP1 等）
+
+**狀態**：功能已實作，待測試補強 (ROADMAP Track B Phase 4)
+
+---
+
+## 低優先級 - Agent & LLM Tools
+
+### Real Tools Integration Testing (真實工具整合測試)
+**問題**：Real Tools 單元測試已通過 (19/19)，但尚未通過 LLM Agent Benchmark 驗證
+
+**影響**：無法確保 Agent 在實際對話流程中正確調用 Backend
+
+**建議**：執行 `benchmark-llm` 並確保核心 Happy Path 測試通過
+
+**狀態**：待驗證 (ROADMAP Track B Phase 4)
+
+---
+
+### Label Attachment Simplified Implementation (Label 附加簡化實作 - MVP 設計限制)
+**問題**：`RealAttachLabelsTool` 採用簡化實作，未整合完整的 `EventLoader` 對齊邏輯
+
+**對比**：UI 已有完整實作（`EventFilterDialog` + `smart_filter`），可選擇特定 Event ID 並自動推薦
+
+**具體限制**：
+1. **假設**：Label 序列按時間順序對應 Raw 資料的**所有** Trigger
+2. **無法選擇特定 Event**：不支援只對齊特定 Event ID (如只用 Left Hand 的 769)
+3. **缺少序列對齊**：Label 數量與 Trigger 數量不匹配時，直接賦值可能導致錯誤
+4. **缺少長度驗證**：沒有檢查 Label 數量是否與 Trigger 匹配
+
+**適用場景** (約 70%)：
+- Label 檔案已是完整 `(n,3)` MNE 格式
+- Label 數量完全等於 Raw 資料的 Trigger 總數
+- 使用標準公開資料集 (如 BCI Competition IV)
+
+**設計決策**：保持 Agent Tool MVP 簡單性，避免增加複雜參數
+
+**狀態**：接受的設計限制（Design Limitation），不計畫增強。UI 路徑已有完整功能
+
+---
+
+### Montage Tool Incomplete Implementation (Montage 工具實作不完整)
+**問題**：`RealSetMontageTool` 已實作自動通道匹配邏輯，但未經過充分測試驗證
 
 **具體狀況**：
 - 自動匹配邏輯已完成（大小寫不敏感、前綴清理）

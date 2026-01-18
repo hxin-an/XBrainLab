@@ -146,10 +146,12 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
         patch(
             "XBrainLab.ui.dashboard_panel.preprocess.QMessageBox.information"
         ) as mock_info,
+        patch.object(panel, "info_panel") as mock_info_panel,
     ):
         panel.reset_preprocess()
         mock_controller.reset_preprocess.assert_called_once()
         mock_info.assert_called_once()
+        mock_info_panel.update_info.assert_called_once()
 
 
 if __name__ == "__main__":

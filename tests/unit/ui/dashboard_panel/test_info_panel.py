@@ -30,7 +30,7 @@ def test_init(panel):
 
 
 def test_update_info_no_data(panel, mock_main_window):
-    panel.update_info()
+    panel.update_info(loaded_data_list=[], preprocessed_data_list=[])
     # Check "Total Files" is "-"
     row = panel.row_map["Total Files"]
     assert panel.table.item(row, 1).text() == "-"
@@ -50,7 +50,7 @@ def test_update_info_loaded_data(panel, mock_main_window):
 
     mock_main_window.study.loaded_data_list = [d1]
 
-    panel.update_info()
+    panel.update_info(loaded_data_list=mock_main_window.study.loaded_data_list)
 
     # Checks
     assert panel.table.item(panel.row_map["Type"], 1).text() == "raw"
@@ -78,7 +78,10 @@ def test_update_info_preprocessed_priority(panel, mock_main_window):
 
     mock_main_window.study.preprocessed_data_list = [d_pre]
 
-    panel.update_info()
+    panel.update_info(
+        loaded_data_list=mock_main_window.study.loaded_data_list,
+        preprocessed_data_list=mock_main_window.study.preprocessed_data_list,
+    )
 
     assert panel.table.item(panel.row_map["Type"], 1).text() == "epochs"
     assert panel.table.item(panel.row_map["Channel"], 1).text() == "16"
@@ -104,7 +107,10 @@ def test_update_info_fallback(panel, mock_main_window):
 
     mock_main_window.study.loaded_data_list = [d_load]
 
-    panel.update_info()
+    panel.update_info(
+        loaded_data_list=mock_main_window.study.loaded_data_list,
+        preprocessed_data_list=mock_main_window.study.preprocessed_data_list,
+    )
 
     # Should show loaded data info
     assert panel.table.item(panel.row_map["Subjects"], 1).text() == "1"
@@ -125,5 +131,7 @@ def test_update_info_duration_calc_error(panel, mock_main_window):
 
     mock_main_window.study.preprocessed_data_list = [d1]
 
-    panel.update_info()
+    panel.update_info(
+        preprocessed_data_list=mock_main_window.study.preprocessed_data_list
+    )
     assert panel.table.item(panel.row_map["duration (sec)"], 1).text() == "?"

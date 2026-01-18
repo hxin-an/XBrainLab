@@ -853,11 +853,10 @@ class DatasetPanel(QWidget):
         self.table.blockSignals(False)
 
         # Also update the global info panel
-        # if hasattr(self.main_window, 'update_info_panel'):
-        #     self.main_window.update_info_panel()
-
-        # 2. Update Global Info Panel (Redundant, handled by refresh_panels or
-        # individual updates)
+        if hasattr(self, "info_panel"):
+            self.info_panel.update_info(
+                loaded_data_list=self.main_window.study.loaded_data_list
+            )
         # if self.main_window and hasattr(self.main_window, 'update_info_panel'):
         #     self.main_window.update_info_panel()
 

@@ -391,7 +391,11 @@ class VisualizationPanel(QWidget):
     def update_info(self):
         """Update the Aggregate Info Panel and refresh combos if needed."""
         if hasattr(self, "info_panel"):
-            self.info_panel.update_info()
+            study = self.main_window.study
+            self.info_panel.update_info(
+                loaded_data_list=study.loaded_data_list,
+                preprocessed_data_list=study.preprocessed_data_list,
+            )
         # Also refresh combos as new training might have finished
         self.refresh_combos()
 

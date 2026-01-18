@@ -121,23 +121,22 @@ class AggregateInfoPanel(QGroupBox):
         )
 
     def set_main_window(self, main_window):
+        # We keep main_window reference if needed for other things,
+        # but decoupling data access
         self.main_window = main_window
-        self.update_info()
 
-    def update_info(self):
-        if not self.main_window or not hasattr(self.main_window, "study"):
-            return
-
-        study = self.main_window.study
-
+    def update_info(self, loaded_data_list=None, preprocessed_data_list=None):
+        """
+        Update the info panel with the provided data lists.
+        If preprocessed_data_list is provided and not empty, it takes precedence.
+        """
         # Always use preprocessed data if available, otherwise loaded data.
         # This ensures consistent information across all panels.
         data_list = (
-            study.preprocessed_data_list
-            if study.preprocessed_data_list
-            else study.loaded_data_list
+            preprocessed_data_list if preprocessed_data_list else loaded_data_list
         )
-        use_loaded = data_list is study.loaded_data_list
+        # Determine if we are using loaded data (raw) or preprocessed data
+        use_loaded = data_list is loaded_data_list
 
         # Fallback: If preprocessed is empty but we have epoch_data (meaning we did
         # preprocess),
@@ -148,18 +147,19 @@ class AggregateInfoPanel(QGroupBox):
         # Specifically for the reported issue: "epoched data disappeared".
         # If epoch_data exists, we should definitely show info based on it or its
         # source.
+        # Fallback logic for epoch data persistence
+        # TODO: Pass epoch_data and loaded_data explicitly to fully decouple
         if (
             not data_list
             and not use_loaded
-            and study.epoch_data
-            and study.loaded_data_list
+            and self.main_window
+            and hasattr(self.main_window, "study")
+            and self.main_window.study.epoch_data
+            and self.main_window.study.loaded_data_list
         ):
             # If we have epoch data, we can try to use its raw_list if accessible,
             # or fallback to loaded_data_list if preprocessed is empty.
-            # Epochs object usually holds reference to data.
-            # Let's fallback to loaded_data_list if preprocessed is empty but loaded is
-            # not.
-            data_list = study.loaded_data_list
+            data_list = self.main_window.study.loaded_data_list
 
         if not data_list:
             self.reset_labels()

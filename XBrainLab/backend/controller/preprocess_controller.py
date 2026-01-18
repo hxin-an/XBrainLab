@@ -78,8 +78,8 @@ class PreprocessController:
                 _, ev_ids = data.get_event_list()
                 if ev_ids:
                     events.update(ev_ids.keys())
-            except:  # noqa: E722, PERF203
-                pass
+            except Exception as e:  # noqa: PERF203
+                logger.warning(f"Failed to get events from preprocessed data: {e}")
         return sorted(events)
 
     def apply_epoching(self, baseline, selected_events, tmin, tmax):

@@ -4,6 +4,16 @@
 
 
 
+## [0.4.4] - 2026-01-18
+### Fixed
+- **Critical Stability Fixes**:
+    - `PreprocessController`: 修復裸 `except:` 子句，改為具體異常捕獲並添加日誌記錄，防止系統異常被意外吞噬。
+- **Urgent Decoupling (P0)**:
+    - `AggregateInfoPanel`: 移除直接訪問 `main_window.study` 的耦合代碼。重構 `update_info` 方法以接受參數，並更新了所有 5 個主要 Panel (`Dataset`, `Preprocess`, `Training`, `Visualization`, `Evaluation`) 以顯式傳遞數據。
+- **Documentation**:
+    - 更新 `KNOWN_ISSUES.md` 包含詳細的架構耦合分析與代碼質量報告。
+    - 重寫 `ROADMAP.md` Track A，確立以穩定性與解耦為核心的開發階段。
+
 ## [0.4.3] - 2026-01-18
 ### Fixed
 - **Type Safety (Mypy)**：全面修復靜態類型檢查錯誤，達成 **0 errors** 目標：

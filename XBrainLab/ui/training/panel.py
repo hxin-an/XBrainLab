@@ -807,7 +807,10 @@ class TrainingPanel(QWidget):
     def update_info(self):
         """Update the Aggregate Info Panel."""
         if hasattr(self, "info_panel"):
-            self.info_panel.update_info()
+            self.info_panel.update_info(
+                loaded_data_list=self.study.loaded_data_list,
+                preprocessed_data_list=self.study.preprocessed_data_list,
+            )
 
     def update_panel(self):
         """Update panel content when switched to."""
