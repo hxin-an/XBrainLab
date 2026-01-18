@@ -70,10 +70,19 @@ class TestRealTrainingTools:
 
             # Configure
             res1 = config_tool.execute(
-                mock_study, epoch=10, batch_size=32, learning_rate=0.001
+                mock_study,
+                epoch=10,
+                batch_size=32,
+                learning_rate=0.001,
+                optimizer="sgd",
+                save_checkpoints_every=5,
             )
             assert "Training configured" in res1
+            # Verify passed params
             mock_facade.configure_training.assert_called_once()
+            call_args = mock_facade.configure_training.call_args[1]
+            assert call_args["optimizer"] == "sgd"
+            assert call_args["save_checkpoints_every"] == 5
 
             # Start
             res2 = start_tool.execute(mock_study)

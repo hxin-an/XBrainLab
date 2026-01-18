@@ -115,7 +115,7 @@
 - [x] **基礎架構**: 在 `llm/tools/real/` 實作連接 Backend 的 Adapter。
 - [x] **單元測試**: 19/19 Real Tools 測試通過。
 - [x] **整合驗證**: `verify_real_tools.py` 驗證通過 (使用真實 EEG 資料)。
-- [ ] **功能補完**: 實作 `optimizer` 與 `checkpoint` 支援 (解決已知的 High Priority Issue)。
+- [x] **功能補完**: 實作 `optimizer` 與 `checkpoint` 支援 (解決已知的 High Priority Issue)。
 - [ ] **流程控制 (Flow Control)**
     - [ ] **Human-in-the-loop (HIL)**: 實作 Montage Verification 的人工介入機制 (v0.3.9 implemented, pending coverage)。
 

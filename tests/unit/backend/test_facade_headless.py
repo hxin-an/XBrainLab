@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, patch
 
+import torch
+
 from XBrainLab.backend.facade import BackendFacade
 
 
@@ -56,10 +58,18 @@ def test_backend_facade_headless():
             facade.training.set_model_holder.assert_called()
 
             facade.training.set_training_option = MagicMock()
-            facade.configure_training(10, 32, 0.001)
+            facade.configure_training(
+                10, 32, 0.001, optimizer="sgd", save_checkpoints_every=5
+            )
 
             # Verify configure_training delegates to TrainingOption
+            # Verify configure_training delegates to TrainingOption
             assert MockTrainingOption.called
+            # Verify SGD and checkpoints
+            call_args = MockTrainingOption.call_args[1]
+            assert call_args["optim"] == torch.optim.SGD
+            assert call_args["checkpoint_epoch"] == 5
+
             facade.training.set_training_option.assert_called()
 
         # Test training

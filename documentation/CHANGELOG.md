@@ -15,6 +15,7 @@
         - Standardized all `llm/tools/real/*.py` (Dataset, Preprocess, Training) to use `BackendFacade`.
         - Moved complex logic (Enum mapping, Channel Matching, Model Resolution) from Tools to Facade.
         - **Why?**: To ensure the backend logic is reusable ("Headless SDK") and allow lightweight Agent Tools that only handle Interface/HIT logic.
+        - **Training Control**: Added `optimizer` (Adam/SGD) and `save_checkpoints_every` support to `RealConfigureTrainingTool`.
 - **Architecture Verification (P1)**:
     - Added `tests/architecture_compliance.py` to strictly enforce decoupling rules for Dialogs.
     - Verified all `QDialog` subclasses adhere to `parent.study` prohibition.
