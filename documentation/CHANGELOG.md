@@ -4,6 +4,18 @@
 
 
 
+## [0.4.5] - 2026-01-18
+### Added
+- **Structured Logging System (P1)**:
+    - Implemented central logging configuration (`logger.py`) with rotation.
+    - Replaced `print` statements with `logger` calls across UI visualization and backend training modules.
+### Fixed
+- **Bare Except Clauses (P0)**:
+    - Removed bare `except:` usage in `PreprocessController` (and verified global absence).
+### Refactored
+- **Circular Dependencies**:
+    - Extracted `RecordKey` and `TrainRecordKey` from `train.py` to `key.py` to resolve circular imports in `eval.py`.
+
 ## [0.4.4] - 2026-01-18
 ### Fixed
 - **Critical Stability Fixes**:
