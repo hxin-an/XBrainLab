@@ -4,6 +4,8 @@ import pyvistaqt
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from XBrainLab.backend.utils.logger import logger
+
 from .plot_3d_head import Saliency3D
 
 
@@ -106,7 +108,7 @@ class Saliency3DPlotWidget(QWidget):
             )
 
         except Exception as e:
-            print(f"Error initializing 3D plot: {e}")
+            logger.error(f"Error initializing 3D plot: {e}", exc_info=True)
             self.show_error(f"Error: {e}")
 
     def _do_3d_plot(self, eval_record, epoch_data, selected_event):
@@ -119,7 +121,7 @@ class Saliency3DPlotWidget(QWidget):
             )
             saliency.get_3d_head_plot()
         except Exception as e:
-            print(f"Error executing 3D plot: {e}")
+            logger.error(f"Error executing 3D plot: {e}", exc_info=True)
             # We can't easily show error in widget if it crashes here, but we can print
             # it
             # or try to show error if widget is still valid

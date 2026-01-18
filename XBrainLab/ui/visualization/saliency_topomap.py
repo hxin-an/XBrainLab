@@ -6,6 +6,7 @@ from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import VisualizerType
 
 
@@ -118,5 +119,5 @@ class SaliencyTopographicMapWidget(QWidget):
 
         except Exception as e:
             traceback.print_exc()
-            print(f"Error plotting topomap: {e}")
+            logger.error(f"Error plotting topomap: {e}", exc_info=True)
             self.show_error(f"Error: {e}")

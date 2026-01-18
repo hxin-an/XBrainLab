@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
+from XBrainLab.backend.utils.logger import logger
+
 
 def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
     """Calculate confusion matrix.
@@ -94,7 +96,7 @@ class EvalRecord:
                 vargrad=data.get("vargrad", {}),
             )
         except Exception as e:
-            print(f"Failed to load EvalRecord: {e}")
+            logger.error(f"Failed to load EvalRecord: {e}", exc_info=True)
             return None
 
     def export_csv(self, target_path: str) -> None:

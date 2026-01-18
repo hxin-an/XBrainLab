@@ -30,9 +30,9 @@
     - [x] 移除 `TrainingPanel` 與 `AggregateInfoPanel` 對 `study` 的直接訪問 (緊急解耦)
 
 #### P1 - 基礎建設 (1-2週)
-- [ ] **日誌與異常處理標準化**
-    - [ ] 建立結構化日誌系統 (`logging` module)
-    - [ ] 消除 16 處寬泛的 `except Exception`，改用具體異常
+- [x] **日誌與異常處理標準化**
+    - [x] 建立結構化日誌系統 (`logging` module)
+    - [x] 消除 16 處寬泛的 `except Exception`，改用具體異常 (替換為 Logger 記錄)
 - [ ] **UI/Backend 交互規範落實**
     - [ ] 根據 `ADR-004`，確保新代碼嚴格遵循 Pull/Push 混合模式
     - [ ] 重構 `Dialog` 層，禁止訪問 `parent.study`

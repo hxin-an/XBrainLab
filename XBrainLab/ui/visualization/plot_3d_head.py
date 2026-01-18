@@ -8,6 +8,8 @@ import requests
 # from pyvista.plotting import _vtk
 from scipy.spatial import ConvexHull
 
+from XBrainLab.backend.utils.logger import logger
+
 bgcolor = "#2d2d2d"  #'#F8F5F1'#lightslategray'
 mesh_scale_scalar = 0.8
 
@@ -51,15 +53,15 @@ class Saliency3D:
             # Check if file exists and is valid (size > 1KB)
             if not os.path.exists(file_path) or os.path.getsize(file_path) < 1024:
                 try:
-                    print(f"Downloading {fn}...")
+                    logger.info(f"Downloading {fn}...")
                     req = requests.get(gitrepo_loc + fn, timeout=30)
                     if req.status_code == 200:
                         with open(file_path, "wb") as handle:
                             handle.write(req.content)
                     else:
-                        print(f"Failed to download {fn}: HTTP {req.status_code}")
+                        logger.error(f"Failed to download {fn}: HTTP {req.status_code}")
                 except Exception as e:
-                    print(f"Failed to download {fn}: {e}")
+                    logger.error(f"Failed to download {fn}: {e}", exc_info=True)
 
         head_path = os.path.join(model_dir, "head.ply")
         brain_path = os.path.join(model_dir, "brain.ply")

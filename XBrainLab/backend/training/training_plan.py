@@ -12,6 +12,8 @@ import torch.utils.data as torch_data
 from captum.attr import NoiseTunnel, Saliency
 from sklearn.metrics import roc_auc_score
 
+from XBrainLab.backend.utils.logger import logger
+
 from ..dataset import Dataset
 from ..utils import set_seed, validate_type
 from ..visualization import supported_saliency_methods
@@ -298,7 +300,7 @@ class TrainingPlanHolder:
         self.option = option
 
         if not saliency_params:
-            print("No saliency parameter is set, using default parameters.")
+            logger.warning("No saliency parameter is set, using default parameters.")
             params = {"nt_samples": 5, "nt_samples_batch_size": None, "stdevs": 1.0}
             saliency_params = dict.fromkeys(supported_saliency_methods, params)
         self.saliency_params: dict = saliency_params

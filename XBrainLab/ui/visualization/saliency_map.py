@@ -3,6 +3,7 @@ from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import VisualizerType
 
 
@@ -95,5 +96,5 @@ class SaliencyMapWidget(QWidget):
                 self.show_error("No Data Available")
 
         except Exception as e:
-            print(f"Error plotting saliency map: {e}")
+            logger.error(f"Error plotting saliency map: {e}", exc_info=True)
             self.show_error(f"Error: {e}")

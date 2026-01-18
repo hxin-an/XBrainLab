@@ -9,30 +9,13 @@ import torch
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
+from XBrainLab.backend.utils.logger import logger
+
 from ...dataset import Dataset
 from ...training import TrainingOption
 from ...utils import get_random_state, set_random_state
 from .eval import EvalRecord, calculate_confusion
-
-
-class RecordKey:
-    "Utility class for accessing the statistics of the testing record"
-
-    LOSS = "loss"
-    ACC = "accuracy"
-    AUC = "auc"
-
-    def __iter__(self):
-        keys = dir(self)
-        keys = [getattr(self, key) for key in keys if not key.startswith("_")]
-        return iter(keys)
-
-
-class TrainRecordKey(RecordKey):
-    "Utility class for accessing the statistics of the training record"
-
-    TIME = "time"
-    LR = "lr"
+from .key import RecordKey, TrainRecordKey
 
 
 class TrainRecord:
@@ -53,7 +36,7 @@ class TrainRecord:
             Optimizer used for training
         criterion: :class:`torch.nn.Module`
             Criterion used for training
-        eval_record: :class:`XBrainLab.backend.training.record.EvalRecord` | None
+        eval_record: :class:`EvalRecord` | None
             Evaluation record, set after training is finished
         best_val_loss_model: :class:`torch.nn.Module` | None
             Model with best validation loss, set during training
@@ -281,7 +264,7 @@ class TrainRecord:
                 # Restore epoch from train loss length
                 self.epoch = len(self.train[RecordKey.LOSS])
             except Exception as e:
-                print(f"Failed to load TrainRecord stats: {e}")
+                logger.error(f"Failed to load TrainRecord stats: {e}", exc_info=True)
 
         # Load EvalRecord
         self.eval_record = EvalRecord.load(self.target_path)

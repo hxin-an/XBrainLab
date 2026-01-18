@@ -1,6 +1,7 @@
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
 
 from .single_plot_window import SinglePlotWindow
@@ -161,7 +162,7 @@ class PlotFigureWindow(SinglePlotWindow):
                                 self.set_figure(figure, self.figsize, self.dpi)
                                 self.redraw()
                         except Exception as e:
-                            print(f"Plotting error: {e}")
+                            logger.error(f"Plotting error: {e}", exc_info=True)
                             self.empty_data_figure()
 
                     if not self.plan_to_plot.is_finished():

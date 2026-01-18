@@ -1,6 +1,8 @@
 import os
 import re
 
+from XBrainLab.backend.utils.logger import logger
+
 
 class FilenameParser:
     """
@@ -63,9 +65,9 @@ class FilenameParser:
         try:
             regex = re.compile(pattern)
             match = regex.search(name_no_ext)
-            print(f"DEBUG: pattern='{pattern}', name='{name_no_ext}'")
+            logger.debug(f"DEBUG: pattern='{pattern}', name='{name_no_ext}'")
             if match:
-                print(f"DEBUG: groups={match.groups()}")
+                logger.debug(f"DEBUG: groups={match.groups()}")
                 if sub_group <= len(match.groups()):
                     sub = match.group(sub_group)
                 if sess_group <= len(match.groups()):
