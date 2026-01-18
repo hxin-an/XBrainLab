@@ -18,7 +18,7 @@
 - [x] **依賴衝突防護**
     - [x] `pyproject.toml`: 鎖定 PyTorch 與 CUDA 版本對應關係。
 
-### 第二階段：架構重構與解耦 (Architecture & Decoupling) - **[✅ Completed]**
+### 第二階段：架構重構與解耦 (Architecture & Decoupling) - **[🚧 In Progress]**
 *解決前後端強耦合問題，為未來的擴展鋪路*
 - [x] **實作 Controller 模式**
     - [x] 建立 `TrainingController`，移除 `TrainingPanel` 對 `Study` 的直接呼叫。
@@ -28,9 +28,26 @@
 - [x] **基礎建設清理**
     - [x] 移除冗餘目錄 (`ui_pyqt`)。
     - [x] 完成 Poetry 遷移與 Git Hooks 設定。
-    - [ ] **系統清理與優化 (Cleanup & Optimization)**
-        - [ ] **Warning 消除**: 修復 `DeprecationWarning` 與 `FutureWarning` (Pydantic, Torch, etc.)。
-        - [ ] **代碼與文件清理**: 移除 Dead Code 與冗餘文件。
+- [x] **類型安全提升 (Type Safety)**
+    - [x] 修復所有 mypy 類型錯誤 (139 files, 0 errors)
+    - [x] 添加 None 安全檢查、LSP 合規性、類型聯合註解
+- [ ] **Backend-UI 完全解耦 (高優先級)**
+    - [ ] **Phase 1: 事件系統重構**
+        - [ ] 將 `DatasetController` 改為純 Python 類，移除 `QObject` 繼承
+        - [ ] 實作觀察者模式 (Observer Pattern) 取代 pyqtSignal
+        - [ ] 創建 `backend/events.py` 定義事件類型
+    - [ ] **Phase 2: 服務層遷移**
+        - [ ] 移動 `LabelImportService` 從 `ui/services/` 至 `backend/services/`
+        - [ ] 確保所有 Backend 服務不依賴 UI 層
+    - [ ] **Phase 3: 測試驗證**
+        - [ ] 驗證 Backend 可在無 Qt 環境下執行
+        - [ ] 建立純 Backend 的單元測試
+- [ ] **文檔更新 (可立即完成)**
+    - [ ] 更新 `agent_architecture.md` 第 3.2 節，反映 Pull Model 實現
+    - [ ] 補充 ADR-004 的實作細節說明
+- [ ] **系統清理與優化**
+    - [ ] **Warning 消除**: 修復 `DeprecationWarning` 與 `FutureWarning` (Pydantic, Torch, etc.)。
+    - [ ] **代碼與文件清理**: 移除 Dead Code 與冗餘文件。
 
 ### 第三階段：測試體系重組 (Test Infrastructure)
 *解決測試檔案分散與 UI 測試不足的問題*
