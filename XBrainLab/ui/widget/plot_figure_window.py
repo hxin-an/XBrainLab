@@ -82,7 +82,7 @@ class PlotFigureWindow(SinglePlotWindow):
         selector_layout.addWidget(self.saliency_combo)
 
         # Add to main layout at index 0 (top)
-        self.layout.insertWidget(0, self.selector_group)
+        self.main_layout.insertWidget(0, self.selector_group)
 
     def on_plan_select(self, plan_name):
         self.set_selection(False)
@@ -127,7 +127,7 @@ class PlotFigureWindow(SinglePlotWindow):
             return
 
         counter = self.drawCounter
-        MAX_PLOT_GAP = 20
+        max_plot_gap = 20
 
         if self.current_plot != self.plan_to_plot:
             self.current_plot = self.plan_to_plot
@@ -137,7 +137,7 @@ class PlotFigureWindow(SinglePlotWindow):
                 self.empty_data_figure()
             else:
                 self.plot_gap += 1
-                if self.plot_gap < MAX_PLOT_GAP:
+                if self.plot_gap < max_plot_gap:
                     self.current_plot = True  # Keep waiting
                 else:
                     self.plot_gap = 0

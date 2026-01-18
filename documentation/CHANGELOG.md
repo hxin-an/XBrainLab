@@ -3,6 +3,17 @@
 所有對本專案的重要變更都將記錄於此文件中。
 
 
+
+## [0.4.3] - 2026-01-18
+### Fixed
+- **Type Safety (Mypy)**：全面修復靜態類型檢查錯誤，達成 **0 errors** 目標：
+    - **None 安全性**: 為 `QHeaderView`、`QWidget`、`QTreeWidgetItem` 等 Qt 物件訪問添加 None 檢查。
+    - **類型推斷**: 修復 `preprocess.py` 中複雜控制流的類型聯合問題 (`str | list[str]`)。
+    - **LSP 合規性**: 更新 LLM Tools (`dataset_real.py`) 使參數可選，符合 Liskov 替換原則。
+    - **可選導入**: 為 OpenAI/Gemini 等可選依賴添加類型抑制註解。
+    - **數組類型**: 解決 `plot_3d_head.py` 中 ndarray 與 list 的類型不匹配。
+    - **涵蓋範圍**: 修復 139 個源文件中的所有類型錯誤，包括 UI 組件、LLM 工具、後端邏輯等模組。
+
 ## [0.4.2] - 2026-01-17
 ### Added
 - **代碼品質工具**: 引入 `detect-secrets` 來防止機密洩漏，並建立了 `.secrets.baseline` 基準檔案以處理現有的誤報。

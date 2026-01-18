@@ -2,6 +2,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from threading import Thread
+from typing import Any
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
@@ -9,12 +10,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStream
 try:
     from openai import OpenAI
 except ImportError:
-    OpenAI = None
+    OpenAI: Any = None  # type: ignore[no-redef]
 
 try:
     from google import genai
 except ImportError:
-    genai = None
+    genai: Any = None  # type: ignore[no-redef]
 
 from .config import LLMConfig
 
@@ -38,8 +39,8 @@ class LocalBackend(BaseBackend):
 
     def __init__(self, config: LLMConfig):
         self.config = config
-        self.model = None
-        self.tokenizer = None
+        self.model: Any = None
+        self.tokenizer: Any = None
         self.is_loaded = False
 
     def load(self):
@@ -81,12 +82,16 @@ class LocalBackend(BaseBackend):
     def generate_stream(self, messages: list):
         if not self.is_loaded:
             self.load()
+        if self.tokenizer is None or self.model is None:
+            raise RuntimeError("Model/Tokenizer not loaded")
 
         # Apply chat template
         prompt = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
 
+        if self.model is None:
+            raise RuntimeError("Model did not load correctly")
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
 
         streamer = TextIteratorStreamer(
@@ -116,7 +121,7 @@ class APIBackend(BaseBackend):
         self.client = None
 
     def load(self):
-        if not OpenAI:
+        if OpenAI is None:
             raise ImportError("OpenAI package is missing. Run `poetry add openai`.")
 
         api_key = self.config.api_key
@@ -125,12 +130,12 @@ class APIBackend(BaseBackend):
         # Validation
         if not api_key:
             # Fallback
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = os.getenv("OPENAI_API_KEY")  # type: ignore[assignment]
 
         if not api_key:
             logger.warning("No API KEY provided for APIBackend. Inference may fail.")
 
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self.client = OpenAI(api_key=api_key, base_url=base_url)  # type: ignore[assignment]
         logger.info(
             f"Initialized APIBackend with URL: {base_url} "
             f"Model: {self.config.api_model_name}"
@@ -141,7 +146,7 @@ class APIBackend(BaseBackend):
             self.load()
 
         try:
-            stream = self.client.chat.completions.create(
+            stream = self.client.chat.completions.create(  # type: ignore[attr-defined]
                 model=self.config.api_model_name,
                 messages=messages,
                 stream=True,
@@ -164,7 +169,7 @@ class GeminiBackend(BaseBackend):
 
     def __init__(self, config: LLMConfig):
         self.config = config
-        self.client = None
+        self.client: Any = None
 
     def load(self):
         if not genai:
@@ -174,7 +179,7 @@ class GeminiBackend(BaseBackend):
 
         api_key = self.config.gemini_api_key
         if not api_key:
-            api_key = os.getenv("GEMINI_API_KEY")
+            api_key = os.getenv("GEMINI_API_KEY")  # type: ignore[assignment]
 
         if not api_key:
             logger.warning("No Gemini API KEY provided.")
@@ -228,7 +233,7 @@ class LLMEngine:
     Acts as a Facade to LocalBackend or APIBackend.
     """
 
-    def __init__(self, config: LLMConfig = None):
+    def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig()
 
         logger.info(f"Initializing LLMEngine in mode: {self.config.inference_mode}")
@@ -236,10 +241,10 @@ class LLMEngine:
         if self.config.inference_mode == "api":
             self.backend = APIBackend(self.config)
         elif self.config.inference_mode == "gemini":
-            self.backend = GeminiBackend(self.config)
+            self.backend = GeminiBackend(self.config)  # type: ignore[assignment]
         else:
             # Default to local
-            self.backend = LocalBackend(self.config)
+            self.backend = LocalBackend(self.config)  # type: ignore[assignment]
 
     def load_model(self):
         """Loads the model (or client) for the underlying backend."""

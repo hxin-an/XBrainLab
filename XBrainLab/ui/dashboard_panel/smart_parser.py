@@ -202,9 +202,9 @@ class SmartParserDialog(QDialog):
         self.table.setHorizontalHeaderLabels(
             ["Filename", "Extracted Subject", "Extracted Session"]
         )
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
 
         # 3. Buttons

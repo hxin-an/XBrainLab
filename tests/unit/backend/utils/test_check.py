@@ -40,8 +40,8 @@ def test_validate_list_type():
 
     with pytest.raises(
         TypeError,
-        match=r"test must be an instance of builtins.int or builtins.float, "
-        r"got .*test_check.B instead.",
+        match=r"Items of test must be an instance of builtins.float or builtins.int, "
+        r"got <class 'str'> instead.",
     ):
         check.validate_list_type([1, 2, "3"], (float, int), "test")
 

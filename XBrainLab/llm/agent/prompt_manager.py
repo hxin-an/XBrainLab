@@ -27,7 +27,7 @@ To use a tool, you MUST output a JSON object in the following format:
 
 If no tool is needed, just reply normally.
 """
-        self.context_notes = []
+        self.context_notes: list[str] = []
 
     def _format_tools(self) -> str:
         """Formats the list of tool objects into a JSON string description."""

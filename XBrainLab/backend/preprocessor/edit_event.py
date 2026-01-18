@@ -30,10 +30,10 @@ class EditEventName(PreprocessBase):
         # update parent event name to event id dict
         events, event_id = preprocessed_data.get_event_list()
         for k in new_event_name:
-            assert k in event_id, "New event name not found in old event name."
-        assert list(new_event_name.keys()) != list(new_event_name.values()), (
-            "No Event name updated."
-        )
+            if k not in event_id:
+                raise ValueError(f"New event name '{k}' not found in old event name.")
+        if list(new_event_name.keys()) == list(new_event_name.values()):
+            raise ValueError("No Event name updated.")
 
         new_event_id = {}
         for e in event_id:
@@ -71,11 +71,12 @@ class EditEventId(PreprocessBase):
                 has_change = True
                 break
 
-        assert has_change, "No Event Id updated."
+        if not has_change:
+            raise ValueError("No Event Id updated.")
 
         new_events, new_event_id = events.copy(), {}
-        if len(np.unique(new_event_ids.keys())) == len(
-            np.unique(new_event_ids.values())
+        if len(np.unique(list(new_event_ids.keys()))) != len(
+            np.unique(list(new_event_ids.values()))
         ):
             print(
                 "UserWarning: Updated with duplicate new event Ids. "
@@ -85,7 +86,7 @@ class EditEventId(PreprocessBase):
                 list(new_event_ids.values()), return_counts=True
             )  # [1,2,3], [1,1,2]
             dup = uq[cnt > 1]  # 3
-            event_id_dup = {v: [] for v in dup}  # 3: [768_2, 768_3]
+            event_id_dup: dict[int, list] = {v: [] for v in dup}  # 3: [768_2, 768_3]
             for k, v in event_id.items():
                 if new_event_ids[k] not in dup:
                     new_event_id[k] = new_event_ids[k]
@@ -93,13 +94,14 @@ class EditEventId(PreprocessBase):
                     event_id_dup[new_event_ids[k]].append(k)
 
                 new_events[np.where(events[:, -1] == v), -1] = new_event_ids[k]
-            event_id_dup = {
+            event_id_merged = {
                 k: "/".join(v) for k, v in event_id_dup.items()
             }  # 3: 768_2/768_3
-            new_event_id.update({v: k for k, v in event_id_dup.items()})
+            new_event_id.update({v: k for k, v in event_id_merged.items()})
         else:
             for k, v in event_id.items():
-                new_event_id[k] = new_event_ids[v]
-                new_events[np.where(events[:, -1] == v), -1] = new_event_ids[v]
+                new_id = new_event_ids.get(k, v)
+                new_event_id[k] = new_id
+                new_events[np.where(events[:, -1] == v), -1] = new_id
 
         preprocessed_data.set_event(new_events, new_event_id)

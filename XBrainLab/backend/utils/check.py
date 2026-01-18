@@ -7,7 +7,7 @@ def _get_type_name(type_class: type) -> str:
 
 
 def validate_type(
-    instance: object, type_class: type | tuple[type], message_name: str
+    instance: object, type_class: type | tuple[type, ...], message_name: str
 ) -> None:
     """Validate the type of an instance.
 
@@ -36,7 +36,7 @@ def validate_type(
 
 
 def validate_list_type(
-    instance_list: list, type_class: type | tuple[type], message_name: str
+    instance_list: list, type_class: type | tuple[type, ...], message_name: str
 ) -> None:
     """Validate the type of a list of instances.
 
@@ -56,7 +56,7 @@ def validate_list_type(
 
 
 def validate_issubclass(
-    class_name: type, type_class: type | tuple[type], message_name: str
+    class_name: type, type_class: type | tuple[type, ...], message_name: str
 ) -> None:
     """Validate if a class is a subclass of a type.
 

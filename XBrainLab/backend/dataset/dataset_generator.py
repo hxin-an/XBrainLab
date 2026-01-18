@@ -6,7 +6,7 @@ import numpy as np
 from ..utils import validate_type
 from .data_splitter import DataSplittingConfig
 from .dataset import Dataset, Epochs
-from .option import SplitByType, TrainingType, ValSplitByType
+from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..study import Study
@@ -42,8 +42,8 @@ class DatasetGenerator:
         validate_type(config, DataSplittingConfig, "config")
         if datasets is None:
             datasets = []
-        else:
-            assert len(datasets) == 0
+        elif len(datasets) != 0:
+            raise ValueError("Initial datasets list must be empty or None")
         self.epoch_data = epoch_data
         self.config = config
         self.test_splitter_list = config.test_splitter_list
@@ -98,7 +98,7 @@ class DatasetGenerator:
         to discard all epochs that are dependent to the current test set
     """
 
-    def handle_IND(self) -> None:
+    def handle_ind(self) -> None:
         """Wrapper for generating datasets for individual scheme.
         Called by :func:`generate`."""
         for subject_idx in range(len(self.epoch_data.get_subject_index_list())):
@@ -109,14 +109,18 @@ class DatasetGenerator:
 
             self.handle(name_prefix, hook)
 
-    def handle_FULL(self) -> None:
+    def handle_full(self) -> None:
         """Wrapper for generating datasets for full scheme.
         Called by :func:`generate`."""
         name_prefix = "Fold"
         self.handle(name_prefix)
 
     def split_test(
-        self, dataset: Dataset, group_idx: int, mask: np.ndarray, clean_mask: np.ndarray
+        self,
+        dataset: Dataset,
+        group_idx: int,
+        mask: np.ndarray,
+        clean_mask: np.ndarray | None,
     ) -> np.ndarray:
         """Split the test set of the dataset.
 
@@ -170,7 +174,7 @@ class DatasetGenerator:
                     mask=mask,
                     clean_mask=clean_mask,
                     value=test_splitter.get_value(),
-                    split_unit=test_splitter.get_split_unit(),
+                    split_unit=test_splitter.get_split_unit() or SplitUnit.RATIO,
                     group_idx=group_idx,
                 )
                 # save for next cross validation
@@ -225,11 +229,14 @@ class DatasetGenerator:
                     continue
                 else:
                     raise NotImplementedError
+                split_unit = val_splitter.get_split_unit()
+                if split_unit is None:
+                    raise ValueError("Split unit not specified for validation splitter")
                 mask, _ = split_func(
                     mask=mask,
                     clean_mask=None,
                     value=val_splitter.get_value(),
-                    split_unit=val_splitter.get_split_unit(),
+                    split_unit=split_unit,
                     group_idx=group_idx,
                 )
                 idx += 1
@@ -281,9 +288,9 @@ class DatasetGenerator:
         Dataset.SEQ = 0
         # individual scheme
         if self.config.train_type == TrainingType.IND:
-            self.handle_IND()
+            self.handle_ind()
         elif self.config.train_type == TrainingType.FULL:
-            self.handle_FULL()
+            self.handle_full()
         else:
             raise NotImplementedError
 
@@ -298,7 +305,7 @@ class DatasetGenerator:
         self.preview_failed = True
         self.interrupted = True
 
-    def prepare_reuslt(self) -> list:
+    def prepare_result(self) -> list:
         """Generate the datasets and remove unselcted datasets."""
         self.generate()
         while True:
@@ -323,7 +330,7 @@ class DatasetGenerator:
 
     def reset(self) -> None:
         """Reset the dataset generator."""
-        self.datasets = None
+        self.datasets = []
         self.interrupted = False
         self.preview_failed = False
         Dataset.SEQ = 0
@@ -333,6 +340,6 @@ class DatasetGenerator:
         from ..study import Study
 
         validate_type(study, Study, "study")
-        self.prepare_reuslt()
+        self.prepare_result()
         study.set_datasets(self.datasets)
         study.dataset_generator = self

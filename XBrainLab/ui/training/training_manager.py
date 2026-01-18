@@ -53,10 +53,11 @@ class TrainingManagerWindow(QDialog):
         # QDialog doesn't have menuBar() by default, but we can add one
         menubar = QMenuBar()
         plot_menu = menubar.addMenu("Plot")
-        plot_menu.addAction("Loss", self.plot_loss)
-        plot_menu.addAction("Accuracy", self.plot_acc)
-        plot_menu.addAction("AUC", self.plot_auc)
-        plot_menu.addAction("Learning Rate", self.plot_lr)
+        if plot_menu:
+            plot_menu.addAction("Loss", self.plot_loss)
+            plot_menu.addAction("Accuracy", self.plot_acc)
+            plot_menu.addAction("AUC", self.plot_auc)
+            plot_menu.addAction("Learning Rate", self.plot_lr)
         layout.setMenuBar(menubar)
 
         # Table
@@ -75,9 +76,9 @@ class TrainingManagerWindow(QDialog):
         ]
         self.plan_table.setColumnCount(len(columns))
         self.plan_table.setHorizontalHeaderLabels(columns)
-        self.plan_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.plan_table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.plan_table)
 
         # Status Bar

@@ -22,7 +22,7 @@ class Raw:
         preprocess_history: list[str]
             List of preprocess history.
         # list of
-        raw_events: list[list[int]] | None
+        raw_events: np.ndarray | None
             Raw events. Same as `mne` format,
             (onset, immediately preceding sample, event_id).
         raw_event_id: dict[str, int] | None
@@ -38,11 +38,11 @@ class Raw:
         validate_type(mne_data, (mne.io.BaseRaw, mne.BaseEpochs), "mne_data")
         self.filepath = filepath
         self.mne_data = mne_data
-        self.preprocess_history = []
-        self.raw_events = None
-        self.raw_event_id = None
-        self.subject = 0
-        self.session = 0
+        self.preprocess_history: list[str] = []
+        self.raw_events: np.ndarray | None = None
+        self.raw_event_id: dict[str, int] | None = None
+        self.subject = "0"
+        self.session = "0"
         self.labels_imported = False
 
     def get_filepath(self) -> str:
@@ -99,7 +99,7 @@ class Raw:
         """Return whether labels have been imported."""
         return self.labels_imported
 
-    def set_event(self, events: list[list[int]], event_id: dict[str, int]) -> None:
+    def set_event(self, events: np.ndarray, event_id: dict[str, int]) -> None:
         """Set the event of the raw data.
 
         Args:
@@ -109,9 +109,14 @@ class Raw:
         """
         validate_type(events, np.ndarray, "events")
         validate_type(event_id, dict, "event_id")
-        assert len(events.shape) == 2 and events.shape[1] == 3
+        if not (len(events.shape) == 2 and events.shape[1] == 3):
+            raise ValueError("Events must be a 2D array with 3 columns (MNE format)")
         if not self.is_raw():
-            assert self.get_epochs_length() == len(events)
+            if self.get_epochs_length() != len(events):
+                raise ValueError(
+                    f"Number of events ({len(events)}) does not match "
+                    f"epochs length ({self.get_epochs_length()})"
+                )
             self.mne_data.events = events
             self.mne_data.event_id = event_id
         self.raw_events = events
@@ -124,7 +129,11 @@ class Raw:
             data: New mne data.
         """
         # set loaded event to new data
-        if isinstance(data, mne.epochs.BaseEpochs) and self.raw_event_id:
+        if (
+            isinstance(data, mne.epochs.BaseEpochs)
+            and self.raw_event_id
+            and self.raw_events is not None
+        ):
             # check event consistency
             if len(self.raw_events) != len(data.events):
                 print(
@@ -186,7 +195,7 @@ class Raw:
         return isinstance(self.mne_data, mne.io.BaseRaw)
 
     # event related functions
-    def get_raw_event_list(self) -> tuple[list[list[int]], dict[str, int]]:
+    def get_raw_event_list(self) -> tuple[np.ndarray, dict[str, int]]:
         """Return the event list and event id of the raw data
            directly from the :attr:`mne_data`.
 
@@ -209,17 +218,17 @@ class Raw:
             try:
                 return mne.events_from_annotations(self.mne_data, verbose=False)
             except Exception:
-                return [], {}
+                return np.array([]), {}
         else:
             return events, event_ids
 
-    def get_event_list(self) -> tuple[list[list[int]], dict[str, int]]:
+    def get_event_list(self) -> tuple[np.ndarray, dict[str, int]]:
         """Return the event list and event id of the raw data.
 
         Returns:
             (events, event_id)
         """
-        if self.raw_event_id:
+        if self.raw_event_id is not None and self.raw_events is not None:
             return self.raw_events, self.raw_event_id
         return self.get_raw_event_list()
 

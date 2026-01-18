@@ -168,7 +168,7 @@ def test_epochs_set_channel(epochs):
     channel_position = np.random.rand(3, 3).tolist()
     epochs.set_channels(new_ch_names, channel_position)
     assert epochs.get_channel_names() == new_ch_names
-    assert epochs.get_montage_position() == channel_position
+    np.testing.assert_array_equal(epochs.get_montage_position(), channel_position)
 
 
 def test_epochs_generate_mask_target(full_filter_preview_mask):
@@ -439,7 +439,9 @@ def test_epochs_pick_manual_trial(epochs):
         0, 2, size=block_size * len(subject_list) * len(session_list), dtype=bool
     )
 
-    result, _ = epochs.pick_trial(mask, clean_mask, value, SplitUnit.MANUAL, 0)
+    # Convert boolean mask to list of indices where True
+    value_indices = np.where(value)[0].tolist()
+    result, _ = epochs.pick_trial(mask, clean_mask, value_indices, SplitUnit.MANUAL, 0)
     assert (result == value).all()
 
 

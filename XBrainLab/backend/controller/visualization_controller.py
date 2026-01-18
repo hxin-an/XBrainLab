@@ -36,7 +36,7 @@ class VisualizationController:
             return self._study.epoch_data.get_channel_names()
         return []
 
-    def get_saliency_params(self) -> dict:
+    def get_saliency_params(self) -> dict | None:
         """Get current saliency parameters."""
         return self._study.get_saliency_params()
 
@@ -52,9 +52,11 @@ class VisualizationController:
         """
         plans = trainer_holder.get_plans()
         # Filter for plans with valid eval records
-        records = [
-            p.get_eval_record() for p in plans if p.get_eval_record() is not None
-        ]
+        records: list[EvalRecord] = []
+        for p in plans:
+            r = p.get_eval_record()
+            if r is not None:
+                records.append(r)
 
         if not records:
             return None

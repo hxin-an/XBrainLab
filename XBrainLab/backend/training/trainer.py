@@ -33,10 +33,10 @@ class Trainer:
             training_plan_holders, TrainingPlanHolder, "training_plan_holders"
         )
         self.interrupt = False
-        self.progress_text = Status.PENDING
+        self.progress_text: Status | str = Status.PENDING
         self.training_plan_holders = training_plan_holders
         self.current_idx = 0
-        self.job_thread = None
+        self.job_thread: threading.Thread | None = None
 
     def add_plan(self, plan: TrainingPlanHolder) -> None:
         """Add a new training plan to the queue"""

@@ -12,15 +12,15 @@ sys.modules["XBrainLab.backend.visualization.supported_saliency_methods"] = [
 ]
 
 # Import UI components
-from XBrainLab.ui.visualization.panel import VisualizationPanel  # noqa: E402
-from XBrainLab.ui.visualization.saliency_3Dplot import (  # noqa: E402
+from XBrainLab.ui.visualization.panel import VisualizationPanel
+from XBrainLab.ui.visualization.saliency_3Dplot import (
     Saliency3DPlotWidget,
 )
-from XBrainLab.ui.visualization.saliency_map import SaliencyMapWidget  # noqa: E402
-from XBrainLab.ui.visualization.saliency_spectrogram import (  # noqa: E402
+from XBrainLab.ui.visualization.saliency_map import SaliencyMapWidget
+from XBrainLab.ui.visualization.saliency_spectrogram import (
     SaliencySpectrogramWidget,
 )
-from XBrainLab.ui.visualization.saliency_topomap import (  # noqa: E402
+from XBrainLab.ui.visualization.saliency_topomap import (
     SaliencyTopographicMapWidget,
 )
 

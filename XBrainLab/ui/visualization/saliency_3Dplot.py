@@ -48,7 +48,11 @@ class Saliency3DPlotWidget(QWidget):
     def clear_plot(self):
         # Remove existing widgets
         for i in reversed(range(self.plot_layout.count())):
-            self.plot_layout.itemAt(i).widget().setParent(None)
+            item = self.plot_layout.itemAt(i)
+            if item:
+                w = item.widget()
+                if w:
+                    w.setParent(None)
 
         # Clean up plotter if exists
         if self.plotter_widget:
@@ -113,7 +117,7 @@ class Saliency3DPlotWidget(QWidget):
             saliency = Saliency3D(
                 eval_record, epoch_data, selected_event, plotter=self.plotter_widget
             )
-            saliency.get3dHeadPlot()
+            saliency.get_3d_head_plot()
         except Exception as e:
             print(f"Error executing 3D plot: {e}")
             # We can't easily show error in widget if it crashes here, but we can print

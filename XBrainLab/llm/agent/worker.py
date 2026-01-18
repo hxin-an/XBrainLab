@@ -89,8 +89,11 @@ class AgentWorker(QObject):
 
         self.generation_thread = GenerationThread(self.engine, messages)
         self.generation_thread.chunk_received.connect(self.chunk_received)
-        self.generation_thread.finished_generation.connect(
-            lambda: (self.finished.emit([]), self.log.emit("Generation completed."))
-        )
-        self.generation_thread.error_occurred.connect(self.error)
-        self.generation_thread.start()
+        self.generation_thread.finished_generation.connect(self._on_generation_finished)
+
+    def _on_generation_finished(self):
+        self.finished.emit([])
+        self.log.emit("Generation completed.")
+        if self.generation_thread:
+            self.generation_thread.error_occurred.connect(self.error)
+            self.generation_thread.start()

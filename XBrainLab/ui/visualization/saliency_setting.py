@@ -49,9 +49,9 @@ class SetSaliencyWindow(QDialog):
             table = QTableWidget()
             table.setColumnCount(2)
             table.setHorizontalHeaderLabels(["Parameter", "Value"])
-            table.horizontalHeader().setSectionResizeMode(
-                QHeaderView.ResizeMode.Stretch
-            )
+            header = table.horizontalHeader()
+            if header is not None:
+                header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
             self.params_tables[method] = table
             group_layout.addWidget(table)
@@ -98,7 +98,7 @@ class SetSaliencyWindow(QDialog):
                 table.setItem(row, 1, item_val)
 
     def confirm(self):
-        new_params = {}
+        new_params: dict[str, dict] = {}
         try:
             for algo, table in self.params_tables.items():
                 new_params[algo] = {}

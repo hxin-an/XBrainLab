@@ -308,7 +308,7 @@ class RereferenceDialog(QDialog):
         self.setWindowTitle("Re-reference")
         self.resize(400, 300)
         self.data_list = data_list
-        self.params = None
+        self.reref_params: str | list[str] | None = None
         self.init_ui()
 
     def init_ui(self):
@@ -344,6 +344,7 @@ class RereferenceDialog(QDialog):
         self.chan_group.setEnabled(not checked)
 
     def accept(self):
+        ref: str | list[str]
         if self.avg_check.isChecked():
             ref = "average"
         else:
@@ -357,11 +358,11 @@ class RereferenceDialog(QDialog):
                 return
             ref = [item.text() for item in selected]
 
-        self.params = ref
+        self.reref_params = ref
         super().accept()
 
     def get_params(self):
-        return self.params
+        return self.reref_params
 
 
 class NormalizeDialog(QDialog):
@@ -944,7 +945,7 @@ class PreprocessPanel(QWidget):
 
                 # x is already time array
 
-                if y_orig_uv is not None:
+                if y_orig_uv is not None and x_orig is not None:
                     self.ax_time.plot(
                         x_orig, y_orig_uv, color="gray", alpha=0.5, label="Original"
                     )

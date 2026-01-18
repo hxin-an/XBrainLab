@@ -16,8 +16,8 @@ from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.preprocessor import Filtering, Normalize, TimeEpoch
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import (
-    TRAINING_EVALUATION,
     ModelHolder,
+    TrainingEvaluation,
     TrainingOption,
 )
 from XBrainLab.backend.training.record import RecordKey
@@ -149,7 +149,7 @@ def test_real_data_pipeline():
         bs=16,
         lr=0.001,
         checkpoint_epoch=1,
-        evaluation_option=TRAINING_EVALUATION.TEST_ACC,
+        evaluation_option=TrainingEvaluation.TEST_ACC,
         repeat_num=1,
     )
     study.set_training_option(option)

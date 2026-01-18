@@ -8,7 +8,7 @@ import torch
 from XBrainLab.backend.dataset import Dataset, Epochs
 from XBrainLab.backend.model_base import EEGNet, SCCNet, ShallowConvNet
 from XBrainLab.backend.training import ModelHolder, TrainingOption, TrainingPlanHolder
-from XBrainLab.backend.training.option import TRAINING_EVALUATION
+from XBrainLab.backend.training.option import TrainingEvaluation
 
 
 def test_epoch_duration_too_short():
@@ -44,7 +44,7 @@ def test_epoch_duration_too_short():
         bs=32,
         lr=0.001,
         checkpoint_epoch=1,
-        evaluation_option=TRAINING_EVALUATION.LAST_EPOCH,
+        evaluation_option=TrainingEvaluation.LAST_EPOCH,
         repeat_num=1,
     )
 
@@ -64,8 +64,8 @@ def test_minimum_samples_required():
     """Test to verify minimum samples validation for each model."""
 
     test_cases = [
-        ("EEGNet", EEGNet, {"F1": 8, "F2": 16, "D": 2}),
-        ("SCCNet", SCCNet, {"Ns": 22}),
+        ("EEGNet", EEGNet, {"f1": 8, "f2": 16, "d": 2}),
+        ("SCCNet", SCCNet, {"ns": 22}),
         ("ShallowConvNet", ShallowConvNet, {"pool_len": 75, "pool_stride": 15}),
     ]
 

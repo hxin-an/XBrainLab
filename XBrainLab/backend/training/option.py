@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 
-class TRAINING_EVALUATION(Enum):
+class TrainingEvaluation(Enum):
     """Utility class for model selection option"""
 
     VAL_LOSS = "Best validation loss"
@@ -13,7 +13,7 @@ class TRAINING_EVALUATION(Enum):
     LAST_EPOCH = "Last Epoch"
 
 
-def parse_device_name(use_cpu: bool, gpu_idx: int) -> str:
+def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
     """Return device description string"""
     if use_cpu:
         return "cpu"
@@ -50,20 +50,20 @@ class TrainingOption:
     def __init__(
         self,
         output_dir: str,
-        optim: type,
-        optim_params: dict,
+        optim: type | None,
+        optim_params: dict | None,
         use_cpu: bool,
-        gpu_idx: int,
+        gpu_idx: int | None,
         epoch: int,
         bs: int,
         lr: float,
         checkpoint_epoch: int,
-        evaluation_option: TRAINING_EVALUATION,
+        evaluation_option: TrainingEvaluation,
         repeat_num: int,
     ):
         self.output_dir = output_dir
-        self.optim = optim
-        self.optim_params = optim_params
+        self.optim: type | None = optim
+        self.optim_params: dict | None = optim_params
         self.use_cpu = use_cpu
         self.gpu_idx = gpu_idx
         self.epoch = epoch
@@ -129,15 +129,31 @@ class TrainingOption:
 
     def get_optim(self, model: torch.nn.Module) -> torch.optim.Optimizer:
         """Return optimizer instance"""
+        if self.optim is None or self.optim_params is None:
+            raise ValueError("Optimizer not set")
         return self.optim(params=model.parameters(), lr=self.lr, **self.optim_params)
 
-    def get_optim_name(self) -> str:
-        """Return optimizer name"""
+    def get_optimizer_name_repr(self) -> str:
+        """Return optimizer name string"""
+        if self.optim is None:
+            return "None"
         return self.optim.__name__
+
+    def get_optim_name(self) -> str:
+        """Alias for get_optimizer_name_repr for backward compatibility"""
+        return self.get_optimizer_name_repr()
 
     def get_optim_desc_str(self) -> str:
         """Return optimizer description string,
         including optimizer name and parameters"""
+        if self.optim is None or self.optim_params is None:
+            return "None"
+        return parse_optim_name(self.optim, self.optim_params)
+
+    def get_optimizer_repr(self) -> str:
+        """Return optimizer description string"""
+        if self.optim is None or self.optim_params is None:
+            return "None"
         return parse_optim_name(self.optim, self.optim_params)
 
     def get_device_name(self) -> str:
@@ -183,7 +199,7 @@ class TestOnlyOption(TrainingOption):
             bs,
             0,
             0,
-            TRAINING_EVALUATION.LAST_EPOCH,
+            TrainingEvaluation.LAST_EPOCH,
             1,
         )
         self.validate()
@@ -228,7 +244,7 @@ class TestOnlyOption(TrainingOption):
     def get_optim(self, model):
         return None
 
-    def get_optim_name(self):
+    def get_optimizer_name_repr(self):
         return "-"
 
     def get_optim_desc_str(self):

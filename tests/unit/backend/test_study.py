@@ -12,7 +12,7 @@ from XBrainLab.backend.dataset import (
 from XBrainLab.backend.load_data import Raw, RawDataLoader
 from XBrainLab.backend.preprocessor import PreprocessBase
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import TRAINING_EVALUATION, ModelHolder, TrainingOption
+from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 
 
 def test_study_load_data():
@@ -195,7 +195,7 @@ def trainer_study():
 @pytest.mark.parametrize("force_update", [True, False])
 def test_study_set_training_option(trainer_study, force_update):
     option = TrainingOption(
-        "test", int, 0, True, None, 1, 1, 1, 1, TRAINING_EVALUATION.TEST_ACC, 1
+        "test", int, 0, True, None, 1, 1, 1, 1, TrainingEvaluation.TEST_ACC, 1
     )
     # Since we allow multi-experiment history, this should not raise ValueError anymore
     trainer_study.set_training_option(option, force_update)

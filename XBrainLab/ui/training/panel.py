@@ -284,7 +284,9 @@ class TrainingPanel(QWidget):
         """
         )
 
-        self.history_table.verticalHeader().setVisible(False)
+        header_v = self.history_table.verticalHeader()
+        if header_v:
+            header_v.setVisible(False)
         self.history_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
@@ -293,8 +295,9 @@ class TrainingPanel(QWidget):
 
         # Column widths
         header = self.history_table.horizontalHeader()
-        for i in range(11):
-            header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+        if header:
+            for i in range(11):
+                header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
 
         self.history_table.setColumnWidth(0, 80)  # Group
         self.history_table.setColumnWidth(1, 80)  # Run
@@ -305,7 +308,8 @@ class TrainingPanel(QWidget):
         for i in range(5, 11):
             self.history_table.setColumnWidth(i, 80)
 
-        header.setStretchLastSection(True)
+        if header:
+            header.setStretchLastSection(True)
 
         # Connect selection
         self.history_table.itemSelectionChanged.connect(

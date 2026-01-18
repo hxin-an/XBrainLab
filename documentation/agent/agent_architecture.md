@@ -99,31 +99,59 @@ graph TD
     *   執行 `generate_stream` 進行推論。
     *   透過 Signal 回傳生成的文字 Chunk 與最終結果。
 
-### 2.2 LLM (The Brain)
+### 2.3 LLM Engine (The Brain)
 *   **職責**: 理解使用者意圖，結合 RAG 提供的背景知識，規劃操作步驟。
-*   **核心模組**: `XBrainLab/llm/core/engine.py` (支援 Local Models 如 Phi-3, Qwen2.5)
+*   **核心模組**: `XBrainLab/llm/core/engine.py`
+*   **支援模式** (Hybrid Inference Engine):
+    *   **Local**: Qwen2.5-7B-Instruct (免費、離線可用、無需 API Key)
+    *   **API**: GPT-4o / DeepSeek (高準確率、快速、無需 GPU)
+    *   **Gemini**: Gemini 2.0 Flash (免費、快速)
+*   **資料處理範圍**:
+    *   ✅ LLM 處理: 使用者指令、Tool 執行結果描述、檔案路徑
+    *   ❌ LLM 看不到: EEG Raw Data、模型權重、實際數據內容
+    *   *註: 所有 EEG 資料保留在 Backend (Study Object)，從不透過 LLM 傳輸*
 *   **能力**:
     *   **上下文理解**: 結合 RAG 檢索到的 API 文檔，降低幻覺 (Hallucination)。
     *   **邏輯推理**: 判斷哪些檔案是一組。
     *   **流程規劃**: 決定預處理的順序。
+*   **配置管理**: 透過 `LLMConfig` 與 `ConfigManager` 管理模型選擇、API Keys、推論參數。
 
-### 2.3 RAG Engine (The Library)
-*   **職責**: 為 LLM 提供特定領域的知識 (Domain Knowledge) 與最新的工具定義。
-*   **核心模組**: *待實作 (Planned: XBrainLab/llm/rag/)*
-*   **資料來源**:
-    *   **Documentation**: `documentation/` 下的架構文檔與工具定義。
-    *   **Codebase**: `XBrainLab/backend/` 下的原始碼 (如 `study.py`)。
-    *   **Examples**: 過往的成功操作案例 (Few-shot learning)。
+### 2.4 RAG Engine (The Library)
+*   **職責**: 為 LLM 提供特定領域的知識 (Domain Knowledge) 與最新的工具定義，透過 Few-Shot 相似案例檢索提升準確率。
+*   **核心模組**: `XBrainLab/llm/rag/` **(Phase 4 規劃中)**
+    *   `indexer.py`: 文件索引邏輯 (Qdrant Local Mode)
+    *   `retriever.py`: 語義相似度檢索器
+    *   `evaluation.py`: Hit Rate, MRR 評估
+    *   `storage/`: Qdrant 本地儲存
+*   **索引資料來源** (RAG Few-Shot 策略):
+    *   **Tool Definitions**: `documentation/agent/tool_definitions.md` (P0 - 工具參數規格)
+    *   **Few-Shot Examples**: `scripts/benchmark/data/gold_set.json` (P0 - 50 題精選範例)
+    *   **User Manuals**: `documentation/README.md` (P1 - 教學問題)
+    *   **EEG Glossary**: `documentation/GLOSSARY.md` (P2 - 領域知識)
+*   **檢索策略**:
+    *   **Semantic Search**: 根據使用者問題檢索最相似的 3-5 個案例
+    *   **Metadata Filtering**: 根據 Tool Category 精準過濾
+    *   **Context Injection**: 透過 `PromptManager.add_context()` 注入檢索結果
+*   **評估指標**:
+    *   Hit Rate (Top-K 檢索準確率)
+    *   MRR (Mean Reciprocal Rank)
+    *   Faithfulness (Agent 遵守檢索參數的忠實度)
 
-### 2.4 Tool Registry (The Interface)
+### 2.5 Tool Registry (The Interface)
 *   **定義**: 位於 `XBrainLab/llm/tools/`
 *   **架構**: 採用 **Factory Pattern** 與 **分層設計**。
     *   `definitions/`: 定義工具介面 (Base Classes)。
     *   `mock/`: 模擬實作 (用於測試與評估)。
-    *   `real/`: 真實實作 (連接 Backend)。
+    *   `real/`: 真實實作 (連接 Backend) - **✅ 已完成 (19/19 工具)**
     *   `__init__.py`: 負責根據設定 (Mock/Real) 實例化對應的工具集。
+*   **工具類別**:
+    *   **Dataset**: load_data, attach_labels, list_files, split_dataset
+    *   **Preprocessing**: apply_filter, resample, normalize, epoch_data, set_montage
+    *   **Training**: configure_training, start_training, get_results
+    *   **UI Control**: refresh_ui, show_plot
+*   **整合測試**: 透過 `scripts/verify_real_tools.py` 驗證 Backend 整合 (使用真實 EEG 資料)。
 
-### 2.5 Study Object (The State)
+### 2.6 Study Object (The State)
 *   **定義**: `XBrainLab/backend/study.py`。
 *   **職責**:
     *   是整個實驗的 **"Single Source of Truth"**。
@@ -262,36 +290,58 @@ class LoadDatasetTool(BaseTool):
 
 ## 4. 專案結構快照 (Project Structure Snapshot - LLM Module Only)
 
-以下展示 `XBrainLab/llm/` 模組的內部結構。**注意：RAG 模組將擁有自己專屬的文件資料夾 (`knowledge_base/`)，以確保檢索範圍的精確性。**
+以下展示 `XBrainLab/llm/` 模組的內部結構。
 
 ```
 XBrainLab/llm/                <-- Agent 核心模組
-├── agent/                    <-- 控制層
-│   ├── controller.py         <-- 協調者 (Main Thread)
-│   ├── worker.py             <-- 執行者 (Worker Thread)
-│   ├── parser.py             <-- 輸出解析
-│   ├── prompt_manager.py     <-- Prompt 建構與管理 (System+History+Tools)
+├── agent/                    <-- 控制層 ✅
+│   ├── controller.py         <-- 協調者 (Main Thread, ReAct Loop)
+│   ├── worker.py             <-- 執行者 (Worker Thread, LLM Inference)
+│   ├── parser.py             <-- 輸出解析 (JSON Tool Call Parser)
+│   └── prompt_manager.py     <-- Prompt 建構 (System+History+Tools+RAG Context)
 │
-├── core/                     <-- LLM 引擎層
-│   ├── config.py             <-- 模型設定
-│   └── engine.py             <-- 推論引擎 (支援 HuggingFace Local Models)
+├── core/                     <-- LLM 引擎層 ✅
+│   ├── config.py             <-- 模型設定 (支援 Local/API/Gemini)
+│   └── engine.py             <-- 推論引擎 (Hybrid Inference: LocalBackend, OpenAIBackend, GeminiBackend)
 │
-├── tools/                    <-- 工具介面層 (Factory Pattern)
-│   ├── definitions/          <-- Base Classes (Interface)
+├── tools/                    <-- 工具介面層 (Factory Pattern) ✅
+│   ├── definitions/          <-- Base Classes (19 個工具介面)
 │   │   ├── dataset_def.py
 │   │   ├── preprocess_def.py
+│   │   ├── training_def.py
+│   │   └── ui_def.py
+│   ├── mock/                 <-- Mock Implementation (用於 Benchmark)
 │   │   └── ...
-│   ├── mock/                 <-- Mock Implementation
-│   │   ├── dataset_mock.py
-│   │   └── ...
-│   ├── real/                 <-- Real Implementation (Planned)
+│   ├── real/                 <-- Real Implementation ✅ 已完成 (19/19)
+│   │   ├── dataset_real.py   <-- 連接 DatasetController
+│   │   ├── preprocess_real.py
+│   │   ├── training_real.py
+│   │   └── ui_real.py
 │   ├── base.py               <-- Tool Base Class
-│   └── __init__.py           <-- Tool Factory
+│   └── __init__.py           <-- Tool Factory (AVAILABLE_TOOLS)
 │
-└── rag/                      <-- [規劃中] RAG 檢索模組
-    ├── engine.py             <-- 檢索邏輯
-    └── knowledge_base/       <-- **RAG 專屬知識庫** (存放供 Agent 檢索的文件)
-        ├── tool_definitions.md  <-- 工具規格 (從 documentation 同步或遷移)
-        ├── api_reference.md     <-- 後端 API 說明
-        └── few_shot_examples.md <-- 操作範例
+└── rag/                      <-- [Phase 4 規劃中] RAG 檢索模組
+    ├── __init__.py
+    ├── indexer.py            <-- 文件索引邏輯 (index_gold_set, index_documentation)
+    ├── retriever.py          <-- 檢索器 (Semantic Search, Metadata Filter)
+    ├── evaluation.py         <-- 評估指標 (Hit Rate, MRR, Faithfulness)
+    ├── config.py             <-- Qdrant 配置
+    └── storage/              <-- Qdrant 本地儲存 (.gitignore)
+        ├── gold_set/         <-- Few-Shot 範例索引 (50 題)
+        └── docs/             <-- 文件索引 (tool_definitions.md, GLOSSARY.md)
+
+相關資料位置:
+├── scripts/benchmark/data/
+│   ├── gold_set.json             <-- RAG 訓練範例 (50 題) → 索引到 rag/storage/
+│   └── external_validation_set.json  <-- Benchmark 測試集 (175 題) ❌ 不索引
+│
+└── documentation/agent/
+    ├── tool_definitions.md       <-- 工具規格 → 索引到 rag/storage/docs/
+    └── agent_architecture.md     <-- 本文件
 ```
+
+**核心設計原則**:
+1. **資料分離**: RAG 訓練資料 (gold_set) 與測試資料 (external_validation_set) 嚴格分離，避免 Data Leakage。
+2. **模組化**: Agent, Core, Tools, RAG 各司其職，介面清晰。
+3. **可測試性**: Mock/Real 分離，支援單元測試與整合測試。
+4. **可擴展性**: Factory Pattern 支援動態切換 Tool 實作與 LLM Backend。

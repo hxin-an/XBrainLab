@@ -80,7 +80,8 @@ class ChatPanel(QWidget):
 
         # Ensure scroll to bottom
         scrollbar = self.chat_display.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        if scrollbar:
+            scrollbar.setValue(scrollbar.maximum())
 
     def set_status(self, status):
         self.status_label.setText(status)

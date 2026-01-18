@@ -35,21 +35,23 @@ class Study:
 
     def __init__(self) -> None:
         # raw data
-        self.loaded_data_list = []
-        self.preprocessed_data_list = []
-        self.epoch_data = None
+        self.loaded_data_list: list[Raw] = []
+        self.preprocessed_data_list: list[Raw] = []
+        self.epoch_data: Epochs | None = None
         # datasets
-        self.datasets = []
-        self.dataset_generator = None
+        self.datasets: list[Dataset] = []
+        self.dataset_generator: DatasetGenerator | None = None
         # training
-        self.model_holder = None
-        self.training_option = None
-        self.trainer = None
+        self.model_holder: ModelHolder | None = None
+        self.training_option: TrainingOption | None = None
+        self.trainer: Trainer | None = None
         # visulaization
-        self.saliency_params = None
+        self.saliency_params: dict | None = None
         # dataset locking
         self.dataset_locked = False
-        self.backup_loaded_data_list = None  # Backup for undoing channel selection
+        self.backup_loaded_data_list: list[Raw] | None = (
+            None  # Backup for undoing channel selection
+        )
         logger.info("Study initialized")
 
     # step 1 - load data
@@ -147,11 +149,11 @@ class Study:
             **kargs: The parameters for preprocessor.
         """
         validate_issubclass(preprocessor, PreprocessBase, "preprocessor")
-        preprocessor = preprocessor(self.preprocessed_data_list)
-        preprocessor.check_data()
-        preprocessed_data_list = preprocessor.data_preprocess(**kargs)
+        pp_instance = preprocessor(self.preprocessed_data_list)
+        pp_instance.check_data()
+        preprocessed_data_list = pp_instance.data_preprocess(**kargs)
         self.set_preprocessed_data_list(preprocessed_data_list)
-        logger.info(f"Applied preprocessing: {preprocessor.__class__.__name__}")
+        logger.info(f"Applied preprocessing: {pp_instance.__class__.__name__}")
 
     # step 3 - split data for training
     def get_datasets_generator(self, config: DataSplittingConfig) -> DatasetGenerator:
@@ -159,6 +161,8 @@ class Study:
 
         Helper function to get generator for generating datasets.
         """
+        if not self.epoch_data:
+            raise ValueError("No valid epoch data is generated")
         validate_type(config, DataSplittingConfig, "config")
         return DatasetGenerator(self.epoch_data, config)
 
@@ -323,7 +327,7 @@ class Study:
             raise ValueError("No valid epoch data is generated")
         self.epoch_data.set_channels(chs, positions)
 
-    def get_saliency_params(self) -> dict:
+    def get_saliency_params(self) -> dict | None:
         """Return saliency parameters for saliiency computation.
 
         Raises:
@@ -357,7 +361,7 @@ class Study:
         Args:
             interact: Whether to raise error if raw data is loaded.
         """
-        response = self.loaded_data_list or self.should_clean_datasets(interact)
+        response = bool(self.loaded_data_list) or self.should_clean_datasets(interact)
         if response and interact:
             raise ValueError(
                 "This step has already been done, "
@@ -405,7 +409,7 @@ class Study:
         Args:
             interact: Whether to raise error if datasets is generated.
         """
-        response = self.datasets or self.should_clean_trainer(interact)
+        response = bool(self.datasets) or self.should_clean_trainer(interact)
         if response and interact:
             raise ValueError(
                 "This step has already been done, "

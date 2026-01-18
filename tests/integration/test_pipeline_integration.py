@@ -5,9 +5,9 @@ import torch
 
 from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.training import (
-    TRAINING_EVALUATION,
     ModelHolder,
     Trainer,
+    TrainingEvaluation,
     TrainingOption,
     TrainingPlanHolder,
 )
@@ -91,10 +91,10 @@ def test_pipeline_integration():
         "bs": 2,
         "lr": 0.001,
         "checkpoint_epoch": 1,
-        "evaluation_option": "TRAINING_EVALUATION.VAL_LOSS",
+        "evaluation_option": "TrainingEvaluation.VAL_LOSS",
         "repeat_num": 1,
     }
-    option_args["evaluation_option"] = TRAINING_EVALUATION.TEST_ACC
+    option_args["evaluation_option"] = TrainingEvaluation.TEST_ACC
 
     option = TrainingOption(**option_args)
 

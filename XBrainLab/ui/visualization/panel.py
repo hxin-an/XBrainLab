@@ -314,7 +314,7 @@ class VisualizationPanel(QWidget):
 
         if plan_name not in self.friendly_map or not run_name:
             # Clear or show placeholder
-            if hasattr(current_widget, "show_error"):
+            if current_widget and hasattr(current_widget, "show_error"):
                 current_widget.show_error("Please select a Plan and Run.")
             return
 
@@ -327,7 +327,7 @@ class VisualizationPanel(QWidget):
         if run_name == "Average":
             eval_record = self.controller.get_averaged_record(trainer)
             if not eval_record:
-                if hasattr(current_widget, "show_error"):
+                if current_widget and hasattr(current_widget, "show_error"):
                     current_widget.show_error("No finished runs to average.")
                 return
             target_plan = trainer.get_plans()[0]  # Dummy plan for context
@@ -342,18 +342,19 @@ class VisualizationPanel(QWidget):
                 logger.warning(f"Failed to find plan for run {run_name}: {e}")
 
         if not eval_record:
-            if hasattr(current_widget, "show_error"):
+            if current_widget and hasattr(current_widget, "show_error"):
                 current_widget.show_error("Selected run has no evaluation record.")
             return
 
         # Call update_plot on the active widget
-        if hasattr(current_widget, "update_plot"):
+        if current_widget and hasattr(current_widget, "update_plot"):
             current_widget.update_plot(
                 target_plan, trainer, method_name, absolute, eval_record
             )
 
             # Force UI update to ensure plot appears immediately
-            current_widget.repaint()
+            if current_widget:
+                current_widget.repaint()
 
             QApplication.processEvents()
 

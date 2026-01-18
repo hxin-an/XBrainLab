@@ -27,6 +27,18 @@
     *   `mapping` (字典, 必填): 數據檔案名稱(Filename)與標籤檔案路徑(Filepath)的對應表。
         *   格式範例：`{"A01T.gdf": "/data/label/A01T.mat", "subject_2.set": "/data/label/S2_events.csv"}`
     *   `label_format` (字串, 選填): 指定標籤格式，通常可自動偵測。
+*   **支援的 Label 格式**:
+    *   **TXT**: 空白分隔的整數序列 (如 `1 2 1 2 3`)
+    *   **MAT**: Matlab 變數，支援 `(n,)`, `(n,1)`, `(1,n)` 形狀，以及 `(n,3)` MNE 格式 (取最後一欄)
+    *   **CSV/TSV**:
+        *   時間戳模式: 需包含 `onset/time` + `label/trial_type` 欄位
+        *   序列模式: 單欄數字或自動取第一欄
+*   **不支援的格式**: Excel (`.xlsx`), JSON, Numpy binary (`.npy`), 字串標籤, 非 UTF-8 編碼
+*   **重要限制 (MVP Design)**:
+    *   **假設**: Label 按時間順序對應 Raw 資料的**所有** Trigger 事件。
+    *   **不支援**: 選擇特定 Event ID 進行對齊（如只對齊 Left Hand 事件）。
+    *   **適用場景**: 完整標註的公開資料集（BCI Competition IV 等），Label 數量等於 Trigger 總數。
+    *   **繞過方案**: 對於部分標註資料集，請在 `epoch_data(event_id=[...])` 階段過濾特定事件。
 
 ### `clear_dataset`
 *   **功能描述**: 清除所有已載入的數據並重置 Study 狀態。若需要重新開始或因狀態鎖定導致載入失敗時使用。

@@ -1,4 +1,4 @@
-from XBrainLab.backend import preprocessor as Preprocessor
+from XBrainLab.backend import preprocessor
 from XBrainLab.backend.utils.logger import logger
 
 
@@ -56,19 +56,19 @@ class PreprocessController:
 
     def apply_filter(self, l_freq, h_freq, notch_freqs=None):
         return self._apply_processor(
-            Preprocessor.Filtering, l_freq, h_freq, notch_freqs=notch_freqs
+            preprocessor.Filtering, l_freq, h_freq, notch_freqs=notch_freqs
         )
 
     def apply_resample(self, sfreq):
-        return self._apply_processor(Preprocessor.Resample, sfreq)
+        return self._apply_processor(preprocessor.Resample, sfreq)
 
     def apply_rereference(self, ref_channels):
         return self._apply_processor(
-            Preprocessor.Rereference, ref_channels=ref_channels
+            preprocessor.Rereference, ref_channels=ref_channels
         )
 
     def apply_normalization(self, method):
-        return self._apply_processor(Preprocessor.Normalize, norm=method)
+        return self._apply_processor(preprocessor.Normalize, norm=method)
 
     def get_unique_events(self):
         """Returns unique events across all files."""
@@ -84,7 +84,7 @@ class PreprocessController:
 
     def apply_epoching(self, baseline, selected_events, tmin, tmax):
         result = self._apply_processor(
-            Preprocessor.TimeEpoch, baseline, selected_events, tmin, tmax
+            preprocessor.TimeEpoch, baseline, selected_events, tmin, tmax
         )
         if result:
             self.study.lock_dataset()

@@ -137,7 +137,7 @@ class LabelImportService:
         )
 
         loader = EventLoader(data)
-        loader.label_list = labels
+        loader.label_list = list(labels)  # type: ignore[assignment]
 
         # Check Mode
         is_timestamp_mode = (
@@ -178,7 +178,7 @@ class LabelImportService:
     ):
         """Helper for force application."""
         loader = EventLoader(data)
-        loader.label_list = labels
+        loader.label_list = list(labels)  # type: ignore[assignment]
 
         # Handle filtering if names provided
         selected_ids = None
@@ -214,7 +214,7 @@ class LabelImportService:
                 ]
                 if relevant_ids:
                     mask = np.isin(events[:, -1], relevant_ids)
-                    return np.sum(mask)
+                    return int(np.sum(mask))
                 return 0
             return len(events)
         else:

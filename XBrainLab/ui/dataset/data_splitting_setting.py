@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.dataset import (
+    DataSplitter,
     DataSplittingConfig,
     SplitByType,
     TrainingType,
@@ -145,7 +146,7 @@ class PreviewCanvas(QWidget):
         self.regions = regions
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event):  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -221,7 +222,7 @@ class DataSplittingSettingWindow(QDialog):
         self.test_region = DrawRegion(self.session_num, self.subject_num)
 
         self.step2_window = None
-        self.result = None
+        self.split_result = None
 
         self.init_ui()
         self.update_preview()
@@ -372,29 +373,36 @@ class DataSplittingSettingWindow(QDialog):
 
     def confirm(self):
         # Get Training Type
-        train_type = None
-        for i in TrainingType:
-            if i.value == self.train_type_combo.currentText():
-                train_type = i
+        train_type = TrainingType.FULL  # Default
+        for t_type in TrainingType:
+            if t_type.value == self.train_type_combo.currentText():
+                train_type = t_type
                 break
+
+        if train_type is None:
+            train_type = TrainingType.FULL
 
         # Get Val Types
         val_type_list = []
-        for i in ValSplitByType:
-            if i.value == self.val_combo.currentText():
-                val_type_list.append(i)
+        for v_type in ValSplitByType:
+            if v_type.value == self.val_combo.currentText():
+                val_type_list.append(v_type)
                 break
 
         # Get Test Types
         test_type_list = []
-        for i in SplitByType:
-            if i.value == self.test_combo.currentText():
-                test_type_list.append(i)
+        for s_type in SplitByType:
+            if s_type.value == self.test_combo.currentText():
+                test_type_list.append(s_type)
                 break
 
         # Create DataSplitter instances for val and test
-        val_splitters = [DataSplitterHolder(True, t) for t in val_type_list]
-        test_splitters = [DataSplitterHolder(True, t) for t in test_type_list]
+        val_splitters: list[DataSplitter] = [
+            DataSplitterHolder(True, t) for t in val_type_list
+        ]
+        test_splitters: list[DataSplitter] = [
+            DataSplitterHolder(True, t) for t in test_type_list
+        ]
 
         # Create DataSplittingConfig directly with backend class
         config = DataSplittingConfig(
@@ -408,10 +416,10 @@ class DataSplittingSettingWindow(QDialog):
             self.parent(), "Data Splitting Step 2", self.epoch_data, config
         )
         if self.step2_window.exec():
-            self.result = self.step2_window.get_result()
+            self.split_result = self.step2_window.get_result()
             self.accept()
         else:
             self.reject()
 
     def get_result(self):
-        return self.result
+        return self.split_result

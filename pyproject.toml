@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xbrainlab"
-version = "0.1.0"
+version = "0.4.2"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
 readme = "documentation/README.md"
@@ -62,6 +62,10 @@ black = "^24.0.0"
 pre-commit = "^3.6.0"
 isort = "^5.13.0"
 poethepoet = "^0.40.0"
+mypy = "^1.19.1"
+types-requests = "^2.32.4.20260107"
+types-pyyaml = "^6.0.12.20250915"
+commitizen = "^4.11.6"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.0.0"
@@ -81,6 +85,8 @@ build-backend = "poetry.core.masonry.api"
 ignore = [
     "PLR09",
     "PLR2004",
+    "S110",
+    "N999"  # Ignore module naming for XBrainLab
 ]
 select = [
     "F",
@@ -97,15 +103,31 @@ select = [
     "PIE",
     "PL",
     "RUF",
+    "RUF",
     "TRY3",
+    "S",
+    "N",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "run.py" = ["E402"]
 "scripts/*.py" = ["E402"]
-"tests/integration/*.py" = ["E402"]
+"tests/**/*.py" = ["E402", "S101", "N"]
 "XBrainLab/backend/dataset/dataset_generator.py" = ["PLC0415"]
 "XBrainLab/backend/load_data/data_loader.py" = ["PLC0415"]
+
+[tool.ruff.lint.pep8-naming]
+ignore-names = ["X", "Y", "x", "y", "Pxx"]
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+warn_return_any = false
+warn_unused_ignores = true
+exclude = [
+    "tests"
+]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -132,11 +154,47 @@ benchmark-llm = "scripts.benchmark.eval_agent:run_benchmark_cli"
 # test-all = "scripts.run_tests:all_tests"
 
 [tool.poe.tasks]
+# Development
 verify = "python scripts/verify_real_tools.py"
-test-unit = "pytest tests/unit"
+run = "python run.py"
+
+# Testing
+test-unit = "pytest tests/unit -v"
+test-integration = "pytest tests/integration -v"
+test-backend = "pytest tests/unit/backend tests/integration -v"
+test-ui = "pytest tests/unit/ui -v"
+test-llm = "pytest tests/unit/llm -v"
 test-real = "pytest tests/unit/llm/tools/real"
+test-all = "pytest"
+test-cov = "pytest --cov=XBrainLab --cov-report=html --cov-report=term-missing"
+
+# Code Quality
+lint = "ruff check ."
+lint-fix = "ruff check . --fix"
+format = "ruff format ."
+mypy = "mypy XBrainLab/"
+check = ["lint", "mypy", "test-unit"]
+
+# LLM Tools
 verify-api = "python scripts/verify_api_llm.py"
 verify-gemini = "python scripts/verify_gemini_llm.py"
 list-models = "python scripts/list_gemini_models.py"
-clean = { cmd = "rm -rf output", help = "Remove output directory" }
-test-all = "pytest"
+
+# Utilities
+clean = { cmd = "rm -rf output __pycache__ .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage", help = "Remove temporary files" }
+pre-commit-run = "pre-commit run --all-files"
+
+# Changelog (自動化)
+changelog = "cz changelog"
+bump = "cz bump"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.4.2"
+tag_format = "v$version"
+version_files = [
+    "pyproject.toml:version",
+]
+update_changelog_on_bump = true
+changelog_file = "documentation/CHANGELOG.md"
+changelog_incremental = true

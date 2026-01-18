@@ -1,4 +1,5 @@
 import contextlib
+from typing import Any
 
 import matplotlib
 from PyQt6.QtWidgets import QDialog, QSizePolicy, QVBoxLayout
@@ -27,9 +28,11 @@ class SinglePlotWindow(QDialog):
         self.figsize = figsize
         self.dpi = dpi
 
-        self.layout = QVBoxLayout(self)
+        self.main_layout = QVBoxLayout(self)
         self.figure_canvas = None
-        self.plot_number = None
+        self.plot_number: str | None = None
+        self.fig_param: dict[str, Any] = {}
+        self.toolbar: Any = None
 
         self.init_figure()
 
@@ -51,7 +54,7 @@ class SinglePlotWindow(QDialog):
 
     def get_figure_params(self):
         # Check if figure needs re-initialization (e.g., if closed or cleared).
-        if not plt.fignum_exists(self.plot_number):
+        if self.plot_number is None or not plt.fignum_exists(self.plot_number):
             self.init_figure()
         return self.fig_param
 
@@ -71,11 +74,11 @@ class SinglePlotWindow(QDialog):
 
     def set_figure(self, figure, figsize, dpi):
         if self.figure_canvas:
-            self.layout.removeWidget(self.figure_canvas)
+            self.main_layout.removeWidget(self.figure_canvas)
             self.figure_canvas.setParent(None)
             self.figure_canvas.deleteLater()
             if hasattr(self, "toolbar"):
-                self.layout.removeWidget(self.toolbar)
+                self.main_layout.removeWidget(self.toolbar)
                 self.toolbar.setParent(None)
                 self.toolbar.deleteLater()
 
@@ -87,8 +90,8 @@ class SinglePlotWindow(QDialog):
 
         self.toolbar = NavigationToolbar(self.figure_canvas, self)
 
-        self.layout.addWidget(self.toolbar)
-        self.layout.addWidget(self.figure_canvas)
+        self.main_layout.addWidget(self.toolbar)
+        self.main_layout.addWidget(self.figure_canvas)
 
         self.fig_param = {"fig": figure, "figsize": figsize, "dpi": dpi}
 

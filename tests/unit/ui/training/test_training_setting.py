@@ -45,7 +45,7 @@ class TestTrainingSetting:
         window.optim_params = {}  # lr is separate parameter
         window.use_cpu = True
         window.gpu_idx = None
-        window.output_dir = "/tmp/output"
+        window.output_dir = "/mock/output"
 
         # Select Evaluation
         window.evaluation_combo.setCurrentIndex(0)
@@ -60,17 +60,18 @@ class TestTrainingSetting:
         assert option.epoch == 10
         assert option.bs == 32
         assert option.lr == 0.001
-        assert option.output_dir == "/tmp/output"
+        assert option.output_dir == "/mock/output"
         assert option.use_cpu is True
 
     def test_set_output_dir(self, window):
         with patch(
-            "PyQt6.QtWidgets.QFileDialog.getExistingDirectory", return_value="/tmp/test"
+            "PyQt6.QtWidgets.QFileDialog.getExistingDirectory",
+            return_value="/mock/test",
         ):
             window.set_output_dir()
-            assert window.output_dir == "/tmp/test"
-            assert window.output_dir_label.text() == "/tmp/test"
-            assert window.output_dir_label.text() == "/tmp/test"
+            assert window.output_dir == "/mock/test"
+            assert window.output_dir_label.text() == "/mock/test"
+            assert window.output_dir_label.text() == "/mock/test"
 
     def test_load_settings(self, qtbot):
         # Create a real QWidget parent
@@ -84,7 +85,7 @@ class TestTrainingSetting:
         mock_option.lr = 0.005
         mock_option.checkpoint_epoch = 10
         mock_option.repeat_num = 3
-        mock_option.output_dir = "/tmp/loaded"
+        mock_option.output_dir = "/mock/loaded"
         mock_option.use_cpu = False
         mock_option.gpu_idx = 0
         mock_option.optim = MagicMock()
@@ -107,8 +108,8 @@ class TestTrainingSetting:
             assert window.lr_entry.text() == "0.005"
             assert window.checkpoint_entry.text() == "10"
             assert window.repeat_entry.text() == "3"
-            assert window.output_dir == "/tmp/loaded"
-            assert window.output_dir_label.text() == "/tmp/loaded"
+            assert window.output_dir == "/mock/loaded"
+            assert window.output_dir_label.text() == "/mock/loaded"
             assert window.use_cpu is False
             assert window.gpu_idx == 0
             assert "Adam" in window.opt_label.text()

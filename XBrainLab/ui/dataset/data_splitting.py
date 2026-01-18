@@ -294,10 +294,8 @@ class DataSplittingWindow(QDialog):
             item = QTreeWidgetItem(self.tree)
             item.setText(1, "Nan")
         elif len(self.datasets) > 0:
-            if (
-                self.tree.topLevelItemCount() == 1
-                and self.tree.topLevelItem(0).text(0) == "..."
-            ):
+            item0 = self.tree.topLevelItem(0)
+            if self.tree.topLevelItemCount() == 1 and item0 and item0.text(0) == "...":
                 self.tree.clear()
 
             current_count = self.tree.topLevelItemCount()
@@ -334,8 +332,9 @@ class DataSplittingWindow(QDialog):
             return
 
         try:
-            self.dataset_generator.prepare_reuslt()
-            self.accept()
+            if self.dataset_generator:
+                self.dataset_generator.prepare_result()
+                self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 

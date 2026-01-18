@@ -79,7 +79,10 @@ class TestOnlySettingWindow(QDialog):
     def confirm(self):
         try:
             self.training_option = TestOnlyOption(
-                self.output_dir, self.use_cpu, self.gpu_idx, self.bs_entry.text()
+                self.output_dir or "./output",
+                self.use_cpu if self.use_cpu is not None else True,
+                self.gpu_idx if self.gpu_idx is not None else 0,
+                int(self.bs_entry.text()),
             )
             self.accept()
         except Exception as e:

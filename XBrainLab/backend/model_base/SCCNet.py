@@ -17,7 +17,7 @@ class SCCNet(nn.Module):
         Ns: Number of spatial filters.
     """
 
-    def __init__(self, n_classes, channels, samples, sfreq, Ns=22):
+    def __init__(self, n_classes, channels, samples, sfreq, ns=22):
         super().__init__()  # input:bs, 1, channel, sample
 
         self.tp = samples
@@ -41,11 +41,11 @@ class SCCNet(nn.Module):
             )
 
         # (1, n_ch, kernelsize=(n_ch,1))
-        self.conv1 = nn.Conv2d(1, Ns, (self.ch, 1))
-        self.Bn1 = nn.BatchNorm2d(Ns)  # (n_ch)
+        self.conv1 = nn.Conv2d(1, ns, (self.ch, 1))
+        self.Bn1 = nn.BatchNorm2d(ns)  # (n_ch)
         # kernelsize=(1, floor(sf*0.1)) padding= (0, floor(sf*0.1)/2)
         self.conv2 = nn.Conv2d(
-            Ns, 20, (1, self.octsf), padding=(0, int(np.ceil((self.octsf - 1) / 2)))
+            ns, 20, (1, self.octsf), padding=(0, int(np.ceil((self.octsf - 1) / 2)))
         )
         self.Bn2 = nn.BatchNorm2d(20)
 
@@ -73,12 +73,11 @@ class SCCNet(nn.Module):
     def forward(self, x):
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
-        spX = self.conv1(x)  # (128,22,1,562)
+        sp_x = self.conv1(x)  # (128,22,1,562)
+        x = self.Bn1(sp_x)
+        tp_x = self.conv2(x)  # (128,20,1,563)
 
-        x = self.Bn1(spX)
-        tpX = self.conv2(x)  # (128,20,1,563)
-
-        x = self.Bn2(tpX)
+        x = self.Bn2(tp_x)
         x = x**2
         x = self.Drop1(x)
         x = self.AvgPool1(x)  # (128,20,1,42)

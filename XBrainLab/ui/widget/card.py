@@ -10,20 +10,20 @@ class CardWidget(QFrame):
 
     def init_ui(self, title):
         # Main Layout
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(20, 20, 20, 20)
-        self.layout.setSpacing(15)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setSpacing(15)
 
         # Title
         if title:
             self.title_label = QLabel(title)
             self.title_label.setObjectName("CardTitle")
-            self.layout.addWidget(self.title_label)
+            self.main_layout.addWidget(self.title_label)
 
         # Content Layout (Publicly accessible)
         self.content_layout = QVBoxLayout()
         self.content_layout.setSpacing(10)
-        self.layout.addLayout(self.content_layout)
+        self.main_layout.addLayout(self.content_layout)
 
         # Add Shadow
         shadow = QGraphicsDropShadowEffect(self)

@@ -14,7 +14,7 @@ def main():
     # 1. Ask for credentials
     api_key = input("Enter OpenAI API Key (or press Enter if set in env): ").strip()
     if not api_key:
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = os.getenv("OPENAI_API_KEY") or ""
 
     if not api_key:
         print("Error: No API Key provided.")

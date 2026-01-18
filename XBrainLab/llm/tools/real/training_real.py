@@ -1,7 +1,7 @@
 from typing import Any
 
 from XBrainLab.backend.training.model_holder import ModelHolder
-from XBrainLab.backend.training.option import TRAINING_EVALUATION, TrainingOption
+from XBrainLab.backend.training.option import TrainingEvaluation, TrainingOption
 
 from ..definitions.training_def import (
     BaseConfigureTrainingTool,
@@ -12,7 +12,7 @@ from .registry import ToolRegistry
 
 
 class RealSetModelTool(BaseSetModelTool):
-    def execute(self, study: Any, model_name: str) -> str:
+    def execute(self, study: Any, model_name: str | None = None, **kwargs) -> str:
         if not model_name:
             return "Error: model_name must be provided."
 
@@ -40,13 +40,14 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
     def execute(
         self,
         study: Any,
-        epoch: int,
-        batch_size: int,
-        learning_rate: float,
+        epoch: int | None = None,
+        batch_size: int | None = None,
+        learning_rate: float | None = None,
         repeat: int = 1,
         device: str = "cpu",
         optimizer: str = "adam",
         save_checkpoints_every: int = 0,
+        **kwargs,
     ) -> str:
         optim_class = ToolRegistry.get_optimizer_class(optimizer)
 
@@ -61,11 +62,11 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
                 optim_params={},  # Default params
                 use_cpu=use_cpu,
                 gpu_idx=gpu_idx,
-                epoch=epoch,
-                bs=batch_size,
-                lr=learning_rate,
+                epoch=epoch or 10,
+                bs=batch_size or 32,
+                lr=learning_rate or 0.001,
                 checkpoint_epoch=save_checkpoints_every,
-                evaluation_option=TRAINING_EVALUATION.LAST_EPOCH,  # Default
+                evaluation_option=TrainingEvaluation.LAST_EPOCH,  # Default
                 repeat_num=repeat,
             )
 
@@ -74,13 +75,13 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
             return f"Failed to configure training: {e!s}"
 
         return (
-            f"Training configured: {option.get_optim_name()} on "
+            f"Training configured: {option.get_optimizer_name_repr()} on "
             f"{option.get_device_name()}, Epochs: {epoch}."
         )
 
 
 class RealStartTrainingTool(BaseStartTrainingTool):
-    def execute(self, study: Any) -> str:
+    def execute(self, study: Any, **kwargs) -> str:
         try:
             # 1. Generate Plan (Backend requirement)
             # append=True allows adding to existing experiments if needed,

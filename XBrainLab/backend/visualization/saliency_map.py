@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 from matplotlib import pyplot as plt
 
@@ -7,7 +9,7 @@ from .base import Visualizer
 class SaliencyMapViz(Visualizer):
     """Visualizer that generate channel by time saliency map from evaluation record"""
 
-    def _get_plt(self, method, absolute: bool) -> plt:
+    def _get_plt(self, method, absolute: bool) -> Any:
         """Return saliency map plot
 
         Args:
@@ -19,9 +21,9 @@ class SaliencyMapViz(Visualizer):
         rows = 1 if label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(label_number / rows))
         # draw
-        for labelIndex in range(label_number):
-            plt.subplot(rows, cols, labelIndex + 1)
-            saliency = self.get_saliency(method, labelIndex)
+        for label_index in range(label_number):
+            plt.subplot(rows, cols, label_index + 1)
+            saliency = self.get_saliency(method, label_index)
             # no test data for this label
             if len(saliency) == 0:
                 continue
@@ -51,6 +53,6 @@ class SaliencyMapViz(Visualizer):
                 labels=np.round(np.linspace(0, duration, 5), 2),
             )
             plt.colorbar(im, orientation="vertical")
-            plt.title(f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}")
+            plt.title(f"Saliency Map of class {self.epoch_data.label_map[label_index]}")
         plt.tight_layout()
         return plt.gcf()

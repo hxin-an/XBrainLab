@@ -4,8 +4,8 @@ import pytest
 import torch
 
 from XBrainLab.backend.training import (
-    TRAINING_EVALUATION,
     TestOnlyOption,
+    TrainingEvaluation,
     TrainingOption,
     parse_device_name,
     parse_optim_name,
@@ -89,7 +89,7 @@ def test_option(kwargs, has_error):
         "bs": 20,
         "lr": 0.01,
         "checkpoint_epoch": 10,
-        "evaluation_option": TRAINING_EVALUATION.VAL_LOSS,
+        "evaluation_option": TrainingEvaluation.VAL_LOSS,
         "repeat_num": 5,
     }
 
@@ -109,7 +109,7 @@ def test_option(kwargs, has_error):
         option = TrainingOption(**args)
 
         assert option.get_output_dir() == "ok"
-        assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.VAL_LOSS"
+        assert option.get_evaluation_option_repr() == "TrainingEvaluation.VAL_LOSS"
         if args["use_cpu"] or (not args["use_cpu"] and torch.cuda.is_available()):
             assert option.get_device_name() == parse_device_name(
                 args["use_cpu"], args["gpu_idx"]
@@ -119,7 +119,7 @@ def test_option(kwargs, has_error):
         else:
             assert option.get_device() == "cuda:" + str(args["gpu_idx"])
 
-        assert option.get_optim_name() == "FakeOptim"
+        assert option.get_optimizer_name_repr() == "FakeOptim"
         assert option.get_optim_desc_str() == parse_optim_name(
             FakeOptim, args["optim_params"]
         )
@@ -175,7 +175,7 @@ def test_test_only_option(kwargs, has_error):
         option = TestOnlyOption(**args)
 
         assert option.get_output_dir() == "ok"
-        assert option.get_evaluation_option_repr() == "TRAINING_EVALUATION.LAST_EPOCH"
+        assert option.get_evaluation_option_repr() == "TrainingEvaluation.LAST_EPOCH"
 
         if args["use_cpu"] or (not args["use_cpu"] and torch.cuda.is_available()):
             assert option.get_device_name() == parse_device_name(
@@ -186,7 +186,7 @@ def test_test_only_option(kwargs, has_error):
         else:
             assert option.get_device() == "cuda:" + str(args["gpu_idx"])
 
-        assert option.get_optim_name() == "-"
+        assert option.get_optimizer_name_repr() == "-"
         assert option.get_optim_desc_str() == "-"
 
         assert option.get_optim(None) is None

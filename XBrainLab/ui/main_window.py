@@ -1,4 +1,5 @@
 import sys
+from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
@@ -262,7 +263,7 @@ Training, etc.).
             btn.setChecked(i == index)
 
         # Unified Update Logic: Always call update_panel() on result
-        target_panel = None
+        target_panel: Any = None
         if index == 0 and hasattr(self, "dataset_panel"):
             target_panel = self.dataset_panel
         elif index == 1 and hasattr(self, "preprocess_panel"):
@@ -429,7 +430,7 @@ Training, etc.).
         self.chat_panel.append_message("System", f"Error: {error_msg}")
         logger.error(f"Agent Error: {error_msg}")
 
-    def closeEvent(self, event):
+    def closeEvent(self, event):  # noqa: N802
         logger.info("Closing application...")
         if hasattr(self, "agent_controller"):
             self.agent_controller.close()

@@ -91,7 +91,7 @@ class TestRealDatasetTools:
             patch("os.listdir", return_value=["A.gdf", "B.txt"]),
             patch("os.path.exists", return_value=True),
         ):
-            res = tool.execute(mock_study, directory="/tmp", pattern="*.gdf")
+            res = tool.execute(mock_study, directory="/mock_dir", pattern="*.gdf")
             assert "A.gdf" in res
             assert "B.txt" not in res
 

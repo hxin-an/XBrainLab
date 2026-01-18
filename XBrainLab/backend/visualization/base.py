@@ -25,7 +25,7 @@ class Visualizer:
         epoch_data: Epochs,
         figsize: tuple = (6.4, 4.8),
         dpi: int = 100,
-        fig: Figure = None,
+        fig: Figure | None = None,
     ):
         self.eval_record = eval_record
         self.epoch_data = epoch_data
@@ -42,18 +42,19 @@ class Visualizer:
         plt.clf()
         return self._get_plt(*args, **kwargs)
 
-    def get_saliency(self, saliency_name, labelIndex: int) -> np.ndarray:
+    def get_saliency(self, saliency_name: str, label_index: int) -> np.ndarray:
         """Return gradient of model by class index."""
         if saliency_name is not None:
             if saliency_name == "Gradient":
-                return self.eval_record.get_gradient(labelIndex)
+                return self.eval_record.get_gradient(label_index)
             elif saliency_name == "Gradient * Input":
-                return self.eval_record.get_gradient_input(labelIndex)
+                return self.eval_record.get_gradient_input(label_index)
             elif saliency_name == "SmoothGrad":
-                return self.eval_record.get_smoothgrad(labelIndex)
+                return self.eval_record.get_smoothgrad(label_index)
             elif saliency_name == "SmoothGrad_Squared":
-                return self.eval_record.get_smoothgrad_sq(labelIndex)
+                return self.eval_record.get_smoothgrad_sq(label_index)
             elif saliency_name == "VarGrad":
-                return self.eval_record.get_vargrad(labelIndex)
+                return self.eval_record.get_vargrad(label_index)
             else:
                 raise NotImplementedError
+        raise ValueError("Saliency name not provided")

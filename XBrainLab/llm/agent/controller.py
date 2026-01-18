@@ -64,12 +64,12 @@ class LLMController(QObject):
 
         # Sliding Window: Keep last N turns
         # N=20 means 10 user-sys pairs roughly
-        MAX_HISTORY = 20
-        if len(self.history) > MAX_HISTORY:
+        max_history = 20
+        if len(self.history) > max_history:
             # Keep index 0 (system prompt implied? No, prompt_manager handles system)
             # If we just slice, we might lose context.
             # Ideally we keep a summary. For now, simple sliding window.
-            self.history = self.history[-MAX_HISTORY:]
+            self.history = self.history[-max_history:]
 
     def handle_user_input(self, text: str):
         """Entry point for user input from UI."""

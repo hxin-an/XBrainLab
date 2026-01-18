@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from copy import deepcopy
+from typing import Any
 
 import torch
 from matplotlib import pyplot as plt
@@ -100,14 +101,14 @@ class TrainRecord:
         self.model = model
         self.optim = self.option.get_optim(model)
         self.criterion = self.option.criterion
-        self.eval_record = None
+        self.eval_record: EvalRecord | None = None
         for key in RecordKey():
             setattr(self, "best_val_" + key + "_model", None)
             setattr(self, "best_test_" + key + "_model", None)
-        self.train = {i: [] for i in TrainRecordKey()}
-        self.val = {i: [] for i in RecordKey()}
-        self.test = {i: [] for i in RecordKey()}
-        self.best_record = {}
+        self.train: dict[str, list[float]] = {i: [] for i in TrainRecordKey()}
+        self.val: dict[str, list[float]] = {i: [] for i in RecordKey()}
+        self.test: dict[str, list[float]] = {i: [] for i in RecordKey()}
+        self.best_record: dict[str, Any] = {}
         for record_type in ["val", "test"]:
             for key in RecordKey():
                 self.best_record[f"best_{record_type}_{key}"] = -1
@@ -115,11 +116,11 @@ class TrainRecord:
             self.best_record[f"best_{record_type}_" + RecordKey.LOSS] = torch.inf
 
         self.epoch = 0
-        self.target_path = None
+        self.target_path: str | None = None
         self.init_dir()
         self.random_state = get_random_state()
-        self.start_timestamp = None
-        self.end_timestamp = None
+        self.start_timestamp: float | None = None
+        self.end_timestamp: float | None = None
 
         # Load existing data if available
         self.load()
@@ -168,7 +169,7 @@ class TrainRecord:
         """Check if the training is finished"""
         return self.get_epoch() >= self.option.epoch and self.eval_record is not None
 
-    def append_record(self, val: any, arr: list) -> None:
+    def append_record(self, val: Any, arr: list) -> None:
         """Internal function for appending a value to a statistic array
 
         Fill the array with None if the data is not available before the current epoch
@@ -235,8 +236,13 @@ class TrainRecord:
     def export_checkpoint(self) -> None:
         """Export the checkpoint of the training record"""
         epoch = len(self.train[RecordKey.LOSS])
+
+        if not self.target_path:
+            return
+
         if self.eval_record:
             self.eval_record.export(self.target_path)
+
         for best_type in ["val", "test"]:
             for key in RecordKey():
                 full_key = "best_" + best_type + "_" + key + "_model"
@@ -244,6 +250,8 @@ class TrainRecord:
                 if model:
                     torch.save(model, os.path.join(self.target_path, full_key))
 
+        if not self.target_path:
+            return
         fname = f"Epoch-{epoch}-model"
         torch.save(self.model.state_dict(), os.path.join(self.target_path, fname))
         record = {
@@ -317,8 +325,8 @@ class TrainRecord:
 
     # figure
     def get_loss_figure(
-        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
-    ) -> Figure:
+        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+    ) -> Figure | None:
         """Return the line chart of loss during training
 
         Args:
@@ -354,8 +362,8 @@ class TrainRecord:
         return fig
 
     def get_acc_figure(
-        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
-    ) -> Figure:
+        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+    ) -> Figure | None:
         """Return the line chart of accuracy during training
 
         Args:
@@ -391,8 +399,8 @@ class TrainRecord:
         return fig
 
     def get_auc_figure(
-        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
-    ) -> Figure:
+        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+    ) -> Figure | None:
         """Return the line chart of auc during training
 
         TODO:
@@ -430,8 +438,8 @@ class TrainRecord:
         return fig
 
     def get_lr_figure(
-        self, fig: Figure = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
-    ) -> Figure:
+        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+    ) -> Figure | None:
         """Return the line chart of learning rate during training
 
         Args:
@@ -455,11 +463,11 @@ class TrainRecord:
 
     def get_confusion_figure(
         self,
-        fig: Figure = None,
+        fig: Figure | None = None,
         figsize: tuple = (6.4, 4.8),
         dpi: int = 100,
         show_percentage: bool = False,
-    ) -> Figure:
+    ) -> Figure | None:
         """Return the confusion matrix of the evaluation record
 
         Args:
@@ -476,7 +484,7 @@ class TrainRecord:
         output = self.eval_record.output
         label = self.eval_record.label
         confusion = calculate_confusion(output, label)
-        classNum = confusion.shape[0]
+        class_num = confusion.shape[0]
 
         if show_percentage:
             # Normalize by row (Ground Truth)
@@ -498,8 +506,8 @@ class TrainRecord:
         # Threshold for text color
         threshold = (plot_data.max() + plot_data.min()) / 2
 
-        for x in range(classNum):
-            for y in range(classNum):
+        for x in range(class_num):
+            for y in range(class_num):
                 val = plot_data[x][y]
                 annot_color = "k" if val > threshold else "w"
 
@@ -519,11 +527,11 @@ class TrainRecord:
         plt.setp(plt.getp(cbar.ax.axes, "yticklabels"), color="#cccccc")
 
         # Ticks
-        labels = [self.dataset.get_epoch_data().label_map[i] for i in range(classNum)]
+        labels = [self.dataset.get_epoch_data().label_map[i] for i in range(class_num)]
         plt.xticks(
-            range(classNum), labels, rotation=0, ha="center"
+            range(class_num), labels, rotation=0, ha="center"
         )  # Horizontal labels
-        plt.yticks(range(classNum), labels, va="center")  # Vertically centered
+        plt.yticks(range(class_num), labels, va="center")  # Vertically centered
 
         # Styling
         ax.tick_params(axis="x", colors="#cccccc")

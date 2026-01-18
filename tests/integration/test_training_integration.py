@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import QWidget
 
 from XBrainLab import Study
 from XBrainLab.backend.model_base import EEGNet, SCCNet
-from XBrainLab.backend.training import TRAINING_EVALUATION, TrainingOption
+from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
 from XBrainLab.ui.training.panel import MetricTab
 from XBrainLab.ui.training.training_setting import TrainingSettingWindow
@@ -32,7 +32,7 @@ def real_training_option():
         bs="4",
         lr="0.001",  # lr is passed separately
         checkpoint_epoch="1",
-        evaluation_option=TRAINING_EVALUATION.TEST_ACC,
+        evaluation_option=TrainingEvaluation.TEST_ACC,
         repeat_num="1",
     )
 
@@ -67,7 +67,7 @@ class TestTrainingOptionBugFix:
             bs="4",
             lr="0.001",
             checkpoint_epoch="1",
-            evaluation_option=TRAINING_EVALUATION.TEST_ACC,
+            evaluation_option=TrainingEvaluation.TEST_ACC,
             repeat_num="1",
         )
 
@@ -159,7 +159,7 @@ class TestCompleteTrainingWorkflow:
                 bs="4",
                 lr="0.001",
                 checkpoint_epoch="1",
-                evaluation_option=TRAINING_EVALUATION.TEST_ACC,
+                evaluation_option=TrainingEvaluation.TEST_ACC,
                 repeat_num="1",
             )
 
@@ -186,7 +186,7 @@ class TestUITrainingPanelIntegration:
             bs="4",
             lr="0.001",
             checkpoint_epoch="1",
-            evaluation_option=TRAINING_EVALUATION.TEST_ACC,
+            evaluation_option=TrainingEvaluation.TEST_ACC,
             repeat_num="1",
         )
         study.set_training_option(option)

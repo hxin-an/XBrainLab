@@ -58,13 +58,13 @@ class DataSplitter:
             return str(self.value_var).isdigit()
         # kfold: should be int > 0
         elif self.split_unit == SplitUnit.KFOLD:
-            val = str(self.value_var)
-            if val.isdigit():
-                return int(val) > 0
+            val_str = str(self.value_var)
+            if val_str.isdigit():
+                return int(val_str) > 0
         # manual: should be list of int separated by space
         elif self.split_unit == SplitUnit.MANUAL:
-            val = str(self.value_var).strip()
-            vals = val.split(" ")
+            val_str = str(self.value_var).strip()
+            vals = val_str.split(" ")
             return all(not (len(val.strip()) > 0 and not val.isdigit()) for val in vals)
         else:
             raise NotImplementedError
@@ -81,6 +81,8 @@ class DataSplitter:
         """
         if not self.is_valid():
             raise ValueError("Splitter is not valid")
+        if self.value_var is None:
+            raise ValueError("value_var cannot be None")
         if self.split_unit == SplitUnit.MANUAL:
             return [
                 int(i) for i in self.value_var.strip().split(" ") if len(i.strip()) > 0
@@ -92,14 +94,18 @@ class DataSplitter:
         """Get :attr:`value_var`."""
         if not self.is_valid():
             raise ValueError("Splitter is not valid")
+        if self.value_var is None:
+            raise ValueError("value_var cannot be None")
         return self.value_var
 
-    def get_split_unit(self) -> SplitUnit:
+    def get_split_unit(self) -> SplitUnit | None:
         """Get :attr:`split_unit`."""
         return self.split_unit
 
     def get_split_unit_repr(self) -> str:
         """Get string representation of :attr:`split_unit`."""
+        if self.split_unit is None:
+            return "None"
         return f"{self.split_unit.__class__.__name__}.{self.split_unit.name}"
 
     def get_split_type_repr(self) -> str:
@@ -138,7 +144,7 @@ class DataSplittingConfig:
         self.val_splitter_list = val_splitter_list
         self.test_splitter_list = test_splitter_list
 
-    def get_splitter_option(self) -> (list[DataSplitter], list[DataSplitter]):
+    def get_splitter_option(self) -> tuple[list[DataSplitter], list[DataSplitter]]:
         """Get list of DataSplitter for validation set and test set."""
         return self.val_splitter_list, self.test_splitter_list
 

@@ -35,7 +35,7 @@ from .real.training_real import (
 # ... (Previous imports)
 
 
-def get_tool_by_name(name: str) -> BaseTool:
+def get_tool_by_name(name: str) -> BaseTool | None:
     """
     Returns the tool instance with the given name.
     """

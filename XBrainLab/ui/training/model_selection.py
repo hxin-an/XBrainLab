@@ -1,5 +1,6 @@
 import inspect
 import os
+from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -59,9 +60,9 @@ class ModelSelectionWindow(QDialog):
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        self.params_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.params_table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         group_layout.addWidget(self.params_table)
         layout.addWidget(self.params_group)
 
@@ -136,8 +137,13 @@ class ModelSelectionWindow(QDialog):
 
         try:
             for row in range(self.params_table.rowCount()):
-                param = self.params_table.item(row, 0).text()
-                value_text = self.params_table.item(row, 1).text()
+                item0 = self.params_table.item(row, 0)
+                param = item0.text() if item0 else ""
+
+                item1 = self.params_table.item(row, 1)
+                value_text = item1.text() if item1 else ""
+
+                value: Any = None
 
                 # Simple type inference (could be improved)
                 if value_text:

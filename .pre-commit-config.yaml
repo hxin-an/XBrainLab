@@ -26,3 +26,21 @@ repos:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
         exclude: package.lock.json
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (static type check)
+        entry: poetry run mypy .
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest-check
+        name: pytest-check (coverage)
+        entry: poetry run pytest --cov=XBrainLab --cov-fail-under=50
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

@@ -79,13 +79,15 @@ class ChannelSelectionDialog(QDialog):
     def set_all_checked(self, checked):
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         for i in range(self.list_widget.count()):
-            self.list_widget.item(i).setCheckState(state)
+            item = self.list_widget.item(i)
+            if item:
+                item.setCheckState(state)
 
     def accept(self):
         selected_channels = []
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
+            if item and item.checkState() == Qt.CheckState.Checked:
                 selected_channels.append(item.text())
 
         if not selected_channels:
@@ -131,9 +133,9 @@ class DatasetPanel(QWidget):
         self.table.setHorizontalHeaderLabels(
             ["Filename", "Subject", "Session", "Channels", "Sfreq", "Epochs", "Events"]
         )
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        if header:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection
@@ -618,7 +620,7 @@ class DatasetPanel(QWidget):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
-                selected_rows = range(self.table.rowCount())
+                selected_rows = list(range(self.table.rowCount()))
             else:
                 return []
 
@@ -816,9 +818,10 @@ class DatasetPanel(QWidget):
                         else:
                             count = data.get_epochs_length()
                     except Exception:
-                        count = "?"
+                        count = -1
 
-                    item_ev = QTableWidgetItem(f"Yes ({count})")
+                    count_str = "?" if count == -1 else str(count)
+                    item_ev = QTableWidgetItem(f"Yes ({count_str})")
 
                     # Color logic: Green if imported labels, Default (Gray/Black) if
                     # original
@@ -890,9 +893,11 @@ class DatasetPanel(QWidget):
         row = item.row()
         col = item.column()
 
-        # Get raw data object from the first column of this row
         name_item = self.table.item(row, 0)
-        raw_data = name_item.data(Qt.ItemDataRole.UserRole)
+        if name_item and name_item.data(Qt.ItemDataRole.UserRole):
+            raw_data = name_item.data(Qt.ItemDataRole.UserRole)
+        else:
+            return
 
         if not raw_data:
             return

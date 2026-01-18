@@ -8,15 +8,20 @@ sys.modules["captum"] = MagicMock()
 sys.modules["captum.attr"] = MagicMock()
 
 
-import torch  # noqa: E402
+import tempfile
 
-from XBrainLab.backend.dataset import Dataset, Epochs  # noqa: E402
-from XBrainLab.backend.training import ModelHolder, TrainingOption  # noqa: E402
-from XBrainLab.backend.training.training_plan import TrainingPlanHolder  # noqa: E402
+import torch
+
+from XBrainLab.backend.dataset import Dataset, Epochs
+from XBrainLab.backend.training import ModelHolder, TrainingOption
+from XBrainLab.backend.training.training_plan import TrainingPlanHolder
 
 
 class TestTrainingFix(unittest.TestCase):
     def setUp(self):
+        # Create a temporary directory
+        self.test_dir = tempfile.mkdtemp()
+
         # Mock dependencies
         self.mock_dataset = MagicMock(spec=Dataset)
         self.mock_dataset.get_name.return_value = "TestDataset"
@@ -27,7 +32,7 @@ class TestTrainingFix(unittest.TestCase):
 
         self.mock_option = MagicMock(spec=TrainingOption)
         self.mock_option.repeat_num = 1
-        self.mock_option.get_output_dir.return_value = "/tmp/xbrainlab_test_output"
+        self.mock_option.get_output_dir.return_value = self.test_dir
         self.mock_option.validate.return_value = True
         self.mock_option.get_optim.return_value = MagicMock()
         self.mock_option.criterion = MagicMock()
@@ -76,8 +81,8 @@ class TestTrainingFix(unittest.TestCase):
         self.assertTrue("TestModel_" in parts[-2])
 
     def tearDown(self):
-        if os.path.exists("/tmp/xbrainlab_test_output"):
-            shutil.rmtree("/tmp/xbrainlab_test_output")
+        if os.path.exists(self.test_dir):
+            shutil.rmtree(self.test_dir)
 
 
 if __name__ == "__main__":

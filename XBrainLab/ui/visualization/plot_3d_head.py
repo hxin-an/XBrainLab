@@ -11,13 +11,13 @@ from scipy.spatial import ConvexHull
 bgcolor = "#2d2d2d"  #'#F8F5F1'#lightslategray'
 mesh_scale_scalar = 0.8
 
-checkboxKwargs = {
+CHECKBOX_KWARGS = {
     "size": 20,
     "border_size": 5,
     "color_on": "#456071",
     "color_off": bgcolor,
 }
-checkboxTextKwargs = {"color": "white", "shadow": True, "font_size": 8}
+CHECKBOX_TEXT_KWARGS = {"color": "white", "shadow": True, "font_size": 8}
 
 
 class Saliency3D:
@@ -52,7 +52,7 @@ class Saliency3D:
             if not os.path.exists(file_path) or os.path.getsize(file_path) < 1024:
                 try:
                     print(f"Downloading {fn}...")
-                    req = requests.get(gitrepo_loc + fn)
+                    req = requests.get(gitrepo_loc + fn, timeout=30)
                     if req.status_code == 200:
                         with open(file_path, "wb") as handle:
                             handle.write(req.content)
@@ -79,8 +79,8 @@ class Saliency3D:
             raise FileNotFoundError(f"Brain model not found at {brain_path}")
 
         # get saliency
-        labelIndex = epoch_data.event_id[self.selected_event_name]
-        self.saliency = eval_record.gradient[labelIndex]
+        label_index = epoch_data.event_id[self.selected_event_name]
+        self.saliency = eval_record.gradient[label_index]
         self.saliency = self.saliency.mean(axis=0)
         self.scalar_bar_range = [self.saliency.min(), self.saliency.max()]
 
@@ -121,7 +121,7 @@ class Saliency3D:
         scaling = np.ones(3) * mesh_scale_scalar
         self.head = mesh_head.scale(scaling, inplace=True)
         self.brain = mesh_brain.scale(scaling * 0.001, inplace=True).triangulate()
-        self.saliency_cap = ChannelConvexHull(self.pos_on_3d).scale(
+        self.saliency_cap = channel_convex_hull(self.pos_on_3d).scale(
             scaling, inplace=True
         )
 
@@ -152,10 +152,12 @@ class Saliency3D:
             dist_idx = np.argsort(dist)[
                 : self.neighbor
             ]  # id of #neighbor cloest points
-            dist = np.array([dist[idx] for idx in dist_idx])
-            self.scalar[i] = InverseDistWeightedSum(
-                dist, self.saliency[dist_idx, self.param["timestamp"] - 1]
+            dist_arr = np.array([dist[idx] for idx in dist_idx])
+            # Cast to python float which is compatible with list[float]
+            val = inverse_dist_weighted_sum(
+                dist_arr, self.saliency[dist_idx, self.param["timestamp"] - 1]
             )
+            self.scalar[i] = float(val)
         try:
             # Update scalars in-place to avoid deprecation warning
             self.saliency_cap["scalars"] = self.scalar
@@ -177,7 +179,7 @@ class Saliency3D:
             self.plotter.remove_actor(self.headActor)
             self.headActor = None
 
-    def get3dHeadPlot(self):
+    def get_3d_head_plot(self):
         self.plotter.add_camera_orientation_widget()
 
         self.plotter.add_slider_widget(
@@ -196,14 +198,16 @@ class Saliency3D:
             self.channelBox,
             value=self.showChannel,
             position=(25, 200),
-            **checkboxKwargs,
+            **CHECKBOX_KWARGS,
         )
-        self.plotter.add_text("Show channel", position=(60, 197), **checkboxTextKwargs)
+        self.plotter.add_text(
+            "Show channel", position=(60, 197), **CHECKBOX_TEXT_KWARGS
+        )
 
         self.plotter.add_checkbox_button_widget(
-            self.headBox, value=self.showHead, position=(25, 250), **checkboxKwargs
+            self.headBox, value=self.showHead, position=(25, 250), **CHECKBOX_KWARGS
         )
-        self.plotter.add_text("Show head", position=(60, 247), **checkboxTextKwargs)
+        self.plotter.add_text("Show head", position=(60, 247), **CHECKBOX_TEXT_KWARGS)
 
         self.plotter.camera_position = "xy"
         self.plotter.camera.zoom(0.8)
@@ -242,20 +246,21 @@ class CheckboxObj:
             self.callback(state)
 
 
-def InverseDistWeightedSum(dist, val):
-    assert len(dist) == len(val)
+def inverse_dist_weighted_sum(dist, val):
+    if len(dist) != len(val):
+        raise ValueError("Distance and value arrays must have the same length")
     dist = dist + 1e-12
     return np.sum(val / dist) / (np.sum([1 / d for d in dist]))
 
 
-def ChannelConvexHull(ch_pos):
+def channel_convex_hull(ch_pos):
     # faster than pyvista delaunay? :
     # https://gist.github.com/flutefreak7/bd621a9a836c8224e92305980ed829b9
     hull = ConvexHull(ch_pos)
     faces = np.hstack((np.ones((len(hull.simplices), 1)) * 3, hull.simplices)).astype(
         np.int32
     )
-    poly = pv.PolyData(hull.points, faces.ravel())
+    poly = pv.PolyData(hull.points, faces.ravel().tolist())
     return poly
     # cloud = pv.PolyData(ch_pos)
     # return cloud.delaunay_3d()

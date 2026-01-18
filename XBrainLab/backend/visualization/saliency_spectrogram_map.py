@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import signal
@@ -9,7 +11,7 @@ class SaliencySpectrogramMapViz(Visualizer):
     """Visualizer that generate frequency by time saliency spectrogram
     from evaluation record"""
 
-    def _get_plt(self, method) -> plt:
+    def _get_plt(self, method) -> Any:
         """Return saliency spectrogram plot
 
         Args:
@@ -21,9 +23,9 @@ class SaliencySpectrogramMapViz(Visualizer):
         rows = 1 if label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(label_number / rows))
         # draw
-        for labelIndex in range(label_number):
-            plt.subplot(rows, cols, labelIndex + 1)
-            saliency = self.get_saliency(method, labelIndex)
+        for label_index in range(label_number):
+            plt.subplot(rows, cols, label_index + 1)
+            saliency = self.get_saliency(method, label_index)
             # no test data for this label
             if len(saliency) == 0:
                 continue
@@ -48,12 +50,15 @@ class SaliencySpectrogramMapViz(Visualizer):
             ticks = ticks - tick_inteval
             plt.xlabel("time")
             plt.ylabel("frequency")
-            plt.xticks(ticks=ticks, labels=tick_label, fontsize=6)
+            plt.xticks(
+                ticks=ticks, labels=[str(label) for label in tick_label], fontsize=6
+            )
             plt.yticks(ticks=freqs[np.where(freqs % 10 == 0)])
 
             plt.colorbar(im, orientation="vertical")
             plt.title(
-                f"Saliency spectrogram of class {self.epoch_data.label_map[labelIndex]}"
+                f"Saliency spectrogram of class "
+                f"{self.epoch_data.label_map[label_index]}"
             )
         plt.tight_layout()
         return plt.gcf()

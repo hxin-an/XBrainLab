@@ -44,7 +44,11 @@ class SaliencyTopographicMapWidget(QWidget):
 
     def show_error(self, msg):
         for i in reversed(range(self.plot_layout.count())):
-            self.plot_layout.itemAt(i).widget().setParent(None)
+            item = self.plot_layout.itemAt(i)
+            if item:
+                w = item.widget()
+                if w:
+                    w.setParent(None)
         lbl = QLabel(msg)
         lbl.setStyleSheet("color: #ef5350; font-size: 14px; font-weight: bold;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -52,7 +56,11 @@ class SaliencyTopographicMapWidget(QWidget):
 
     def show_message(self, msg):
         for i in reversed(range(self.plot_layout.count())):
-            self.plot_layout.itemAt(i).widget().setParent(None)
+            item = self.plot_layout.itemAt(i)
+            if item:
+                w = item.widget()
+                if w:
+                    w.setParent(None)
         lbl = QLabel(msg)
         lbl.setStyleSheet("color: #ff9800; font-size: 16px; font-weight: bold;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -62,7 +70,11 @@ class SaliencyTopographicMapWidget(QWidget):
         try:
             # Clear previous
             for i in reversed(range(self.plot_layout.count())):
-                self.plot_layout.itemAt(i).widget().setParent(None)
+                item = self.plot_layout.itemAt(i)
+                if item:
+                    w = item.widget()
+                    if w:
+                        w.setParent(None)
 
             # Get Data
             if eval_record is None:

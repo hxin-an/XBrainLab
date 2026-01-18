@@ -17,7 +17,7 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.training.option import TRAINING_EVALUATION
+from XBrainLab.backend.training.option import TrainingEvaluation
 from XBrainLab.backend.training.record import RecordKey
 from XBrainLab.backend.training.training_plan import (
     ModelHolder,
@@ -130,7 +130,7 @@ def training_option():
         "bs": BS,
         "lr": 0.01,
         "checkpoint_epoch": 2,
-        "evaluation_option": TRAINING_EVALUATION.VAL_LOSS,
+        "evaluation_option": TrainingEvaluation.VAL_LOSS,
         "repeat_num": 5,
     }
     return TrainingOption(**args)
@@ -225,7 +225,7 @@ def test_training_plan_holder_get_eval_loader(
     repeat = 0
     seed = set_seed()
     model = model_holder.get_model({})
-    training_option.evaluation_option = TRAINING_EVALUATION.VAL_LOSS
+    training_option.evaluation_option = TrainingEvaluation.VAL_LOSS
     record = TrainRecord(
         repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
     )
@@ -237,12 +237,12 @@ def test_training_plan_holder_get_eval_loader(
 @pytest.mark.parametrize(
     "evaluation_option, state_dict_attr_name",
     [
-        (TRAINING_EVALUATION.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
-        (TRAINING_EVALUATION.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
-        (TRAINING_EVALUATION.TEST_AUC, f"best_test_{RecordKey.AUC}_model"),
-        (TRAINING_EVALUATION.TEST_AUC, f"best_test_{RecordKey.AUC}_model"),
-        (TRAINING_EVALUATION.TEST_ACC, f"best_test_{RecordKey.ACC}_model"),
-        (TRAINING_EVALUATION.TEST_ACC, f"best_test_{RecordKey.ACC}_model"),
+        (TrainingEvaluation.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
+        (TrainingEvaluation.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
+        (TrainingEvaluation.TEST_AUC, f"best_test_{RecordKey.AUC}_model"),
+        (TrainingEvaluation.TEST_AUC, f"best_test_{RecordKey.AUC}_model"),
+        (TrainingEvaluation.TEST_ACC, f"best_test_{RecordKey.ACC}_model"),
+        (TrainingEvaluation.TEST_ACC, f"best_test_{RecordKey.ACC}_model"),
     ],
 )
 @pytest.mark.parametrize("expected", ["test", None])
@@ -285,7 +285,7 @@ def test_training_plan_holder_get_eval_model(
         (None, None, None),
     ],
 )
-@pytest.mark.parametrize("evaluation_option", [*list(TRAINING_EVALUATION), None])
+@pytest.mark.parametrize("evaluation_option", [*list(TrainingEvaluation), None])
 def test_training_plan_holder_get_eval_pair_not_implemented(
     base_holder,
     dataset,
@@ -322,7 +322,7 @@ def test_training_plan_holder_get_eval_model_by_lastest_model(
     model = model_holder.get_model({})
 
     with patch.object(model, "state_dict", return_value="test"):
-        training_option.evaluation_option = TRAINING_EVALUATION.LAST_EPOCH
+        training_option.evaluation_option = TrainingEvaluation.LAST_EPOCH
         record = TrainRecord(
             repeat=repeat,
             dataset=dataset,

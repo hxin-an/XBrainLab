@@ -1,7 +1,7 @@
 # Ensure loaders are registered
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from XBrainLab.backend import preprocessor as Preprocessor
+from XBrainLab.backend import preprocessor
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.load_data import EventLoader, RawDataLoader
 from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
@@ -16,10 +16,10 @@ class DatasetController(QObject):
     """
 
     # Signals for UI synchronization
-    dataChanged = pyqtSignal()
-    datasetLocked = pyqtSignal(bool)
-    importFinished = pyqtSignal(int, list)  # success_count, errors
-    errorOccurred = pyqtSignal(str)
+    data_changed = pyqtSignal()
+    dataset_locked = pyqtSignal(bool)
+    import_finished = pyqtSignal(int, list)  # success_count, errors
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, study):
         super().__init__()
@@ -85,9 +85,9 @@ class DatasetController(QObject):
 
         if success_count > 0:
             loader.apply(self.study, force_update=True)
-            self.dataChanged.emit()
+            self.data_changed.emit()
 
-        self.importFinished.emit(success_count, errors)
+        self.import_finished.emit(success_count, errors)
 
         return success_count, errors
 
@@ -148,11 +148,11 @@ class DatasetController(QObject):
         Returns: success (bool)
         """
         data_list = self.study.loaded_data_list
-        preprocessor = Preprocessor.ChannelSelection(data_list)
+        process = preprocessor.ChannelSelection(data_list)
 
         try:
             # Performs processing
-            result = preprocessor.data_preprocess(selected_channels)
+            result = process.data_preprocess(selected_channels)
         except Exception as e:
             logger.error(f"Channel selection failed: {e}")
             raise e
@@ -161,8 +161,8 @@ class DatasetController(QObject):
         self.study.backup_loaded_data()
         self.study.set_loaded_data_list(result, force_update=True)
         self.study.lock_dataset()
-        self.dataChanged.emit()
-        self.datasetLocked.emit(True)
+        self.data_changed.emit()
+        self.dataset_locked.emit(True)
         return True
 
     def get_filenames(self):
@@ -172,8 +172,8 @@ class DatasetController(QObject):
     def reset_preprocess(self):
         """Triggers a reset of downstream preprocessing."""
         self.study.reset_preprocess(force_update=True)
-        self.dataChanged.emit()
-        self.datasetLocked.emit(False)
+        self.data_changed.emit()
+        self.dataset_locked.emit(False)
 
     # Label Import Wrappers
     def get_data_at_assignments(self, indices):

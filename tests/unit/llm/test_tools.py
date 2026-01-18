@@ -18,9 +18,9 @@ def mock_study():
 
 def test_dataset_tools(mock_study):
     tool = MockLoadDataTool()
-    result = tool.execute(mock_study, paths=["/tmp/test.gdf"])
+    result = tool.execute(mock_study, paths=["/mock/test.gdf"])
     assert "Successfully loaded" in result
-    assert "/tmp/test.gdf" in result
+    assert "/mock/test.gdf" in result
 
     tool = MockListFilesTool()
     result = tool.execute(mock_study, directory="/data")

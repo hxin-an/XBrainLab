@@ -1,3 +1,5 @@
+from typing import Any
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -19,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.training import (
-    TRAINING_EVALUATION,
+    TrainingEvaluation,
     TrainingOption,
     parse_device_name,
     parse_optim_name,
@@ -43,7 +45,9 @@ class TrainingSettingWindow(QDialog):
         self.output_dir = "./output"  # Default output directory
         self.optim_classes = get_optimizer_classes()
         self.optim = self.optim_classes.get("Adam")  # Default optimizer: Adam
-        self.optim_params = {}  # Default: no extra params (lr is separate)
+        self.optim_params: dict[
+            str, Any
+        ] = {}  # Default: no extra params (lr is separate)
         self.use_cpu = True  # Default: use CPU
         self.gpu_idx = None
 
@@ -55,8 +59,9 @@ class TrainingSettingWindow(QDialog):
         self.load_settings()
 
     def load_settings(self):
-        if hasattr(self.parent(), "study") and self.parent().study.training_option:
-            opt = self.parent().study.training_option
+        parent = self.parent()
+        if parent and hasattr(parent, "study") and parent.study.training_option:
+            opt = parent.study.training_option
             self.epoch_entry.setText(str(opt.epoch))
             self.bs_entry.setText(str(opt.bs))
             self.lr_entry.setText(str(opt.lr))
@@ -129,7 +134,7 @@ class TrainingSettingWindow(QDialog):
 
         # Evaluation
         self.evaluation_combo = QComboBox()
-        self.evaluation_list = [i.value for i in TRAINING_EVALUATION]
+        self.evaluation_list = [i.value for i in TrainingEvaluation]
         self.evaluation_combo.addItems(self.evaluation_list)
         self.evaluation_combo.setCurrentIndex(2)  # Default: Best testing performance
         form_layout.addRow("Evaluation", self.evaluation_combo)
@@ -169,8 +174,8 @@ class TrainingSettingWindow(QDialog):
             self.output_dir_label.setText(filepath)
 
     def confirm(self):
-        evaluation_option = None
-        for i in TRAINING_EVALUATION:
+        evaluation_option = TrainingEvaluation.TEST_ACC  # Default
+        for i in TrainingEvaluation:
             if i.value == self.evaluation_combo.currentText():
                 evaluation_option = i
 
@@ -181,12 +186,12 @@ class TrainingSettingWindow(QDialog):
                 self.optim_params,
                 self.use_cpu,
                 self.gpu_idx,
-                self.epoch_entry.text(),
-                self.bs_entry.text(),
-                self.lr_entry.text(),
-                self.checkpoint_entry.text(),
+                int(self.epoch_entry.text()),
+                int(self.bs_entry.text()),
+                float(self.lr_entry.text()),
+                int(self.checkpoint_entry.text()),
                 evaluation_option,
-                self.repeat_entry.text(),
+                int(self.repeat_entry.text()),
             )
             self.accept()
         except Exception as e:
@@ -227,9 +232,9 @@ class SetOptimizerWindow(QDialog):
         self.params_table = QTableWidget()
         self.params_table.setColumnCount(2)
         self.params_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        self.params_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.params_table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         group_layout.addWidget(self.params_table)
         layout.addWidget(group)
 
@@ -265,9 +270,13 @@ class SetOptimizerWindow(QDialog):
 
         try:
             for row in range(self.params_table.rowCount()):
-                param = self.params_table.item(row, 0).text()
-                value_text = self.params_table.item(row, 1).text()
+                item0 = self.params_table.item(row, 0)
+                param = item0.text() if item0 else ""
 
+                item1 = self.params_table.item(row, 1)
+                value_text = item1.text() if item1 else ""
+
+                value: Any = None
                 if value_text:
                     if len(value_text.split()) > 1:
                         value = [float(v) for v in value_text.split()]

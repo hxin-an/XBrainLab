@@ -89,10 +89,10 @@ def test_set_event(raw):
 def test_set_event_error(raw):
     events = np.array([[1, 0, 1], [2, 0, 2], [3, 0, 3], [4, 0, 4]])
     event_id = {"a": 1, "b": 2, "c": 3, "d": 4}
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         raw.set_event(np.array([1, 0, 1]), event_id)
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         raw.set_event(np.array([[1, 0]]), event_id)
 
     with pytest.raises(TypeError):
@@ -102,7 +102,7 @@ def test_set_event_error(raw):
 def test_set_event_consistency(epoch):
     events = np.array([[1, 0, 1], [2, 0, 2]])
     event_id = {"a": 1, "b": 2}
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         epoch.set_event(events, event_id)
 
 

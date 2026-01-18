@@ -186,7 +186,7 @@ def test_apply_smart_parse(controller, mock_study):
 
 def test_apply_channel_selection(controller, mock_study):
     with patch(
-        "XBrainLab.backend.controller.dataset_controller.Preprocessor.ChannelSelection"
+        "XBrainLab.backend.controller.dataset_controller.preprocessor.ChannelSelection"
     ) as MockCS:
         instance = MockCS.return_value
         instance.data_preprocess.return_value = True

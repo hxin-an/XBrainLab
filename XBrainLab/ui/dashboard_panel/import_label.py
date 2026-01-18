@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 import numpy as np
 from PyQt6.QtCore import QSettings, Qt
@@ -76,9 +77,9 @@ class ImportLabelDialog(QDialog):
         self.map_table = QTableWidget()
         self.map_table.setColumnCount(2)
         self.map_table.setHorizontalHeaderLabels(["Code", "Event Name"])
-        self.map_table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeMode.Stretch
-        )
+        header = self.map_table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         map_layout.addWidget(self.map_table)
 
         map_group.setLayout(map_layout)
@@ -151,7 +152,7 @@ class ImportLabelDialog(QDialog):
         Aggregates labels from all loaded files, finds unique codes,
         and updates the mapping table.
         """
-        all_labels = []
+        all_labels: list[Any] = []
         for labels in self.label_data_map.values():
             if (
                 isinstance(labels, list)
@@ -163,6 +164,14 @@ class ImportLabelDialog(QDialog):
             else:
                 # Sequence Mode: labels is ndarray
                 all_labels.extend(labels)
+
+        # Handle typing compatibility
+
+        # Wait, I didn't add Any import.
+        # Let's check imports.
+        # line 1: import os... line 23 import...
+        # No typing imports shown in view!
+        # I'll fix imports in a separate chunk.
 
         if not all_labels:
             self.unique_labels = []
@@ -300,7 +309,9 @@ class EventFilterDialog(QDialog):
     def set_all_checked(self, checked):
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         for i in range(self.list_widget.count()):
-            self.list_widget.item(i).setCheckState(state)
+            item = self.list_widget.item(i)
+            if item:
+                item.setCheckState(state)
 
     def toggle_selected(self):
         selected_items = self.list_widget.selectedItems()
@@ -339,7 +350,7 @@ class EventFilterDialog(QDialog):
         elif action == action_toggle:
             self.toggle_selected()
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event):  # noqa: N802
         if event.key() == Qt.Key.Key_Space:
             self.toggle_selected()
         else:
@@ -349,7 +360,7 @@ class EventFilterDialog(QDialog):
         self.selected_names = []
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
+            if item and item.checkState() == Qt.CheckState.Checked:
                 self.selected_names.append(item.text())
 
         # Save to settings
@@ -370,7 +381,7 @@ class EventFilterDialog(QDialog):
 
         for i in range(self.list_widget.count()):
             item = self.list_widget.item(i)
-            if item.text() in names:
+            if item and item.text() in names:
                 item.setCheckState(Qt.CheckState.Checked)
 
 
@@ -442,12 +453,11 @@ class LabelMappingDialog(QDialog):
         layout.addLayout(lists_layout)
 
         # Sync scrolling
-        self.data_list.verticalScrollBar().valueChanged.connect(
-            self.label_list.verticalScrollBar().setValue
-        )
-        self.label_list.verticalScrollBar().valueChanged.connect(
-            self.data_list.verticalScrollBar().setValue
-        )
+        data_scroll = self.data_list.verticalScrollBar()
+        label_scroll = self.label_list.verticalScrollBar()
+        if data_scroll and label_scroll:
+            data_scroll.valueChanged.connect(label_scroll.setValue)
+            label_scroll.valueChanged.connect(data_scroll.setValue)
 
         # Sync selection for visual alignment
         self.data_list.currentRowChanged.connect(self.label_list.setCurrentRow)
@@ -522,10 +532,11 @@ class LabelMappingDialog(QDialog):
         for i in range(count):
             data_file = self.data_files[i]  # data list is fixed order
             label_item = self.label_list.item(i)
-            label_file = label_item.data(Qt.ItemDataRole.UserRole)
+            if label_item:
+                label_file = label_item.data(Qt.ItemDataRole.UserRole)
 
-            if label_file:
-                self.mapping[data_file] = label_file
+                if label_file:
+                    self.mapping[data_file] = label_file
 
         super().accept()
 

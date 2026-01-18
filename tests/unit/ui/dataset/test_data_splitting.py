@@ -179,8 +179,8 @@ def test_data_splitting_window_confirm(qtbot):
         with patch.object(QDialog, "accept") as mock_accept:
             window.confirm()
 
-            # Typo in code: prepare_reuslt
-            window.dataset_generator.prepare_reuslt.assert_called_once()
+            # Fixed typo: prepare_result
+            window.dataset_generator.prepare_result.assert_called_once()
             mock_accept.assert_called_once()
 
 

@@ -61,7 +61,7 @@ def test_apply_filter(controller, mock_study):
     mock_study.preprocessed_data_list = [MagicMock()]
 
     with patch(
-        "XBrainLab.backend.controller.preprocess_controller.Preprocessor.Filtering"
+        "XBrainLab.backend.controller.preprocess_controller.preprocessor.Filtering"
     ) as MockProc:
         instance = MockProc.return_value
         processed_data = [MagicMock()]
@@ -78,7 +78,7 @@ def test_apply_resample(controller, mock_study):
     mock_study.preprocessed_data_list = [MagicMock()]
 
     with patch(
-        "XBrainLab.backend.controller.preprocess_controller.Preprocessor.Resample"
+        "XBrainLab.backend.controller.preprocess_controller.preprocessor.Resample"
     ) as MockProc:
         instance = MockProc.return_value
         result = controller.apply_resample(256.0)
@@ -91,7 +91,7 @@ def test_apply_rereference(controller, mock_study):
     mock_study.preprocessed_data_list = [MagicMock()]
 
     with patch(
-        "XBrainLab.backend.controller.preprocess_controller.Preprocessor.Rereference"
+        "XBrainLab.backend.controller.preprocess_controller.preprocessor.Rereference"
     ) as MockProc:
         instance = MockProc.return_value
         result = controller.apply_rereference(["Cz"])
@@ -104,7 +104,7 @@ def test_apply_normalization(controller, mock_study):
     mock_study.preprocessed_data_list = [MagicMock()]
 
     with patch(
-        "XBrainLab.backend.controller.preprocess_controller.Preprocessor.Normalize"
+        "XBrainLab.backend.controller.preprocess_controller.preprocessor.Normalize"
     ) as MockProc:
         instance = MockProc.return_value
         result = controller.apply_normalization("z-score")
@@ -117,7 +117,7 @@ def test_apply_epoching_and_locking(controller, mock_study):
     mock_study.preprocessed_data_list = [MagicMock()]
 
     with patch(
-        "XBrainLab.backend.controller.preprocess_controller.Preprocessor.TimeEpoch"
+        "XBrainLab.backend.controller.preprocess_controller.preprocessor.TimeEpoch"
     ) as MockProc:
         instance = MockProc.return_value
         instance.data_preprocess.return_value = [MagicMock()]  # Success

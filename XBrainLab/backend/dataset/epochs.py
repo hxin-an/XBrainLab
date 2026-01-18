@@ -69,27 +69,27 @@ class Epochs:
 
         self.sfreq = None
         # maps
-        self.subject_map = {}  # index: subject name
-        self.session_map = {}  # index: session name
-        self.label_map = {}  # {int(event_id): 'description'}
-        self.event_id = {}  # {'event_name': int(event_id)}
+        self.subject_map: dict[int, str] = {}  # index: subject name
+        self.session_map: dict[int, str] = {}  # index: session name
+        self.label_map: dict[int, str] = {}  # {int(event_id): 'description'}
+        self.event_id: dict[str, int] = {}  # {'event_name': int(event_id)}
         self.ch_names = []
-        self.channel_position = None
+        self.channel_position: list | None = None
 
         # 1D np array
-        self.subject = []
-        self.session = []
-        self.label = []
-        self.idx = []
+        self.subject: np.ndarray = np.array([])
+        self.session: np.ndarray = np.array([])
+        self.label: np.ndarray = np.array([])
+        self.idx: np.ndarray = np.array([])
 
-        self.data = []
+        self.data: np.ndarray = np.array([])
 
         # event_id
         for preprocessed_data in preprocessed_data_list:
             _, event_id = preprocessed_data.get_event_list()
             self.event_id.update(event_id)
         ## fix
-        fixed_event_id = {}
+        fixed_event_id: dict[str, int] = {}
         for event_name in self.event_id:
             fixed_event_id[event_name] = len(fixed_event_id)
         ## update
@@ -117,8 +117,8 @@ class Epochs:
             self.label_map[event_label] = event_name
 
         # info
-        map_subject = {}
-        map_session = {}
+        map_subject: dict[str, int] = {}
+        map_session: dict[str, int] = {}
 
         for preprocessed_data in preprocessed_data_list:
             data = preprocessed_data.get_mne()
@@ -287,7 +287,7 @@ class Epochs:
         Returns:
             dict[label_idx][subject_idx][session_idx] = [target_filter_mask, count]
         """
-        filter_preview_mask = {}
+        filter_preview_mask: dict[int, dict[int, dict[int, list]]] = {}
         unique_label_idx = np.unique(self.get_label_list())
         unique_subject_idx = np.unique(self.get_subject_list())
         unique_session_idx = np.unique(self.get_session_list())
@@ -310,7 +310,7 @@ class Epochs:
                     ]
         return filter_preview_mask
 
-    def _get_filtered_mask_pair(self, filter_preview_mask: dict) -> list:
+    def _get_filtered_mask_pair(self, filter_preview_mask: dict) -> list | None:
         """Return mask-counter pair with least selected group.
 
         Args:
@@ -366,7 +366,7 @@ class Epochs:
         value: float | list[int],
         split_unit: SplitUnit,
         mask: np.ndarray,
-        clean_mask: np.ndarray,
+        clean_mask: np.ndarray | None,
         group_idx: int,
     ) -> int:
         """Return number of epochs to be selected.
@@ -391,14 +391,20 @@ class Epochs:
         else:
             target = len(np.unique(target_type[clean_mask]))
         if split_unit == SplitUnit.KFOLD:
+            if not isinstance(value, int):
+                raise ValueError("Value must be int")
             inc = target % value
             num = target // value
             if inc > group_idx:
                 num += 1
         elif split_unit == SplitUnit.RATIO:
-            num = value * target
+            if not isinstance(value, (int, float)):
+                raise ValueError("Value must be int or float")
+            num = int(value * target)
         elif split_unit == SplitUnit.NUMBER:
-            num = min(value, target)
+            if not isinstance(value, (int, float)):
+                raise ValueError("Value must be int or float")
+            num = int(min(value, target))
         else:
             raise NotImplementedError
         num = int(num)
@@ -408,7 +414,7 @@ class Epochs:
         self,
         target_type: np.ndarray,
         mask: np.ndarray,
-        clean_mask: np.ndarray,
+        clean_mask: np.ndarray | None,
         value: float | list[int],
         split_unit: SplitUnit,
         group_idx: int,
@@ -478,7 +484,7 @@ class Epochs:
     def pick_subject(
         self,
         mask: np.ndarray,
-        clean_mask: np.ndarray,
+        clean_mask: np.ndarray | None,
         value: float | list[int],
         split_unit: SplitUnit,
         group_idx: int,
@@ -502,6 +508,8 @@ class Epochs:
         """
         target_type = self.get_subject_list()
         if split_unit == SplitUnit.MANUAL:
+            if not isinstance(value, list):
+                raise ValueError("Value must be a list for manual selection")
             return self._pick_manual(target_type, mask, value)
         else:
             return self._pick(
@@ -511,7 +519,7 @@ class Epochs:
     def pick_session(
         self,
         mask: np.ndarray,
-        clean_mask: np.ndarray,
+        clean_mask: np.ndarray | None,
         value: float | list[int],
         split_unit: SplitUnit,
         group_idx: int,
@@ -536,6 +544,8 @@ class Epochs:
         """
         target_type = self.get_session_list()
         if split_unit == SplitUnit.MANUAL:
+            if not isinstance(value, list):
+                raise ValueError("Value must be a list for manual selection")
             return self._pick_manual(target_type, mask, value)
         else:
             return self._pick(
@@ -545,7 +555,7 @@ class Epochs:
     def pick_trial(
         self,
         mask: np.ndarray,
-        clean_mask: np.ndarray,
+        clean_mask: np.ndarray | None,
         value: float | list[int],
         split_unit: SplitUnit,
         group_idx: int,
@@ -571,7 +581,10 @@ class Epochs:
         """
         ret = mask & False
         # manual selection
+        # manual selection
         if split_unit == SplitUnit.MANUAL:
+            if not isinstance(value, list):
+                raise ValueError("Value must be a list for manual selection")
             ret[value] = True
             ret &= mask
             mask &= np.logical_not(ret)
@@ -631,6 +644,8 @@ class Epochs:
 
     def get_epoch_duration(self) -> float:
         """Return duration of each epoch in seconds."""
+        if self.sfreq is None:
+            return 0.0
         return np.round(self.data.shape[-1] / self.sfreq, 2)
 
     def set_channels(self, ch_names: list[str], channel_position: list) -> None:
@@ -643,6 +658,8 @@ class Epochs:
         self.ch_names = ch_names
         self.channel_position = channel_position
 
-    def get_montage_position(self) -> list:
+    def get_montage_position(self) -> np.ndarray:
         """Return list of channel positions."""
-        return self.channel_position
+        if self.channel_position is None:
+            return np.array([])
+        return np.array(self.channel_position)

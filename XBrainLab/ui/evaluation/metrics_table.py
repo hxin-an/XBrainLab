@@ -15,8 +15,12 @@ class MetricsTableWidget(QTableWidget):
         self.setHorizontalHeaderLabels(columns)
 
         # Style
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.verticalHeader().setVisible(False)
+        header = self.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        v_header = self.verticalHeader()
+        if v_header is not None:
+            v_header.setVisible(False)
         self.setAlternatingRowColors(True)
         self.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)

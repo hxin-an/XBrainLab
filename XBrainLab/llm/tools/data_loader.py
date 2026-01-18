@@ -32,7 +32,9 @@ class LoadDataTool(BaseTool):
             "required": ["filepath"],
         }
 
-    def execute(self, study: Any, filepath: str) -> str:
+    def execute(self, study: Any, filepath: str | None = None, **kwargs) -> str:
+        if not filepath:
+            return "Error: filepath is required"
         if not os.path.exists(filepath):
             return f"Error: File not found at {filepath}"
 

@@ -70,7 +70,6 @@ def test_train_record_getter(
 @pytest.fixture()
 def cleanup():
     yield
-    yield
 
     if os.path.exists("ok"):
         shutil.rmtree("ok")

@@ -60,10 +60,10 @@ def test_edit_event_name_raw(raw):  # noqa: F811
 def test_edit_event_name_epoch(epoch):
     processor = preprocessor.EditEventName([epoch])
     with pytest.raises(
-        AssertionError, match=r"New event name not found in old event name."
+        ValueError, match=r"New event name .* not found in old event name."
     ):
         processor.data_preprocess({"ff": "a"})
-    with pytest.raises(AssertionError, match=r"No Event name updated."):
+    with pytest.raises(ValueError, match=r"No Event name updated."):
         processor.data_preprocess({"a": "a", "b": "b", "c": "c", "d": "d"})
     with pytest.raises(ValueError, match=r"Duplicate event name: d"):
         processor.data_preprocess({"a": "a", "b": "b", "c": "d", "d": "d"})
@@ -94,7 +94,7 @@ def test_edit_event_id_epoch(epoch):
     processor = preprocessor.EditEventId([epoch])
 
     # Test no update
-    with pytest.raises(AssertionError, match=r"No Event Id updated."):
+    with pytest.raises(ValueError, match=r"No Event Id updated."):
         processor.data_preprocess({"a": 1, "b": 2, "c": 3, "d": 4})
 
     # Test simple update

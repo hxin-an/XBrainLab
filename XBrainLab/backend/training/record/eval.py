@@ -12,11 +12,11 @@ def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
         output: Output of model.
         label: Ground truth label.
     """
-    classNum = len(np.unique(label))
-    confusion = np.zeros((classNum, classNum), dtype=np.uint32)
+    class_num = len(np.unique(label))
+    confusion = np.zeros((class_num, class_num), dtype=np.uint32)
     output = output.argmax(axis=1)
-    for ground_truth in range(classNum):
-        for predict in range(classNum):
+    for ground_truth in range(class_num):
+        for predict in range(class_num):
             confusion[ground_truth][predict] = (
                 output[label == ground_truth] == predict
             ).sum()
@@ -126,7 +126,7 @@ class EvalRecord:
             saliency = self.smoothgrad_sq
         elif method == "VarGrad":
             saliency = self.vargrad
-        return saliency
+        torch.save(saliency, target_path)
 
     def get_acc(self) -> float:
         """Get accuracy of the model."""
@@ -156,12 +156,12 @@ class EvalRecord:
     def get_kappa(self) -> float:
         """Get kappa of the model."""
         confusion = calculate_confusion(self.output, self.label)
-        classNum = len(confusion)
-        P0 = np.diagonal(confusion).sum() / confusion.sum()
-        Pe = sum(
-            [confusion[:, i].sum() * confusion[i].sum() for i in range(classNum)]
+        class_num = len(confusion)
+        p0 = np.diagonal(confusion).sum() / confusion.sum()
+        pe = sum(
+            [confusion[:, i].sum() * confusion[i].sum() for i in range(class_num)]
         ) / (confusion.sum() * confusion.sum())
-        return (P0 - Pe) / (1 - Pe)
+        return (p0 - pe) / (1 - pe)
 
     def get_per_class_metrics(self) -> dict:
         """Get per-class precision, recall, f1-score, and support.
@@ -179,7 +179,7 @@ class EvalRecord:
             y_true, y_pred, labels=labels, zero_division=0
         )
 
-        metrics = {}
+        metrics: dict[int | str, dict[str, float | int]] = {}
         for i in labels:
             metrics[int(i)] = {
                 "precision": precision[i],
@@ -198,22 +198,22 @@ class EvalRecord:
 
         return metrics
 
-    def get_gradient(self, labelIndex: int) -> np.ndarray:
+    def get_gradient(self, label_index: int) -> np.ndarray:
         """Return gradient of model by class index."""
-        return self.gradient[labelIndex]
+        return self.gradient[label_index]
 
-    def get_gradient_input(self, labelIndex: int) -> np.ndarray:
+    def get_gradient_input(self, label_index: int) -> np.ndarray:
         """Return gradient times input of model by class index."""
-        return self.gradient_input[labelIndex]
+        return self.gradient_input[label_index]
 
-    def get_smoothgrad(self, labelIndex: int) -> np.ndarray:
+    def get_smoothgrad(self, label_index: int) -> np.ndarray:
         """Return smoothgrad of model by class index."""
-        return self.smoothgrad[labelIndex]
+        return self.smoothgrad[label_index]
 
-    def get_smoothgrad_sq(self, labelIndex: int) -> np.ndarray:
+    def get_smoothgrad_sq(self, label_index: int) -> np.ndarray:
         """Return smoothgrad squared of model by class index."""
-        return self.smoothgrad_sq[labelIndex]
+        return self.smoothgrad_sq[label_index]
 
-    def get_vargrad(self, labelIndex: int) -> np.ndarray:
+    def get_vargrad(self, label_index: int) -> np.ndarray:
         """Return vargrad of model by class index."""
-        return self.vargrad[labelIndex]
+        return self.vargrad[label_index]

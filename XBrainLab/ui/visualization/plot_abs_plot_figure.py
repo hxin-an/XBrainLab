@@ -34,18 +34,27 @@ class PlotABSFigureWindow(PlotFigureWindow):
             self.absolute_chk.setChecked(absolute)
 
         # Add to selector group
-        self.selector_group.layout().addWidget(self.absolute_chk)
+        layout = self.selector_group.layout()
+        if layout:
+            layout.addWidget(self.absolute_chk)
 
     def absolute_callback(self, state):
         # self.add_plot_command()
         self.recreate_fig()
 
     def _create_figure(self):
+        if not self.plan_to_plot:
+            return None
         eval_record = self.plan_to_plot.get_eval_record()
         if not eval_record:
             return None
 
-        epoch_data = self.trainer.get_dataset().get_epoch_data()
+        if not self.trainer:
+            return None
+        dataset = self.trainer.get_dataset()
+        if not dataset:
+            return None
+        epoch_data = dataset.get_epoch_data()
 
         # Instantiate the visualizer class (plot_type is a class or enum value pointing
         # to class)

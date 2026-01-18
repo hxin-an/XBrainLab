@@ -41,7 +41,11 @@ class SaliencyMapWidget(QWidget):
 
     def show_error(self, msg):
         for i in reversed(range(self.plot_layout.count())):
-            self.plot_layout.itemAt(i).widget().setParent(None)
+            item = self.plot_layout.itemAt(i)
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.setParent(None)
         lbl = QLabel(msg)
         lbl.setStyleSheet("color: #ef5350; font-size: 14px; font-weight: bold;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -51,7 +55,11 @@ class SaliencyMapWidget(QWidget):
         try:
             # Clear previous
             for i in reversed(range(self.plot_layout.count())):
-                self.plot_layout.itemAt(i).widget().setParent(None)
+                item = self.plot_layout.itemAt(i)
+                if item is not None:
+                    widget = item.widget()
+                    if widget is not None:
+                        widget.setParent(None)
 
             # Get Data
             if eval_record is None:

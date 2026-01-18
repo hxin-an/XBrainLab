@@ -45,20 +45,20 @@ from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 
 def run_verification():
     # Setup Output Directory
-    OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    LOG_FILE = os.path.join(OUTPUT_DIR, "verification_log.txt")
+    output_dir = os.path.join(PROJECT_ROOT, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    log_file = os.path.join(output_dir, "verification_log.txt")
 
     # Clear existing log
-    if os.path.exists(LOG_FILE):
-        os.remove(LOG_FILE)
+    if os.path.exists(log_file):
+        os.remove(log_file)
 
     # Setup Logger
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler(LOG_FILE, encoding="utf-8"),
+            logging.FileHandler(log_file, encoding="utf-8"),
             logging.StreamHandler(sys.stdout),
         ],
     )
@@ -185,7 +185,9 @@ def run_verification():
     ui_tool = RealSwitchPanelTool()
     res_ui = ui_tool.execute(study, panel_name="Training", view_mode="advanced")
     logger.info(f"Switch Panel Result: {res_ui}")
-    assert "Switch UI to 'Training'" in res_ui
+    if "Switch UI to 'Training'" not in res_ui:
+        logger.error("Verification Failed: Switch Panel output mismatch")
+        return
 
     # 4. Training Workflow Verification
     logger.info("\n--- Step 4: Training Workflow ---")
@@ -234,7 +236,7 @@ def run_verification():
     else:
         logger.warning("Training did not appear to start.")
 
-    logger.info(f"\nVerification Complete! Log saved to {LOG_FILE}")
+    logger.info(f"\nVerification Complete! Log saved to {log_file}")
 
 
 if __name__ == "__main__":

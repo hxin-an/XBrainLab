@@ -80,27 +80,159 @@
 ### 第四階段：RAG 整合與工具實作 (RAG Integration & Real Tools) - **[🚧 In Progress]**
 **目標**：讓 Agent 具備操作真實軟體的能力 (Coordinator Persona)。
 
-- [ ] **真實工具實作 (Real Tools) - [Focus First]**
-    - [ ] **基礎架構**: 在 `llm/tools/real/` 實作連接 Backend 的 Adapter。
-    - [ ] **功能補完**: 實作 `optimizer` 與 `checkpoint` 支援 (解決已知的 High Priority Issue)。
-    - [ ] **整合測試**: 確保 `real` 工具能通過 `benchmark-llm` (至少在 Happy Path 上)。
-    - [ ] **流程控制 (Flow Control)**
-        - [ ] **Human-in-the-loop (HIL)**: 實作 Montage Verification 的人工介入機制 (v0.3.9 implemented, pending coverage)。
-- [ ] **向量資料庫 (Vector Store)**
-    - [ ] **選型**: 採用 **Qdrant** (Local Mode) + `langchain-qdrant`。
-    - [ ] **資料策略 (OOD Testing)**:
-        - [ ] **RAG Knowledge**: 將目前的 `gold_set.json` (50題) 全數 index 進 Qdrant 作為範例。
-        - [x] **Benchmark**: 引入「外部驗證集」作為測試基準 (`external_validation_set.json`)，已包含 175 題 (Basic + Multi-step)。
-    - [ ] **建置**: 索引 `documentation/agent/*.md` 與 `gold_set.json`。
-- [ ] **RAG 引擎**
-    - [ ] 實作針對 Tool 檢索的最佳化 Retriever (Metadata Filtering)。
-- [ ] **RAG 評估與觀測 (Evaluation & Observability)**
-    - [ ] **檢索指標 (Retrieval)**: 測量 Hit Rate 與 MRR，確保在大量工具中能撈到正確的 API 文件。
-    - [ ] **生成指標 (Generation)**: 測量 Faithfulness (忠實度)，確保 Agent 嚴格遵守檢索到的參數限制。
-    - [ ] **框架**: 引入 **Ragas** 或 **Arize Phoenix** 進行自動化評分。
-- [ ] **混合推論引擎 (Hybrid Inference Engine)**
-    - [ ] **API Client 支援**: 實作 `OpenAI` 兼容介面，支援調用 GPT-4o 或 DeepSeek (解決本地算力不足問題)。
-    - [ ] **Engine Factory**: 重構 `LLMEngine` 支援 `Local` vs `Remote` 切換。
+#### 4.1 真實工具實作 (Real Tools) - **[✅ Completed]**
+- [x] **基礎架構**: 在 `llm/tools/real/` 實作連接 Backend 的 Adapter。
+- [x] **單元測試**: 19/19 Real Tools 測試通過。
+- [x] **整合驗證**: `verify_real_tools.py` 驗證通過 (使用真實 EEG 資料)。
+- [ ] **功能補完**: 實作 `optimizer` 與 `checkpoint` 支援 (解決已知的 High Priority Issue)。
+- [ ] **流程控制 (Flow Control)**
+    - [ ] **Human-in-the-loop (HIL)**: 實作 Montage Verification 的人工介入機制 (v0.3.9 implemented, pending coverage)。
+
+#### 4.2 Agent 架構增強 (Agent Enhancement)
+**已識別的架構缺口**：
+- [ ] **錯誤處理與恢復機制 (P0 - Critical)**
+    - [ ] 實作 `max_iterations` 限制（防止 ReAct Loop 無限迴圈）
+    - [ ] 實作 Tool 失敗重試機制 (`tool_retry_limit`)
+    - [ ] 實作對話 Timeout 機制（Benchmark 有 300s，正常對話需要）
+    - [ ] 實作 Graceful Degradation（LLM 無回應時降級策略）
+- [ ] **Observability & Logging (P1 - High)**
+    - [ ] 實作 Structured Logging（追蹤完整 ReAct Loop 鏈路）
+    - [ ] 實作 Token 計數與 Latency 追蹤
+    - [ ] 實作 Conversation ID 關聯多輪對話
+    - [ ] 記錄 Tool 執行時間與成功率
+- [ ] **Configuration Management (P2 - Medium)**
+    - [ ] **配置持久化 (Config Persistence)**
+        - [ ] 實作 `ConfigManager` 類別（讀取/儲存 settings.json）
+        - [ ] 支援配置項目：inference_mode, temperature, max_tokens, sliding_window_size, tool_retry_limit
+    - [ ] **配置驗證 (Config Validation)**
+        - [ ] API Key 格式檢查與有效性測試
+        - [ ] 參數範圍驗證（temperature 0-1, max_tokens > 0）
+    - [ ] **Settings UI Panel**
+        - [ ] 建立 `SettingsDialog` (QDialog)
+        - [ ] Model Selector Dropdown（呼叫 4.7 的 Engine Factory）
+        - [ ] API Key 輸入欄位（含 Show/Hide 按鈕）
+        - [ ] 參數調整滑桿（Temperature, Top-P）
+        - [ ] Save/Cancel 按鈕（觸發 ConfigManager.save()）
+    - [ ] **與 4.7 整合**：Settings UI 變更後呼叫 `LLMController.switch_engine()`
+- [ ] **Context Management (P2 - Medium)**
+    - [ ] 實作 Token Budget Management（檢查 Context 是否超限）
+    - [ ] 實作 Context Prioritization（根據相關性排序）
+    - [ ] 改善 Context Expiration 機制（自動清理過期 Context）
+
+#### 4.3 Benchmark 改進
+**測試集隔離策略**：
+- [ ] **歷史隔離模式**
+    - [ ] 修改 `eval_agent.py` 為每個測試案例建立獨立 Controller（避免歷史污染）
+    - [ ] 優化：重用 AgentWorker 避免重複加載模型
+- [ ] **測試集分工**
+    - [ ] 將 Benchmark 預設改為 `external_validation_set.json` (175 題 OOD 測試)
+    - [ ] 保留 `gold_set.json` (50 題) 用於 RAG Few-Shot 範例
+- [ ] **Multi-Turn 對話測試**
+    - [ ] 建立 `conversation_test_set.json` (測試指代消解、記憶能力)
+    - [ ] 實作多輪對話評測邏輯
+
+#### 4.4 向量資料庫 (Vector Store)
+- [ ] **選型**: 採用 **Qdrant** (Local Mode) + `langchain-qdrant`。
+- [ ] **資料策略**:
+    - [x] **測試集準備**: 建立 `external_validation_set.json` (175 題)。
+    - [ ] **RAG 索引**: 索引 `gold_set.json` (50 題) 作為 Few-Shot 範例。
+    - [ ] **文件索引**: 索引 `documentation/agent/*.md` (Tool Definitions, API Docs)。
+- [ ] **索引實作**
+    - [ ] 建立 RAG 模組結構：
+      ```
+      XBrainLab/llm/rag/
+      ├── __init__.py
+      ├── indexer.py          # 文件索引邏輯
+      ├── retriever.py        # 檢索器實作
+      ├── config.py           # Qdrant 配置
+      └── storage/            # Qdrant 本地儲存
+          ├── gold_set/       # Few-Shot 範例索引
+          └── docs/           # 文件索引
+      ```
+    - [ ] 實作 `indexer.py`：
+      - `index_gold_set()` - 將 `scripts/benchmark/data/gold_set.json` 轉為 RAG Documents
+      - `index_documentation()` - 索引 `documentation/agent/*.md`
+    - [ ] 實作 Metadata Filter (by `tool_name`, `category`)
+
+#### 4.5 RAG 引擎 (Retrieval-Augmented Generation)
+- [ ] **檢索器實作** (`XBrainLab/llm/rag/retriever.py`)
+    - [ ] 實作 Semantic Search Retriever（基於 Qdrant）
+    - [ ] 實作 Metadata Filtering (根據 Tool Category)
+    - [ ] 實作 Hybrid Retrieval (Semantic + Keyword)
+    - [ ] 實作 `get_similar_examples(query, top_k=3)` 方法
+- [ ] **Prompt 整合**
+    - [ ] 在 `PromptManager.add_context()` 整合 RAG 檢索結果
+    - [ ] 實作 Few-Shot Context 格式化（將檢索案例注入 Prompt）
+    - [ ] 實作 Retrieval Confidence Threshold（低信心時跳過檢索）
+- [ ] **Controller 整合**
+    - [ ] 在 `LLMController` 初始化時載入 RAG Retriever
+    - [ ] 在 `handle_user_input()` 時觸發檢索並注入 Context
+
+#### 4.6 RAG 評估與觀測 (Evaluation & Observability)
+- [ ] **檢索指標 (Retrieval Metrics)** (`XBrainLab/llm/rag/evaluation.py`)
+    - [ ] 測量 Hit Rate（正確工具是否在 Top-K）
+    - [ ] 測量 MRR (Mean Reciprocal Rank)
+    - [ ] 建立 Retrieval Quality Dashboard（記錄到 `logs/rag_metrics.json`）
+- [ ] **生成指標 (Generation Metrics)**
+    - [ ] 測量 Faithfulness（Agent 是否遵守檢索到的參數）
+    - [ ] 測量 Parameter Accuracy（參數正確率）
+    - [ ] 對比「有 RAG vs 無 RAG」的效果提升
+- [ ] **多模型 Benchmark（不同算力適配）**
+    - [ ] 在 `external_validation_set.json` (175 題) 測試不同大小的模型：
+      - **輕量級 (CPU/低階 GPU)**: Gemma-2B *(與前人比較基準)*
+      - **中等級 (中階 GPU)**: Qwen2.5-7B *(當前預設)*, Phi-3.5-mini-instruct (3.8B)
+      - **重量級 (高階 GPU)**: Llama-3.1-8B-Instruct
+      - **API 基準 (免費)**: Gemini-2.0-Flash, Gemini-2.5-Flash *(共 9000 RPD 免費配額)*
+    - [ ] 記錄各模型的 Pass Rate、平均推論時間、VRAM 使用量
+    - [ ] 建立「模型選擇指南」文件（根據硬體推薦模型）
+- [ ] **評估框架**
+    - [ ] 引入 **Ragas** 或 **Arize Phoenix**
+    - [ ] 建立自動化評分 Pipeline（擴充 `scripts/benchmark/eval_agent.py`）
+    - [ ] 支援指定模型進行 Benchmark：`--model qwen2.5-3b`
+
+#### 4.7 混合推論引擎 (Hybrid Inference Engine)
+**目標**：重構 LLM Backend 架構，支援多種推論後端的動態切換（依賴 4.2 的配置管理）。
+
+**模型選擇考量** (重要：Agent 不接觸 EEG 原始資料，只處理文字指令):
+
+| 模型等級 | 推薦模型 | 來源 | 硬體需求 | Pass Rate | 推論速度 | 適用場景 |
+|---------|---------|-----|---------|-----------|----------|---------|
+| **輕量級** | Gemma-2B | Google | CPU / 2GB VRAM | ~70% | 快 | 測試、低階硬體、前人比較基準 |
+| **中等級** | Qwen2.5-7B *(預設)* | 阿里巴巴 | 8GB VRAM | 88% | 中等 | 一般使用 |
+| **中等級** | Phi-3.5-mini | Microsoft | 4GB VRAM | ~85% | 快 | 中階 GPU |
+| **重量級** | Llama-3.1-8B | Meta | 16GB+ VRAM | ~92% | 慢 | 高準確率需求 |
+| **API (免費)** | Gemini-2.0-Flash | Google | 無需 GPU | 94%+ | 快 | 免費高效選項 |
+| **API (免費)** | Gemini-2.5-Flash | Google | 無需 GPU | 95%+ | 極快 | 最新免費模型 (9000 RPD) |
+
+*註：檔案路徑可能透過 API 傳輸，但 EEG 資料本體保留在本地 Backend，從不傳給 LLM。*
+*Pass Rate 為預估值，需透過 4.6 的多模型 Benchmark 實際測量。*
+*Gemini API 免費層約提供 9000 RPD (Requests Per Day) 配額。*
+
+- [ ] **Backend 抽象層**
+    - [ ] 重構 `BaseBackend` 抽象類別（統一介面）
+    - [ ] 確保 `LocalBackend`, `OpenAIBackend`, `GeminiBackend` 實作相同介面
+    - [ ] 統一 `generate_stream(messages)` 方法簽名
+- [ ] **Engine Factory Pattern**
+    - [ ] 實作 `LLMEngineFactory.create(config: LLMConfig)` 工廠方法
+    - [ ] 根據 `config.inference_mode` 動態建立對應 Backend
+    - [ ] 支援 Lazy Loading（延遲載入模型）
+- [ ] **Hot-Swap 機制**
+    - [ ] 在 `LLMController` 實作 `switch_engine(new_mode: str)` 方法
+    - [ ] 安全關閉舊 Backend（釋放 VRAM/連線）
+    - [ ] 無縫切換到新 Backend（保留對話歷史）
+- [ ] **Fallback Strategy（降級策略）**
+    - [ ] 實作 `try_with_fallback()` 裝飾器
+    - [ ] API 失敗時自動切換 Local Backend
+    - [ ] 記錄降級事件到 Structured Log
+- [ ] **API Client 增強**
+    - [ ] 完善 `OpenAIBackend`（支援 GPT-4o, DeepSeek）
+    - [ ] 完善 `GeminiBackend`（支援 Gemini 2.0）
+    - [ ] 實作 Retry 機制（指數退避）
+
+**與 4.2 關係**：
+- 讀取 4.2 ConfigManager 提供的配置
+- 提供 API 給 4.2 Settings UI 呼叫（switch_engine）
+- 不處理 UI 層邏輯
 
 ### 第五階段：多 Agent 擴充 (Multi-Agent Expansion) - **[📅 Planned]**
 **目標**：引入專家 Agent 以支援教學與進階分析。
@@ -111,8 +243,62 @@
     - [ ] 索引 EEG 概念與教科書摘要供 Tutor 使用。
 
 ## RAG 內容策略 (Content Strategy)
-| 知識類別 | 來源 | 使用者 | 優先級 |
-| :--- | :--- | :--- | :--- |
-| **工具與API** | `tool_definitions.md`, API Docs | **Coordinator** | **P0** (Phase 4) |
-| **操作範例** | `gold_set.json` | **Coordinator** | **P0** (Phase 4) |
-| **領域知識** | EEG Concepts, Glossary | **Tutor**, **Analyst** | P2 (Phase 5) |
+
+### RAG 資料索引政策 (Indexing Policy)
+
+| 資料類型 | 是否索引 | 用途 | 優先級 | 說明 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Tool Definitions** | ✅ 是 | 工具參數規格查詢 | **P0** | `tool_definitions.md`, API Docs |
+| **gold_set.json** | ✅ 是 | Few-Shot 相似案例檢索 | **P0** | 50 題精選範例，支援 Analogical Reasoning |
+| **User Manuals** | ✅ 是 | 教學問題回答 | P1 | `README.md`, FAQ |
+| **EEG Glossary** | ✅ 是 | 領域知識查詢 | P2 | `GLOSSARY.md` - Tutor Persona 使用 |
+| **external_validation_set.json** | ❌ 否 | Benchmark 測試集 | **P0** | **絕對不可索引 - Data Leakage** |
+| **歷史對話記錄** | ⚠️ 條件性 | 成功工作流範例 | P3 | 需用戶同意 + 去識別化 |
+
+### RAG vs Prompt Pool 差異
+
+我們採用的是 **RAG Few-Shot（動態範例檢索）**，非傳統 Prompt Pool：
+
+| 維度 | Prompt Pool | 我們的設計 (RAG Few-Shot) |
+|------|------------|--------------------------|
+| **範例來源** | 手寫固定模板 | 動態檢索 gold_set.json |
+| **選擇依據** | 任務分類（if-else） | 語義相似度 (Semantic Search) |
+| **靈活性** | 低（固定 N 個模板） | 高（50 個案例排列組合） |
+| **適應性** | 需人工更新模板 | 自動找最相關案例 |
+
+**範例流程**：
+```
+User: "Load two files from /home/data/"
+  ↓
+1. Semantic Search in gold_set RAG
+  ↓
+  檢索到: "Load sub01.gdf and sub02.gdf from /tmp/"
+  ↓
+2. Few-Shot Context Injection
+  ↓
+  Prompt: "Similar Example: ..."
+  ↓
+3. Agent 推理
+  ↓
+  Tool: load_data, Parameters: {"paths": [...]}
+```
+
+### Benchmark 測試集分工
+
+| 資料集 | 用途 | 題數 | 索引到 RAG? | 評分用? |
+|--------|------|------|------------|--------|
+| `gold_set.json` | **RAG 訓練範例** | 50 | ✅ 是 | ❌ 否 |
+| `external_validation_set.json` | **OOD 評分測試** | 175 | ❌ 否 | ✅ 是 |
+
+**設計優勢**：
+1. **避免資料浪費**：50 題精心標註的範例用於 Few-Shot Learning
+2. **嚴格 OOD 測試**：175 題未見過的問題測試泛化能力
+3. **符合 ML 最佳實踐**：Training Set (RAG) ≠ Test Set (Benchmark)
+
+### 知識類別對應
+
+| 知識類別 | 來源 | 使用者 | 優先級 | RAG 策略 |
+| :--- | :--- | :--- | :--- | :--- |
+| **工具與API** | `tool_definitions.md`, API Docs | **Coordinator** | **P0** (Phase 4) | Metadata Filter by `tool_name` |
+| **操作範例** | `gold_set.json` (50題) | **Coordinator** | **P0** (Phase 4) | Semantic Search + Few-Shot |
+| **領域知識** | EEG Concepts, Glossary | **Tutor**, **Analyst** | P2 (Phase 5) | Full-text Search |

@@ -8,7 +8,7 @@ from enum import Enum
 
 import numpy as np
 import torch
-import torch.utils.data as Data
+import torch.utils.data as torch_data
 from captum.attr import NoiseTunnel, Saliency
 from sklearn.metrics import roc_auc_score
 
@@ -16,12 +16,14 @@ from ..dataset import Dataset
 from ..utils import set_seed, validate_type
 from ..visualization import supported_saliency_methods
 from .model_holder import ModelHolder
-from .option import TRAINING_EVALUATION, TrainingOption
+from .option import TrainingEvaluation, TrainingOption
 from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
 
 
 def _test_model(
-    model: torch.nn.Module, dataLoader: Data.DataLoader, criterion: torch.nn.Module
+    model: torch.nn.Module,
+    data_loader: torch_data.DataLoader,
+    criterion: torch.nn.Module,
 ) -> dict[str, float]:
     """Test model on given data loader
 
@@ -37,11 +39,11 @@ def _test_model(
 
     running_loss = 0.0
     total_count = 0
-    auc = 0
-    correct = 0
+    auc = 0.0
+    correct = 0.0
     y_true, y_pred = None, None
     with torch.no_grad():
-        for inputs, labels in dataLoader:
+        for inputs, labels in data_loader:
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             running_loss += loss.item()
@@ -57,6 +59,13 @@ def _test_model(
                 y_pred = torch.cat((y_pred, outputs.detach().cpu()))
 
         try:
+            if y_true is None or y_pred is None:
+                logging.getLogger(__name__).warning("No prediction result in test")
+                return {
+                    RecordKey.ACC: 0,
+                    RecordKey.AUC: 0,
+                    RecordKey.LOSS: running_loss,
+                }
             if y_pred.size()[-1] <= 2:
                 auc = roc_auc_score(
                     y_true.clone().detach().cpu().numpy(),
@@ -79,13 +88,13 @@ def _test_model(
         except Exception as e:
             logging.getLogger(__name__).warning(f"Failed to calculate AUC in test: {e}")
 
-    running_loss /= len(dataLoader)
+    running_loss /= len(data_loader)
     acc = correct / total_count * 100
     return {RecordKey.ACC: acc, RecordKey.AUC: auc, RecordKey.LOSS: running_loss}
 
 
 def _eval_model(
-    model: torch.nn.Module, dataLoader: Data.DataLoader, saliency_params: dict
+    model: torch.nn.Module, data_loader: torch_data.DataLoader, saliency_params: dict
 ) -> EvalRecord:
     """Evaluate model on given data loader
 
@@ -93,7 +102,7 @@ def _eval_model(
 
     Args:
         model: Model to be evaluated
-        dataLoader: Data loader
+        data_loader: Data loader
     """
     model.eval()
 
@@ -109,7 +118,7 @@ def _eval_model(
     saliency_inst = Saliency(model)
     noise_tunnel_inst = NoiseTunnel(saliency_inst)
 
-    for inputs, labels in dataLoader:
+    for inputs, labels in data_loader:
         outputs = model(inputs)
 
         output_list.append(outputs.detach().cpu().numpy())
@@ -170,37 +179,37 @@ def _eval_model(
     smoothgrad_sq_list = np.concatenate(smoothgrad_sq_list)
     vargrad_list = np.concatenate(vargrad_list)
 
-    gradient_list = {
+    gradient_dict = {
         i: gradient_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
-    gradient_input_list = {
+    gradient_input_dict = {
         i: gradient_input_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
-    smoothgrad_list = {
+    smoothgrad_dict = {
         i: smoothgrad_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
-    smoothgrad_sq_list = {
+    smoothgrad_sq_dict = {
         i: smoothgrad_sq_list[np.where(label_list == i)]
         for i in range(output_list.shape[-1])
     }
-    vargrad_list = {
+    vargrad_dict = {
         i: vargrad_list[np.where(label_list == i)] for i in range(output_list.shape[-1])
     }
     return EvalRecord(
         label_list,
         output_list,
-        gradient_list,
-        gradient_input_list,
-        smoothgrad_list,
-        smoothgrad_sq_list,
-        vargrad_list,
+        gradient_dict,
+        gradient_input_dict,
+        smoothgrad_dict,
+        smoothgrad_sq_dict,
+        vargrad_dict,
     )
 
 
-class SharedMemoryDataset(Data.Dataset):
+class SharedMemoryDataset(torch_data.Dataset):
     """Dataset that references original data to save RAM/VRAM."""
 
     def __init__(
@@ -229,7 +238,7 @@ def to_holder(
     dev: str,
     bs: int,
     shuffle: bool = False,
-) -> Data.DataLoader | None:
+) -> torch_data.DataLoader | None:
     """Convert data to torch dataloader using SharedMemoryDataset"""
 
     if len(indices) == 0:
@@ -239,7 +248,7 @@ def to_holder(
     # and to load to GPU on-the-fly (saves VRAM).
     dataset = SharedMemoryDataset(data, labels, indices, dev)
 
-    dataloader = Data.DataLoader(dataset, batch_size=bs, shuffle=shuffle)
+    dataloader = torch_data.DataLoader(dataset, batch_size=bs, shuffle=shuffle)
     return dataloader
 
 
@@ -282,12 +291,18 @@ class TrainingPlanHolder:
         model_holder: ModelHolder,
         dataset: Dataset,
         option: TrainingOption,
-        saliency_params: dict,
+        saliency_params: dict | None,
     ):
         self.model_holder = model_holder
         self.dataset = dataset
-        self.saliency_params = saliency_params
         self.option = option
+
+        if not saliency_params:
+            print("No saliency parameter is set, using default parameters.")
+            params = {"nt_samples": 5, "nt_samples_batch_size": None, "stdevs": 1.0}
+            saliency_params = dict.fromkeys(supported_saliency_methods, params)
+        self.saliency_params: dict = saliency_params
+
         self.check_data()
 
         # Generate unique plan ID (timestamp) to avoid directory collision
@@ -295,7 +310,7 @@ class TrainingPlanHolder:
 
         self.train_record_list = []
         self.interrupt = False
-        self.error = None
+        self.error: str | None = None
         self.status = Status.PENDING.value
         for i in range(self.option.repeat_num):
             seed = set_seed(seed=None)
@@ -327,16 +342,14 @@ class TrainingPlanHolder:
 
     def check_data(self) -> None:
         """Check whether the training plan is valid"""
-        if not self.dataset:
-            raise ValueError("No valid dataset is generated")
+        if self.dataset is None:
+            raise ValueError("dataset cannot be None")
+        if not self.dataset.get_epoch_data():
+            raise ValueError("No valid training setting is generated")
         if not self.option:
             raise ValueError("No valid training setting is generated")
         if not self.model_holder:
             raise ValueError("No valid model is selected")
-        if not self.saliency_params:
-            print("No saliency parameter is set, using default parameters.")
-            params = {"nt_samples": 5, "nt_samples_batch_size": None, "stdevs": 1.0}
-            self.saliency_params = dict.fromkeys(supported_saliency_methods, params)
 
         validate_type(self.model_holder, ModelHolder, "model_holder")
         validate_type(self.dataset, Dataset, "dataset")
@@ -364,7 +377,13 @@ class TrainingPlanHolder:
             self.error = str(e)
             self.status = Status.PENDING.value
 
-    def get_loader(self) -> tuple[Data.DataLoader, Data.DataLoader, Data.DataLoader]:
+    def get_loader(
+        self,
+    ) -> tuple[
+        torch_data.DataLoader | None,
+        torch_data.DataLoader | None,
+        torch_data.DataLoader | None,
+    ]:
         """Return the data loader for training, validation and testing"""
         bs = self.option.bs
         dev = self.option.get_device()
@@ -378,42 +397,48 @@ class TrainingPlanHolder:
         val_idx = np.where(self.dataset.val_mask)[0]
         test_idx = np.where(self.dataset.test_mask)[0]
 
-        trainHolder = to_holder(full_data, full_labels, train_idx, dev, bs, True)
-        valHolder = to_holder(full_data, full_labels, val_idx, dev, bs)
-        testHolder = to_holder(full_data, full_labels, test_idx, dev, bs)
-        return trainHolder, valHolder, testHolder
+        train_holder: torch_data.DataLoader | None = to_holder(
+            full_data, full_labels, train_idx, dev, bs, True
+        )
+        val_holder: torch_data.DataLoader | None = to_holder(
+            full_data, full_labels, val_idx, dev, bs
+        )
+        test_holder: torch_data.DataLoader | None = to_holder(
+            full_data, full_labels, test_idx, dev, bs
+        )
+        return train_holder, val_holder, test_holder
 
     def get_eval_pair(
         self,
         train_record: TrainRecord,
-        valLoader: Data.DataLoader,
-        testLoader: Data.DataLoader,
-    ) -> tuple[torch.nn.Module, Data.DataLoader]:
+        val_loader: torch_data.DataLoader | None,
+        test_loader: torch_data.DataLoader | None,
+    ) -> tuple[torch.nn.Module | None, torch_data.DataLoader | None]:
         """Return the model and data loader for evaluation based on given option"""
         target_model = target_loader = None
         target_model = self.model_holder.get_model(
             self.dataset.get_epoch_data().get_model_args()
         ).to(self.option.get_device())
-        target_loader = testLoader or valLoader
-        if self.option.evaluation_option == TRAINING_EVALUATION.VAL_LOSS:
+        target_loader = test_loader or val_loader
+        if self.option.evaluation_option == TrainingEvaluation.VAL_LOSS:
             model = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
             if model:
                 target_model.load_state_dict(model)
             else:
                 target_model = None
-        elif self.option.evaluation_option == TRAINING_EVALUATION.TEST_ACC:
+        elif self.option.evaluation_option == TrainingEvaluation.TEST_ACC:
             model = getattr(train_record, f"best_test_{RecordKey.ACC}_model")
             if model:
                 target_model.load_state_dict(model)
             else:
                 target_model = None
-        elif self.option.evaluation_option == TRAINING_EVALUATION.TEST_AUC:
+        elif self.option.evaluation_option == TrainingEvaluation.TEST_AUC:
             model = getattr(train_record, f"best_test_{RecordKey.AUC}_model")
             if model:
                 target_model.load_state_dict(model)
             else:
                 target_model = None
-        elif self.option.evaluation_option == TRAINING_EVALUATION.LAST_EPOCH:
+        elif self.option.evaluation_option == TrainingEvaluation.LAST_EPOCH:
             target_model.load_state_dict(train_record.model.state_dict())
         else:
             raise NotImplementedError
@@ -431,8 +456,8 @@ class TrainingPlanHolder:
             return
         # init
         model = train_record.get_training_model(device=self.option.get_device())
-        trainLoader, valLoader, testLoader = self.get_loader()
-        if self.option.epoch > 0 and not trainLoader:
+        train_loader, val_loader, test_loader = self.get_loader()
+        if self.option.epoch > 0 and not train_loader:
             raise ValueError("No Training Data")
         optimizer = train_record.optim
         criterion = train_record.criterion
@@ -441,11 +466,13 @@ class TrainingPlanHolder:
         while train_record.epoch < self.option.epoch:
             if self.interrupt:
                 break
+            if train_loader is None:
+                raise ValueError("train_loader cannot be None during training loop")
             self.train_one_epoch(
                 model,
-                trainLoader,
-                valLoader,
-                testLoader,
+                train_loader,
+                val_loader,
+                test_loader,
                 optimizer,
                 criterion,
                 train_record,
@@ -454,13 +481,13 @@ class TrainingPlanHolder:
         if train_record.epoch == self.option.epoch:
             self.status = Status.EVAL.value.format(train_record.get_name())
             target, target_loader = self.get_eval_pair(
-                train_record, valLoader, testLoader
+                train_record, val_loader, test_loader
             )
 
             # Fallback: If no validation/test data, use training data for
             # evaluation/visualization
-            if not target_loader and trainLoader:
-                target_loader = trainLoader
+            if not target_loader and train_loader:
+                target_loader = train_loader
                 if not target:
                     target = train_record.model
                     target.eval()
@@ -474,9 +501,9 @@ class TrainingPlanHolder:
     def train_one_epoch(
         self,
         model: torch.nn.Module,
-        trainLoader: Data.DataLoader,
-        valLoader: Data.DataLoader,
-        testLoader: Data.DataLoader,
+        train_loader: torch_data.DataLoader,
+        val_loader: torch_data.DataLoader | None,
+        test_loader: torch_data.DataLoader | None,
         optimizer: torch.optim.Optimizer,
         criterion: torch.nn.Module,
         train_record: TrainRecord,
@@ -485,12 +512,12 @@ class TrainingPlanHolder:
         start_time = time.time()
         running_loss = 0.0
         model.train()
-        correct = 0
+        correct = 0.0
         total_count = 0
-        train_auc = 0
+        train_auc = 0.0
         y_true, y_pred = None, None
         # train one mini batch
-        for inputs, labels in trainLoader:
+        for inputs, labels in train_loader:
             if self.interrupt:
                 return
             optimizer.zero_grad()
@@ -510,7 +537,12 @@ class TrainingPlanHolder:
             running_loss += loss.item()
 
         try:
-            if y_pred.size()[-1] <= 2:
+            if y_true is None or y_pred is None:
+                logging.getLogger(__name__).warning(
+                    f"Failed to calculate AUC in train (epoch {train_record.epoch})"
+                )
+                train_auc = 0.0
+            elif y_pred.size()[-1] <= 2:
                 train_auc = roc_auc_score(
                     y_true.clone().detach().cpu().numpy(),
                     torch.nn.functional.softmax(y_pred, dim=1)
@@ -538,7 +570,7 @@ class TrainingPlanHolder:
                 f"Failed to calculate AUC in train (epoch {train_record.epoch}): {e}"
             )
 
-        running_loss /= len(trainLoader)
+        running_loss /= len(train_loader)
         train_acc = correct / total_count * 100
         train_record.update_train(
             {
@@ -548,20 +580,20 @@ class TrainingPlanHolder:
             }
         )
 
-        if valLoader:
-            test_result = _test_model(model, valLoader, criterion)
+        if val_loader:
+            test_result = _test_model(model, val_loader, criterion)
             train_record.update_eval(test_result)
 
-        trainingTime = time.time() - start_time
+        training_time = time.time() - start_time
 
-        if testLoader:
-            test_result = _test_model(model, testLoader, criterion)
+        if test_loader:
+            test_result = _test_model(model, test_loader, criterion)
             train_record.update_test(test_result)
 
         train_record.update_statistic(
             {
                 TrainRecordKey.LR: optimizer.param_groups[0]["lr"],
-                TrainRecordKey.TIME: trainingTime,
+                TrainRecordKey.TIME: training_time,
             }
         )
 
@@ -603,16 +635,16 @@ class TrainingPlanHolder:
         return self.saliency_params
 
     # setter
-    def set_saliency_params(self, saliency_params) -> None:
+    def set_saliency_params(self, saliency_params: dict) -> None:
         """Set the saliency computation parameters"""
         self.saliency_params = saliency_params
         for i in range(self.option.repeat_num):
             train_record = self.train_record_list[i]
-            _, valLoader, testLoader = self.get_loader()
+            _, val_loader, test_loader = self.get_loader()
             target, target_loader = self.get_eval_pair(
-                train_record, valLoader, testLoader
+                train_record, val_loader, test_loader
             )
-            if target is not None:  # model is trained
+            if target is not None and target_loader is not None:  # model is trained
                 eval_record = _eval_model(target, target_loader, self.saliency_params)
                 self.train_record_list[i].set_eval_record(eval_record)
 
@@ -642,7 +674,13 @@ class TrainingPlanHolder:
         """
         record = self.train_record_list[self.get_training_repeat()]
 
-        lr = train_loss = train_acc = train_auc = val_loss = val_acc = val_auc = "-"
+        lr: float | str = "-"
+        train_loss: float | str = "-"
+        train_acc: float | str = "-"
+        train_auc: float | str = "-"
+        val_loss: float | str = "-"
+        val_acc: float | str = "-"
+        val_auc: float | str = "-"
         if len(record.train[TrainRecordKey.LR]) > 0:
             lr = record.train[TrainRecordKey.LR][-1]
         if len(record.train[TrainRecordKey.LOSS]) > 0:

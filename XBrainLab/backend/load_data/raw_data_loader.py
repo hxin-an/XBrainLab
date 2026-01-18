@@ -148,4 +148,7 @@ def load_raw_data(filepath: str) -> Raw:
     """
     Load raw data from file using the factory.
     """
-    return RawDataLoaderFactory.load(filepath)
+    raw = RawDataLoaderFactory.load(filepath)
+    if raw is None:
+        raise ValueError(f"Failed to load raw data from {filepath}")
+    return raw

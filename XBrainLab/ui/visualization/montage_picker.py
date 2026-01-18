@@ -89,12 +89,10 @@ class PickMontageWindow(QDialog):
         self.table = QTableWidget()
         self.table.setColumnCount(2)
         self.table.setHorizontalHeaderLabels(["Dataset Channel", "Montage Channel"])
-        self.table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
-        self.table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch
-        )
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
 
         layout.addWidget(self.table)
@@ -139,7 +137,10 @@ class PickMontageWindow(QDialog):
 
             # 1. Create all widgets and run Smart Match / Load Settings
             for row in range(self.table.rowCount()):
-                dataset_ch = self.table.item(row, 0).text()
+                dataset_item = self.table.item(row, 0)
+                if dataset_item is None:
+                    continue
+                dataset_ch = dataset_item.text()
 
                 # Create Searchable ComboBox
                 combo = QComboBox()
@@ -176,11 +177,12 @@ class PickMontageWindow(QDialog):
 
             # 3. Connect signals for Live Cascading Fill
             for row in range(self.table.rowCount()):
-                combo = self.table.cellWidget(row, 1)
-                # Use lambda with captured row to identify source
-                combo.currentIndexChanged.connect(
-                    lambda idx, r=row: self.on_channel_changed(r, idx)
-                )
+                widget = self.table.cellWidget(row, 1)
+                if isinstance(widget, QComboBox):
+                    # Use lambda with captured row to identify source
+                    widget.currentIndexChanged.connect(
+                        lambda idx, r=row: self.on_channel_changed(r, idx)
+                    )
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to load montage: {e}")
@@ -196,6 +198,8 @@ class PickMontageWindow(QDialog):
         for i in range(len(sorted_anchors)):
             curr_row = sorted_anchors[i]
             curr_combo = self.table.cellWidget(curr_row, 1)
+            if not isinstance(curr_combo, QComboBox):
+                continue
             curr_ch = curr_combo.currentText()
 
             if i < len(sorted_anchors) - 1:
@@ -216,10 +220,7 @@ class PickMontageWindow(QDialog):
                     target_ch = self.montage_channels[target_montage_idx]
                     combo = self.table.cellWidget(target_row, 1)
 
-                    # Only fill if not an anchor (though logic above ensures we are
-                    # between anchors)
-                    # And check if empty? No, initial fill should fill gaps.
-                    if target_row not in self.anchors:
+                    if isinstance(combo, QComboBox) and target_row not in self.anchors:
                         idx = combo.findText(target_ch)
                         if idx != -1:
                             combo.setCurrentIndex(idx)
@@ -288,6 +289,8 @@ class PickMontageWindow(QDialog):
         self.anchors.add(row)
 
         combo = self.table.cellWidget(row, 1)
+        if not isinstance(combo, QComboBox):
+            return
         current_ch = combo.currentText()
 
         try:
@@ -306,6 +309,8 @@ class PickMontageWindow(QDialog):
         offset = 1
         for target_row in range(row + 1, next_anchor_row):
             target_combo = self.table.cellWidget(target_row, 1)
+            if not isinstance(target_combo, QComboBox):
+                continue
 
             # Calculate next channel
             target_montage_idx = current_montage_idx + offset
@@ -330,7 +335,7 @@ class PickMontageWindow(QDialog):
         self.anchors.clear()
         for row in range(self.table.rowCount()):
             combo = self.table.cellWidget(row, 1)
-            if combo:
+            if isinstance(combo, QComboBox):
                 combo.blockSignals(True)
                 combo.setCurrentIndex(0)
                 combo.setCurrentIndex(0)
@@ -360,9 +365,12 @@ class PickMontageWindow(QDialog):
         montage_name = self.montage_combo.currentText()
 
         for row in range(self.table.rowCount()):
-            dataset_ch = self.table.item(row, 0).text()
+            dataset_item = self.table.item(row, 0)
+            if dataset_item is None:
+                continue
+            dataset_ch = dataset_item.text()
             combo = self.table.cellWidget(row, 1)
-            if combo:
+            if isinstance(combo, QComboBox):
                 selected_montage_ch = combo.currentText()
                 if selected_montage_ch:
                     selected_map[dataset_ch] = selected_montage_ch

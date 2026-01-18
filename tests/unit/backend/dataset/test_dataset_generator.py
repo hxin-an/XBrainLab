@@ -36,7 +36,7 @@ def test_dataset_generator(
     config = DataSplittingConfig(
         train_type, is_cross_validation, val_splitter_list, test_splitter_list
     )
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         DatasetGenerator(epochs, config, ["test"])
     DatasetGenerator(epochs, config)
 
@@ -419,7 +419,7 @@ def test_dataset_generator_split_validation_failed(
     with pytest.raises(ValueError):
         generator.generate()
     with pytest.raises(ValueError):
-        generator.prepare_reuslt()
+        generator.prepare_result()
 
 
 @pytest.mark.parametrize("split_type", ["error", None])
@@ -486,7 +486,7 @@ def test_dataset_generator_failed(
     assert not generator.is_clean()
 
     with pytest.raises(ValueError):
-        generator.prepare_reuslt()
+        generator.prepare_result()
 
     with pytest.raises(ValueError):
         generator.generate()
@@ -498,8 +498,8 @@ def test_dataset_generator_failed(
 @pytest.mark.parametrize(
     "test_scheme_func_name, expected_name_prefix",
     [
-        ("handle_IND", "Subject-"),
-        ("handle_FULL", "Fold"),
+        ("handle_ind", "Subject-"),
+        ("handle_full", "Fold"),
     ],
 )
 def test_dataset_generator_name_prefix(
@@ -651,7 +651,7 @@ def test_dataset_generator_handle_full_cross_validation(
 
 @pytest.mark.parametrize(
     "train_type, handle_func_name",
-    [(TrainingType.IND, "handle_IND"), (TrainingType.FULL, "handle_FULL")],
+    [(TrainingType.IND, "handle_ind"), (TrainingType.FULL, "handle_full")],
 )
 @pytest.mark.parametrize(
     "datasets, has_error", [([], True), ([1], False), ([1, 2, 3], False)]
@@ -742,7 +742,7 @@ def _dataset_generator(selected):
     ],
 )
 @pytest.mark.parametrize("train_type", [(TrainingType.IND), (TrainingType.FULL)])
-def test_dataset_generator_prepare_reuslt(
+def test_dataset_generator_prepare_result(
     epochs,  # noqa: F811
     train_type,
     datasets,
@@ -762,9 +762,9 @@ def test_dataset_generator_prepare_reuslt(
     with patch.object(generator, "generate"):
         if has_error:
             with pytest.raises(ValueError):
-                generator.prepare_reuslt()
+                generator.prepare_result()
         else:
-            generator.prepare_reuslt()
+            generator.prepare_result()
             assert generator.is_clean()
 
 

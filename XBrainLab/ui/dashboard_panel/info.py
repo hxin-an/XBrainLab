@@ -31,8 +31,12 @@ class AggregateInfoPanel(QGroupBox):
 
         self.table = QTableWidget()
         self.table.setColumnCount(2)
-        self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setVisible(False)
+        v_header = self.table.verticalHeader()
+        if v_header is not None:
+            v_header.setVisible(False)
+        h_header = self.table.horizontalHeader()
+        if h_header is not None:
+            h_header.setVisible(False)
         self.table.setShowGrid(False)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
@@ -51,12 +55,10 @@ class AggregateInfoPanel(QGroupBox):
         """
         )
 
-        self.table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch
-        )
-        self.table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
-        )
+        header = self.table.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
 
         keys = [
             "Type",
@@ -96,7 +98,9 @@ class AggregateInfoPanel(QGroupBox):
         main_layout.addWidget(self.table)
 
         # Set height based on content
-        self.table.verticalHeader().setDefaultSectionSize(25)
+        v_header = self.table.verticalHeader()
+        if v_header is not None:
+            v_header.setDefaultSectionSize(25)
 
         # Set height based on content
         # 25px per row + 2px for borders/margins (tight fit)

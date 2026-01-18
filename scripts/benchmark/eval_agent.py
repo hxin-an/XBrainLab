@@ -186,7 +186,7 @@ class BenchmarkRunner(QObject):
             if len(captured) >= 1:  # Adjust logic for multi-tool later
                 loop.quit()
 
-        self.controller._execute_tool = mock_execute
+        self.controller._execute_tool = mock_execute  # type: ignore[method-assign]
 
         # Also quit on final text response (failure to call tool)
         def on_response(sender, text):
@@ -208,7 +208,7 @@ class BenchmarkRunner(QObject):
         loop.exec()
 
         # Restore and disconnect
-        self.controller._execute_tool = original_execute
+        self.controller._execute_tool = original_execute  # type: ignore[method-assign]
         self.controller.response_ready.disconnect(on_response)
         self.controller.error_occurred.disconnect(on_error)
 

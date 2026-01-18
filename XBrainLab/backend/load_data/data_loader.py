@@ -6,7 +6,7 @@ from ..utils import validate_list_type, validate_type
 from .raw import Raw
 
 if TYPE_CHECKING:  # pragma: no cover
-    from .. import Study
+    from ..study import Study
 
 
 class RawDataLoader(list):
@@ -26,7 +26,7 @@ class RawDataLoader(list):
         if raw_data_list:
             self.validate()
 
-    def get_loaded_raw(self, filepath: str) -> Raw:
+    def get_loaded_raw(self, filepath: str) -> Raw | None:
         """Return the loaded raw data with the given filepath.
 
         Args:

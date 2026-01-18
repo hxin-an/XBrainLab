@@ -13,7 +13,7 @@ def run_pytest(args):
     """Run pytest with given arguments."""
     cmd = ["pytest", *args]
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, check=False)
+    result = subprocess.run(cmd, check=False)  # noqa: S603
     sys.exit(result.returncode)
 
 

@@ -24,9 +24,9 @@ class EEGNet(nn.Module):
         channels: int,
         samples: int,
         sfreq: float,
-        F1: int = 8,
-        F2: int = 16,
-        D: int = 2,
+        f1: int = 8,
+        f2: int = 16,
+        d: int = 2,
     ):
         super().__init__()
 
@@ -52,9 +52,9 @@ class EEGNet(nn.Module):
                 f"{min_duration:.2f}s or use a lower sampling frequency."
             )
 
-        self.F1 = F1
-        self.F2 = F2
-        self.D = D
+        self.F1 = f1
+        self.F2 = f2
+        self.D = d
 
         self.conv1 = nn.Sequential(
             # temporal kernel size(1, floor(sf*0.5)) means 500ms EEG at sf/2
@@ -98,8 +98,8 @@ class EEGNet(nn.Module):
         # self.classifier = nn.Linear(
         #     self.F2* math.ceil(self.tp//32), self.n_class, bias=True
         # )
-        fc_inSize = self._get_size(self.ch, self.tp)[1]
-        self.classifier = nn.Linear(fc_inSize, self.n_class, bias=True)
+        fc_in_size = self._get_size(self.ch, self.tp)[1]
+        self.classifier = nn.Linear(fc_in_size, self.n_class, bias=True)
 
     def forward(self, x):
         if len(x.shape) != 4:

@@ -15,7 +15,7 @@ def list_models():
     print("--- Listing Gemini Models ---")
     try:
         for model in client.models.list():
-            if "gemini" in model.name:
+            if model.name and "gemini" in model.name:
                 print(f"{model.name}")
     except Exception as e:
         print(f"Error: {e}")

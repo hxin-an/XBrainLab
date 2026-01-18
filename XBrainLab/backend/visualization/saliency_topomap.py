@@ -1,3 +1,5 @@
+from typing import Any
+
 import mne
 import numpy as np
 from matplotlib import pyplot as plt
@@ -12,7 +14,7 @@ class SaliencyTopoMapViz(Visualizer):
         absolute: whether to plot absolute value of saliency
     """
 
-    def _get_plt(self, method, absolute: bool) -> plt:
+    def _get_plt(self, method, absolute: bool) -> Any:
         positions = self.epoch_data.get_montage_position()
         chs = self.epoch_data.get_channel_names()
         label_number = self.epoch_data.get_label_number()
@@ -20,10 +22,10 @@ class SaliencyTopoMapViz(Visualizer):
         rows = 1 if label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(label_number / rows))
 
-        for labelIndex in range(label_number):
-            ax = plt.subplot(rows, cols, labelIndex + 1)
+        for label_index in range(label_number):
+            ax = plt.subplot(rows, cols, label_index + 1)
 
-            saliency = self.get_saliency(method, labelIndex)
+            saliency = self.get_saliency(method, label_index)
             # no test data for this label
             if len(saliency) == 0:
                 continue
@@ -57,7 +59,7 @@ class SaliencyTopoMapViz(Visualizer):
             cbar = plt.colorbar(im, orientation="vertical")
             cbar.ax.get_yaxis().set_ticks([])
             plt.title(
-                f"Saliency Map of class {self.epoch_data.label_map[labelIndex]}",
+                f"Saliency Map of class {self.epoch_data.label_map[label_index]}",
                 color="white",
             )
         plt.tight_layout()

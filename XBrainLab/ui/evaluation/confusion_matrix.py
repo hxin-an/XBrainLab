@@ -48,9 +48,12 @@ class ConfusionMatrixWidget(QWidget):
             show_percentage: Whether to show percentage
         """
         try:
-            # Clear previous
             for i in reversed(range(self.plot_layout.count())):
-                self.plot_layout.itemAt(i).widget().setParent(None)
+                item = self.plot_layout.itemAt(i)
+                if item:
+                    w = item.widget()
+                    if w:
+                        w.setParent(None)
 
             if plan is None:
                 self._show_message("No Data Available")

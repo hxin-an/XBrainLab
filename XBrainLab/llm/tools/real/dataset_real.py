@@ -23,7 +23,15 @@ from ..definitions.dataset_def import (
 
 
 class RealListFilesTool(BaseListFilesTool):
-    def execute(self, study: Any, directory: str, pattern: str | None = None) -> str:
+    def execute(
+        self,
+        study: Any,
+        directory: str | None = None,
+        pattern: str | None = None,
+        **kwargs,
+    ) -> str:
+        if not directory:
+            return "Error: directory is required"
         if not os.path.exists(directory):
             return f"Error: Directory '{directory}' does not exist."
 
@@ -40,7 +48,7 @@ class RealListFilesTool(BaseListFilesTool):
 
 
 class RealLoadDataTool(BaseLoadDataTool):
-    def execute(self, study: Any, paths: list[str]) -> str:
+    def execute(self, study: Any, paths: list[str] | None = None, **kwargs) -> str:
         if not paths:
             return "Error: paths list cannot be empty."
 
@@ -77,8 +85,14 @@ class RealLoadDataTool(BaseLoadDataTool):
 
 class RealAttachLabelsTool(BaseAttachLabelsTool):
     def execute(
-        self, study: Any, mapping: dict, label_format: str | None = None
+        self,
+        study: Any,
+        mapping: dict | None = None,
+        label_format: str | None = None,
+        **kwargs,
     ) -> str:
+        if mapping is None:
+            return "Error: mapping is required"
         # Check if we have loaded data
         if not study.loaded_data_list:
             return "Error: No raw data loaded in Study."
@@ -106,13 +120,13 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 
 
 class RealClearDatasetTool(BaseClearDatasetTool):
-    def execute(self, study: Any) -> str:
+    def execute(self, study: Any, **kwargs) -> str:
         study.clean_raw_data(force_update=True)
         return "Dataset cleared."
 
 
 class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
-    def execute(self, study: Any) -> str:
+    def execute(self, study: Any, **kwargs) -> str:
         # Construct summary string
         if not study.loaded_data_list:
             return "No data loaded."
@@ -140,6 +154,7 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
         val_ratio: float = 0.2,
         split_strategy: str = "trial",
         training_mode: str = "individual",
+        **kwargs,
     ) -> str:
         try:
             # Map strings to Enums
