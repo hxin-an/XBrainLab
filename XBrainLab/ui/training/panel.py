@@ -176,8 +176,8 @@ class TrainingPanel(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self.study = main_window.study
-        self.controller = TrainingController(self.study)
+        # self.study = main_window.study  # Decoupled
+        self.controller = TrainingController(main_window.study)
 
         self.current_plotting_record = None  # Initialize here to avoid AttributeError
         self.plan_items = {}  # Map id(plan) -> QTreeWidgetItem
@@ -479,14 +479,14 @@ class TrainingPanel(QWidget):
     # --- Event Handlers ---
 
     def split_data(self):
-        if not self.study.loaded_data_list:
+        if not self.controller.get_loaded_data_list():
             QMessageBox.warning(
                 self, "No Data", "Please load and preprocess data first."
             )
             return
 
         # Validate epoch_data exists
-        if self.study.epoch_data is None:
+        if self.controller.get_epoch_data() is None:
             QMessageBox.warning(
                 self,
                 "No Epoched Data",
@@ -497,7 +497,7 @@ class TrainingPanel(QWidget):
             return
 
         # Check if training is running
-        if self.study.is_training():
+        if self.controller.is_training():
             QMessageBox.warning(
                 self,
                 "Training Running",
@@ -505,10 +505,10 @@ class TrainingPanel(QWidget):
             )
             return
 
-        win = DataSplittingSettingWindow(self, self.study.epoch_data)
+        win = DataSplittingSettingWindow(self, self.controller)
         if win.exec():
             # Check if reset is needed
-            if self.study.datasets or self.study.trainer:
+            if self.controller.has_datasets() or self.controller.get_trainer():
                 reply = QMessageBox.question(
                     self,
                     "Reset Training Data",
@@ -521,11 +521,11 @@ class TrainingPanel(QWidget):
                 if reply == QMessageBox.StandardButton.No:
                     return
                 # Force clean
-                self.study.clean_datasets(force_update=True)
+                self.controller.clean_datasets(force_update=True)
 
             generator = win.get_result()
             if generator:
-                generator.apply(self.study)
+                self.controller.apply_data_splitting(generator)
             QMessageBox.information(
                 self, "Success", "Data splitting configuration saved."
             )
@@ -533,7 +533,7 @@ class TrainingPanel(QWidget):
 
     def select_model(self):
         # Check if training is running
-        if self.study.is_training():
+        if self.controller.is_training():
             QMessageBox.warning(
                 self,
                 "Training Running",
@@ -541,19 +541,20 @@ class TrainingPanel(QWidget):
             )
             return
 
-        win = ModelSelectionWindow(self)
+        win = ModelSelectionWindow(self, self.controller)
         if win.exec():
             # No need to reset trainer anymore, allowing multi-experiment history
-            self.study.set_model_holder(win.get_result())
+            self.controller.set_model_holder(win.get_result())
             # ModelHolder doesn't have model_name, use get_model_desc_str()
             # or target_model.__name__
-            model_name = self.study.model_holder.target_model.__name__
+            model_holder = self.controller.get_model_holder()
+            model_name = model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
             self.check_ready_to_train()
 
     def training_setting(self):
         # Check if training is running
-        if self.study.is_training():
+        if self.controller.is_training():
             QMessageBox.warning(
                 self,
                 "Training Running",
@@ -561,10 +562,10 @@ class TrainingPanel(QWidget):
             )
             return
 
-        win = TrainingSettingWindow(self)
+        win = TrainingSettingWindow(self, self.controller)
         if win.exec():
             # No need to reset trainer anymore, allowing multi-experiment history
-            self.study.set_training_option(win.get_result())
+            self.controller.set_training_option(win.get_result())
             QMessageBox.information(self, "Success", "Training settings saved.")
             self.check_ready_to_train()
 
@@ -808,8 +809,8 @@ class TrainingPanel(QWidget):
         """Update the Aggregate Info Panel."""
         if hasattr(self, "info_panel"):
             self.info_panel.update_info(
-                loaded_data_list=self.study.loaded_data_list,
-                preprocessed_data_list=self.study.preprocessed_data_list,
+                loaded_data_list=self.controller.get_loaded_data_list(),
+                preprocessed_data_list=self.controller.get_preprocessed_data_list(),
             )
 
     def update_panel(self):
@@ -824,11 +825,11 @@ class TrainingPanel(QWidget):
 
         if not ready:
             missing = []
-            if not self.study.datasets:
+            if not self.controller.has_datasets():
                 missing.append("Data Splitting")
-            if not self.study.model_holder:
+            if not self.controller.has_model():
                 missing.append("Model Selection")
-            if not self.study.training_option:
+            if not self.controller.has_training_option():
                 missing.append("Training Settings")
             self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
         else:

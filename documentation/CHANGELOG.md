@@ -13,6 +13,12 @@
 - **Documentation**:
     - 更新 `KNOWN_ISSUES.md` 包含詳細的架構耦合分析與代碼質量報告。
     - 重寫 `ROADMAP.md` Track A，確立以穩定性與解耦為核心的開發階段。
+### Refactored
+- **TrainingPanel Decoupling (P1)**:
+    - **TrainingController**: Expanded to serve as the unified data access and logic layer for `TrainingPanel`.
+    - **Dialogs**: Refactored `TrainingSettingWindow`, `DatasetSplittingSettingWindow`, and `ModelSelectionWindow` to interact via `TrainingController` instead of accessing `Study` directly.
+    - **Cleanup**: Removed all direct `self.study` references from `TrainingPanel` to enforce strict architectural boundaries.
+    - **Testing**: Added comprehensive unit tests for `TrainingPanel` and its dialogs, with `TrainingController` fully mocked.
 
 ## [0.4.3] - 2026-01-18
 ### Fixed

@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
-from PyQt6.QtWidgets import QWidget
 
 from XBrainLab import Study
 from XBrainLab.backend.model_base import EEGNet, SCCNet
@@ -201,12 +200,11 @@ class TestTrainingSettingDefaultValues:
     def test_training_setting_has_defaults(self, qtbot):
         """Verify default values are set for easier testing."""
 
-        # Use real QWidget instead of MagicMock
-        parent = QWidget()
-        parent.study = MagicMock()
-        parent.study.training_option = None
+        # Create mock controller
+        mock_controller = MagicMock()
+        mock_controller.get_training_option.return_value = None
 
-        window = TrainingSettingWindow(parent)
+        window = TrainingSettingWindow(None, mock_controller)
         qtbot.addWidget(window)
 
         # Verify default values are pre-filled
@@ -225,12 +223,11 @@ class TestTrainingSettingDefaultValues:
     def test_confirm_creates_valid_training_option(self, qtbot):
         """Test that confirming with defaults creates valid TrainingOption."""
 
-        # Use real QWidget
-        parent = QWidget()
-        parent.study = MagicMock()
-        parent.study.training_option = None
+        # Create mock controller
+        mock_controller = MagicMock()
+        mock_controller.get_training_option.return_value = None
 
-        window = TrainingSettingWindow(parent)
+        window = TrainingSettingWindow(None, mock_controller)
         qtbot.addWidget(window)
 
         # Use defaults and confirm
@@ -246,11 +243,11 @@ class TestTrainingSettingDefaultValues:
     def test_training_option_epoch_is_int(self, qtbot):
         """Test that training_option.epoch is converted to int for comparisons."""
 
-        parent = QWidget()
-        parent.study = MagicMock()
-        parent.study.training_option = None
+        # Create mock controller
+        mock_controller = MagicMock()
+        mock_controller.get_training_option.return_value = None
 
-        window = TrainingSettingWindow(parent)
+        window = TrainingSettingWindow(None, mock_controller)
         qtbot.addWidget(window)
 
         # Confirm with string input (from text fields)

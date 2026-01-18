@@ -26,8 +26,9 @@ ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
 
 
 class ModelSelectionWindow(QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent, controller):
         super().__init__(parent)
+        self.controller = controller
         self.setWindowTitle("Model Selection")
         self.resize(500, 600)
 

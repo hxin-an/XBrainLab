@@ -36,8 +36,9 @@ from XBrainLab.backend.training.utils import (
 
 
 class TrainingSettingWindow(QDialog):
-    def __init__(self, parent):
+    def __init__(self, parent, controller):
         super().__init__(parent)
+        self.controller = controller
         self.setWindowTitle("Training Setting")
         self.resize(500, 600)
 
@@ -59,9 +60,8 @@ class TrainingSettingWindow(QDialog):
         self.load_settings()
 
     def load_settings(self):
-        parent = self.parent()
-        if parent and hasattr(parent, "study") and parent.study.training_option:
-            opt = parent.study.training_option
+        opt = self.controller.get_training_option()
+        if opt:
             self.epoch_entry.setText(str(opt.epoch))
             self.bs_entry.setText(str(opt.bs))
             self.lr_entry.setText(str(opt.lr))

@@ -27,7 +27,7 @@
 #### P0 - 緊急修復 (本週)
 - [ ] **修復嚴重代碼與錯誤處理問題**
     - [ ] 修正裸 `except:` (1 處)
-    - [ ] 移除 `TrainingPanel` 與 `AggregateInfoPanel` 對 `study` 的直接訪問 (緊急解耦)
+    - [x] 移除 `TrainingPanel` 與 `AggregateInfoPanel` 對 `study` 的直接訪問 (緊急解耦)
 
 #### P1 - 基礎建設 (1-2週)
 - [ ] **日誌與異常處理標準化**

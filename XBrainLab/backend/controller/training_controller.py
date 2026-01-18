@@ -129,3 +129,19 @@ class TrainingController:
 
     def set_training_option(self, option: Any) -> None:
         self._study.set_training_option(option)
+
+    # --- Data Accessors (for UI decoupling) ---
+    def get_training_option(self) -> Any:
+        return self._study.training_option
+
+    def get_model_holder(self) -> Any:
+        return self._study.model_holder
+
+    def get_dataset_generator(self) -> Any:
+        return self._study.dataset_generator
+
+    def get_loaded_data_list(self) -> list[Any]:
+        return self._study.loaded_data_list
+
+    def get_preprocessed_data_list(self) -> list[Any]:
+        return self._study.preprocessed_data_list

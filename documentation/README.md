@@ -9,6 +9,7 @@ XBrainLab 是一個專為腦波 (EEG) 研究設計的智慧分析平台。本專
 *   **深度學習整合**：內建 PyTorch 模型訓練介面，支援模型訓練、評估與即時監控。
 *   **AI 智能助手**：整合 LLM Agent，支援自然語言指令操作與 RAG 知識問答，降低操作門檻。
 *   **基礎訊號處理**：提供濾波 (Filtering)、重參考 (Re-referencing) 等必要的預處理工具。
+*   **模組化架構 (Modular Architecture)**：UI 與後端邏輯嚴格分離，提供更高的系統穩定性與可測試性。
 
 ## 系統需求 (System Requirements)
 

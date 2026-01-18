@@ -209,12 +209,23 @@ class PreviewCanvas(QWidget):
 
 
 class DataSplittingSettingWindow(QDialog):
-    def __init__(self, parent, epoch_data):
+    def __init__(self, parent, controller, dataset_generator=None):
         super().__init__(parent)
-        self.setWindowTitle("Data splitting")
-        self.resize(800, 500)
-        self.epoch_data = epoch_data
+        self.controller = controller
+        self.setWindowTitle("Data Splitting Setting")
+        self.resize(800, 600)
 
+        # Get data through controller
+        self.epoch_data = self.controller.get_epoch_data() if self.controller else None
+
+        # If dataset_generator is not passed (e.g. from TrainingPanel),
+        # try to get it from controller
+        if dataset_generator:
+            self.dataset_generator = dataset_generator
+        elif self.controller:
+            self.dataset_generator = self.controller.get_dataset_generator()
+        else:
+            self.dataset_generator = None
         self.subject_num = 5
         self.session_num = 5
         self.train_region = DrawRegion(self.session_num, self.subject_num)

@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QTableWidgetItem
@@ -19,7 +19,8 @@ class TestModelSelection:
         with patch("inspect.getmembers") as mock_getmembers:
             mock_getmembers.return_value = [("DummyModel", DummyModel)]
 
-            dialog = ModelSelectionWindow(None)
+            mock_controller = MagicMock()
+            dialog = ModelSelectionWindow(None, mock_controller)
             qtbot.addWidget(dialog)
             return dialog
 
