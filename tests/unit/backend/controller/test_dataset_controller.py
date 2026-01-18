@@ -138,7 +138,7 @@ def test_remove_files(controller, mock_study):
 
     controller.remove_files([0, 2])
 
-    # Should call set_loaded_data_list with [d2]
+    # Should call set_loaded_data_list with [d2] directly
     mock_study.set_loaded_data_list.assert_called_with([d2], force_update=True)
 
 

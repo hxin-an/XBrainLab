@@ -148,6 +148,13 @@ class DatasetPanel(QWidget):
 
         main_layout.addWidget(self.table, stretch=2)
 
+        # Subscribe to Controller Events (Observer Pattern)
+        # Note: In a threaded environment, we might need Qt signal bridge.
+        # For now: assuming synchronous or main thread notification.
+        if hasattr(self, "controller"):
+            self.controller.subscribe("data_changed", self.update_panel)
+            self.controller.subscribe("import_finished", self.on_import_finished)
+
         # --- Right Side: Info & Controls ---
         # --- Right Side: Info & Controls ---
         # --- Right Side: Info & Controls ---
@@ -351,22 +358,12 @@ class DatasetPanel(QWidget):
         )
         self._import_files("Open EEG Data", filter_str)
 
-    def _import_files(self, title, filter_str):
-        filepaths, _ = QFileDialog.getOpenFileNames(self, title, "", filter_str)
-        if not filepaths:
-            return
-
-        try:
-            success_count, errors = self.controller.import_files(filepaths)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Import failed: {e}")
-            return
-
-        # Apply Changes
+    def on_import_finished(self, success_count, errors):
+        # Update UI based on import results
         if success_count > 0 and self.main_window:
+            self.update_panel()
             self.main_window.refresh_panels()
 
-        # Report Errors
         if errors:
             error_msg = "\n".join(errors[:10])
             if len(errors) > 10:
@@ -379,10 +376,24 @@ class DatasetPanel(QWidget):
                 f"{len(errors)} files:\n{error_msg}",
             )
         elif success_count == 0 and not errors:
-            if filepaths:
-                QMessageBox.information(
-                    self, "Info", "No new files were loaded (duplicates ignored)."
-                )
+            # Logic handled in _import_files usually, but good to have here
+            pass
+
+    def _import_files(self, title, filter_str):
+        filepaths, _ = QFileDialog.getOpenFileNames(self, title, "", filter_str)
+        if not filepaths:
+            return
+
+        try:
+            # Controller now returns (count, errors) AND notifies "import_finished"
+            # We can rely on the notification or the return value.
+            # Using return value for immediate blocking feedback if needed,
+            # but usually "import_files" might become async later.
+            # For now, it is synchronous.
+            self.controller.import_files(filepaths)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Import failed: {e}")
+            return
 
     def show_context_menu(self, pos):
         menu = QMenu(self)

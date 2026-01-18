@@ -4,6 +4,23 @@
 
 
 
+## [0.4.6] - 2026-01-18
+### Added
+- **Backend Architecture (P2)**:
+    - Decoupled `DatasetController` from PyQt6: Now uses a pure Python `Observable` pattern for event notification.
+    - Enables "Headless" backend execution (critical for LLM Agent).
+    - Moved `LabelImportService` to `backend/services/` to enforce layering.
+    - Added `BackendFacade`: A unified, high-level API for the Agent to access backend functions without UI.
+    - **Agent Tooling Refactor**:
+        - Standardized all `llm/tools/real/*.py` (Dataset, Preprocess, Training) to use `BackendFacade`.
+        - Moved complex logic (Enum mapping, Channel Matching, Model Resolution) from Tools to Facade.
+        - **Why?**: To ensure the backend logic is reusable ("Headless SDK") and allow lightweight Agent Tools that only handle Interface/HIT logic.
+- **Architecture Verification (P1)**:
+    - Added `tests/architecture_compliance.py` to strictly enforce decoupling rules for Dialogs.
+    - Verified all `QDialog` subclasses adhere to `parent.study` prohibition.
+### Verified
+- **UI/Backend Interaction**: Confirmed legacy files (`import_label.py`, `smart_parser.py`) and Controllers (`TrainingController`) follow Pull/Push patterns.
+
 ## [0.4.5] - 2026-01-18
 ### Added
 - **Structured Logging System (P1)**:

@@ -173,7 +173,8 @@ lint = "ruff check ."
 lint-fix = "ruff check . --fix"
 format = "ruff format ."
 mypy = "mypy XBrainLab/"
-check = ["lint", "mypy", "test-unit"]
+check-architecture = "python tests/architecture_compliance.py"
+check = ["lint", "mypy", "test-unit", "check-architecture"]
 
 # LLM Tools
 verify-api = "python scripts/verify_api_llm.py"

@@ -7,25 +7,19 @@
 ### Architecture Coupling (架構耦合)
 
 **問題 1: Backend 依賴 PyQt6**
-- `DatasetController` 繼承 `QObject`，導致 Backend 依賴 PyQt6
-- 影響：Backend 無法獨立運行、測試需 Qt 環境
+- [x] **已修復 (v0.4.6)**: `DatasetController` 已改用純 Python `Observable` 模式，移除 `QObject` 繼承。
 
 **問題 2: Backend 反向引用 UI 層**
-- `DatasetController` 引入 `XBrainLab.ui.services.label_import_service`（反向依賴）
-- `LabelImportService` 錯誤地放在 `ui/services/` 而非 `backend/services/`
+- [x] **已修復 (v0.4.6)**: `LabelImportService` 已移動至 `backend/services/`。
 
 **問題 3: TrainingPanel 大量繞過 Controller**
-- `TrainingPanel` 有 20+ 處直接訪問 `self.study`，完全繞過 `TrainingController`
-- 範例：`self.study.datasets`, `self.study.model_holder`, `self.study.clean_datasets()`
-- Controller 形同虛設
+- [x] **已修復 (v0.4.5)**: `TrainingPanel` 已完全透過 `TrainingController` 交互，移除了所有 `self.study` 引用。
 
 **問題 4: AggregateInfoPanel 直接訪問 Study**
-- `ui/dashboard_panel/info.py:131` 直接訪問 `self.main_window.study`
-- 違反信息隱藏原則
+- [x] **已修復 (v0.4.4)**: 已重構為透過參數傳遞數據。
 
 **問題 5: Dialog 層耦合**
-- `TrainingSettingWindow` 訪問 `parent.study.training_option`
-- 對話框應通過參數接收數據，而非訪問父組件內部狀態
+- [x] **已修復 (v0.4.6)**: 審計並重構了所有 Dialog，確認無 `parent.study` 訪問。已加入 `tests/architecture_compliance.py` 防止回歸。
 
 **問題 6: Agent 層直接持有 Study**
 - `LLMController` 直接持有 Study 引用並傳給所有 Tools
@@ -57,14 +51,10 @@
 ### Error Handling Issues (錯誤處理問題)
 
 **問題 1: 過於寬泛的異常捕獲**
-- 發現 **16 處**使用 `except Exception:` 而非具體異常類型
-- 位置：`ui/dashboard_panel/dataset.py` (3處), `backend/load_data/raw.py` (3處), `backend/utils/filename_parser.py` (4處) 等
-- 影響：調試困難，無法針對性處理不同錯誤
+- [x] **已修復 (v0.4.6)**: 已將關鍵模組的 `except Exception` 替換為 `logger.error(..., exc_info=True)`。
 
 **問題 2: 裸 except 子句**
-- `backend/controller/preprocess_controller.py:81` 使用裸 `except:`
-- 風險：會捕獲所有異常包括系統信號，可能導致程式無法正常停止
-- 狀態：高優先級修復
+- [x] **已修復 (v0.4.5)**: `PreprocessController` 中的裸 `except:` 已移除。
 
 **建議**：
 ```python
@@ -90,9 +80,7 @@ except PermissionError as e:
 ### Logging Insufficiency (日誌記錄不足)
 
 **問題**：
-- 只有 2 個 Backend 文件使用 `logging` 模組
-- 大部分錯誤處理沒有記錄日誌，導致問題難以追蹤
-- 缺少結構化日誌（無法區分不同模組、嚴重級別）
+- [x] **已修復 (v0.4.5)**: 實作了 `logger.py` 並在 UI/Backend 核心流程中取代了 `print`。
 
 **影響**：
 - 用戶報告 bug 時無法復現
@@ -309,3 +297,20 @@ except PermissionError as e:
 - **LangChain 採用評估**：`documentation/decisions/ADR-001-langchain-adoption.md`
 - **Multi-Agent 願景**：`documentation/decisions/ADR-002-multi-agent-vision.md`
 - **向量資料庫選擇**：`documentation/decisions/ADR-003-vector-store-qdrant.md`
+
+---
+
+## Agent/Facade MVP Limitations (Agent MVP 限制與妥協)
+
+為了加速開發 Agent 最小可行產品 (MVP)，我們在設計上做出了以下妥協：
+
+### 1. Label Attachment Simplification (標籤綁定簡化)
+- **限制**: `BackendFacade.attach_labels` 目前預設 Agent 能夠提供準確的檔案對應 (`mapping`)。
+- **妥協**: 不在後端實作複雜的模糊匹配邏輯，維持 MVP 範疇。
+- **假設**: 標籤檔案與數據檔案為 1-to-1 關係，且標籤事件數量與 Trigger 數量完全一致 (適用於 BCIC IV 等標準資料集)。
+- **影響**: 若資料集標註不完整或需要複雜的 Event ID 過濾，目前的 Facade 可能無法處理，需人工介入預處理。
+
+### 2. Facade Completeness (Facade 完整性)
+- **限制**: `BackendFacade` 雖然涵蓋了大多數 Controller 功能，但部分邊緣功能 (如複雜的 `ChannelSelection` 回滾邏輯、特定的 Plotting 參數) 尚未暴露。
+- **妥協**: 只暴露 Agent `tool_definitions.md` 中定義的核心功能。
+- **影響**: Agent 無法執行 UI 上某些進階操作。

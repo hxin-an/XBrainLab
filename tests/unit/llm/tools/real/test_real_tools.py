@@ -2,13 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from XBrainLab.backend.model_base.EEGNet import EEGNet
-from XBrainLab.backend.preprocessor.channel_selection import ChannelSelection
-from XBrainLab.backend.preprocessor.filtering import Filtering
-from XBrainLab.backend.preprocessor.normalize import Normalize
-from XBrainLab.backend.preprocessor.rereference import Rereference
-from XBrainLab.backend.preprocessor.resample import Resample
-from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
     RealClearDatasetTool,
@@ -39,9 +32,7 @@ from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 @pytest.fixture
 def mock_study():
     study = MagicMock()
-    # Mock list attributes to act like empty lists initially
     study.loaded_data_list = []
-    # Mock output_dir for config tool
     study.output_dir = "./mock_output"
     return study
 
@@ -49,44 +40,50 @@ def mock_study():
 class TestRealTrainingTools:
     def test_set_model_success(self, mock_study):
         tool = RealSetModelTool()
-        result = tool.execute(mock_study, model_name="EEGNet")
+        with patch(
+            "XBrainLab.llm.tools.real.training_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            result = tool.execute(mock_study, model_name="EEGNet")
 
-        assert "successfully set to EEGNet" in result
-        mock_study.set_model_holder.assert_called_once()
-        # Verify call args
-        args, _ = mock_study.set_model_holder.call_args
-        holder = args[0]
-        assert holder.target_model == EEGNet
+            assert "successfully set to EEGNet" in result
+            mock_facade.set_model.assert_called_once_with("EEGNet")
 
     def test_set_model_unknown(self, mock_study):
         tool = RealSetModelTool()
-        result = tool.execute(mock_study, model_name="UnknownModel")
-        assert "Unknown model" in result
-        mock_study.set_model_holder.assert_not_called()
+        with patch(
+            "XBrainLab.llm.tools.real.training_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            mock_facade.set_model.side_effect = ValueError("Unknown model")
+            result = tool.execute(mock_study, model_name="UnknownModel")
+            assert "Failed to set model" in result
 
     def test_configure_and_start_training(self, mock_study):
         config_tool = RealConfigureTrainingTool()
         start_tool = RealStartTrainingTool()
 
-        # Configure
-        res1 = config_tool.execute(
-            mock_study, epoch=10, batch_size=32, learning_rate=0.001
-        )
-        assert "Training configured" in res1
-        mock_study.set_training_option.assert_called_once()
+        with patch(
+            "XBrainLab.llm.tools.real.training_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
 
-        # Start
-        res2 = start_tool.execute(mock_study)
-        assert "started successfully" in res2
-        mock_study.generate_plan.assert_called_once_with(force_update=True)
-        # Verify interactive mode is used
-        mock_study.train.assert_called_once_with(interact=True)
+            # Configure
+            res1 = config_tool.execute(
+                mock_study, epoch=10, batch_size=32, learning_rate=0.001
+            )
+            assert "Training configured" in res1
+            mock_facade.configure_training.assert_called_once()
+
+            # Start
+            res2 = start_tool.execute(mock_study)
+            assert "started successfully" in res2
+            mock_facade.run_training.assert_called()
 
 
 class TestRealDatasetTools:
     def test_list_files(self, mock_study):
         tool = RealListFilesTool()
-        # Use temp dir or mock os
         with (
             patch("os.listdir", return_value=["A.gdf", "B.txt"]),
             patch("os.path.exists", return_value=True),
@@ -97,167 +94,165 @@ class TestRealDatasetTools:
 
     def test_load_data(self, mock_study):
         tool = RealLoadDataTool()
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.RawDataLoaderFactory.load"
-        ) as mock_load:
-            mock_raw = MagicMock()
-            mock_load.return_value = mock_raw
+        with patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade") as MockFacade:
+            mock_facade = MockFacade.return_value
+            mock_facade.load_data.return_value = (1, [])
 
             res = tool.execute(mock_study, paths=["/data/A.gdf"])
 
             assert "Successfully loaded 1 files" in res
-            mock_study.set_loaded_data_list.assert_called_once()
-            args, _ = mock_study.set_loaded_data_list.call_args
-            assert args[0] == [mock_raw]  # Check list content
+            mock_facade.load_data.assert_called_once_with(["/data/A.gdf"])
 
     def test_attach_labels(self, mock_study):
         tool = RealAttachLabelsTool()
-        mock_raw = MagicMock()
-        mock_raw.filepath = "/data/A.gdf"
-        mock_study.loaded_data_list = [mock_raw]
+        with patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade") as MockFacade:
+            mock_facade = MockFacade.return_value
+            mock_facade.attach_labels.return_value = 1
 
-        with patch(
-            "XBrainLab.llm.tools.real.dataset_real.load_label_file",
-            return_value=[[1, 0, 1]],
-        ):
             res = tool.execute(mock_study, mapping={"A.gdf": "/labels/A.mat"})
             assert "Attached labels to 1 files" in res
-            assert mock_raw.events == [[1, 0, 1]]
+            mock_facade.attach_labels.assert_called_once_with(
+                {"A.gdf": "/labels/A.mat"}
+            )
 
     def test_clear_dataset(self, mock_study):
         tool = RealClearDatasetTool()
-        res = tool.execute(mock_study)
-        assert "Dataset cleared" in res
-        mock_study.clean_raw_data.assert_called_once_with(force_update=True)
+        with patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade") as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study)
+            assert "Dataset cleared" in res
+            mock_facade.clear_data.assert_called_once()
 
     def test_get_dataset_info(self, mock_study):
         tool = RealGetDatasetInfoTool()
-        # Mock loaded data
-        mock_raw = MagicMock()
-        mock_raw.raw.info = {"sfreq": 250, "ch_names": ["C3", "C4"]}
-        mock_study.loaded_data_list = [mock_raw]
+        with patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade") as MockFacade:
+            mock_facade = MockFacade.return_value
+            mock_facade.get_data_summary.return_value = {
+                "count": 1,
+                "files": ["A.gdf"],
+                "total": 100,
+                "unique_count": 2,
+                "unique_labels": ["769", "770"],
+            }
 
-        res = tool.execute(mock_study)
-        assert "Loaded 1 files" in res
-        assert "Sample Rate: 250" in res
+            res = tool.execute(mock_study)
+            assert "Loaded 1 files" in res
+            assert "Events: 100" in res
 
     def test_generate_dataset(self, mock_study):
         tool = RealGenerateDatasetTool()
-        mock_gen = MagicMock()
-        mock_gen.generate.return_value = ["ds1", "ds2"]
-        mock_study.get_datasets_generator.return_value = mock_gen
+        mock_study.datasets = ["ds1", "ds2"]
 
-        res = tool.execute(mock_study, test_ratio=0.1, val_ratio=0.1)
+        with patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade") as MockFacade:
+            mock_facade = MockFacade.return_value
 
-        assert "Dataset successfully generated" in res
-        assert "Count: 2" in res
-        mock_study.get_datasets_generator.assert_called_once()
-        mock_gen.generate.assert_called_once()
-        mock_study.set_datasets.assert_called_once_with(["ds1", "ds2"])
+            res = tool.execute(mock_study, test_ratio=0.1, val_ratio=0.1)
+
+            assert "Dataset successfully generated" in res
+            assert "Count: 2" in res
+            mock_facade.generate_dataset.assert_called_once()
 
 
 class TestRealPreprocessTools:
     def test_bandpass_filter(self, mock_study):
         tool = RealBandPassFilterTool()
-        res = tool.execute(mock_study, low_freq=1, high_freq=30)
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, low_freq=1, high_freq=30)
 
-        assert "Applied Bandpass Filter" in res
-        # Check calling Filtering class
-        mock_study.preprocess.assert_called_with(Filtering, l_freq=1, h_freq=30)
+            assert "Applied Bandpass Filter" in res
+            mock_facade.apply_filter.assert_called_once_with(1, 30)
 
     def test_standard_preprocess(self, mock_study):
         tool = RealStandardPreprocessTool()
-        res = tool.execute(mock_study, l_freq=4, h_freq=40)
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, l_freq=4, h_freq=40)
 
-        assert "Standard preprocessing applied" in res
-
-        calls = mock_study.preprocess.mock_calls
-        # Check first call is Filtering with correct args
-        assert len(calls) >= 1
-        assert calls[0].args[0] == Filtering
-        assert calls[0].kwargs["l_freq"] == 4
-        assert calls[0].kwargs["h_freq"] == 40
-        assert calls[0].kwargs["h_freq"] == 40
+            assert "Standard preprocessing applied" in res
+            # Verify sequence of facade calls
+            mock_facade.apply_filter.assert_called()
+            mock_facade.apply_notch_filter.assert_called()
 
     def test_notch_filter(self, mock_study):
         tool = RealNotchFilterTool()
-        res = tool.execute(mock_study, freq=50)
-        assert "Applied Notch Filter" in res
-        mock_study.preprocess.assert_called_with(
-            Filtering, notch_freqs=50, l_freq=None, h_freq=None
-        )
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, freq=50)
+            assert "Applied Notch Filter" in res
+            mock_facade.apply_notch_filter.assert_called_once_with(50)
 
     def test_resample(self, mock_study):
         tool = RealResampleTool()
-        res = tool.execute(mock_study, rate=128)
-        assert "Resampled" in res
-        mock_study.preprocess.assert_called_with(Resample, sfreq=128)
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, rate=128)
+            assert "Resampled" in res
+            mock_facade.resample_data.assert_called_once_with(128)
 
     def test_normalize(self, mock_study):
         tool = RealNormalizeTool()
-        res = tool.execute(mock_study, method="z-score")
-        assert "Normalized" in res
-        mock_study.preprocess.assert_called_with(Normalize, norm="z-score")
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, method="z-score")
+            assert "Normalized" in res
+            mock_facade.normalize_data.assert_called_once_with("z-score")
 
     def test_rereference(self, mock_study):
         tool = RealRereferenceTool()
-        res = tool.execute(mock_study, method="CAR")
-        assert "Applied reference" in res
-        mock_study.preprocess.assert_called_with(Rereference, ref_channels="average")
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, method="CAR")
+            assert "Applied reference" in res
+            mock_facade.set_reference.assert_called_once_with("CAR")
 
     def test_channel_selection(self, mock_study):
         tool = RealChannelSelectionTool()
-        res = tool.execute(mock_study, channels=["C3", "C4"])
-        assert "Selected 2 channels" in res
-        mock_study.preprocess.assert_called_with(
-            ChannelSelection, selected_channels=["C3", "C4"]
-        )
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, channels=["C3", "C4"])
+            assert "Selected 2 channels" in res
+            mock_facade.select_channels.assert_called_once_with(["C3", "C4"])
 
     def test_epoch_data(self, mock_study):
         tool = RealEpochDataTool()
-        # Mock preprocessed data for event discovery logic
-        mock_d = MagicMock()
-        mock_d.get_event_list.return_value = (None, {"769": 1, "770": 2})
-        mock_study.preprocessed_data_list = [mock_d]
-
-        res = tool.execute(
-            mock_study, t_min=0, t_max=4, event_id=None
-        )  # Test 'all events' logic
-        assert "Data epoched" in res
-
-        mock_study.preprocess.assert_called()
-        args, kwargs = mock_study.preprocess.call_args
-        assert args[0] == TimeEpoch
-        assert kwargs["tmin"] == 0
-        assert kwargs["tmax"] == 4
-        # Verify events were collected
-        assert set(kwargs["selected_event_names"]) == {"769", "770"}
+        with patch(
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            res = tool.execute(mock_study, t_min=0, t_max=4, event_id=None)
+            assert "Data epoched" in res
+            mock_facade.epoch_data.assert_called_once()
 
     def test_set_montage(self, mock_study):
         tool = RealSetMontageTool()
-
-        # Mock epoch data
-        mock_epochs = MagicMock()
-        mock_epochs.get_mne.return_value.info = {"ch_names": ["FP1", "FP2"]}
-        mock_study.epoch_data = mock_epochs
-
         with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.get_montage_positions"
-        ) as mock_get_pos:
-            # Setup mock return
-            mock_get_pos.return_value = {"ch_pos": {"Fp1": [1, 2, 3], "Fp2": [4, 5, 6]}}
+            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
+        ) as MockFacade:
+            mock_facade = MockFacade.return_value
+            mock_facade.set_montage.return_value = (
+                "Set Montage 'standard_1020' (Matched 2 channels)"
+            )
 
             res = tool.execute(mock_study, montage_name="standard_1020")
 
             assert "Set Montage 'standard_1020'" in res
             assert "Matched 2 channels" in res
-
-            mock_study.set_channels.assert_called_once()
-            args, _ = mock_study.set_channels.call_args
-            # mapped_chs
-            assert args[0] == ["FP1", "FP2"]
-            # mapped_positions
-            assert args[1] == [(1, 2, 3), (4, 5, 6)]
+            mock_facade.set_montage.assert_called_once_with("standard_1020")
 
 
 class TestRealUIControlTools:

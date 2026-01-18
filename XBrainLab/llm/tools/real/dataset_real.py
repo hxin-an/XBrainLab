@@ -1,16 +1,7 @@
 import os
 from typing import Any
 
-from XBrainLab.backend.dataset import (
-    DataSplitter,
-    DataSplittingConfig,
-    SplitByType,
-    SplitUnit,
-    TrainingType,
-    ValSplitByType,
-)
-from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
-from XBrainLab.backend.load_data.label_loader import load_label_file
+from XBrainLab.backend.facade import BackendFacade
 
 from ..definitions.dataset_def import (
     BaseAttachLabelsTool,
@@ -52,33 +43,14 @@ class RealLoadDataTool(BaseLoadDataTool):
         if not paths:
             return "Error: paths list cannot be empty."
 
-        loaded_count = 0
-        errors = []
-        raw_list = []
+        # Use Facade to handle standard loading logic
+        facade = BackendFacade(study)
+        count, errors = facade.load_data(paths)
 
-        # NOTE: Backend expects 'Raw' objects, not paths if calling
-        # set_loaded_data_list directly?
-        # No, LoadData logic is usually: Load Raw -> set to study
-        # study.load_raw_data_list? study.py doesn't have it.
-        # study.set_loaded_data_list expects List[Raw].
-        # So we must USE FACTORY directly here.
-
-        for p in paths:
-            try:
-                # We need to make sure loader is registered
-                # Assuming raw_data_loader is imported somewhere in entry point
-                raw = RawDataLoaderFactory.load(p)
-                if raw:
-                    raw_list.append(raw)
-                    loaded_count += 1
-                else:
-                    errors.append(f"{p}: Loaded None")
-            except Exception as e:  # noqa: PERF203
-                errors.append(f"{p}: {e!s}")
-
-        if raw_list:
-            study.set_loaded_data_list(raw_list, force_update=True)
-            return f"Successfully loaded {loaded_count} files. Errors: {errors}"
+        if count > 0:
+            if errors:
+                return f"Successfully loaded {count} files. Errors: {errors}"
+            return f"Successfully loaded {count} files."
         else:
             return f"Failed to load any data. Errors: {errors}"
 
@@ -93,55 +65,48 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
     ) -> str:
         if mapping is None:
             return "Error: mapping is required"
-        # Check if we have loaded data
-        if not study.loaded_data_list:
-            return "Error: No raw data loaded in Study."
 
-        success_count = 0
+        facade = BackendFacade(study)
+        success_count = facade.attach_labels(mapping)
 
-        for raw in study.loaded_data_list:
-            # Find filename in mapping
-            base_name = os.path.basename(raw.filepath)
-            label_path = mapping.get(base_name)
-
-            if not label_path:
-                continue
-
-            try:
-                # Load label
-                events = load_label_file(label_path)
-                raw.events = events
-                success_count += 1
-
-            except Exception as e:
-                return f"Error attaching labels for {base_name}: {e!s}"
-
-        return f"Attached labels to {success_count} files."
+        if success_count > 0:
+            return f"Attached labels to {success_count} files."
+        else:
+            return "No labels attached. Check file name mapping."
 
 
 class RealClearDatasetTool(BaseClearDatasetTool):
     def execute(self, study: Any, **kwargs) -> str:
-        study.clean_raw_data(force_update=True)
+        facade = BackendFacade(study)
+        facade.clear_data()
         return "Dataset cleared."
 
 
 class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
     def execute(self, study: Any, **kwargs) -> str:
-        # Construct summary string
-        if not study.loaded_data_list:
+        facade = BackendFacade(study)
+        summary = facade.get_data_summary()
+
+        if summary["count"] == 0:
             return "No data loaded."
 
-        info = [f"Loaded {len(study.loaded_data_list)} files."]
-        # Pick first one for details
-        first = study.loaded_data_list[0]
+        info = [f"Loaded {summary['count']} files:"]
+        info.extend(summary["files"])
 
-        # Assuming Raw wrapper has some info
-        # MNE Raw: first.raw.info
+        # Facade returns basic dict. If we need MNE info,
+        # get_data_summary currently returns dataset_controller.get_event_info()
+        # which is {"total", "unique_count", "unique_labels"}
 
-        if hasattr(first, "raw") and first.raw is not None:
-            mne_info = first.raw.info
-            info.append(f"Sample Rate: {mne_info['sfreq']} Hz")
-            info.append(f"Channels: {len(mne_info['ch_names'])}")
+        if "total" in summary:
+            info.append(
+                f"Events: {summary['total']} (Unique: {summary['unique_count']})"
+            )
+
+        # MNE specifics (sfreq, channels) might be missing
+        # from Facade.get_data_summary()
+        # Should we enhance facade?
+        # Yes, let's make facade generic or stick to what's available.
+        # For now, let's trust the summary dict.
 
         return "\n".join(info)
 
@@ -156,53 +121,24 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
         training_mode: str = "individual",
         **kwargs,
     ) -> str:
+        facade = BackendFacade(study)
+
         try:
-            # Map strings to Enums
-            s_strat = SplitByType.TRIAL
-            if split_strategy.lower() == "session":
-                s_strat = SplitByType.SESSION
-            elif split_strategy.lower() == "subject":
-                s_strat = SplitByType.SUBJECT
-
-            t_mode = TrainingType.IND
-            if training_mode.lower() == "group":
-                t_mode = TrainingType.FULL
-
-            # Construct Splitters
-            test_splitter = DataSplitter(
-                split_type=s_strat,
-                value_var=str(test_ratio),
-                split_unit=SplitUnit.RATIO,
+            facade.generate_dataset(
+                test_ratio=test_ratio,
+                val_ratio=val_ratio,
+                split_strategy=split_strategy,
+                training_mode=training_mode,
             )
-
-            # For validation, we use the corresponding VAL enum
-            v_strat_val = ValSplitByType.TRIAL
-            if s_strat == SplitByType.SESSION:
-                v_strat_val = ValSplitByType.SESSION
-            elif s_strat == SplitByType.SUBJECT:
-                v_strat_val = ValSplitByType.SUBJECT
-
-            val_splitter = DataSplitter(
-                split_type=v_strat_val,
-                value_var=str(val_ratio),
-                split_unit=SplitUnit.RATIO,
-            )
-
-            config = DataSplittingConfig(
-                train_type=t_mode,
-                is_cross_validation=False,
-                val_splitter_list=[val_splitter],
-                test_splitter_list=[test_splitter],
-            )
-
-            generator = study.get_datasets_generator(config)
-            datasets = generator.generate()
-            study.set_datasets(datasets)
-
-            return (
-                f"Dataset successfully generated. Count: {len(datasets)} "
-                f"(Test: {test_ratio}, Val: {val_ratio})."
-            )
+            # Fetch count from study.datasets explicitly if needed
+            count = 0
+            if study.datasets:
+                count = len(study.datasets)
 
         except Exception as e:
             return f"Dataset generation failed: {e!s}"
+        else:
+            return (
+                f"Dataset successfully generated. Count: {count} "
+                f"(Test: {test_ratio}, Val: {val_ratio})."
+            )

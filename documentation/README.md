@@ -99,13 +99,21 @@ poe list-models
 本專案已整合 **Poe the Poet**，強烈建議使用簡化指令：
 
 ```bash
+# 執行所有測試 (單元測試 + 整合測試)
+poe test
+
+# 僅執行單元測試
+poe test-unit
+
+# 執行架構合規性檢查 (驗證 Dialog 層解耦)
+poe check-architecture
+
 # [驗證] 執行 Real Tools End-to-End 驗證流程 (Load -> Preprocess -> Train)
 poe verify
 
 # [測試] 執行 Real Tools 單元測試
 poe test-real
 
-# [測試] 執行所有單元測試
 poe test-unit
 
 # [測試] 執行完整專案測試 (包含 Backend, UI, LLM)

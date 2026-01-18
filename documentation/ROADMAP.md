@@ -33,9 +33,17 @@
 - [x] **日誌與異常處理標準化**
     - [x] 建立結構化日誌系統 (`logging` module)
     - [x] 消除 16 處寬泛的 `except Exception`，改用具體異常 (替換為 Logger 記錄)
-- [ ] **UI/Backend 交互規範落實**
-    - [ ] 根據 `ADR-004`，確保新代碼嚴格遵循 Pull/Push 混合模式
-    - [ ] 重構 `Dialog` 層，禁止訪問 `parent.study`
+- [x] **UI/Backend 交互規範落實**
+    - [x] 根據 `ADR-004`，確保新代碼嚴格遵循 Pull/Push 混合模式
+    - [x] 重構 `Dialog` 層，禁止訪問 `parent.study`
+
+
+#### P2 - 後端解耦與服務化 (Backend Decoupling) - **[🚀 Next Up]**
+- [x] **移除 Backend 對 PyQt6 的依賴**
+    - [x] 重構 `DatasetController`: 移除 `QObject` 繼承，改用 Python 原生 Observer 模式或回調。
+    - [x] 移動 `LabelImportService` 至 `backend/services/` 並移除 UI 依賴。
+- [x] **Agent 架構準備**
+    - [x] 建立 `BackendFacade`: 為 LLM 提供統一的無狀態調用接口。
 
 #### P2 - 已完成項目
 - [x] **實作 Controller 模式基礎**

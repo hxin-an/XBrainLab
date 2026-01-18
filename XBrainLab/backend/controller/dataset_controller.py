@@ -1,25 +1,27 @@
 # Ensure loaders are registered
-from PyQt6.QtCore import QObject, pyqtSignal
+# from PyQt6.QtCore import QObject, pyqtSignal # Removed
 
 from XBrainLab.backend import preprocessor
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.load_data import EventLoader, RawDataLoader
 from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
+from XBrainLab.backend.services.label_import_service import LabelImportService
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.services.label_import_service import LabelImportService
+from XBrainLab.backend.utils.observer import Observable
 
 
-class DatasetController(QObject):
+class DatasetController(Observable):
     """
     Controller for managing dataset operations.
     Handles data loading, modification, and interactions with the Study backend.
+    Now Decoupled from PyQt6.
     """
 
-    # Signals for UI synchronization
-    data_changed = pyqtSignal()
-    dataset_locked = pyqtSignal(bool)
-    import_finished = pyqtSignal(int, list)  # success_count, errors
-    error_occurred = pyqtSignal(str)
+    # Signals replaced by Observer events:
+    # "data_changed"
+    # "dataset_locked" (bool)
+    # "import_finished" (success_count, errors)
+    # "error_occurred" (str)
 
     def __init__(self, study):
         super().__init__()
@@ -50,8 +52,7 @@ class DatasetController(QObject):
         try:
             loader = RawDataLoader(existing_data)
         except Exception as e:
-            # If existing data is invalid, specialized handling might be needed
-            # For now propagate error or return specific status
+            # If existing dataset inconsistent
             raise ValueError(f"Existing dataset inconsistent: {e}") from e
 
         success_count = 0
@@ -85,9 +86,9 @@ class DatasetController(QObject):
 
         if success_count > 0:
             loader.apply(self.study, force_update=True)
-            self.data_changed.emit()
+            self.notify("data_changed")
 
-        self.import_finished.emit(success_count, errors)
+        self.notify("import_finished", success_count, errors)
 
         return success_count, errors
 
@@ -98,11 +99,50 @@ class DatasetController(QObject):
     def remove_files(self, indices):
         """Removes files at specified indices."""
         current_list = self.study.loaded_data_list
-        to_remove = []
-        to_remove = [current_list[idx] for idx in indices if idx < len(current_list)]
+        if not current_list:
+            return
 
-        new_list = [d for d in current_list if d not in to_remove]
-        self.study.set_loaded_data_list(new_list, force_update=True)
+        # Sort indices in descending order to avoid shifting issues
+        indices = sorted(indices, reverse=True)
+        new_list = list(current_list)
+
+        changed = False
+        for idx in indices:
+            if 0 <= idx < len(new_list):
+                del new_list[idx]
+                changed = True
+
+        if changed:
+            # Directly update study state
+            self.study.set_loaded_data_list(new_list, force_update=True)
+            self.notify("data_changed")
+
+    def run_import_labels(self, target_files, label_map, file_mapping, mapping):
+        """
+        Runs the label import logic via service.
+        """
+        count = self.label_service.apply_labels_batch(
+            target_files, label_map, file_mapping, mapping
+        )
+        if count > 0:
+            self.notify("data_changed")
+        return count
+
+    def get_event_info(self):
+        """Returns event statistics for loaded data."""
+        total_events = 0
+        unique_events = set()
+
+        for data in self.study.loaded_data_list:
+            if data.annotations:
+                total_events += len(data.annotations)
+                unique_events.update(set(data.annotations.description))
+
+        return {
+            "total": total_events,
+            "unique_count": len(unique_events),
+            "unique_labels": list(unique_events),
+        }
 
     def update_metadata(self, index, subject=None, session=None):
         """Updates subject/session for a specific file index."""
@@ -161,8 +201,9 @@ class DatasetController(QObject):
         self.study.backup_loaded_data()
         self.study.set_loaded_data_list(result, force_update=True)
         self.study.lock_dataset()
-        self.data_changed.emit()
-        self.dataset_locked.emit(True)
+        self.study.lock_dataset()
+        self.notify("data_changed")
+        self.notify("dataset_locked", True)
         return True
 
     def get_filenames(self):
@@ -172,8 +213,8 @@ class DatasetController(QObject):
     def reset_preprocess(self):
         """Triggers a reset of downstream preprocessing."""
         self.study.reset_preprocess(force_update=True)
-        self.data_changed.emit()
-        self.dataset_locked.emit(False)
+        self.notify("data_changed")
+        self.notify("dataset_locked", False)
 
     # Label Import Wrappers
     def get_data_at_assignments(self, indices):
