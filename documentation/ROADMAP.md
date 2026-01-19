@@ -36,6 +36,10 @@
 - [x] **UI/Backend 交互規範落實**
     - [x] 根據 `ADR-004`，確保新代碼嚴格遵循 Pull/Push 混合模式
     - [x] 重構 `Dialog` 層，禁止訪問 `parent.study`
+- [x] **Strict Linting Enforcement (v0.5.2)**
+    - [x] 解除所有 Circular Imports (PLC0415)
+    - [x] 修復所有 E501, F811, N802 等代碼風格問題
+    - [x] 啟用 `ruff`, `mypy`, `pre-commit` 作為強制性 CI 檢查
 
 
 #### P2 - 後端解耦與服務化 (Backend Decoupling) - **[🚀 Next Up]**

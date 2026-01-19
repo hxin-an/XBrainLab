@@ -26,23 +26,12 @@
 - 應該透過抽象接口（如 `BackendFacade`）而非具體 Study 類
 
 **問題 7: 假解耦問題**（最隱蔽）
-- 雖然部分 Panel（如 `VisualizationPanel`）註釋了 `self.study`
-- 但仍通過 `main_window.study` 傳遞給 Controller
-- **所有 Controller 都持有 Study 引用**
-- **所有 Panel 都需要 main_window.study**
-- **沒有真正解耦**
+- 部分 Panel（如 `VisualizationPanel`）註釋了 `self.study`
+- **所有 Controller 都持有 Study 引用** (必需，用於訪問資料)
+- **所有 Panel 都需要 main_window.study** (已大幅改善，多數 Panel 改用 Controller)
+- **[x] Circular Imports 修復 (v0.5.2)**: 解決了 `Study` 與 Controllers 之間的循環依賴，使用 `TYPE_CHECKING` 與 lazy imports 確保靜態分析 (Ruff/MyPy) 通過。
 
-**影響**：Backend 無法獨立運行、測試需 Qt 環境、未來遷移困難、無法開發 CLI 工具或 API 服務
-
-**建議**：
-1. 實作事件系統（Observer Pattern）取代直接引用
-2. 移動 `LabelImportService` 至 `backend/services/`
-3. 重構所有 Panel，移除直接 Study 訪問
-4. Controller 改為不持有 Study，改用事件訂閱
-
-**預估工作量**：8-10 週全職工作
-
-**狀態**：待重構 (高優先級 - 影響架構根基)
+**狀態**：部分解決 (循環依賴已修復，但 Study 仍作為上帝物件存在)
 
 ---
 
@@ -105,8 +94,9 @@
 - [x] QToolButton 置中發送按鈕
 - [x] 無邊框下拉選單
 - [x] **模組拆分 (v0.5.1)**: 已將 `chat_panel.py` 拆分至 `ui/chat/` 目錄
-- [x] **LLM→Panel Pipeline 驗證 (v0.5.1)**: 信號流程已驗證正確
-- [x] **Tool Call 顯示 (v0.5.1)**: 統一在 Status Bar 顯示，保持 Chat 簡潔
+- [x] **LLM→Panel Pipeline 驗證 (v0.5.1)**: 信號流程已驗證正確 (`generation_started`, `chunk_received`)
+- [x] **Streaming Support (v0.5.2)**: 完整支援打字機效果串流顯示，修復了 UI 凍結與顯示延遲
+- [x] **Tool Call 顯示 (v0.5.2)**: 實作 "Tool Executing..." 狀態顯示，並正確處理工具輸出 visibility
 
 **待優化**：
 - [ ] Markdown 渲染支援
@@ -388,6 +378,12 @@ except PermissionError as e:
 - **限制**: `BackendFacade` 雖然涵蓋了大多數 Controller 功能，但部分邊緣功能 (如複雜的 `ChannelSelection` 回滾邏輯、特定的 Plotting 參數) 尚未暴露。
 - **妥協**: 只暴露 Agent `tool_definitions.md` 中定義的核心功能。
 - **影響**: Agent 無法執行 UI 上某些進階操作。
+
+### 3. Native Function Calling Support (原生 Tool Call 支援)
+- **限制**: 系統目前不使用 LLM 的原生 Function Calling API (如 OpenAI `tools` 或 Gemini `function_declarations`)。
+- **實作**: 採用 **ReAct (Reason + Act)** 模式，依賴 Prompt Engineering 引導模型輸出 JSON，並使用 Regex 解析。
+- **影響**: 對於較弱的模型 (如 Gamma-2B)，JSON 格式錯誤率可能較高。
+- **對策**: 透過 RAG (Retrieval Augmented Generation) 檢索正確的 Few-Shot 範例 (`gold_set.json`) 來穩定輸出格式，而非依賴模型微調能力。這是 "Option A (RAG)" 優於等待 "Native Tool Call" 的主要原因。
 
 顯示有問題有時侯不會顯示所有字 而是要透過拉寬拉短才會顯示所有字
 LOAD DATA 有成功 LOAD 但需要切換 PANEL 才會顯示

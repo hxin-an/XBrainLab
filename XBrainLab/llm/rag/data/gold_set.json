@@ -738,5 +738,173 @@
                 }
             }
         ]
+    },
+    {
+        "id": "dataset_11",
+        "category": "dataset",
+        "input": "List all .mat files in /data/labels/ to check if they exist.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "list_files",
+                "parameters": {
+                    "directory": "/data/labels/",
+                    "pattern": "*.mat"
+                }
+            }
+        ]
+    },
+    {
+        "id": "dataset_12",
+        "category": "dataset",
+        "input": "Attach events.csv to subject_05.gdf.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "attach_labels",
+                "parameters": {
+                    "mapping": {
+                        "subject_05.gdf": "events.csv"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "dataset_13",
+        "category": "dataset",
+        "input": "Associate s01.gdf with s01_labels.txt and s02.gdf with s02_labels.txt.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "attach_labels",
+                "parameters": {
+                    "mapping": {
+                        "s01.gdf": "s01_labels.txt",
+                        "s02.gdf": "s02_labels.txt"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "dataset_14",
+        "category": "dataset",
+        "input": "Reset the workspace by clearing all data.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "clear_dataset",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "dataset_15",
+        "category": "dataset",
+        "input": "What is the sampling rate and channel count of current data?",
+        "expected_tool_calls": [
+            {
+                "tool_name": "get_dataset_info",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "dataset_16",
+        "category": "dataset",
+        "input": "List files in the current directory.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "get_dataset_info",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "dataset_17",
+        "category": "dataset",
+        "input": "Split dataset by session for individual training with 20% test set.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "generate_dataset",
+                "parameters": {
+                    "split_strategy": "session",
+                    "training_mode": "individual",
+                    "test_ratio": 0.2
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_16",
+        "category": "preprocess",
+        "input": "Apply 60Hz notch to remove power line interference.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_notch_filter",
+                "parameters": {
+                    "freq": 60
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_17",
+        "category": "preprocess",
+        "input": "Re-reference to Cz channel.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_reference",
+                "parameters": {
+                    "method": "Cz"
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_18",
+        "category": "preprocess",
+        "input": "Epoch data based on event_id 769 and 770, from -0.5 to 4.0s.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "epoch_data",
+                "parameters": {
+                    "t_min": -0.5,
+                    "t_max": 4.0,
+                    "event_id": {
+                        "Left": 769,
+                        "Right": 770
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_19",
+        "category": "preprocess",
+        "input": "Cut epochs around events with baseline correction [-0.2, 0].",
+        "expected_tool_calls": [
+            {
+                "tool_name": "epoch_data",
+                "parameters": {
+                    "t_min": -0.2,
+                    "t_max": 1.0,
+                    "baseline": [
+                        -0.2,
+                        0
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "id": "preprocess_20",
+        "category": "preprocess",
+        "input": "Use standard preprocess but with 1Hz highpass.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_standard_preprocess",
+                "parameters": {
+                    "l_freq": 1.0
+                }
+            }
+        ]
     }
 ]

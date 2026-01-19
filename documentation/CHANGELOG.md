@@ -2,6 +2,22 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [0.5.2] - 2026-01-19
+### Added
+- **RAG System Integration (Retrieval-Augmented Generation)**:
+    - **Architecture**: Implemented a local RAG pipeline using `Qdrant` (CPU-optimized) and `all-MiniLM-L6-v2` embedding model.
+    - **Indexer**: `indexer.py` handles ingestion of instruction-example pairs.
+    - **Retriever**: `retriever.py` provides semantic search with 1-to-1 chunking strategy.
+    - **Data Augmentation**: Expanded `gold_set.json` from 50 to 62 examples, ensuring every tool has at least 3 distinct few-shot examples (Data Cleanliness).
+- **Safety & Verification**:
+    - **No Data Leakage**: Pointed `eval_agent.py` to a separate `external_validation_set.json` (175 multi-step cases) instead of training data.
+    - **Audits**: Verified dataset quality via `audit_validation_set.py` (Distribution & Logic checks).
+
+### Fixed
+- **Code Quality**:
+    - **Linting**: Fixed 100+ Ruff errors, including duplicate assignments in config and bare try-return blocks in indexer.
+    - **Type Safety**: Passed MyPy checks for new RAG modules.
+
 ## [0.5.1] - 2026-01-19
 ### Added
 - **Chat Panel UI Redesign (Copilot-style)**:

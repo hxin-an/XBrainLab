@@ -246,7 +246,7 @@ def run_benchmark_cli():
 
     app = QApplication(sys.argv)
 
-    gold_path = Path(__file__).parent / "data/gold_set.json"
+    gold_path = project_root / "scripts/benchmark/data/external_validation_set.json"
     runner = BenchmarkRunner(gold_path)
 
     # Run slightly deferred to let app loop start

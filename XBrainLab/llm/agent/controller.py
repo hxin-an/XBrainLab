@@ -1,5 +1,6 @@
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
+from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
 
 from .parser import CommandParser
@@ -33,6 +34,9 @@ class LLMController(QObject):
 
         # Initialize PromptManager
         self.prompt_manager = PromptManager(AVAILABLE_TOOLS)
+
+        # Initialize RAG Retriever
+        self.rag_retriever = RAGRetriever()
 
         # Setup Worker in separate thread to avoid blocking UI during load/inference
         self.worker_thread = QThread()
@@ -85,7 +89,15 @@ class LLMController(QObject):
         # 1. Update History
         self._append_history("user", text)
 
-        # 2. Start Generation Loop
+        # 2. Retrieve RAG Context (Examples)
+        features = self.rag_retriever.get_similar_examples(text)
+        self.prompt_manager.clear_context()
+        if features:
+            self.prompt_manager.add_context(features)
+            # Log for debugging (optional), visible in tool output usually
+            # self.status_update.emit("Context retrieved for query.")
+
+        # 3. Start Generation Loop
         self._generate_response()
 
     def _generate_response(self):
