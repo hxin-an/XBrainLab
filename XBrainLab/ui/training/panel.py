@@ -19,9 +19,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.controller.training_controller import TrainingController
 from XBrainLab.backend.training.record.train import RecordKey, TrainRecordKey
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.ui.utils.observer_bridge import QtObserverBridge
 
 from ..dataset.data_splitting_setting import DataSplittingSettingWindow
 from .model_selection import ModelSelectionWindow
@@ -176,19 +176,32 @@ class TrainingPanel(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        # self.study = main_window.study  # Decoupled
-        self.controller = TrainingController(main_window.study)
+        self.controller = main_window.study.get_controller("training")
 
-        self.current_plotting_record = None  # Initialize here to avoid AttributeError
+        self.current_plotting_record = None
         self.plan_items = {}  # Map id(plan) -> QTreeWidgetItem
         self.run_items = {}  # Map id(record) -> QTreeWidgetItem
 
+        # Connect to controller events for automatic UI updates
+        self.bridge_started = QtObserverBridge(
+            self.controller, "training_started", self
+        )
+        self.bridge_started.connect_to(self._on_training_started)
+
+        self.bridge_stopped = QtObserverBridge(
+            self.controller, "training_stopped", self
+        )
+        self.bridge_stopped.connect_to(self._on_training_stopped)
+
+        self.bridge_config = QtObserverBridge(self.controller, "config_changed", self)
+        self.bridge_config.connect_to(self.check_ready_to_train)
+
         self.init_ui()
 
-        # Timer for polling training status
+        # Timer for polling training progress (valid use - continuous updates)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_loop)
-        self.training_completed_shown = False  # Track if completion message was shown
+        self.training_completed_shown = False
 
     def init_ui(self):
         # Main Layout: Horizontal (Left: Content, Right: Controls)
@@ -597,6 +610,20 @@ class TrainingPanel(QWidget):
         if self.controller.is_training():
             self.controller.stop_training()
 
+    def _on_training_started(self):
+        """Event handler: Training has started."""
+        self.timer.start(100)  # Start progress polling
+        self.log_text.append("Training started (event).")
+        self.training_completed_shown = False
+        self.btn_stop.setEnabled(True)
+        self.check_ready_to_train()
+
+    def _on_training_stopped(self):
+        """Event handler: Training has stopped."""
+        self.timer.stop()
+        self.training_finished()
+        self.log_text.append("Training stopped (event).")
+
     def clear_history(self):
         """Clear the training history."""
         try:
@@ -834,3 +861,9 @@ class TrainingPanel(QWidget):
             self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
         else:
             self.btn_start.setToolTip("Start Training")
+
+    def closeEvent(self, event):  # noqa: N802
+        """Cleanup on close."""
+        if hasattr(self, "timer") and self.timer.isActive():
+            self.timer.stop()
+        super().closeEvent(event)

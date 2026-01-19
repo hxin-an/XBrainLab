@@ -2,9 +2,49 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [0.5.1] - 2026-01-19
+### Added
+- **Chat Panel UI Redesign (Copilot-style)**:
+    - **MessageBubble Class**: 新增獨立的 `MessageBubble` 類別，封裝 QFrame + QLabel 結構。
+    - **Dynamic Width**: 實現氣泡寬度隨文字長度增長（85% 上限），並隨視窗縮放動態調整。
+    - **Smart Word Wrap**: 使用 `QFontMetrics` 判斷文字長度，超過上限時使用 `setFixedWidth` 強制正確換行。
+    - **Streaming Support**: 保留串流式 Agent 回應支援，並去除尾行換行符防止底部空白。
+    - **QToolButton for Send**: 將發送按鈕從 `QPushButton` 改為 `QToolButton`，確保圖示正確置中。
+    - **Input Row Layout**: 優化輸入列間距與邊距 (`ContentsMargins(10, 5, 10, 10)`)。
+    - **Dropdown Buttons**: 功能/模型選擇器改用 `QPushButton + QMenu` 實現無邊框下拉選單。
 
+### Refactored
+- **Chat Panel Modularization**:
+    - 將 `chat_panel.py` (420 行) 拆分至 `ui/chat/` 目錄：
+        - `chat_panel.py`: 主 ChatPanel 類別
+        - `message_bubble.py`: MessageBubble 元件
+        - `chat_styles.py`: 集中管理樣式常數
+- **Clean Response Display**:
+    - Agent 回應只在「最終回覆」時顯示，Tool Call 期間不建立氣泡
+    - Tool 執行狀態只在 Status Bar 顯示，Chat 保持簡潔
+    - 移除 `is_hiding_stream` 和 `remove_content` 邏輯，簡化程式碼
+- **Push to Pull Model Migration (Observable Pattern)**:
+    - 所有 Backend Controller 現已使用 `Observable` 類別
+        - `PreprocessController`: `preprocess_changed` 事件
+        - `TrainingController`: `training_started`, `training_stopped`, `config_changed` 事件
+        - `VisualizationController`: `montage_changed`, `saliency_changed` 事件
+        - `EvaluationController`: `evaluation_updated` 事件
+    - UI Panels 使用 `QtObserverBridge` 自動更新：
+        - `PreprocessPanel` 訂閱 `preprocess_changed`
+        - `TrainingPanel` 訂閱 training 狀態事件
 
-## [0.4.6] - 2026-01-18
+### Fixed
+### Fixed
+- **Button Icon Centering**: 修復發送按鈕三角形圖示偏左的問題（QPushButton 不支援 CSS text-align）。
+- **Bubble Alignment**: User 訊息右對齊、Agent 訊息左對齊，使用 `setAlignment` 替代 `addStretch` 機制。
+- **Chat Panel Text Truncation**: 修復串流回應時文字可能顯示不全的問題（氣泡寬度未隨內容動態更新）。
+- **Data Load Refresh**: 修復使用 Agent Load Data 後 UI 面板未自動刷新的問題。
+    - 實現 `Study.get_controller` 單例模式緩存，確保 Agent (Facade) 與 UI 使用相同的 Controller 實例。
+    - 統一所有 UI Panel 改用 `study.get_controller` 獲取控制器。
+- **Chat Path Display**: 修復檔案路徑在對話中被截斷的問題 (e.g., `C:\lab` -> `C:`)，強制氣泡使用 `PlainText` 格式。
+- **Smart Load Data**: 增強 `RealLoadDataTool`，當 Agent 傳入目錄路徑時自動展開該目錄下的所有檔案，提升 Agent 容錯率。
+
+## [0.5.0] - 2026-01-18
 ### Added
 - **Backend Architecture (P2)**:
     - Decoupled `DatasetController` from PyQt6: Now uses a pure Python `Observable` pattern for event notification.
@@ -16,6 +56,17 @@
         - Moved complex logic (Enum mapping, Channel Matching, Model Resolution) from Tools to Facade.
         - **Why?**: To ensure the backend logic is reusable ("Headless SDK") and allow lightweight Agent Tools that only handle Interface/HIT logic.
         - **Training Control**: Added `optimizer` (Adam/SGD) and `save_checkpoints_every` support to `RealConfigureTrainingTool`.
+    - **Stability Fixes**:
+        - **Visualization**: Fixed `IndexError` crash in Topomap/3D Plot when montage is missing. Added safe guards and user warnings.
+        - **Agent UI**: Fixed unresponsive Agent Chat UI by enabling streaming signals (`chunk_received`) and properly initializing chat prefix.
+        - **Agent Logic**: Fixed critical bug where `GenerationThread` was never started, causing Agent to hang on "Processing".
+        - **Agent UI**: Fixed double-response issue where the same message was displayed twice (streaming + final append).
+        - **Agent Optimization**: Upgraded default model to `gemini-3-flash` and relaxed `CommandParser` to accept case-insensitive JSON blocks.
+        - **Agent Visibility**: Implemented explicit display of Tool Outputs (e.g., "Loaded 3 files") in Chat Panel to prevent "silent processing" loops.
+        - **Agent UX**: Implemented "Collapse JSON" feature to hiding raw tool command blocks from the chat, replacing them with a concise 🛠️ icon for a cleaner experience. Updated Chat Colors for better readability (User: Blue, Agent: Green, System: Orange).
+        - **Backend Stability**: Fixed `AttributeError: 'Raw' has no attribute 'annotations'` in `DatasetController.get_event_info` by correctly accessing the underlying MNE object.
+        - **UI Stability**: Fixed "GUI not refreshing" issue by implementing `QtObserverBridge` to correctly route background thread updates to the Main UI Thread.
+        - **Integration Check**: Added `tests/integration/test_agent_ui_flow.py` to verify End-to-End Agent UI interaction and JSON hiding.
 - **Architecture Verification (P1)**:
     - Added `tests/architecture_compliance.py` to strictly enforce decoupling rules for Dialogs.
     - Verified all `QDialog` subclasses adhere to `parent.study` prohibition.

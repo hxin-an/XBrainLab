@@ -1,16 +1,27 @@
-from typing import Any
+from __future__ import annotations
 
-from XBrainLab.backend.study import Study
+from typing import TYPE_CHECKING, Any
+
 from XBrainLab.backend.training import Trainer
+from XBrainLab.backend.utils.observer import Observable
+
+if TYPE_CHECKING:
+    from XBrainLab.backend.study import Study
 
 
-class TrainingController:
+class TrainingController(Observable):
     """
     Controller for handling training operations and state management.
     Decouples UI from direct Study/Backend manipulation.
+
+    Events:
+        - training_started: Emitted when training begins
+        - training_stopped: Emitted when training is stopped/interrupted
+        - config_changed: Emitted when training configuration changes
     """
 
     def __init__(self, study: Study):
+        Observable.__init__(self)
         self._study = study
 
     def is_training(self) -> bool:
@@ -30,11 +41,13 @@ class TrainingController:
 
         # Start training in interactive mode (threaded)
         self._study.train(interact=True)
+        self.notify("training_started")
 
     def stop_training(self) -> None:
         """Interrupt the current training process."""
         if self.is_training():
             self._study.stop_training()
+            self.notify("training_stopped")
 
     def clear_history(self) -> None:
         """Clear all training history."""
@@ -43,6 +56,7 @@ class TrainingController:
 
         if self._study.trainer:
             self._study.trainer.clear_history()
+            self.notify("config_changed")
 
     def get_trainer(self) -> Trainer | None:
         """Access the underlying trainer (usually for polling status)."""

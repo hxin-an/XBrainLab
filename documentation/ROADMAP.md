@@ -52,13 +52,20 @@
     - [x] 移除冗餘目錄 (`ui_pyqt`)
     - [x] 完成 Poetry 遷移與 Git Hooks 設定
 
-### 第三階段：架構深度重構 (Deep Architectural Refactoring) - **[Planned]**
-*目標：從根本上切斷 UI-Backend 耦合，支援未來擴展*
+### 第三階段：事件驅動架構遷移 (Event-Driven Architecture Migration) - **[🚧 In Progress]**
+*目標：移除輪詢延遲，解決 Agent 背景執行緒 UI 刷新問題*
 
-- [ ] **事件驅動架構 (Event-Driven Architecture)**
-    - [ ] 設計 Backend Event Bus (Observer Pattern)
-    - [ ] 移除 `DatasetController` 的 `QObject` 依賴
-    - [ ] 實作 Qt Signal Adapter 層 (UI 適配)
+- [x] **架構驗證 (Architecture Verification)**
+    - [x] 設計 `QtObserverBridge` 模式 (Event-Driven Bridge)
+    - [x] 驗證 `DatasetPanel` 遷移效果 (解決 White Screen Issue)
+- [ ] **系統遷移 (System-Wide Rollout)**
+    - [ ] **TrainingPanel**: 遷移 `QTimer` 輪詢至 `QtObserverBridge`
+    - [ ] **PreprocessPanel**: 監聽預處理完成事件
+    - [ ] **VisualizationPanel**: 監聽 Montage/Data 變更事件
+    - [ ] **EvaluationPanel**: 監聽評估結果事件
+- [ ] **基礎建設完善**
+    - [ ] 實作 `BasePanel` 統一集成 Bridge 邏輯
+    - [ ] 更新 `Observable` 支援更豐富的 Payload
 - [ ] **完全解耦 (Complete Decoupling)**
     - [ ] **服務層遷移**: 移動 `LabelImportService` 至 Backend
     - [ ] **移除全局依賴**: MainWindow 不再持有 `Study` 引用 (Dependency Injection)

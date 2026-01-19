@@ -108,6 +108,8 @@ class TestTrainingPanelRealUsage:
         # Flag should be reset
         assert panel.training_completed_shown is False
 
+        panel.close()
+
     def test_update_loop_type_safety(self, qtbot, real_training_option):
         """Verify that update_loop handles type conversions correctly."""
 
@@ -202,11 +204,20 @@ class TestEvaluationPanelIntegration:
         # Mock trainer with plan holders that have proper methods
         mock_trainer = MagicMock()
         mock_plan = MagicMock()
-        mock_plan.get_name.return_value = "TestPlan"  # Add required method
-        mock_trainer.training_plan_holders = [mock_plan]  # Attribute, not method
-        mock_trainer.get_training_plan_holders.return_value = [
-            mock_plan
-        ]  # Keep for legacy check if needed
+        mock_plan.get_name.return_value = "TestPlan"
+
+        # Configure plan properties needed by EvaluationController.get_model_summary_str
+        mock_plan.dataset.get_training_data.return_value = (
+            torch.randn(4, 1, 20, 100),
+            None,
+        )
+        mock_plan.dataset.get_epoch_data().get_model_args.return_value = {}
+        mock_plan.model_holder.get_model.return_value = MagicMock()
+        mock_plan.option.bs = 4
+        mock_plan.option.get_device.return_value = "cpu"
+
+        mock_trainer.training_plan_holders = [mock_plan]
+        mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         study.trainer = mock_trainer
 
         parent = QWidget()

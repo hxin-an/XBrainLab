@@ -134,9 +134,10 @@ class DatasetController(Observable):
         unique_events = set()
 
         for data in self.study.loaded_data_list:
-            if data.annotations:
-                total_events += len(data.annotations)
-                unique_events.update(set(data.annotations.description))
+            mne_data = data.get_mne()
+            if hasattr(mne_data, "annotations") and mne_data.annotations:
+                total_events += len(mne_data.annotations)
+                unique_events.update(set(mne_data.annotations.description))
 
         return {
             "total": total_events,

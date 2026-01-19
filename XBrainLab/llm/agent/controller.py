@@ -21,6 +21,7 @@ class LLMController(QObject):
     status_update = pyqtSignal(str)  # status message
     error_occurred = pyqtSignal(str)  # error message
     request_user_interaction = pyqtSignal(str, dict)  # command, params
+    remove_content = pyqtSignal(str)  # New signal to hide JSON
 
     # Internal signals to Worker
     sig_initialize = pyqtSignal()
@@ -91,19 +92,18 @@ class LLMController(QObject):
         """Triggers the LLM generation based on current history."""
         # Use PromptManager to construct messages
         messages = self.prompt_manager.get_messages(self.history)
-
         self.current_response = ""  # Reset accumulator
 
-        # Notify UI to prepare for agent message
+        # Update status and Start Bubble
+        self.status_update.emit("Generating response...")
         self.generation_started.emit()
 
         # Call worker via signal
         self.sig_generate.emit(messages)
 
     def _on_chunk_received(self, chunk: str):
-        """Accumulate chunk and forward to UI if it's a text response."""
+        """Accumulate chunk and stream to UI."""
         self.current_response += chunk
-        # Forward chunk to UI for realtime display
         self.chunk_received.emit(chunk)
 
     def _on_generation_finished(self):
@@ -114,20 +114,28 @@ class LLMController(QObject):
         command_result = CommandParser.parse(response_text)
 
         if command_result:
-            # It's a tool call
+            # It's a tool call - don't show anything in chat (or hide what was just
+            # streamed)
+            # Actually, since we streamed it, the user sees JSON.
+            # We emit remove_content signal if we want to collapse it.
+            # But let's stick to simple logic first.
             command_name, params = command_result
-            self.status_update.emit(f"Executing tool: {command_name}...")
+            self.status_update.emit(f"Executing: {command_name}...")
 
             # Add the tool call to history (as assistant output)
             self._append_history("assistant", response_text)
 
-            # Defer execution slightly to allow UI to update status
+            # Execute tool (will loop back to _generate_response)
             self._execute_tool(command_name, params)
 
         else:
-            # It's a final text response
+            # It's the FINAL text response
             self._append_history("assistant", response_text)
-            self.response_ready.emit("Agent", response_text)
+
+            # We already streamed it, so just update status
+            # self.generation_started.emit() # Removed
+            # self.chunk_received.emit(response_text) # Removed
+
             self.status_update.emit("Ready")
             self.is_processing = False
 
@@ -158,9 +166,25 @@ class LLMController(QObject):
         # Check for Human-in-the-loop Request
         if result.startswith("Request:"):
             # Format: "Request: CommandName params"
-            # e.g. "Request: Verify Montage 'standard_1020'"
             cmd_part = result.replace("Request:", "").strip()
 
+            if cmd_part.lower().startswith("switch ui to"):
+                # Handle Switch Panel
+                # cmd_part example: "Switch UI to 'training' (View: metrics)"
+                # Simple parsing logic
+                target = cmd_part.replace("Switch UI to", "").strip()
+                # Remove quotes if present
+                if target.startswith(("'", '"')):
+                    # primitive parsing
+                    target = (
+                        target.split("'")[1] if "'" in target else target.split('"')[1]
+                    )
+
+                self.request_user_interaction.emit("switch_panel", {"panel": target})
+                self._append_history("assistant", f"Switching UI to {target}")
+                return
+
+            # Default to Montage Confirmation for other requests (for now)
             # Emit signal to UI to take over
             self.status_update.emit("Waiting for user interaction...")
             self.request_user_interaction.emit("confirm_montage", {"context": cmd_part})
@@ -171,6 +195,17 @@ class LLMController(QObject):
             return
 
         self.status_update.emit(f"Tool Result: {result}")
+        if not result.startswith("Request:"):
+            # Only show tool output in chat if it's an error (Less verbosity)
+            if (
+                "error" in result.lower()
+                or "exception" in result.lower()
+                or "failed" in result.lower()
+            ):
+                self.response_ready.emit("System", f"Tool Error: {result}")
+            else:
+                # Normal success: Silent in chat, but visible in Status Bar (above)
+                pass
 
         # Feed result back to LLM
         self._append_history("user", f"Tool Output: {result}")
@@ -188,3 +223,27 @@ class LLMController(QObject):
         if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
             self.worker_thread.quit()
             self.worker_thread.wait()
+
+    def stop_generation(self):
+        """Stops the current generation process."""
+        if self.is_processing:
+            self.status_update.emit("Stopping...")
+            self.is_processing = False
+            # Ideally, we should signal the worker to stop.
+            # checks worker.requestInterruption() inside long loops?
+            self.worker_thread.requestInterruption()
+
+    def set_model(self, model_display_name: str):
+        """Updates the model configuration."""
+        # Map Display Name to Model ID
+        # "Gemini 2.0 Flash", "Gemini 1.5 Pro", "Local (Qwen)"
+        model_map = {
+            "Gemini 2.0 Flash": "gemini-2.0-flash-exp",  # or similar
+            "Gemini 1.5 Pro": "gemini-1.5-pro",
+            "Local (Qwen)": "local-qwen",  # hypothetical
+        }
+
+        _mode_id = model_map.get(model_display_name, "gemini-1.5-pro")
+        self.status_update.emit(f"Model switched to {model_display_name}")
+        # TODO: Implement actual engine switch in Worker
+        # self.sig_reinit.emit(_mode_id)

@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.controller.dataset_controller import DatasetController
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.dashboard_panel.import_label import (
     EventFilterDialog,
@@ -29,6 +28,7 @@ from XBrainLab.ui.dashboard_panel.import_label import (
 )
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 from XBrainLab.ui.dashboard_panel.smart_parser import SmartParserDialog
+from XBrainLab.ui.utils.observer_bridge import QtObserverBridge
 
 
 class ChannelSelectionDialog(QDialog):
@@ -118,7 +118,7 @@ class DatasetPanel(QWidget):
 
         self.main_window = parent
         if parent and hasattr(parent, "study"):
-            self.controller = DatasetController(parent.study)
+            self.controller = parent.study.get_controller("dataset")
         self.init_ui()
 
     def init_ui(self):
@@ -152,8 +152,14 @@ class DatasetPanel(QWidget):
         # Note: In a threaded environment, we might need Qt signal bridge.
         # For now: assuming synchronous or main thread notification.
         if hasattr(self, "controller"):
-            self.controller.subscribe("data_changed", self.update_panel)
-            self.controller.subscribe("import_finished", self.on_import_finished)
+            # Use Bridge for Thread Safety
+            self.bridge_data = QtObserverBridge(self.controller, "data_changed", self)
+            self.bridge_data.connect_to(self.update_panel)
+
+            self.bridge_import = QtObserverBridge(
+                self.controller, "import_finished", self
+            )
+            self.bridge_import.connect_to(self.on_import_finished)
 
         # --- Right Side: Info & Controls ---
         # --- Right Side: Info & Controls ---

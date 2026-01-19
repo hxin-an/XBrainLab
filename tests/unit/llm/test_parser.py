@@ -41,3 +41,32 @@ def test_json_without_markdown():
     text = '{"command": "test"}'
     result = CommandParser.parse(text)
     assert result is None
+
+
+def test_parse_relaxed_json_block():
+    # Case 1: Uppercase JSON
+    text_caps = """
+    Here is the command:
+    ```JSON
+    {
+        "command": "test_cmd",
+        "parameters": {"k": "v"}
+    }
+    ```
+    """
+    cmd, params = CommandParser.parse(text_caps)
+    assert cmd == "test_cmd"
+    assert params == {"k": "v"}
+
+    # Case 2: No language identifier
+    text_no_lang = """
+    ```
+    {
+        "command": "test_cmd_2",
+        "parameters": {"x": 1}
+    }
+    ```
+    """
+    cmd2, params2 = CommandParser.parse(text_no_lang)
+    assert cmd2 == "test_cmd_2"
+    assert params2 == {"x": 1}

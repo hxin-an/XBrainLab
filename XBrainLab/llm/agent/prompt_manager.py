@@ -16,7 +16,7 @@ Available Tools:
 {tools_str}
 
 To use a tool, you MUST output a JSON object in the following format:
-```json
+```
 {{
     "command": "tool_name",
     "parameters": {{
@@ -25,7 +25,12 @@ To use a tool, you MUST output a JSON object in the following format:
 }}
 ```
 
-If no tool is needed, just reply normally.
+Rules:
+1. If you need to use a tool, output ONLY the JSON block.
+2. Do NOT output any introductory text (like 'Sure', 'I will') before the JSON.
+3. Do NOT output the JSON block if you are not using a tool.
+4. Do NOT use the 'json' language identifier, just the code block delimiters.
+5. If no tool is needed, just reply normally.
 """
         self.context_notes: list[str] = []
 

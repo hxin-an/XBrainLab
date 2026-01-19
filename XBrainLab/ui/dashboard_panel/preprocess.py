@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, cast
+
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -24,9 +26,12 @@ from PyQt6.QtWidgets import (
 )
 from scipy.signal import welch
 
-from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
+from XBrainLab.ui.utils.observer_bridge import QtObserverBridge
+
+if TYPE_CHECKING:
+    from XBrainLab.backend.controller.preprocess_controller import PreprocessController
 
 
 class ResampleDialog(QDialog):
@@ -408,8 +413,19 @@ class PreprocessPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
-        if parent and hasattr(parent, "study"):
-            self.controller = PreprocessController(parent.study)
+
+        # Guard clause for strict type safety
+        if not parent or not hasattr(parent, "study"):
+            self.controller = cast("PreprocessController", None)
+        else:
+            self.controller = parent.study.get_controller("preprocess")
+            # Connect to controller events for automatic UI updates
+            self.bridge = QtObserverBridge(self.controller, "preprocess_changed", self)
+            self.bridge.connect_to(self.update_panel)
+
+        assert self.controller is not None, "PreprocessController not initialized"  # noqa: S101
+
+        # QTimer for plot debouncing (valid use - prevents rapid re-plotting)
         self.plot_timer = QTimer()
         self.plot_timer.setSingleShot(True)
         self.plot_timer.timeout.connect(self.plot_sample_data)

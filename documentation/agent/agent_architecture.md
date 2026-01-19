@@ -200,85 +200,47 @@ graph TD
 
 ### 3.3 UI 刷新機制 (UI Refresh Mechanism)
 
-**核心原則**: Agent/Tool **不直接操作 UI**。
-UI 刷新由 **Backend (Study)** 的狀態變更信號觸發。
+**核心原則**: Agent/Tool **不直接操作 UI**。UI 刷新由 **Observer Bridge** 觸發。
+
+我們採用 **"Pure Python Observer + Qt Signal Bridge"** 的設計，結合了 Push Model 的即時性與 Decoupling 的優勢。
 
 ```text
-┌──────────────┐
-│   Tool Call  │  執行: study.load_dataset(...)
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ Study Object │  修改內部狀態 (self.raw_data = ...)
-│  (Backend)   │
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ Emit Signal  │  發出: study.data_changed.emit()
-└──────┬───────┘
-       ↓
-┌──────────────┐
-│ UI Listener  │  接收 Signal → 刷新數據列表/圖表
-│ (MainWindow) │
-└──────────────┘
+┌──────────────┐                        ┌──────────────┐
+│  Agent Tool  │ exec: import_files()   │   Backend    │ notify("data_changed")
+│  (Worker Th) ├───────────────────────►│ (Observable) ├───────────┐
+└──────────────┘                        └──────────────┘           │
+                                                                   │ Background Thread
+                                                                   ▼
+┌──────────────┐                        ┌──────────────┐    ┌──────────────┐
+│ UI Panel     │ update_panel()         │   QtBridge   │◄───┤ _on_event()  │
+│ (Main Thread)│◄───────────────────────┤ (Qt Signal)  │    │              │
+└──────────────┘    QueuedConnection    └──────────────┘    └──────────────┘
 ```
 
 ### 3.2 實現方式
 
-#### Qt Signal/Slot 機制
+1. **Backend (純 Python)**:
+   - 使用 `XBrainLab.backend.utils.observer.Observable`。
+   - 不依賴 PyQt。
+   ```python
+   class DatasetController(Observable):
+       def import_files(self, paths):
+           # ... data loading ...
+           self.notify("data_changed")
+   ```
 
-**Study 發出信號**:
-```python
-# XBrainLab/backend/study.py
-from PyQt6.QtCore import QObject, pyqtSignal
+2. **Bridge (PyQt)**:
+   - `XBrainLab.ui.utils.observer_bridge.QtObserverBridge`。
+   - 負責將 Python Event 轉為 Qt Signal，並處理跨執行緒通信。
 
-class Study(QObject):
-    # 定義信號
-    data_loaded = pyqtSignal(str)      # 數據載入完成
-    data_modified = pyqtSignal(str)    # 數據修改 (濾波、切分等)
-    training_started = pyqtSignal()    # 訓練開始
-    training_finished = pyqtSignal(dict) # 訓練完成，傳遞結果
+3. **UI (PyQt)**:
+   - 在 `DatasetPanel` 中連接 Bridge。
+   ```python
+   self.bridge = QtObserverBridge(self.controller, "data_changed", self)
+   self.bridge.connect_to(self.update_panel)
+   ```
 
-    def load_dataset(self, path):
-        # 執行載入邏輯
-        self.raw_data = load_gdf(path)
-        # 發出信號
-        self.data_loaded.emit(f"Loaded {path}")
-```
-
-**UI 連接信號**:
-```python
-# XBrainLab/ui/main_window.py
-class MainWindow(QMainWindow):
-    def __init__(self, study):
-        super().__init__()
-        self.study = study
-
-        # 連接 Backend 信號到 UI 槽函數
-        self.study.data_loaded.connect(self.on_data_loaded)
-        self.study.data_modified.connect(self.on_data_modified)
-        self.study.training_finished.connect(self.on_training_finished)
-
-    def on_data_loaded(self, message):
-        # 刷新數據列表
-        self.update_dataset_list()
-        # 更新狀態欄
-        self.statusBar().showMessage(message)
-
-    def on_data_modified(self, message):
-        # 刷新圖表
-        self.plot_widget.refresh()
-```
-
-**Tool 只負責調用**:
-```python
-# XBrainLab/llm/tools/dataset_tools.py
-class LoadDatasetTool(BaseTool):
-    def execute(self, study, path):
-        # 只調用 Backend 方法，不管 UI
-        study.load_dataset(path)
-        return f"Dataset loaded from {path}"
-```
+此機制確保了 Agent 在後台執行緒操作時，UI 能夠在主執行緒安全且即時地更新。
 
 ### 3.4 Controller 訊號同步機制 (Controller Signal Synchronization)
 為了支援 Agent 操作後導致的 UI 更新，`DatasetController` 繼承自 `QObject` 並發出以下信號：

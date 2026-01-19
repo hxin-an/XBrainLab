@@ -1,5 +1,10 @@
 from copy import deepcopy
 
+from .controller.dataset_controller import DatasetController
+from .controller.evaluation_controller import EvaluationController
+from .controller.preprocess_controller import PreprocessController
+from .controller.training_controller import TrainingController
+from .controller.visualization_controller import VisualizationController
 from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
 from .load_data import Raw, RawDataLoader
 from .preprocessor import PreprocessBase
@@ -52,7 +57,33 @@ class Study:
         self.backup_loaded_data_list: list[Raw] | None = (
             None  # Backup for undoing channel selection
         )
+
+        # Controller cache for singleton-like access
+        # This ensures all facades and UI panels use the same controller instances
+        self._controllers: dict = {}
+
         logger.info("Study initialized")
+
+    def get_controller(self, controller_type: str):
+        """Get or create a cached controller instance.
+
+        This ensures all components (LLM tools, UI panels) share the same
+        controller instances, enabling the Observable pattern to work correctly.
+        """
+        if controller_type not in self._controllers:
+            if controller_type == "dataset":
+                self._controllers[controller_type] = DatasetController(self)
+            elif controller_type == "preprocess":
+                self._controllers[controller_type] = PreprocessController(self)
+            elif controller_type == "training":
+                self._controllers[controller_type] = TrainingController(self)
+            elif controller_type == "evaluation":
+                self._controllers[controller_type] = EvaluationController(self)
+            elif controller_type == "visualization":
+                self._controllers[controller_type] = VisualizationController(self)
+            else:
+                raise ValueError(f"Unknown controller type: {controller_type}")
+        return self._controllers[controller_type]
 
     # step 1 - load data
     def get_raw_data_loader(self) -> RawDataLoader:

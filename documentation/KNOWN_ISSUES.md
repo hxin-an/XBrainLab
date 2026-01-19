@@ -46,6 +46,79 @@
 
 ---
 
+## 高優先級 - 進行中工作 (In-Progress Work)
+
+### Push Model to Pull Model Migration (推送模型遷移) ✅ COMPLETED
+**問題**：架構文檔描述 Backend 應使用 Push Model (Signal 機制)，但實際開發中途暫停
+
+**解決方案 (v0.5.1)**：
+- 所有 Backend Controller 已遷移至 `Observable` 模式
+    - `PreprocessController`, `TrainingController`, `VisualizationController`, `EvaluationController`
+- UI Panels 使用 `QtObserverBridge` 自動訂閱事件
+    - `PreprocessPanel` → `preprocess_changed`
+    - `TrainingPanel` → `training_started`, `training_stopped`, `config_changed`
+- QTimer 保留用於：Plot 去抖動、Training 進度輪詢（非狀態輪詢）
+
+**狀態**：✅ 已完成 (2026-01-19)
+
+---
+
+### Real Tool Call Verification (真實工具呼叫驗證)
+**問題**：Real Tools 單元測試已通過，但**尚未在實際 LLM Agent 對話中驗證**
+
+**具體狀況**：
+- `tests/unit/llm/tools/real/` 測試全部通過 (19/19)
+- 未執行 `poetry run benchmark-llm` 進行端對端驗證
+- Agent 在實際對話流程中呼叫 Backend 的行為未確認
+
+**影響**：無法保證 Agent 能正確調用後端功能完成使用者任務
+
+**建議**：
+1. 執行 `benchmark-llm` 並確保核心 Happy Path 測試通過
+2. 手動測試關鍵對話流程（Load → Preprocess → Train）
+
+**狀態**：待驗證 (ROADMAP Track B Phase 4)
+
+---
+
+### Agent Tool Call Outstanding Features (Agent 工具呼叫待完成功能)
+**問題**：Agent 的 Tool Call 機制尚有未完成的功能與優化
+
+**具體項目**：
+1. **Tool Output Visibility**: Tool 執行結果在 Chat 中的顯示方式可再優化
+2. **Error Recovery**: Tool 執行失敗時的恢復機制不夠健壯
+3. **Parameter Validation**: 部分工具的參數驗證可加強
+
+**影響**：使用者體驗不佳，可能遇到難以理解的錯誤訊息
+
+**狀態**：待優化 (ROADMAP Track B)
+
+---
+
+### Chat Panel Development Status (Chat Panel 開發狀態)
+**問題**：Chat Panel UI 已完成 Copilot 風格重設計，但仍有待優化項目
+
+**已完成**：
+- [x] MessageBubble 類別封裝
+- [x] 85% 寬度上限與動態調整
+- [x] 串流支援與去除尾行空白
+- [x] QToolButton 置中發送按鈕
+- [x] 無邊框下拉選單
+- [x] **模組拆分 (v0.5.1)**: 已將 `chat_panel.py` 拆分至 `ui/chat/` 目錄
+- [x] **LLM→Panel Pipeline 驗證 (v0.5.1)**: 信號流程已驗證正確
+- [x] **Tool Call 顯示 (v0.5.1)**: 統一在 Status Bar 顯示，保持 Chat 簡潔
+
+**待優化**：
+- [ ] Markdown 渲染支援
+- [ ] Code Block 語法高亮
+- [ ] 圖片/附件顯示
+- [ ] 訊息編輯/刪除功能
+- [ ] 對話歷史持久化
+
+**狀態**：MVP 完成，進階功能待開發
+
+---
+
 ## 中優先級 - 代碼質量
 
 ### Error Handling Issues (錯誤處理問題)
@@ -109,7 +182,8 @@ except PermissionError as e:
 
 **建議**：更新 `agent_architecture.md` 第 3.2 節以反映實際的輪詢機制
 
-**狀態**：待更新文檔（可立即修復）
+**狀態**：
+- [x] **已修復 (v0.5.0)**: 架構演進為 **Observer Bridge** 模式。Backend 使用純 Python `Observable`，UI 使用 `QtObserverBridge` 轉發信號。這實現了文檔描述的 "Push Model" 精神，同時保持了 Backend 解耦。`ADR-004` 已更新。
 
 ---
 
@@ -314,3 +388,6 @@ except PermissionError as e:
 - **限制**: `BackendFacade` 雖然涵蓋了大多數 Controller 功能，但部分邊緣功能 (如複雜的 `ChannelSelection` 回滾邏輯、特定的 Plotting 參數) 尚未暴露。
 - **妥協**: 只暴露 Agent `tool_definitions.md` 中定義的核心功能。
 - **影響**: Agent 無法執行 UI 上某些進階操作。
+
+顯示有問題有時侯不會顯示所有字 而是要透過拉寬拉短才會顯示所有字
+LOAD DATA 有成功 LOAD 但需要切換 PANEL 才會顯示

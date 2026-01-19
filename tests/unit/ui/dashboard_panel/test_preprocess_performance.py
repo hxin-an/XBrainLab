@@ -1,6 +1,8 @@
 import contextlib
 from unittest.mock import MagicMock
 
+from PyQt6.QtWidgets import QWidget
+
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
 
 
@@ -8,10 +10,14 @@ def test_slider_debouncing(qtbot):
     """Test that slider changes are debounced."""
     # Mock parent and study
     mock_parent = MagicMock()
+    # Mock parent and study
+    mock_parent = QWidget()
     mock_parent.study = MagicMock()
+    mock_ctrl = MagicMock()
+    mock_ctrl.get_preprocessed_data_list.return_value = []
+    mock_parent.study.get_controller.return_value = mock_ctrl
 
-    panel = PreprocessPanel(None)
-    panel.main_window = mock_parent
+    panel = PreprocessPanel(mock_parent)
     qtbot.addWidget(panel)
 
     # Mock the plot method and reconnect signal
@@ -37,12 +43,13 @@ def test_slider_debouncing(qtbot):
 
 def test_spinbox_debouncing(qtbot):
     """Test that spinbox changes are debounced."""
-    mock_parent = MagicMock()
+    mock_parent = QWidget()
     mock_parent.study = MagicMock()
+    mock_ctrl = MagicMock()
+    mock_ctrl.get_preprocessed_data_list.return_value = []
+    mock_parent.study.get_controller.return_value = mock_ctrl
 
-    panel = PreprocessPanel(None)
-    panel.main_window = mock_parent
-    qtbot.addWidget(panel)
+    panel = PreprocessPanel(mock_parent)
 
     panel.plot_sample_data = MagicMock()
     with contextlib.suppress(TypeError):

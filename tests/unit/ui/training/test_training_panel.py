@@ -19,15 +19,20 @@ def mock_main_window(qtbot):
 
 
 @pytest.fixture
-def mock_controller():
-    # Patch the TrainingController class in the panel module
-    with patch("XBrainLab.ui.training.panel.TrainingController") as MockController:
-        instance = MockController.return_value
-        instance.is_training.return_value = False
-        instance.has_datasets.return_value = True
-        instance.get_trainer.return_value = None
-        instance.validate_ready.return_value = True
-        yield instance
+def mock_controller(mock_main_window):
+    """
+    Create a mock controller and ensure Study returns it.
+    """
+    controller = MagicMock()
+    controller.is_training.return_value = False
+    controller.has_datasets.return_value = True
+    controller.get_trainer.return_value = None
+    controller.validate_ready.return_value = True
+
+    # Configure study logic
+    # When panel calls get_controller, return this mock
+    mock_main_window.study.get_controller.return_value = controller
+    return controller
 
 
 def test_training_panel_init_controller(mock_main_window, mock_controller, qtbot):
@@ -35,12 +40,7 @@ def test_training_panel_init_controller(mock_main_window, mock_controller, qtbot
     panel = TrainingPanel(mock_main_window)
     qtbot.addWidget(panel)
     assert hasattr(panel, "controller")
-    # Since we patched the class, panel.controller should be our mock instance
-    # (or rather, the return value of the mocked constructor)
-    # verify constructor was called
-    # MockController constructor returns mock_controller
     assert panel.controller == mock_controller
-
     panel.close()
 
 
@@ -63,7 +63,9 @@ def test_training_panel_start_training_success(
 
     # Trigger Start Training
     # Simulate state change: Not training -> Start called -> Training
-    mock_controller.is_training.side_effect = [False, True]
+    # Providing plenty of True values to avoid StopIteration during
+    # subsequent UI updates
+    mock_controller.is_training.side_effect = [False] + [True] * 50
 
     with (
         patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
@@ -139,7 +141,7 @@ def test_training_panel_update_loop_metrics(mock_main_window, mock_controller, q
     # Mock Controller.is_training to True
     mock_controller.is_training.return_value = True
 
-    # Mock get_formatted_history
+    # TODO: Implement update loop metrics logic
 
 
 def test_training_panel_check_ready(mock_main_window, mock_controller, qtbot):

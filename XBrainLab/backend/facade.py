@@ -2,11 +2,6 @@ import os
 
 import torch
 
-from XBrainLab.backend.controller.dataset_controller import DatasetController
-from XBrainLab.backend.controller.evaluation_controller import EvaluationController
-from XBrainLab.backend.controller.preprocess_controller import PreprocessController
-from XBrainLab.backend.controller.training_controller import TrainingController
-
 # Imports for constructing backend objects from primitives
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -39,10 +34,12 @@ class BackendFacade:
              study: Optional existing Study instance. If None, creates a new one.
         """
         self.study = study if study is not None else Study()
-        self.dataset = DatasetController(self.study)
-        self.preprocess = PreprocessController(self.study)
-        self.training = TrainingController(self.study)
-        self.evaluation = EvaluationController(self.study)
+        # Use Study's cached controllers for singleton-like access
+        # This ensures all components share the same controller instances
+        self.dataset = self.study.get_controller("dataset")
+        self.preprocess = self.study.get_controller("preprocess")
+        self.training = self.study.get_controller("training")
+        self.evaluation = self.study.get_controller("evaluation")
 
     # --- Dataset Operations ---
     def load_data(self, filepaths: list[str]) -> tuple[int, list[str]]:

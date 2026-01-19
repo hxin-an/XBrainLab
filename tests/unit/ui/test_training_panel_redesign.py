@@ -29,6 +29,9 @@ def test_training_panel_layout(qtbot):
             self.epoch_data = None
             self.datasets = []  # Added for controller validation
 
+        def get_controller(self, name):
+            return MagicMock()
+
     mock_study = DummyStudy()
 
     class DummyMainWindow(QWidget):
@@ -117,6 +120,9 @@ def test_update_summary_with_split_info(qtbot):
             self.preprocessed_data_list = []
             self.epoch_data = None
             self.datasets = []
+
+        def get_controller(self, name):
+            return MagicMock()
 
     mock_study = DummyStudy()
 

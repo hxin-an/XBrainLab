@@ -1,14 +1,19 @@
 from XBrainLab.backend import preprocessor
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.backend.utils.observer import Observable
 
 
-class PreprocessController:
+class PreprocessController(Observable):
     """
     Controller for managing preprocessing operations.
     Handles Filtering, Resampling, Re-referencing, Normalization, and Epoching.
+
+    Events:
+        - preprocess_changed: Emitted when preprocessing state changes
     """
 
     def __init__(self, study):
+        Observable.__init__(self)
         self.study = study
 
     def get_preprocessed_data_list(self):
@@ -18,6 +23,7 @@ class PreprocessController:
     def reset_preprocess(self):
         """Resets all preprocessing to raw state."""
         self.study.reset_preprocess(force_update=True)
+        self.notify("preprocess_changed")
 
     def is_epoched(self):
         """Checks if the data is currently epoched."""
@@ -49,6 +55,7 @@ class PreprocessController:
         try:
             result = processor.data_preprocess(*args, **kwargs)
             self.study.set_preprocessed_data_list(result)
+            self.notify("preprocess_changed")
         except Exception as e:
             logger.error(f"Preprocessing failed: {e}")
             raise e

@@ -3,6 +3,7 @@ import sys
 from unittest.mock import MagicMock
 
 import pytest
+import torch
 from PyQt6.QtCore import Qt
 
 # Ensure XBrainLab is in path
@@ -27,6 +28,17 @@ def mock_study():
     mock_plan.model_holder.target_model.__name__ = "TestModel"
     mock_plan.record = {"test_acc": 0.85, "val_acc": 0.80, "train_acc": 0.90}
     mock_plan.get_plans.return_value = []
+
+    # Configure plan properties needed by EvaluationController.get_model_summary_str
+    mock_plan.dataset.get_training_data.return_value = (
+        torch.randn(4, 1, 20, 100),
+        None,
+    )
+    mock_plan.dataset.get_epoch_data().get_model_args.return_value = {}
+    mock_plan.model_holder.get_model.return_value = MagicMock()
+    mock_plan.option.bs = 4
+    mock_plan.option.get_device.return_value = "cpu"
+
     study.trainer.get_training_plan_holders.return_value = [mock_plan]
 
     # Mock epoch data
@@ -39,6 +51,18 @@ def mock_study():
     # Mock lists to be empty by default to comply with InfoPanel logic
     study.loaded_data_list = []
     study.preprocessed_data_list = []
+
+    # Configure shared mock controller behavior
+    mock_ctrl = MagicMock()
+    mock_ctrl.get_loaded_data_list.return_value = []
+    mock_ctrl.get_preprocessed_data_list.return_value = []
+    mock_ctrl.get_plans.return_value = []
+    mock_ctrl.has_datasets.return_value = False
+    mock_ctrl.has_model.return_value = False
+    mock_ctrl.has_training_option.return_value = False
+    mock_ctrl.validate_ready.return_value = False  # Should be False if empty
+
+    study.get_controller.return_value = mock_ctrl
 
     return study
 

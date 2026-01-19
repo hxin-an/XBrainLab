@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.controller.evaluation_controller import EvaluationController
 from XBrainLab.backend.training.record import EvalRecord
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
 from XBrainLab.ui.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -24,7 +23,7 @@ class EvaluationPanel(QWidget):
         self.main_window = main_window
         # self.study = main_window.study # Decoupled
 
-        self.controller = EvaluationController(main_window.study)
+        self.controller = main_window.study.get_controller("evaluation")
         self.init_ui()
 
     def update_panel(self):

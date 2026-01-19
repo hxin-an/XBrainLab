@@ -2,18 +2,13 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QWidget
 
 # Import the module under test
 from XBrainLab.ui.dashboard_panel.preprocess import NormalizeDialog, PreprocessPanel
 
 
 class TestNormalizeDialog(unittest.TestCase):
-    def setUp(self):
-        # We need a qapp instance for widgets
-        if not QApplication.instance():
-            self.app = QApplication(sys.argv)
-
     def test_dialog_params(self):
         dialog = NormalizeDialog(None)
 
@@ -27,25 +22,23 @@ class TestNormalizeDialog(unittest.TestCase):
         dialog.accept()
         self.assertEqual(dialog.get_params(), "minmax")
 
-
-class TestPreprocessPanelNormalize(unittest.TestCase):
-    # Patch module where PreprocessController is imported in PreprocessPanel
-    # It seems to be 'XBrainLab.ui.dashboard_panel.preprocess.PreprocessController'
-    @patch("XBrainLab.ui.dashboard_panel.preprocess.PreprocessController")
-    def setUp(self, MockController):
+    def setUp(self):
         if not QApplication.instance():
             self.app = QApplication(sys.argv)
 
-        self.mock_controller = MockController.return_value
+        self.mock_controller = MagicMock()
         self.mock_controller.has_data.return_value = True
         self.mock_controller.is_locked.return_value = False
         self.mock_controller.is_epoched.return_value = False  # Crucial for check_lock
+        self.mock_controller.get_preprocessed_data_list.return_value = []
+
+        self.mock_window = QWidget()
+        self.mock_window.study = MagicMock()
+        self.mock_window.refresh_panels = MagicMock()
+        self.mock_window.study.get_controller.return_value = self.mock_controller
 
         # Create panel
-        self.panel = PreprocessPanel()
-        # Inject controller
-        self.panel.controller = self.mock_controller
-        self.panel.main_window = MagicMock()
+        self.panel = PreprocessPanel(self.mock_window)
 
     @patch("XBrainLab.ui.dashboard_panel.preprocess.NormalizeDialog")
     @patch("XBrainLab.ui.dashboard_panel.preprocess.QMessageBox")

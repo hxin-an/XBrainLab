@@ -1,18 +1,29 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 from torchinfo import summary
 
-from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record import EvalRecord, TrainRecord
+from XBrainLab.backend.utils.observer import Observable
+
+if TYPE_CHECKING:
+    from XBrainLab.backend.study import Study
 
 
-class EvaluationController:
+class EvaluationController(Observable):
     """
     Controller for handling evaluation data retrieval and processing.
     Decouples UI from direct Study/Backend manipulation.
+
+    Events:
+        - evaluation_updated: Emitted when evaluation data changes
     """
 
     def __init__(self, study: Study):
+        Observable.__init__(self)
         self._study = study
 
     def get_plans(self) -> list[TrainingPlanHolder]:

@@ -21,25 +21,38 @@ def mock_main_window(qapp):
 
 
 @pytest.fixture
-def mock_controller():
-    with patch(
-        "XBrainLab.ui.dashboard_panel.dataset.DatasetController"
-    ) as MockController:
-        instance = MockController.return_value
-        instance.is_locked.return_value = False
-        instance.has_data.return_value = False
-        instance.get_loaded_data_list.return_value = []
-        yield instance
+def mock_controller(mock_main_window):
+    controller = MagicMock()
+    controller.is_locked.return_value = False
+    controller.has_data.return_value = False
+    controller.get_loaded_data_list.return_value = []
+
+    # Configure Study to return this controller
+    mock_main_window.study.get_controller.return_value = controller
+    return controller
 
 
 def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
-    # Alternative: Create a real QMainWindow for parent
+    # Create a REAL QMainWindow to serve as parent
     real_window = QMainWindow()
-    real_window.study = MagicMock()
+    # Attach the mock study from our fixture to this real window
+    # Note: DatasetPanel accesses self.main_window.study if passed main_window
+    # or parent().study if passed parent.
+    # Let's verify standard pattern: usually parent() -> main_window
+
+    real_window.study = mock_main_window.study
 
     panel = DatasetPanel(real_window)
     qtbot.addWidget(panel)
+
+    # Check if controller was instantiated and is our mock
+    assert hasattr(panel, "controller")
+    assert panel.controller == mock_controller
+
+    # Clean up
+    panel.close()
+    real_window.close()
 
     # Check if controller was instantiated
     assert hasattr(panel, "controller")

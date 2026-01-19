@@ -13,9 +13,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.controller.visualization_controller import (
-    VisualizationController,
-)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.dashboard_panel.info import AggregateInfoPanel
@@ -38,7 +35,7 @@ class VisualizationPanel(QWidget):
         super().__init__()
         self.main_window = main_window
         # self.study = main_window.study # Decoupled
-        self.controller = VisualizationController(main_window.study)
+        self.controller = main_window.study.get_controller("visualization")
         self.trainer_map = {}
         self.friendly_map = {}
 

@@ -22,10 +22,12 @@ class CommandParser:
         or just the JSON object.
         """
         try:
-            # 1. Try to find JSON code block
-            match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
+            # 1. Try to find JSON code block (relaxed)
+            # Matches ```json, ```JSON, or just ```
+            match = re.search(r"```(json|JSON)?\s*(\{.*?\})\s*```", text, re.DOTALL)
             if match:
-                json_str = match.group(1)
+                # Group 2 captures the JSON content because Group 1 is (json|JSON)?
+                json_str = match.group(2)
             else:
                 # 2. Try to find raw JSON object if no code block
                 # This is a simple heuristic: find first { and last }

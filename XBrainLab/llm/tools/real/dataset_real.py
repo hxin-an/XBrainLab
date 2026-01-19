@@ -43,6 +43,26 @@ class RealLoadDataTool(BaseLoadDataTool):
         if not paths:
             return "Error: paths list cannot be empty."
 
+        # Auto-expand directories
+        expanded_paths = []
+        for p in paths:
+            if os.path.isdir(p):
+                # If directory, list all files
+                try:
+                    for f in os.listdir(p):
+                        full_path = os.path.join(p, f)
+                        if os.path.isfile(full_path):
+                            expanded_paths.append(full_path)
+                except Exception as e:
+                    return f"Error scanning directory {p}: {e}"
+            else:
+                expanded_paths.append(p)
+
+        if not expanded_paths:
+            return "Error: No valid files found in provided paths."
+
+        paths = expanded_paths
+
         # Use Facade to handle standard loading logic
         facade = BackendFacade(study)
         count, errors = facade.load_data(paths)

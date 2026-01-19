@@ -17,14 +17,13 @@ class TestTrainingPanelLock(unittest.TestCase):
 
     # Patch modules referenced during Panel init
     @patch("XBrainLab.ui.training.panel.AggregateInfoPanel")
-    @patch("XBrainLab.ui.training.panel.TrainingController")
-    def setUp(self, MockController, MockInfoPanel):
+    def setUp(self, MockInfoPanel):
         # Info Panel Mock
         fake_panel = QGroupBox()
         MockInfoPanel.return_value = fake_panel
 
         # Controller Mock
-        self.mock_controller = MockController.return_value
+        self.mock_controller = MagicMock()
         self.mock_controller.is_training.return_value = False
 
         # Default state: Not ready
@@ -40,15 +39,9 @@ class TestTrainingPanelLock(unittest.TestCase):
         # Mock Window
         self.mock_window = QWidget()
         self.mock_window.study = MagicMock()
+        self.mock_window.study.get_controller.return_value = self.mock_controller
 
         self.panel = TrainingPanel(self.mock_window)
-        # Manually attach the mock controller if needed (though init
-        # uses the class mock)
-        # panel.controller is already our mock_controller thanks to
-        # patch.start logic if used,
-        # but here we use arg injection which patches the CLASS.
-        # So panel.controller = MockController() returns self.mock_controller.
-        self.panel.controller = self.mock_controller
 
     def test_start_button_locked_initially(self):
         # Initially, no config

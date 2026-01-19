@@ -90,6 +90,14 @@ class MockStudy:
         self.loaded_data_list = []
         self.preprocessed_data_list = []
 
+    def get_controller(self, name):
+        if name == "evaluation":
+            controller = MagicMock()
+            controller.get_plans.return_value = self.trainer.get_training_plan_holders()
+            controller.get_model_summary_str.return_value = "Mock Summary"
+            return controller
+        return MagicMock()
+
 
 class MockMainWindow(QWidget):
     def __init__(self):

@@ -112,10 +112,8 @@ def test_visualization_panel_set_montage(mock_main_window, qtbot):
 
         panel.set_montage()
 
-        # Verify study updated
-        mock_main_window.study.set_channels.assert_called_with(
-            ["Ch1"], {"Ch1": [0, 0, 0]}
-        )
+        # Verify controller updated
+        panel.controller.set_montage.assert_called_with(["Ch1"], {"Ch1": [0, 0, 0]})
         mock_info.assert_called_once()
 
 
@@ -134,7 +132,7 @@ def test_visualization_panel_set_saliency(mock_main_window, qtbot):
 
         panel.set_saliency()
 
-        mock_main_window.study.set_saliency_params.assert_called_with({"param": 1})
+        panel.controller.set_saliency_params.assert_called_with({"param": 1})
         mock_info.assert_called_once()
 
 

@@ -1,17 +1,29 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 
-from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record.eval import EvalRecord
+from XBrainLab.backend.utils.observer import Observable
+
+if TYPE_CHECKING:
+    from XBrainLab.backend.study import Study
 
 
-class VisualizationController:
+class VisualizationController(Observable):
     """
     Controller for handling visualization operations and data retrieval.
     Decouples UI from direct Study/Backend manipulation.
+
+    Events:
+        - montage_changed: Emitted when channel montage is updated
+        - saliency_changed: Emitted when saliency parameters change
     """
 
     def __init__(self, study: Study):
+        Observable.__init__(self)
         self._study = study
 
     def get_trainers(self) -> list[TrainingPlanHolder]:
@@ -25,6 +37,7 @@ class VisualizationController:
     ) -> None:
         """Set channel montage in Study."""
         self._study.set_channels(chs, positions)
+        self.notify("montage_changed")
 
     def has_epoch_data(self) -> bool:
         """Check if epoch data is loaded."""
@@ -43,6 +56,7 @@ class VisualizationController:
     def set_saliency_params(self, params: dict) -> None:
         """Set saliency parameters in Study."""
         self._study.set_saliency_params(params)
+        self.notify("saliency_changed")
 
     def get_averaged_record(
         self, trainer_holder: TrainingPlanHolder

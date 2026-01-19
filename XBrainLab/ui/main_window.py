@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.ui.chat_panel import ChatPanel
+from XBrainLab.ui.chat import ChatPanel
 from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
 from XBrainLab.ui.evaluation.panel import EvaluationPanel
@@ -334,14 +334,25 @@ Training, etc.).
             lambda sender, text: self.chat_panel.append_message(sender, text)
         )
         self.agent_controller.chunk_received.connect(self.chat_panel.on_chunk_received)
-        self.agent_controller.status_update.connect(self.chat_panel.set_status)
+
+        # Connect Status Update to MainWindow Status Bar & Chat State
+        self.agent_controller.status_update.connect(self.on_agent_status_update)
+
         self.agent_controller.error_occurred.connect(self.handle_agent_error)
         self.agent_controller.request_user_interaction.connect(
             self.handle_user_interaction
         )
         self.agent_controller.generation_started.connect(
-            self.chat_panel.start_agent_message
+            lambda: (
+                self.chat_panel.set_processing_state(True),
+                self.chat_panel.start_agent_message(),
+            )
         )
+        # Note: remove_content signal no longer needed (showing final responses only)
+
+        # New Controls
+        self.chat_panel.stop_generation.connect(self.agent_controller.stop_generation)
+        self.chat_panel.model_changed.connect(self.agent_controller.set_model)
 
         # Initialize
 
@@ -395,12 +406,54 @@ Training, etc.).
         if command == "confirm_montage":
             # Open Montage Picker
             self.open_montage_picker_dialog(params)
+        elif command == "switch_panel":
+            panel_name = params.get("panel", "").lower()
+            # Map panel name to index or button
+            # 0: Dataset, 1: Preprocess, 2: Training, 3: Evaluation, 4: Visualization
+            # nav_btns order matches stack order?
+            # MainWindow init_panels:
+            # self.nav_btns.append(btn)
+            # self.stack.addWidget(panel)
+            # Order is typically consistent.
+
+            target_index = -1
+            if "dataset" in panel_name:
+                target_index = 0
+            elif "preprocess" in panel_name:
+                target_index = 1
+            elif "training" in panel_name:
+                target_index = 2
+            elif "eval" in panel_name:
+                target_index = 3
+            elif "visual" in panel_name:
+                target_index = 4
+
+            if target_index >= 0:
+                self.stack.setCurrentIndex(target_index)
+                # Update button state
+                if target_index < len(self.nav_btns):
+                    self.nav_btns[target_index].setChecked(True)
+
+                # Status Bar only - don't clutter chat
+                sb = self.statusBar()
+                if sb:
+                    sb.showMessage(f"Switched to {panel_name}")
+                self.agent_controller.handle_user_input(
+                    f"Result: Switched to {panel_name}"
+                )
+            else:
+                sb = self.statusBar()
+                if sb:
+                    sb.showMessage(f"Error: Unknown panel '{panel_name}'")
+                self.agent_controller.handle_user_input(
+                    f"Error: Could not switch to {panel_name}"
+                )
 
     def open_montage_picker_dialog(self, params):
         if not self.study.epoch_data:
-            self.chat_panel.append_message(
-                "System", "Error: No epoch data available for montage."
-            )
+            sb = self.statusBar()
+            if sb:
+                sb.showMessage("Error: No epoch data available for montage.")
             return
 
         # Get channel names from backend
@@ -413,24 +466,34 @@ Training, etc.).
             if chs and positions is not None:
                 self.study.set_channels(chs, positions)
 
-                # Resume Agent
-                self.chat_panel.append_message("User", "Montage Confirmed.")
+                # Resume Agent - this IS a user action so show in chat
+                self.chat_panel.add_message("Montage Confirmed.", is_user=True)
                 self.agent_controller.handle_user_input("Montage Confirmed.")
             else:
-                self.chat_panel.append_message(
-                    "System", "Error: No valid montage configuration returned."
-                )
+                sb = self.statusBar()
+                if sb:
+                    sb.showMessage("Error: No valid montage configuration")
                 self.agent_controller.handle_user_input("Montage Selection Failed.")
         else:
-            # User Cancelled
-            self.chat_panel.append_message("User", "Operation Cancelled.")
+            # User Cancelled - this IS a user action so show in chat
+            self.chat_panel.add_message("Operation Cancelled.", is_user=True)
             self.agent_controller.handle_user_input(
                 "Montage Selection Cancelled by User."
             )
 
+    def on_agent_status_update(self, msg):
+        """Updates Status Bar and Chat Panel state."""
+        sb = self.statusBar()
+        if sb:
+            sb.showMessage(msg)
+        if "Ready" in msg or "Error" in msg or "Stopping" in msg:
+            # Ensure UI knows we are done
+            self.chat_panel.set_processing_state(False)
+
     def handle_agent_error(self, error_msg):
         self.chat_panel.set_status("Error")
-        self.chat_panel.append_message("System", f"Error: {error_msg}")
+        # Errors should still be visible in chat for debugging
+        self.chat_panel.add_message(f"❌ Error: {error_msg}", is_user=False)
         logger.error(f"Agent Error: {error_msg}")
 
     def closeEvent(self, event):  # noqa: N802

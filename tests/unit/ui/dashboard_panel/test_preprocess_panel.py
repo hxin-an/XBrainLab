@@ -20,26 +20,26 @@ def mock_main_window(qapp):
 
 
 @pytest.fixture
-def mock_controller():
-    with patch(
-        "XBrainLab.ui.dashboard_panel.preprocess.PreprocessController"
-    ) as MockController:
-        instance = MockController.return_value
-        instance.is_epoched.return_value = False
-        instance.has_data.return_value = True
-        instance.get_preprocessed_data_list.return_value = []
-        yield instance
+def mock_controller(mock_main_window):
+    controller = MagicMock()
+    controller.is_epoched.return_value = False
+    controller.has_data.return_value = True
+    controller.get_preprocessed_data_list.return_value = []
+
+    mock_main_window.study.get_controller.return_value = controller
+    return controller
 
 
 def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
     # Use real objects for inheritance check
     real_window = QMainWindow()
-    real_window.study = MagicMock()
+    real_window.study = mock_main_window.study
 
     panel = PreprocessPanel(real_window)
     qtbot.addWidget(panel)
     assert hasattr(panel, "controller")
+    assert panel.controller == mock_controller
 
     panel.close()
     real_window.close()
@@ -48,9 +48,13 @@ def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtb
 def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
     """Test filtering delegates to controller."""
     mock_controller.has_data.return_value = True
-    panel = PreprocessPanel(None)
-    panel.main_window = mock_main_window
-    panel.controller = mock_controller
+
+    # Use real window
+    real_window = QMainWindow()
+    real_window.study = mock_main_window.study
+    real_window.refresh_panels = MagicMock()
+
+    panel = PreprocessPanel(real_window)
     qtbot.addWidget(panel)
 
     with (
@@ -73,13 +77,18 @@ def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
             mock_controller.apply_filter.assert_called_with(1.0, 40.0, 50.0)
             mock_info.assert_called_once()
 
+    real_window.close()
+
 
 def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
     """Test resampling delegates to controller."""
     mock_controller.has_data.return_value = True
-    panel = PreprocessPanel(None)
-    panel.main_window = mock_main_window
-    panel.controller = mock_controller
+    # Use real window
+    real_window = QMainWindow()
+    real_window.study = mock_main_window.study
+    real_window.refresh_panels = MagicMock()
+
+    panel = PreprocessPanel(real_window)
     qtbot.addWidget(panel)
 
     with (
@@ -98,13 +107,18 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
             mock_controller.apply_resample.assert_called_with(256.0)
             mock_info.assert_called_once()
 
+    real_window.close()
+
 
 def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
     """Test epoching delegates to controller."""
     mock_controller.has_data.return_value = True
-    panel = PreprocessPanel(None)
-    panel.main_window = mock_main_window
-    panel.controller = mock_controller
+    # Use real window
+    real_window = QMainWindow()
+    real_window.study = mock_main_window.study
+    real_window.refresh_panels = MagicMock()
+
+    panel = PreprocessPanel(real_window)
     qtbot.addWidget(panel)
 
     with (
@@ -128,13 +142,16 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
             # Should show success message
             mock_info.assert_called_once()
 
+    real_window.close()
+
 
 def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
     """Test reset delegates to controller."""
     mock_controller.has_data.return_value = True
-    panel = PreprocessPanel(None)
-    panel.main_window = mock_main_window
-    panel.controller = mock_controller
+    real_window = QMainWindow()
+    real_window.study = mock_main_window.study
+
+    panel = PreprocessPanel(real_window)
     qtbot.addWidget(panel)
 
     with (
@@ -152,6 +169,8 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
         mock_controller.reset_preprocess.assert_called_once()
         mock_info.assert_called_once()
         mock_info_panel.update_info.assert_called_once()
+
+    real_window.close()
 
 
 if __name__ == "__main__":
