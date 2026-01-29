@@ -25,7 +25,7 @@ class LLMController(QObject):
     remove_content = pyqtSignal(str)  # New signal to hide JSON
 
     # Internal signals to Worker
-    sig_initialize = pyqtSignal()
+    sig_initialize = pyqtSignal()  # Simple signal, no args
     sig_generate = pyqtSignal(list)
 
     def __init__(self, study):
@@ -126,33 +126,42 @@ class LLMController(QObject):
         command_result = CommandParser.parse(response_text)
 
         if command_result:
-            # It's a tool call - don't show anything in chat (or hide what was just
-            # streamed)
-            # Actually, since we streamed it, the user sees JSON.
-            # We emit remove_content signal if we want to collapse it.
-            # But let's stick to simple logic first.
-            command_name, params = command_result
-            self.status_update.emit(f"Executing: {command_name}...")
+            # Handle List of Commands (Multi-Step Support)
+            # Ensure it is a list
+            commands = (
+                command_result if isinstance(command_result, list) else [command_result]
+            )
 
-            # Add the tool call to history (as assistant output)
             self._append_history("assistant", response_text)
 
-            # Execute tool (will loop back to _generate_response)
-            self._execute_tool(command_name, params)
+            for cmd, params in commands:
+                self.status_update.emit(f"Executing: {cmd}...")
+
+                # Execute Tool
+                _success, result = self._execute_tool_no_loop(cmd, params)
+
+                # If special UI Interaction triggered in tool result?
+                # _execute_tool_no_loop handles execution.
+                # We need to handle the result (e.g. Switch UI).
+                self._handle_tool_result_logic(result)
+
+                # Feed result back to History
+                self._append_history("user", f"Tool Output: {result}")
+
+            # After all tools executed, trigger next generation loop
+            self._generate_response()
 
         else:
             # It's the FINAL text response
             self._append_history("assistant", response_text)
-
-            # We already streamed it, so just update status
-            # self.generation_started.emit() # Removed
-            # self.chunk_received.emit(response_text) # Removed
-
             self.status_update.emit("Ready")
             self.is_processing = False
 
-    def _execute_tool(self, command_name, params):
-        """Executes the tool and handles the result."""
+    def _execute_tool_no_loop(self, command_name, params):
+        """
+        Executes tool and returns (success, result_str).
+        Does NOT trigger generation.
+        """
         tool = get_tool_by_name(command_name)
         if tool:
             try:
@@ -160,55 +169,34 @@ class LLMController(QObject):
             except Exception as e:
                 error_msg = f"Tool execution failed: {e}"
                 self.status_update.emit(error_msg)
-                self._append_history("user", f"Tool Error: {error_msg}")
-                self._generate_response()
-                return
+                return False, error_msg
             else:
-                self._handle_tool_result(result)
-                return
-
+                return True, result
         else:
             self.status_update.emit(f"Unknown tool: {command_name}")
-            self._append_history("user", f"Error: Unknown tool '{command_name}'")
-            self._generate_response()
-            return
+            return False, f"Error: Unknown tool '{command_name}'"
 
-    def _handle_tool_result(self, result: str):
-        """Processes tool result and decides next step."""
-        # Check for Human-in-the-loop Request
+    def _handle_tool_result_logic(self, result: str):
+        """Processes tool result for UI side effects (Switch Panel, etc)."""
         if result.startswith("Request:"):
             # Format: "Request: CommandName params"
             cmd_part = result.replace("Request:", "").strip()
 
             if cmd_part.lower().startswith("switch ui to"):
-                # Handle Switch Panel
-                # cmd_part example: "Switch UI to 'training' (View: metrics)"
-                # Simple parsing logic
                 target = cmd_part.replace("Switch UI to", "").strip()
-                # Remove quotes if present
                 if target.startswith(("'", '"')):
-                    # primitive parsing
                     target = (
                         target.split("'")[1] if "'" in target else target.split('"')[1]
                     )
-
                 self.request_user_interaction.emit("switch_panel", {"panel": target})
-                self._append_history("assistant", f"Switching UI to {target}")
+                # We don't append history here, caller does.
                 return
 
-            # Default to Montage Confirmation for other requests (for now)
-            # Emit signal to UI to take over
             self.status_update.emit("Waiting for user interaction...")
             self.request_user_interaction.emit("confirm_montage", {"context": cmd_part})
-
-            # Pause the Agent Loop (do not call _generate_response)
-            # Record that we are waiting?
-            self._append_history("assistant", f"Requested user interaction: {cmd_part}")
             return
 
-        self.status_update.emit(f"Tool Result: {result}")
         if not result.startswith("Request:"):
-            # Only show tool output in chat if it's an error (Less verbosity)
             if (
                 "error" in result.lower()
                 or "exception" in result.lower()
@@ -216,14 +204,11 @@ class LLMController(QObject):
             ):
                 self.response_ready.emit("System", f"Tool Error: {result}")
             else:
-                # Normal success: Silent in chat, but visible in Status Bar (above)
                 pass
 
-        # Feed result back to LLM
-        self._append_history("user", f"Tool Output: {result}")
-
-        # Loop: Generate again
-        self._generate_response()
+    # Deprecated/Removed old _execute_tool and _handle_tool_result to avoid confusion
+    # But for safety, keep _handle_tool_result if referenced elsewhere?
+    # It was internal. I'll replace it completely.
 
     def _on_worker_error(self, error_msg):
         self.error_occurred.emit(error_msg)

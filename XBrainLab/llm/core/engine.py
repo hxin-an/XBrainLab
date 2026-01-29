@@ -79,15 +79,76 @@ class LocalBackend(BaseBackend):
             logger.error(f"Failed to load model: {e}")
             raise e
 
+    def _process_messages_for_template(self, messages: list) -> list:
+        """Process messages for models with strict chat template requirements.
+
+        Handles two issues for models like Gemma:
+        1. No 'system' role support - merges into first user message
+        2. Strict user/assistant alternation - merges consecutive same-role messages
+        """
+        if not messages:
+            return messages
+
+        # Step 1: Extract and remove system messages
+        system_content = None
+        filtered = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_content = msg.get("content", "")
+            else:
+                filtered.append(msg)
+
+        # Step 2: Merge system into first user message
+        if system_content:
+            merged_system = False
+            for i, msg in enumerate(filtered):
+                if msg.get("role") == "user":
+                    filtered[i] = {
+                        "role": "user",
+                        "content": (
+                            f"[Instructions]\n{system_content}\n\n"
+                            f"[Query]\n{msg.get('content', '')}"
+                        ),
+                    }
+                    merged_system = True
+                    break
+            if not merged_system:
+                filtered.insert(
+                    0, {"role": "user", "content": f"[Instructions]\n{system_content}"}
+                )
+
+        # Step 3: Ensure strict user/assistant alternation
+        # Merge consecutive messages with the same role
+        if not filtered:
+            return filtered
+
+        result = [filtered[0]]
+        for msg in filtered[1:]:
+            if msg.get("role") == result[-1].get("role"):
+                # Same role - merge content
+                result[-1] = {
+                    "role": msg.get("role"),
+                    "content": (
+                        f"{result[-1].get('content', '')}\n\n{msg.get('content', '')}"
+                    ),
+                }
+            else:
+                result.append(msg)
+
+        return result
+
     def generate_stream(self, messages: list):
         if not self.is_loaded:
             self.load()
         if self.tokenizer is None or self.model is None:
             raise RuntimeError("Model/Tokenizer not loaded")
 
+        # Handle models that don't support system role (e.g., Gemma)
+        processed_messages = self._process_messages_for_template(messages)
+
         # Apply chat template
         prompt = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            processed_messages, tokenize=False, add_generation_prompt=True
         )
 
         if self.model is None:

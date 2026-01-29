@@ -32,8 +32,8 @@ class AgentWorker(QObject):
     Worker class for AI Agent inference using Local LLM.
     """
 
-    finished = pyqtSignal(list)  # Kept for compatibility, though we stream now
-    chunk_received = pyqtSignal(str)  # New signal for streaming text
+    finished = pyqtSignal(list)
+    chunk_received = pyqtSignal(str)
     error = pyqtSignal(str)
     log = pyqtSignal(str)
 
@@ -45,23 +45,17 @@ class AgentWorker(QObject):
     def initialize_agent(self):
         """Initialize the local LLM engine."""
         if self.engine:
-            return
+            return  # Already initialized
 
         try:
-            logger.info("Initializing Local LLM Engine...")
-            self.log.emit("Loading AI Model (this may take a while)...")
+            logger.info("Initializing LLM Engine...")
+            self.log.emit("Loading AI Model...")
 
-            # Initialize Engine
-            # TODO: Expose model path configuration in UI settings
             config = LLMConfig()
             self.engine = LLMEngine(config)
-
-            # Load model in a separate thread to not freeze UI completely
-            # Force model loading here to validate configuration immediately,
-            # although generation typically handles this lazily.
             self.engine.load_model()
 
-            self.log.emit("AI Model Loaded.")
+            self.log.emit(f"AI Model Loaded: {config.model_name}")
             logger.info("Local Agent initialized successfully")
         except Exception as e:
             logger.error("Failed to initialize Agent", exc_info=True)
@@ -71,10 +65,9 @@ class AgentWorker(QObject):
         """Run generation with full message history."""
         if not self.engine:
             self.initialize_agent()
-            if not self.engine:  # If initialization failed
+            if not self.engine:
                 return
 
-        # Log the last user message for context
         last_msg = messages[-1]
         if last_msg["role"] == "user":
             log_text = (

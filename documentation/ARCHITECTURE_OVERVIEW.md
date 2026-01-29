@@ -1,41 +1,222 @@
 # XBrainLab 架構總覽 (Architecture Overview)
 
-本文檔說明 XBrainLab 的核心架構，特別是 **UI**, **Agent**, 與 **Backend** 三者之間的互動關係。
+本文檔提供 XBrainLab 整體架構的高層次概述。詳細設計與實現請參考各子目錄的專屬文檔。
 
-## 核心概念：雙核心驅動 (Dual-Core Driver)
+## 核心架構原則
 
-XBrainLab 的架構設計允許 **人類使用者 (透過 UI)** 與 **AI Agent (透過 Facade)** 同時操作同一個後端系統，且互不衝突。
+XBrainLab 採用 **雙核心驅動 (Dual-Core Driver)** 設計，允許人類使用者 (透過 UI) 與 AI Agent (透過 Facade) 同時操作系統，確保狀態一致性與高可測試性。
 
-### 1. Backend Layer (後端層) - 唯一的真理
-後端是整個系統的核心，負責資料儲存與邏輯運算。
-*   **特性**：純 Python 實作，完全不依賴圖形介面 (Headless)。
-*   **Study (狀態)**：持有所有載入的資料 (Raw Data) 和訓練模型。它是唯一的「狀態來源」。
-*   **Controllers (邏輯)**：負責具體的操作流程，例如「載入資料」、「開始訓練」。
-*   **Facade (門面)**：專為 Agent 設計的統一入口，簡化了與 Controller 的互動。
+### 主要組件
 
-### 2. UI Layer (介面層) - 被動觀察者
-UI 負責將後端的狀態顯示給人類使用者。
-*   **特性**：被動 (Passive)。它不持有邏輯，只負責顯示。
-*   **拉取模式 (Pull Model)**：UI 不會直接修改畫面。當它發送指令給後端後，它會等待後端通知，然後重新從後端「拉取」最新的資料來刷新畫面。
-*   **觀察者 (Observer)**：UI 訂閱了後端的通知。如果 Agent 在背景修改了資料，UI 會收到通知並自動刷新，使用者會看到畫面同步更新。
+1. **Backend Layer**：系統核心，負責數據處理與邏輯運算。詳見 [backend/](./backend/)。
+2. **UI Layer**：用戶界面，被動顯示後端狀態。詳見 [ui/](./ui/)。
+3. **Agent Layer**：AI 助手，盲眼操作後端。詳見 [agent/](./agent/)。
 
-### 3. Agent Layer (代理層) - 盲眼操作者
-AI Agent 是一個在背景運作的智慧體。
-*   **特性**：看不見 UI。
-*   **操作方式**：它透過 `BackendFacade` (遙控器) 直接對後端下達指令 (如 `load_data`)。
-*   **獨立性**：Agent 可以在沒有 UI 的情況下獨自運作 (例如在伺服器上跑腳本)。
+### 關鍵設計模式
 
----
+- **Observer Pattern**：實現 UI 與 Backend 的鬆耦合。
+- **Facade Pattern**：簡化 Agent 與 Backend 的互動。
+- **Headless Design**：Backend 獨立運行，無 GUI 依賴。
 
-## 互動流程範例
+## 架構圖
 
-### 場景：載入資料
-1.  **Agent 發起**：Agent 呼叫 `facade.load_data("file.edf")`。
-2.  **後端執行**：`DatasetController` 讀取檔案，更新 `Study` 中的資料列表。
-3.  **發送通知**：`DatasetController` 完成後，發出 `data_changed` 通知。
-4.  **UI 響應**：
-    *   UI 收到 `data_changed` 通知。
-    *   UI 呼叫 `controller.get_loaded_data_list()` 重新抓取資料。
-    *   UI 更新列表顯示，使用者看到新檔案出現。
+```mermaid
+graph TD
+    %% 主要組件
+    HumanUser[人類操作]
+    AIAgent[AI 操作]
 
-透過這種架構，我們確保了無論是誰操作，系統狀態永遠保持一致，且具備高度的可測試性與擴展性。
+    subgraph Backend ["Backend Layer (核心)"]
+        direction TB
+        Study[Study<br/>狀態容器]
+
+        subgraph Controllers ["Controllers (邏輯)"]
+            DatasetCtrl[DatasetController<br/>數據管理]
+            PreprocessCtrl[PreprocessController<br/>預處理]
+            TrainingCtrl[TrainingController<br/>模型訓練]
+            EvalCtrl[EvaluationController<br/>評估分析]
+            VisCtrl[VisualizationController<br/>視覺化]
+        end
+
+        subgraph Services ["Services (服務)"]
+            DataSvc[DataService<br/>數據處理]
+            ModelSvc[ModelService<br/>模型管理]
+        end
+
+        Facade[BackendFacade<br/>統一接口]
+
+        Observable[Observable<br/>事件通知]
+    end
+
+    subgraph UI ["UI Layer (界面)"]
+        direction TB
+        MainWindow[MainWindow<br/>主窗口]
+
+        subgraph Panels ["Panels (面板)"]
+            DatasetPanel[DatasetPanel<br/>數據面板]
+            PreprocessPanel[PreprocessPanel<br/>預處理面板]
+            TrainingPanel[TrainingPanel<br/>訓練面板]
+            EvalPanel[EvaluationPanel<br/>評估面板]
+            VisPanel[VisualizationPanel<br/>視覺化面板]
+            ChatPanel[ChatPanel<br/>助手面板]
+        end
+
+        subgraph Widgets ["Widgets (組件)"]
+            PlotWidget[PlotWidget<br/>圖表組件]
+            TableWidget[TableWidget<br/>表格組件]
+        end
+    end
+
+    subgraph Agent ["Agent Layer (智慧代理)"]
+        direction TB
+        LLMController[LLMController<br/>控制器]
+        AgentWorker[AgentWorker<br/>工作者]
+        LLMEngine[LLMEngine<br/>語言模型]
+        ToolRegistry[Tool Registry<br/>工具註冊]
+
+        subgraph Tools ["Tools (工具)"]
+            BackendTools[Backend Tools<br/>後端工具]
+            UITools[UI Tools<br/>界面工具]
+        end
+    end
+
+    %% 互動關係
+    HumanUser --> MainWindow
+    AIAgent --> LLMController
+
+    LLMController --> AgentWorker
+    AgentWorker --> LLMEngine
+
+    ToolRegistry --> BackendTools
+    ToolRegistry --> UITools
+
+    BackendTools --> Facade
+    UITools --> LLMController
+
+    LLMController --> MainWindow
+
+    MainWindow --> DatasetPanel
+    MainWindow --> PreprocessPanel
+    MainWindow --> TrainingPanel
+    MainWindow --> EvalPanel
+    MainWindow --> VisPanel
+    MainWindow --> ChatPanel
+
+    DatasetPanel --> DatasetCtrl
+    PreprocessPanel --> PreprocessCtrl
+    TrainingPanel --> TrainingCtrl
+    EvalPanel --> EvalCtrl
+    VisPanel --> VisCtrl
+    ChatPanel --> Facade
+
+    Facade --> DatasetCtrl
+    Facade --> PreprocessCtrl
+    Facade --> TrainingCtrl
+    Facade --> EvalCtrl
+    Facade --> VisCtrl
+
+    DatasetCtrl --> Study
+    PreprocessCtrl --> Study
+    TrainingCtrl --> Study
+    EvalCtrl --> Study
+    VisCtrl --> Study
+
+    DatasetCtrl --> DataSvc
+    PreprocessCtrl --> DataSvc
+    TrainingCtrl --> ModelSvc
+    EvalCtrl --> ModelSvc
+    VisCtrl --> ModelSvc
+
+    DataSvc --> Study
+    ModelSvc --> Study
+
+    Study --> Observable
+
+    Observable --> DatasetPanel
+    Observable --> PreprocessPanel
+    Observable --> TrainingPanel
+    Observable --> EvalPanel
+    Observable --> VisPanel
+    Observable --> ChatPanel
+
+    Observable --> LLMController
+
+    Observable --> LLMEngine
+
+    %% 樣式
+    classDef backendClass fill:#1976d2,stroke:#0d47a1,stroke-width:2px
+    classDef uiClass fill:#7b1fa2,stroke:#4a148c,stroke-width:2px
+    classDef agentClass fill:#388e3c,stroke:#1b5e20,stroke-width:2px
+
+    class Backend backendClass
+    class UI uiClass
+    class Agent agentClass
+```
+
+## 系統互動流程
+
+1. **操作發起**：UI 或 Agent 發送指令至 Backend。
+2. **狀態更新**：Backend 處理邏輯，更新 Study 狀態。
+3. **通知廣播**：Backend 發出事件通知。
+4. **響應刷新**：UI 接收通知，拉取最新狀態並更新顯示。
+
+此設計確保無論操作來源，系統狀態始終同步。
+
+## 三系統互動詳解
+
+XBrainLab 的核心創新在於 Backend、UI 與 Agent 三個系統的協同運作，實現人類與 AI 的無縫整合。
+
+### 1. Backend 作為中央樞紐
+- **狀態管理**：Study 持有所有數據與模型，是唯一真理來源。
+- **邏輯執行**：Controllers 處理具體業務，Services 提供通用功能。
+- **事件驅動**：Observable 廣播狀態變化，觸發 UI 更新與 Agent 響應。
+
+### 2. UI 作為被動界面
+- **顯示狀態**：Panels 與 Widgets 將 Backend 狀態視覺化呈現。
+- **接收輸入**：人類操作通過 Panels 發送指令至 Controllers。
+- **自動刷新**：訂閱 Observable 事件，主動拉取最新數據更新界面。
+
+### 3. Agent 作為智慧代理
+- **獨立操作**：Agent 通過 Facade 直接訪問 Backend，無需 UI 中介。
+- **自然語言**：支援 LLM 驅動的指令解析與任務執行。
+- **背景運行**：可在無 UI 環境下運作，或與 UI 並行操作。
+- **RAG 增強**：整合知識庫檢索，提升決策準確性。
+
+### 互動場景示例
+
+#### 場景 1: 人類載入數據
+1. 用戶在 DatasetPanel 選擇文件並點擊載入。
+2. DatasetPanel 呼叫 DatasetCtrl.load_data()。
+3. DatasetCtrl 更新 Study，觸發 Observable 通知。
+4. UI Panels 接收通知，拉取新數據刷新顯示。
+5. Agent 可同時感知變化，準備後續操作。
+
+#### 場景 2: Agent 執行訓練
+1. Agent 解析用戶指令，決定啟動訓練。
+2. Agent 通過 Facade 呼叫 TrainingCtrl.start_training()。
+3. TrainingCtrl 執行訓練邏輯，更新 Study 狀態。
+4. Observable 廣播訓練進度事件。
+5. UI TrainingPanel 接收通知，更新進度條與圖表。
+6. 用戶可實時監控 Agent 的操作。
+
+#### 場景 3: 同時操作
+- 用戶在 UI 修改參數，Agent 在背景優化模型。
+- 兩者共享同一 Study 實例，狀態始終同步。
+- 事件通知確保雙方互不干擾。
+
+此設計實現了高度的靈活性：UI 提供直觀操作，Agent 提供智慧自動化，Backend 確保一致性與可擴展性。
+
+## 架構優點
+
+- **模組化**：各層獨立開發與測試。
+- **可擴展性**：易於添加新功能而不影響現有代碼。
+- **可測試性**：Headless Backend 支持全面自動化測試。
+- **用戶體驗**：雙核心允許同時操作，提升效率。
+
+## 潛在挑戰
+
+- **複雜性**：Observer 模式需仔細管理事件依賴。
+- **性能**：大數據集處理需優化記憶體與 GPU 使用。
+- **同步**：確保 UI 與 Agent 操作的一致性。
+
+更多細節請參考各組件專屬文檔。

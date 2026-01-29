@@ -11,7 +11,7 @@ def test_valid_json_command():
     }
     ```
     """
-    cmd, params = CommandParser.parse(text)
+    cmd, params = CommandParser.parse(text)[0]
     assert cmd == "load_data"
     assert params == {"file_paths": ["/data/A.gdf"]}
 
@@ -34,10 +34,10 @@ def test_malformed_json():
 
 def test_json_without_markdown():
     # Some models might output raw JSON without markdown code blocks
-    # The current parser expects markdown, so this might fail or return
-    # None depending on implementation.
-    # If we want to support raw JSON, we'd need to update the parser.
-    # For now, let's assume strict markdown requirement.
+    # By upgrading the parser, we now support finding JSON anywhere!
+    # But since parameters are missing in this example, it should still return None?
+    # Or should we update the test to be a valid raw command?
+    # Original test expected None. Let's keep it assuming params missing.
     text = '{"command": "test"}'
     result = CommandParser.parse(text)
     assert result is None
@@ -54,7 +54,7 @@ def test_parse_relaxed_json_block():
     }
     ```
     """
-    cmd, params = CommandParser.parse(text_caps)
+    cmd, params = CommandParser.parse(text_caps)[0]
     assert cmd == "test_cmd"
     assert params == {"k": "v"}
 
@@ -67,6 +67,6 @@ def test_parse_relaxed_json_block():
     }
     ```
     """
-    cmd2, params2 = CommandParser.parse(text_no_lang)
+    cmd2, params2 = CommandParser.parse(text_no_lang)[0]
     assert cmd2 == "test_cmd_2"
     assert params2 == {"x": 1}

@@ -18,7 +18,7 @@ Available Tools:
 To use a tool, you MUST output a JSON object in the following format:
 ```
 {{
-    "command": "tool_name",
+    "tool_name": "tool_name",
     "parameters": {{
         "param_name": "value"
     }}

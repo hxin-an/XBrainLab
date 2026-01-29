@@ -1,5 +1,4 @@
 import json
-import re
 from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
@@ -9,7 +8,9 @@ class CommandParser:
     """Parses LLM output to extract commands."""
 
     @staticmethod
-    def parse(text: str) -> tuple[str, dict[str, Any]] | None:
+    def parse(
+        text: str,
+    ) -> list[tuple[str, dict[str, Any]]] | tuple[str, dict[str, Any]] | None:
         """
         Extracts a JSON command block from the text.
         Expected format:
@@ -21,33 +22,64 @@ class CommandParser:
         ```
         or just the JSON object.
         """
+        # Clean up the text: remove code blocks if present
+        # We want to scan the "inner" text of the code block if it exists
+        # but multiple code blocks might exist.
+        # Simplified approach: Just scan the whole text for JSON objects.
+
+        cleaned_text = text
+        # If there are code block markers, try to extract content inside them?
+        # Actually raw_decode works fine on mixed text if we start at '{'
+
+        decoder = json.JSONDecoder()
+        cursor = 0
+        found_commands = []
+
         try:
-            # 1. Try to find JSON code block (relaxed)
-            # Matches ```json, ```JSON, or just ```
-            match = re.search(r"```(json|JSON)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-            if match:
-                # Group 2 captures the JSON content because Group 1 is (json|JSON)?
-                json_str = match.group(2)
-            else:
-                # 2. Try to find raw JSON object if no code block
-                # This is a simple heuristic: find first { and last }
-                start = text.find("{")
-                end = text.rfind("}")
-                if start != -1 and end != -1 and end > start:
-                    json_str = text[start : end + 1]
-                else:
-                    return None
+            while True:
+                # Find next '{'
+                start_idx = cleaned_text.find("{", cursor)
+                if start_idx == -1:
+                    break
 
-            data = json.loads(json_str)
+                try:
+                    data, end_idx = decoder.raw_decode(cleaned_text[start_idx:])
+                    # data is the JSON object, end_idx is length relative to start_idx
 
-            if "command" in data and "parameters" in data:
-                return data["command"], data["parameters"]
+                    if isinstance(data, dict):
+                        # Check if it's a valid tool command
+                        cmd = data.get("tool_name") or data.get("command")
+                        params = data.get("parameters")
 
-            return None  # noqa: TRY300
+                        if cmd and params is not None:
+                            found_commands.append((cmd, params))
 
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse JSON from LLM output")
-            return None
+                    elif isinstance(data, list):
+                        # Handle JSON list of objects
+                        # (if finding '[' logic was used, but here we find '{')
+                        # If we parse a list, append its contents
+                        for item in data:
+                            if isinstance(item, dict):
+                                cmd = item.get("tool_name") or item.get("command")
+                                params = item.get("parameters")
+                                if cmd and params is not None:
+                                    found_commands.append((cmd, params))
+
+                    # Move cursor past this object
+                    cursor = start_idx + end_idx
+
+                except json.JSONDecodeError:
+                    # Failed to decode from this '{', maybe it was just text
+                    cursor = start_idx + 1
+
         except Exception as e:
             logger.error(f"Error parsing command: {e}")
             return None
+
+        if found_commands:
+            # To maintain backward compatibility with single-return callers,
+            # we might need to handle this carefully.
+            # But simple_bench expects a tuple.
+            # I should change simple_bench first or return a list and fix simple_bench.
+            return found_commands  # Return List[Tuple]
+        return None

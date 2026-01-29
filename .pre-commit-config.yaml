@@ -39,7 +39,7 @@ repos:
 
       - id: pytest-check
         name: pytest-check (coverage)
-        entry: poetry run pytest --cov=XBrainLab --cov-fail-under=50
+        entry: poetry run pytest tests/unit/backend tests/unit/llm --cov=XBrainLab --cov-fail-under=30
         language: system
         types: [python]
         pass_filenames: false

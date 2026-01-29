@@ -1,121 +1,109 @@
 # 貢獻指南 (Contributing Guide)
 
-歡迎參與 XBrainLab 的開發！請遵循以下規範以確保程式碼品質與專案的一致性。
+歡迎參與 XBrainLab 的開發。本指南旨在協助開發者快速建立標準化的開發環境，即便是初次接觸 Python 專案的研究人員也能順利上手。
 
-## 環境設定 (Environment Setup)
+## 開發環境建置 (Environment Setup)
 
-我們使用 **Poetry** 進行套件管理，並使用 **Pre-commit** 進行程式碼檢查。
+為確保研究結果的可重現性與程式碼品質，本專案採用以下現代化工具進行依賴管理與品質控管：
 
-1.  **安裝相依套件**：
+| 工具 | 用途 | 說明 |
+| :--- | :--- | :--- |
+| **Poetry** | 依賴管理 | 用於解決套件版本衝突，並自動建立隔離的虛擬環境 (Virtual Environment)，確保實驗環境的一致性。 |
+| **Pre-commit** | 自動化檢查 | 在提交 (Commit) 前自動執行品質檢查腳本，防止格式錯誤或明顯的 Bug 進入版本庫。 |
+| **Ruff** | 靜態分析 | 高效的 Python Linter，用於檢查程式碼風格 (PEP 8) 與潛在錯誤。 |
+| **Result** | 自動化任務 | 專案專用的任務執行器，簡化測試與驗證指令。 |
+
+### 1. 環境安裝 (Installation)
+
+1.  **安裝 Poetry**:
+    請參考 [Poetry 官方文件](https://python-poetry.org/docs/#installation) 進行安裝。
+
+2.  **複製專案 (Clone Repository)**:
     ```bash
-    poetry install --with gui,llm
+    git clone https://github.com/your-repo/XBrainLab.git
+    cd XBrainLab
     ```
-2.  **啟動虛擬環境**：
+
+3.  **安裝依賴 (Install Dependencies)**:
+    此指令將讀取 `pyproject.toml` 並安裝所有必要的開發與執行套件。
     ```bash
-    poetry shell
+    poetry install --with gui,llm,dev,test
     ```
-3.  **安裝 Pre-commit Hooks**：
+
+4.  **啟動虛擬環境 (Activate Shell)**:
+    進入專案專屬的隔離環境 (注意：Poetry 2.0+ 已移除 `shell` 指令，請使用以下方式)：
+    ```bash
+    source $(poetry env info --path)/bin/activate
+    ```
+
+5.  **設定 Git Hooks**:
+    安裝 Pre-commit hook，確保每次提交都符合專案規範。
     ```bash
     pre-commit install
     ```
 
-## 程式碼風格 (Coding Style)
+### 2. 常用開發指令 (Common Commands)
 
-*   **Python**: 遵循 PEP 8 規範。
-    *   使用 `Ruff` 進行 Linting。
-    *   使用 `Black` 進行 Formatting。
-*   **命名規則**：
-    *   變數/函式：`snake_case` (如 `load_data`, `process_signal`)
-    *   類別：`PascalCase` (如 `DatasetGenerator`, `MainWindow`)
-    *   常數：`UPPER_CASE` (如 `DEFAULT_SAMPLE_RATE`)
+本專案使用 `poe` 封裝常用的開發指令，定義於 `pyproject.toml` 中：
 
-## 架構規範 (Architecture Guidelines)
+*   **執行完整檢查** (提交前建議執行):
+    ```bash
+    poe check
+    ```
+*   **自動修復程式碼風格**:
+    ```bash
+    poe lint-fix
+    ```
+*   **執行 Agent 驗證測試**:
+    ```bash
+    poe benchmark-llm
+    ```
 
-為確保系統的可維護性，請嚴格遵守以下原則：
+---
 
-1.  **前後端分離**：
-    *   **UI 層** (`XBrainLab/ui`) 僅負責顯示與使用者互動，**嚴禁**直接呼叫後端核心邏輯或實例化後端類別。
-    *   所有 UI 與後端的溝通應透過 **Controller** 或 **Signal/Slot** 機制進行。
-2.  **資源管理**：
-    *   在處理大型數據 (Tensor/Numpy Array) 時，請注意記憶體釋放 (如使用 `.detach()`, `del`)。
-    *   避免在迴圈中進行不必要的數據複製。
+## 程式碼規範 (Coding Standards)
 
-## 文件規範 (Documentation Guidelines)
+為維護專案的長期可維護性，請嚴格遵守以下規範：
 
-*   **專業語氣**：所有文件應保持專業、客觀。
-*   **禁止 Emoji**：文件中**嚴禁使用 Emoji**，以維持專業形象。
-*   **語言**：主要使用繁體中文，關鍵術語可保留英文。
+### 1. Python 風格
+本專案全面自動化程式碼風格檢查，請確保您的開發環境已設定好以下工具：
+*   **Linting/Formatting**: 統一使用 **Ruff** 進行代碼排版與靜態檢查。若 `poe check` 報告錯誤，可嘗試 `poe lint-fix` 進行自動修復。
+*   **Type Hinting (型別提示)**:
+    *   為提升代碼的可讀性與安全性，**強烈建議**在函式簽名中使用型別提示 (Type Hints)。
+    *   *Correct*: `def add(a: int, b: int) -> int:`
+    *   *Incorrect*: `def add(a, b):`
 
-## Git 規範 (Git Workflow)
+### 2. Agent 開發規範 (Agent Development)
+若您參與 AI Agent 模組的開發，請注意以下事項，這直接影響 LLM 的推論能力：
+*   **Docstring 即 Prompt**:
+    *   Agent 依賴函式的文檔字串 (Docstring) 來理解工具用途與參數格式。
+    *   Docstring 必須精確、清晰，並符合 Google Style 或 NumPy Style。
+*   **維護黃金測試集 (Gold Set)**:
+    *   引入新工具時，**必須**同步更新 `XBrainLab/llm/rag/data/gold_set.json`，提供 Few-Shot Examples，以確保模型能正確學習工具的使用情境。
 
-### Commit Message
-我們使用 **Conventional Commits** 規範 Commit Message：
+---
+### 3. 架構原則
+*   **BackendFacade**: Agent 只能透過 `BackendFacade` 呼叫核心功能，禁止直接操作 Controller。
+*   **Observer Pattern**: UI 元件應訂閱 Backend 的訊號 (Signal)，而非主動輪詢 (Polling)。
 
-*   `feat`: 新增功能 (Features)
-*   `fix`: 修復 Bug (Bug Fixes)
-*   `docs`: 文件修改 (Documentation)
-*   `style`: 格式調整 (不影響程式碼運作)
-*   `refactor`: 重構 (既不是新增功能也不是修復 Bug)
-*   `test`: 增加或修改測試
-*   `chore`: 建置過程或輔助工具的變動
+## Git 規範 (Workflow)
 
-**範例**：
+我們嚴格執行 **Conventional Commits**。建議安裝 `commitizen`：
+
 ```bash
-git commit -m "feat: add ICA artifact removal support"
-git commit -m "fix: resolve crash when loading empty dataset"
+# 推薦使用 cz 來 commit，它會協助你格式化訊息
+cz commit
 ```
 
-### 分支命名 (Branch Naming)
-請使用以下格式命名分支：
-`type/description`
+*   `feat`: 新增功能
+*   `fix`: 修復 Bug
+*   `refactor`: 重構 (無功能變動)
+*   `docs`: 文件更新
+*   `test`: 測試相關
+*   `chore`: 建置/工具變動
 
-*   `feat/add-login-page`
-*   `fix/resolve-memory-leak`
-*   `docs/update-readme`
-*   `refactor/cleanup-backend`
-
-## 測試規範 (Testing Guidelines)
-
-我們致力於建立高覆蓋率且穩定的測試體系。請遵循以下準則：
-
-### 1. 測試結構 (Structure)
-所有測試應位於專案根目錄的 `tests/` 資料夾中，並鏡像源碼結構：
-*   `XBrainLab/backend/foo.py` -> `tests/backend/test_foo.py`
-*   `XBrainLab/ui/bar.py` -> `tests/ui/test_bar.py`
-
-### 2. 命名規則 (Naming)
-*   檔案：`test_*.py`
-*   函式：`test_功能名稱_預期行為` (如 `test_load_data_invalid_path_raises_error`)
-
-### 3. UI 測試 (UI Testing)
-*   使用 `pytest-qt` 的 `qtbot` fixture 進行互動測試。
-*   **必須 Mock 後端**：UI 測試不應依賴真實的後端運算 (如訓練模型)，請使用 `unittest.mock` 模擬後端回傳值。
-*   範例：
-    ```python
-    def test_click_train_button(qtbot, mock_study):
-        panel = TrainingPanel(mock_study)
-        qtbot.addWidget(panel)
-        qtbot.mouseClick(panel.btn_start, Qt.LeftButton)
-        mock_study.train.assert_called_once()
-    ```
-
-### 4. 整合測試 (Integration Testing)
-*   針對關鍵流程 (如 "Import -> Preprocess -> Train") 撰寫 E2E 測試。
-*   標記為 `@pytest.mark.slow` 以便區分。
-
-### 5. 執行測試 (Running Tests)
-
-1.  **執行所有測試**：
-    ```bash
-    poetry run pytest
-    ```
-2.  **執行 UI 測試**：
-    ```bash
-    poetry run pytest tests/ui
-    ```
-
-**提交 PR 前的檢查清單**：
-- [ ] 所有測試皆通過 (`pytest`)。
-- [ ] 程式碼風格檢查通過 (`pre-commit`)。
-- [ ] 若有新功能，已新增對應的測試。
-- [ ] 已更新 `CHANGELOG.md`。
+## 提交檢查清單 (PR Checklist)
+- [ ] 執行過 `poe check` 且全數通過 (包含 Coverage > 50%)。
+- [ ] 若修改了 Agent Tool，已更新 `gold_set.json`。
+- [ ] 若有架構更動，已通過 `tests/architecture_compliance.py`。
+- [ ] Commit Message 符合規範。

@@ -25,6 +25,11 @@ class RAGRetriever:
             # Initialize Client explicitly
             self.client = QdrantClient(path=RAGConfig.get_storage_path())
 
+            # Auto-initialize if collection doesn't exist
+            if not self._collection_exists():
+                logger.info("RAG collection not found, auto-initializing...")
+                self._auto_initialize()
+
             # Load existing collection
             self.vectorstore = Qdrant(
                 client=self.client,
@@ -36,6 +41,68 @@ class RAGRetriever:
             logger.error(f"Failed to init RAGRetriever: {e}")
             self.vectorstore = None
             self.client = None
+
+    def _collection_exists(self) -> bool:
+        """Check if RAG collection exists."""
+        if not self.client:
+            return False
+        try:
+            cols = self.client.get_collections().collections
+            return any(c.name == RAGConfig.COLLECTION_NAME for c in cols)
+        except Exception:
+            return False
+
+    def _auto_initialize(self):
+        """Auto-index from bundled gold_set.json using existing client."""
+        import json
+        from pathlib import Path
+
+        from langchain.docstore.document import Document
+        from qdrant_client.http import models as rest
+
+        gold_set_path = Path(__file__).parent / "data" / "gold_set.json"
+        if not gold_set_path.exists():
+            logger.warning(f"Gold set not found: {gold_set_path}")
+            return
+
+        try:
+            # Load gold set
+            with open(gold_set_path, encoding="utf-8") as f:
+                data = json.load(f)
+
+            docs = []
+            for item in data:
+                content = item.get("input", "")
+                metadata = {
+                    "category": item.get("category"),
+                    "tool_calls": json.dumps(item.get("expected_tool_calls")),
+                }
+                if content:
+                    docs.append(Document(page_content=content, metadata=metadata))
+
+            if not docs:
+                return
+
+            # Create collection using existing client
+            # Create collection using existing client
+            if self.client:
+                self.client.recreate_collection(
+                    collection_name=RAGConfig.COLLECTION_NAME,
+                    vectors_config=rest.VectorParams(
+                        size=384, distance=rest.Distance.COSINE
+                    ),
+                )
+
+            # Index using LangChain wrapper with existing client
+            qdrant = Qdrant(
+                client=self.client,
+                collection_name=RAGConfig.COLLECTION_NAME,
+                embeddings=self.embeddings,
+            )
+            qdrant.add_documents(docs)
+            logger.info(f"Auto-indexed {len(docs)} RAG examples.")
+        except Exception as e:
+            logger.error(f"RAG auto-init failed: {e}")
 
     def close(self):
         """Closes the Qdrant client connection."""

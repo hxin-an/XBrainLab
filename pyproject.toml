@@ -114,10 +114,11 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "run.py" = ["E402"]
-"scripts/*.py" = ["E402"]
+"scripts/**/*.py" = ["E402", "E501", "SIM102", "N806", "C414", "PERF", "PLR5501", "E722"]
 "tests/**/*.py" = ["E402", "S101", "N"]
 "XBrainLab/backend/dataset/dataset_generator.py" = ["PLC0415"]
 "XBrainLab/backend/load_data/data_loader.py" = ["PLC0415"]
+"XBrainLab/llm/rag/retriever.py" = ["PLC0415"]
 
 [tool.ruff.lint.pep8-naming]
 ignore-names = ["X", "Y", "x", "y", "Pxx"]
@@ -129,7 +130,9 @@ disallow_untyped_defs = false
 warn_return_any = false
 warn_unused_ignores = true
 exclude = [
-    "tests"
+    "tests",
+    "XBrainLab/llm/core/models",
+    "scripts"
 ]
 
 [tool.pytest.ini_options]
@@ -153,7 +156,7 @@ test-backend = "scripts.run_tests:backend"
 test-ui = "scripts.run_tests:ui"
 test-llm = "scripts.run_tests:run_llm_tests"
 test-remote = "scripts.run_tests:run_remote_tests"
-benchmark-llm = "scripts.benchmark.eval_agent:run_benchmark_cli"
+benchmark-llm = "scripts.benchmark.simple_bench:main"
 # test-all = "scripts.run_tests:all_tests"
 
 [tool.poe.tasks]

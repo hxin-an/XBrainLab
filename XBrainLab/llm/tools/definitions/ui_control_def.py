@@ -28,6 +28,7 @@ class BaseSwitchPanelTool(BaseTool):
                         "preprocess",
                         "training",
                         "visualization",
+                        "evaluation",
                     ],
                     "description": "The name of the panel to switch to.",
                 },
@@ -37,7 +38,9 @@ class BaseSwitchPanelTool(BaseTool):
                         "Optional sub-view to display. "
                         "For 'visualization': ['saliency_map', 'spectrogram', "
                         "'topographic_map', '3d_plot']. "
-                        "For 'evaluation': ['metrics', 'model_summary']. "
+                        "For 'training': ['metrics']. "
+                        "For 'evaluation': ['metrics' (includes confusion_matrix, "
+                        "auc), 'model_summary']. "
                         "For 'preprocess': ['time_domain', 'frequency_domain']."
                     ),
                 },
