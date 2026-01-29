@@ -3,7 +3,7 @@ import time
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
     QGroupBox,
@@ -206,14 +206,20 @@ class TrainingPanel(QWidget):
         self.import_bridge = QtObserverBridge(
             self.dataset_controller, "import_finished", self
         )
-        self.import_bridge.connect_to(self.update_panel)
+        # Connect to training upadtes
+        self.bridge_updated = QtObserverBridge(
+            self.controller, "training_updated", self
+        )
+        # We wrap update_loop to accept *args, **kwargs safely
+        self.bridge_updated.connect_to(lambda *args, **kwargs: self.update_loop())
 
         self.init_ui()
 
-        # Timer for polling training progress (valid use - continuous updates)
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_loop)
+        # Timer removed - now fully event driven by "training_updated"
+        # self.timer = QTimer(self)
+        # self.timer.timeout.connect(self.update_loop)
         self.training_completed_shown = False
+
 
     def init_ui(self):
         # Main Layout: Horizontal (Left: Content, Right: Controls)
@@ -454,7 +460,7 @@ class TrainingPanel(QWidget):
             }
         """
         )
-        self.btn_start.clicked.connect(self.start_training)
+        self.btn_start.clicked.connect(self.start_training_ui_action)
         self.btn_start.setEnabled(False)  # Locked until configured
         exec_layout.addWidget(self.btn_start)
 
@@ -594,8 +600,8 @@ class TrainingPanel(QWidget):
             QMessageBox.information(self, "Success", "Training settings saved.")
             self.check_ready_to_train()
 
-    def start_training(self):
-        """Start training using the controller."""
+    def start_training_ui_action(self):
+        """Called by Start button"""
         try:
             if not self.controller.is_training():
                 # This will generate plan and start training
@@ -603,7 +609,7 @@ class TrainingPanel(QWidget):
 
                 # Check if started successfully
                 if self.controller.is_training():
-                    self.timer.start(100)  # Start polling
+                    # self.timer.start(100)  # Removed
                     self.log_text.append("Training started.")
                 else:
                     self.log_text.append("Failed to start training.")
@@ -624,7 +630,7 @@ class TrainingPanel(QWidget):
 
     def _on_training_started(self):
         """Event handler: Training has started."""
-        self.timer.start(100)  # Start progress polling
+        # self.timer.start(100) # Removed
         self.log_text.append("Training started (event).")
         self.training_completed_shown = False
         self.btn_stop.setEnabled(True)
@@ -632,7 +638,7 @@ class TrainingPanel(QWidget):
 
     def _on_training_stopped(self):
         """Event handler: Training has stopped."""
-        self.timer.stop()
+        # self.timer.stop() # Removed
         self.training_finished()
         self.log_text.append("Training stopped (event).")
 
@@ -661,7 +667,7 @@ class TrainingPanel(QWidget):
     def update_loop(self):
         # Poll trainer status
         if not self.controller.is_training():
-            self.timer.stop()
+            # self.timer.stop()
             self.training_finished()
 
         # Update Plots/Progress
@@ -836,8 +842,8 @@ class TrainingPanel(QWidget):
     def training_finished(self):
         self.check_ready_to_train()  # Re-enable start button if ready
         self.btn_stop.setEnabled(False)
-        if self.timer.isActive():
-            self.timer.stop()
+        # if self.timer.isActive():
+        #     self.timer.stop()
 
         # Only show message once
         if not self.training_completed_shown:

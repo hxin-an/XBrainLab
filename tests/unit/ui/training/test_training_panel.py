@@ -71,7 +71,7 @@ def test_training_panel_start_training_success(
         patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
         patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
     ):
-        panel.start_training()
+        panel.start_training_ui_action()
 
         # Should call controller.start_training
         mock_controller.start_training.assert_called_once()

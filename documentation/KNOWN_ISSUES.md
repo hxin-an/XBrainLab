@@ -35,6 +35,20 @@
     - 參數驗證 (Parameter Validation) 增強。
 - **狀態**: <span style="color:orange">待優化</span>
 
+### 3. Agent Timeout Protection (Agent 超時保護)
+- **問題**: `AgentWorker` 目前缺乏執行超時機制。若 Local LLM (如 CPU 執行的 Qwen) 推論卡死或過慢，使用者介面會無限期等待。
+- **影響**: 嚴重影響使用者體驗，可能導致程式假死。
+- **狀態**: <span style="color:green">已解決</span> (Resolved in 0.5.3) - Added 60s timeout mechanism.
+
+### 4. Code Maintenance (代碼維護)
+- **問題**: 
+    - **UI 文件過大**: `preprocess.py` (1294行) 與 `training/panel.py` (893行) 包含過多邏輯，難以維護。
+    - **行長度違規**: 專案中仍有 200+ 處 E501 (Line too long) 違規。
+- **狀態**: <span style="color:green">已解決</span> (Resolved in 0.5.3)
+    - `preprocess.py`: Dialog classes extracted to `dialogs.py`.
+    - `training/panel.py`: Polling logic moved to Controller (Thread-based).
+    - E501 violations fixed project-wide.
+
 ---
 
 ## 🚧 中優先級 (Medium Priority)

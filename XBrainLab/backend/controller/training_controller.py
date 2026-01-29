@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import threading
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from XBrainLab.backend.training import Trainer
 from XBrainLab.backend.utils.observer import Observable
@@ -13,19 +14,23 @@ class TrainingController(Observable):
     """
     Controller for handling training operations and state management.
     Decouples UI from direct Study/Backend manipulation.
-
-    Events:
-        - training_started: Emitted when training begins
-        - training_stopped: Emitted when training is stopped/interrupted
-        - config_changed: Emitted when training configuration changes
     """
+
+    events: ClassVar[list[str]] = [
+        "training_started",
+        "training_stopped",
+        "training_updated",
+        "config_changed",
+    ]  # Explicitly list events for clarity
 
     def __init__(self, study: Study):
         Observable.__init__(self)
         self._study = study
+        self._monitor_thread: threading.Thread | None = None
+        self._monitor_active = False
 
     def is_training(self) -> bool:
-        """Check if training is currently in progress."""
+        """Check if training is running."""
         return self._study.is_training()
 
     def start_training(self) -> None:
@@ -43,11 +48,39 @@ class TrainingController(Observable):
         self._study.train(interact=True)
         self.notify("training_started")
 
+        # Start monitoring
+        self._start_monitoring()
+
     def stop_training(self) -> None:
         """Interrupt the current training process."""
         if self.is_training():
             self._study.stop_training()
             self.notify("training_stopped")
+            # Monitoring will stop naturally when is_training() becomes False
+
+    def _start_monitoring(self):
+        """Start a background thread to monitor training progress."""
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            return
+
+        self._monitor_active = True
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread.start()
+
+    def _monitor_loop(self):
+        """Loop to poll trainer status and emit updates."""
+        import time
+
+        while self._monitor_active:
+            if not self.is_training():
+                # Training finished naturally or stopped
+                self._monitor_active = False
+                self.notify("training_stopped") # Ensure UI knows it stopped
+                break
+
+            # Emit update event
+            self.notify("training_updated")
+            time.sleep(1.0) # Poll every 1 second (same as old UI timer)
 
     def clear_history(self) -> None:
         """Clear all training history."""

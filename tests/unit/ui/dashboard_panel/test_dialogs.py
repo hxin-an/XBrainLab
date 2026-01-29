@@ -10,7 +10,13 @@ from XBrainLab.ui.dashboard_panel.dataset import (
     ChannelSelectionDialog,
     SmartParserDialog,
 )
-from XBrainLab.ui.dashboard_panel.preprocess import EpochingDialog
+from XBrainLab.ui.dashboard_panel.dialogs import (
+    EpochingDialog,
+    FilteringDialog,
+    NormalizeDialog,
+    RereferenceDialog,
+    ResampleDialog,
+)
 
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
@@ -111,6 +117,77 @@ def test_epoching_dialog_init(qtbot):
         assert params[1] == ["Event1"]
         assert isinstance(params[2], float)  # tmin
         assert isinstance(params[3], float)  # tmax
+
+
+def test_resample_dialog_init(qtbot):
+    """Test ResampleDialog."""
+    dialog = ResampleDialog(None)
+    qtbot.addWidget(dialog)
+
+    # Set value
+    dialog.spin_freq.setValue(250)
+    dialog.accept()
+
+    assert dialog.get_params() == 250
+
+
+def test_filtering_dialog_init(qtbot):
+    """Test FilteringDialog."""
+    dialog = FilteringDialog(None)
+    qtbot.addWidget(dialog)
+
+    # Set values
+    dialog.spin_low.setValue(1.0)
+    dialog.spin_high.setValue(40.0)
+    # Check notch
+    dialog.chk_notch.setChecked(True)
+    dialog.spin_notch.setValue(60.0)
+
+    dialog.accept()
+    # (l_freq, h_freq, is_notch, notch_freq)
+    params = dialog.get_params()
+    assert params == (1.0, 40.0, True, 60.0)
+
+
+def test_rereference_dialog_init(qtbot):
+    """Test RereferenceDialog."""
+    mock_data = MagicMock(spec=Raw)
+    mock_data.info = {"ch_names": ["C3", "C4", "Cz"]}
+    # Mock preprocessor helpers if needed, but dialog logic is simple
+
+    with patch("XBrainLab.backend.preprocessor.rereference.get_channel_types") as mock_types:
+        # Return dict {ch_name: type}
+        mock_types.return_value = {"C3": "eeg", "C4": "eeg", "Cz": "eeg"}
+
+        dialog = RereferenceDialog(None, [mock_data])
+        qtbot.addWidget(dialog)
+
+        # Default is Average
+        assert dialog.radio_avg.isChecked()
+        dialog.accept()
+        assert dialog.get_params() == ("average", [])
+
+        # Test Custom
+        dialog.radio_custom.setChecked(True)
+        # Select channel
+        # implementation detail: list widget is enabled
+        item = dialog.list_widget.item(0) # C3
+        item.setCheckState(Qt.CheckState.Checked)
+
+        dialog.accept()
+        assert dialog.get_params() == ("custom", ["C3"])
+
+
+def test_normalize_dialog_init(qtbot):
+    """Test NormalizeDialog."""
+    dialog = NormalizeDialog(None)
+    qtbot.addWidget(dialog)
+
+    # Select Z-Score
+    dialog.combo_method.setCurrentText("zscore")
+    dialog.accept()
+
+    assert dialog.get_params() == "zscore"
 
 
 if __name__ == "__main__":

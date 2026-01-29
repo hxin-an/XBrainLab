@@ -83,9 +83,48 @@ class AgentWorker(QObject):
         self.generation_thread = GenerationThread(self.engine, messages)
         self.generation_thread.chunk_received.connect(self.chunk_received)
         self.generation_thread.finished_generation.connect(self._on_generation_finished)
-        self.generation_thread.error_occurred.connect(self.error)
+        self.generation_thread.error_occurred.connect(self._on_generation_error)
+
+        # Timeout timer (thread-safe UI timer)
+        self._is_timed_out = False
+        from PyQt6.QtCore import QTimer
+        self.timeout_timer = QTimer(self)
+        self.timeout_timer.setSingleShot(True)
+        self.timeout_timer.timeout.connect(self._on_timeout)
+
+        # Start with config timeout or default 60s
+        timeout_ms = getattr(self.engine.config, "timeout", 60) * 1000
+        self.timeout_timer.start(timeout_ms)
+
         self.generation_thread.start()
 
+    def _on_timeout(self):
+        """Handle generation timeout."""
+        if self.generation_thread and self.generation_thread.isRunning():
+            self._is_timed_out = True
+            logger.error("Agent generation timed out.")
+
+            # We can't safely kill the thread in Python, but we can ignore its
+            # future output and signal the UI to proceed.
+            try:
+                self.generation_thread.chunk_received.disconnect(self.chunk_received)
+                self.generation_thread.finished_generation.disconnect(self._on_generation_finished)
+                # self.generation_thread.terminate() # Dangerous, avoid unless necessary
+            except Exception:
+                pass
+
+            self.error.emit("Error: Generation timed out (Local LLM is too slow).")
+            self.finished.emit([]) # Unblock the UI
+
     def _on_generation_finished(self):
+        if self._is_timed_out:
+            return
+        self.timeout_timer.stop()
         self.finished.emit([])
         self.log.emit("Generation completed.")
+
+    def _on_generation_error(self, err_msg):
+        if self._is_timed_out:
+            return
+        self.timeout_timer.stop()
+        self.error.emit(err_msg)

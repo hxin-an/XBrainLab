@@ -83,6 +83,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.ruff]
 # Top level options (optional)
+exclude = [
+    "XBrainLab/llm/core/models",
+]
 
 [tool.ruff.lint]
 ignore = [

@@ -14,6 +14,7 @@ class LLMConfig:
     # Powerful model for instruction following
     device: str = "cuda" if os.path.exists("/dev/nvidia0") else "cpu"
     max_new_tokens: int = 512
+    timeout: int = 60  # Default timeout in seconds for generation
     temperature: float = 0.7
     top_p: float = 0.9
     do_sample: bool = True
