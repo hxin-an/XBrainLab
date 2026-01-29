@@ -417,11 +417,26 @@ class PreprocessPanel(QWidget):
         # Guard clause for strict type safety
         if not parent or not hasattr(parent, "study"):
             self.controller = cast("PreprocessController", None)
+            self.dataset_controller = None
         else:
             self.controller = parent.study.get_controller("preprocess")
-            # Connect to controller events for automatic UI updates
+            self.dataset_controller = parent.study.get_controller("dataset")
+
+            # Connect to Preprocess events
             self.bridge = QtObserverBridge(self.controller, "preprocess_changed", self)
             self.bridge.connect_to(self.update_panel)
+
+            # Connect to Dataset events (for Info Panel and Button states)
+            self.data_bridge = QtObserverBridge(
+                self.dataset_controller, "data_changed", self
+            )
+            self.data_bridge.connect_to(self.update_panel)
+
+            # Also listen to import finished which might trigger data changes
+            self.import_bridge = QtObserverBridge(
+                self.dataset_controller, "import_finished", self
+            )
+            self.import_bridge.connect_to(self.update_panel)
 
         assert self.controller is not None, "PreprocessController not initialized"  # noqa: S101
 
@@ -741,13 +756,24 @@ class PreprocessPanel(QWidget):
         self.time_slider.blockSignals(False)
         self.plot_timer.start(50)  # Debounce
 
-    def update_panel(self):
+    def update_panel(self, *args):
+        # *args to accept signal payloads if any (e.g., from import_finished)
         if not self.main_window or not hasattr(self.main_window, "study"):
             return
 
-        # Update History List
+        # Update Info Panel explicitly
         if hasattr(self, "info_panel"):
-            self.info_panel.update_info()
+            # Fetch data explicitly to avoid implicit coupling in info_panel
+            loaded = []
+            if self.dataset_controller:
+                loaded = self.dataset_controller.get_loaded_data_list()
+
+            preprocessed = self.controller.get_preprocessed_data_list()
+
+            self.info_panel.update_info(
+                loaded_data_list=loaded,
+                preprocessed_data_list=preprocessed
+            )
 
         self.history_list.clear()
         data_list = self.controller.get_preprocessed_data_list()

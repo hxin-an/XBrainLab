@@ -1,3 +1,6 @@
+import logging
+from collections import deque
+
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.llm.rag import RAGRetriever
@@ -6,6 +9,8 @@ from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
 from .parser import CommandParser
 from .prompt_manager import PromptManager
 from .worker import AgentWorker
+
+logger = logging.getLogger(__name__)
 
 
 class LLMController(QObject):
@@ -60,6 +65,11 @@ class LLMController(QObject):
 
         self.current_response = ""
         self.is_processing = False
+
+        # Robustness State
+        self._recent_tool_calls = deque(maxlen=10)
+        self._retry_count = 0
+        self._max_retries = 2
 
     def initialize(self):
         """Initialize the underlying worker/engine."""
@@ -125,7 +135,29 @@ class LLMController(QObject):
         # 1. Parse for Commands
         command_result = CommandParser.parse(response_text)
 
+        # --- JSON Fault Tolerance (Auto-Retry) ---
+        if not command_result and (
+            "```" in response_text or ("{" in response_text and "}" in response_text)
+        ):
+                if self._retry_count < self._max_retries:
+                    logger.warning("Broken JSON detected. Retrying...")
+                    self._retry_count += 1
+
+                    self._append_history("assistant", response_text)
+                    err_msg = (
+                        "System: Your last output contained broken JSON. "
+                        "Please check your syntax and output VALID JSON only."
+                    )
+                    self._append_history("user", err_msg)
+                    self.status_update.emit("Invalid JSON, retrying...")
+                    self._generate_response()
+                    return
+                else:
+                    logger.error("Max retries reached for JSON error.")
+                    # Fallthrough to "Ready" but maybe show error?
+
         if command_result:
+            self._retry_count = 0 # Reset on success
             # Handle List of Commands (Multi-Step Support)
             # Ensure it is a list
             commands = (
@@ -135,6 +167,20 @@ class LLMController(QObject):
             self._append_history("assistant", response_text)
 
             for cmd, params in commands:
+                # --- Loop Detection ---
+                call_signature = (cmd, str(params))
+                self._recent_tool_calls.append(call_signature)
+                if self._detect_loop(call_signature):
+                    msg = (
+                        f"System: Loop detected. You have called '{cmd}' "
+                        "with these params multiple times. Stop."
+                    )
+                    self._append_history("user", msg)
+                    self.status_update.emit("Loop detected, interrupting...")
+                    self._generate_response() # Let LLM handle it or stop?
+                    # If we loop, we might want to stop or ask LLM to fix.
+                    return
+
                 self.status_update.emit(f"Executing: {cmd}...")
 
                 # Execute Tool
@@ -175,6 +221,17 @@ class LLMController(QObject):
         else:
             self.status_update.emit(f"Unknown tool: {command_name}")
             return False, f"Error: Unknown tool '{command_name}'"
+
+    def _detect_loop(self, current_call_signature) -> bool:
+        """
+        Check if the same tool call has been made > 3 times recently.
+        current_call_signature: (cmd_name, params_str)
+        """
+        count = 0
+        for call in self._recent_tool_calls:
+            if call == current_call_signature:
+                count += 1
+        return count >= 3
 
     def _handle_tool_result_logic(self, result: str):
         """Processes tool result for UI side effects (Switch Panel, etc)."""

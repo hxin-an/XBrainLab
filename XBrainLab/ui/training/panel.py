@@ -177,6 +177,7 @@ class TrainingPanel(QWidget):
         super().__init__()
         self.main_window = main_window
         self.controller = main_window.study.get_controller("training")
+        self.dataset_controller = main_window.study.get_controller("dataset")
 
         self.current_plotting_record = None
         self.plan_items = {}  # Map id(plan) -> QTreeWidgetItem
@@ -195,6 +196,17 @@ class TrainingPanel(QWidget):
 
         self.bridge_config = QtObserverBridge(self.controller, "config_changed", self)
         self.bridge_config.connect_to(self.check_ready_to_train)
+
+        # Connect to Dataset events (Updates info panel and check readiness)
+        self.data_bridge = QtObserverBridge(
+            self.dataset_controller, "data_changed", self
+        )
+        self.data_bridge.connect_to(self.update_panel)
+
+        self.import_bridge = QtObserverBridge(
+            self.dataset_controller, "import_finished", self
+        )
+        self.import_bridge.connect_to(self.update_panel)
 
         self.init_ui()
 
@@ -835,17 +847,29 @@ class TrainingPanel(QWidget):
     def update_info(self):
         """Update the Aggregate Info Panel."""
         if hasattr(self, "info_panel"):
+            # Fetch data explicitly
+            loaded = []
+            if self.dataset_controller:
+                loaded = self.dataset_controller.get_loaded_data_list()
+
+            # TrainingController also has access, but getting from source (dataset)
+            # is cleaner using dataset_controller since we have it now.
+            # or rely on TrainingController's proxies if we want strict layering.
+            # Here we use dataset_controller since we have it now.
+
+            preprocessed = self.controller.get_preprocessed_data_list()
+
             self.info_panel.update_info(
-                loaded_data_list=self.controller.get_loaded_data_list(),
-                preprocessed_data_list=self.controller.get_preprocessed_data_list(),
+                loaded_data_list=loaded,
+                preprocessed_data_list=preprocessed,
             )
 
-    def update_panel(self):
-        """Update panel content when switched to."""
+    def update_panel(self, *args):
+        """Update panel content when switched to or data changes."""
         self.update_info()
         self.check_ready_to_train()
 
-    def check_ready_to_train(self):
+    def check_ready_to_train(self, *args): # Accept args for observer compatibility
         """Check if all configurations are set and enable/disable start button."""
         ready = self.controller.validate_ready()
         self.btn_start.setEnabled(ready)

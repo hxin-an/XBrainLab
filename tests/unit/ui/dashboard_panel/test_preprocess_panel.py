@@ -21,13 +21,23 @@ def mock_main_window(qapp):
 
 @pytest.fixture
 def mock_controller(mock_main_window):
-    controller = MagicMock()
-    controller.is_epoched.return_value = False
-    controller.has_data.return_value = True
-    controller.get_preprocessed_data_list.return_value = []
+    preprocess_ctrl = MagicMock()
+    preprocess_ctrl.is_epoched.return_value = False
+    preprocess_ctrl.has_data.return_value = True
+    preprocess_ctrl.get_preprocessed_data_list.return_value = []
 
-    mock_main_window.study.get_controller.return_value = controller
-    return controller
+    dataset_ctrl = MagicMock()
+    dataset_ctrl.get_loaded_data_list.return_value = []
+
+    def get_ctrl_side_effect(name):
+        if name == "preprocess":
+            return preprocess_ctrl
+        if name == "dataset":
+            return dataset_ctrl
+        return MagicMock()
+
+    mock_main_window.study.get_controller.side_effect = get_ctrl_side_effect
+    return preprocess_ctrl
 
 
 def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtbot):

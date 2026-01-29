@@ -2,6 +2,17 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [0.5.3] - 2026-01-29
+### Added
+- **Agent Robustness**:
+    - **Loop Detection**: 實作了循環偵測機制 (`LLMController._detect_loop`)，當 Agent 連續 3 次呼叫相同工具（包含參數）時，會自動中斷循環並發送警告 Prompt，防止無限迴圈。
+    - **JSON Fault Tolerance**: 實作了自動重試機制，當 LLM 輸出的 JSON 格式無效時 (heuristic detection)，系統會發送 "System: Invalid JSON" 提示要求 Agent 重試（最多 2 次），而非直接失敗或靜默。
+    - **Verification**: 新增 `tests/unit/llm/test_controller.py` 中的 `test_loop_detection` 與 `test_json_retry` 測試案例。
+### Refactored
+- **Architecture Refinement**:
+    - **Fully Event-Driven UI**: 重構 `PreprocessPanel` 與 `TrainingPanel`，使其透過 `QtObserverBridge` 監聽 `DatasetController` 的 `data_changed` 與 `import_finished` 事件，而非依賴隱式的 `main_window.study` 存取。這確保了 `AggregateInfoPanel` 在數據變更時能正確、即時地更新，並消除了舊有的耦合與潛在的更新延遲 (Stale Data)。
+    - **Decoupling**: `TrainingPanel` 與 `PreprocessPanel` 現在顯式地從 Controller 獲取數據列表並傳遞給 `AggregateInfoPanel`，移除了 `AggregateInfoPanel` 對 `main_window` 的直接依賴。
+
 ## [0.5.2] - 2026-01-19
 ### Added
 - **RAG System Integration (Retrieval-Augmented Generation)**:

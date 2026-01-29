@@ -11,12 +11,12 @@ class MockStudy(QObject):
     pass
 
 
-pytestmark = pytest.mark.skip(
-    reason=(
-        "Crashes in headless env with IOT instruction (Qt/Torch conflict). "
-        "Logic verified by eval_agent.py."
-    )
-)
+# pytestmark = pytest.mark.skip(
+#    reason=(
+#        "Crashes in headless env with IOT instruction (Qt/Torch conflict). "
+#        "Logic verified by eval_agent.py."
+#    )
+# )
 
 
 @pytest.fixture
@@ -112,3 +112,33 @@ def test_sliding_window(controller, qtbot):
     assert args[0]["role"] == "system"
     assert args[1]["content"] == "msg 10"  # Should start from index 10
     assert args[-1]["content"] == "msg 19"
+
+def test_loop_detection(controller):
+    """Test that repeated tool calls trigger a loop intervention."""
+    controller._on_generation_finished = MagicMock() # Prevent real recursion
+    controller._execute_tool_no_loop = MagicMock(return_value=(True, "Success"))
+    
+    cmd = "test_tool"
+    params = {"p": 1}
+    
+    # 1. Simulate 2 allowed calls
+    for _ in range(2):
+        controller._recent_tool_calls.append((cmd, str(params)))
+        assert not controller._detect_loop((cmd, str(params)))
+        
+    # 2. Add 3rd call -> Loop detected
+    controller._recent_tool_calls.append((cmd, str(params)))
+    assert controller._detect_loop((cmd, str(params)))
+
+def test_json_retry(controller):
+    """Test that invalid JSON triggers retry."""
+    controller._generate_response = MagicMock()
+    
+    # 1. Invalid JSON
+    controller.current_response = "```json {invalid syntax} ```"
+    controller._on_generation_finished()
+    
+    # Should trigger retry
+    assert controller._retry_count == 1
+    assert "Invalid JSON" in controller.history[-1]["content"] # Error message to user
+    controller._generate_response.assert_called()
