@@ -1,5 +1,7 @@
 import logging
+import threading
 from collections import deque
+from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
@@ -67,13 +69,22 @@ class LLMController(QObject):
         self.is_processing = False
 
         # Robustness State
-        self._recent_tool_calls = deque(maxlen=10)
+        # Robustness State
+        self._recent_tool_calls: deque = deque(maxlen=10)
         self._retry_count = 0
         self._max_retries = 2
+
+        # Tool Failure Loop Protection
+        self._tool_failure_count = 0
+        self._max_tool_failures = 3
 
     def initialize(self):
         """Initialize the underlying worker/engine."""
         self.sig_initialize.emit()
+
+        # Start RAG initialization in a separate thread to not block UI
+        # This will run in parallel with the LLM loading (which is in worker thread)
+        threading.Thread(target=self.rag_retriever.initialize, daemon=True).start()
 
     def _append_history(self, role: str, content: str):
         """Append to history and prune if necessary."""
@@ -99,6 +110,10 @@ class LLMController(QObject):
         # 1. Update History
         self._append_history("user", text)
 
+        # Reset retry counters for new turn
+        self._retry_count = 0
+        self._tool_failure_count = 0
+
         # 2. Retrieve RAG Context (Examples)
         features = self.rag_retriever.get_similar_examples(text)
         self.prompt_manager.clear_context()
@@ -115,6 +130,8 @@ class LLMController(QObject):
         # Use PromptManager to construct messages
         messages = self.prompt_manager.get_messages(self.history)
         self.current_response = ""  # Reset accumulator
+        self._emitted_len = 0  # Track what we sent to UI
+        self._is_buffering = False
 
         # Update status and Start Bubble
         self.status_update.emit("Generating response...")
@@ -124,84 +141,183 @@ class LLMController(QObject):
         self.sig_generate.emit(messages)
 
     def _on_chunk_received(self, chunk: str):
-        """Accumulate chunk and stream to UI."""
+        """Accumulate chunk and stream to UI with speculative buffering."""
         self.current_response += chunk
-        self.chunk_received.emit(chunk)
+
+        # Heuristic: Determine if we should buffer (hide) this output
+        # 1. Start of message: Wait a bit to check for '{' or 'Request:'
+        if len(self.current_response) < 10:
+            # Buffer the first few chars to identify tool calls vs text
+            return
+
+        # 2. Check for Tool Signatures
+        stripped = self.current_response.strip()
+        # 2. Check for Tool Signatures
+        stripped = self.current_response.strip()
+        is_tool_start = stripped.startswith(("{", "Request:"))
+        has_tool_block = (
+            "```json" in self.current_response or "```python" in self.current_response
+        )
+
+        if is_tool_start or has_tool_block:
+            self._is_buffering = True
+
+        # 3. Stream or Buffer
+        if not self._is_buffering:
+            # Emit only the NEW part
+            to_emit = self.current_response[self._emitted_len :]
+            if to_emit:
+                self.chunk_received.emit(to_emit)
+                self._emitted_len += len(to_emit)
+        else:
+            # We are buffering (hiding) potential tool output
+            pass
 
     def _on_generation_finished(self):
         """Called when LLM finishes generating one turn."""
         response_text = self.current_response.strip()
 
-        # 1. Parse for Commands
+        # Flush buffer if we detained text thinking it was a tool, but it's not
+        # (yet validated) Actually, wait until we confirm it's NOT a tool.
+
         command_result = CommandParser.parse(response_text)
 
-        # --- JSON Fault Tolerance (Auto-Retry) ---
-        if not command_result and (
-            "```" in response_text or ("{" in response_text and "}" in response_text)
-        ):
-                if self._retry_count < self._max_retries:
-                    logger.warning("Broken JSON detected. Retrying...")
-                    self._retry_count += 1
+        # 1. broken JSON check
+        if self._handle_json_broken_retry(response_text, command_result):
+            return
 
-                    self._append_history("assistant", response_text)
-                    err_msg = (
-                        "System: Your last output contained broken JSON. "
-                        "Please check your syntax and output VALID JSON only."
-                    )
-                    self._append_history("user", err_msg)
-                    self.status_update.emit("Invalid JSON, retrying...")
-                    self._generate_response()
-                    return
-                else:
-                    logger.error("Max retries reached for JSON error.")
-                    # Fallthrough to "Ready" but maybe show error?
-
+        # 2. Process Result
         if command_result:
-            self._retry_count = 0 # Reset on success
-            # Handle List of Commands (Multi-Step Support)
-            # Ensure it is a list
-            commands = (
-                command_result if isinstance(command_result, list) else [command_result]
-            )
-
-            self._append_history("assistant", response_text)
-
-            for cmd, params in commands:
-                # --- Loop Detection ---
-                call_signature = (cmd, str(params))
-                self._recent_tool_calls.append(call_signature)
-                if self._detect_loop(call_signature):
-                    msg = (
-                        f"System: Loop detected. You have called '{cmd}' "
-                        "with these params multiple times. Stop."
-                    )
-                    self._append_history("user", msg)
-                    self.status_update.emit("Loop detected, interrupting...")
-                    self._generate_response() # Let LLM handle it or stop?
-                    # If we loop, we might want to stop or ask LLM to fix.
-                    return
-
-                self.status_update.emit(f"Executing: {cmd}...")
-
-                # Execute Tool
-                _success, result = self._execute_tool_no_loop(cmd, params)
-
-                # If special UI Interaction triggered in tool result?
-                # _execute_tool_no_loop handles execution.
-                # We need to handle the result (e.g. Switch UI).
-                self._handle_tool_result_logic(result)
-
-                # Feed result back to History
-                self._append_history("user", f"Tool Output: {result}")
-
-            # After all tools executed, trigger next generation loop
-            self._generate_response()
-
+            self._retry_count = 0  # Reset on success
+            self._process_tool_calls(command_result, response_text)
         else:
-            # It's the FINAL text response
-            self._append_history("assistant", response_text)
-            self.status_update.emit("Ready")
-            self.is_processing = False
+            # Not a tool call. Ensure we emitted everything to the UI.
+            to_emit = self.current_response[self._emitted_len :]
+            if to_emit:
+                self.chunk_received.emit(to_emit)
+                self._emitted_len += len(to_emit)
+
+            self._finalize_turn(response_text)
+
+    def _handle_json_broken_retry(
+        self, response_text: str, command_result: Any
+    ) -> bool:
+        """
+        Checks if output looks like broken JSON and triggers retry.
+        Returns True if retry was triggered (caller should return).
+        """
+        if command_result:
+            return False
+
+        # Simple heuristic: contains braces or code blocks but parser failed
+        if "```" in response_text or ("{" in response_text and "}" in response_text):
+            if self._retry_count < self._max_retries:
+                logger.warning("Broken JSON detected. Retrying...")
+                # Hide the broken JSON from UI
+                self.remove_content.emit(response_text)
+
+                self._retry_count += 1
+                self._append_history("assistant", response_text)
+
+                err_msg = (
+                    "System: Your last output contained broken JSON. "
+                    "Please check your syntax and output VALID JSON only."
+                )
+                self._append_history("user", err_msg)
+                self.status_update.emit("Invalid JSON, retrying...")
+                self._generate_response()
+                return True
+            else:
+                logger.error("Max retries reached for JSON error.")
+
+        return False
+
+    def _process_tool_calls(self, command_result: Any, response_text: str):
+        """Iterates through parsed commands and executes them."""
+        commands = (
+            command_result if isinstance(command_result, list) else [command_result]
+        )
+
+        # Hide the raw JSON from the UI now that we've parsed it
+        self.remove_content.emit(response_text)
+
+        self._append_history("assistant", response_text)
+
+        # Track if any tool failed during this batch
+        has_failure = False
+
+        for cmd, params in commands:
+            # --- Loop Detection ---
+            call_signature = (cmd, str(params))
+            self._recent_tool_calls.append(call_signature)
+
+            if self._detect_loop(call_signature):
+                self._handle_loop_detected(cmd)
+                return
+
+            self.status_update.emit(f"Executing: {cmd}...")
+
+            # Execute Tool
+            _success, result = self._execute_tool_no_loop(cmd, params)
+
+            if not _success:
+                has_failure = True
+
+            # Handle Side Effects
+            self._handle_tool_result_logic(result, _success)
+
+            # Feed result back to History
+            self._append_history("user", f"Tool Output: {result}")
+
+        # Intelligent Continuation Strategy:
+        # 1. If FAILURE occurred: Auto-trigger loop to allow Agent to self-correct.
+        # 2. If SUCCESS: Stop and wait for user (prevent runaway).
+
+        if has_failure:
+            self._tool_failure_count += 1
+            if self._tool_failure_count >= self._max_tool_failures:
+                msg = "System: Max tool execution retries exceeded. Stopping."
+                self._append_history("user", msg)
+                self.status_update.emit("Max retries exceeded, stopping.")
+                self._finalize_turn_after_tool()
+            else:
+                logger.info(
+                    f"Tool failure detected "
+                    f"(Attempt {self._tool_failure_count}/{self._max_tool_failures}), "
+                    "retrying..."
+                )
+                self._generate_response()
+        else:
+            self._tool_failure_count = 0  # Reset on success
+            self._finalize_turn_after_tool()
+
+    def _finalize_turn_after_tool(self):
+        """Finalizes turn immediately after tool execution (Safe Mode)."""
+        # We don't generate more text. We just stop.
+        # But we ensure the UI knows we are done.
+        self.status_update.emit("Ready")
+        self.is_processing = False
+
+        # Optional: If the tool output is hidden, the user sees nothing?
+        # The user said "Tool call doesn't show...".
+        # If we successfully hid the tool call JSON, the chat is blank?
+        # We might want to show a standard "Action Completed" if silence.
+
+    def _handle_loop_detected(self, cmd: str):
+        """Handles logic when a loop is detected."""
+        msg = (
+            f"System: Loop detected. You have called '{cmd}' "
+            "with these params multiple times. Stop."
+        )
+        self._append_history("user", msg)
+        self.status_update.emit("Loop detected, interrupting...")
+        self._generate_response()
+
+    def _finalize_turn(self, response_text: str):
+        """Finalizes the turn when no commands are present."""
+        self._append_history("assistant", response_text)
+        self.status_update.emit("Ready")
+        self.is_processing = False
 
     def _execute_tool_no_loop(self, command_name, params):
         """
@@ -233,7 +349,7 @@ class LLMController(QObject):
                 count += 1
         return count >= 3
 
-    def _handle_tool_result_logic(self, result: str):
+    def _handle_tool_result_logic(self, result: str, success: bool = True):
         """Processes tool result for UI side effects (Switch Panel, etc)."""
         if result.startswith("Request:"):
             # Format: "Request: CommandName params"
@@ -247,21 +363,19 @@ class LLMController(QObject):
                     )
                 self.request_user_interaction.emit("switch_panel", {"panel": target})
                 # We don't append history here, caller does.
-                return
+                return True
 
             self.status_update.emit("Waiting for user interaction...")
             self.request_user_interaction.emit("confirm_montage", {"context": cmd_part})
-            return
+            return True
 
         if not result.startswith("Request:"):
-            if (
-                "error" in result.lower()
-                or "exception" in result.lower()
-                or "failed" in result.lower()
-            ):
+            # Only report as System Error if the tool actually failed
+            if not success:
                 self.response_ready.emit("System", f"Tool Error: {result}")
             else:
                 pass
+        return False
 
     # Deprecated/Removed old _execute_tool and _handle_tool_result to avoid confusion
     # But for safety, keep _handle_tool_result if referenced elsewhere?

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QTableWidgetItem
 
-from XBrainLab.ui.training.model_selection import ModelSelectionWindow
+from XBrainLab.ui.dialogs.training import ModelSelectionDialog
 
 
 # Dummy model for testing
@@ -20,7 +20,7 @@ class TestModelSelection:
             mock_getmembers.return_value = [("DummyModel", DummyModel)]
 
             mock_controller = MagicMock()
-            dialog = ModelSelectionWindow(None, mock_controller)
+            dialog = ModelSelectionDialog(None, mock_controller)
             qtbot.addWidget(dialog)
             return dialog
 
@@ -49,8 +49,8 @@ class TestModelSelection:
         dialog.params_table.setItem(0, 1, QTableWidgetItem("20"))
 
         # Click OK
-        with patch.object(dialog, "accept") as mock_accept:
-            dialog.confirm()
+        with patch("PyQt6.QtWidgets.QDialog.accept") as mock_accept:
+            dialog.accept()
             mock_accept.assert_called_once()
 
         # Verify result

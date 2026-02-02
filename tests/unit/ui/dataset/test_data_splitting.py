@@ -5,7 +5,12 @@ import pytest
 from PyQt6.QtWidgets import QApplication, QDialog
 
 from XBrainLab.backend.dataset.option import SplitByType, SplitUnit
-from XBrainLab.ui.dataset.data_splitting import DataSplitterHolder, DataSplittingWindow
+from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+    DataSplitterHolder,
+)
+from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+    DataSplittingPreviewDialog as DataSplittingWindow,
+)
 
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
@@ -73,7 +78,9 @@ def test_data_splitting_window_init(qtbot):
     # Mock threading to prevent auto-preview
     with (
         patch("threading.Thread"),
-        patch("XBrainLab.ui.dataset.data_splitting.DatasetGenerator"),
+        patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+        ),
     ):
         window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
         qtbot.addWidget(window)
@@ -96,7 +103,9 @@ def test_data_splitting_window_preview(qtbot):
     mock_config.is_cross_validation = False
 
     with (
-        patch("XBrainLab.ui.dataset.data_splitting.DatasetGenerator") as MockGen,
+        patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+        ) as MockGen,
         patch("threading.Thread") as MockThread,
     ):
         window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
@@ -126,7 +135,9 @@ def test_data_splitting_window_update_table(qtbot):
 
     with (
         patch("threading.Thread"),
-        patch("XBrainLab.ui.dataset.data_splitting.DatasetGenerator"),
+        patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+        ),
     ):
         window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
         qtbot.addWidget(window)
@@ -166,7 +177,9 @@ def test_data_splitting_window_confirm(qtbot):
 
     with (
         patch("threading.Thread"),
-        patch("XBrainLab.ui.dataset.data_splitting.DatasetGenerator"),
+        patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.DatasetGenerator"
+        ),
     ):
         window = DataSplittingWindow(None, "Test Window", mock_epoch, mock_config)
         qtbot.addWidget(window)

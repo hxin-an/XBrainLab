@@ -1,8 +1,10 @@
 import logging
+from typing import TYPE_CHECKING
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Qdrant
-from qdrant_client import QdrantClient
+if TYPE_CHECKING:
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_community.vectorstores import Qdrant
+    from qdrant_client import QdrantClient
 
 from .config import RAGConfig
 
@@ -16,8 +18,19 @@ class RAGRetriever:
         self.client: QdrantClient | None = None
         self.vectorstore: Qdrant | None = None
         self.embeddings: HuggingFaceEmbeddings | None = None
+        self.is_initialized = False
+
+    def initialize(self):
+        """Initialize RAG components lazily."""
+        if self.is_initialized:
+            return
 
         try:
+            logger.info("Initializing RAGRetriever...")
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+            from langchain_community.vectorstores import Qdrant
+            from qdrant_client import QdrantClient
+
             self.embeddings = HuggingFaceEmbeddings(
                 model_name=RAGConfig.EMBEDDING_MODEL
             )
@@ -36,6 +49,7 @@ class RAGRetriever:
                 collection_name=RAGConfig.COLLECTION_NAME,
                 embeddings=self.embeddings,
             )
+            self.is_initialized = True
             logger.info("RAGRetriever initialized.")
         except Exception as e:
             logger.error(f"Failed to init RAGRetriever: {e}")
@@ -53,12 +67,10 @@ class RAGRetriever:
             return False
 
     def _auto_initialize(self):
-        """Auto-index from bundled gold_set.json using existing client."""
-        import json
+        """Auto-index from bundled gold_set.json using RAGIndexer."""
         from pathlib import Path
 
-        from langchain.docstore.document import Document
-        from qdrant_client.http import models as rest
+        from .indexer import RAGIndexer
 
         gold_set_path = Path(__file__).parent / "data" / "gold_set.json"
         if not gold_set_path.exists():
@@ -66,41 +78,17 @@ class RAGRetriever:
             return
 
         try:
-            # Load gold set
-            with open(gold_set_path, encoding="utf-8") as f:
-                data = json.load(f)
-
-            docs = []
-            for item in data:
-                content = item.get("input", "")
-                metadata = {
-                    "category": item.get("category"),
-                    "tool_calls": json.dumps(item.get("expected_tool_calls")),
-                }
-                if content:
-                    docs.append(Document(page_content=content, metadata=metadata))
-
-            if not docs:
-                return
-
-            # Create collection using existing client
-            # Create collection using existing client
-            if self.client:
-                self.client.recreate_collection(
+            logger.info("Delegating auto-initialization to RAGIndexer...")
+            indexer = RAGIndexer()
+            docs = indexer.load_gold_set(str(gold_set_path))
+            if docs:
+                indexer.index_data(docs)
+                # Re-initialize vectorstore after indexing
+                self.vectorstore = Qdrant(
+                    client=self.client,
                     collection_name=RAGConfig.COLLECTION_NAME,
-                    vectors_config=rest.VectorParams(
-                        size=384, distance=rest.Distance.COSINE
-                    ),
+                    embeddings=self.embeddings,
                 )
-
-            # Index using LangChain wrapper with existing client
-            qdrant = Qdrant(
-                client=self.client,
-                collection_name=RAGConfig.COLLECTION_NAME,
-                embeddings=self.embeddings,
-            )
-            qdrant.add_documents(docs)
-            logger.info(f"Auto-indexed {len(docs)} RAG examples.")
         except Exception as e:
             logger.error(f"RAG auto-init failed: {e}")
 

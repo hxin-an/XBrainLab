@@ -272,3 +272,28 @@ class Raw:
             epochs,
             has_event,
         )
+
+    def copy(self) -> Raw:
+        """Create a deep copy of the Raw object for thread-safe operations.
+
+        Returns:
+            New Raw instance with copied MNE data and attributes.
+        """
+        # Deep copy MNE data
+        mne_copy = self.mne_data.copy()
+
+        # Create new instance
+        new_obj = Raw(self.filepath, mne_copy)
+
+        # Copy properties
+        new_obj.preprocess_history = self.preprocess_history.copy()
+        new_obj.subject = self.subject
+        new_obj.session = self.session
+        new_obj.labels_imported = self.labels_imported
+
+        if self.raw_events is not None:
+            new_obj.raw_events = self.raw_events.copy()
+        if self.raw_event_id is not None:
+            new_obj.raw_event_id = self.raw_event_id.copy()
+
+        return new_obj

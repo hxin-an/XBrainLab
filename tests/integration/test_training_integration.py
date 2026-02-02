@@ -14,8 +14,8 @@ from XBrainLab import Study
 from XBrainLab.backend.model_base import EEGNet, SCCNet
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
-from XBrainLab.ui.training.panel import MetricTab
-from XBrainLab.ui.training.training_setting import TrainingSettingWindow
+from XBrainLab.ui.dialogs.training import TrainingSettingWindow
+from XBrainLab.ui.panels.training.panel import MetricTab
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 """Tests for AgentWorker timeout mechanism."""
+
 from unittest.mock import MagicMock, patch
 
 from XBrainLab.llm.agent.worker import AgentWorker
@@ -24,9 +25,9 @@ class TestAgentWorkerTimeout:
             assert worker.timeout_timer is not None, "Timeout timer should be created"
             # Note: isActive() returns False in test env without QEventLoop
             # We verify configuration instead
-            assert (
-                worker.timeout_timer.interval() == 30000
-            ), f"Expected 30s, got {worker.timeout_timer.interval()}ms"
+            assert worker.timeout_timer.interval() == 30000, (
+                f"Expected 30s, got {worker.timeout_timer.interval()}ms"
+            )
 
     def test_on_timeout_sets_flag_and_emits_error(self):
         """Verify timeout handler sets flag and emits error."""

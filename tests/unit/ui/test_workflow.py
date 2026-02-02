@@ -2,9 +2,9 @@ import pytest
 from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.study import Study
-from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
 from XBrainLab.ui.main_window import MainWindow
-from XBrainLab.ui.training.panel import TrainingPanel
+from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+from XBrainLab.ui.panels.training.panel import TrainingPanel
 
 
 @pytest.fixture(scope="session")

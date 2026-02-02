@@ -10,17 +10,18 @@ sys.modules["XBrainLab.backend.visualization.VisualizerType"] = MagicMock()
 sys.modules["XBrainLab.backend.visualization.supported_saliency_methods"] = [
     "SmoothGrad"
 ]
+sys.modules["XBrainLab.backend.visualization.saliency_3d_engine"] = MagicMock()
 
 # Import UI components
-from XBrainLab.ui.visualization.panel import VisualizationPanel
-from XBrainLab.ui.visualization.saliency_3Dplot import (
+from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+from XBrainLab.ui.panels.visualization.saliency_views.map_view import SaliencyMapWidget
+from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
     Saliency3DPlotWidget,
 )
-from XBrainLab.ui.visualization.saliency_map import SaliencyMapWidget
-from XBrainLab.ui.visualization.saliency_spectrogram import (
+from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
     SaliencySpectrogramWidget,
 )
-from XBrainLab.ui.visualization.saliency_topomap import (
+from XBrainLab.ui.panels.visualization.saliency_views.topomap_view import (
     SaliencyTopographicMapWidget,
 )
 
@@ -31,7 +32,9 @@ from XBrainLab.ui.visualization.saliency_topomap import (
 class TestVisualizationPanelRedesign(unittest.TestCase):
     def setUp(self):
         # Patch AggregateInfoPanel
-        self.patcher_info = patch("XBrainLab.ui.visualization.panel.AggregateInfoPanel")
+        self.patcher_info = patch(
+            "XBrainLab.ui.panels.visualization.panel.AggregateInfoPanel"
+        )
         self.MockAggregateInfoPanel = self.patcher_info.start()
         # Make sure the mock instance is a QWidget so layout.addWidget accepts it
         self.MockAggregateInfoPanel.return_value = QWidget()
@@ -179,7 +182,7 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
         self.assertIsInstance(last_widget, QLabel)
         self.assertIn("Please Set Montage First", last_widget.text())
 
-    @patch("XBrainLab.ui.visualization.saliency_topomap.plt")
+    @patch("XBrainLab.ui.panels.visualization.saliency_views.topomap_view.plt")
     def test_topomap_plotting(self, mock_plt):
         """Test Topomap plotting logic (figure clearing)."""
         widget = self.panel.tab_topo
@@ -205,10 +208,10 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
             mock_plt.close.assert_called_with("all")
             mock_plt.figure.assert_called_once()
 
-    @patch("XBrainLab.ui.visualization.saliency_3Dplot.pyvistaqt")
-    @patch("XBrainLab.ui.visualization.saliency_3Dplot.QTimer")
-    @patch("XBrainLab.ui.visualization.plot_3d_head.pv")
-    @patch("XBrainLab.ui.visualization.plot_3d_head.os.path")
+    @patch("XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt")
+    @patch("XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.QTimer")
+    @patch("XBrainLab.ui.panels.visualization.plot_3d_head.pv")
+    @patch("XBrainLab.ui.panels.visualization.plot_3d_head.os.path")
     def test_3d_embedding(self, mock_path, mock_pv, mock_qtimer, mock_pyvistaqt):
         """Test if 3D Plot embeds QtInteractor and defers plotting."""
         widget = self.panel.tab_3d
@@ -231,7 +234,7 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
         # Mock Saliency3D class to avoid actual plotting logic
         # We need to mock Saliency3D inside the module where it's used
         with patch(
-            "XBrainLab.ui.visualization.saliency_3Dplot.Saliency3D"
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D"
         ) as MockSaliency3D:
             # Setup QTimer to run immediately
             mock_qtimer.singleShot.side_effect = lambda delay, func: func()

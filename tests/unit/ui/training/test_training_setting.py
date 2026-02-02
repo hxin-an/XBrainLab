@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 
-from XBrainLab.ui.training.training_setting import (
-    SetDeviceWindow,
-    SetOptimizerWindow,
-    TrainingSettingWindow,
+from XBrainLab.ui.dialogs.training import (
+    DeviceSettingDialog,
+    OptimizerSettingDialog,
+    TrainingSettingDialog,
 )
 
 
@@ -19,11 +19,11 @@ class TestTrainingSetting:
 
         # Use actual torch.optim.Adam
         with patch(
-            "XBrainLab.ui.training.training_setting.get_optimizer_classes"
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes"
         ) as mock_get_classes:
             mock_get_classes.return_value = {"Adam": torch.optim.Adam}
 
-            window = TrainingSettingWindow(None, mock_controller)
+            window = TrainingSettingDialog(None, mock_controller)
             qtbot.addWidget(window)
             yield window
 
@@ -58,8 +58,8 @@ class TestTrainingSetting:
         window.evaluation_combo.setCurrentIndex(0)
 
         # Confirm
-        with patch.object(window, "accept") as mock_accept:
-            window.confirm()
+        with patch("PyQt6.QtWidgets.QDialog.accept") as mock_accept:
+            window.accept()
             mock_accept.assert_called_once()
 
         # Verify result
@@ -103,12 +103,12 @@ class TestTrainingSetting:
         # Use real Adam class in get_optimizer_classes
         with (
             patch(
-                "XBrainLab.ui.training.training_setting.get_optimizer_classes",
+                "XBrainLab.ui.dialogs.training.training_setting_dialog.get_optimizer_classes",
                 return_value={"Adam": torch.optim.Adam},
             ),
             patch("torch.cuda.get_device_name", return_value="Test GPU"),
         ):
-            window = TrainingSettingWindow(None, mock_controller)
+            window = TrainingSettingDialog(None, mock_controller)
             qtbot.addWidget(window)
 
             # Verify fields are populated
@@ -136,10 +136,10 @@ class TestSetOptimizer:
         mock_adam.__name__ = "Adam"
 
         with patch(
-            "XBrainLab.ui.training.training_setting.get_optimizer_classes",
+            "XBrainLab.ui.dialogs.training.optimizer_setting_dialog.get_optimizer_classes",
             return_value={"Adam": mock_adam},
         ):
-            window = SetOptimizerWindow(None)
+            window = OptimizerSettingDialog(None)
             qtbot.addWidget(window)
             yield window
 
@@ -158,7 +158,7 @@ class TestSetDevice:
             patch("torch.cuda.device_count", return_value=1),
             patch("torch.cuda.get_device_name", return_value="Test GPU"),
         ):
-            window = SetDeviceWindow(None)
+            window = DeviceSettingDialog(None)
             qtbot.addWidget(window)
             yield window
 
@@ -169,8 +169,8 @@ class TestSetDevice:
 
     def test_confirm_cpu(self, window):
         window.device_list.setCurrentRow(0)
-        with patch.object(window, "accept") as mock_accept:
-            window.confirm()
+        with patch("PyQt6.QtWidgets.QDialog.accept") as mock_accept:
+            window.accept()
             mock_accept.assert_called_once()
 
         use_cpu, gpu_idx = window.get_result()
@@ -179,8 +179,8 @@ class TestSetDevice:
 
     def test_confirm_gpu(self, window):
         window.device_list.setCurrentRow(1)
-        with patch.object(window, "accept") as mock_accept:
-            window.confirm()
+        with patch("PyQt6.QtWidgets.QDialog.accept") as mock_accept:
+            window.accept()
             mock_accept.assert_called_once()
 
         use_cpu, gpu_idx = window.get_result()

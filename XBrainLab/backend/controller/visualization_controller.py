@@ -26,6 +26,14 @@ class VisualizationController(Observable):
         Observable.__init__(self)
         self._study = study
 
+    def get_loaded_data_list(self):
+        """Get loaded data list from study."""
+        return self._study.loaded_data_list
+
+    def get_preprocessed_data_list(self):
+        """Get preprocessed data list from study."""
+        return self._study.preprocessed_data_list
+
     def get_trainers(self) -> list[TrainingPlanHolder]:
         """Get list of training plan holders (groups)."""
         if self._study.trainer:

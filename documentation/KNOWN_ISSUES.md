@@ -41,13 +41,24 @@
 - **狀態**: <span style="color:green">已解決</span> (Resolved in 0.5.3) - Added 60s timeout mechanism.
 
 ### 4. Code Maintenance (代碼維護)
-- **問題**: 
+- **問題**:
     - **UI 文件過大**: `preprocess.py` (1294行) 與 `training/panel.py` (893行) 包含過多邏輯，難以維護。
     - **行長度違規**: 專案中仍有 200+ 處 E501 (Line too long) 違規。
-- **狀態**: <span style="color:green">已解決</span> (Resolved in 0.5.3)
+- **狀態**: <span style="color:orange">部分解決</span>
     - `preprocess.py`: Dialog classes extracted to `dialogs.py`.
-    - `training/panel.py`: Polling logic moved to Controller (Thread-based).
-    - E501 violations fixed project-wide.
+    - `training/panel.py`: Polling logic moved to Controller.
+    - **New**: `training/panel.py` 仍有 909 行 (見下方 UI Architecture Defects)。
+
+### 5. UI Architecture Defects (UI 架構缺陷) [Updated 2026-02-01]
+- **問題**: 經過詳細代碼審查，發現多個架構層面的技術債：
+    - ~~**God Object**: `training/panel.py` 仍有 909 行~~ ✅ 已重構至 ~200 行
+    - ~~**Tight Coupling**: 多個 Panel 直接存取 `self.main_window.study`~~ ✅ 已移除
+    - ~~**Leaky Abstraction**: `AggregateInfoPanel` 直接依賴 `MainWindow`~~ ✅ 已修復
+    - ~~**Duplicate Logic**: UI 刷新邏輯 (`refresh_panels`) 重複散落~~ ✅ 已移除
+- **新發現架構問題**:
+    - **Misplaced Data Classes**: `ProxyRecord` 和 `PooledRecordWrapper` 位於 `ui/panels/evaluation/panel.py`，應移至 Backend。
+    - **Heavy Visualization Logic**: `Saliency3D` (227行) 位於 UI 層，包含大量資料處理邏輯。
+- **狀態**: <span style="color:orange">部分解決</span> (核心已修復，遺留 2 項待清理)
 
 ---
 

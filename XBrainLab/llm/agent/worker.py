@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
@@ -87,7 +87,7 @@ class AgentWorker(QObject):
 
         # Timeout timer (thread-safe UI timer)
         self._is_timed_out = False
-        from PyQt6.QtCore import QTimer
+
         self.timeout_timer = QTimer(self)
         self.timeout_timer.setSingleShot(True)
         self.timeout_timer.timeout.connect(self._on_timeout)
@@ -108,13 +108,15 @@ class AgentWorker(QObject):
             # future output and signal the UI to proceed.
             try:
                 self.generation_thread.chunk_received.disconnect(self.chunk_received)
-                self.generation_thread.finished_generation.disconnect(self._on_generation_finished)
+                self.generation_thread.finished_generation.disconnect(
+                    self._on_generation_finished
+                )
                 # self.generation_thread.terminate() # Dangerous, avoid unless necessary
             except Exception:
                 pass
 
             self.error.emit("Error: Generation timed out (Local LLM is too slow).")
-            self.finished.emit([]) # Unblock the UI
+            self.finished.emit([])  # Unblock the UI
 
     def _on_generation_finished(self):
         if self._is_timed_out:

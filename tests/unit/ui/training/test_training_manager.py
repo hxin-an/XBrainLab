@@ -4,7 +4,7 @@ import pytest
 from PyQt6.QtWidgets import QMessageBox
 
 from XBrainLab.backend.training import Trainer
-from XBrainLab.ui.training.training_manager import TrainingManagerWindow
+from XBrainLab.ui.panels.training.training_manager import TrainingManagerWindow
 
 
 class TestTrainingManager:
@@ -20,7 +20,8 @@ class TestTrainingManager:
     def window(self, qtbot, mock_trainer):
         # Mock Trainer check in __init__
         with patch(
-            "XBrainLab.ui.training.training_manager.isinstance", return_value=True
+            "XBrainLab.ui.panels.training.training_manager.isinstance",
+            return_value=True,
         ):
             window = TrainingManagerWindow(None, mock_trainer)
             qtbot.addWidget(window)

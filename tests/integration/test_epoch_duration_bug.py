@@ -57,7 +57,7 @@ def test_epoch_duration_too_short():
     assert "Epoch duration is too short" in error_msg
     assert "EEGNet" in error_msg
     assert "samples" in error_msg
-    print(f"✓ Test passed. Error message: {error_msg}")
+    print(f"??Test passed. Error message: {error_msg}")
 
 
 def test_minimum_samples_required():
@@ -85,13 +85,13 @@ def test_minimum_samples_required():
                 sfreq=sfreq,
                 **model_params,
             )
-            print(f"  ✗ {model_name} should have raised ValueError for samples=1")
+            print(f"  ??{model_name} should have raised ValueError for samples=1")
             raise AssertionError(f"{model_name} did not validate minimum samples")
         except ValueError as e:
             error_msg = str(e)
             assert "Epoch duration is too short" in error_msg
             assert model_name in error_msg
-            print(f"  ✓ {model_name} correctly raised ValueError: {error_msg[:100]}...")
+            print(f"  ??{model_name} correctly raised ValueError: {error_msg[:100]}...")
 
         # Test with sufficient samples - should work
         test_samples = [128, 250, 500, 1000]
@@ -108,7 +108,7 @@ def test_minimum_samples_required():
                 x = torch.randn(2, 1, channels, samples)
                 output = model(x)
                 print(
-                    f"  ✓ {model_name} works with samples={samples}, "
+                    f"  ??{model_name} works with samples={samples}, "
                     f"output shape: {output.shape}"
                 )
                 break

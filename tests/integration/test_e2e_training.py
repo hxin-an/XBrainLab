@@ -15,9 +15,9 @@ from XBrainLab import Study
 from XBrainLab.backend.model_base import SCCNet
 from XBrainLab.backend.training import TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.model_holder import ModelHolder
-from XBrainLab.ui.evaluation.panel import EvaluationPanel
-from XBrainLab.ui.training.panel import MetricTab, TrainingPanel
-from XBrainLab.ui.visualization.panel import VisualizationPanel
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
+from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
 
 @pytest.fixture

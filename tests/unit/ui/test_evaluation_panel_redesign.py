@@ -12,10 +12,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.ui.evaluation.confusion_matrix import ConfusionMatrixWidget
-from XBrainLab.ui.evaluation.metrics_bar_chart import MetricsBarChartWidget
-from XBrainLab.ui.evaluation.metrics_table import MetricsTableWidget
-from XBrainLab.ui.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
+from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
+from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 
 
 # Mock classes
@@ -95,6 +95,10 @@ class MockStudy:
             controller = MagicMock()
             controller.get_plans.return_value = self.trainer.get_training_plan_holders()
             controller.get_model_summary_str.return_value = "Mock Summary"
+            controller.get_loaded_data_list.return_value = self.loaded_data_list
+            controller.get_preprocessed_data_list.return_value = (
+                self.preprocessed_data_list
+            )
             return controller
         return MagicMock()
 
@@ -110,7 +114,8 @@ def test_evaluation_panel_layout(qtbot):
     QApplication.instance() or QApplication(sys.argv)
 
     main_window = MockMainWindow()
-    panel = EvaluationPanel(main_window)
+    controller = main_window.study.get_controller("evaluation")
+    panel = EvaluationPanel(controller=controller, parent=main_window)
     qtbot.addWidget(panel)
 
     # Check Splitter (Should be None now)
@@ -152,11 +157,12 @@ def test_evaluation_panel_logic(qtbot):
     QApplication.instance() or QApplication(sys.argv)
 
     main_window = MockMainWindow()
-    panel = EvaluationPanel(main_window)
+    controller = main_window.study.get_controller("evaluation")
+    panel = EvaluationPanel(controller=controller, parent=main_window)
     qtbot.addWidget(panel)
 
-    # Trigger update via refresh_data (alias)
-    panel.refresh_data()
+    # Trigger update via update_panel (standardized interface)
+    panel.update_panel()
 
     # Trigger update_info
     panel.update_info()

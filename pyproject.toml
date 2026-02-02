@@ -118,7 +118,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "run.py" = ["E402"]
 "scripts/**/*.py" = ["E402", "E501", "SIM102", "N806", "C414", "PERF", "PLR5501", "E722"]
-"tests/**/*.py" = ["E402", "S101", "N"]
+"tests/**/*.py" = ["E402", "S101", "N", "E501", "F841"]
 "XBrainLab/backend/dataset/dataset_generator.py" = ["PLC0415"]
 "XBrainLab/backend/load_data/data_loader.py" = ["PLC0415"]
 "XBrainLab/llm/rag/retriever.py" = ["PLC0415"]

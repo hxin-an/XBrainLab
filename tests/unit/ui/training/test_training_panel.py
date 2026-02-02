@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
-from XBrainLab.ui.training.panel import MetricTab, TrainingPanel
+from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
 
 # Ensure QApplication exists
 app = QApplication.instance() or QApplication(sys.argv)
@@ -14,6 +14,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 def mock_main_window(qtbot):
     window = QMainWindow()
     window.study = MagicMock()
+    window.subscribe = MagicMock()
     qtbot.addWidget(window)
     return window
 
@@ -37,7 +38,11 @@ def mock_controller(mock_main_window):
 
 def test_training_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
-    panel = TrainingPanel(mock_main_window)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
     qtbot.addWidget(panel)
     assert hasattr(panel, "controller")
     assert panel.controller == mock_controller
@@ -51,15 +56,16 @@ def test_training_panel_start_training_success(
     Test that 'Start Training' works correctly using controller.
     """
     # Setup
-    panel = TrainingPanel(mock_main_window)
-    panel.controller = (
-        mock_controller  # Explicitly set if needed, but init should handle it via patch
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
     )
     qtbot.addWidget(panel)
 
     # Verify Start Button is enabled (Mock returns Ready)
-    panel.check_ready_to_train()
-    assert panel.btn_start.isEnabled()
+    panel.sidebar.check_ready_to_train()
+    assert panel.sidebar.btn_start.isEnabled()
 
     # Trigger Start Training
     # Simulate state change: Not training -> Start called -> Training
@@ -71,7 +77,7 @@ def test_training_panel_start_training_success(
         patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
         patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
     ):
-        panel.start_training_ui_action()
+        panel.sidebar.start_training_ui_action()
 
         # Should call controller.start_training
         mock_controller.start_training.assert_called_once()
@@ -94,12 +100,16 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
     """
     Test that 'Dataset Splitting' delegates to dialog and controller.
     """
-    panel = TrainingPanel(mock_main_window)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
     qtbot.addWidget(panel)
 
     with (
-        patch("XBrainLab.ui.training.panel.DataSplittingSettingWindow") as MockDialog,
-        patch("XBrainLab.ui.training.panel.QMessageBox.information"),
+        patch("XBrainLab.ui.panels.training.sidebar.DataSplittingDialog") as MockDialog,
+        patch("XBrainLab.ui.panels.training.sidebar.QMessageBox.information"),
     ):
         # Setup Dialog Mock
         instance = MockDialog.return_value
@@ -107,10 +117,10 @@ def test_training_panel_split_data_success(mock_main_window, mock_controller, qt
         mock_generator = MagicMock()
         instance.get_result.return_value = mock_generator
 
-        panel.split_data()
+        panel.sidebar.split_data()
 
         # Verify Dialog checked with Controller
-        MockDialog.assert_called_with(panel, mock_controller)
+        MockDialog.assert_called_with(panel.sidebar, mock_controller)
 
         # Verify Controller applied splitting
         mock_controller.apply_data_splitting.assert_called_once_with(mock_generator)
@@ -120,33 +130,28 @@ def test_training_panel_stop_training(mock_main_window, mock_controller, qtbot):
     """
     Test that 'Stop Training' delegates to controller.
     """
-    panel = TrainingPanel(mock_main_window)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
     qtbot.addWidget(panel)
 
     # Simulate Training
     mock_controller.is_training.return_value = True
 
-    panel.stop_training()
+    panel.sidebar.stop_training()
 
     mock_controller.stop_training.assert_called_once()
 
 
-def test_training_panel_update_loop_metrics(mock_main_window, mock_controller, qtbot):
-    """
-    Test that update_loop correctly updates metrics from controller history.
-    """
-    panel = TrainingPanel(mock_main_window)
-    qtbot.addWidget(panel)
-
-    # Mock Controller.is_training to True
-    mock_controller.is_training.return_value = True
-
-    # TODO: Implement update loop metrics logic
-
-
 def test_training_panel_check_ready(mock_main_window, mock_controller, qtbot):
     """Test check_ready_to_train logic."""
-    panel = TrainingPanel(mock_main_window)
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=mock_controller,
+        dataset_controller=mock_controller,
+    )
     qtbot.addWidget(panel)
 
     # 1. Not Ready
@@ -155,11 +160,11 @@ def test_training_panel_check_ready(mock_main_window, mock_controller, qtbot):
     mock_controller.has_model.return_value = True
     mock_controller.has_training_option.return_value = True
 
-    panel.check_ready_to_train()
-    assert not panel.btn_start.isEnabled()
-    assert "Data Splitting" in panel.btn_start.toolTip()
+    panel.sidebar.check_ready_to_train()
+    assert not panel.sidebar.btn_start.isEnabled()
+    assert "Data Splitting" in panel.sidebar.btn_start.toolTip()
 
     # 2. Ready
     mock_controller.validate_ready.return_value = True
-    panel.check_ready_to_train()
-    assert panel.btn_start.isEnabled()
+    panel.sidebar.check_ready_to_train()
+    assert panel.sidebar.btn_start.isEnabled()

@@ -20,9 +20,18 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import torch
+
 # Add project root
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
+
+from XBrainLab.llm.agent.parser import CommandParser
+from XBrainLab.llm.agent.prompt_manager import PromptManager
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.engine import LLMEngine
+from XBrainLab.llm.rag.retriever import RAGRetriever
+from XBrainLab.llm.tools import AVAILABLE_TOOLS
 
 
 def timeout_handler(signum, frame):
@@ -138,12 +147,19 @@ def compare_params(expected: dict, actual: dict) -> tuple[bool, str]:
 def run_benchmark(model_name: str, timeout_sec: int = 30):
     """Run benchmark with specified model."""
 
-    from XBrainLab.llm.agent.parser import CommandParser
-    from XBrainLab.llm.agent.prompt_manager import PromptManager
-    from XBrainLab.llm.core.config import LLMConfig
-    from XBrainLab.llm.core.engine import LLMEngine
-    from XBrainLab.llm.rag.retriever import RAGRetriever
-    from XBrainLab.llm.tools import AVAILABLE_TOOLS
+    # Model configs
+    MODEL_CONFIGS = {
+        "qwen": {"model_name": "Qwen/Qwen2.5-7B-Instruct", "inference_mode": "local"},
+        "gemma": {"model_name": "google/gemma-2-2b-it", "inference_mode": "local"},
+        "phi": {
+            "model_name": "microsoft/Phi-3.5-mini-instruct",
+            "inference_mode": "local",
+        },
+        "mistral": {
+            "model_name": "mistralai/Mistral-Nemo-Instruct-2407",
+            "inference_mode": "local",
+        },
+    }
 
     # Model configs
     MODEL_CONFIGS = {
@@ -166,10 +182,10 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
     config_dict = MODEL_CONFIGS[model_name]
 
     # Init
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"BENCHMARK START: {model_name}")
     print("RAG Enabled: True")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     test_file = project_root / "scripts/benchmark/data/external_validation_set.json"
     with open(test_file) as f:
@@ -232,7 +248,7 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
                 }
             metrics["tool_type_stats"][tool_type]["total"] += 1
 
-            print(f"\n{'-'*60}")
+            print(f"\n{'-' * 60}")
             print(f"[Case {case_id}/{len(test_cases)}] Category: {category}")
             print(f"Input:    {user_input}")
             print(f"Expected: Tool: {expected_tool}")
@@ -316,7 +332,7 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
                         if i >= len(actual_calls):
                             all_passed = False
                             failure_reasons.append(
-                                f"Missing Step {i+1}: Expected {exp_tool}"
+                                f"Missing Step {i + 1}: Expected {exp_tool}"
                             )
                             break
 
@@ -360,30 +376,30 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
                                 )
                                 all_passed = False
                                 failure_reasons.append(
-                                    f"Step {i+1}: Expected {exp_tool}, got {act_cmd}"
+                                    f"Step {i + 1}: Expected {exp_tool}, got {act_cmd}"
                                 )
                         else:
                             match, reason = compare_params(exp_params, act_params)
                             if not match:
                                 # Ambiguity Check for Params?
                                 all_passed = False
-                                failure_reasons.append(f"Step {i+1} Params: {reason}")
+                                failure_reasons.append(f"Step {i + 1} Params: {reason}")
 
                     # Check for extra
                     if len(actual_calls) > len(expected_list):
                         # Allow extra steps (User Feedback: Completion is good)
                         # Just warn in logs but Pass
                         print(
-                            f"Note: Extra steps detected: {[c[0] for c in actual_calls[len(expected_list):]]}"
+                            f"Note: Extra steps detected: {[c[0] for c in actual_calls[len(expected_list) :]]}"
                         )
 
                     if all_passed:
                         result_entry["status"] = "PASS"
                         metrics["passed"] += 1
                         metrics["category_stats"][category]["passed"] += 1
-                        metrics["tool_type_stats"][tool_type][
-                            "passed"
-                        ] += 1  # Note: categorizes by first tool
+                        metrics["tool_type_stats"][tool_type]["passed"] += (
+                            1  # Note: categorizes by first tool
+                        )
                         print("Status:   PASS")
                     else:
                         result_entry["status"] = "FAIL"
@@ -420,9 +436,9 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
 
                         metrics["failed"] += 1
                         metrics["category_stats"][category]["failed"] += 1
-                        metrics["error_types"][
-                            "Unexpected Tool"
-                        ] += 1  # Bucket into No Output?
+                        metrics["error_types"]["Unexpected Tool"] += (
+                            1  # Bucket into No Output?
+                        )
                         print("Status:   FAIL (No Tool Found)")
 
             except TimeoutError:
@@ -446,8 +462,6 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
             # CUDA Cleanup
             if idx % 10 == 0:
                 try:
-                    import torch
-
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                 except Exception:
@@ -474,7 +488,7 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
         f.write(f"- **Date:** {timestamp}\n")
         f.write(f"- **Total Cases:** {metrics['total']}\n")
         f.write(
-            f"- **Passed:** {metrics['passed']} ({metrics['passed']/metrics['total']*100:.1f}%)\n"
+            f"- **Passed:** {metrics['passed']} ({metrics['passed'] / metrics['total'] * 100:.1f}%)\n"
         )
         f.write(f"- **Failed:** {metrics['failed']}\n")
         f.write(f"- **Errors:** {metrics['errors']}\n\n")

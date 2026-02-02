@@ -51,9 +51,19 @@ class PreprocessController(Observable):
         if not data_list:
             raise ValueError("No data to preprocess.")
 
-        processor = processor_class(data_list)
         try:
+            # Thread-safe operations: Work on a Deep Copy of the data
+            # This prevents race conditions where UI might be reading/plotting data
+            # while the background thread is modifying it in-place.
+            working_list = [d.copy() for d in data_list]
+
+            processor = processor_class(working_list)
+
+            # Apply preprocessing on the COPIES
             result = processor.data_preprocess(*args, **kwargs)
+
+            # Atomic swap of the results back to the study
+            # This update is safe because it replaces the list reference
             self.study.set_preprocessed_data_list(result)
             self.notify("preprocess_changed")
         except Exception as e:

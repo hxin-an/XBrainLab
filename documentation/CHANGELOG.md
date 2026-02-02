@@ -2,6 +2,32 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [Unreleased]
+### Fixed
+- **Global Linting & Type Safety**:
+    - Resolved all Ruff `E501` (Line too long) errors in `ui`, `backend`, and `llm`.
+    - Resolved all MyPy type errors globally (Zero errors).
+    - Fixed `SIM102` (nested if) in `smart_parser_dialog.py`.
+    - Fixed structural scoping issue in `epoching_dialog.py`.
+    - Fixed indentation in `controller.py`.
+    - Removed unused imports and variables in `saliency_3d_engine.py`.
+
+## [0.6.0] - 2026-01-30
+### Refactored
+- **UI Architecture Redesign (Phase 1: Foundation)**:
+    - **Core Infrastructure**:
+        - Created `ui/core/` directory containing `BasePanel` and `BaseDialog` abstract base classes.
+        - Moved `QtObserverBridge` to `ui/core/observer_bridge.py`.
+    - **Styling**:
+        - Established `ui/styles/stylesheets.py` for centralized, reusable CSS definitions (Buttons, GroupBoxes, Tables).
+    - **Decoupling (Coupling Fixes)**:
+        - **AggregateInfoPanel**: Completely refactored to be a pure view component. Data is injected via `update_info()` or `set_data()`. Removed self-contained `main_window.study` access.
+        - **DatasetPanel**: Refactored to use `DatasetController` exclusively. Removed direct backend access.
+        - **EvaluationPanel**: Updated to use `EvaluationController` for data retrieval.
+        - **VisualizationPanel**: Updated to use `VisualizationController` for data retrieval.
+    - **Controllers**:
+        - Extended `EvaluationController` and `VisualizationController` to expose safe data accessors (`get_loaded_data_list`, `get_preprocessed_data_list`), enabling UI decoupling.
+
 ## [0.5.3] - 2026-01-29
 ### Added
 - **Agent Robustness**:

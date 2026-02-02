@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 from XBrainLab.backend.utils.observer import Observable
-from XBrainLab.ui.utils.observer_bridge import QtObserverBridge
+from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 
 class MockObservable(Observable):

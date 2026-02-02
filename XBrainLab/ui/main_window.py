@@ -1,9 +1,8 @@
 import sys
 from typing import Any
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QDockWidget,
     QFrame,
     QHBoxLayout,
     QMainWindow,
@@ -15,14 +14,16 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.ui.chat import ChatPanel
-from XBrainLab.ui.dashboard_panel.dataset import DatasetPanel
-from XBrainLab.ui.dashboard_panel.preprocess import PreprocessPanel
-from XBrainLab.ui.evaluation.panel import EvaluationPanel
-from XBrainLab.ui.training.panel import TrainingPanel
-from XBrainLab.ui.visualization.montage_picker import PickMontageWindow
-from XBrainLab.ui.visualization.panel import VisualizationPanel
+from XBrainLab.ui.components.agent_manager import AgentManager
+from XBrainLab.ui.components.info_panel_service import InfoPanelService
+
+# LLMController, ChatPanel, PickMontageDialog moved to AgentManager
+from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
+from XBrainLab.ui.panels.training.panel import TrainingPanel
+from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class MainWindow(QMainWindow):
@@ -96,146 +97,16 @@ Training, etc.).
         # Initialize Panels
         self.init_panels()
 
+        # 3. Services
+        self.info_service = InfoPanelService(self.study)
+
         # Initialize Agent System
         self.init_agent()
 
         logger.info("MainWindow initialized")
 
     def apply_vscode_theme(self):
-        self.setStyleSheet(
-            """
-            QMainWindow {
-                background-color: #1e1e1e;
-                color: #cccccc;
-            }
-            QWidget {
-                background-color: #1e1e1e;
-                color: #cccccc;
-                font-family: 'Segoe UI', 'Arial';
-                font-size: 10pt;
-            }
-            /* Top Bar */
-            QFrame#TopBar {
-                background-color: #333333;
-                border-bottom: 1px solid #252526;
-            }
-
-            /* Nav Buttons (Tabs style) */
-            QPushButton#NavButton {
-                background-color: transparent;
-                color: #cccccc;
-                border: none;
-                border-bottom: 2px solid transparent;
-                padding: 0 15px;
-                font-weight: bold;
-                height: 48px;
-            }
-            QPushButton#NavButton:hover {
-                background-color: #3e3e42;
-                color: #ffffff;
-            }
-            QPushButton#NavButton:checked {
-                color: #ffffff;
-                border-bottom: 2px solid #007acc;
-                background-color: #1e1e1e;
-            }
-
-            /* Action Buttons (Import, AI) */
-            QPushButton#ActionBtn {
-                background-color: #0e639c;
-                color: #ffffff;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton#ActionBtn:hover {
-                background-color: #1177bb;
-            }
-            QPushButton#ActionBtn:pressed {
-                background-color: #094771;
-            }
-            QPushButton#ActionBtn:checked {
-                background-color: #094771;
-                border: 1px solid #007acc;
-            }
-
-            /* Content Area */
-            QStackedWidget {
-                background-color: #1e1e1e;
-            }
-
-            /* Standard Widgets */
-            QLabel { color: #cccccc; }
-            QGroupBox {
-                border: 1px solid #454545;
-                margin-top: 1.5em;
-                border-radius: 4px;
-                font-weight: bold;
-                color: #cccccc;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-                color: #cccccc;
-            }
-            /* Table Widget */
-            QTableWidget {
-                background-color: #1e1e1e;
-                gridline-color: #333333;
-                border: 1px solid #454545;
-                color: #cccccc;
-            }
-            QHeaderView::section {
-                background-color: #252526;
-                color: #cccccc;
-                padding: 4px;
-                border: 1px solid #333333;
-            }
-            QTableWidget::item:selected {
-                background-color: #094771;
-                color: #ffffff;
-            }
-            QDockWidget::title {
-                background: #252526;
-                text-align: left;
-                padding: 5px;
-                color: #cccccc;
-            }
-
-            /* Card Widget */
-            QFrame#CardWidget {
-                background-color: #252526;
-                border: 1px solid #3e3e42;
-                border-radius: 8px;
-            }
-            QLabel#CardTitle {
-                font-size: 12pt;
-                font-weight: bold;
-                color: #ffffff;
-                padding-bottom: 10px;
-                border-bottom: 1px solid #3e3e42;
-                margin-bottom: 5px;
-            }
-
-            /* Modern Buttons in Cards */
-            QPushButton {
-                background-color: #3e3e42;
-                color: #ffffff;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background-color: #4e4e52;
-            }
-            QPushButton:pressed {
-                background-color: #007acc;
-            }
-        """
-        )
+        self.setStyleSheet(Stylesheets.MAIN_WINDOW)
 
     def add_nav_btn(self, name, index, text):
         btn = QPushButton(text)
@@ -283,246 +154,50 @@ Training, etc.).
         Initializes and adds all main functional panels to the stacked widget.
         The order of addition corresponds to the index used in navigation.
         """
+        # Get Controllers
+        dataset_ctrl = self.study.get_controller("dataset")
+        preprocess_ctrl = self.study.get_controller("preprocess")
+        training_ctrl = self.study.get_controller("training")
+        eval_ctrl = self.study.get_controller("evaluation")
+        viz_ctrl = self.study.get_controller("visualization")
+
         # 0. Dataset
-        self.dataset_panel = DatasetPanel(self)
+        self.dataset_panel = DatasetPanel(dataset_ctrl, self)
         self.stack.addWidget(self.dataset_panel)
 
         # 1. Preprocess
-        self.preprocess_panel = PreprocessPanel(self)
+        self.preprocess_panel = PreprocessPanel(preprocess_ctrl, dataset_ctrl, self)
         self.stack.addWidget(self.preprocess_panel)
 
         # 2. Training
-        self.training_panel = TrainingPanel(self)
+        self.training_panel = TrainingPanel(training_ctrl, dataset_ctrl, self)
         self.stack.addWidget(self.training_panel)
 
         # 3. Evaluation
-        self.evaluation_panel = EvaluationPanel(self)
+        self.evaluation_panel = EvaluationPanel(eval_ctrl, training_ctrl, self)
         self.stack.addWidget(self.evaluation_panel)
 
         # 4. Visualization
-        self.visualization_panel = VisualizationPanel(self)
+        self.visualization_panel = VisualizationPanel(viz_ctrl, training_ctrl, self)
         self.stack.addWidget(self.visualization_panel)
 
     def init_agent(self):
-        # 1. Create Chat Panel (Dockable)
-        self.chat_panel = ChatPanel()
-        self.chat_dock = QDockWidget("AI Assistant", self)
-        self.chat_dock.setWidget(self.chat_panel)
-        self.chat_dock.setAllowedAreas(
-            Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
-        )
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
-
-        self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
-        self.chat_dock.hide()  # Hide by default
-
-    def start_agent_system(self):
-        """
-        Initializes the AI Agent system.
-        This is done lazily (only when requested) to save resources.
-        """
-        if self.agent_initialized:
-            return
-
-        # 2. Create Controller
-        self.agent_controller = LLMController(self.study)
-
-        # 3. Connect Signals
-        self.chat_panel.send_message.connect(self.handle_user_input)
-
-        self.agent_controller.response_ready.connect(
-            lambda sender, text: self.chat_panel.append_message(sender, text)
-        )
-        self.agent_controller.chunk_received.connect(self.chat_panel.on_chunk_received)
-
-        # Connect Status Update to MainWindow Status Bar & Chat State
-        self.agent_controller.status_update.connect(self.on_agent_status_update)
-
-        self.agent_controller.error_occurred.connect(self.handle_agent_error)
-        self.agent_controller.request_user_interaction.connect(
-            self.handle_user_interaction
-        )
-        self.agent_controller.generation_started.connect(
-            lambda: (
-                self.chat_panel.set_processing_state(True),
-                self.chat_panel.start_agent_message(),
-            )
-        )
-        # Note: remove_content signal no longer needed (showing final responses only)
-
-        # New Controls
-        self.chat_panel.stop_generation.connect(self.agent_controller.stop_generation)
-        self.chat_panel.model_changed.connect(self.agent_controller.set_model)
-
-        # Initialize
-
-        # Initialize
-        self.agent_controller.initialize()
-
-        self.agent_initialized = True
+        # Delegate to AgentManager
+        self.agent_manager = AgentManager(self, self.study)
+        self.agent_manager.init_ui()
 
     def toggle_ai_dock(self):
-        if not self.agent_initialized:
-            # Show Warning
-            reply = QMessageBox.warning(
-                self,
-                "Activate AI Assistant",
-                "You are about to activate the AI Assistant.\n\n"
-                "This feature uses an LLM (Large Language Model) which requires "
-                "significant system resources (GPU/VRAM).\n"
-                "It may slow down other operations on lower-end systems.\n"
-                "Do you want to proceed?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-
-            if reply == QMessageBox.StandardButton.Yes:
-                self.start_agent_system()
-                self.chat_dock.show()
-                self.ai_btn.setChecked(True)
-            else:
-                self.ai_btn.setChecked(False)  # Revert check state
-                return
-        elif self.chat_dock.isVisible():
-            self.chat_dock.close()
-        else:
-            self.chat_dock.show()
-
-    def update_ai_btn_state(self, visible):
-        self.ai_btn.blockSignals(True)
-        self.ai_btn.setChecked(visible)
-        self.ai_btn.blockSignals(False)
+        self.agent_manager.toggle()
 
     def update_info_panel(self):
         if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
-    def handle_user_input(self, text):
-        # Forward to controller
-        if hasattr(self, "agent_controller"):
-            self.agent_controller.handle_user_input(text)
-
-    def handle_user_interaction(self, command, params):
-        """Dispatcher for Human-in-the-loop requests."""
-        if command == "confirm_montage":
-            # Open Montage Picker
-            self.open_montage_picker_dialog(params)
-        elif command == "switch_panel":
-            panel_name = params.get("panel", "").lower()
-            # Map panel name to index or button
-            # 0: Dataset, 1: Preprocess, 2: Training, 3: Evaluation, 4: Visualization
-            # nav_btns order matches stack order?
-            # MainWindow init_panels:
-            # self.nav_btns.append(btn)
-            # self.stack.addWidget(panel)
-            # Order is typically consistent.
-
-            target_index = -1
-            if "dataset" in panel_name:
-                target_index = 0
-            elif "preprocess" in panel_name:
-                target_index = 1
-            elif "training" in panel_name:
-                target_index = 2
-            elif "eval" in panel_name:
-                target_index = 3
-            elif "visual" in panel_name:
-                target_index = 4
-
-            if target_index >= 0:
-                self.stack.setCurrentIndex(target_index)
-                # Update button state
-                if target_index < len(self.nav_btns):
-                    self.nav_btns[target_index].setChecked(True)
-
-                # Status Bar only - don't clutter chat
-                sb = self.statusBar()
-                if sb:
-                    sb.showMessage(f"Switched to {panel_name}")
-                self.agent_controller.handle_user_input(
-                    f"Result: Switched to {panel_name}"
-                )
-            else:
-                sb = self.statusBar()
-                if sb:
-                    sb.showMessage(f"Error: Unknown panel '{panel_name}'")
-                self.agent_controller.handle_user_input(
-                    f"Error: Could not switch to {panel_name}"
-                )
-
-    def open_montage_picker_dialog(self, params):
-        if not self.study.epoch_data:
-            sb = self.statusBar()
-            if sb:
-                sb.showMessage("Error: No epoch data available for montage.")
-            return
-
-        # Get channel names from backend
-        chs = self.study.epoch_data.get_mne().info["ch_names"]
-
-        dialog = PickMontageWindow(self, chs)
-        if dialog.exec():
-            # Get result from dialog and save to study
-            chs, positions = dialog.get_result()
-            if chs and positions is not None:
-                self.study.set_channels(chs, positions)
-
-                # Resume Agent - this IS a user action so show in chat
-                self.chat_panel.add_message("Montage Confirmed.", is_user=True)
-                self.agent_controller.handle_user_input("Montage Confirmed.")
-            else:
-                sb = self.statusBar()
-                if sb:
-                    sb.showMessage("Error: No valid montage configuration")
-                self.agent_controller.handle_user_input("Montage Selection Failed.")
-        else:
-            # User Cancelled - this IS a user action so show in chat
-            self.chat_panel.add_message("Operation Cancelled.", is_user=True)
-            self.agent_controller.handle_user_input(
-                "Montage Selection Cancelled by User."
-            )
-
-    def on_agent_status_update(self, msg):
-        """Updates Status Bar and Chat Panel state."""
-        sb = self.statusBar()
-        if sb:
-            sb.showMessage(msg)
-        if "Ready" in msg or "Error" in msg or "Stopping" in msg:
-            # Ensure UI knows we are done
-            self.chat_panel.set_processing_state(False)
-
-    def handle_agent_error(self, error_msg):
-        self.chat_panel.set_status("Error")
-        # Errors should still be visible in chat for debugging
-        self.chat_panel.add_message(f"❌ Error: {error_msg}", is_user=False)
-        logger.error(f"Agent Error: {error_msg}")
-
     def closeEvent(self, event):  # noqa: N802
         logger.info("Closing application...")
-        if hasattr(self, "agent_controller"):
-            self.agent_controller.close()
+        if hasattr(self, "agent_manager"):
+            self.agent_manager.close()
         super().closeEvent(event)
-
-    def refresh_panels(self):
-        """Refresh all panels to synchronize data."""
-        # Update Dataset Panel (which updates its own Aggregate Info)
-        if hasattr(self, "dataset_panel"):
-            self.dataset_panel.update_panel()
-
-        # Update Preprocess Panel
-        if hasattr(self, "preprocess_panel"):
-            self.preprocess_panel.update_panel()
-
-        # Update Training Panel
-        if hasattr(self, "training_panel"):
-            self.training_panel.update_info()
-
-        # Update Evaluation Panel
-        if hasattr(self, "evaluation_panel"):
-            self.evaluation_panel.update_info()
-
-        # Update Visualization Panel
-        if hasattr(self, "visualization_panel"):
-            self.visualization_panel.update_info()
 
 
 def global_exception_handler(exctype, value, traceback):

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import TYPE_CHECKING, Any, ClassVar
-
-from XBrainLab.backend.training import Trainer
-from XBrainLab.backend.utils.observer import Observable
 
 if TYPE_CHECKING:
     from XBrainLab.backend.study import Study
+    from XBrainLab.backend.training import Trainer
+
+from XBrainLab.backend.utils.observer import Observable
 
 
 class TrainingController(Observable):
@@ -69,18 +70,17 @@ class TrainingController(Observable):
 
     def _monitor_loop(self):
         """Loop to poll trainer status and emit updates."""
-        import time
 
         while self._monitor_active:
             if not self.is_training():
                 # Training finished naturally or stopped
                 self._monitor_active = False
-                self.notify("training_stopped") # Ensure UI knows it stopped
+                self.notify("training_stopped")  # Ensure UI knows it stopped
                 break
 
             # Emit update event
             self.notify("training_updated")
-            time.sleep(1.0) # Poll every 1 second (same as old UI timer)
+            time.sleep(1.0)  # Poll every 1 second (same as old UI timer)
 
     def clear_history(self) -> None:
         """Clear all training history."""

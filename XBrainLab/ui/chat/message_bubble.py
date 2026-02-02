@@ -3,17 +3,23 @@ Message Bubble Widget for Chat Panel.
 Single chat message widget with dynamic width adjustment.
 """
 
-from PyQt6.QtCore import Qt
+import platform
+import subprocess
+
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QDesktopServices, QTextOption
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QLabel,
     QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
 
-from .chat_styles import (
+from XBrainLab.backend.utils.logger import logger
+
+from .styles import (
     AGENT_BUBBLE_FRAME_STYLE,
     AGENT_BUBBLE_TEXT_STYLE,
     USER_BUBBLE_FRAME_STYLE,
@@ -24,7 +30,7 @@ from .chat_styles import (
 class MessageBubble(QWidget):
     """
     A chat message bubble widget.
-    Contains a QFrame (bubble container) with a QLabel (text).
+    Contains a QFrame (bubble container) with a QTextEdit (text).
     Supports dynamic width adjustment on window resize.
     """
 
@@ -32,7 +38,9 @@ class MessageBubble(QWidget):
         super().__init__(parent)
         self.is_user = is_user
         self.bubble_frame: QFrame | None = None
-        self.text_label: QLabel | None = None
+        self.text_edit: QTextBrowser | None = None
+        self._raw_text = text  # Store raw text to preserve fidelity
+
         self._init_ui(text)
 
     def _init_ui(self, text: str):
@@ -45,7 +53,7 @@ class MessageBubble(QWidget):
         self.bubble_frame = QFrame()
         self.bubble_frame.setObjectName("BubbleFrame")
         self.bubble_frame.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
         )
 
         # Create bubble's internal layout
@@ -53,72 +61,145 @@ class MessageBubble(QWidget):
         bubble_layout.setContentsMargins(15, 10, 15, 10)
         bubble_layout.setSpacing(0)
 
-        # Create the text label
-        self.text_label = QLabel(text)
-        self.text_label.setTextFormat(
-            Qt.TextFormat.PlainText
-        )  # Prevent backslash/HTML parsing issues
-        self.text_label.setWordWrap(True)
-        self.text_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.text_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
+        # Create the text edit (ReadOnly)
+        self.text_edit = QTextBrowser()
+        self.text_edit.setMarkdown(text)
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setFrameStyle(QFrame.Shape.NoFrame)
+        self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.text_edit.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        bubble_layout.addWidget(self.text_label)
+
+        # Interaction Flags: Enable selection AND links
+        self.text_edit.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
+        self.text_edit.setOpenExternalLinks(
+            False
+        )  # We handle links manually for file:// support
+        self.text_edit.anchorClicked.connect(self._on_link_clicked)
+
+        if self.text_edit:
+            # Enable WrapAnywhere for paths
+            self.text_edit.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
+            doc = self.text_edit.document()
+            if doc:
+                doc.setDocumentMargin(0)  # Remove internal document margin
+            self.text_edit.setContentsMargins(0, 0, 0, 0)
+
+        # Transparent background
+        self.text_edit.setStyleSheet(
+            "background: transparent; padding: 0px; margin: 0px; border: none;"
+        )
+
+        bubble_layout.addWidget(self.text_edit)
 
         # Apply styles based on sender
         if self.is_user:
             self.bubble_frame.setStyleSheet(USER_BUBBLE_FRAME_STYLE)
-            self.text_label.setStyleSheet(USER_BUBBLE_TEXT_STYLE)
+            self.text_edit.setStyleSheet(
+                f"background: transparent; padding: 0px; margin: 0px; border: none; "
+                f"{USER_BUBBLE_TEXT_STYLE}"
+            )
+
             row_layout.addWidget(self.bubble_frame)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignRight)
         else:
             self.bubble_frame.setStyleSheet(AGENT_BUBBLE_FRAME_STYLE)
-            self.text_label.setStyleSheet(AGENT_BUBBLE_TEXT_STYLE)
+            self.text_edit.setStyleSheet(
+                f"background: transparent; padding: 0px; margin: 0px; border: none; "
+                f"{AGENT_BUBBLE_TEXT_STYLE}"
+            )
+
             row_layout.addWidget(self.bubble_frame)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignLeft)
 
+    def _on_link_clicked(self, url: QUrl):
+        """Handle link clicks, supporting local files."""
+        scheme = url.scheme()
+        if scheme == "file":
+            local_path = url.toLocalFile()
+            if platform.system() == "Windows":
+                # Open explorer with file selected
+                try:
+                    subprocess.Popen(f'explorer /select,"{local_path}"')  # noqa: S603
+                except Exception:
+                    logger.exception(f"Failed to open explorer for {local_path}")
+                    # Fallback to standard open
+                    QDesktopServices.openUrl(url)
+            else:
+                QDesktopServices.openUrl(url)
+        else:
+            QDesktopServices.openUrl(url)
+
     def adjust_width(self, container_width: int):
-        """Adjust bubble max width to 80% of container width."""
+        """
+        Adjust bubble width based on content size.
+        Calculates optimal width/height dynamically.
+        """
         if container_width <= 0:
             return
 
-        max_width = int(container_width * 0.80)
-        label_max_width = max_width - 30  # Account for padding
+        # Max width is 80% of container
+        max_bubble_width = int(container_width * 0.80)
 
-        # Get text and calculate natural width (single line)
-        if self.text_label is None:
-            return
-        text = self.text_label.text()
-        if not text:
-            # Empty text - just set max width
-            if self.bubble_frame:
-                self.bubble_frame.setMaximumWidth(max_width)
-            self.text_label.setMaximumWidth(label_max_width)
+        # Margins: 15+15=30 horizontal, 10+10=20 vertical
+        layout_h_margins = 30
+        layout_v_margins = 20
+        max_text_width = max_bubble_width - layout_h_margins
+
+        if self.text_edit is None or self.bubble_frame is None:
             return
 
-        # Calculate natural text width using font metrics
-        fm = self.text_label.fontMetrics()
-        natural_width = fm.horizontalAdvance(text) + 10  # Small margin
+        # 1. Constrain Width
+        self.bubble_frame.setMaximumWidth(max_bubble_width)
+        doc = self.text_edit.document()
+        if doc:
+            doc.setTextWidth(max_text_width)
 
-        if natural_width > label_max_width:
-            # Text is longer than 80% - use fixed width to force proper wrapping
-            self.text_label.setFixedWidth(label_max_width)
-            if self.bubble_frame:
-                self.bubble_frame.setMaximumWidth(max_width)
-        else:
-            # Text fits - let it be natural size
-            self.text_label.setMinimumWidth(0)
-            self.text_label.setMaximumWidth(label_max_width)
-            if self.bubble_frame:
-                self.bubble_frame.setMaximumWidth(max_width)
+        # 2. Calculate Height based on wrapped text
+        # Use documentLayout for precise height calculation
+        doc_height = 20.0
+        if self.text_edit and doc:
+            doc_layout = doc.documentLayout()
+            if doc_layout:
+                doc_height = doc_layout.documentSize().height()
+
+        # Enforce minimum height (approx 1 line)
+        doc_height = max(doc_height, 20)
+
+        final_height = int(doc_height) + layout_v_margins  # Add padding
+
+        # 3. Apply Height
+        if self.text_edit:
+            self.text_edit.setFixedHeight(int(doc_height))
+        self.bubble_frame.setFixedHeight(final_height)
+        self.setFixedHeight(final_height)
 
     def set_text(self, text: str):
-        """Update the text content (for streaming)."""
-        if self.text_label:
-            self.text_label.setText(text)
+        """Update the text content."""
+        self._raw_text = text
+        if self.text_edit:
+            self.text_edit.setMarkdown(text)
+
+            # Re-adjust if visible
+            if self.isVisible() and self.parent():
+                # Trigger re-layout if width allows
+                pass
 
     def get_text(self) -> str:
-        """Get current text content."""
-        if self.text_label:
-            return self.text_label.text()
-        return ""
+        """Get original raw text content."""
+        return self._raw_text
+
+    def showEvent(self, event):  # noqa: N802
+        """Ensure correct layout when first shown."""
+        super().showEvent(event)
+        parent = self.parent()
+        if parent and hasattr(parent, "width"):
+            self.adjust_width(parent.width())
+
+    def setText(self, text):  # noqa: N802
+        """Compatibility alias."""
+        self.set_text(text)
