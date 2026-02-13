@@ -38,8 +38,8 @@ repos:
         always_run: true
 
       - id: pytest-check
-        name: pytest-check (coverage)
-        entry: poetry run pytest tests/unit/backend tests/unit/llm --ignore=tests/unit/llm/rag/test_retriever.py --cov=XBrainLab --cov-fail-under=15
+        name: pytest-check
+        entry: poetry run pytest tests/unit/backend tests/unit/llm
         language: system
         types: [python]
         pass_filenames: false

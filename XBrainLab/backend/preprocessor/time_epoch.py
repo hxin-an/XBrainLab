@@ -42,9 +42,13 @@ class TimeEpoch(PreprocessBase):
         raw_events, raw_event_id = preprocessed_data.get_event_list()
 
         selected_event_id = {}
-        for event_name in selected_event_names:
-            if event_name in raw_event_id:
-                selected_event_id[event_name] = raw_event_id[event_name]
+        if selected_event_names is None:
+            # If None, select all available events
+            selected_event_id = raw_event_id.copy()
+        else:
+            for event_name in selected_event_names:
+                if event_name in raw_event_id:
+                    selected_event_id[event_name] = raw_event_id[event_name]
 
         selection_mask = np.zeros(raw_events.shape[0], dtype=bool)
         for event_id in selected_event_id.values():

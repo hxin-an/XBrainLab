@@ -60,6 +60,17 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
 
 
 class RealStartTrainingTool(BaseStartTrainingTool):
+    def is_valid(self, study: Any) -> bool:
+        # Valid if we have a trainer (ready to run) OR we have all headers to create one
+        has_trainer = study.trainer is not None
+        can_create_plan = (
+            study.datasets is not None
+            and len(study.datasets) > 0
+            and study.model_holder is not None
+            and study.training_option is not None
+        )
+        return has_trainer or can_create_plan
+
     def execute(self, study: Any, **kwargs) -> str:
         facade = BackendFacade(study)
 

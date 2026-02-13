@@ -16,6 +16,9 @@ from ..definitions.preprocess_def import (
 
 
 class RealStandardPreprocessTool(BaseStandardPreprocessTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(
         self,
         study: Any,
@@ -56,6 +59,9 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
 
 
 class RealBandPassFilterTool(BaseBandPassFilterTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(
         self,
         study: Any,
@@ -72,6 +78,9 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
 
 
 class RealNotchFilterTool(BaseNotchFilterTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, freq: float | None = None, **kwargs) -> str:
         if freq is None:
             return "Error: freq is required."
@@ -82,6 +91,9 @@ class RealNotchFilterTool(BaseNotchFilterTool):
 
 
 class RealResampleTool(BaseResampleTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, rate: int | None = None, **kwargs) -> str:
         if rate is None:
             return "Error: rate is required."
@@ -92,6 +104,9 @@ class RealResampleTool(BaseResampleTool):
 
 
 class RealNormalizeTool(BaseNormalizeTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
         if method is None:
             return "Error: method is required."
@@ -102,6 +117,9 @@ class RealNormalizeTool(BaseNormalizeTool):
 
 
 class RealRereferenceTool(BaseRereferenceTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
         if method is None:
             return "Error: method is required."
@@ -112,6 +130,9 @@ class RealRereferenceTool(BaseRereferenceTool):
 
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, channels: list[str] | None = None, **kwargs) -> str:
         if channels is None:
             return "Error: channels list is required."
@@ -122,16 +143,22 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
 
 
 class RealSetMontageTool(BaseSetMontageTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, montage_name: str | None = None, **kwargs) -> str:
         if montage_name is None:
             return "Error: montage_name is required."
 
-        facade = BackendFacade(study)
-        # All fuzzy matching logic is now in the Facade!
-        return facade.set_montage(montage_name)
+        # Instead of auto-applying, request UI confirmation
+        # This allows users to visually verify channel-to-electrode mapping
+        return f"Request: confirm_montage '{montage_name}'"
 
 
 class RealEpochDataTool(BaseEpochDataTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(
         self,
         study: Any,

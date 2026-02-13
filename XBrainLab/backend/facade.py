@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 import torch
 
 # Imports for constructing backend objects from primitives
@@ -17,6 +18,7 @@ from XBrainLab.backend.model_base.SCCNet import SCCNet
 from XBrainLab.backend.model_base.ShallowConvNet import ShallowConvNet
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.mne_helper import get_montage_positions
 
 
@@ -68,17 +70,30 @@ class BackendFacade:
                 continue
 
             try:
-                events = load_label_file(label_path)
-            except Exception as e:
-                # Log error but continue
-                # In a real controller this might aggregate errors
-                print(f"Failed to attach label for {base_name}: {e}")
-            else:
-                raw.events = events
+                labels = load_label_file(label_path)
+
+                # Convert 1D labels to MNE events format (n, 3)
+                # Columns: onset (sample), 0, event_id
+                n_labels = len(labels)
+                events = np.zeros((n_labels, 3), dtype=int)
+                events[:, 0] = np.arange(n_labels)  # placeholder onset
+                events[:, 2] = labels
+
+                # Build event_id dict from unique labels
+                unique_labels = np.unique(labels)
+                event_id = {str(label): int(label) for label in unique_labels}
+
+                # Use proper setter
+                raw.set_event(events, event_id)
+                raw.set_labels_imported(True)
                 success_count += 1
 
+            except Exception as e:
+                logger.error(
+                    f"Failed to attach label for {base_name}: {e}", exc_info=True
+                )
+
         if success_count > 0:
-            # Sync updates if necessary (though events are often property-based)
             self.dataset.notify("data_changed")
 
         return success_count

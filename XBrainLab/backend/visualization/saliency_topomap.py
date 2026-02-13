@@ -20,11 +20,13 @@ class SaliencyTopoMapViz(Visualizer):
         if positions is None or len(positions) == 0:
             raise ValueError("No montage positions found. Please set a montage first.")
 
+        # Ensure numpy array
+        pos_array = np.array(positions)
+
         # Ensure 2D array
-        # Ensure 2D array
-        if positions.ndim == 1 and positions.size > 0:
+        if pos_array.ndim == 1 and pos_array.size > 0:
             # Assuming single channel case, though rare for Topomap
-            positions = positions.reshape(1, -1)
+            pos_array = pos_array.reshape(1, -1)
 
         chs = self.epoch_data.get_channel_names()
         label_number = self.epoch_data.get_label_number()
@@ -40,7 +42,7 @@ class SaliencyTopoMapViz(Visualizer):
             if len(saliency) == 0:
                 continue
             kwargs = {
-                "pos": positions[:, 0:2],
+                "pos": pos_array[:, 0:2],
                 "ch_type": "eeg",
                 "sensors": False,
                 "names": chs,

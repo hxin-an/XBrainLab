@@ -38,9 +38,26 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+    class SafeRotatingFileHandler(RotatingFileHandler):
+        """
+        RotatingFileHandler that catches PermissionError/OSError during rotation.
+        Common on Windows when the log file is open by another process (or zombie).
+        """
+
+        def doRollover(self):  # noqa: N802
+            try:
+                super().doRollover()
+            except (PermissionError, OSError):
+                # Suppress the error and re-open the file to continue appending
+                # This prevents the app from crashing on start
+                # sys.stderr.write(f"Warning: Log rotation failed ({{e}})."
+                #                  " Continuing without rotation.\n")
+                if self.stream is None:
+                    self.stream = self._open()
+
     # File Handler (Rotating)
     # Max size 5MB, keep 5 backup files
-    file_handler = RotatingFileHandler(
+    file_handler = SafeRotatingFileHandler(
         log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
     file_handler.setFormatter(formatter)

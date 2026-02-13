@@ -82,8 +82,8 @@ class MessageBubble(QWidget):
         self.text_edit.anchorClicked.connect(self._on_link_clicked)
 
         if self.text_edit:
-            # Enable WrapAnywhere for paths
-            self.text_edit.setWordWrapMode(QTextOption.WrapMode.WrapAnywhere)
+            # Use WordWrap to break at word boundaries, not in the middle of words
+            self.text_edit.setWordWrapMode(QTextOption.WrapMode.WordWrap)
             doc = self.text_edit.document()
             if doc:
                 doc.setDocumentMargin(0)  # Remove internal document margin
@@ -99,19 +99,13 @@ class MessageBubble(QWidget):
         # Apply styles based on sender
         if self.is_user:
             self.bubble_frame.setStyleSheet(USER_BUBBLE_FRAME_STYLE)
-            self.text_edit.setStyleSheet(
-                f"background: transparent; padding: 0px; margin: 0px; border: none; "
-                f"{USER_BUBBLE_TEXT_STYLE}"
-            )
+            self.text_edit.setStyleSheet(USER_BUBBLE_TEXT_STYLE)
 
             row_layout.addWidget(self.bubble_frame)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignRight)
         else:
             self.bubble_frame.setStyleSheet(AGENT_BUBBLE_FRAME_STYLE)
-            self.text_edit.setStyleSheet(
-                f"background: transparent; padding: 0px; margin: 0px; border: none; "
-                f"{AGENT_BUBBLE_TEXT_STYLE}"
-            )
+            self.text_edit.setStyleSheet(AGENT_BUBBLE_TEXT_STYLE)
 
             row_layout.addWidget(self.bubble_frame)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignLeft)
@@ -142,39 +136,46 @@ class MessageBubble(QWidget):
         if container_width <= 0:
             return
 
-        # Max width is 80% of container
         max_bubble_width = int(container_width * 0.80)
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
         layout_h_margins = 30
         layout_v_margins = 20
-        max_text_width = max_bubble_width - layout_h_margins
 
         if self.text_edit is None or self.bubble_frame is None:
             return
 
-        # 1. Constrain Width
-        self.bubble_frame.setMaximumWidth(max_bubble_width)
         doc = self.text_edit.document()
-        if doc:
-            doc.setTextWidth(max_text_width)
+        if not doc:
+            return
 
-        # 2. Calculate Height based on wrapped text
+        # 1. Start with infinite width to find natural width
+        doc.setTextWidth(-1)
+        natural_width = doc.idealWidth() + layout_h_margins
+
+        # 2. Determine actual width: min(natural, max_allowed)
+        actual_width = min(natural_width, max_bubble_width)
+        # Ensure a minimum reasonable width (e.g. 50px)
+        actual_width = max(actual_width, 50)
+
+        # 3. Apply width constraint
+        self.bubble_frame.setFixedWidth(int(actual_width))
+        doc.setTextWidth(actual_width - layout_h_margins)
+
+        # 4. Calculate Height based on wrapped text
         # Use documentLayout for precise height calculation
-        doc_height = 20.0
-        if self.text_edit and doc:
-            doc_layout = doc.documentLayout()
-            if doc_layout:
-                doc_height = doc_layout.documentSize().height()
+        desc_height = 20.0
+        doc_layout = doc.documentLayout()
+        if doc_layout:
+            desc_height = doc_layout.documentSize().height()
 
-        # Enforce minimum height (approx 1 line)
-        doc_height = max(doc_height, 20)
+        # Enforce minimum height
+        desc_height = max(desc_height, 20)
+        final_height = int(desc_height) + layout_v_margins
 
-        final_height = int(doc_height) + layout_v_margins  # Add padding
-
-        # 3. Apply Height
+        # 5. Apply Height
         if self.text_edit:
-            self.text_edit.setFixedHeight(int(doc_height))
+            self.text_edit.setFixedHeight(int(desc_height))
         self.bubble_frame.setFixedHeight(final_height)
         self.setFixedHeight(final_height)
 

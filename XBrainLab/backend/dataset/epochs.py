@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from enum import Enum
 
+import mne
 import numpy as np
 
 from ..load_data import Raw
@@ -581,7 +582,6 @@ class Epochs:
         """
         ret = mask & False
         # manual selection
-        # manual selection
         if split_unit == SplitUnit.MANUAL:
             if not isinstance(value, list):
                 raise ValueError("Value must be a list for manual selection")
@@ -658,8 +658,50 @@ class Epochs:
         self.ch_names = ch_names
         self.channel_position = channel_position
 
-    def get_montage_position(self) -> np.ndarray:
-        """Return list of channel positions."""
         if self.channel_position is None:
-            return np.array([])
-        return np.array(self.channel_position)
+            return
+
+    def get_montage_position(self) -> list | None:
+        """Return the channel positions for montage visualization.
+
+        Returns:
+            List of channel positions as (x, y, z) tuples, or None if not set.
+        """
+        if hasattr(self, "channel_position"):
+            return self.channel_position
+        return None
+
+    def get_mne(self):
+        """Reconstruct MNE Epochs object from stored data."""
+
+        info = mne.create_info(ch_names=self.ch_names, sfreq=self.sfreq, ch_types="eeg")
+
+        n_epochs = len(self.data)
+        # Construct dummy events
+        events = np.zeros((n_epochs, 3), dtype=int)
+        events[:, 0] = np.arange(n_epochs) * 1000  # distinct onset
+        events[:, 2] = self.label.astype(int)
+
+        # event_id might need to be inverted or checked if values match label indices
+        # self.event_id is {name: int}. self.label is int.
+
+        epochs = mne.EpochsArray(
+            data=self.data,
+            info=info,
+            events=events,
+            event_id=self.event_id,
+            tmin=0.0,
+            verbose=False,
+        )
+
+        # Set montage if positions available
+        if self.channel_position is not None:
+            # Manually setting montage on EpochsArray is tricky if not via set_montage
+            # But here we just return the object.
+            # If caller calls get_mne().info, they get info.
+            # Positions are in info['chs'][i]['loc'].
+            # We could try to set them, but Epochs stores them as list.
+            # For set_montage usage, we mostly read info to match names.
+            pass
+
+        return epochs

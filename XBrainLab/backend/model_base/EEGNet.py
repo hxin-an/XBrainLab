@@ -27,6 +27,8 @@ class EEGNet(nn.Module):
         f1: int = 8,
         f2: int = 16,
         d: int = 2,
+        pool_1: int = 4,
+        pool_2: int = 8,
     ):
         super().__init__()
 
@@ -56,6 +58,9 @@ class EEGNet(nn.Module):
         self.F2 = f2
         self.D = d
 
+        self.pool_1 = pool_1
+        self.pool_2 = pool_2
+
         self.conv1 = nn.Sequential(
             # temporal kernel size(1, floor(sf*0.5)) means 500ms EEG at sf/2
             # padding=(0, floor(sf*0.5)/2) maintain raw data shape
@@ -72,7 +77,7 @@ class EEGNet(nn.Module):
             ),
             nn.BatchNorm2d(self.D * self.F1),
             nn.ELU(),
-            nn.AvgPool2d((1, 4)),  # reduce the sf to sf/4
+            nn.AvgPool2d((1, self.pool_1)),  # reduce the sf to sf/4
             # 0.25 in cross-subject classification beacuse the training size are larger
             nn.Dropout(0.5),
         )
@@ -90,7 +95,7 @@ class EEGNet(nn.Module):
             nn.Conv2d(self.D * self.F1, self.F2, (1, 1), bias=False),
             nn.BatchNorm2d(self.F2),
             nn.ELU(),
-            nn.AvgPool2d((1, 8)),  # dim reduction
+            nn.AvgPool2d((1, self.pool_2)),  # dim reduction
             nn.Dropout(0.5),
         )
 
@@ -108,7 +113,7 @@ class EEGNet(nn.Module):
         x = self.conv2(x)
         x = self.conv3(x)
         # (-1, sf/8* timepoint//32)
-        x = x.view(x.size()[0], -1)
+        x = x.contiguous().view(x.size()[0], -1)
         # x = x.view(-1, self.F2* (self.tp//32))
         x = self.classifier(x)
         return x

@@ -8,6 +8,11 @@ from .base_saliency_view import BaseSaliencyView
 
 
 class SaliencyMapWidget(BaseSaliencyView):
+    """
+    Widget for visualizing 2D Saliency Maps.
+    Uses Matplotlib backend.
+    """
+
     def init_ui(self):
         super().init_ui()
         # Add initial text to the default canvas

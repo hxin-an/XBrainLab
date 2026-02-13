@@ -12,22 +12,29 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class EpochingDialog(BaseDialog):
-    def __init__(self, parent, data_list):
+    """
+    Dialog for configuring epoching parameters (Time-lock).
+    Allows selection of events, time window (tmin, tmax), and baseline correction.
+    """
+
+    def __init__(self, parent, data_list: list):
         self.data_list = data_list
-        self.params = None
+        self.params: tuple | None = None
 
         # UI Elements
-        self.event_list = None
-        self.tmin_spin = None
-        self.tmax_spin = None
-        self.duration_label = None
-        self.warning_label = None
-        self.baseline_check = None
-        self.b_min_spin = None
-        self.b_max_spin = None
+        # UI Elements
+        self.event_list: QListWidget | None = None
+        self.tmin_spin: QDoubleSpinBox | None = None
+        self.tmax_spin: QDoubleSpinBox | None = None
+        self.duration_label: QLabel | None = None
+        self.warning_label: QLabel | None = None
+        self.baseline_check: QCheckBox | None = None
+        self.b_min_spin: QDoubleSpinBox | None = None
+        self.b_max_spin: QDoubleSpinBox | None = None
 
         super().__init__(parent, title="Time Epoching")
         self.resize(400, 500)
@@ -74,7 +81,6 @@ class EpochingDialog(BaseDialog):
 
         # Duration info label
         self.duration_label = QLabel()
-        from XBrainLab.ui.styles.stylesheets import Stylesheets  # noqa: PLC0415
 
         self.duration_label.setStyleSheet(Stylesheets.DIALOG_INFO_LABEL)
         form.addRow("Duration:", self.duration_label)
@@ -175,6 +181,18 @@ class EpochingDialog(BaseDialog):
         selected_events = [item.text() for item in selected_items]
         tmin = self.tmin_spin.value()
         tmax = self.tmax_spin.value()
+
+        if tmin >= tmax:
+            QMessageBox.warning(
+                self, "Invalid Input", "Start time must be less than End time."
+            )
+            return
+
+        if (tmax - tmin) < 0.1:
+            QMessageBox.warning(
+                self, "Invalid Input", "Epoch duration is too short (< 0.1s)."
+            )
+            return
 
         baseline = None
         if self.baseline_check.isChecked():

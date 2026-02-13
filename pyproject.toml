@@ -39,6 +39,8 @@ langchain = "^0.2.0"
 langchain-community = "^0.2.0"
 qdrant-client = "^1.9.0"
 sentence-transformers = "^2.2.2"
+pyqtgraph = "^0.14.0"
+google-generativeai = "^0.8.6"
 
 [tool.poetry.group.gui]
 optional = true
@@ -74,6 +76,8 @@ commitizen = "^4.11.6"
 pytest = "^8.0.0"
 pytest-cov = "^4.1.0"
 pytest-qt = "^4.2.0"
+coverage = "^7.0"
+pytest-forked = "^1.6.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -122,6 +126,11 @@ select = [
 "XBrainLab/backend/dataset/dataset_generator.py" = ["PLC0415"]
 "XBrainLab/backend/load_data/data_loader.py" = ["PLC0415"]
 "XBrainLab/llm/rag/retriever.py" = ["PLC0415"]
+"XBrainLab/llm/core/backends/local.py" = ["PLC0415"]
+"XBrainLab/llm/core/engine.py" = ["PLC0415"]
+"XBrainLab/ui/dialogs/model_settings_dialog.py" = ["PLC0415"]
+"tests/conftest.py" = ["PLC0415"]
+"tests/integration/debug/test_debug_script_execution.py" = ["PLC0415"]
 
 [tool.ruff.lint.pep8-naming]
 ignore-names = ["X", "Y", "x", "y", "Pxx"]
@@ -135,6 +144,7 @@ warn_unused_ignores = true
 exclude = [
     "tests",
     "XBrainLab/llm/core/models",
+    "XBrainLab/llm/rag",
     "scripts"
 ]
 
@@ -143,6 +153,29 @@ minversion = "6.0"
 addopts = "-ra -q"
 testpaths = [
     "tests",
+]
+
+[tool.coverage.run]
+# Prevent coverage from instrumenting torch internals which causes collection errors
+omit = [
+    "**/torch/*",
+    "**/torchvision/*",
+    "**/torchaudio/*",
+    "**/captum/*",
+    "**/pyvista/*",
+    "**/vtk*",
+    "**/mne/*",
+    "*/.virtualenvs/*",
+    "*/site-packages/*",
+]
+# Use multiprocessing-safe concurrency
+concurrency = ["multiprocessing"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
 
 [tool.black]

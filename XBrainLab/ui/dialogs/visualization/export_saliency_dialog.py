@@ -16,6 +16,11 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ExportSaliencyDialog(BaseDialog):
+    """
+    Dialog for exporting saliency maps to pickle files.
+    Allows selection of plan, repeat, and method.
+    """
+
     def __init__(self, parent, trainers):
         self.trainers = trainers
         self.trainer_map = {trainer.get_name(): trainer for trainer in trainers}

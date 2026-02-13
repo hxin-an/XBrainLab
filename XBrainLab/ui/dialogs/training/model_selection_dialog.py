@@ -26,6 +26,11 @@ ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
 
 
 class ModelSelectionDialog(BaseDialog):
+    """
+    Dialog for selecting a deep learning model architecture.
+    Dynamically generates parameter inputs based on model class signature.
+    """
+
     def __init__(self, parent, controller):
         self.controller = controller
 

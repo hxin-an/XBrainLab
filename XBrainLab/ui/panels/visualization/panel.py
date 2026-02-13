@@ -1,3 +1,5 @@
+import re
+
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -26,6 +28,7 @@ from .saliency_views.topomap_view import SaliencyTopographicMapWidget
 class VisualizationPanel(BasePanel):
     """
     Panel for visualizing data and model explanations with unified controls.
+    Manages multiple view tabs (Map, Topomap, Spectrogram, 3D) and coordinates updates.
     """
 
     def __init__(self, controller=None, training_controller=None, parent=None):
@@ -35,6 +38,7 @@ class VisualizationPanel(BasePanel):
 
         # Store injected training controller
         self.training_controller = training_controller
+        self.friendly_map = {}
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -47,12 +51,8 @@ class VisualizationPanel(BasePanel):
         """Listen to TrainingController to update when training finishes."""
         # Use injected controller if available, fallback to legacy
         training_ctrl = self.training_controller
-        if (
-            not training_ctrl
-            and self.main_window
-            and hasattr(self.main_window, "study")
-        ):
-            training_ctrl = self.main_window.study.get_controller("training")
+        if not training_ctrl and self.controller and hasattr(self.controller, "study"):
+            training_ctrl = self.controller.study.get_controller("training")
 
         if training_ctrl:
             # When training stops, update the plan lists
@@ -111,9 +111,7 @@ class VisualizationPanel(BasePanel):
 
         # Absolute Checkbox
         self.abs_check = QCheckBox("Absolute Value")
-        from XBrainLab.ui.styles.theme import Theme  # noqa: PLC0415
-
-        self.abs_check.setStyleSheet(f"color: {Theme.TEXT_MUTED};")
+        self.abs_check.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
         self.abs_check.stateChanged.connect(self.on_update)
         ctrl_layout.addWidget(self.abs_check)
 
@@ -127,7 +125,7 @@ class VisualizationPanel(BasePanel):
 
         # Tabs
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border: 0; }")
+        self.tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
         # Signal connected at the end of init_ui to avoid early triggering
 
         # Get trainers for initialization (empty initially)
@@ -250,11 +248,21 @@ class VisualizationPanel(BasePanel):
             target_plan = trainer.get_plans()[0]  # Dummy plan for context
         else:
             try:
-                run_idx = int(run_name.split(" ")[1]) - 1
-                plans = trainer.get_plans()
-                if 0 <= run_idx < len(plans):
-                    target_plan = plans[run_idx]
-                    eval_record = target_plan.get_eval_record()
+                # Robust parsing: Expect "Run X" or similar
+                match = re.search(r"(\d+)", run_name)
+                if match:
+                    run_idx = int(match.group(1)) - 1
+                    plans = trainer.get_plans()
+                    if 0 <= run_idx < len(plans):
+                        target_plan = plans[run_idx]
+                        eval_record = target_plan.get_eval_record()
+                    else:
+                        logger.warning(
+                            f"Run index {run_idx} out of range (0-{len(plans) - 1})"
+                        )
+                else:
+                    logger.warning(f"Could not parse run number from: {run_name}")
+
             except Exception as e:
                 logger.warning(f"Failed to find plan for run {run_name}: {e}")
 

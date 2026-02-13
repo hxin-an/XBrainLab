@@ -17,6 +17,7 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.training.evaluator import Evaluator
 from XBrainLab.backend.training.option import TrainingEvaluation
 from XBrainLab.backend.training.record import RecordKey
 from XBrainLab.backend.training.training_plan import (
@@ -24,7 +25,6 @@ from XBrainLab.backend.training.training_plan import (
     TrainingOption,
     TrainingPlanHolder,
     TrainRecord,
-    _test_model,
 )
 from XBrainLab.backend.utils import set_seed
 
@@ -369,7 +369,7 @@ def test_training_plan_holder_one_epoch(base_holder, interrupt):
         patch.object(train_record, "update_statistic") as update_statistic_mock,
         patch.object(train_record, "export_checkpoint") as export_checkpoint_mock,
         patch(
-            "XBrainLab.backend.training.training_plan._test_model",
+            "XBrainLab.backend.training.evaluator.Evaluator.test_model",
             return_value=fake_test_result,
         ),
     ):
@@ -639,7 +639,7 @@ def test_test_model_metrics():
     loader = [(inputs, labels1), (inputs, labels2)]
 
     # Run
-    result = _test_model(mock_model, loader, criterion)
+    result = Evaluator.test_model(mock_model, loader, criterion)
 
     assert result[RecordKey.ACC] == 75.0
     assert RecordKey.AUC in result

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
 from .components import MetricTab
@@ -64,12 +65,15 @@ class TrainingPanel(BasePanel):
         # Config changes update toolbar state
         self.bridge_config.connect_to(self._on_config_changed)
 
-        # Connect to training upadtes
+        # Connect to training updates
         self.bridge_updated = QtObserverBridge(
             self.controller, "training_updated", self
         )
         # We wrap update_loop to accept *args, **kwargs safely
         self.bridge_updated.connect_to(lambda *args, **kwargs: self.update_loop())
+
+        self.bridge_cleared = QtObserverBridge(self.controller, "history_cleared", self)
+        self.bridge_cleared.connect_to(self._on_history_cleared)
 
         # Connect to Dataset events (Updates info panel and check readiness)
         if self.dataset_controller:
@@ -107,33 +111,21 @@ class TrainingPanel(BasePanel):
 
         # Tabs
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("QTabWidget::pane { border: 0; }")  # Clean look
+        self.tabs.setStyleSheet(Stylesheets.TAB_WIDGET_CLEAN)
 
         # Tab 1: Accuracy
         # 2. Metric Tabs
         self.tab_acc = MetricTab("Accuracy", color=Theme.ACCENT_SUCCESS)
         self.tab_loss = MetricTab("Loss", color=Theme.ACCENT_ERROR)
 
-        self.metrics_tabs = QTabWidget()
-        self.metrics_tabs.addTab(self.tab_acc, "Accuracy")
-        self.metrics_tabs.addTab(self.tab_loss, "Loss")
-
-        # 3. History Table
-        self.history_table = TrainingHistoryTable()
+        self.tabs.addTab(self.tab_acc, "Accuracy")
+        self.tabs.addTab(self.tab_loss, "Loss")
 
         # 4. Logs
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setPlaceholderText("Training logs will appear here...")
-        self.log_text.setStyleSheet(
-            f"background-color: {Theme.BACKGROUND_DARK}; "
-            f"border: 1px solid {Theme.BORDER}; "
-            f"color: {Theme.TEXT_SECONDARY}; "
-            "font-family: monospace;"
-        )
-        self.tabs.addTab(
-            self.metrics_tabs, "Metrics"
-        )  # Add the metrics tabs as one tab
+        self.log_text.setStyleSheet(Stylesheets.LOG_TEXT)
         self.tabs.addTab(self.log_text, "Log")
 
         plots_layout.addWidget(self.tabs)
@@ -184,8 +176,17 @@ class TrainingPanel(BasePanel):
         """Event handler: Training has stopped."""
         self.training_finished()
         self.log_text.append("Training stopped (event).")
+        # FORCE update to ensure the Table shows "Done" or "Stopped"
+        self.update_loop()
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_stopped()
+
+    def _on_history_cleared(self):
+        """Event handler: History cleared."""
+        self.tab_acc.clear()
+        self.tab_loss.clear()
+        self.current_plotting_record = None
+        self.update_loop()  # Will clear table if history is empty
 
     # Clear history method moved to Sidebar
 
@@ -251,9 +252,30 @@ class TrainingPanel(BasePanel):
             plans = self.controller.get_formatted_history()
             self.history_table.update_table(plans)
 
-        # 2. Update Plots if the current record is active
+            # 2. Auto-select a record if none is selected
+            if not self.current_plotting_record and plans:
+                # Prefer the currently running record, else the last one
+                for p in plans:
+                    if p.get("is_current_run"):
+                        self.current_plotting_record = p["record"]
+                        break
+                else:
+                    # No active run, select the last record
+                    self.current_plotting_record = plans[-1]["record"]
+
+        # 3. Update Plots if the current record is active and has new data
         if self.current_plotting_record:
-            self.refresh_plot(self.current_plotting_record)
+            try:
+                current_epochs = len(
+                    self.current_plotting_record.train.get(TrainRecordKey.ACC, [])
+                )
+                last_count = getattr(self, "_last_epoch_count", -1)
+                if last_count != current_epochs:
+                    self._last_epoch_count = current_epochs
+                    self.refresh_plot(self.current_plotting_record)
+            except Exception:
+                # Fallback: just refresh
+                self.refresh_plot(self.current_plotting_record)
 
     # check_ready_to_train moved to Sidebar
 

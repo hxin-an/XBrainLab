@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.load_data import DataType
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.styles.theme import Theme
 
 
 class AggregateInfoPanel(QGroupBox):
@@ -46,7 +47,6 @@ class AggregateInfoPanel(QGroupBox):
         # Creating a specific table style in Stylesheets is better pattern.
         # For now, I'll keep the custom table style but use the group box style
         # from Stylesheets
-        from XBrainLab.ui.styles.theme import Theme  # noqa: PLC0415
 
         self.table.setStyleSheet(
             f"""

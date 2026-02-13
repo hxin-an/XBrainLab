@@ -11,6 +11,11 @@ from .plot_3d_head import Saliency3D
 
 
 class Saliency3DPlotWidget(QWidget):
+    """
+    Widget for visualizing 3D Brain Saliency Maps using PyVista.
+    Embeds a QtInteractor for interactive 3D rendering.
+    """
+
     def __init__(self, parent):
         super().__init__(parent)
         self.init_ui()
@@ -26,7 +31,7 @@ class Saliency3DPlotWidget(QWidget):
 
         # Initial Placeholder
         lbl = QLabel("Select a plan and method to visualize")
-        lbl.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 14px;")
+        lbl.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 14px;")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
 
@@ -36,9 +41,9 @@ class Saliency3DPlotWidget(QWidget):
 
     def show_error(self, msg):
         self.clear_plot()
-        lbl = QLabel(msg)
+        lbl = QLabel(f"Error: {msg}")
         lbl.setStyleSheet(
-            f"color: {Theme.TEXT_MUTED}; font-size: 13px; font-weight: normal;"
+            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;"
         )
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)

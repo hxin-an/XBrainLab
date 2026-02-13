@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
@@ -22,13 +21,15 @@ class TrainingController(Observable):
         "training_stopped",
         "training_updated",
         "config_changed",
+        "history_cleared",
     ]  # Explicitly list events for clarity
 
     def __init__(self, study: Study):
         Observable.__init__(self)
         self._study = study
         self._monitor_thread: threading.Thread | None = None
-        self._monitor_active = False
+
+        self._shutdown_event = threading.Event()
 
     def is_training(self) -> bool:
         """Check if training is running."""
@@ -58,29 +59,38 @@ class TrainingController(Observable):
             self._study.stop_training()
             self.notify("training_stopped")
             # Monitoring will stop naturally when is_training() becomes False
+            # But we can also signal it to wake up immediately
+
+    def shutdown(self):
+        """Force stop the monitoring thread."""
+        self._shutdown_event.set()
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self._monitor_thread.join(timeout=1.0)
 
     def _start_monitoring(self):
         """Start a background thread to monitor training progress."""
         if self._monitor_thread and self._monitor_thread.is_alive():
             return
 
-        self._monitor_active = True
+        self._shutdown_event.clear()
         self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._monitor_thread.start()
 
     def _monitor_loop(self):
         """Loop to poll trainer status and emit updates."""
 
-        while self._monitor_active:
+        while not self._shutdown_event.is_set():
             if not self.is_training():
                 # Training finished naturally or stopped
-                self._monitor_active = False
                 self.notify("training_stopped")  # Ensure UI knows it stopped
                 break
 
             # Emit update event
             self.notify("training_updated")
-            time.sleep(1.0)  # Poll every 1 second (same as old UI timer)
+
+            # Smart Sleep: Wait 1s OR break immediately if shutdown set
+            if self._shutdown_event.wait(1.0):
+                break
 
     def clear_history(self) -> None:
         """Clear all training history."""
@@ -89,7 +99,7 @@ class TrainingController(Observable):
 
         if self._study.trainer:
             self._study.trainer.clear_history()
-            self.notify("config_changed")
+            self.notify("history_cleared")
 
     def get_trainer(self) -> Trainer | None:
         """Access the underlying trainer (usually for polling status)."""

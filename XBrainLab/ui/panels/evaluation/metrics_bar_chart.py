@@ -93,9 +93,17 @@ class MetricsBarChartWidget(QWidget):
             # Plot Bars
             # Keep semantic colors for bars as they are data-representative
             # (Precision/Recall/F1)
-            self.ax.bar(x - width, precision, width, label="Precision", color="#4CAF50")
-            self.ax.bar(x, recall, width, label="Recall", color="#2196F3")
-            self.ax.bar(x + width, f1, width, label="F1-Score", color="#FFC107")
+            self.ax.bar(
+                x - width,
+                precision,
+                width,
+                label="Precision",
+                color=Theme.CHART_SECONDARY,
+            )
+            self.ax.bar(x, recall, width, label="Recall", color=Theme.CHART_PRIMARY)
+            self.ax.bar(
+                x + width, f1, width, label="F1-Score", color=Theme.CHART_TERTIARY
+            )
 
             # Apply Theme
             Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
@@ -105,6 +113,8 @@ class MetricsBarChartWidget(QWidget):
             self.ax.set_title("Per-Class Metrics")
             self.ax.set_xticks(x)
             self.ax.set_xticklabels([f"Class {c}" for c in classes])
+            self.ax.tick_params(axis="x", colors=Theme.TEXT_PRIMARY)
+            self.ax.tick_params(axis="y", colors=Theme.TEXT_PRIMARY)
             self.ax.set_ylim(0, 1.1)
 
             # Legend

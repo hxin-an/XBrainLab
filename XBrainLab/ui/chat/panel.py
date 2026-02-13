@@ -1,11 +1,13 @@
 """
 Chat Panel - Main chat interface component.
 Copilot-style chat interface using MessageBubble widgets.
+Refactored to maintain UI logic only, delegating state to ChatController.
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QApplication,  # Added for M3.1
     QHBoxLayout,
     QLineEdit,
     QMenu,
@@ -15,6 +17,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from XBrainLab.backend.controller.chat_controller import ChatController
+
+# M3.1: Debug Mode
+from XBrainLab.debug.tool_debug_mode import ToolDebugMode
+from XBrainLab.llm.core.config import LLMConfig
 
 from ..styles.theme import Theme
 from .message_bubble import MessageBubble
@@ -33,18 +41,30 @@ class ChatPanel(QWidget):
     """
     Copilot-style chat interface using MessageBubble widgets.
     Features: QFrame Bubbles, Perfect Alignment, Dynamic Width Adjustment.
+    Decoupled: State managed by ChatController.
     """
 
+    # UI-driven Signals
     send_message = pyqtSignal(str)
     stop_generation = pyqtSignal()
     model_changed = pyqtSignal(str)
+    new_conversation_requested = pyqtSignal()  # M0.3 New Conversation
+    debug_tool_requested = pyqtSignal(str, dict)  # M3.1 Debug Mode
 
     def __init__(self):
         super().__init__()
-        self.is_processing = False
-        self.message_list: list[MessageBubble] = []
+        # Temporary state for current streaming bubble
         self.current_agent_bubble: MessageBubble | None = None
+
+        self.is_processing = False
         self.init_ui()
+
+        # M3.1 Interactive Debug Mode
+        # TODO: Refactor Debug Mode logic into a separate interceptor class
+        # to decouple from UI.
+        app = QApplication.instance()
+        script_path = app.property("tool_debug_script") if app else None
+        self.debug_mode = ToolDebugMode(script_path) if script_path else None
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -74,6 +94,7 @@ class ChatPanel(QWidget):
 
         # --- Control Panel (Bottom) ---
         control_panel = QWidget()
+        control_panel.setObjectName("ControlPanel")
         control_panel.setStyleSheet(CONTROL_PANEL_STYLE)
         control_layout = QVBoxLayout(control_panel)
         control_layout.setContentsMargins(10, 8, 10, 8)
@@ -86,7 +107,7 @@ class ChatPanel(QWidget):
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
         toolbar_layout.setSpacing(10)
 
-        # Feature Selector
+        # Feature Selector (Keep logic, maybe move to Backend later)
         self.feature_btn = QPushButton("General Assistant ▼")
         self.feature_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.feature_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
@@ -100,16 +121,17 @@ class ChatPanel(QWidget):
         toolbar_layout.addWidget(self.feature_btn)
 
         # Model Selector
-        self.model_btn = QPushButton("Gemini 2.0 Flash ▼")
+        self.model_btn = QPushButton("Model: Gemini ▼")
         self.model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+
         self.model_menu = QMenu(self)
         self.model_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
-        for model in ["Gemini 2.0 Flash", "Gemini 1.5 Pro", "Local (Qwen)"]:
-            action = QAction(model, self)
-            action.triggered.connect(lambda checked, m=model: self._set_model(m))
-            self.model_menu.addAction(action)
         self.model_btn.setMenu(self.model_menu)
+
+        # Initial population of menu
+        self.update_model_menu()
+
         toolbar_layout.addWidget(self.model_btn)
 
         toolbar_layout.addStretch()  # Push buttons to left
@@ -139,6 +161,38 @@ class ChatPanel(QWidget):
         control_layout.addWidget(input_widget)
         layout.addWidget(control_panel)
 
+    def update_model_menu(self):
+        """Update available models based on configuration."""
+        self.model_menu.clear()
+
+        # Load config without blocking UI too cleanly (it's small JSON)
+        # Use fallback if loading fails
+        try:
+            config = LLMConfig.load_from_file() or LLMConfig()
+            local_enabled = config.local_model_enabled
+        except Exception:
+            local_enabled = True
+
+        modes = ["Gemini", "Local"]
+        for mode in modes:
+            action = QAction(mode, self)
+
+            # Feature: Disable Local selection if disabled in settings
+            if mode == "Local" and not local_enabled:
+                action.setEnabled(False)
+                action.setText("Local (Disabled)")
+                action.setToolTip("Enable Local Model in Settings (⚙) to use.")
+            else:
+                action.triggered.connect(lambda checked, m=mode: self._set_model(m))
+
+            self.model_menu.addAction(action)
+
+    def connect_controller(self, controller: ChatController):
+        """M0.1: Connect to the backend ChatController."""
+        controller.message_added.connect(self._render_message)
+        controller.processing_state_changed.connect(self._update_processing_ui)
+        controller.conversation_cleared.connect(self._clear_ui)
+
     def _set_feature(self, feature_name: str):
         self.feature_btn.setText(f"{feature_name} ▼")
 
@@ -146,116 +200,147 @@ class ChatPanel(QWidget):
         self.model_btn.setText(f"{model_name} ▼")
         self.model_changed.emit(model_name)
 
+    def _on_new_conversation(self):
+        self.new_conversation_requested.emit()
+
     def _on_send(self):
+        # UI Check: Processing state is now managed via signals
+        # Use internal state instead of checking button text
         if self.is_processing:
             self.stop_generation.emit()
-            self.set_processing_state(False)
+            return
+
+        # M3.1 Debug Mode Interception
+        if self.debug_mode:
+            if not self.debug_mode.is_complete:
+                call = self.debug_mode.next_call()
+                if call:
+                    # Clear input just in case
+                    self.input_field.clear()
+                    # Emit debug request
+                    self.debug_tool_requested.emit(call.tool, call.params)
+                else:
+                    self.input_field.setText("Debug Script Completed.")
+            else:
+                self.input_field.setText("Debug Script Completed.")
             return
 
         text = self.input_field.text().strip()
         if not text:
             return
 
-        self.add_message(text, is_user=True)
         self.input_field.clear()
         self.send_message.emit(text)
-        self.set_processing_state(True)
+        # Note: We don't verify processing state here implicitly,
+        # Controller will call set_processing(True) which updates UI.
 
     def set_processing_state(self, is_processing: bool):
-        self.is_processing = is_processing
+        """Public method to update processing state UI."""
+        self._update_processing_ui(is_processing)
+
+    def _update_processing_ui(self, is_processing: bool):
+        self.is_processing = is_processing  # Sync state
         if is_processing:
-            self.send_btn.setText("⏹")
+            self.send_btn.setText("■")  # Pure text square, no emoji background
             self.send_btn.setStyleSheet(SEND_BUTTON_PROCESSING_STYLE)
         else:
             self.send_btn.setText("➤")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
 
     def resizeEvent(self, event):  # noqa: N802
-        # Update all bubble widths on window resize.
         super().resizeEvent(event)
+        # M0.4: Dynamic Width Adjustment Fix
         viewport = self.scroll_area.viewport()
         if viewport:
             container_width = viewport.width()
-            for bubble in self.message_list:
-                bubble.adjust_width(container_width)
+            # Iterate through layout items to adjust bubbles
+            for i in range(self.chat_layout.count()):
+                item = self.chat_layout.itemAt(i)
+                if item and item.widget():
+                    widget = item.widget()
+                    if isinstance(widget, MessageBubble):
+                        widget.adjust_width(container_width)
 
-    def add_message(self, text: str, is_user: bool = False):
-        """Add a new message bubble to the chat."""
+    def _render_message(self, text: str, is_user: bool):
+        """Render a message bubble from the controller."""
         bubble = MessageBubble(text, is_user)
+
+        # M0.4: Initial width adjustment
         viewport = self.scroll_area.viewport()
         if viewport:
             bubble.adjust_width(viewport.width())
 
-        # Insert before the stretch at the end
+        # Insert before stretch
         self.chat_layout.insertWidget(self.chat_layout.count() - 1, bubble)
-        self.message_list.append(bubble)
         self._scroll_to_bottom()
 
-    def start_agent_message(self):
-        """Create a new Agent bubble for streaming."""
-        self.current_agent_bubble = MessageBubble("", is_user=False)
-        viewport = self.scroll_area.viewport()
-        if viewport:
-            self.current_agent_bubble.adjust_width(viewport.width())
+        if not is_user:
+            # Keep track of agent bubble for streaming updates if needed
+            self.current_agent_bubble = bubble
 
-        self.chat_layout.insertWidget(
-            self.chat_layout.count() - 1, self.current_agent_bubble
-        )
-        self.message_list.append(self.current_agent_bubble)
-        self._scroll_to_bottom()
+    def _clear_ui(self):
+        """Clear all messages from UI."""
+        # Remove all widgets except stretch
+        while self.chat_layout.count() > 1:
+            item = self.chat_layout.takeAt(0)
+            if item:
+                w = item.widget()
+                if w:
+                    w.deleteLater()
+        self.current_agent_bubble = None
 
     def on_chunk_received(self, text: str):
-        """Handle streaming text chunk."""
+        """
+        Handle streaming text chunk.
+        Ideally this logic should be in Controller accumulating state,
+        sending updates to specific message ID.
+        For M0 phase, we keep streaming logic partly in UI for simplicity
+        until full backend streaming architecture is ready.
+        """
+        # Feature: Auto-create bubble if missing (Robustness)
+        if not self.current_agent_bubble:
+            self._render_message("", is_user=False)
+
         if self.current_agent_bubble:
             current_text = self.current_agent_bubble.get_text()
             new_text = current_text + text
             # Strip trailing newlines to prevent bottom gap
             self.current_agent_bubble.set_text(new_text.rstrip("\n"))
-            # Recalculate width after text changes
+
+            # M0.4: Recalculate width after text changes
             viewport = self.scroll_area.viewport()
             if viewport:
                 self.current_agent_bubble.adjust_width(viewport.width())
             self._scroll_to_bottom()
+
+    def start_agent_message(self):
+        """Preparation for streaming - Controller usage."""
+        # In the new flow, Controller calls add_agent_message("") to start
+        # so this might be redundant if Controller handles it.
+        # Kept for compatibility if AgentManager calls it expclicity.
 
     def _scroll_to_bottom(self):
         scroll_bar = self.scroll_area.verticalScrollBar()
         if scroll_bar:
             scroll_bar.setValue(scroll_bar.maximum())
 
+    # --- Legacy Compatibility Methods (Deprecated) ---
     def append_message(self, sender: str, text: str):
-        """Legacy method for compatibility - adds message with sender prefix."""
+        """Legacy method for AgentManager compatibility."""
         is_user = sender.lower() == "user"
-        self.add_message(text, is_user=is_user)
+        self._render_message(text, is_user)
 
     def collapse_agent_message(self, text_to_remove: str):
-        """Replace tool JSON with a simple indicator or hide if empty."""
+        """Legacy method - kept for AgentManager."""
         if self.current_agent_bubble:
             current_text = self.current_agent_bubble.get_text()
-
-            # 1. Try to remove the tool usage text (if it was streamed)
-            # Note: If speculative buffering worked, this text might not be here.
             if text_to_remove and text_to_remove in current_text:
                 current_text = current_text.replace(text_to_remove, "")
 
-            # 2. Check if the bubble is now effectively empty
-            # (ignoring whitespace)
             if not current_text.strip():
                 self.current_agent_bubble.hide()
             elif text_to_remove:
-                # Only update if we actually have text and maybe removed something?
-                # Or just ensure it's clean.
                 self.current_agent_bubble.set_text(current_text.strip())
 
-            # Force layout update?
-            # self.current_agent_bubble.adjust_width(...)
-
-    # Legacy compatibility - DEPRECATED
-    @property
-    def current_agent_label(self):
-        """Legacy property for compatibility. Returns text_edit."""
-        if self.current_agent_bubble:
-            return self.current_agent_bubble.text_edit
-        return None
-
     def set_status(self, status: str):
-        """Legacy method - no-op for now."""
+        """Legacy method - no-op."""

@@ -45,10 +45,15 @@ def test_index_data(mock_indexer):
         mock_qdrant_instance = MagicMock()
         mock_qdrant_cls.return_value = mock_qdrant_instance
 
+        # Mock collection existence check
+        mock_collections = MagicMock()
+        mock_collections.collections = []
+        mock_indexer.client.get_collections.return_value = mock_collections
+
         mock_indexer.index_data(docs)
 
-        # Verify collection recreation
-        mock_indexer.client.recreate_collection.assert_called_once()
+        # Verify create_collection called (since we mocked it strictly)
+        mock_indexer.client.create_collection.assert_called_once()
 
         # Verify add_documents called (not from_documents)
         mock_qdrant_instance.add_documents.assert_called_once_with(docs)

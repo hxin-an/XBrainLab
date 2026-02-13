@@ -20,8 +20,9 @@ from .sidebar import DatasetSidebar
 
 class DatasetPanel(BasePanel):
     """
-    Panel for managing the dataset.
+    Panel for managing the dataset loading and metadata.
     Features: Import Data, Import Label, Smart Parse, Channel Selection, Table View.
+    Integrates with `DatasetController`.
     """
 
     def __init__(self, controller=None, parent=None):

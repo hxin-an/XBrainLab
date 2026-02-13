@@ -14,6 +14,9 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.logger import logger
+
+# M3.1: Debug Executor
+from XBrainLab.debug.tool_executor import ToolExecutor
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.info_panel_service import InfoPanelService
 
@@ -49,6 +52,9 @@ Training, etc.).
         self.resize(1280, 800)
 
         self.agent_initialized = False  # Flag for lazy loading
+
+        # M3.1: Tool Executor for Debug Mode
+        self.debug_executor = ToolExecutor(self.study)
 
         # Apply VS Code Dark Theme (Adjusted for Top Bar)
         self.apply_vscode_theme()
@@ -90,15 +96,15 @@ Training, etc.).
 
         main_layout.addWidget(self.top_bar)
 
-        # 2. Stacked Widget (Content Area)
+        # 2. Services (Must be before panels to allow registration)
+        self.info_service = InfoPanelService(self.study)
+
+        # 3. Stacked Widget (Content Area)
         self.stack = QStackedWidget()
         main_layout.addWidget(self.stack)
 
         # Initialize Panels
         self.init_panels()
-
-        # 3. Services
-        self.info_service = InfoPanelService(self.study)
 
         # Initialize Agent System
         self.init_agent()
@@ -185,6 +191,48 @@ Training, etc.).
         # Delegate to AgentManager
         self.agent_manager = AgentManager(self, self.study)
         self.agent_manager.init_ui()
+
+        # M3.1: Debug tool execution handled by MainWindow for offline support
+        if self.agent_manager.chat_panel:
+            self.agent_manager.chat_panel.debug_tool_requested.connect(
+                self._on_debug_tool_requested
+            )
+
+        # Connect Status Updates
+        self.agent_manager.status_message_received.connect(
+            self._on_agent_status_message
+        )
+
+    def _on_agent_status_message(self, msg: str):
+        """Update status bar safely."""
+        sb = self.statusBar()
+        if sb:
+            sb.showMessage(msg)
+
+    def _on_debug_tool_requested(self, tool_name: str, params: dict):
+        """M3.1: Handle debug tool execution request."""
+        logger.info(f"Debug Mode: Requesting {tool_name}")
+        result = self.debug_executor.execute(tool_name, params)
+
+        # Feedback to Chat
+        if self.agent_manager.chat_panel:
+            # We use the legacy or proper method to append message
+            # Ideally via chat_controller but for Direct UI debug feedback:
+            self.agent_manager.chat_panel.append_message(
+                "System", f"Tool '{tool_name}' executed.\nResult: {result}"
+            )
+            # Ensure we scroll to bottom
+            self.agent_manager.chat_panel._scroll_to_bottom()
+
+        # M3.1 FIX: Handle Switch Panel in Debug Mode
+        # In normal agent flow, LLMController parses the "Request:" string.
+        # In Debug Mode, we must handle it explicitly here.
+        if tool_name == "switch_panel" and "Request: Switch UI" in result:
+            # Map 'panel_name' (Tool param) to 'panel' (AgentManager param)
+            panel = params.get("panel_name")
+            view = params.get("view_mode")
+            if panel:
+                self.agent_manager.switch_panel({"panel": panel, "view_mode": view})
 
     def toggle_ai_dock(self):
         self.agent_manager.toggle()

@@ -15,7 +15,13 @@ class TestAgentWorkerTimeout:
         worker.engine.config.timeout = 30  # 30 seconds
 
         # Mock GenerationThread to prevent actual execution
-        with patch("XBrainLab.llm.agent.worker.GenerationThread") as MockThread:
+        # Also mock LLMConfig.load_from_file so it doesn't overwrite our engine.config.timeout
+        with (
+            patch("XBrainLab.llm.agent.worker.GenerationThread") as MockThread,
+            patch(
+                "XBrainLab.llm.agent.worker.LLMConfig.load_from_file", return_value=None
+            ),
+        ):
             mock_thread = MockThread.return_value
             mock_thread.start = MagicMock()
 

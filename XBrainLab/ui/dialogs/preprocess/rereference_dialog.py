@@ -11,12 +11,17 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class RereferenceDialog(BaseDialog):
-    def __init__(self, parent, data_list):
+    """
+    Dialog for re-referencing EEG data.
+    Supports Average Reference (CAR) or specific channel selection.
+    """
+
+    def __init__(self, parent, data_list: list):
         self.data_list = data_list
-        self.reref_params = None
-        self.avg_check = None
-        self.chan_group = None
-        self.chan_list = None
+        self.reref_params: str | list[str] | None = None
+        self.avg_check: QCheckBox | None = None
+        self.chan_group: QGroupBox | None = None
+        self.chan_list: QListWidget | None = None
 
         super().__init__(parent, title="Re-reference")
         self.resize(400, 300)

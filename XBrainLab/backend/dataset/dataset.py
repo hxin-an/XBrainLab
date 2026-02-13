@@ -52,9 +52,6 @@ class Dataset:
         self.test_mask = np.zeros(data_length, dtype=bool)
         self.is_selected = True
 
-    # data splitting
-    ## getter
-    ### info
     def get_epoch_data(self) -> Epochs:
         """Get the epoch data of the dataset."""
         return self.epoch_data
@@ -94,7 +91,6 @@ class Dataset:
         name = self.get_name()
         return selected, name, train_number, val_number, test_number
 
-    ## setter
     def set_selection(self, select):
         """Set the dataset selection."""
         self.is_selected = select
@@ -108,21 +104,6 @@ class Dataset:
         train_number, val_number, test_number = self.get_all_trial_numbers()
         return train_number == 0 or val_number == 0 or test_number == 0
 
-    ### mask
-    def get_remaining_mask(self) -> np.ndarray:
-        """Get the mask for remaining trials."""
-        return self.remaining_mask.copy()
-
-    ## picker
-    def discard_remaining_mask(self, mask: np.ndarray) -> None:
-        """Mark all the trials in the mask as discarded."""
-        self.remaining_mask &= np.logical_not(mask)
-
-    def set_remaining_by_subject_idx(self, idx: int) -> None:
-        """Set the remaining mask to the mask of target subject."""
-        self.remaining_mask = self.epoch_data.pick_subject_mask_by_idx(idx)
-
-    ## set result
     def set_test(self, mask: np.ndarray) -> None:
         """Set the mask for test set and update the remaining mask."""
         self.test_mask = mask & self.remaining_mask
@@ -138,12 +119,25 @@ class Dataset:
         self.train_mask |= self.remaining_mask
         self.remaining_mask &= False
 
+    def get_remaining_mask(self) -> np.ndarray:
+        """Return the mask for remaining trials."""
+        return self.remaining_mask.copy()
+
     ## filter
     def intersection_with_subject_by_idx(
         self, mask: np.ndarray, idx: int
     ) -> np.ndarray:
         """Return the intersection of the mask and the mask of target subject."""
         return mask & self.epoch_data.pick_subject_mask_by_idx(idx)
+
+    def set_remaining_by_subject_idx(self, subject_idx: int) -> None:
+        """Set remaining mask to include only specific subject."""
+        subject_mask = self.epoch_data.pick_subject_mask_by_idx(subject_idx)
+        self.remaining_mask &= subject_mask
+
+    def discard_remaining_mask(self, mask: np.ndarray) -> None:
+        """Remove masked trials from remaining mask."""
+        self.remaining_mask &= np.logical_not(mask)
 
     # train
     def get_training_data(self) -> tuple[np.ndarray, np.ndarray]:

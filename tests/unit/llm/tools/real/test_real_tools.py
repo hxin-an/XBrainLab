@@ -249,19 +249,13 @@ class TestRealPreprocessTools:
 
     def test_set_montage(self, mock_study):
         tool = RealSetMontageTool()
-        with patch(
-            "XBrainLab.llm.tools.real.preprocess_real.BackendFacade"
-        ) as MockFacade:
-            mock_facade = MockFacade.return_value
-            mock_facade.set_montage.return_value = (
-                "Set Montage 'standard_1020' (Matched 2 channels)"
-            )
+        # Note: RealSetMontageTool now returns a confirmation request (human-in-the-loop)
+        # instead of auto-applying
 
-            res = tool.execute(mock_study, montage_name="standard_1020")
+        res = tool.execute(mock_study, montage_name="standard_1020")
 
-            assert "Set Montage 'standard_1020'" in res
-            assert "Matched 2 channels" in res
-            mock_facade.set_montage.assert_called_once_with("standard_1020")
+        # Verify the confirmation request format
+        assert "confirm_montage 'standard_1020'" in res
 
 
 class TestRealUIControlTools:

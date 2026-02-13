@@ -1,15 +1,14 @@
-from copy import deepcopy
-
 from .controller.dataset_controller import DatasetController
 from .controller.evaluation_controller import EvaluationController
 from .controller.preprocess_controller import PreprocessController
 from .controller.training_controller import TrainingController
 from .controller.visualization_controller import VisualizationController
+from .data_manager import DataManager
 from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
 from .load_data import Raw, RawDataLoader
 from .preprocessor import PreprocessBase
 from .training import ModelHolder, Trainer, TrainingOption, TrainingPlanHolder
-from .utils import validate_issubclass, validate_list_type, validate_type
+from .utils import validate_type
 from .utils.logger import logger
 
 
@@ -39,37 +38,72 @@ class Study:
     """
 
     def __init__(self) -> None:
-        # raw data
-        self.loaded_data_list: list[Raw] = []
-        self.preprocessed_data_list: list[Raw] = []
-        self.epoch_data: Epochs | None = None
-        # datasets
-        self.datasets: list[Dataset] = []
-        self.dataset_generator: DatasetGenerator | None = None
+        self.data_manager = DataManager()
+
         # training
         self.model_holder: ModelHolder | None = None
         self.training_option: TrainingOption | None = None
         self.trainer: Trainer | None = None
         # visulaization
         self.saliency_params: dict | None = None
-        # dataset locking
-        self.dataset_locked = False
-        self.backup_loaded_data_list: list[Raw] | None = (
-            None  # Backup for undoing channel selection
-        )
 
         # Controller cache for singleton-like access
-        # This ensures all facades and UI panels use the same controller instances
         self._controllers: dict = {}
 
-        logger.info("Study initialized")
+        logger.info("Study initialized (with DataManager)")
 
+    # --- DataManager Delegation Properties ---
+    @property
+    def loaded_data_list(self) -> list[Raw]:
+        return self.data_manager.loaded_data_list
+
+    @loaded_data_list.setter
+    def loaded_data_list(self, value):
+        self.data_manager.loaded_data_list = value
+
+    @property
+    def preprocessed_data_list(self) -> list[Raw]:
+        return self.data_manager.preprocessed_data_list
+
+    @preprocessed_data_list.setter
+    def preprocessed_data_list(self, value):
+        self.data_manager.preprocessed_data_list = value
+
+    @property
+    def epoch_data(self) -> Epochs | None:
+        return self.data_manager.epoch_data
+
+    @epoch_data.setter
+    def epoch_data(self, value):
+        self.data_manager.epoch_data = value
+
+    @property
+    def datasets(self) -> list[Dataset]:
+        return self.data_manager.datasets
+
+    @datasets.setter
+    def datasets(self, value):
+        self.data_manager.datasets = value
+
+    @property
+    def dataset_generator(self):
+        return self.data_manager.dataset_generator
+
+    @dataset_generator.setter
+    def dataset_generator(self, value):
+        self.data_manager.dataset_generator = value
+
+    @property
+    def dataset_locked(self) -> bool:
+        return self.data_manager.dataset_locked
+
+    @dataset_locked.setter
+    def dataset_locked(self, value):
+        self.data_manager.dataset_locked = value
+
+    # --- Controller Access ---
     def get_controller(self, controller_type: str):
-        """Get or create a cached controller instance.
-
-        This ensures all components (LLM tools, UI panels) share the same
-        controller instances, enabling the Observable pattern to work correctly.
-        """
+        """Get or create a cached controller instance."""
         if controller_type not in self._controllers:
             if controller_type == "dataset":
                 self._controllers[controller_type] = DatasetController(self)
@@ -87,130 +121,51 @@ class Study:
 
     # step 1 - load data
     def get_raw_data_loader(self) -> RawDataLoader:
-        """Return a new :class:`XBrainLab.backend.load_data.RawDataLoader` instance.
-
-        Helper function to get loader for loading raw data.
-        """
-        return RawDataLoader()
+        """Get the raw data loader instance from DataManager."""
+        return self.data_manager.get_raw_data_loader()
 
     def backup_loaded_data(self) -> None:
-        """Backup current loaded_data_list to allow undoing changes
-        (e.g. Channel Selection)."""
-        if self.loaded_data_list:
-            self.backup_loaded_data_list = deepcopy(self.loaded_data_list)
-            logger.info("Backed up loaded data list")
+        """Backup the currently loaded data list via DataManager."""
+        self.data_manager.backup_loaded_data()
 
     def set_loaded_data_list(
         self, loaded_data_list: list[Raw], force_update: bool = False
     ) -> None:
-        """Set loaded data list.
-
-        Args:
-            loaded_data_list: The raw data result loaded by
-                              :class:`XBrainLab.backend.load_data.RawDataLoader`.
-            force_update: Whether to force override and
-                          clear the data of following steps.
-        """
-        validate_list_type(loaded_data_list, Raw, "loaded_data_list")
-        self.clean_raw_data(force_update)
-        self.set_preprocessed_data_list(
-            preprocessed_data_list=deepcopy(loaded_data_list), force_update=force_update
-        )
-        self.loaded_data_list = loaded_data_list
-        logger.info(f"Loaded {len(loaded_data_list)} raw data files")
+        """Set loaded data list in DataManager."""
+        self.data_manager.set_loaded_data_list(loaded_data_list, force_update)
 
     # step 2 - preprocess
     def set_preprocessed_data_list(
         self, preprocessed_data_list: list[Raw], force_update: bool = False
     ) -> None:
-        """Set preprocessed data list.
-
-        Args:
-            preprocessed_data_list: The preprocessed data result generated by
-                sequences of
-                :class:`XBrainLab.backend.preprocessor.base.PreprocessBase`.
-            force_update: Whether to force override and
-                          clear the data of following steps.
-        """
-        validate_list_type(preprocessed_data_list, Raw, "preprocessed_data_list")
-        self.clean_datasets(force_update=force_update)
-
-        self.preprocessed_data_list = preprocessed_data_list
-        for preprocessed_data in preprocessed_data_list:
-            # skip generating epoch data if data is still raw data
-            if preprocessed_data.is_raw():
-                self.epoch_data = None
-                return
-        self.epoch_data = Epochs(preprocessed_data_list)
-        logger.info(
-            f"Set preprocessed data list with {len(preprocessed_data_list)} items"
+        """Set preprocessed data list in DataManager."""
+        self.data_manager.set_preprocessed_data_list(
+            preprocessed_data_list, force_update
         )
 
     def reset_preprocess(self, force_update=False) -> None:
-        """Discard all preprocessed data and reset to loaded data.
-        Also restores backup loaded data if available (undoing Channel Selection).
-
-        Args:
-            force_update: Whether to force override and
-                          clear the data of following steps.
-        """
-        # Restore backup if exists (Undoing Channel Selection)
-        if self.backup_loaded_data_list:
-            logger.info("Restoring loaded data from backup (Undoing Channel Selection)")
-            self.loaded_data_list = self.backup_loaded_data_list
-            self.backup_loaded_data_list = None
-            # Unlock dataset to restore "raw" state, allowing new channel selection.
-            # reset_preprocess reverts to loaded data, so prior locks (e.g., from
-            # channel selection) are cleared.
-            self.unlock_dataset()
-
-        if self.loaded_data_list:
-            self.set_preprocessed_data_list(
-                deepcopy(self.loaded_data_list), force_update=force_update
-            )
-        logger.info("Reset preprocess to loaded data")
+        """Reset preprocessing via DataManager."""
+        self.data_manager.reset_preprocess(force_update)
 
     def preprocess(self, preprocessor: type[PreprocessBase], **kargs: dict) -> None:
-        """Preprocess data.
-
-        Args:
-            preprocessor: The preprocessor class.
-                          Should be subclass of
-                          :class:`XBrainLab.backend.preprocessor.base.PreprocessBase`.
-            **kargs: The parameters for preprocessor.
-        """
-        validate_issubclass(preprocessor, PreprocessBase, "preprocessor")
-        pp_instance = preprocessor(self.preprocessed_data_list)
-        pp_instance.check_data()
-        preprocessed_data_list = pp_instance.data_preprocess(**kargs)
-        self.set_preprocessed_data_list(preprocessed_data_list)
-        logger.info(f"Applied preprocessing: {pp_instance.__class__.__name__}")
+        """Apply preprocessing via DataManager."""
+        self.data_manager.preprocess(preprocessor, **kargs)
 
     # step 3 - split data for training
     def get_datasets_generator(self, config: DataSplittingConfig) -> DatasetGenerator:
-        """Return a new :class:`XBrainLab.backend.dataset.DatasetGenerator` instance.
-
-        Helper function to get generator for generating datasets.
-        """
+        """Create a dataset generator based on current epoch data."""
+        # Helper still needs validation logic from manager or accessing epoch_data
+        # via property
         if not self.epoch_data:
             raise ValueError("No valid epoch data is generated")
         validate_type(config, DataSplittingConfig, "config")
         return DatasetGenerator(self.epoch_data, config)
 
     def set_datasets(self, datasets: list[Dataset], force_update: bool = False) -> None:
-        """Set generated datasets for training.
-
-        Args:
-            datasets:
-                The datasets generated from
-                :class:`XBrainLab.backend.dataset.DatasetGenerator`.
-            force_update:
-               Whether to force override and clear the data of following steps.
-        """
-        validate_list_type(datasets, Dataset, "datasets")
-        self.clean_datasets(force_update=force_update)
-        self.datasets = datasets
-        logger.info(f"Set {len(datasets)} datasets for training")
+        """Set datasets in DataManager and clean trainer."""
+        # Clean trainer is Study responsibility as it holds trainer
+        self.clean_trainer(force_update=force_update)
+        self.data_manager.set_datasets(datasets, force_update)
 
     # step 4 - training config
     def set_training_option(
@@ -219,13 +174,11 @@ class Study:
         """Set training option.
 
         Args:
-            training_option: The training option.
-            force_update: Whether to force override and
-                          clear the data of following steps.
+            training_option: The training option to set.
+            force_update: Whether to force update.
         """
         validate_type(training_option, TrainingOption, "training_option")
         # Do not clean trainer here to allow multi-experiment history
-        # self.clean_trainer(force_update=force_update)
         self.training_option = training_option
 
     def set_model_holder(
@@ -234,31 +187,19 @@ class Study:
         """Set model holder.
 
         Args:
-            model_holder: The model with parameters.
-            force_update: Whether to force override and
-                          clear the data of following steps.
+            model_holder: The model holder to set.
+            force_update: Whether to force update.
         """
         validate_type(model_holder, ModelHolder, "model_holder")
         # Do not clean trainer here to allow multi-experiment history
-        # self.clean_trainer(force_update=force_update)
         self.model_holder = model_holder
 
     def generate_plan(self, force_update: bool = False, append: bool = False) -> None:
-        """Generate training plan.
-
-        Helper function to
-        generate :class:`XBrainLab.backend.training.TrainingPlanHolder`
-        from model holder, datasets and training option, and then
-        generate :class:`XBrainLab.backend.training.Trainer` from training plan holders.
+        """Generate training plan based on current configuration.
 
         Args:
-            force_update: Whether to force override and
-                          clear the data of following steps.
-            append: Whether to append new plans to existing trainer.
-
-        Raises:
-            ValueError: If no valid dataset, training option or
-                        model holder has been generated.
+            force_update: Whether to clear existing plan.
+            append: Whether to append to existing plan.
         """
         if not append:
             self.clean_trainer(force_update=force_update)
@@ -288,14 +229,10 @@ class Study:
 
     # step 5 - training
     def train(self, interact: bool = False) -> None:
-        """Start training.
+        """Start training process.
 
         Args:
-            interact: Whether to run in interactive mode.
-                      If True, the training will run in a new thread.
-
-        Raises:
-            ValueError: If no valid trainer has been generated.
+            interact: Whether to run interactively.
         """
         if not self.trainer:
             raise ValueError("No valid trainer is generated")
@@ -304,22 +241,14 @@ class Study:
         logger.info(f"Started training (interact={interact})")
 
     def stop_training(self) -> None:
-        """Stop training.
-
-        Raises:
-            ValueError: If no valid trainer has been generated.
-        """
+        """Stop training execution."""
         if not self.trainer:
             raise ValueError("No valid trainer is generated")
         self.trainer.set_interrupt()
         logger.info("Stopped training")
 
     def is_training(self) -> bool:
-        """Return whether training is running.
-
-        Raises:
-            ValueError: If no valid trainer has been generated.
-        """
+        """Return whether training is currently running."""
         if self.trainer:
             return self.trainer.is_running()
         return False
@@ -328,15 +257,10 @@ class Study:
     def export_output_csv(self, filepath: str, plan_name: str, real_plan_name: str):
         """Export model inference output to csv file.
 
-        Helper function to export model inference output to csv file.
-
         Args:
-            filepath: The output csv file path.
-            plan_name: The name of training plan.
-            real_plan_name: The name of real plan under training plan.
-
-        Raises:
-            ValueError: If no valid training plan or real plan is generated.
+            filepath: Path to save the CSV.
+            plan_name: Name of the plan.
+            real_plan_name: Real name of the plan.
         """
         if not self.trainer:
             raise ValueError("No valid training plan is generated")
@@ -348,118 +272,62 @@ class Study:
 
     # step 7 - visualization
     def set_channels(self, chs: list[str], positions: list[tuple]) -> None:
-        """Set channels and positions for visualization.
-
-        Args:
-            chs: List of channel names.
-            positions: List of channel positions. Should be tuple of (x, y, z).
-        """
+        """Set channels and positions for visualization."""
         if not self.epoch_data:
             raise ValueError("No valid epoch data is generated")
         self.epoch_data.set_channels(chs, positions)
 
     def get_saliency_params(self) -> dict | None:
-        """Return saliency parameters for saliiency computation.
-
-        Raises:
-            ValueError: If no valid trainer has been generated.
-        """
+        """Return parameters for saliency computation."""
         return self.saliency_params
 
     def set_saliency_params(self, saliency_params) -> None:
-        """Set saliency parameters for saliency computation.
-
-        Args:
-            saliency_params: The saliency parameters. Nest dictionary of
-                             {'method', {'param', value}}
-        """
+        """Set saliency parameters for saliency computation."""
         self.saliency_params = saliency_params
         if self.trainer:
             for training_plan_holder in self.trainer.get_training_plan_holders():
                 training_plan_holder.set_saliency_params(saliency_params)
 
-    """clean work flow
-    ########################################
-    1. raw/preprocessed(epoched) data
-    2. training datasets (splitted)
-    3. training plan (trainer)
-    """
-
-    # stage 1
+    # Clean Workflow Stage 1 & 2
     def should_clean_raw_data(self, interact: bool = True) -> bool:
-        """Return whether raw data is loaded.
-
-        Args:
-            interact: Whether to raise error if raw data is loaded.
-        """
+        """Check if raw data needs cleaning via DataManager."""
         response = bool(self.loaded_data_list) or self.should_clean_datasets(interact)
         if response and interact:
-            raise ValueError(
-                "This step has already been done, "
-                "all following data will be removed if you reset this step.\n"
-                "Please clean_raw_data first."
-            )
+            raise ValueError("This step has already been done... clean_raw_data first.")
         return response
 
     def clean_raw_data(self, force_update: bool = True) -> None:
-        """Clean raw/preprocessed/epoched data and following steps.
-
-        Args:
-            force_update: Whether to force override and
-                          clear the data of following steps.
-        """
+        """Clean raw data via DataManager."""
         self.clean_datasets(force_update=force_update)
         if not force_update:
             self.should_clean_raw_data(interact=True)
-        self.loaded_data_list = []
-        self.preprocessed_data_list = []
-        self.loaded_data_list = []
-        self.preprocessed_data_list = []
-        self.epoch_data = None
-        logger.info("Cleared raw data, preprocessed data, and epoch data")
-        self.unlock_dataset()
+        self.data_manager.clean_raw_data(force_update)
 
     def lock_dataset(self) -> None:
-        """Lock the dataset to prevent further data import."""
-        self.dataset_locked = True
-        logger.info("Dataset locked")
+        """Lock dataset via DataManager."""
+        self.data_manager.lock_dataset()
 
     def unlock_dataset(self) -> None:
-        """Unlock the dataset."""
-        self.dataset_locked = False
-        logger.info("Dataset unlocked")
+        """Unlock dataset via DataManager."""
+        self.data_manager.unlock_dataset()
 
     def is_locked(self) -> bool:
-        """Return whether the dataset is locked."""
-        return self.dataset_locked
+        """Check if dataset is locked via DataManager."""
+        return self.data_manager.is_locked()
 
-    # stage 2
     def should_clean_datasets(self, interact: bool = True) -> bool:
-        """Return whether datasets is generated.
-
-        Args:
-            interact: Whether to raise error if datasets is generated.
-        """
+        """Check if datasets need cleaning."""
         response = bool(self.datasets) or self.should_clean_trainer(interact)
         if response and interact:
-            raise ValueError(
-                "This step has already been done, "
-                "all following data will be removed if you reset this step.\n"
-                "Please clean_datasets first."
-            )
+            raise ValueError("This step has already been done... clean_datasets first.")
         return response
 
     def clean_datasets(self, force_update: bool = True) -> None:
-        """Clean datasets and following steps.
-
-        Args:
-            force_update: Whether to force override and
-                          clear the data of following steps.
-        """
+        """Clean datasets via DataManager and clean trainer."""
         self.clean_trainer(force_update=force_update)
         if not force_update:
             self.should_clean_datasets(interact=True)
-        self.datasets = []
+        self.data_manager.clean_datasets(force_update)
 
     # stage 3
     def should_clean_trainer(self, interact: bool = True) -> bool:

@@ -115,3 +115,40 @@ def test_get_averaged_record_empty(controller):
     holder = MagicMock()
     holder.get_plans.return_value = []
     assert controller.get_averaged_record(holder) is None
+
+
+def test_set_montage_observer(controller, mock_study):
+    # Setup observer
+    mock_callback = MagicMock()
+    controller.subscribe("montage_changed", mock_callback)
+
+    chs = ["C3", "C4"]
+    pos = [(0, 0, 0), (1, 1, 1)]
+    controller.set_montage(chs, pos)
+
+    mock_study.set_channels.assert_called_with(chs, pos)
+    mock_callback.assert_called_once()
+
+
+def test_set_saliency_params_observer(controller, mock_study):
+    # Setup observer
+    mock_callback = MagicMock()
+    controller.subscribe("saliency_changed", mock_callback)
+
+    params = {"method": "grad"}
+    controller.set_saliency_params(params)
+
+    mock_study.set_saliency_params.assert_called_with(params)
+    mock_callback.assert_called_once()
+
+
+def test_get_preprocessed_data_list(controller, mock_study):
+    mock_data = [MagicMock(), MagicMock()]
+    mock_study.preprocessed_data_list = mock_data
+
+    result = controller.get_preprocessed_data_list()
+    assert result == mock_data
+
+    # Test valid loaded data list
+    mock_study.loaded_data_list = mock_data
+    assert controller.get_loaded_data_list() == mock_data

@@ -12,10 +12,16 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class SaliencySettingDialog(BaseDialog):
+    """
+    Dialog for configuring saliency method parameters (e.g., SmoothGrad stdevs).
+    Dynamically generates parameter tables based on supported methods.
+    """
+
     def __init__(self, parent, saliency_params=None):
         self.saliency_params = saliency_params
         self.algo_map: dict[str, list[str] | None] = {}
@@ -29,8 +35,9 @@ class SaliencySettingDialog(BaseDialog):
             self.display_data()
 
     def check_init_data(self):
-        support_saliency_methods = ["SmoothGrad", "SmoothGrad_Squared", "VarGrad"]
-        for method in support_saliency_methods:
+        # Dynamically load from backend constant to avoid hardcoding
+
+        for method in supported_saliency_methods:
             if method.startswith("Gradient"):
                 self.algo_map[method] = None
             elif method in ["SmoothGrad", "SmoothGrad_Squared", "VarGrad"]:

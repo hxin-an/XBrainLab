@@ -8,15 +8,17 @@ from XBrainLab.llm.rag.retriever import RAGRetriever
 @pytest.fixture
 def mock_retriever():
     with (
-        patch("XBrainLab.llm.rag.retriever.HuggingFaceEmbeddings"),
-        patch("XBrainLab.llm.rag.retriever.QdrantClient"),
-        patch("XBrainLab.llm.rag.retriever.Qdrant") as mock_qdrant_cls,
+        patch("langchain_community.embeddings.HuggingFaceEmbeddings"),
+        patch("qdrant_client.QdrantClient") as mock_client_cls,
+        patch("langchain_community.vectorstores.Qdrant"),
     ):
-        # Mock vectorstore instance
-        mock_vs = MagicMock()
-        mock_qdrant_cls.return_value = mock_vs
+        # Setup mock client to pass info check
+        # self.client.get_collections().collections
+        mock_instance = mock_client_cls.return_value
+        mock_instance.get_collections.return_value.collections = []
 
         retriever = RAGRetriever()
+        retriever.initialize()
         return retriever
 
 

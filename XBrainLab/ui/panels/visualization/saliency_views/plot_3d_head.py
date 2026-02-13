@@ -106,7 +106,14 @@ class Saliency3D:
                     self.engine.saliency_cap["scalars"] = scalars
                 # Force render
                 self.plotter.render()
-                self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "")
+                # Only update if scalar bar exists (avoids error during init call)
+                if (
+                    hasattr(self.plotter, "scalar_bars")
+                    and "saliency" in self.plotter.scalar_bars
+                ):
+                    self.plotter.update_scalar_bar_range(
+                        self.engine.scalar_bar_range, "saliency"
+                    )
             except Exception:
                 logger.exception("Error updating 3D visualization")
                 # Fixed bare except (Phase 2.1.1)
@@ -178,9 +185,9 @@ class Saliency3D:
             show_scalar_bar=False,
         )
         self.plotter.add_scalar_bar(
-            "", interactive=False, vertical=False, color=Theme.TEXT_PRIMARY
+            "saliency", interactive=False, vertical=False, color=Theme.TEXT_PRIMARY
         )
-        self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "")
+        self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)
 
         self.plotter.show_bounds(color="white")

@@ -1,0 +1,23 @@
+{
+    "version": "1.0",
+    "description": "Test filtering workflow",
+    "calls": [
+        {
+            "tool": "list_files",
+            "params": {
+                "directory": ".",
+                "pattern": "*.py"
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "preprocess"
+            }
+        },
+        {
+            "tool": "get_dataset_info",
+            "params": {}
+        }
+    ]
+}

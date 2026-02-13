@@ -2,6 +2,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
 
+from XBrainLab.ui.styles.stylesheets import Stylesheets
+
 
 class MetricsTableWidget(QTableWidget):
     def __init__(self, parent=None):
@@ -27,29 +29,8 @@ class MetricsTableWidget(QTableWidget):
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
 
         # Dark mode friendly style
-        self.setStyleSheet(
-            """
-            QTableWidget {
-                background-color: #252526;
-                color: {Theme.TEXT_MUTED};
-                gridline-color: #3e3e42;
-                border: none;
-            }
-            QHeaderView::section {
-                background-color: #333333;
-                color: {Theme.TEXT_MUTED};
-                padding: 4px;
-                border: 1px solid #3e3e42;
-            }
-            QTableWidget::item {
-                padding: 4px;
-            }
-            QTableWidget::item:selected {
-                background-color: #094771;
-                color: white;
-            }
-        """
-        )
+        # Dark mode friendly style
+        self.setStyleSheet(Stylesheets.METRICS_TABLE)
 
     def update_data(self, metrics: dict):
         """Update table with metrics data.

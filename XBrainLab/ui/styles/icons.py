@@ -1,5 +1,6 @@
-import os
 from enum import Enum
+
+from XBrainLab.config import AppConfig
 
 
 class Icons(Enum):
@@ -21,26 +22,8 @@ class Icons(Enum):
 
     @property
     def path(self) -> str:
-        """
-        Resolves the absolute path to the icon file.
-        Assumes icons are stored in XBrainLab/resources/icons or similar.
-        Adjust base path logic as per project structure.
-        """
-        # Base path resolution logic roughly matching where main.py/app.py usually runs
-        # or relative to this file.
-        # Current file is in ui/styles/
-        # Icons usually in resources/icons at project root or package root.
-
-        # Hypothetical path: XBrainLab/resources/icons/
-        base_dir = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        # base_dir -> XBrainLab/
-
-        icon_path = os.path.join(base_dir, "resources", "icons", self.value)
-
-        # Fallback or check existence could be added here
-        return icon_path
+        """ """
+        return AppConfig.get_icon_path(self.value)
 
     @staticmethod
     def get(icon_enum):

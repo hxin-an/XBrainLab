@@ -1,0 +1,11 @@
+{
+  "local": {
+    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "enabled": true
+  },
+  "gemini": {
+    "model_name": "gemini-1.5-flash",
+    "verified": false
+  },
+  "active_mode": "local"
+}

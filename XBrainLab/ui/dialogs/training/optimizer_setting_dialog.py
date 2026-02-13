@@ -23,6 +23,11 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class OptimizerSettingDialog(BaseDialog):
+    """
+    Dialog for configuring the training optimizer (e.g., Adam, SGD).
+    Dynamically loads optimizer parameters.
+    """
+
     def __init__(self, parent):
         self.optim = None
         self.optim_params = None

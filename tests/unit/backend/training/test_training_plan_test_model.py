@@ -5,12 +5,9 @@ import pytest
 import torch
 from torch.utils.data import DataLoader
 
-from XBrainLab.backend.training.training_plan import (
-    EvalRecord,
-    _eval_model,
-    _test_model,
-    to_holder,
-)
+from XBrainLab.backend.training.evaluator import Evaluator
+from XBrainLab.backend.training.record import EvalRecord
+from XBrainLab.backend.training.training_plan import to_holder
 
 
 @pytest.mark.parametrize("shuffle", [True, False])
@@ -123,7 +120,7 @@ def loss_avg():
 def test_test_model(dataloader, loss_avg):
     model = FakeModel()
     criterion = torch.nn.CrossEntropyLoss()
-    test_dict = _test_model(model, dataloader, criterion)
+    test_dict = Evaluator.test_model(model, dataloader, criterion)
 
     assert test_dict.keys() == {"loss", "accuracy", "auc"}
     assert test_dict["accuracy"] == (TOTAL_NUM - ERROR_NUM) / (TOTAL_NUM) * 100
@@ -147,7 +144,7 @@ def test_eval_model(dataloader, y, full_y):
         ) as eval_record_mock,
         patch.object(model, "eval") as eval_model_mock,
     ):
-        result = _eval_model(model, dataloader, saliency_params)
+        result = Evaluator.evaluate_with_saliency(model, dataloader, saliency_params)
         eval_model_mock.assert_called()
 
         assert isinstance(result, EvalRecord)

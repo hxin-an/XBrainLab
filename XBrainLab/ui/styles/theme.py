@@ -5,6 +5,12 @@ Refactoring Goal: Remove hardcoded colors from UI components.
 
 
 class Theme:
+    """
+    Centralized Theme Definitions for XBrainLab.
+    Provides color constants and utility methods for styling (e.g., Matplotlib
+    integration).
+    """
+
     # Main Application Colors
     BACKGROUND_DARK = "#1e1e1e"
     BACKGROUND_MID = "#2d2d2d"
@@ -15,14 +21,14 @@ class Theme:
     TEXT_SECONDARY = "#a0a0a0"
 
     # Accent Colors
-    ACCENT_PRIMARY = "#7289da"  # Discord-like blurple / Soft Blue
-    ACCENT_HOVER = "#677bc4"
+    ACCENT_PRIMARY = "#5B7DB1"  # Muted blue with more blue
+    ACCENT_HOVER = "#4A6A9A"
     ACCENT_ERROR = "#ff5555"
     ACCENT_SUCCESS = "#50fa7b"
     ACCENT_WARNING = "#f1fa8c"
 
     # Chat Specific
-    CHAT_USER_BUBBLE = "#005c4b"
+    CHAT_USER_BUBBLE = "#005c4b"  # Original dark green
     CHAT_AI_BUBBLE = "#202c33"
     CHAT_SYSTEM_BUBBLE = "#3e3e3e"
 
@@ -43,6 +49,18 @@ class Theme:
     BTN_WARNING_TEXT = "#ffccbc"
     BTN_WARNING_BORDER = "#d84315"
     BTN_WARNING_HOVER = "#d84315"
+
+    # Disabled Button States
+    BTN_DISABLED_TEXT = "#888888"
+
+    BTN_SUCCESS_DISABLED_BG = "rgba(27, 94, 32, 0.4)"
+    BTN_SUCCESS_DISABLED_BORDER = "rgba(27, 94, 32, 0.2)"
+
+    BTN_DANGER_DISABLED_BG = "rgba(183, 28, 28, 0.4)"
+    BTN_DANGER_DISABLED_BORDER = "rgba(183, 28, 28, 0.2)"
+
+    BTN_WARNING_DISABLED_BG = "rgba(191, 54, 12, 0.4)"
+    BTN_WARNING_DISABLED_BORDER = "rgba(191, 54, 12, 0.2)"
 
     # Plot Colors
     BORDER = "#555555"
@@ -81,6 +99,19 @@ class Theme:
     HISTORY_TABLE_BORDER = "#333"
     HISTORY_TABLE_ROW_BORDER = "#2a2a2a"
     HISTORY_TABLE_SELECTION = "#007acc"
+
+    # Charts
+    CHART_PRIMARY = "#2196F3"  # Blue
+    CHART_SECONDARY = "#4CAF50"  # Green
+    CHART_TERTIARY = "#FFC107"  # Amber
+    CHART_ORIGINAL_DATA = "#808080"  # Gray
+
+    # Metrics Table
+    METRICS_TABLE_BG = "#252526"
+    METRICS_TABLE_GRID = "#3e3e42"
+    METRICS_TABLE_HEADER_BG = "#094771"
+    METRICS_TABLE_BORDER = "#3e3e42"
+    METRICS_TABLE_SELECTION = "#3e3e42"
 
     @staticmethod
     def apply_matplotlib_dark_theme(fig, ax=None, axes=None):

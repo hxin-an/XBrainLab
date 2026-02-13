@@ -1,0 +1,164 @@
+{
+    "version": "1.3",
+    "description": "Comprehensive test of all Real Tools with panel switching verification",
+    "calls": [
+        {
+            "tool": "list_files",
+            "params": {
+                "directory": "tests/data",
+                "pattern": "*.gdf"
+            }
+        },
+        {
+            "tool": "load_data",
+            "params": {
+                "paths": [
+                    "tests/data/A01T.gdf"
+                ]
+            }
+        },
+        {
+            "tool": "attach_labels",
+            "params": {
+                "mapping": {
+                    "A01T.gdf": "tests/data/label/A01T.mat"
+                }
+            }
+        },
+        {
+            "tool": "get_dataset_info",
+            "params": {}
+        },
+        {
+            "tool": "select_channels",
+            "params": {
+                "channels": [
+                    "EEG-Fz",
+                    "EEG-Cz",
+                    "EEG-Pz"
+                ]
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "preprocess"
+            }
+        },
+        {
+            "tool": "resample_data",
+            "params": {
+                "rate": 128
+            }
+        },
+        {
+            "tool": "apply_bandpass_filter",
+            "params": {
+                "low_freq": 8,
+                "high_freq": 30
+            }
+        },
+        {
+            "tool": "apply_notch_filter",
+            "params": {
+                "freq": 50
+            }
+        },
+        {
+            "tool": "set_reference",
+            "params": {
+                "method": "average"
+            }
+        },
+        {
+            "tool": "normalize_data",
+            "params": {
+                "method": "z-score"
+            }
+        },
+        {
+            "tool": "apply_standard_preprocess",
+            "params": {
+                "low_freq": 8,
+                "high_freq": 30,
+                "resample_rate": 128
+            }
+        },
+        {
+            "tool": "epoch_data",
+            "params": {
+                "t_min": 0,
+                "t_max": 4
+            }
+        },
+        {
+            "tool": "generate_dataset",
+            "params": {
+                "split_strategy": "trial",
+                "test_ratio": 0.2
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "training"
+            }
+        },
+        {
+            "tool": "set_model",
+            "params": {
+                "model_name": "EEGNet"
+            }
+        },
+        {
+            "tool": "configure_training",
+            "params": {
+                "epoch": 1,
+                "batch_size": 2,
+                "learning_rate": 0.001
+            }
+        },
+        {
+            "tool": "start_training",
+            "params": {}
+        },
+        {
+            "tool": "set_montage",
+            "params": {
+                "montage_name": "standard_1020"
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "visualization",
+                "view_mode": "saliency_map"
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "visualization",
+                "view_mode": "spectrogram"
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "visualization",
+                "view_mode": "topographic_map"
+            }
+        },
+        {
+            "tool": "switch_panel",
+            "params": {
+                "panel_name": "visualization",
+                "view_mode": "3d_plot"
+            }
+        },
+        {
+            "tool": "clear_dataset",
+            "params": {}
+        }
+    ]
+}

@@ -71,7 +71,6 @@ class DataSplitter:
 
         return False
 
-    # getter
     def get_value(self) -> float | list[int]:
         """Get option value based on split unit.
 

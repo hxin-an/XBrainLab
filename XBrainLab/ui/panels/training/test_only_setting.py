@@ -18,6 +18,11 @@ from .training_setting import SetDeviceWindow
 
 
 class TestOnlySettingWindow(BaseDialog):
+    """
+    Dialog for configuring test-only execution parameters.
+    Allows setting batch size, device, and output directory.
+    """
+
     def __init__(self, parent):
         super().__init__(parent, title="Test Only Setting", width=400, height=300)
 

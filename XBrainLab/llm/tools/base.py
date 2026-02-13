@@ -20,6 +20,13 @@ class BaseTool(ABC):
     def parameters(self) -> dict[str, Any]:
         """JSON schema describing the parameters."""
 
+    def is_valid(self, study: Any) -> bool:
+        """
+        Checks if the tool is valid to use in the current state.
+        Default is True. Override in subclasses for state-dependent tools.
+        """
+        return True
+
     @abstractmethod
     def execute(self, study: Any, **kwargs) -> str:
         """

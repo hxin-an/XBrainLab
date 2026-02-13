@@ -1,43 +1,72 @@
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pyqtgraph as pg
+from PyQt6.QtCore import QThreadPool
 from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.styles.theme import Theme
 
 if TYPE_CHECKING:
-    from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
+    from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 
 
 class PreprocessPlotter:
-    """Handles plotting logic for the PreprocessPanel."""
+    """
+    Handles plotting logic for the PreprocessPanel using PyQtGraph.
+    Now supports threading for heavy calculations (PSD).
+    """
 
-    def __init__(self, panel: "PreprocessPanel"):
-        self.panel = panel
+    def __init__(self, widget: "PreviewWidget", controller):
+        self.widget = widget
+        self.controller = controller
+        self.threadpool = QThreadPool.globalInstance()
 
     def _get_chan_data(self, obj, ch_idx, start_time=0, duration=5):
         """Helper to retrieve channel data from a data object."""
         is_raw = obj.is_raw()
         obj_sfreq = obj.get_sfreq()
-        data = obj.get_mne().get_data()
-        if data is None:
-            return None, None
+        mne_obj = obj.get_mne()
 
         if is_raw:
             start_sample = int(start_time * obj_sfreq)
             n_samples = int(duration * obj_sfreq)
             end_sample = start_sample + n_samples
 
-            # Check bounds
-            if start_sample >= data.shape[1]:
+            # Retrieve specific time segment using MNE's efficient slicing
+            # This avoids loading the entire dataset into memory
+            if start_sample >= mne_obj.times.shape[0]:
                 return None, None
-            end_sample = min(end_sample, data.shape[1])
 
-            y = data[ch_idx, start_sample:end_sample]
-            x = np.arange(start_sample, end_sample) / obj_sfreq
+            # Efficiently load only the required segment
+            data = mne_obj.get_data(start=start_sample, stop=end_sample, picks=[ch_idx])
+
+            if data is None or data.size == 0:
+                return None, None
+
+            # With pick=[idx], get_data returns shape (1, n_times)
+            y = data[0]
+            # Generate time axis relative to the segment or absolute?
+            # MNE get_data returns just values.
+            # We usually plot absolute time.
+            x = np.arange(start_sample, start_sample + len(y)) / obj_sfreq
             return x, y
-        elif data.ndim == 3:
+        else:
+            # For epochs, data is usually already loaded in memory
+            # (unless on_demand? MNE Epochs default is preload=True usually)
+            # But if it's large and not preloaded, get_data() full might still be slow.
+            # Epochs.get_data() supports item slicing?
+            # obj.get_mne() returns MNE Epochs object.
+            # epoch_data = epochs[epoch_idx].get_data(picks=[ch_idx])
+
+            # For Epochs, data is typically preloaded in memory.
+            # However, we still use get_data() for consistency.
+            data = mne_obj.get_data()
+            if data.ndim != 3:
+                return None, None
+
             # For epochs, start_time is the epoch index
             epoch_idx = int(start_time)
             epoch_idx = max(epoch_idx, 0)
@@ -45,39 +74,90 @@ class PreprocessPlotter:
                 epoch_idx = data.shape[0] - 1
 
             y = data[epoch_idx, ch_idx, :]
-            x = obj.get_mne().times
+            x = mne_obj.times
             return x, y
-        return None, None
 
-    def _calc_psd(self, sig, sfreq):
-        """Helper to calculate Power Spectral Density."""
-        f, Pxx = welch(sig, fs=sfreq, nperseg=min(len(sig), 256 * 4))
-        return f, Pxx
+    def _plot_events(self, obj, start_time, end_time):
+        """Plot events or annotations on the time plot."""
+        mne_obj = obj.get_mne()
+        events = []
+
+        # 1. Handle Raw Annotations
+        if obj.is_raw():
+            if mne_obj.annotations:
+                for annot in mne_obj.annotations:
+                    onset = annot["onset"]
+                    desc = annot["description"]
+                    # Filter visible
+                    if start_time <= onset <= end_time:
+                        events.append((onset, desc))
+
+        # 2. Handle Epochs (if easy mapping available)
+        else:
+            # For epochs, events are usually aligned to t=0 or based on events array
+            # If we are plotting a specific epoch, we usually don't plot
+            # *other* events inside it? Or maybe we do if it's a long epoch.
+            # TODO: Implement event mapping for Epochs if needed.
+            # Currently, events are visualized primarily in Raw mode.
+            pass
+
+        # Draw Events
+        for onset, desc in events:
+            # Vertical Line
+            # Use QColor with alpha for lower contrast
+            # 50% Alpha (80 hex)
+            pen = pg.mkPen(color=(Theme.ACCENT_SUCCESS + "80"), width=2)
+            v_line = pg.InfiniteLine(
+                pos=onset,
+                angle=90,
+                movable=False,
+                pen=pen,
+                label=str(desc),
+                labelOpts={
+                    "position": 0.98,
+                    "color": Theme.TEXT_PRIMARY,
+                    "fill": (20, 20, 20, 200),
+                    "anchor": (0, 0),
+                },
+            )
+            self.widget.plot_time.addItem(v_line)
+
+    def _calc_psd_task(self, sig, sfreq, sig_orig=None):
+        """Worker task to calculate PSD for current and optional original signal."""
+        # Calc Current
+        f, pxx = welch(sig, fs=sfreq, nperseg=min(len(sig), 256 * 4))
+
+        # Calc Original (if exists)
+        f_orig, pxx_orig = None, None
+        if sig_orig is not None:
+            f_orig, pxx_orig = welch(
+                sig_orig, fs=sfreq, nperseg=min(len(sig_orig), 256 * 4)
+            )
+
+        return f, pxx, f_orig, pxx_orig
 
     def plot_sample_data(self):
         """Main plotting routine."""
-        # Access UI elements from panel
-        ax_time = self.panel.ax_time
-        ax_freq = self.panel.ax_freq
-        canvas_time = self.panel.canvas_time
-        canvas_freq = self.panel.canvas_freq
+        # 1. Clear previous plots
+        self.widget.plot_time.clear()
+        self.widget.plot_freq.clear()
 
-        ax_time.clear()
-        ax_freq.clear()
+        # Re-add crosshair items (clearing removes them)
+        self.widget.plot_time.addItem(self.widget.v_line_time)
+        self.widget.plot_time.addItem(self.widget.h_line_time)
+        self.widget.plot_time.addItem(self.widget.label_time)
 
-        if (
-            not hasattr(self.panel, "controller")
-            or not self.panel.controller.has_data()
-        ):
+        self.widget.plot_freq.addItem(self.widget.v_line_freq)
+        self.widget.plot_freq.addItem(self.widget.h_line_freq)
+        self.widget.plot_freq.addItem(self.widget.label_freq)
+
+        if not self.controller or not self.controller.has_data():
             return
 
-        data_list = self.panel.controller.get_preprocessed_data_list()
-
+        data_list = self.controller.get_preprocessed_data_list()
         orig_list = []
-        if hasattr(self.panel, "controller") and hasattr(
-            self.panel.controller, "study"
-        ):
-            orig_list = self.panel.controller.study.loaded_data_list
+        if hasattr(self.controller, "study"):
+            orig_list = self.controller.study.loaded_data_list
 
         if not data_list:
             return
@@ -87,132 +167,110 @@ class PreprocessPlotter:
             raw_obj = data_list[0]
             orig_obj = orig_list[0] if orig_list else None
 
-            chan_idx = self.panel.chan_combo.currentIndex()
+            chan_idx = self.widget.chan_combo.currentIndex()
             if chan_idx < 0:
                 return  # No channel selected
-            chan_name = self.panel.chan_combo.currentText()
+            chan_name = self.widget.chan_combo.currentText()
 
             sfreq = raw_obj.get_sfreq()
 
             # Get Current Data
-            start_t = self.panel.time_spin.value()
+            start_t = self.widget.time_spin.value()
             x_curr, y_curr = self._get_chan_data(raw_obj, chan_idx, start_time=start_t)
 
             # Get Original Data (if available and compatible)
             x_orig, y_orig = None, None
             if orig_obj:
-                # Try to match time
                 x_orig, y_orig = self._get_chan_data(
                     orig_obj, chan_idx, start_time=start_t
                 )
 
-            # --- Time Domain Plot ---
+            # --- Time Domain Plot (Immediate) ---
             if y_curr is not None:
-                # Scale to uV
                 y_curr_uv = y_curr * 1e6
                 y_orig_uv = y_orig * 1e6 if y_orig is not None else None
 
                 if y_orig_uv is not None and x_orig is not None:
-                    ax_time.plot(
-                        x_orig, y_orig_uv, color="gray", alpha=0.5, label="Original"
+                    self.widget.plot_time.plot(
+                        x_orig,
+                        y_orig_uv,
+                        pen=pg.mkPen(
+                            Theme.CHART_ORIGINAL_DATA,
+                            width=1,
+                            style=pg.QtCore.Qt.PenStyle.DashLine,
+                        ),
+                        name="Original",
                     )
 
-                ax_time.plot(
-                    x_curr, y_curr_uv, color="#2196F3", linewidth=1, label="Current"
+                self.widget.plot_time.plot(
+                    x_curr,
+                    y_curr_uv,
+                    pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
+                    name="Current",
                 )
-                if raw_obj.is_raw():
-                    ax_time.set_title(f"{chan_name} (Time)")
-                else:
-                    ax_time.set_title(f"{chan_name} (Epoch {int(start_t)})")
-                ax_time.set_xlabel("Time (s)")
-                ax_time.set_ylabel("Amplitude (uV)")
-                ax_time.legend(loc="upper right", fontsize="small")
 
-                ax_time.grid(True, linestyle="--", alpha=0.5)
+                if raw_obj.is_raw():
+                    self.widget.plot_time.setTitle(f"{chan_name} (Time)")
+                else:
+                    self.widget.plot_time.setTitle(
+                        f"{chan_name} (Epoch {int(start_t)})"
+                    )
+
+                # Ensure X-Axis follows the data (Link slider to view)
+                if len(x_curr) > 0:
+                    self.widget.plot_time.setXRange(x_curr[0], x_curr[-1], padding=0)
 
                 # Apply Y-Scale
-                y_scale = self.panel.yscale_spin.value()
+                y_scale = self.widget.yscale_spin.value()
                 if y_scale > 0:
-                    ax_time.set_ylim(-y_scale, y_scale)
+                    self.widget.plot_time.setYRange(-y_scale, y_scale)
+                else:
+                    self.widget.plot_time.enableAutoRange(axis="y")
 
-                # --- Plot Events ---
-                if raw_obj.is_raw():
-                    try:
-                        events, event_id_map = raw_obj.get_event_list()
-                        if len(events) > 0:
-                            # Create reverse map for labels
-                            id_to_name = {v: k for k, v in event_id_map.items()}
+                # Events / Annotations Visualization
+                self._plot_events(raw_obj, x_curr[0], x_curr[-1])
 
-                            # Define time window
-                            t_start_view = x_curr[0]
-                            t_end_view = x_curr[-1]
-
-                            for ev in events:
-                                ev_sample = ev[0]
-                                ev_time = ev_sample / sfreq
-                                ev_id = ev[2]
-
-                                if t_start_view <= ev_time <= t_end_view:
-                                    ax_time.axvline(
-                                        x=ev_time,
-                                        color=Theme.WARNING,
-                                        linestyle="--",
-                                        alpha=0.8,
-                                    )
-                                    label = id_to_name.get(ev_id, str(ev_id))
-                                    # Place text near top
-                                    y_lim = ax_time.get_ylim()
-                                    y_pos = y_lim[1] - (y_lim[1] - y_lim[0]) * 0.05
-                                    x_offset = (t_end_view - t_start_view) * 0.01
-                                    ax_time.text(
-                                        ev_time + x_offset,
-                                        y_pos,
-                                        label,
-                                        color=Theme.WARNING,
-                                        ha="left",
-                                        va="bottom",
-                                        fontsize="small",
-                                        rotation=0,
-                                    )
-                    except Exception as e:
-                        logger.warning(f"Failed to plot events: {e}")
-
-            # --- Frequency Domain (PSD) Plot ---
+            # --- Frequency Domain (Async) ---
             if y_curr is not None:
-                f_curr, p_curr = self._calc_psd(y_curr_uv, sfreq)
+                # Show loading state
+                self.widget.plot_freq.setTitle("Calculating PSD...")
 
-                if y_orig_uv is not None:
-                    f_orig, p_orig = self._calc_psd(y_orig_uv, sfreq)
-                    ax_freq.plot(
-                        f_orig,
-                        10 * np.log10(p_orig),
-                        color="gray",
-                        alpha=0.5,
-                        label="Original",
-                    )
-
-                ax_freq.plot(
-                    f_curr,
-                    10 * np.log10(p_curr),
-                    color="#2196F3",
-                    linewidth=1,
-                    label="Current",
+                # Prepare args for worker
+                worker = Worker(
+                    self._calc_psd_task, y_curr_uv, sfreq, sig_orig=y_orig_uv
                 )
-                ax_freq.set_title(f"{chan_name} (PSD)")
-                ax_freq.set_xlabel("Frequency (Hz)")
-                ax_freq.set_ylabel("Power (dB/Hz)")
-                ax_freq.legend(loc="upper right", fontsize="small")
-                ax_freq.grid(True, linestyle="--", alpha=0.5)
 
-            # Apply Theme to all axes
-            Theme.apply_matplotlib_dark_theme(None, axes=[ax_time, ax_freq])
+                # Pass data needed for plotting via closure or args
+                # We also need orig data if present
 
-            canvas_time.draw()
-            canvas_freq.draw()
+                def handle_psd_result(result):
+                    f_curr, p_curr, f_orig, p_orig = result
+
+                    # Plot Original (if available)
+                    if f_orig is not None and p_orig is not None:
+                        self.widget.plot_freq.plot(
+                            f_orig,
+                            10 * np.log10(p_orig),
+                            pen=pg.mkPen(
+                                Theme.CHART_ORIGINAL_DATA,
+                                width=1,
+                                style=pg.QtCore.Qt.PenStyle.DashLine,
+                            ),
+                            name="Original",
+                        )
+
+                    # Plot Current
+                    self.widget.plot_freq.plot(
+                        f_curr,
+                        10 * np.log10(p_curr),
+                        pen=pg.mkPen(Theme.CHART_PRIMARY, width=1.5),
+                        name="Current",
+                    )
+                    self.widget.plot_freq.setTitle(f"{chan_name} (PSD)")
+
+                worker.signals.result.connect(handle_psd_result)
+                self.threadpool.start(worker)  # type: ignore[union-attr]
 
         except Exception as e:
             logger.error(f"Plotting failed: {e}")
-            ax_time.text(
-                0.5, 0.5, "Plot Error", ha="center", va="center", color=Theme.TEXT_MUTED
-            )
-            canvas_time.draw()
+            self.widget.plot_time.setTitle("Plot Error")

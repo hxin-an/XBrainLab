@@ -7,7 +7,8 @@ from XBrainLab.ui.styles.theme import Theme
 
 class MetricTab(QWidget):
     """
-    A tab containing a plot and a table for a specific metric (e.g., Accuracy, Loss).
+    A tab component containing a Matplotlib plot for a specific training metric.
+    Updates dynamically with epoch data.
     """
 
     def __init__(self, metric_name, color=Theme.ACCENT_SUCCESS):

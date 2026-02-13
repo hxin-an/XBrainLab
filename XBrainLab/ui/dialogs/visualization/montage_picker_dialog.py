@@ -23,8 +23,14 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class PickMontageDialog(BaseDialog):
-    def __init__(self, parent, channel_names):
+    """
+    Dialog for mapping dataset channels to standard montage channels.
+    Features 'Smart Match' and 'Live Cascading Fill' to assist user.
+    """
+
+    def __init__(self, parent, channel_names, default_montage=None):
         self.channel_names = channel_names
+        self.default_montage = default_montage  # Pre-selected montage from Agent
 
         self.chs = None
         self.positions = None
@@ -66,10 +72,17 @@ class PickMontageDialog(BaseDialog):
         self.montage_list = get_builtin_montages()
         self.montage_combo.addItems(self.montage_list)
 
-        # Load last used montage
-        last_montage = self.settings.value("last_montage", "")
-        if last_montage and last_montage in self.montage_list:
-            self.montage_combo.setCurrentText(last_montage)
+        # Use Agent-provided montage first, then last used, then first in list
+        target_montage = None
+        if self.default_montage and self.default_montage in self.montage_list:
+            target_montage = self.default_montage
+        else:
+            last_montage = self.settings.value("last_montage", "")
+            if last_montage and last_montage in self.montage_list:
+                target_montage = last_montage
+
+        if target_montage:
+            self.montage_combo.setCurrentText(target_montage)
 
         self.montage_combo.currentTextChanged.connect(self.on_montage_select)
         top_layout.addWidget(self.montage_combo)

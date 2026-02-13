@@ -8,6 +8,11 @@ from .base_saliency_view import BaseSaliencyView
 
 
 class SaliencySpectrogramWidget(BaseSaliencyView):
+    """
+    Widget for visualizing Saliency Spectrograms.
+    Useful for time-frequency analysis of importance.
+    """
+
     def init_ui(self):
         super().init_ui()
         # Add initial text to the default canvas

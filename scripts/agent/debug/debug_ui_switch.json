@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "description": "Test UI Panel Switching",
+  "calls": [
+    {"tool": "switch_panel", "params": {"panel_name": "preprocess"}},
+    {"tool": "switch_panel", "params": {"panel_name": "training"}},
+    {"tool": "switch_panel", "params": {"panel_name": "visualization"}}
+  ]
+}

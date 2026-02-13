@@ -2,64 +2,88 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
-## [Unreleased]
+## [0.6.1] - 2026-02-13
 ### Fixed
-- **Global Linting & Type Safety**:
-    - Resolved all Ruff `E501` (Line too long) errors in `ui`, `backend`, and `llm`.
-    - Resolved all MyPy type errors globally (Zero errors).
-    - Fixed `SIM102` (nested if) in `smart_parser_dialog.py`.
-    - Fixed structural scoping issue in `epoching_dialog.py`.
-    - Fixed indentation in `controller.py`.
-    - Removed unused imports and variables in `saliency_3d_engine.py`.
+- **Phase 1 — Critical Runtime Fixes**:
+    - **A-01**: `processing_finished` signal 現在正確在 `_finalize_turn` 中發送，修復 UI 狀態重置問題。
+    - **C-01**: 修復 `engine.py` 中 Gemini stale model 檢查的不可達程式碼（`elif` 縮排錯誤）。
+    - **U-01**: 移除 `AgentManager` 中重複的 `clicked.connect` 訊號連接。
+    - **D-01**: 移除 `tool_executor.py` 中 `return` 之後的不可達 dead code。
+- **Phase 2 — Error Handling & Logic**:
+    - **C-03**: 修復 `api.py` 及 `gemini.py` 中 `try-except` 吞掉異常的問題，改為讓異常自然傳播。
+    - **X-01**: 修復所有 `raise e` 反模式為 `raise`，保留完整 traceback：
+        - `indexer.py`, `local.py`, `preprocess_controller.py`, `dataset_controller.py`
+    - **A-03**: 統一歷史記錄管理邏輯 — `Assembler` 不再獨立裁切歷史，由 `Controller.MAX_HISTORY` 統一管理。
+    - **R-02**: `indexer.py` 的 RAG 選用依賴 (`langchain`, `qdrant`) 以 `try-except ImportError` 保護，避免缺少套件時應用崩潰。
 
-## [0.6.0] - 2026-01-30
+### Removed
+- **A-02**: 刪除已棄用的 `prompt_manager.py`（功能已由 `ContextAssembler` 完全取代）。
+- 刪除對應的測試檔案 `test_prompt_manager.py`。
+
 ### Refactored
-- **UI Architecture Redesign (Phase 1: Foundation)**:
-    - **Core Infrastructure**:
-        - Created `ui/core/` directory containing `BasePanel` and `BaseDialog` abstract base classes.
-        - Moved `QtObserverBridge` to `ui/core/observer_bridge.py`.
-    - **Styling**:
-        - Established `ui/styles/stylesheets.py` for centralized, reusable CSS definitions (Buttons, GroupBoxes, Tables).
-    - **Decoupling (Coupling Fixes)**:
-        - **AggregateInfoPanel**: Completely refactored to be a pure view component. Data is injected via `update_info()` or `set_data()`. Removed self-contained `main_window.study` access.
-        - **DatasetPanel**: Refactored to use `DatasetController` exclusively. Removed direct backend access.
-        - **EvaluationPanel**: Updated to use `EvaluationController` for data retrieval.
-        - **VisualizationPanel**: Updated to use `VisualizationController` for data retrieval.
-    - **Controllers**:
-        - Extended `EvaluationController` and `VisualizationController` to expose safe data accessors (`get_loaded_data_list`, `get_preprocessed_data_list`), enabling UI decoupling.
+- **T-01**: 將 `llm/tools/real/registry.py` 重新命名為 `backend_resolver.py`，避免與 `tool_registry.py` 混淆。
+- **Controller 清理**: 合併 `controller.py` 中的重複註解，清理歷史裁切邏輯。
 
-## [0.5.3] - 2026-01-29
+### Changed
+- **pyproject.toml**:
+    - 新增 5 個檔案的 `PLC0415` (lazy import) Ruff 忽略規則。
+    - Mypy 排除清單新增 `XBrainLab/llm/rag`（optional dependency 模組）。
+
+## [0.6.0] - 2026-02-09
 ### Added
-- **Agent Robustness**:
-    - **Loop Detection**: 實作了循環偵測機制 (`LLMController._detect_loop`)，當 Agent 連續 3 次呼叫相同工具（包含參數）時，會自動中斷循環並發送警告 Prompt，防止無限迴圈。
-    - **JSON Fault Tolerance**: 實作了自動重試機制，當 LLM 輸出的 JSON 格式無效時 (heuristic detection)，系統會發送 "System: Invalid JSON" 提示要求 Agent 重試（最多 2 次），而非直接失敗或靜默。
-    - **Timeout Protection**: 於 `AgentWorker` 中實作 60 秒 (可配置) 超時保護机制。若 Local LLM 推論超時，會自動中斷 UI 等待並發送錯誤訊號，防止介面假死。
-    - **Verification**: 新增 `tests/unit/llm/test_controller.py` 中的 `test_loop_detection` 與 `test_json_retry` 測試案例。
+- **BackendFacade**: 新增 `backend/facade.py` 提供統一高層 API，讓 Agent 無需直接存取 Controller。
+- **Benchmark System**:
+    - `scripts/benchmark/simple_bench.py`: 全新 Agent 認知基準測試框架。
+    - `scripts/benchmark/audit_dataset.py` / `patch_dataset.py`: 測試資料集管理工具。
+- **驗證腳本**:
+    - `scripts/verify_headless.py`: Headless 環境驗證。
+    - `scripts/verify_lazy_import.py`: Lazy Import 合規驗證。
+    - `scripts/verify_rag.py`: RAG 子系統驗證。
+- **新測試**:
+    - `test_facade_headless.py`, `test_worker.py`, `test_worker_timeout.py`
+    - `test_engine.py`, `test_indexer.py`, `test_retriever.py`
+    - `test_agent_tools.py`, `test_architecture.py`
+    - UI 測試: `test_message_bubble.py`, `test_observer_bridge.py`, `test_ui_structure_refactored.py`
+
 ### Refactored
-- **Architecture Refinement**:
-    - **Fully Event-Driven UI**: 重構 `PreprocessPanel` 與 `TrainingPanel`，使其透過 `QtObserverBridge` 監聽 Controller 事件 (`data_changed`, `training_updated`)。
-        - **PreprocessPanel**: 監聽 DatasetController 事件，不再依賴 Study。
-        - **TrainingPanel**: 監聽 TrainingController 事件，移除內部 `QTimer` Polling，改由 Controller 的 Monitor Thread 驅動更新 (`training_updated`)，實現真正的 MVC 分層。
-    - **Decoupling**: `TrainingPanel` 與 `PreprocessPanel` 現在顯式地從 Controller 獲取數據列表並傳遞給 `AggregateInfoPanel`，移除了 `AggregateInfoPanel` 對 `main_window` 的直接依賴。
-    - **Code Maintenance**:
-        - **Modularization**: 將 `PreprocessPanel` 中的 5 個對話框類別 (`ResampleDialog`, `EpochingDialog`, `FilteringDialog`, `RereferenceDialog`, `NormalizeDialog`) 拆分至新檔案 `XBrainLab/ui/dashboard_panel/dialogs.py`，顯著降低了主檔案的大小與複雜度。
-        - **Linting Fixes**: 修復了全專案範圍內的 E501 (Line too long) 違規，並配置 `pyproject.toml` 以排除第三方模型目錄的 Linting 檢查。
-
-## [0.5.2] - 2026-01-19
-### Added
-- **RAG System Integration (Retrieval-Augmented Generation)**:
-    - **Architecture**: Implemented a local RAG pipeline using `Qdrant` (CPU-optimized) and `all-MiniLM-L6-v2` embedding model.
-    - **Indexer**: `indexer.py` handles ingestion of instruction-example pairs.
-    - **Retriever**: `retriever.py` provides semantic search with 1-to-1 chunking strategy.
-    - **Data Augmentation**: Expanded `gold_set.json` from 50 to 62 examples, ensuring every tool has at least 3 distinct few-shot examples (Data Cleanliness).
-- **Safety & Verification**:
-    - **No Data Leakage**: Pointed `eval_agent.py` to a separate `external_validation_set.json` (175 multi-step cases) instead of training data.
-    - **Audits**: Verified dataset quality via `audit_validation_set.py` (Distribution & Logic checks).
+- **Event-Driven Migration**: 完成所有 Controller 的事件驅動架構遷移。
+- **Test Infrastructure**: 大規模整理測試目錄結構，移除過時測試檔案，新增架構合規測試。
+- **Debug Cleanup**: 清理除錯檔案並解決循環依賴問題。
 
 ### Fixed
-- **Code Quality**:
-    - **Linting**: Fixed 100+ Ruff errors, including duplicate assignments in config and bare try-return blocks in indexer.
-    - **Type Safety**: Passed MyPy checks for new RAG modules.
+- **Global Lint Compliance**: 修復全域 Ruff/Mypy 錯誤，達成 Pre-commit 全通過。
+- **Test Repairs**: 修復多個因重構導致的測試回歸，確保 2000+ 測試通過。
+
+
+## [0.5.2] - 2026-02-05
+### Added
+- **Real Tool Testing Platform (M3)**:
+    - **Interactive Debug Mode**: CLI flag `--tool-debug script.json` allows executing tool scripts without LLM.
+    - **ToolDebugMode Class**: Parses JSON tool scripts and emits signals to execute tools sequentially.
+    - **Headless E2E Testing**: `scripts/dev/verify_all_tools_headless.py` runs 24 tool scenarios with pytest fixtures.
+    - **Debug Scripts**: Organized scripts directory (`scripts/agent/debug/all_tools.json`).
+
+### Refactored
+- **Montage Architecture (Frontend-Backend Separation)**:
+    - Decoupled `AgentManager` (UI) from `Study` (Backend) by moving montage logic to `PreprocessController`.
+    - Implemented `PreprocessController.apply_montage` to handle channel mapping and observer notification.
+    - Updated `RealSetMontageTool` workflow to respect this architectural boundary.
+
+### Fixed
+- **Aggregation Clearing**:
+    - Fixed a bug where `clear_dataset` in `DatasetController` failed to notify UI observers, causing `AggregateInfoPanel` to show stale data.
+    - Added explicit `self.notify("data_changed")` and Unified reset logic via `reset_preprocess()`.
+- **3D Visualization Crash**:
+    - Fixed `ValueError: Name ('saliency') not valid/not found` by adding safety checks for scalar bar existence in `plot_3d_head.py`.
+    - Improved robustness against race conditions during plotter initialization.
+- **Double Montage Popup**:
+    - Fixed a bug in Debug Mode where confirming a montage triggered a duplicate LLM generation cycle.
+- **Surface Mesh Generation**:
+    - Replaced fragile 3D Delaunay with 2D Delaunay projection in `saliency_3d_engine.py` to prevent "Empty mesh" errors on flat electrode caps.
+
+### Verified
+- **Headless Tool Chain**: Added `scripts/dev/verify_all_tools_headless.py` covering 24 tool scenarios, now passing with Exit Code 0.
+- **Unit Tests**: Added `tests/unit/backend/controller/test_apply_montage.py` for new controller logic.
 
 ## [0.5.1] - 2026-01-19
 ### Added

@@ -16,6 +16,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 class DatasetSidebar(QWidget):
     """
     Sidebar for DatasetPanel containing Info, Operations, and Execution controls.
+    Hosts aggregate info panel and buttons for imports/clearing.
     """
 
     def __init__(self, panel, parent=None):
@@ -64,19 +65,21 @@ class DatasetSidebar(QWidget):
         self.import_btn = QPushButton("Import Data")
         self.import_btn.setToolTip("Load .set or .gdf files")
         self.import_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.import_btn.clicked.connect(self.panel.actions.import_data)
+        self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         ops_layout.addWidget(self.import_btn)
 
         self.import_label_btn = QPushButton("Import Label")
         self.import_label_btn.setToolTip("Import labels from external files")
         self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.import_label_btn.clicked.connect(self.panel.actions.import_label)
+        self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
         ops_layout.addWidget(self.import_label_btn)
 
         self.smart_parse_btn = QPushButton("Smart Parse Metadata")
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
         self.smart_parse_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
-        self.smart_parse_btn.clicked.connect(self.panel.actions.open_smart_parser)
+        self.smart_parse_btn.clicked.connect(
+            self.panel.action_handler.open_smart_parser
+        )
         ops_layout.addWidget(self.smart_parse_btn)
 
         layout.addWidget(ops_group)
@@ -105,7 +108,6 @@ class DatasetSidebar(QWidget):
 
     def update_sidebar(self):
         """Update info panel and button states."""
-        # Update Info Panel
         if self.controller:
             # Update Info Panel handled by Service
 

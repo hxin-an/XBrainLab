@@ -123,6 +123,17 @@ poe test-all
 poe clean
 ```
 
+### Agent Tool 測試 (Real Tool Testing Platform)
+開發 Agent 工具時，可使用以下指令進行驗證：
+
+```bash
+# [Interactive Debug Mode] 使用 JSON 腳本執行 Tool 流程 (無需 LLM)
+poetry run python run.py --tool-debug scripts/agent/debug/all_tools.json
+
+# [Headless E2E] 執行無頭測試驗證所有 Real Tools
+poetry run pytest scripts/dev/verify_all_tools_headless.py -v
+```
+
 或是使用原始 Poetry 指令：
 ```bash
 # 執行後端單元測試

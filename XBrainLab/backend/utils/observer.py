@@ -12,15 +12,27 @@ class Observable:
     def __init__(self):
         self._observers: dict[str, list[Callable]] = {}
 
-    def subscribe(self, event_name: str, callback: Callable):
-        """Subscribe a callback function to an event."""
+    def subscribe(self, event_name: str, callback: Callable) -> None:
+        """
+        Subscribe a callback function to an event.
+
+        Args:
+            event_name: The name of the event to subscribe to.
+            callback: The function to call when the event is notified.
+        """
         if event_name not in self._observers:
             self._observers[event_name] = []
         if callback not in self._observers[event_name]:
             self._observers[event_name].append(callback)
 
-    def unsubscribe(self, event_name: str, callback: Callable):
-        """Unsubscribe a callback function from an event."""
+    def unsubscribe(self, event_name: str, callback: Callable) -> None:
+        """
+        Unsubscribe a callback function from an event.
+
+        Args:
+            event_name: The name of the event.
+            callback: The function to remove.
+        """
         if event_name in self._observers and callback in self._observers[event_name]:
             self._observers[event_name].remove(callback)
 

@@ -2,73 +2,84 @@
 
 本文件記錄目前專案中已確認存在的 Bug、限制與待解決的問題。
 
+**最後更新**: 2026-02-09 (v0.5.3)
+
+---
+
 ## ✅ 最近已修復 (Resolved in v0.5.x)
+
 以下問題已在最近版本中修復，經過驗證確認解決：
 
 - **架構解耦**:
     - `DatasetController` 已移除 PyQt6 依賴，轉為純 Python `Observable` 模式。
-    - `TrainingPanel` 與 `AggregateInfoPanel` 已重構，不再直接依賴 `Study` 上帝物件 (AggregateInfoPanel 保留少許 Fallback)。
+    - `TrainingPanel` 與 `AggregateInfoPanel` 已重構，不再直接依賴 `Study` 上帝物件。
     - `LabelImportService` 已移動至 Backend Services 層。
     - 循環依賴 (Circular Imports) 已全數解決。
+    - **NEW**: `DataManager` 已從 `Study` 抽取，管理資料生命週期。
 - **穩定性與資源**:
     - **VRAM 洩漏**: 訓練後已加入 `empty_cache()`。
     - **RAM 飆升**: Dataset 改用索引存取 (`Subset`) 取代複製。
     - **靜默失敗**: 全面移除裸 `except:`，改用 `logger.error`。
+    - **NEW**: 下載器已重構為 Multiprocessing，支援真正的取消。
 - **UI/體驗**:
     - **Chat Panel**: 重構為 Copilot 風格，支援串流與動態寬度。
     - **刷新機制**: 遷移至 Observer Pattern，解決 Agent 操作後 UI 不更新的問題。
+- **Agent 架構 (v0.5.3)**:
+    - **NEW**: `ContextAssembler` 已整合，動態工具過濾 (`is_valid(state)`) 運作正常。
+    - **NEW**: `VerificationLayer` 已整合，結構驗證運作正常。
+    - **NEW**: Agent Timeout 機制已加入 (60 秒超時)。
+    - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 2375+ 測試通過。
 
 ---
 
 ## ⚠️ 高優先級 (High Priority)
 
-### 1. Real Tool Call Verification (真實工具呼叫驗證)
-- **問題**: `tests/unit/llm/tools/real/` 單元測試全通過，但**尚未在實際 LLM Agent 對話中的完整流程驗證**。
-- **影響**: 無法保證 Agent 在多輪對話中能正確串接各個工具 (Load -> Preprocess -> Train)。
-- **狀態**: <span style="color:orange">待驗證</span> (需執行 `benchmark-llm`)
+### 1. VerificationLayer 信心度檢查未啟用
+- **位置**: [`controller.py:289`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L289)
+- **問題**: `confidence=None` 永遠被傳入 `verify_tool_call()`，導致信心度閾值檢查永遠被跳過。
+- **影響**: Agent 無法根據 LLM 信心度拒絕低信心度的工具呼叫。
+- **建議**: 整合 LLM logprobs 或實作 confidence 估算機制。
+- **狀態**: <span style="color:orange">待修復</span>
 
-### 2. Agent Tool Call Outstanding Features
-- **問題**: Agent 工具呼叫機制仍有優化空間。
-- **待辦**:
-    - Tool Output 在 Chat 中的顯示可讀性優化。
-    - Error Recovery (自動重試) 機制。
-    - 參數驗證 (Parameter Validation) 增強。
+### 2. VerificationLayer 腳本驗證未實作
+- **位置**: [`verifier.py:49-51`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/verifier.py#L49)
+- **問題**: 程式碼註解標記為 "Future"，但 `ScriptValidator` 策略模式未實作。
+- **影響**: 無法驗證工具參數的邏輯正確性 (如 `high_freq < low_freq` 檢測)。
+- **建議**: 實作 Validator 策略模式。
+- **狀態**: <span style="color:orange">待實作</span>
+
+### 3. 程式啟動速度過慢
+- **問題**: 啟動時需載入 PyTorch、LLM 模型、RAG 等重型依賴，導致 5-15 秒啟動延遲。
+- **影響**: 使用者體驗不佳，看不到任何回饋。
+- **建議**:
+    1. 新增 Splash Screen (低成本高效益)
+    2. 延遲載入 (Lazy Import) 重型模組
 - **狀態**: <span style="color:orange">待優化</span>
-
-### 3. Agent Timeout Protection (Agent 超時保護)
-- **問題**: `AgentWorker` 目前缺乏執行超時機制。若 Local LLM (如 CPU 執行的 Qwen) 推論卡死或過慢，使用者介面會無限期等待。
-- **影響**: 嚴重影響使用者體驗，可能導致程式假死。
-- **狀態**: <span style="color:green">已解決</span> (Resolved in 0.5.3) - Added 60s timeout mechanism.
-
-### 4. Code Maintenance (代碼維護)
-- **問題**:
-    - **UI 文件過大**: `preprocess.py` (1294行) 與 `training/panel.py` (893行) 包含過多邏輯，難以維護。
-    - **行長度違規**: 專案中仍有 200+ 處 E501 (Line too long) 違規。
-- **狀態**: <span style="color:orange">部分解決</span>
-    - `preprocess.py`: Dialog classes extracted to `dialogs.py`.
-    - `training/panel.py`: Polling logic moved to Controller.
-    - **New**: `training/panel.py` 仍有 909 行 (見下方 UI Architecture Defects)。
-
-### 5. UI Architecture Defects (UI 架構缺陷) [Updated 2026-02-01]
-- **問題**: 經過詳細代碼審查，發現多個架構層面的技術債：
-    - ~~**God Object**: `training/panel.py` 仍有 909 行~~ ✅ 已重構至 ~200 行
-    - ~~**Tight Coupling**: 多個 Panel 直接存取 `self.main_window.study`~~ ✅ 已移除
-    - ~~**Leaky Abstraction**: `AggregateInfoPanel` 直接依賴 `MainWindow`~~ ✅ 已修復
-    - ~~**Duplicate Logic**: UI 刷新邏輯 (`refresh_panels`) 重複散落~~ ✅ 已移除
-- **新發現架構問題**:
-    - **Misplaced Data Classes**: `ProxyRecord` 和 `PooledRecordWrapper` 位於 `ui/panels/evaluation/panel.py`，應移至 Backend。
-    - **Heavy Visualization Logic**: `Saliency3D` (227行) 位於 UI 層，包含大量資料處理邏輯。
-- **狀態**: <span style="color:orange">部分解決</span> (核心已修復，遺留 2 項待清理)
 
 ---
 
 ## 🚧 中優先級 (Medium Priority)
 
-### 1. Headless Qt/Torch Conflict
-- **問題**: 在無螢幕環境 (Headless) 下，Qt 與 Torch 若初始化順序不當會導致 SIGABRT。
-- **現狀**: 目前透過 `tests/conftest.py` 強制預載 Torch 作為 Workaround。
+### 1. `Study` 仍持有 Training 狀態 (God Object 殘留)
+- **位置**: [`study.py`](file:///c:/lab/XBrainLab/XBrainLab/backend/study.py)
+- **問題**: 雖已抽取 `DataManager`，但 `training_option`, `model_holder`, `trainer` 仍內嵌於 `Study`。
+- **建議**: 考慮抽取 `TrainingManager` 類別。
+- **狀態**: <span style="color:blue">技術債 (可選)</span>
 
-### 2. 測試覆蓋缺口
+### 2. `TrainingPlanHolder.train_one_epoch` 過於複雜
+- **位置**: [`training_plan.py:316-381`](file:///c:/lab/XBrainLab/XBrainLab/backend/training/training_plan.py#L316)
+- **問題**: 65 行大方法，包含訓練迴圈、評估、記錄更新等多重職責。
+- **建議**: 抽取 `EpochRunner` 類別 (已標記為 Optional，未實作)。
+- **狀態**: <span style="color:blue">技術債 (可選)</span>
+
+### 3. RAG Embedding 同步執行
+- **位置**: [`retriever.py:103`](file:///c:/lab/XBrainLab/XBrainLab/llm/rag/retriever.py#L103)
+- **問題**: `embed_query()` 在主執行緒執行，可能阻塞 UI。
+- **影響**: 首次 RAG 查詢可能造成短暫卡頓。
+- **建議**: 移至背景執行緒執行。
+- **狀態**: <span style="color:blue">技術債 (低優先)</span>
+
+### 4. 測試覆蓋缺口
 - **UI 互動**: 缺乏真實 Widget 點擊與互動的 E2E 測試 (`pytest-qt`)。
 - **環境相依**: 缺乏 CI/CD 流水線驗證 Windows/Linux 差異。
 
@@ -76,13 +87,30 @@
 
 ## ℹ️ 低優先級 / 設計限制 (Design Limitations)
 
-### 1. Label Attachment Simplified (標籤綁定簡化)
+### 1. JSON 偵測邏輯脆弱
+- **位置**: [`controller.py:234-235`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L234)
+- **問題**: 使用簡單字串匹配偵測 JSON，可能誤判非 JSON 輸出。
+- **現狀**: 目前運作良好，僅在極端情況可能觸發不必要的重試。
+
+### 2. Label Attachment Simplified (標籤綁定簡化)
 - **限制**: `RealAttachLabelsTool` 假設 Label 檔案與 Raw Data 完全對應 (1-to-1, 順序一致)。
 - **原因**: 保持 MVP Agent 簡單性。複雜情況應由使用者在 UI 處理。
 
-### 2. Montage Tool (Montage 設定)
+### 3. Montage Tool (Montage 設定)
 - **限制**: 自動匹配邏輯已實作，但對各種通道命名變體的測試覆蓋不足。
 - **現狀**: 已加入 Human-in-the-loop 機制 (請求使用者確認) 作為補償。
 
-### 3. Preprocessing Logging
+### 4. Preprocessing Logging
 - **限制**: 預處理步驟缺乏詳細的參數日誌 (如 Filter 具體頻率)，僅有操作記錄。
+
+---
+
+## 📊 品質指標 (Quality Metrics)
+
+| 指標 | 狀態 | 備註 |
+| --- | --- | --- |
+| **Linting (Ruff)** | ✅ 0 錯誤 | 全部通過 |
+| **Type Check (Mypy)** | ✅ 0 錯誤 | 全部通過 |
+| **Unit Tests** | ✅ 2375+ 通過 | 0 失敗 |
+| **Pre-commit** | ✅ 全部通過 | 包含 secrets 掃描 |
+| **架構遷移** | ✅ 完成 | Assembler + Verifier 已整合 |

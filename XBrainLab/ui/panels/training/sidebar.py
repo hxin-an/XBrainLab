@@ -144,13 +144,7 @@ class TrainingSidebar(QWidget):
         if not self.info_panel:
             return
 
-        dataset = self.controller.get_dataset()
-        if dataset:
-            self.info_panel.update_info(
-                dataset.get_loaded_data_list(), dataset.get_preprocessed_data_list()
-            )
-        else:
-            self.info_panel.update_info()
+        # Handled by InfoPanelService
 
     # --- Actions ---
 

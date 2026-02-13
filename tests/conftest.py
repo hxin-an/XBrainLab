@@ -4,7 +4,26 @@
 import sys
 from unittest.mock import MagicMock, patch
 
-import matplotlib
+# --- PYTEST COLLECTION FIX ---
+# Prevent pytest from scanning XBrainLab source directory as tests
+collect_ignore_glob = ["../XBrainLab/**"]
+
+# --- KNOWN ISSUE: pytest-cov / PyTorch Conflict ---
+# Coverage.py's trace instrumentation conflicts with PyTorch's C-extension docstring
+# registration. The error "_has_torch_function already has a docstring" occurs because
+# coverage traces the import, causing torch/overrides.py to execute twice.
+#
+# WORKAROUND (tested successfully):
+# Run tests WITHOUT --cov flag: poetry run pytest tests/unit
+# Coverage must be measured using slipcover or alternative tools.
+#
+# STATUS: This is a known upstream issue affecting pytest-cov + torch on Windows.
+# See: https://github.com/pytorch/pytorch/issues/96606
+
+try:
+    import matplotlib
+except ImportError:
+    matplotlib = None
 import pytest
 from PyQt6.QtWidgets import QDialog, QMessageBox
 
@@ -71,4 +90,34 @@ def mock_ui_blocking():
 @pytest.fixture(scope="session", autouse=True)
 def configure_matplotlib():
     """Force matplotlib to use non-interactive backend for testing."""
-    matplotlib.use("Agg")
+    if matplotlib:
+        matplotlib.use("Agg")
+
+
+@pytest.fixture
+def test_app(qtbot):
+    """
+    Create a Headless MainWindow for testing.
+    Uses 'qtbot' from pytest-qt to handle the event loop.
+    """
+    # Import locally to avoid circular imports or early init issues
+    from XBrainLab.backend.study import Study
+    from XBrainLab.ui.main_window import MainWindow
+
+    # 1. Create Study (Backend)
+    study = Study()
+
+    # 2. Create Window (UI)
+    window = MainWindow(study)
+
+    # 3. Register widget with qtbot
+    qtbot.addWidget(window)
+
+    # 4. Wait for exposure
+    window.show()
+    qtbot.waitExposed(window)
+
+    yield window
+
+    # 5. Cleanup
+    window.close()

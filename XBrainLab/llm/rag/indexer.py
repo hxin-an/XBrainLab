@@ -1,11 +1,19 @@
 import json
 import logging
 
-from langchain.docstore.document import Document
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Qdrant
-from qdrant_client import QdrantClient
-from qdrant_client.http import models as rest
+try:
+    from langchain.docstore.document import Document
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_community.vectorstores import Qdrant
+    from qdrant_client import QdrantClient
+    from qdrant_client.http import models as rest
+except ImportError:
+    # Optional dependencies — RAG is excluded from mypy
+    Document = None
+    HuggingFaceEmbeddings = None
+    Qdrant = None
+    QdrantClient = None
+    rest = None
 
 from .config import RAGConfig
 
@@ -30,7 +38,7 @@ class RAGIndexer:
                 data = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load gold set: {e}")
-            raise e
+            raise
 
         docs = []
         for item in data:
@@ -57,14 +65,23 @@ class RAGIndexer:
             return
 
         try:
-            # Recreate collection to ensure fresh start
-            self.client.recreate_collection(
-                collection_name=RAGConfig.COLLECTION_NAME,
-                vectors_config=rest.VectorParams(
-                    size=384,  # all-MiniLM-L6-v2 dim
-                    distance=rest.Distance.COSINE,
-                ),
-            )
+            # Check if collection exists
+            collections = self.client.get_collections().collections
+            exists = any(c.name == RAGConfig.COLLECTION_NAME for c in collections)
+
+            if not exists:
+                logger.info(f"Creating new collection: {RAGConfig.COLLECTION_NAME}")
+                self.client.create_collection(
+                    collection_name=RAGConfig.COLLECTION_NAME,
+                    vectors_config=rest.VectorParams(
+                        size=384,  # all-MiniLM-L6-v2 dim
+                        distance=rest.Distance.COSINE,
+                    ),
+                )
+            else:
+                logger.info(
+                    f"Appending to existing collection: {RAGConfig.COLLECTION_NAME}"
+                )
 
             # Use LangChain wrapper with existing client
             qdrant = Qdrant(
@@ -81,7 +98,7 @@ class RAGIndexer:
 
         except Exception as e:
             logger.error(f"Indexing failed: {e}")
-            raise e
+            raise
 
     def close(self):
         """Closes the Qdrant client connection."""

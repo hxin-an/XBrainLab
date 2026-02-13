@@ -9,8 +9,13 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class NormalizeDialog(BaseDialog):
+    """
+    Dialog for selecting data normalization method.
+    Options: Z-Score (Standardization) or Min-Max Scaling.
+    """
+
     def __init__(self, parent):
-        self.params = None
+        self.params: str | None = None
         self.method_group = None
         self.zscore_radio = None
         self.minmax_radio = None

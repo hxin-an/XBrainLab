@@ -74,36 +74,145 @@
     *   *Incorrect*: `def add(a, b):`
 
 ### 2. Agent 開發規範 (Agent Development)
-若您參與 AI Agent 模組的開發，請注意以下事項，這直接影響 LLM 的推論能力：
-*   **Docstring 即 Prompt**:
-    *   Agent 依賴函式的文檔字串 (Docstring) 來理解工具用途與參數格式。
-    *   Docstring 必須精確、清晰，並符合 Google Style 或 NumPy Style。
-*   **維護黃金測試集 (Gold Set)**:
-    *   引入新工具時，**必須**同步更新 `XBrainLab/llm/rag/data/gold_set.json`，提供 Few-Shot Examples，以確保模型能正確學習工具的使用情境。
+
+若您參與 AI Agent 模組的開發，請遵循以下規範：
+
+#### 2.1 工具開發
+- **Docstring 即 Prompt**：Agent 依賴 Docstring 理解工具，必須精確且符合 Google Style。
+- **Tool Definition**：參考 `documentation/agent/tool_definitions.md` 格式。
+- **BackendFacade**：Agent 只能透過 `BackendFacade` 呼叫功能，禁止直接操作 Controller。
+
+#### 2.2 開發流程
+
+```
+1. 定義工具 Docstring
+       ↓
+2. 新增 Benchmark 測試案例
+       ↓
+3. 使用 Interactive Debug 驗證
+       ↓
+4. 撰寫 Headless UI Test
+       ↓
+5. 執行評測確認準確率
+```
+
+#### 2.3 相關文件
+- [ADR-006: ReAct 架構](./decisions/ADR-006-agent-react-architecture.md)
+- [ADR-007: 測試策略](./decisions/ADR-007-tool-call-testing-strategy.md)
+- [ADR-008: 評測框架](./decisions/ADR-008-tool-call-evaluation-framework.md)
 
 ---
-### 3. 架構原則
-*   **BackendFacade**: Agent 只能透過 `BackendFacade` 呼叫核心功能，禁止直接操作 Controller。
-*   **Observer Pattern**: UI 元件應訂閱 Backend 的訊號 (Signal)，而非主動輪詢 (Polling)。
+
+## 測試驅動開發 (Test-Driven Development)
+
+本專案採用 **TDD** 原則，確保程式碼品質與可維護性。
+
+### 1. TDD 流程
+
+```
+Red → Green → Refactor
+
+1. 先寫失敗的測試 (Red)
+2. 寫最少程式碼讓測試通過 (Green)
+3. 重構程式碼 (Refactor)
+4. 重複
+```
+
+### 2. 測試類型
+
+| 類型 | 目錄 | 用途 |
+|------|------|------|
+| **Unit Tests** | `tests/unit/` | 單一函數/類別測試 |
+| **Integration Tests** | `tests/integration/` | 模組間整合測試 |
+| **UI Tests** | `tests/ui/` | Headless UI 測試 (QtTest) |
+| **Agent Tests** | `tests/agent/` | Tool Call 準確率評測 |
+
+### 3. 測試指令
+
+```bash
+# 執行所有測試
+poe test
+
+# 只執行單元測試
+pytest tests/unit/
+
+# 執行 UI 整合測試
+pytest tests/ui/
+
+# Agent 準確率評測
+python -m xbrainlab.eval --model gpt-4
+
+# Interactive Debug Mode
+python run.py --tool-debug scripts/debug_filter.json
+```
+
+### 4. 覆蓋率要求
+
+| 模組 | 最低覆蓋率 |
+|------|------------|
+| Backend Controllers | 80% |
+| Agent Tools | 70% |
+| UI Panels | 50% |
+
+### 5. Agent 工具測試
+
+新增或修改 Agent Tool 時，**必須**：
+
+1. **更新 Benchmark Dataset**：
+   ```bash
+   # 新增測試案例到
+   benchmarks/tool_call_v1.json
+   ```
+
+2. **使用 Debug Mode 驗證**：
+   ```bash
+   python run.py --tool-debug scripts/your_tool_test.json
+   # 按 Enter 逐步執行，肉眼確認 UI 正確
+   ```
+
+3. **撰寫 Headless Test**：
+   ```python
+   # tests/ui/test_your_tool.py
+   def test_your_tool_updates_ui(test_app):
+       result = test_app.controller.execute_tool("your_tool", {...})
+       assert result.success
+       assert test_app.panel.expected_state()
+   ```
+
+4. **執行評測確認準確率**：
+   ```bash
+   python -m xbrainlab.eval --model gpt-4
+   # 確認新工具準確率 > 90%
+   ```
+
+---
 
 ## Git 規範 (Workflow)
 
 我們嚴格執行 **Conventional Commits**。建議安裝 `commitizen`：
 
 ```bash
-# 推薦使用 cz 來 commit，它會協助你格式化訊息
 cz commit
 ```
 
-*   `feat`: 新增功能
-*   `fix`: 修復 Bug
-*   `refactor`: 重構 (無功能變動)
-*   `docs`: 文件更新
-*   `test`: 測試相關
-*   `chore`: 建置/工具變動
+| 類型 | 說明 |
+|------|------|
+| `feat` | 新增功能 |
+| `fix` | 修復 Bug |
+| `refactor` | 重構 |
+| `docs` | 文件更新 |
+| `test` | 測試相關 |
+| `chore` | 建置/工具變動 |
+
+---
 
 ## 提交檢查清單 (PR Checklist)
-- [ ] 執行過 `poe check` 且全數通過 (包含 Coverage > 50%)。
-- [ ] 若修改了 Agent Tool，已更新 `gold_set.json`。
-- [ ] 若有架構更動，已通過 `tests/architecture_compliance.py`。
-- [ ] Commit Message 符合規範。
+
+- [ ] 執行過 `poe check` 且全數通過
+- [ ] 新功能有對應的單元測試
+- [ ] 若修改了 Agent Tool：
+  - [ ] 更新 Benchmark Dataset
+  - [ ] 使用 Debug Mode 驗證
+  - [ ] 撰寫 Headless UI Test
+- [ ] 若有架構更動，已通過 `tests/architecture_compliance.py`
+- [ ] Commit Message 符合規範

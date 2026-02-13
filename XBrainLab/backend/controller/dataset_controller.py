@@ -1,5 +1,4 @@
 # Ensure loaders are registered
-# from PyQt6.QtCore import QObject, pyqtSignal # Removed
 
 from XBrainLab.backend import preprocessor
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
@@ -14,10 +13,9 @@ class DatasetController(Observable):
     """
     Controller for managing dataset operations.
     Handles data loading, modification, and interactions with the Study backend.
-    Now Decoupled from PyQt6.
     """
 
-    # Signals replaced by Observer events:
+    # Events:
     # "data_changed"
     # "dataset_locked" (bool)
     # "import_finished" (success_count, errors)
@@ -95,6 +93,7 @@ class DatasetController(Observable):
     def clean_dataset(self):
         """Clears all loaded data."""
         self.study.clean_raw_data(force_update=True)
+        self.notify("data_changed")
 
     def remove_files(self, indices):
         """Removes files at specified indices."""
@@ -179,7 +178,7 @@ class DatasetController(Observable):
                 count += 1
 
         if count > 0:
-            self.study.reset_preprocess(force_update=True)
+            self.reset_preprocess()
 
         return count
 
@@ -196,12 +195,11 @@ class DatasetController(Observable):
             result = process.data_preprocess(selected_channels)
         except Exception as e:
             logger.error(f"Channel selection failed: {e}")
-            raise e
+            raise
 
         # Apply changes
         self.study.backup_loaded_data()
         self.study.set_loaded_data_list(result, force_update=True)
-        self.study.lock_dataset()
         self.study.lock_dataset()
         self.notify("data_changed")
         self.notify("dataset_locked", True)
@@ -231,7 +229,7 @@ class DatasetController(Observable):
             target_files, label_map, file_mapping, mapping, selected_event_names
         )
         if count > 0:
-            self.study.reset_preprocess(force_update=True)
+            self.reset_preprocess()
         return count
 
     def apply_labels_legacy(
@@ -246,7 +244,7 @@ class DatasetController(Observable):
             force_import=force_import,
         )
         if count > 0:
-            self.study.reset_preprocess(force_update=True)
+            self.reset_preprocess()
         return count
 
     def get_epoch_count(self, data, event_names):

@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class LabelMappingDialog(BaseDialog):
@@ -45,7 +46,6 @@ class LabelMappingDialog(BaseDialog):
         )  # Allow selection for highlighting
         self.data_list.setUniformItemSizes(True)
         self.data_list.setAlternatingRowColors(True)
-        from XBrainLab.ui.styles.stylesheets import Stylesheets  # noqa: PLC0415
 
         self.data_list.setStyleSheet(Stylesheets.LIST_ITEM_HEIGHT)  # Enforce height
         # self.data_list.setEnabled(False) # Don't disable, just make non-selectable?

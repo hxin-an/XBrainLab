@@ -1,7 +1,9 @@
 import threading
+import traceback
 from enum import Enum
 
 from ..utils import validate_list_type
+from ..utils.logger import logger
 from .training_plan import TrainingPlanHolder
 
 
@@ -56,19 +58,28 @@ class Trainer:
 
     def job(self) -> None:
         """Training job running in background"""
-        while self.current_idx < len(self.training_plan_holders):
-            if self.interrupt:
-                break
+        try:
+            while self.current_idx < len(self.training_plan_holders):
+                if self.interrupt:
+                    break
 
-            plan_holder = self.training_plan_holders[self.current_idx]
-            self.progress_text = Status.TRAIN.value.format(plan_holder.get_name())
+                plan_holder = self.training_plan_holders[self.current_idx]
+                self.progress_text = Status.TRAIN.value.format(plan_holder.get_name())
 
-            plan_holder.train()
+                plan_holder.train()
 
-            self.current_idx += 1
-
-        self.progress_text = Status.PENDING
-        self.job_thread = None
+                self.current_idx += 1
+        except Exception as e:
+            error_msg = f"Training thread crashed: {e}"
+            logger.error(error_msg, exc_info=True)
+            self.progress_text = f"Error: {e}"
+            traceback.print_exc()  # Print to console for dev visibility
+        finally:
+            if not isinstance(
+                self.progress_text, str
+            ) or not self.progress_text.startswith("Error"):
+                self.progress_text = Status.PENDING
+            self.job_thread = None
 
     def run(self, interact: bool = False) -> None:
         """Run training job

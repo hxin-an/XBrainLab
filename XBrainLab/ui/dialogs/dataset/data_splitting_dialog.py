@@ -35,7 +35,12 @@ class DrawColor(Enum):
 
 
 class DrawRegion:
-    def __init__(self, w, h):
+    """
+    Helper class for managing 2D drawing regions in the DataSplittingPreview.
+    Handles coordinate mapping for Training, Validation, and Test splits.
+    """
+
+    def __init__(self, w: int, h: int):
         self.w = w
         self.h = h
         self.from_canvas = np.zeros((w, h))
@@ -45,7 +50,8 @@ class DrawRegion:
         self.to_x = 0
         self.to_y = 0
 
-    def reset(self):
+    def reset(self) -> None:
+        """Reset the canvas and coordinates."""
         self.from_canvas *= 0
         self.to_canvas *= 0
 

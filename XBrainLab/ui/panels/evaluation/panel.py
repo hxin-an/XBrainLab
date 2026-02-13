@@ -43,12 +43,8 @@ class EvaluationPanel(BasePanel):
         """Listen to TrainingController to update when training finishes."""
         # Use injected controller if available, fallback to legacy
         training_ctrl = self.training_controller
-        if (
-            not training_ctrl
-            and self.main_window
-            and hasattr(self.main_window, "study")
-        ):
-            training_ctrl = self.main_window.study.get_controller("training")
+        if not training_ctrl and self.controller and hasattr(self.controller, "study"):
+            training_ctrl = self.controller.study.get_controller("training")
 
         if training_ctrl:
             self.training_bridge = QtObserverBridge(
@@ -59,7 +55,7 @@ class EvaluationPanel(BasePanel):
     def update_panel(self):
         """Update panel content when switched to."""
         if hasattr(self, "info_panel"):
-            self.info_panel.update_info()
+            pass  # Handled by InfoPanelService
 
         # Update Model Combo
         self.model_combo.blockSignals(True)

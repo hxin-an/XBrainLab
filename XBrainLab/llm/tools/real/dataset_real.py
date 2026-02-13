@@ -39,6 +39,7 @@ class RealListFilesTool(BaseListFilesTool):
 
 
 class RealLoadDataTool(BaseLoadDataTool):
+    # No is_valid needed, always valid to load data (merges into existing)
     def execute(self, study: Any, paths: list[str] | None = None, **kwargs) -> str:
         if not paths:
             return "Error: paths list cannot be empty."
@@ -76,6 +77,10 @@ class RealLoadDataTool(BaseLoadDataTool):
 
 
 class RealAttachLabelsTool(BaseAttachLabelsTool):
+    def is_valid(self, study: Any) -> bool:
+        # Requires at least one loaded file
+        return bool(study.loaded_data_list)
+
     def execute(
         self,
         study: Any,
@@ -96,6 +101,9 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 
 
 class RealClearDatasetTool(BaseClearDatasetTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, **kwargs) -> str:
         facade = BackendFacade(study)
         facade.clear_data()
@@ -103,6 +111,9 @@ class RealClearDatasetTool(BaseClearDatasetTool):
 
 
 class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
+    def is_valid(self, study: Any) -> bool:
+        return bool(study.loaded_data_list)
+
     def execute(self, study: Any, **kwargs) -> str:
         facade = BackendFacade(study)
         summary = facade.get_data_summary()
@@ -132,6 +143,10 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
 
 class RealGenerateDatasetTool(BaseGenerateDatasetTool):
+    def is_valid(self, study: Any) -> bool:
+        # Requires epoch_data to generate dataset
+        return study.epoch_data is not None
+
     def execute(
         self,
         study: Any,

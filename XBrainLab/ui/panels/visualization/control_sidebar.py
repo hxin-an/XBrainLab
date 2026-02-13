@@ -20,6 +20,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 class ControlSidebar(QWidget):
     """
     Sidebar for Visualization Panel (Configuration & Operations).
+    Hosts controls for Montages, Saliency Settings, and export actions.
     """
 
     def __init__(self, panel, parent=None):
@@ -96,26 +97,7 @@ class ControlSidebar(QWidget):
         if not self.info_panel:
             return
 
-        if (
-            self.panel
-            and hasattr(self.panel, "training_controller")
-            and self.panel.training_controller
-        ):
-            # Use training controller if available for dataset
-            # Or assume visual controller has access
-            pass
-
-        # VisualizationController usually has access to study -> dataset
-        if self.controller and hasattr(self.controller, "study"):
-            dataset = self.controller.study.get_dataset()
-            if dataset:
-                self.info_panel.update_info(
-                    dataset.get_loaded_data_list(), dataset.get_preprocessed_data_list()
-                )
-            else:
-                self.info_panel.update_info()
-        else:
-            self.info_panel.update_info()
+        # Handled by InfoPanelService
 
     # --- Actions ---
 

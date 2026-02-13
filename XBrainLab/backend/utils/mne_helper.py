@@ -7,10 +7,15 @@ def get_builtin_montages():
     return mne.channels.get_builtin_montages()
 
 
-def get_montage_positions(montage_name):
+def get_montage_positions(montage_name: str) -> dict:
     """
     Returns a dictionary of channel positions for the given montage.
-    Returns: {'ch_pos': {ch_name: pos_array, ...}}
+
+    Args:
+        montage_name: Name of the standard montage (e.g., 'standard_1020').
+
+    Returns:
+         dict: {'ch_pos': {ch_name: pos_array, ...}, ...}
     """
     montage = mne.channels.make_standard_montage(montage_name)
     return montage.get_positions()

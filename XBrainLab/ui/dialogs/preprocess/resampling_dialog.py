@@ -9,8 +9,13 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ResampleDialog(BaseDialog):
+    """
+    Dialog for downsampling/resampling EEG data to a target frequency.
+    Helpful for reducing data size and computation time.
+    """
+
     def __init__(self, parent):
-        self.sfreq = None
+        self.sfreq: float | None = None
         self.sfreq_spin = None
         super().__init__(parent, title="Resample")
         self.resize(300, 100)

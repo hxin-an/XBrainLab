@@ -11,8 +11,13 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class FilteringDialog(BaseDialog):
+    """
+    Dialog for configuring frequency filters.
+    Supports Bandpass (Low/High cut) and Notch filters.
+    """
+
     def __init__(self, parent):
-        self.params = None
+        self.params: tuple | None = None
         self.bandpass_check = None
         self.l_freq_spin = None
         self.h_freq_spin = None

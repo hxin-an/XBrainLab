@@ -68,7 +68,7 @@ def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
     qtbot.addWidget(panel)
 
     with (
-        patch.object(panel, "plot_sample_data"),  # Mock plotting
+        patch.object(panel.plotter, "plot_sample_data"),  # Mock plotting
         patch("XBrainLab.ui.panels.preprocess.sidebar.FilteringDialog") as MockDialog,
     ):
         instance = MockDialog.return_value
@@ -102,7 +102,7 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
     qtbot.addWidget(panel)
 
     with (
-        patch.object(panel, "plot_sample_data"),
+        patch.object(panel.plotter, "plot_sample_data"),
         patch("XBrainLab.ui.panels.preprocess.sidebar.ResampleDialog") as MockDialog,
     ):
         instance = MockDialog.return_value
@@ -132,7 +132,7 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
     qtbot.addWidget(panel)
 
     with (
-        patch.object(panel, "plot_sample_data"),
+        patch.object(panel.plotter, "plot_sample_data"),
         patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDialog,
     ):
         instance = MockDialog.return_value
@@ -165,7 +165,7 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
     qtbot.addWidget(panel)
 
     with (
-        patch.object(panel, "plot_sample_data"),
+        patch.object(panel.plotter, "plot_sample_data"),
         patch(
             "XBrainLab.ui.panels.preprocess.sidebar.QMessageBox.question",
             return_value=QMessageBox.StandardButton.Yes,

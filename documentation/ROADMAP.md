@@ -1,94 +1,79 @@
-# XBrainLab 專案發展路線圖 (Roadmap)
+# XBrainLab 開發路線圖 (Roadmap)
 
-本文件定義 XBrainLab 的長程願景與工程執行計畫。我們將「穩定性」、「工具智商」與「混合運算」視為核心支柱。
+**版本**: v0.8.0 (User-Centric Realignment)
+**更新日期**: 2026-02-09
 
----
-
-## 📅 長期願景 (Strategic Vision)
-
-我們將 Agent 的演化分為三個階段，逐步從「工具操作員」進化為「研究合作夥伴」。
-
-### Stage 1: Agent as an Operator (工具操作員) - 現階段
-*   **定位**：能聽懂自然語言指令，並正確、無誤地操作現有的腦波分析軟體功能。
-*   **目標**：讓使用者不再需要點擊繁瑣的選單，一句話跑完 Load -> Preprocess 標準流程。
-
-### Stage 2: Agent as a Junior Analyst (初階分析師)
-*   **定位**：不只會跑流程，還能根據數據結果（如 Saliency Map）提供初步的數值解讀與摘要。
-*   **核心能力**：
-    *   **Feature Extraction**：Backend 自動計算 Peak Latency, Top Regions。
-    *   **Data Interpretation**：LLM 根據統計指標生成 Key Findings。
-
-### Stage 3: Agent as a Research Partner (研究夥伴)
-*   **定位**：結合外部知識庫 (RAG)，針對實驗假設提供深度解釋與科學建議。
-*   **核心能力**：
-    *   **Knowledge Retrieval**：讀取論文，理解術語上下文。
-    *   **Hypothesis Verification**: 回答「數據是否支持我的假設」。
+XBrainLab 是一個透過深度學習結合 Saliency Map 來判斷 EEG 資料集品質的工具。本專案的目標是讓使用者能快速評估資料品質、理解模型決策依據，並產出具備科學意義的分析報告。
+開發過程分為三個核心階段：短期「穩定控制」、中期「專家導師」與長期「全自動報告」。
 
 ---
 
-## Phase 2: 平行開發階段 (Parallel Tracks) - Q1 2026
+##  使用者核心需求 (User Perspectives)
 
-**核心策略**：打地基。由兩組並行工作線組成，一邊清理技術債，一邊建立 AI 的準確度標準。
 
-### Track A: 工程重構與穩定性 (Engineering Refactoring)
-*目標：解決 UI 冗長、架構耦合與真實工具 (Real Tool) 斷鏈問題。*
+### 1. EEG 初學者 (EEG Novice)
+- **使用者特徵**：非技術背景、剛接觸腦波分析。
+- **軟體期望**：
+    - **極簡化輸入**：僅需指定資料集路徑、電極配置 (Montage) 與分類類別。
+    - **自動化適配**：系統根據資料性質自動調整模型與訓練參數。
+    - **易懂報告**：產出文字化、直覺且易於理解的資料品質與初步分析報告。
 
-#### A-1. UI 架構瘦身 (UI Slimming)
-- [ ] **ChatPanel 重構**: 將 `MessageBubble` 邏輯抽離，提升可讀性。
-- [ ] **Dashboard抽象化**: 建立 `BasePanel` 父類別 (DRY Principle)。
-- [ ] **Logic Decoupling**: 確保 UI 僅負責渲染，業務邏輯移至 Controller。
-
-#### A-2. 程式碼規範 (Standardization)
-- [ ] **Type Hinting**: 全面補齊 Python Type Hints。
-- [ ] **Error Handling**: 統一 Exception 機制。
-
-#### A-3. 真實工具鏈修復 (Real Tool Repair)
-- [ ] **Saliency Tool**: 確保 Agent 能呼叫並執行 Saliency 計算 (先求有)。
-- [ ] **Param Validation**: 確保複雜參數正確傳遞。
-
-#### A-4. 易用性與會話管理 (Usability & Session)
-- [ ] **New Conversation**: 實作「開新對話」功能，一鍵清除 Context Window 與畫面歷史，重置 Agent 狀態。
+### 2. EEG 資深學者 (EEG Expert)
+- **使用者特徵**：具備深厚 EEG 專業知識的專家。
+- **軟體期望**：
+    - **模組化操控**：透過 Agent 進行高度自定義的模型與參數設定。
+    - **偏好記憶**：系統自動學習並記錄常用的分析習慣，實現無須重複設定的高效工作流。
+    - **專業深度報告**：產出包含豐富技術細節供專家進行深度判斷與決策。
 
 ---
 
-### Track B: 智能評測與架構 (Intelligence & Architecture)
-*目標：建立「可量化」的 AI 指標，並實作混合運算架構原型。*
+## 1. 短期目標：架構實作與評估體系 (Architecture & Evaluation)
+**核心目標**：實作 ADR 確定的架構設計，建立全方位的量化評核機制，完成體驗優化與穩定基礎。
 
-#### B-1. 深度評測體系 (Deep Evaluation Ecosystem)
-- [ ] **RAG 準確度**: 測試 Retriever Precision & Context Relevance。
-- [ ] **記憶與上下文**: 測試 Context Window 極限與 Output Truncation 影響。
-- [ ] **Model Matrix**: 根據硬體 (Gemma/Qwen/Llama/Gemini) 建立推薦清單。
+### 1.1 精簡架構遷移 (Decoupling)
+- **Study 結構解耦**：完成將業務邏輯抽出至專門的 Controller，確保 Agent 能進行精確的分步操控。
+- **類型與協議標準化**：實作強型別介面協議，為未來的自動化提供穩定資料地基。
 
-#### B-2. 混合運算架構 (Hybrid Architecture Prototype)
-- [ ] **Local/Remote Split**: 定義 Local (UI) 與 Remote (Compute) 的通訊接口。
-- [ ] **Router Agent**: 簡單的 Intent Classifier。
+### 1.2 全方位測試與評分 (Testing & Scoring)
+- **多層級自動化測試**：Backend、UI、Agent 工具鏈的單元與整合驗證。
+- **量化評測工具**：建立正確率、延遲與資源消耗的自動化評分與思考鏈 (Thought Chain) 追蹤。
 
----
-
-## Phase 3: 功能賦能與工具升級 (Feature Empowerment) - Q2 2026 (Early)
-
-**核心策略**：提升工具的「智商」。在 AI 介入解讀前，後端工具必須先能產出「可被解讀」的數據。
-
-### 3-1. 智慧型工具鏈 (Smart Tool Chain)
-*填補 "Run Tool" 與 "Interpret Result" 之間的鴻溝。*
-- [ ] **Saliency Stats Extraction**: 修改 Backend，除了畫圖外，額外計算 Peak Channel, Latency, Frequency Band Power 等數值統計。
-- [ ] **JSON Data Contract**: 定義 Agent 專用的資料回傳格式 (Schema)，確保 Agent 讀得懂統計數據。
-- [ ] **Auto-Training Logic**: 在 Python 層實作 "Loss Monitoring" 與 "Auto-Retry" 邏輯，而非依賴 Agent 瞎猜。
-
-### 3-2. 混合引擎實裝 (Hybrid Engine Production)
-*將 Prototype 轉為正式功能。*
-- [ ] **Remote Worker Deployment**: 實作 SSH/gRPC 自動連線機制。
-- [ ] **Model Switcher GUI**: 讓使用者能在 GUI 上滑順切換 Local/Cloud 模型。
+### 1.3 體驗與健壯性 (UX & Robustness)
+- **啟動效能優化**：實作 Splash Screen 與 Lazy Loading。
+- **安全性與 HIL**：實作錯誤恢復自愈邏輯與高風險操作的人機協作 (HIL) 授權機制。
 
 ---
 
-## Phase 4: 自動化洞察 (Automated Insights) - Q2 2026 (Late)
+## 2. 中期目標：領域專家導師 (Domain Expert Tutor)
+**核心目標**：賦予 Agent EEG 專業知識，實現自動化參數優化與視覺化深度解讀
 
-**核心策略**：Agent 正式上工，扮演分析師角色。
+### 2.1 互動式科研流程引導 (Workflow Guidance)
+- **引導式管線**：主動帶領新手走完標準分析流程，降低決策焦慮。
+- **原理解釋引擎**：連結專業教材解釋預處理背後的科學意義 (The "Why")。
 
-- [ ] **Saliency Interpretation**: Agent 讀取 Phase 3 產出的 JSON Summary，生成文字報告。
-- [ ] **Research Context Integration**: 結合 RAG (Phase 3 沒做，移到這裡)，讓報告包含文獻佐證。
-- [ ] **Long-term Memory (Vector Store)**:
-    - [ ] **User Preference**: 記住使用者的習慣 (e.g. 偏好的 Filter 參數)。
-    - [ ] **Cross-Session Context**: 允許 Agent 比較不同實驗 Session 的數據差異。
-- [ ] **Multimodal VQA**: (Optional) 讓 Agent 視覺模型進行雙重確認。
+### 2.2 視覺化解讀與自動化尋優 (Diagnostics & Tuning)
+- **Saliency Map 空間解讀**：結合 VLLM 與腳本解讀 3D 視覺化圖形的生理意義。
+- **自動化參數優化**：引進自動尋優工具，滿足專家對效率的要求。
+
+### 2.3 初步結果診斷
+- **主動品質防線**：在分析前偵測資料缺陷並提供科研等級的修正建議。
+
+---
+
+## 3. 長期目標：全自動分析分析師 (End-to-End Analyst)
+**核心目標**：實現具備記憶與偏好感知的終極合夥人，產出針對不同使用者層級的詳盡報告。
+
+### 3.1 目標導向自動化 (Full Automation for Novice)
+- **一鍵式端到端分析**：初學者僅需輸入基礎資料，系統自動跑通管線並產生詳盡分析。
+- **文字型直觀報告**：為新手產出易懂、去技術化的品質與分析總結。
+
+### 3.2 偏好記憶與決策支持 (Expert Partnership)
+- **偏好感知記憶**：Agent 學習並記住專家的特定分析風格，實現自動化復現。
+- **多重方案對比**：提供標準方案與專家偏好方案的數據對比，輔助深度科研決策。
+
+### 3.3 認知映射與結果檢核 (Cognitive Validation)
+- **事件-波形認知映射**：Agent 具備實驗事件對應腦電成分的先驗知識。
+- **結果合理性判定**：根據生理邏輯驗證 Saliency Map 結果（例：運動區分佈驗證），確保分析結果科學正確。
+
+### 3.4 結構化專業科學報告 (Comprehensive Reporting)
+- **專業級度報告**：為專家產出包含所有 Metrics 與生理機制討論的高規格學術報告。

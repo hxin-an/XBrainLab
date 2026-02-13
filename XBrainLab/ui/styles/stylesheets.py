@@ -4,6 +4,7 @@ from XBrainLab.ui.styles.theme import Theme
 class Stylesheets:
     """
     Centralized collection of reusable CSS stylesheets.
+    Uses generic selectors and Theme constants to ensure consistency.
     """
 
     # Generic GroupBox (Used in AggregateInfoPanel, etc.)
@@ -41,9 +42,9 @@ class Stylesheets:
             color: white;
         }}
         QPushButton:disabled {{
-            background-color: rgba(27, 94, 32, 0.4);
-            color: #888888;
-            border: 1px solid rgba(27, 94, 32, 0.2);
+            background-color: {Theme.BTN_SUCCESS_DISABLED_BG};
+            color: {Theme.BTN_DISABLED_TEXT};
+            border: 1px solid {Theme.BTN_SUCCESS_DISABLED_BORDER};
         }}
     """
 
@@ -61,9 +62,9 @@ class Stylesheets:
             color: white;
         }}
         QPushButton:disabled {{
-            background-color: rgba(183, 28, 28, 0.4);
-            color: #888888;
-            border: 1px solid rgba(183, 28, 28, 0.2);
+            background-color: {Theme.BTN_DANGER_DISABLED_BG};
+            color: {Theme.BTN_DISABLED_TEXT};
+            border: 1px solid {Theme.BTN_DANGER_DISABLED_BORDER};
         }}
     """
 
@@ -81,9 +82,9 @@ class Stylesheets:
             color: white;
         }}
         QPushButton:disabled {{
-            background-color: rgba(191, 54, 12, 0.4);
-            color: #888888;
-            border: 1px solid rgba(191, 54, 12, 0.2);
+            background-color: {Theme.BTN_WARNING_DISABLED_BG};
+            color: {Theme.BTN_DISABLED_TEXT};
+            border: 1px solid {Theme.BTN_WARNING_DISABLED_BORDER};
         }}
     """
 
@@ -309,15 +310,15 @@ class Stylesheets:
     # Sidebar Button
     SIDEBAR_BTN = f"""
         QPushButton {{
-            background-color: transparent;
-            color: {Theme.TEXT_SECONDARY};
+            background-color: {Theme.BACKGROUND_LIGHT};
+            color: {Theme.TEXT_MUTED};
             text-align: left;
             padding: 8px 15px;
-            border: none;
+            border: 1px solid {Theme.BACKGROUND_MID};
             border-radius: 4px;
         }}
         QPushButton:hover {{
-            background-color: {Theme.BACKGROUND_LIGHT};
+            background-color: {Theme.BACKGROUND_MID};
             color: {Theme.TEXT_PRIMARY};
         }}
         QPushButton:pressed {{
@@ -374,4 +375,71 @@ class Stylesheets:
             background-color: {Theme.HISTORY_TABLE_SELECTION};
             color: {Theme.TEXT_PRIMARY};
         }}
+    """
+
+    # Tab Widget (Clean look)
+    TAB_WIDGET_CLEAN = "QTabWidget::pane { border: 0; }"
+
+    # Log Text Edit
+    LOG_TEXT = f"""
+        QTextEdit {{
+            background-color: {Theme.BACKGROUND_DARK};
+            border: 1px solid {Theme.BORDER};
+            color: {Theme.TEXT_SECONDARY};
+            font-family: monospace;
+        }}
+    """
+
+    # Muted Checkbox
+    CHECKBOX_MUTED = f"QCheckBox {{ color: {Theme.TEXT_MUTED}; }}"
+
+    # Metrics Table (Evaluation)
+    METRICS_TABLE = f"""
+        QTableWidget {{
+            background-color: {Theme.METRICS_TABLE_BG};
+            gridline-color: {Theme.METRICS_TABLE_GRID};
+            border: 1px solid {Theme.METRICS_TABLE_BORDER};
+            color: {Theme.TEXT_PRIMARY};
+        }}
+        QHeaderView::section {{
+            background-color: {Theme.METRICS_TABLE_HEADER_BG};
+            color: {Theme.TEXT_PRIMARY};
+            padding: 4px;
+            border: 1px solid {Theme.METRICS_TABLE_GRID};
+        }}
+        QTableWidget::item:selected {{
+            background-color: {Theme.METRICS_TABLE_SELECTION};
+            color: {Theme.TEXT_PRIMARY};
+        }}
+    """
+
+    # --- Agent Assistant Panel ---
+    AGENT_TITLE_BAR = "background: #2d2d2d; padding: 2px;"
+
+    AGENT_TITLE_LABEL = "color: #cccccc; font-weight: bold;"
+
+    AGENT_TITLE_BTN = """
+        QPushButton {
+            background: transparent;
+            color: #bbbbbb;
+            border: none;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            color: #ffffff;
+            background-color: #3d3d3d;
+            border-radius: 3px;
+        }
+    """
+
+    AGENT_NEW_CONV_BTN = """
+        QPushButton {
+            background: transparent;
+            color: #aaaaaa;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        QPushButton:hover { color: #ffffff; }
     """

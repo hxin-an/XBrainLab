@@ -29,8 +29,14 @@ from .optimizer_setting_dialog import OptimizerSettingDialog
 
 
 class TrainingSettingDialog(BaseDialog):
+    """
+    Main configuration dialog for training parameters.
+    Aggregates settings for epochs, batch size, learning rate, optimizer, device,
+    and output.
+    """
+
     def __init__(self, parent, controller):
-        self.controller = controller
+        # self.controller is handled by BaseDialog
 
         self.training_option = None
         self.output_dir = "./output"
@@ -51,7 +57,7 @@ class TrainingSettingDialog(BaseDialog):
         self.output_dir_label = None
         self.evaluation_combo = None
 
-        super().__init__(parent, title="Training Setting")
+        super().__init__(parent, title="Training Setting", controller=controller)
         self.resize(500, 600)
 
         # Set default values in UI
@@ -200,28 +206,48 @@ class TrainingSettingDialog(BaseDialog):
         ):
             return
 
-        evaluation_option = TrainingEvaluation.TEST_ACC  # Default
+        evaluation_option = TrainingEvaluation.TEST_ACC
         for i in TrainingEvaluation:
             if i.value == self.evaluation_combo.currentText():
                 evaluation_option = i
 
         try:
+            # Validate inputs
+            try:
+                epoch = int(self.epoch_entry.text())
+                bs = int(self.bs_entry.text())
+                ckpt = int(self.checkpoint_entry.text())
+                repeat = int(self.repeat_entry.text())
+                lr = float(self.lr_entry.text())
+            except ValueError as e:
+                msg = (
+                    "Epoch, Batch Size, Checkpoint, Repeat must be Integers.\n"
+                    "Learning Rate must be Float."
+                )
+                raise ValueError(msg) from e
+
+            if epoch <= 0 or bs <= 0:
+                self._raise_value_error("Epoch and Batch Size must be positive.")
+
             self.training_option = TrainingOption(
                 self.output_dir,
                 self.optim,
                 self.optim_params,
                 self.use_cpu,
                 self.gpu_idx,
-                int(self.epoch_entry.text()),
-                int(self.bs_entry.text()),
-                float(self.lr_entry.text()),
-                int(self.checkpoint_entry.text()),
+                epoch,
+                bs,
+                lr,
+                ckpt,
                 evaluation_option,
-                int(self.repeat_entry.text()),
+                repeat,
             )
             super().accept()
         except Exception as e:
             QMessageBox.warning(self, "Validation Error", str(e))
+
+    def _raise_value_error(self, msg: str):
+        raise ValueError(msg)
 
     def get_result(self):
         return self.training_option

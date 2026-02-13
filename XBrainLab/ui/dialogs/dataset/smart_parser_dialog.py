@@ -27,33 +27,41 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class SmartParserDialog(BaseDialog):
-    def __init__(self, filenames, parent=None):
+    """
+    Dialog for configuring automated metadata extraction from filenames.
+    Supports split, regex, folder structure, and fixed position strategies.
+    """
+
+    def __init__(self, filenames: list[str], parent=None):
         self.filenames = filenames
-        self.parsed_data = {}  # filename -> (subject, session)
+        self.parsed_data: dict[
+            str, tuple[str, str]
+        ] = {}  # filename -> (subject, session)
 
         # UI Elements
-        self.mode_group = None
-        self.radio_split = None
-        self.radio_regex = None
-        self.radio_folder = None
-        self.radio_fixed = None
-        self.settings_stack = None
-        self.table = None
-        self.apply_btn = None
-        self.cancel_btn = None
+        # UI Elements
+        self.mode_group: QButtonGroup | None = None
+        self.radio_split: QRadioButton | None = None
+        self.radio_regex: QRadioButton | None = None
+        self.radio_folder: QRadioButton | None = None
+        self.radio_fixed: QRadioButton | None = None
+        self.settings_stack: QStackedWidget | None = None
+        self.table: QTableWidget | None = None
+        self.apply_btn: QPushButton | None = None
+        self.cancel_btn: QPushButton | None = None
 
         # Settings Widgets
-        self.split_sep_combo = None
-        self.split_sub_idx = None
-        self.split_sess_idx = None
-        self.regex_preset_combo = None
-        self.regex_input = None
-        self.regex_sub_idx = None
-        self.regex_sess_idx = None
-        self.fixed_sub_start = None
-        self.fixed_sub_len = None
-        self.fixed_sess_start = None
-        self.fixed_sess_len = None
+        self.split_sep_combo: QComboBox | None = None
+        self.split_sub_idx: QSpinBox | None = None
+        self.split_sess_idx: QSpinBox | None = None
+        self.regex_preset_combo: QComboBox | None = None
+        self.regex_input: QLineEdit | None = None
+        self.regex_sub_idx: QSpinBox | None = None
+        self.regex_sess_idx: QSpinBox | None = None
+        self.fixed_sub_start: QSpinBox | None = None
+        self.fixed_sub_len: QSpinBox | None = None
+        self.fixed_sess_start: QSpinBox | None = None
+        self.fixed_sess_len: QSpinBox | None = None
 
         super().__init__(parent, title="Smart Metadata Parser")
         self.resize(1000, 700)

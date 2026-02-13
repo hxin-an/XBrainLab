@@ -25,8 +25,8 @@ class LocalBackend(BaseBackend):
         if self.is_loaded:
             return
 
-        import torch  # noqa: PLC0415
-        from transformers import (  # noqa: PLC0415
+        import torch
+        from transformers import (
             AutoModelForCausalLM,
             AutoTokenizer,
         )
@@ -61,7 +61,7 @@ class LocalBackend(BaseBackend):
 
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
-            raise e
+            raise
 
     def _process_messages_for_template(self, messages: list) -> list:
         """Process messages for models with strict chat template requirements.
@@ -127,7 +127,7 @@ class LocalBackend(BaseBackend):
         if self.tokenizer is None or self.model is None:
             raise RuntimeError("Model/Tokenizer not loaded")
 
-        from transformers import TextIteratorStreamer  # noqa: PLC0415
+        from transformers import TextIteratorStreamer
 
         # Handle models that don't support system role (e.g., Gemma)
         processed_messages = self._process_messages_for_template(messages)

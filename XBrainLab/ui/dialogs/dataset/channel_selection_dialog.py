@@ -2,6 +2,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QHBoxLayout,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -13,20 +14,31 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ChannelSelectionDialog(BaseDialog):
-    def __init__(self, parent, data_list):
+    """
+    Dialog for selecting specific channels from an EEG dataset.
+    Provides a list of available channels with Select All/None options.
+    """
+
+    def __init__(self, parent, data_list: list):
         self.data_list = data_list
-        self.selected_channels = []
+        self.selected_channels: list[str] = []
 
         # UI
-        self.list_widget = None
-        self.btn_all = None
-        self.btn_none = None
+        self.list_widget: QListWidget | None = None
+        self.btn_all: QPushButton | None = None
+        self.btn_none: QPushButton | None = None
 
         super().__init__(parent, title="Channel Selection")
         self.resize(300, 400)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
+
+        # Search Filter
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Search channels...")
+        self.search_bar.textChanged.connect(self.filter_channels)
+        layout.addWidget(self.search_bar)
 
         # Channel List
         self.list_widget = QListWidget()
@@ -42,7 +54,19 @@ class ChannelSelectionDialog(BaseDialog):
                 self.list_widget.addItem(item)
 
         layout.addWidget(self.list_widget)
+        self.create_buttons(layout)
 
+    def filter_channels(self, text: str):
+        """Filter the list widget items based on search text."""
+        if not self.list_widget:
+            return
+
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item:
+                item.setHidden(text.lower() not in item.text().lower())
+
+    def create_buttons(self, layout: QVBoxLayout):
         # Select All / None
         btn_layout = QHBoxLayout()
         self.btn_all = QPushButton("Select All")

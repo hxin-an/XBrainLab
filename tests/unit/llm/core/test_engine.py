@@ -22,27 +22,38 @@ def mock_config():
 
 
 # --- Test LLMEngine Factory ---
+# NOTE: LLMEngine now uses lazy loading. Backend is not created until load_model() or switch_backend() is called.
 
 
 def test_engine_init_local(mock_config):
+    """Test that engine can be initialized with local mode and load_model creates backend."""
     mock_config.inference_mode = "local"
     with patch("XBrainLab.llm.core.backends.local.LocalBackend") as MockBackend:
         engine = LLMEngine(mock_config)
-        assert isinstance(engine.backend, MagicMock)  # It's a mock instance
+        # Lazy loading - backend not created yet
+        assert engine.active_backend is None
+
+        # Call load_model to trigger backend creation
+        engine.load_model()
+        assert engine.active_backend is not None
         MockBackend.assert_called_once_with(mock_config)
 
 
 def test_engine_init_api(mock_config):
+    """Test that engine can load API backend."""
     mock_config.inference_mode = "api"
     with patch("XBrainLab.llm.core.backends.api.APIBackend") as MockBackend:
         engine = LLMEngine(mock_config)
+        engine.load_model()
         MockBackend.assert_called_with(mock_config)
 
 
 def test_engine_init_gemini(mock_config):
+    """Test that engine can load Gemini backend."""
     mock_config.inference_mode = "gemini"
     with patch("XBrainLab.llm.core.backends.gemini.GeminiBackend") as MockBackend:
         engine = LLMEngine(mock_config)
+        engine.load_model()
         MockBackend.assert_called_with(mock_config)
 
 

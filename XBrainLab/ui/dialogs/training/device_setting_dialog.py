@@ -12,6 +12,11 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class DeviceSettingDialog(BaseDialog):
+    """
+    Dialog for selecting the computation device (CPU or specific GPU).
+    Lists available CUDA devices if present.
+    """
+
     def __init__(self, parent):
         self.use_cpu = None
         self.gpu_idx = None

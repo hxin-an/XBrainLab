@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from ..utils import validate_type
+from ..utils.logger import logger
 from .data_splitter import DataSplittingConfig
 from .dataset import Dataset, Epochs
 from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
@@ -242,9 +243,8 @@ class DatasetGenerator:
                 idx += 1
         if idx > 0:
             if not mask.any():
-                print(
-                    "WARNING: Validation set is empty! Please check your "
-                    "splitting configuration."
+                logger.warning(
+                    "Validation set is empty! Please check your splitting configuration"
                 )
             dataset.set_val(mask)
 
@@ -308,15 +308,8 @@ class DatasetGenerator:
     def prepare_result(self) -> list:
         """Generate the datasets and remove unselcted datasets."""
         self.generate()
-        while True:
-            done = True
-            for i in range(len(self.datasets)):
-                if not self.datasets[i].is_selected:
-                    del self.datasets[i]
-                    done = False
-                    break
-            if done:
-                break
+        # Filter out unselected datasets efficiently
+        self.datasets = [d for d in self.datasets if d.is_selected]
 
         # check if dataset is empty
         if len(self.datasets) == 0:

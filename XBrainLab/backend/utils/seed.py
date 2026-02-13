@@ -7,8 +7,13 @@ import torch
 from numpy.random import MT19937, RandomState, SeedSequence
 
 
-def set_seed(seed: int | None = None) -> int:
-    """Set seed for reproducibility and return the seed value."""
+def set_seed(seed: int | None = None, deterministic: bool = False) -> int:
+    """Set seed for reproducibility and return the seed value.
+
+    Args:
+        seed: Random seed. If None, generated automatically.
+        deterministic: If True, forces deterministic algorithms (slower).
+    """
     if seed is None:
         seed = torch.seed()
 
@@ -16,10 +21,15 @@ def set_seed(seed: int | None = None) -> int:
     random.seed(seed)
     # torch
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        if deterministic:
+            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.deterministic = True
+        else:
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.deterministic = False
     # numpy
     rs = RandomState(MT19937(SeedSequence(seed)))
     np.random.set_state(rs.get_state())

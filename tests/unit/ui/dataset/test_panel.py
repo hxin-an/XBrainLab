@@ -85,7 +85,7 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
         with patch(
             "XBrainLab.ui.panels.dataset.actions.QMessageBox.information"
         ) as mock_info:
-            panel.actions.import_data()
+            panel.action_handler.import_data()
             mock_controller.import_files.assert_called_once_with(["/path/to/file.set"])
             # No success message provided for clean import
             mock_info.assert_not_called()
@@ -200,7 +200,7 @@ def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
         mock_controller.apply_smart_parse.return_value = 1
 
         with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox.information"):
-            panel.actions.open_smart_parser()
+            panel.action_handler.open_smart_parser()
             mock_controller.apply_smart_parse.assert_called_with(
                 {"/path/file.set": ("sub", "ses")}
             )

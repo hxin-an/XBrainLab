@@ -201,7 +201,7 @@ class BaseEpochDataTool(BaseTool):
             "properties": {
                 "t_min": {"type": "number"},
                 "t_max": {"type": "number"},
-                "event_id": {"type": "object"},
+                "event_id": {"type": "array", "items": {"type": "string"}},
                 "baseline": {"type": "array", "items": {"type": "number"}},
             },
             "required": ["t_min", "t_max"],

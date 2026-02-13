@@ -1,4 +1,6 @@
+import json
 import logging
+import re
 import threading
 from collections import deque
 from typing import Any
@@ -7,9 +9,12 @@ from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
+from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
+# from .prompt_manager import PromptManager # Deprecated
+from .assembler import ContextAssembler
 from .parser import CommandParser
-from .prompt_manager import PromptManager
+from .verifier import VerificationLayer
 from .worker import AgentWorker
 
 logger = logging.getLogger(__name__)
@@ -26,6 +31,7 @@ class LLMController(QObject):
     response_ready = pyqtSignal(str, str)  # sender, text
     chunk_received = pyqtSignal(str)  # New signal for streaming
     generation_started = pyqtSignal()  # New signal for UI prep
+    processing_finished = pyqtSignal()  # ROBUST: New signal for UI to stop spinner
     status_update = pyqtSignal(str)  # status message
     error_occurred = pyqtSignal(str)  # error message
     request_user_interaction = pyqtSignal(str, dict)  # command, params
@@ -34,13 +40,23 @@ class LLMController(QObject):
     # Internal signals to Worker
     sig_initialize = pyqtSignal()  # Simple signal, no args
     sig_generate = pyqtSignal(list)
+    sig_reinit = pyqtSignal(str)  # M3.4: Re-init signal
+
+    MAX_HISTORY = 20
 
     def __init__(self, study):
         super().__init__()
         self.study = study
 
-        # Initialize PromptManager
-        self.prompt_manager = PromptManager(AVAILABLE_TOOLS)
+        # Initialize Tool Registry & Assembler
+        self.registry = ToolRegistry()
+        for tool in AVAILABLE_TOOLS:
+            self.registry.register(tool)
+
+        self.assembler = ContextAssembler(self.registry, self.study)
+        self.verifier = VerificationLayer()  # Default confidence threshold
+
+        # self.prompt_manager = PromptManager(AVAILABLE_TOOLS) # Deprecated
 
         # Initialize RAG Retriever
         self.rag_retriever = RAGRetriever()
@@ -61,6 +77,7 @@ class LLMController(QObject):
         # Connect control signals
         self.sig_initialize.connect(self.worker.initialize_agent)
         self.sig_generate.connect(self.worker.generate_from_messages)
+        self.sig_reinit.connect(self.worker.reinitialize_agent)  # M3.4
 
         # Start thread
         self.worker_thread.start()
@@ -90,18 +107,18 @@ class LLMController(QObject):
         """Append to history and prune if necessary."""
         self.history.append({"role": role, "content": content})
 
-        # Sliding Window: Keep last N turns
-        # N=20 means 10 user-sys pairs roughly
-        max_history = 20
-        if len(self.history) > max_history:
-            # Keep index 0 (system prompt implied? No, prompt_manager handles system)
-            # If we just slice, we might lose context.
-            # Ideally we keep a summary. For now, simple sliding window.
-            self.history = self.history[-max_history:]
+        # Sliding Window: Keep last N turns (N=20 ≈ 10 user-assistant pairs)
+        if len(self.history) > self.MAX_HISTORY:
+            self.history = self.history[-self.MAX_HISTORY :]
 
     def handle_user_input(self, text: str):
         """Entry point for user input from UI."""
         if not text.strip():
+            return
+
+        # RACE CONDITION FIX: Prevent re-entry if already generating or loading
+        if self.is_processing:
+            logger.warning("User input ignored - Agent is busy.")
             return
 
         self.is_processing = True
@@ -116,9 +133,9 @@ class LLMController(QObject):
 
         # 2. Retrieve RAG Context (Examples)
         features = self.rag_retriever.get_similar_examples(text)
-        self.prompt_manager.clear_context()
+        self.assembler.clear_context()
         if features:
-            self.prompt_manager.add_context(features)
+            self.assembler.add_context(features)
             # Log for debugging (optional), visible in tool output usually
             # self.status_update.emit("Context retrieved for query.")
 
@@ -127,8 +144,8 @@ class LLMController(QObject):
 
     def _generate_response(self):
         """Triggers the LLM generation based on current history."""
-        # Use PromptManager to construct messages
-        messages = self.prompt_manager.get_messages(self.history)
+        # Use Assembler to construct messages (Dynamic Prompting)
+        messages = self.assembler.get_messages(self.history)
         self.current_response = ""  # Reset accumulator
         self._emitted_len = 0  # Track what we sent to UI
         self._is_buffering = False
@@ -209,26 +226,29 @@ class LLMController(QObject):
         if command_result:
             return False
 
-        # Simple heuristic: contains braces or code blocks but parser failed
-        if "```" in response_text or ("{" in response_text and "}" in response_text):
-            if self._retry_count < self._max_retries:
-                logger.warning("Broken JSON detected. Retrying...")
-                # Hide the broken JSON from UI
-                self.remove_content.emit(response_text)
+        # Fragile check refactoring:
+        # Check if it looks like JSON/Code but failed parsing
+        has_code_block = "```json" in response_text or "```python" in response_text
+        has_braces = response_text.strip().startswith("{") and "}" in response_text
 
-                self._retry_count += 1
-                self._append_history("assistant", response_text)
+        if (has_code_block or has_braces) and self._retry_count < self._max_retries:
+            logger.warning("Broken JSON/Code detected. Retrying...")
+            # Hide the broken JSON from UI
+            self.remove_content.emit(response_text)
 
-                err_msg = (
-                    "System: Your last output contained broken JSON. "
-                    "Please check your syntax and output VALID JSON only."
-                )
-                self._append_history("user", err_msg)
-                self.status_update.emit("Invalid JSON, retrying...")
-                self._generate_response()
-                return True
-            else:
-                logger.error("Max retries reached for JSON error.")
+            self._retry_count += 1
+            self._append_history("assistant", response_text)
+
+            err_msg = (
+                "System: Your last output contained broken JSON or Code. "
+                "Please ensure you output VALID JSON inside ```json``` blocks only."
+            )
+            self._append_history("user", err_msg)
+            self.status_update.emit("Invalid JSON, retrying...")
+            self._generate_response()
+            return True
+        elif self._retry_count >= self._max_retries:
+            logger.error("Max retries reached for JSON error.")
 
         return False
 
@@ -248,12 +268,37 @@ class LLMController(QObject):
 
         for cmd, params in commands:
             # --- Loop Detection ---
-            call_signature = (cmd, str(params))
+
+            # Use sort_keys=True for stable string representation of params
+            try:
+                params_str = json.dumps(params, sort_keys=True)
+            except Exception:
+                # Fallback for non-serializable objects (rare for parsed tool output)
+                params_str = str(params)
+            call_signature = (cmd, params_str)
             self._recent_tool_calls.append(call_signature)
 
             if self._detect_loop(call_signature):
                 self._handle_loop_detected(cmd)
                 return
+
+            # --- Verification Layer (New in Future Architecture) ---
+            # TODO: Get confidence from LLM output if available (e.g. from logprobs)
+            # available (e.g. from logprobs)
+            validation = self.verifier.verify_tool_call((cmd, params), confidence=None)
+
+            if not validation.is_valid:
+                logger.warning(f"Tool rejected by Verifier: {validation.error_message}")
+                self.status_update.emit(f"Blocked: {validation.error_message}")
+                self._append_history(
+                    "user", f"System: Tool call REJECTED: {validation.error_message}"
+                )
+                has_failure = True  # Treat as failure to trigger retry loop
+                # Do not execute. Continue to next command or break?
+                # Usually break to let LLM fix.
+                # But let's verify if there are other commands.
+                # Safest is to treat as failure logic.
+                continue
 
             self.status_update.emit(f"Executing: {cmd}...")
 
@@ -318,6 +363,7 @@ class LLMController(QObject):
         self._append_history("assistant", response_text)
         self.status_update.emit("Ready")
         self.is_processing = False
+        self.processing_finished.emit()
 
     def _execute_tool_no_loop(self, command_name, params):
         """
@@ -352,22 +398,41 @@ class LLMController(QObject):
     def _handle_tool_result_logic(self, result: str, success: bool = True):
         """Processes tool result for UI side effects (Switch Panel, etc)."""
         if result.startswith("Request:"):
-            # Format: "Request: CommandName params"
+            # Format: "Request: CMD params... (View: view_mode)"
+            # Example: "Request: Switch UI to 'visualization' (View: 3d_plot)"
+
             cmd_part = result.replace("Request:", "").strip()
 
             if cmd_part.lower().startswith("switch ui to"):
-                target = cmd_part.replace("Switch UI to", "").strip()
-                if target.startswith(("'", '"')):
-                    target = (
-                        target.split("'")[1] if "'" in target else target.split('"')[1]
-                    )
-                self.request_user_interaction.emit("switch_panel", {"panel": target})
-                # We don't append history here, caller does.
-                return True
+                # Use regex to robustly capture panel name and optional view mode
+                # Matches: Switch UI to 'panel' OR Switch UI to 'panel' (View: view)
+                # Matches: Switch UI to 'panel' OR Switch UI to 'panel' (View: view)
+                pattern = r"Switch UI to ['\"](\w+)['\"](?:\s+\(View:\s+(\w+)\))?"
+                match = re.match(pattern, cmd_part, re.IGNORECASE)
 
-            self.status_update.emit("Waiting for user interaction...")
-            self.request_user_interaction.emit("confirm_montage", {"context": cmd_part})
-            return True
+                if match:
+                    panel = match.group(1)
+                    view_mode = match.group(2)  # None if not present
+
+                    self.request_user_interaction.emit(
+                        "switch_panel", {"panel": panel, "view_mode": view_mode}
+                    )
+                    return True
+
+            # Handle confirm_montage requests
+            if "confirm_montage" in cmd_part.lower():
+                # Extract montage name: "confirm_montage 'standard_1020'"
+                # Extract montage name: "confirm_montage 'standard_1020'"
+                pattern = r"confirm_montage\s+['\"](\w+)['\"]"
+                montage_match = re.search(pattern, cmd_part, re.IGNORECASE)
+                montage_name = montage_match.group(1) if montage_match else None
+
+                self.status_update.emit("Waiting for user to confirm montage...")
+                self.request_user_interaction.emit(
+                    "confirm_montage",
+                    {"montage_name": montage_name, "context": cmd_part},
+                )
+                return True
 
         if not result.startswith("Request:"):
             # Only report as System Error if the tool actually failed
@@ -385,6 +450,7 @@ class LLMController(QObject):
         self.error_occurred.emit(error_msg)
         self.status_update.emit("Error")
         self.is_processing = False
+        self.processing_finished.emit()
 
     def close(self):
         """Cleanup thread."""
@@ -404,14 +470,49 @@ class LLMController(QObject):
     def set_model(self, model_display_name: str):
         """Updates the model configuration."""
         # Map Display Name to Model ID
-        # "Gemini 2.0 Flash", "Gemini 1.5 Pro", "Local (Qwen)"
-        model_map = {
-            "Gemini 2.0 Flash": "gemini-2.0-flash-exp",  # or similar
-            "Gemini 1.5 Pro": "gemini-1.5-pro",
-            "Local (Qwen)": "local-qwen",  # hypothetical
-        }
+        # "Gemini", "Local"
+        # We pass these directly to worker.reinitialize_agent which now handles logic
+        _mode_id = model_display_name
 
-        _mode_id = model_map.get(model_display_name, "gemini-1.5-pro")
-        self.status_update.emit(f"Model switched to {model_display_name}")
-        # TODO: Implement actual engine switch in Worker
-        # self.sig_reinit.emit(_mode_id)
+        self.status_update.emit(f"Switching mode to: {model_display_name}")
+        self.sig_reinit.emit(_mode_id)
+
+    def reset_conversation(self):
+        """M0.3: Reset conversation history and state."""
+        self.history.clear()
+        self.current_response = ""
+        self._retry_count = 0
+        self._tool_failure_count = 0
+        self._recent_tool_calls.clear()
+
+        # Clear Assembler context as well
+        self.assembler.clear_context()
+
+        self.status_update.emit("Conversation reset.")
+
+    def execute_debug_tool(self, tool_name: str, params: dict):
+        """M3.1: Execute a tool directly from Debug Mode (bypassing LLM generation)."""
+
+        logger.info(f"Debug Execution: {tool_name} with {params}")
+
+        self.is_processing = True
+        self.status_update.emit(f"Debug: Executing {tool_name}...")
+
+        # Show Tool Call in chat (so user can see what was requested)
+        params_str = json.dumps(params, indent=2, ensure_ascii=False)
+        call_msg = f"Tool Call: {tool_name}\nParams: {params_str}"
+        self._append_history("user", f"[DEBUG] {call_msg}")
+        self.response_ready.emit("Debug", call_msg)
+
+        success, result = self._execute_tool_no_loop(tool_name, params)
+
+        # Handle Side Effects (UI Switching etc)
+        self._handle_tool_result_logic(result, success)
+
+        # Show Output
+        msg = f"Tool Output: {result}"
+        self._append_history("assistant", msg)
+        self.response_ready.emit("System", msg)
+
+        self.status_update.emit("Ready")
+        self.is_processing = False

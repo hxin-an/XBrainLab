@@ -12,6 +12,11 @@ from .base_saliency_view import BaseSaliencyView
 
 
 class SaliencyTopographicMapWidget(BaseSaliencyView):
+    """
+    Widget for visualizing Topographic Saliency Maps.
+    Requires channel locations (montage) to be set.
+    """
+
     def init_ui(self):
         super().init_ui()
         # Add initial text to the default canvas

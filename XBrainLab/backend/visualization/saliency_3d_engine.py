@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pyvista as pv
 import requests
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from scipy.spatial import ConvexHull  # noqa: F401
 
 from XBrainLab.backend.utils.logger import logger
@@ -31,18 +32,49 @@ def channel_convex_hull(ch_pos):
     # It likely returned a PyVista mesh.
 
     cloud = pv.PolyData(ch_pos)
-    # Delaunay 3D to get volume, then extract surface
-    surf = cloud.delaunay_3d().extract_surface()
+    # Delaunay 2D is better for surface reconstruction of EEG cap (manifold)
+    # Delaunay 3D tries to make a volume, which fails for scalp points.
+    surf = cloud.delaunay_2d()
     return surf
 
 
-class Saliency3DEngine:
+class ModelDownloadThread(QThread):
+    download_finished = pyqtSignal(str)  # formatted path or error
+
+    def __init__(self, url, dest_path):
+        super().__init__()
+        self.url = url
+        self.dest_path = dest_path
+
+    def run(self):
+        try:
+            logger.info(f"Downloading {os.path.basename(self.dest_path)}...")
+            with requests.get(self.url, stream=True, timeout=60) as r:
+                r.raise_for_status()
+                with open(self.dest_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            logger.info(f"Downloaded {self.dest_path}")
+            self.download_finished.emit(self.dest_path)
+        except Exception as e:
+            logger.error(f"Download failed: {e}")
+            self.download_finished.emit(f"Error: {e}")
+
+
+# Robustness: Keep separate references to prevent premature QThread destruction
+SALIENCY_DOWNLOAD_THREADS = set()
+
+
+class Saliency3DEngine(QObject):
     """
     Backend engine for Saliency 3D visualization.
     Handles mesh loading, data processing, and PyVista actor management.
     """
 
+    model_loaded = pyqtSignal()
+
     def __init__(self, mesh_scale_scalar=0.8):
+        super().__init__()
         self.mesh_scale_scalar = mesh_scale_scalar
         self.head_mesh = None
         self.brain_mesh = None
@@ -51,12 +83,12 @@ class Saliency3DEngine:
         self.pos_on_3d = None
         self.saliency = None
 
-        # Load models on init or on demand?
+        self.download_threads = []
+
+        # Load models asynchronously
         self._load_models()
 
     def _load_models(self):
-        # Use project directory: XBrainLab/backend/visualization/3Dmodel
-        # We assume this file is in backend/visualization/
         current_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(current_dir, "3Dmodel")
 
@@ -66,38 +98,73 @@ class Saliency3DEngine:
         fn_ply = ["brain.ply", "head.ply"]
         gitrepo_loc = "https://raw.githubusercontent.com/CECNL/XBrainLab/main/XBrainLab/backend/visualization/3Dmodel/"
 
+        missing_files = []
         for fn in fn_ply:
             file_path = os.path.join(model_dir, fn)
-            # Check if file exists and is valid (size > 1KB)
             if not os.path.exists(file_path) or os.path.getsize(file_path) < 1024:
-                try:
-                    logger.info(f"Downloading {fn}...")
-                    req = requests.get(gitrepo_loc + fn, timeout=30)
-                    if req.status_code == 200:
-                        with open(file_path, "wb") as handle:
-                            handle.write(req.content)
-                    else:
-                        logger.error(f"Failed to download {fn}: HTTP {req.status_code}")
-                except Exception as e:
-                    logger.error(f"Failed to download {fn}: {e}", exc_info=True)
+                missing_files.append((fn, file_path))
 
+        if missing_files:
+            missing_list = [f[0] for f in missing_files]
+            msg = f"Missing 3D models: {missing_list}. Starting background download..."
+            logger.info(msg)
+            for fn, path in missing_files:
+                thread = ModelDownloadThread(gitrepo_loc + fn, path)
+                thread.download_finished.connect(self._on_download_complete)
+
+                # Robustness: Prevent QThread: Destroyed by keeping global ref
+                SALIENCY_DOWNLOAD_THREADS.add(thread)
+                # Use QThread's native finished signal (0 args) for cleanup
+                # Use QThread's native finished signal (0 args) for cleanup
+                # Fix B023: bind thread=thread
+                thread.finished.connect(
+                    lambda t=thread: SALIENCY_DOWNLOAD_THREADS.discard(t)
+                )
+
+                self.download_threads.append(thread)
+                thread.start()
+        else:
+            self._init_meshes(model_dir)
+
+    def _on_download_complete(self, result):
+        if "Error" in result:
+            logger.error(result)
+            return
+
+        # Check if all downloads finished?
+        # For simplicity, try to load whenever one finishes, or wait for all.
+        # Minimalist approach: Try loading models again.
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        model_dir = os.path.join(current_dir, "3Dmodel")
+
+        # Check if bot exist now
         head_path = os.path.join(model_dir, "head.ply")
         brain_path = os.path.join(model_dir, "brain.ply")
 
-        if os.path.exists(head_path):
-            self.head_mesh = pv.read(head_path)
-            # Use robust bounds check or try-except if bounds access fails
-            if self.head_mesh is None or not hasattr(self.head_mesh, "bounds"):
-                raise ValueError(
-                    f"Invalid head model at {head_path}: Missing bounds attribute."
-                )
-        else:
-            raise FileNotFoundError(f"Head model not found at {head_path}")
+        # Ensure sizes valid (SIM102 combined if)
+        if (
+            os.path.exists(head_path)
+            and os.path.exists(brain_path)
+            and os.path.getsize(head_path) > 1024
+            and os.path.getsize(brain_path) > 1024
+        ):
+            self._init_meshes(model_dir)
 
-        if os.path.exists(brain_path):
+    def _init_meshes(self, model_dir):
+        head_path = os.path.join(model_dir, "head.ply")
+        brain_path = os.path.join(model_dir, "brain.ply")
+
+        try:
+            self.head_mesh = pv.read(head_path)
+            if self.head_mesh is None or not hasattr(self.head_mesh, "bounds"):
+                logger.error("Invalid head model.")
+                return
+
             self.brain_mesh = pv.read(brain_path)
-        else:
-            raise FileNotFoundError(f"Brain model not found at {brain_path}")
+            logger.info("3D Models loaded successfully.")
+            self.model_loaded.emit()
+        except Exception as e:
+            logger.error(f"Failed to load meshes: {e}")
 
     def process_data(self, eval_record, epoch_data, selected_event_name):
         """Process epoch data and eval record to prepare for visualization."""

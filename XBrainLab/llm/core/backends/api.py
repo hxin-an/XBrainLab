@@ -46,20 +46,16 @@ class APIBackend(BaseBackend):
         if not self.client:
             self.load()
 
-        try:
-            stream = self.client.chat.completions.create(  # type: ignore[attr-defined]
-                model=self.config.api_model_name,
-                messages=messages,
-                stream=True,
-                temperature=self.config.temperature,
-                top_p=self.config.top_p,
-                max_tokens=self.config.max_new_tokens,
-            )
+        stream = self.client.chat.completions.create(  # type: ignore[attr-defined]
+            model=self.config.api_model_name,
+            messages=messages,
+            stream=True,
+            temperature=self.config.temperature,
+            top_p=self.config.top_p,
+            max_tokens=self.config.max_new_tokens,
+        )
 
-            for chunk in stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    yield content
-        except Exception as e:
-            logger.error(f"API Generation Error: {e}")
-            yield f"[Error: {e}]"
+        for chunk in stream:
+            content = chunk.choices[0].delta.content
+            if content:
+                yield content

@@ -195,3 +195,80 @@ def test_apply_channel_selection(controller, mock_study):
 
         assert result is True
         instance.data_preprocess.assert_called_with(["C3", "C4"])
+
+
+def test_reset_preprocess(controller, mock_study):
+    # Setup observer mock
+    mock_callback = MagicMock()
+    controller.subscribe("data_changed", mock_callback)
+    controller.subscribe("dataset_locked", mock_callback)
+
+    controller.reset_preprocess()
+
+    mock_study.reset_preprocess.assert_called_with(force_update=True)
+    # Verify events
+    # Check if mock_callback was called for both events
+    assert mock_callback.call_count >= 2
+
+
+def test_get_event_info(controller, mock_study):
+    # Create mock data with MNE object
+    d1 = MagicMock()
+    mne1 = MagicMock()
+    # Annotations needs to be an object with .description attribute
+    # In MNE, raw.annotations is an object that behaves like a list but has properties
+    mock_ann1 = MagicMock()
+    mock_ann1.__len__.return_value = 3
+    mock_ann1.description = ["A", "B", "A"]
+    mne1.annotations = mock_ann1
+    d1.get_mne.return_value = mne1
+
+    d2 = MagicMock()
+    mne2 = MagicMock()
+    mock_ann2 = MagicMock()
+    mock_ann2.__len__.return_value = 1
+    mock_ann2.description = ["C"]
+    mne2.annotations = mock_ann2
+    d2.get_mne.return_value = mne2
+
+    mock_study.loaded_data_list = [d1, d2]
+
+    info = controller.get_event_info()
+
+    assert info["total"] == 4  # 3 + 1
+    assert info["unique_count"] == 3  # A, B, C
+    assert "A" in info["unique_labels"]
+    assert "B" in info["unique_labels"]
+    assert "C" in info["unique_labels"]
+
+
+def test_run_import_labels(controller, mock_study):
+    controller.label_service = MagicMock()
+    controller.label_service.apply_labels_batch.return_value = 5  # 5 files updated
+
+    # Mock observer
+    mock_callback = MagicMock()
+    controller.subscribe("data_changed", mock_callback)
+
+    count = controller.run_import_labels(["files"], "map", "file_map", "mapping")
+
+    assert count == 5
+    controller.label_service.apply_labels_batch.assert_called()
+    mock_callback.assert_called_once()  # data_changed
+
+    # Test count 0 (no event)
+    controller.label_service.apply_labels_batch.return_value = 0
+    mock_callback.reset_mock()
+    count = controller.run_import_labels(["files"], "map", "file_map", "mapping")
+    assert count == 0
+    mock_callback.assert_not_called()
+
+
+def test_get_filename(controller, mock_study):
+    d1 = MagicMock()
+    d1.get_filepath.return_value = "f1.edf"
+    d2 = MagicMock()
+    d2.get_filepath.return_value = "f2.edf"
+    mock_study.loaded_data_list = [d1, d2]
+
+    assert controller.get_filenames() == ["f1.edf", "f2.edf"]

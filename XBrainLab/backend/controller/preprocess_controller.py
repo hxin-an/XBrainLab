@@ -68,7 +68,7 @@ class PreprocessController(Observable):
             self.notify("preprocess_changed")
         except Exception as e:
             logger.error(f"Preprocessing failed: {e}")
-            raise e
+            raise
         return True
 
     def apply_filter(self, l_freq, h_freq, notch_freqs=None):
@@ -106,3 +106,19 @@ class PreprocessController(Observable):
         if result:
             self.study.lock_dataset()
         return result
+
+    def apply_montage(
+        self,
+        mapped_channels: list[str],
+        mapped_positions: list[tuple[float, float, float]],
+    ):
+        """
+        Applies montage configuration to the study.
+        Args:
+            mapped_channels: List of channel names.
+            mapped_positions: List of pos tuples (x, y, z).
+        """
+        self.study.set_channels(mapped_channels, mapped_positions)
+        # Notify UI about preprocessing change (montage affects visualization)
+        self.notify("preprocess_changed")
+        return True

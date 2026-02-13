@@ -53,18 +53,14 @@ class GeminiBackend(BaseBackend):
 
         last_user_msg = messages[-1]["content"]
 
-        try:
-            # Create a fresh chat session with history
-            chat = self.client.chats.create(
-                model=self.config.gemini_model_name, history=history
-            )
+        # Create a fresh chat session with history
+        chat = self.client.chats.create(
+            model=str(self.config.gemini_model_name), history=history
+        )
 
-            # Streaming send
-            response_stream = chat.send_message_stream(last_user_msg)
+        # Streaming send
+        response_stream = chat.send_message_stream(last_user_msg)
 
-            for chunk in response_stream:
-                if chunk.text:
-                    yield chunk.text
-        except Exception as e:
-            logger.error(f"Gemini Error: {e}")
-            yield f"[Error: {e}]"
+        for chunk in response_stream:
+            if chunk.text:
+                yield chunk.text

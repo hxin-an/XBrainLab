@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 import time
 import traceback
 from enum import Enum
@@ -9,206 +8,18 @@ from enum import Enum
 import numpy as np
 import torch
 import torch.utils.data as torch_data
-from captum.attr import NoiseTunnel, Saliency
-from sklearn.metrics import roc_auc_score
 
 from XBrainLab.backend.utils.logger import logger
 
+# ... (Previous imports remain, but remove captum/sklearn if unused locally)
+# Actually, maintain clean imports:
 from ..dataset import Dataset
 from ..utils import set_seed, validate_type
 from ..visualization import supported_saliency_methods
+from .evaluator import Evaluator
 from .model_holder import ModelHolder
 from .option import TrainingEvaluation, TrainingOption
-from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
-
-
-def _test_model(
-    model: torch.nn.Module,
-    data_loader: torch_data.DataLoader,
-    criterion: torch.nn.Module,
-) -> dict[str, float]:
-    """Test model on given data loader
-
-    Args:
-        model: Model to be tested
-        dataLoader: Data loader
-        criterion: Loss function
-
-    Returns:
-        Dictionary of test result, including loss, accuracy and auc
-    """
-    model.eval()
-
-    running_loss = 0.0
-    total_count = 0
-    auc = 0.0
-    correct = 0.0
-    y_true, y_pred = None, None
-    with torch.no_grad():
-        for inputs, labels in data_loader:
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            running_loss += loss.item()
-
-            correct += (outputs.argmax(axis=1) == labels).float().sum().item()
-            total_count += len(labels)
-
-            if y_true is None or y_pred is None:
-                y_true = labels.detach().cpu()
-                y_pred = outputs.detach().cpu()
-            else:
-                y_true = torch.cat((y_true, labels.detach().cpu()))
-                y_pred = torch.cat((y_pred, outputs.detach().cpu()))
-
-        try:
-            if y_true is None or y_pred is None:
-                logging.getLogger(__name__).warning("No prediction result in test")
-                return {
-                    RecordKey.ACC: 0,
-                    RecordKey.AUC: 0,
-                    RecordKey.LOSS: running_loss,
-                }
-            if y_pred.size()[-1] <= 2:
-                auc = roc_auc_score(
-                    y_true.clone().detach().cpu().numpy(),
-                    torch.nn.functional.softmax(y_pred, dim=1)
-                    .clone()
-                    .detach()
-                    .cpu()
-                    .numpy()[:, 1],
-                )
-            else:
-                auc = roc_auc_score(
-                    y_true.clone().detach().cpu().numpy(),
-                    torch.nn.functional.softmax(y_pred, dim=1)
-                    .clone()
-                    .detach()
-                    .cpu()
-                    .numpy(),
-                    multi_class="ovr",
-                )
-        except Exception as e:
-            logging.getLogger(__name__).warning(f"Failed to calculate AUC in test: {e}")
-
-    running_loss /= len(data_loader)
-    acc = correct / total_count * 100
-    return {RecordKey.ACC: acc, RecordKey.AUC: auc, RecordKey.LOSS: running_loss}
-
-
-def _eval_model(
-    model: torch.nn.Module, data_loader: torch_data.DataLoader, saliency_params: dict
-) -> EvalRecord:
-    """Evaluate model on given data loader
-
-    Evaluate model and compute saliency map for each class
-
-    Args:
-        model: Model to be evaluated
-        data_loader: Data loader
-    """
-    model.eval()
-
-    output_list = []
-    label_list = []
-
-    gradient_list = []
-    gradient_input_list = []
-    smoothgrad_list = []
-    smoothgrad_sq_list = []
-    vargrad_list = []
-
-    saliency_inst = Saliency(model)
-    noise_tunnel_inst = NoiseTunnel(saliency_inst)
-
-    for inputs, labels in data_loader:
-        outputs = model(inputs)
-
-        output_list.append(outputs.detach().cpu().numpy())
-        label_list.append(labels.detach().cpu().numpy())
-
-        inputs.requires_grad = True
-        batch_gradient = (
-            saliency_inst.attribute(inputs, target=label_list[-1].tolist(), abs=False)
-            .detach()
-            .cpu()
-            .numpy()
-        )
-
-        gradient_list.append(batch_gradient)
-        gradient_input_list.append(
-            np.multiply(inputs.detach().cpu().numpy(), batch_gradient)
-        )
-        smoothgrad_list.append(
-            noise_tunnel_inst.attribute(
-                inputs,
-                target=label_list[-1].tolist(),
-                nt_type="smoothgrad",
-                **saliency_params["SmoothGrad"],
-            )
-            .detach()
-            .cpu()
-            .numpy()
-        )
-        smoothgrad_sq_list.append(
-            noise_tunnel_inst.attribute(
-                inputs,
-                target=label_list[-1].tolist(),
-                nt_type="smoothgrad_sq",
-                **saliency_params["SmoothGrad_Squared"],
-            )
-            .detach()
-            .cpu()
-            .numpy()
-        )
-        vargrad_list.append(
-            noise_tunnel_inst.attribute(
-                inputs,
-                target=label_list[-1].tolist(),
-                nt_type="vargrad",
-                **saliency_params["VarGrad"],
-            )
-            .detach()
-            .cpu()
-            .numpy()
-        )
-
-    label_list = np.concatenate(label_list)
-    output_list = np.concatenate(output_list)
-
-    gradient_list = np.concatenate(gradient_list)
-    gradient_input_list = np.concatenate(gradient_input_list)
-    smoothgrad_list = np.concatenate(smoothgrad_list)
-    smoothgrad_sq_list = np.concatenate(smoothgrad_sq_list)
-    vargrad_list = np.concatenate(vargrad_list)
-
-    gradient_dict = {
-        i: gradient_list[np.where(label_list == i)]
-        for i in range(output_list.shape[-1])
-    }
-    gradient_input_dict = {
-        i: gradient_input_list[np.where(label_list == i)]
-        for i in range(output_list.shape[-1])
-    }
-    smoothgrad_dict = {
-        i: smoothgrad_list[np.where(label_list == i)]
-        for i in range(output_list.shape[-1])
-    }
-    smoothgrad_sq_dict = {
-        i: smoothgrad_sq_list[np.where(label_list == i)]
-        for i in range(output_list.shape[-1])
-    }
-    vargrad_dict = {
-        i: vargrad_list[np.where(label_list == i)] for i in range(output_list.shape[-1])
-    }
-    return EvalRecord(
-        label_list,
-        output_list,
-        gradient_dict,
-        gradient_input_dict,
-        smoothgrad_dict,
-        smoothgrad_sq_dict,
-        vargrad_dict,
-    )
+from .record import RecordKey, TrainRecord, TrainRecordKey
 
 
 class SharedMemoryDataset(torch_data.Dataset):
@@ -495,7 +306,9 @@ class TrainingPlanHolder:
                     target.eval()
 
             if target and target_loader:
-                eval_record = _eval_model(target, target_loader, self.saliency_params)
+                eval_record = Evaluator.evaluate_with_saliency(
+                    target, target_loader, self.saliency_params
+                )
                 train_record.set_eval_record(eval_record)
 
         train_record.export_checkpoint()
@@ -510,18 +323,83 @@ class TrainingPlanHolder:
         criterion: torch.nn.Module,
         train_record: TrainRecord,
     ) -> None:
-        """Train one epoch of the training plan"""
+        """Train one epoch of the training plan.
+
+        Args:
+            model (torch.nn.Module): The model to train.
+            train_loader (torch_data.DataLoader): Data loader for training set.
+            val_loader (torch_data.DataLoader | None): Data loader for validation set.
+            test_loader (torch_data.DataLoader | None): Data loader for test set.
+            optimizer (torch.optim.Optimizer): Optimizer for backpropagation.
+            criterion (torch.nn.Module): Loss function.
+            train_record (TrainRecord): Record to store training statistics.
+        """
         start_time = time.time()
-        running_loss = 0.0
         model.train()
+
+        # 1. Train Batch Loop
+        running_loss, correct, total_count, y_true, y_pred = self._train_batch_loop(
+            model, train_loader, optimizer, criterion
+        )
+        if self.interrupt:
+            return
+
+        # 2. Compute Metrics (AUC) using Evaluator
+        train_auc = Evaluator.compute_auc(y_true, y_pred)
+
+        # 3. Update Records
+        running_loss /= len(train_loader)
+        train_acc = correct / total_count * 100
+
+        self._update_train_records(
+            train_record,
+            running_loss,
+            train_acc,
+            train_auc,
+            optimizer.param_groups[0]["lr"],
+            time.time() - start_time,
+        )
+
+        # 4. Validation & Test
+        if val_loader:
+            test_result = Evaluator.test_model(model, val_loader, criterion)
+            train_record.update_eval(test_result)
+
+        if test_loader:
+            test_result = Evaluator.test_model(model, test_loader, criterion)
+            train_record.update_test(test_result)
+
+        train_record.step()
+
+        if (
+            self.option.checkpoint_epoch
+            and train_record.get_epoch() % self.option.checkpoint_epoch == 0
+        ):
+            train_record.export_checkpoint()
+
+        # CLEAR VRAM to prevent linear memory growth
+        torch.cuda.empty_cache()
+
+    def _train_batch_loop(self, model, train_loader, optimizer, criterion):
+        """Execute the inner training loop for one epoch.
+
+        Args:
+            model: The model to train.
+            train_loader: DataLoader for training data.
+            optimizer: Optimizer instance.
+            criterion: Loss function.
+
+        Returns:
+            tuple: (running_loss, correct_count, total_count, y_true, y_pred)
+        """
+        running_loss = 0.0
         correct = 0.0
         total_count = 0
-        train_auc = 0.0
         y_true, y_pred = None, None
-        # train one mini batch
+
         for inputs, labels in train_loader:
             if self.interrupt:
-                return
+                break
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
@@ -538,77 +416,23 @@ class TrainingPlanHolder:
             total_count += len(labels)
             running_loss += loss.item()
 
-        try:
-            if y_true is None or y_pred is None:
-                logging.getLogger(__name__).warning(
-                    f"Failed to calculate AUC in train (epoch {train_record.epoch})"
-                )
-                train_auc = 0.0
-            elif y_pred.size()[-1] <= 2:
-                train_auc = roc_auc_score(
-                    y_true.clone().detach().cpu().numpy(),
-                    torch.nn.functional.softmax(y_pred, dim=1)
-                    .clone()
-                    .detach()
-                    .cpu()
-                    .numpy()[:, 1],
-                )
-            else:
-                train_auc = roc_auc_score(
-                    y_true.clone().detach().cpu().numpy(),
-                    torch.nn.functional.softmax(y_pred, dim=1)
-                    .clone()
-                    .detach()
-                    .cpu()
-                    .numpy(),
-                    multi_class="ovr",
-                )
-        except Exception as e:
-            # first few epochs in binary classification
-            # might not be able to compute score
-            # might not be able to compute score
+        return running_loss, correct, total_count, y_true, y_pred
 
-            logging.getLogger(__name__).debug(
-                f"Failed to calculate AUC in train (epoch {train_record.epoch}): {e}"
-            )
-
-        running_loss /= len(train_loader)
-        train_acc = correct / total_count * 100
+    def _update_train_records(self, train_record, loss, acc, auc, lr, duration):
+        """Update training statistics."""
         train_record.update_train(
             {
-                RecordKey.LOSS: running_loss,
-                RecordKey.ACC: train_acc,
-                RecordKey.AUC: train_auc,
+                RecordKey.LOSS: loss,
+                RecordKey.ACC: acc,
+                RecordKey.AUC: auc,
             }
         )
-
-        if val_loader:
-            test_result = _test_model(model, val_loader, criterion)
-            train_record.update_eval(test_result)
-
-        training_time = time.time() - start_time
-
-        if test_loader:
-            test_result = _test_model(model, test_loader, criterion)
-            train_record.update_test(test_result)
-
         train_record.update_statistic(
             {
-                TrainRecordKey.LR: optimizer.param_groups[0]["lr"],
-                TrainRecordKey.TIME: training_time,
+                TrainRecordKey.LR: lr,
+                TrainRecordKey.TIME: duration,
             }
         )
-
-        train_record.step()
-
-        if (
-            self.option.checkpoint_epoch
-            and train_record.get_epoch() % self.option.checkpoint_epoch == 0
-        ):
-            train_record.export_checkpoint()
-
-        # CLEAR VRAM to prevent linear memory growth
-        torch.cuda.empty_cache()
 
     def set_interrupt(self) -> None:
         """Set the interrupt flag"""
@@ -647,7 +471,9 @@ class TrainingPlanHolder:
                 train_record, val_loader, test_loader
             )
             if target is not None and target_loader is not None:  # model is trained
-                eval_record = _eval_model(target, target_loader, self.saliency_params)
+                eval_record = Evaluator.evaluate_with_saliency(
+                    target, target_loader, self.saliency_params
+                )
                 self.train_record_list[i].set_eval_record(eval_record)
 
     # status

@@ -20,6 +20,12 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class TrainingManagerWindow(BaseDialog):
+    """
+    Standalone window for managing training process.
+    Displays real-time status table and controls.
+    NOTE: Appears to be legacy/alternative to `TrainingPanel`.
+    """
+
     def __init__(self, parent, trainer):
         self.trainer = trainer
         self.training_plan_holders = trainer.get_training_plan_holders()

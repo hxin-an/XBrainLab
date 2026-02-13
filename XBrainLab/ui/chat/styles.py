@@ -33,9 +33,10 @@ SCROLL_AREA_STYLE = f"""
 
 # Control Panel Styles
 CONTROL_PANEL_STYLE = f"""
-    QWidget {{
+    QWidget#ControlPanel {{
         background-color: #252526;
         border-top: {Theme.BORDER_LIGHT};
+        min-height: 50px;
     }}
 """
 
@@ -67,10 +68,15 @@ DROPDOWN_MENU_STYLE = f"""
 # Input Field Styles
 INPUT_FIELD_STYLE = f"""
     QLineEdit {{
-        background-color: transparent;
+        background-color: {Theme.BACKGROUND_LIGHT};
         color: {Theme.TEXT_PRIMARY};
-        border: none;
+        border: 1px solid #454545;
+        border-radius: 6px;
+        padding: 8px;
         font-size: 15px;
+    }}
+    QLineEdit:focus {{
+        border: 1px solid {Theme.ACCENT_PRIMARY};
     }}
 """
 
@@ -93,7 +99,8 @@ SEND_BUTTON_PROCESSING_STYLE = f"""
         color: white;
         border-radius: 8px;
         border: none;
-        font-size: 14px;
+        font-size: 12px;
+        font-weight: bold;
     }}
     QToolButton:hover {{ background-color: #ff6b6b; }}
 """
@@ -103,13 +110,14 @@ USER_BUBBLE_FRAME_STYLE = f"""
     QFrame#BubbleFrame {{
         background-color: {Theme.CHAT_USER_BUBBLE};
         border-radius: 12px;
+        border-bottom-right-radius: 2px;  /* Small tail effect */
     }}
 """
 
 USER_BUBBLE_TEXT_STYLE = f"""
     QTextBrowser {{
         color: {Theme.TEXT_PRIMARY};
-        font-size: 15px;
+        font-size: 16px;
         background: transparent;
     }}
 """
@@ -123,8 +131,8 @@ AGENT_BUBBLE_FRAME_STYLE = f"""
 
 AGENT_BUBBLE_TEXT_STYLE = f"""
     QTextBrowser {{
-        color: {Theme.TEXT_SECONDARY};
-        font-size: 15px;
+        color: {Theme.TEXT_PRIMARY};
+        font-size: 16px;
         background: transparent;
     }}
 """
