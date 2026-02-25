@@ -42,6 +42,7 @@ class ImportLabelDialog(BaseDialog):
         file_list: QListWidget displaying loaded label files.
         map_table: QTableWidget for code-to-event-name mapping.
         info_label: QLabel showing summary statistics.
+
     """
 
     def __init__(self, parent=None):
@@ -103,7 +104,7 @@ class ImportLabelDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -112,7 +113,10 @@ class ImportLabelDialog(BaseDialog):
     def browse_files(self):
         """Open a file picker and load selected label files."""
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Open Label Files", "", "Label Files (*.txt *.mat *.csv *.tsv)"
+            self,
+            "Open Label Files",
+            "",
+            "Label Files (*.txt *.mat *.csv *.tsv)",
         )
         if not paths:
             return
@@ -158,6 +162,7 @@ class ImportLabelDialog(BaseDialog):
 
         Args:
             path: Absolute path to the label file.
+
         """
         filename = os.path.basename(path)
         labels = load_label_file(path)
@@ -165,8 +170,7 @@ class ImportLabelDialog(BaseDialog):
             self.label_data_map[filename] = labels
 
     def update_unique_labels(self):
-        """
-        Aggregates labels from all loaded files, finds unique codes,
+        """Aggregates labels from all loaded files, finds unique codes,
         and updates the mapping table.
         """
         if not self.info_label or not self.map_table:
@@ -194,7 +198,7 @@ class ImportLabelDialog(BaseDialog):
         self.unique_labels = sorted(np.unique(all_labels))
         self.info_label.setText(
             f"Loaded {len(all_labels)} labels from {len(self.label_data_map)} files. "
-            f"Found {len(self.unique_labels)} unique codes."
+            f"Found {len(self.unique_labels)} unique codes.",
         )
 
         # Preserve existing mapping if possible
@@ -231,6 +235,7 @@ class ImportLabelDialog(BaseDialog):
             Tuple of (label_data_map, mapping_dict) where label_data_map maps
             filenames to label arrays and mapping_dict maps integer codes
             to event name strings. Returns (None, None) if no data loaded.
+
         """
         if not self.label_data_map or not self.map_table:
             return None, None
@@ -252,6 +257,7 @@ class ImportLabelDialog(BaseDialog):
 
         Returns:
             Tuple of (label_data_map, mapping_dict).
+
         """
         return self.get_results()
 

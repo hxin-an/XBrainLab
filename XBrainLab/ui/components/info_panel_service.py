@@ -21,6 +21,7 @@ class InfoPanelService(QObject):
 
     Attributes:
         study: The application ``Study`` instance.
+
     """
 
     def __init__(self, study: "Study"):
@@ -28,6 +29,7 @@ class InfoPanelService(QObject):
 
         Args:
             study: The application ``Study`` instance.
+
         """
         super().__init__()
         self.study = study
@@ -37,18 +39,24 @@ class InfoPanelService(QObject):
     def _setup_bridges(self):
         """Connect observer bridges to dataset and preprocess controllers."""
         self.dataset_bridge = QtObserverBridge(
-            self.study.get_controller("dataset"), "data_changed", self
+            self.study.get_controller("dataset"),
+            "data_changed",
+            self,
         )
         self.dataset_bridge.connect_to(self.notify_all)
 
         self.preprocess_bridge = QtObserverBridge(
-            self.study.get_controller("preprocess"), "preprocess_changed", self
+            self.study.get_controller("preprocess"),
+            "preprocess_changed",
+            self,
         )
         self.preprocess_bridge.connect_to(self.notify_all)
 
         # also listen to import finished
         self.import_bridge = QtObserverBridge(
-            self.study.get_controller("dataset"), "import_finished", self
+            self.study.get_controller("dataset"),
+            "import_finished",
+            self,
         )
         self.import_bridge.connect_to(self.notify_all)
 
@@ -60,6 +68,7 @@ class InfoPanelService(QObject):
 
         Args:
             panel: An ``AggregateInfoPanel`` instance.
+
         """
         self._listeners.add(panel)
         # Robustness: Remove if explicitly destroyed (though WeakSet handles GC)
@@ -72,6 +81,7 @@ class InfoPanelService(QObject):
 
         Args:
             panel: The panel to unregister.
+
         """
         self._listeners.discard(panel)
 
@@ -85,7 +95,7 @@ class InfoPanelService(QObject):
         preprocessed = []
         if self.study.get_controller("preprocess"):
             preprocessed = self.study.get_controller(
-                "preprocess"
+                "preprocess",
             ).get_preprocessed_data_list()
 
         # Notify listeners
@@ -99,10 +109,12 @@ class InfoPanelService(QObject):
             panel: The info panel to update.
             loaded: List of loaded data objects.
             preprocessed: List of preprocessed data objects.
+
         """
         try:
             panel.update_info(
-                loaded_data_list=loaded, preprocessed_data_list=preprocessed
+                loaded_data_list=loaded,
+                preprocessed_data_list=preprocessed,
             )
         except RuntimeError:
             # Handle deleted C++ objects in weak set if any
@@ -116,6 +128,7 @@ class InfoPanelService(QObject):
 
         Args:
             panel: The info panel to update.
+
         """
         loaded = []
         if self.study.get_controller("dataset"):
@@ -124,7 +137,7 @@ class InfoPanelService(QObject):
         preprocessed = []
         if self.study.get_controller("preprocess"):
             preprocessed = self.study.get_controller(
-                "preprocess"
+                "preprocess",
             ).get_preprocessed_data_list()
 
         panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)

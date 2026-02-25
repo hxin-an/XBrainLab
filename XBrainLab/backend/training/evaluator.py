@@ -28,6 +28,7 @@ class Evaluator:
 
         Returns:
             The computed AUC score, or ``0.0`` if computation fails.
+
         """
         try:
             if y_true is None or y_pred is None:
@@ -99,6 +100,7 @@ class Evaluator:
         Returns:
             A dictionary containing accuracy (``RecordKey.ACC``),
             AUC (``RecordKey.AUC``), and loss (``RecordKey.LOSS``).
+
         """
         model.eval()
 
@@ -155,6 +157,7 @@ class Evaluator:
         Returns:
             An :class:`EvalRecord` containing labels, outputs, and per-class
             saliency maps for all attribution methods.
+
         """
         model.eval()
 
@@ -179,7 +182,9 @@ class Evaluator:
             inputs.requires_grad = True
             batch_gradient = (
                 saliency_inst.attribute(
-                    inputs, target=label_list[-1].tolist(), abs=False
+                    inputs,
+                    target=label_list[-1].tolist(),
+                    abs=False,
                 )
                 .detach()
                 .cpu()
@@ -188,7 +193,7 @@ class Evaluator:
 
             gradient_list.append(batch_gradient)
             gradient_input_list.append(
-                np.multiply(inputs.detach().cpu().numpy(), batch_gradient)
+                np.multiply(inputs.detach().cpu().numpy(), batch_gradient),
             )
             smoothgrad_list.append(
                 noise_tunnel_inst.attribute(
@@ -199,7 +204,7 @@ class Evaluator:
                 )
                 .detach()
                 .cpu()
-                .numpy()
+                .numpy(),
             )
             smoothgrad_sq_list.append(
                 noise_tunnel_inst.attribute(
@@ -210,7 +215,7 @@ class Evaluator:
                 )
                 .detach()
                 .cpu()
-                .numpy()
+                .numpy(),
             )
             vargrad_list.append(
                 noise_tunnel_inst.attribute(
@@ -221,7 +226,7 @@ class Evaluator:
                 )
                 .detach()
                 .cpu()
-                .numpy()
+                .numpy(),
             )
 
         label_list = np.concatenate(label_list)

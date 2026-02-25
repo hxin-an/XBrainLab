@@ -44,6 +44,7 @@ class EvaluationPanel(BasePanel):
         metrics_table: ``MetricsTableWidget`` for the metrics table.
         summary_text: ``QTextEdit`` displaying the model summary string.
         info_panel: ``AggregateInfoPanel`` in the sidebar.
+
     """
 
     def __init__(self, controller=None, training_controller=None, parent=None):
@@ -55,6 +56,7 @@ class EvaluationPanel(BasePanel):
             training_controller: Optional ``TrainingController`` for
                 subscribing to training-stopped events.
             parent: Parent widget (typically the main window).
+
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
@@ -79,7 +81,9 @@ class EvaluationPanel(BasePanel):
 
         if training_ctrl:
             self.training_bridge = QtObserverBridge(
-                training_ctrl, "training_stopped", self
+                training_ctrl,
+                "training_stopped",
+                self,
             )
             self.training_bridge.connect_to(self.update_panel)
 
@@ -183,7 +187,9 @@ class EvaluationPanel(BasePanel):
             template_record = next(r for r in plan.get_plans() if r.is_finished())
 
             proxy_record = PooledRecordWrapper(
-                template_record, pooled_labels, pooled_outputs
+                template_record,
+                pooled_labels,
+                pooled_outputs,
             )
 
             show_pct = self.chk_percentage.isChecked()

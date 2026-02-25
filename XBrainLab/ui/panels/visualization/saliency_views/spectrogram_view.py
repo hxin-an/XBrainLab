@@ -9,8 +9,7 @@ from .base_saliency_view import BaseSaliencyView
 
 
 class SaliencySpectrogramWidget(BaseSaliencyView):
-    """
-    Widget for visualizing Saliency Spectrograms.
+    """Widget for visualizing Saliency Spectrograms.
     Useful for time-frequency analysis of importance.
     """
 
@@ -43,7 +42,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
 
             # Visualizer
             visualizer = VisualizerType.SaliencySpectrogramMap.value(
-                eval_record, epoch_data
+                eval_record,
+                epoch_data,
             )
             # Spectrogram ignores 'absolute' param usually
             new_fig = visualizer.get_plt(method=method)

@@ -44,6 +44,7 @@ class LLMController(QObject):
         history: List of message dicts representing conversation history.
         current_response: Accumulated text of the current LLM response.
         is_processing: Flag indicating whether a generation is in progress.
+
     """
 
     # Signals to UI
@@ -71,6 +72,7 @@ class LLMController(QObject):
 
         Args:
             study: The application Study object providing experiment context.
+
         """
         super().__init__()
         self.study = study
@@ -139,6 +141,7 @@ class LLMController(QObject):
         Args:
             role: Message role (``'user'``, ``'assistant'``, or ``'system'``).
             content: The message text.
+
         """
         self.history.append({"role": role, "content": content})
 
@@ -155,6 +158,7 @@ class LLMController(QObject):
 
         Args:
             text: The user's input text.
+
         """
         if not text.strip():
             return
@@ -218,6 +222,7 @@ class LLMController(QObject):
 
         Args:
             chunk: A text fragment received from the LLM generation stream.
+
         """
         self.current_response += chunk
 
@@ -279,7 +284,9 @@ class LLMController(QObject):
             self._finalize_turn(response_text)
 
     def _handle_json_broken_retry(
-        self, response_text: str, command_result: Any
+        self,
+        response_text: str,
+        command_result: Any,
     ) -> bool:
         """Checks for broken JSON output and triggers a retry if needed.
 
@@ -295,6 +302,7 @@ class LLMController(QObject):
         Returns:
             ``True`` if a retry was triggered (caller should return early),
             ``False`` otherwise.
+
         """
         if command_result:
             return False
@@ -320,7 +328,7 @@ class LLMController(QObject):
             self.status_update.emit("Invalid JSON, retrying...")
             self._generate_response()
             return True
-        elif self._retry_count >= self._max_retries:
+        if self._retry_count >= self._max_retries:
             logger.error("Max retries reached for JSON error.")
 
         return False
@@ -335,6 +343,7 @@ class LLMController(QObject):
         Args:
             command_result: Parsed command(s) from ``CommandParser.parse``.
             response_text: The raw LLM response text (used for UI hiding).
+
         """
         commands = (
             command_result if isinstance(command_result, list) else [command_result]
@@ -354,8 +363,9 @@ class LLMController(QObject):
             # Use sort_keys=True for stable string representation of params
             try:
                 params_str = json.dumps(params, sort_keys=True)
-            except Exception:
+            except (TypeError, ValueError):
                 # Fallback for non-serializable objects (rare for parsed tool output)
+                logger.debug("Non-serializable tool params, using str()", exc_info=True)
                 params_str = str(params)
             call_signature = (cmd, params_str)
             self._recent_tool_calls.append(call_signature)
@@ -369,11 +379,13 @@ class LLMController(QObject):
 
             if not validation.is_valid:
                 logger.warning(
-                    "Tool rejected by Verifier: %s", validation.error_message
+                    "Tool rejected by Verifier: %s",
+                    validation.error_message,
                 )
                 self.status_update.emit(f"Blocked: {validation.error_message}")
                 self._append_history(
-                    "user", f"System: Tool call REJECTED: {validation.error_message}"
+                    "user",
+                    f"System: Tool call REJECTED: {validation.error_message}",
                 )
                 has_failure = True  # Treat as failure to trigger retry loop
                 # Do not execute. Continue to next command or break?
@@ -409,9 +421,9 @@ class LLMController(QObject):
                 self._finalize_turn_after_tool()
             else:
                 logger.info(
-                    f"Tool failure detected "
-                    f"(Attempt {self._tool_failure_count}/{self._max_tool_failures}), "
-                    "retrying..."
+                    "Tool failure detected (Attempt %d/%d), retrying...",
+                    self._tool_failure_count,
+                    self._max_tool_failures,
                 )
                 self._generate_response()
         else:
@@ -436,6 +448,7 @@ class LLMController(QObject):
 
         Args:
             cmd: The tool name that was called repeatedly.
+
         """
         self._loop_break_count += 1
         if self._loop_break_count >= self._max_loop_breaks:
@@ -465,6 +478,7 @@ class LLMController(QObject):
 
         Args:
             response_text: The assistant's final response text.
+
         """
         self._append_history("assistant", response_text)
         self.status_update.emit("Ready")
@@ -481,6 +495,7 @@ class LLMController(QObject):
         Returns:
             A ``(success, result_str)`` tuple where *success* is a bool
             and *result_str* is the tool's output or an error message.
+
         """
         tool = get_tool_by_name(command_name)
         if tool:
@@ -506,6 +521,7 @@ class LLMController(QObject):
         Returns:
             ``True`` if the signature appears 3 or more times in the
             recent call history.
+
         """
         count = 0
         for call in self._recent_tool_calls:
@@ -527,6 +543,7 @@ class LLMController(QObject):
         Returns:
             ``True`` if the result triggered a UI interaction signal,
             ``False`` otherwise.
+
         """
         if result.startswith("Request:"):
             # Format: "Request: CMD params... (View: view_mode)"
@@ -546,7 +563,8 @@ class LLMController(QObject):
                     view_mode = match.group(2)  # None if not present
 
                     self.request_user_interaction.emit(
-                        "switch_panel", {"panel": panel, "view_mode": view_mode}
+                        "switch_panel",
+                        {"panel": panel, "view_mode": view_mode},
                     )
                     return True
 
@@ -605,6 +623,7 @@ class LLMController(QObject):
         Args:
             model_display_name: Display name or identifier of the model
                 to switch to (e.g. ``'Gemini'``, ``'Local'``).
+
         """
         # Map Display Name to Model ID
         # "Gemini", "Local"
@@ -637,8 +656,8 @@ class LLMController(QObject):
         Args:
             tool_name: Name of the tool to execute.
             params: Dictionary of parameters for the tool.
-        """
 
+        """
         logger.info("Debug Execution: %s with %s", tool_name, params)
 
         self.is_processing = True

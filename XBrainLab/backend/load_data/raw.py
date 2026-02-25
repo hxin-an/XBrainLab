@@ -27,6 +27,7 @@ class Raw:
         subject: Subject identifier string.
         session: Session identifier string.
         labels_imported: Whether external labels have been applied.
+
     """
 
     def __init__(self, filepath: str, mne_data: mne.io.BaseRaw | mne.BaseEpochs):
@@ -35,6 +36,7 @@ class Raw:
         Args:
             filepath: Path to the source data file.
             mne_data: Loaded MNE data object (raw or epochs).
+
         """
         validate_type(filepath, str, "filepath")
         validate_type(mne_data, (mne.io.BaseRaw, mne.BaseEpochs), "mne_data")
@@ -72,6 +74,7 @@ class Raw:
 
         Args:
             desc: Human-readable description of the preprocessing step.
+
         """
         self.preprocess_history.append(desc)
 
@@ -80,6 +83,7 @@ class Raw:
 
         Args:
             regex: Regex for parsing filename.
+
         """
         filename = self.get_filename()
         sub, sess = FilenameParser.parse_by_named_regex(filename, regex)
@@ -112,6 +116,7 @@ class Raw:
             events: Raw events. Same as `mne` format,
                     (onset, immediately preceding sample, event_id).
             event_id: Raw event id. Same as `mne` format, {event_name: event_id}.
+
         """
         validate_type(events, np.ndarray, "events")
         validate_type(event_id, dict, "event_id")
@@ -121,7 +126,7 @@ class Raw:
             if self.get_epochs_length() != len(events):
                 raise ValueError(
                     f"Number of events ({len(events)}) does not match "
-                    f"epochs length ({self.get_epochs_length()})"
+                    f"epochs length ({self.get_epochs_length()})",
                 )
             self.mne_data.events = events
             self.mne_data.event_id = event_id
@@ -136,6 +141,7 @@ class Raw:
 
         Args:
             data: New MNE data object to replace the current one.
+
         """
         # set loaded event to new data
         if (
@@ -148,7 +154,7 @@ class Raw:
                 logger.warning(
                     "Number of events from loaded label file and "
                     "selected events for epoching are inconsistent. "
-                    "Please proceed with caution."
+                    "Please proceed with caution.",
                 )
             data.events = self.raw_events
             data.event_id = self.raw_event_id
@@ -161,6 +167,7 @@ class Raw:
 
         Args:
             data: New MNE data object to replace the current one.
+
         """
         self.raw_events = None
         self.raw_event_id = None
@@ -210,6 +217,7 @@ class Raw:
 
         Returns:
             (events, event_id)
+
         """
         # epoch data
         try:
@@ -230,6 +238,10 @@ class Raw:
             try:
                 return mne.events_from_annotations(self.mne_data, verbose=False)
             except Exception:
+                logger.debug(
+                    "No events found via stim channel or annotations",
+                    exc_info=True,
+                )
                 return np.array([]), {}
         else:
             return events, event_ids
@@ -239,6 +251,7 @@ class Raw:
 
         Returns:
             (events, event_id)
+
         """
         if self.raw_event_id is not None and self.raw_events is not None:
             return self.raw_events, self.raw_event_id
@@ -290,6 +303,7 @@ class Raw:
 
         Returns:
             New Raw instance with copied MNE data and attributes.
+
         """
         # Deep copy MNE data
         mne_copy = self.mne_data.copy()

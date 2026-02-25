@@ -25,6 +25,7 @@ class ManualSplitDialog(BaseDialog):
             or a ``(id, name)`` tuple.
         selected_indices: List of selected item identifiers after acceptance.
         list_widget: QListWidget displaying the choices.
+
     """
 
     def __init__(self, parent, choices):
@@ -43,7 +44,7 @@ class ManualSplitDialog(BaseDialog):
 
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(
-            QAbstractItemView.SelectionMode.MultiSelection
+            QAbstractItemView.SelectionMode.MultiSelection,
         )
 
         for item in self.choices:
@@ -56,7 +57,7 @@ class ManualSplitDialog(BaseDialog):
         layout.addWidget(self.list_widget)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -88,5 +89,6 @@ class ManualSplitDialog(BaseDialog):
         Returns:
             List of selected identifiers. For tuple choices, returns the
             first element (id); otherwise returns the raw value.
+
         """
         return self.selected_indices

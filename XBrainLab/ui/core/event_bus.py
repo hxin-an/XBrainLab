@@ -14,6 +14,7 @@ class EventBus(QObject):
         error_occurred: Signal emitted with ``(error_message,)``.
         data_refreshed: Signal emitted when data state changes globally.
         model_updated: Signal emitted with ``(model_name,)`` on model changes.
+
     """
 
     _instance = None
@@ -35,6 +36,7 @@ class EventBus(QObject):
 
         Returns:
             The shared ``EventBus`` instance.
+
         """
         if cls._instance is None:
             cls._instance = cls()
@@ -45,6 +47,7 @@ class EventBus(QObject):
 
         Raises:
             RuntimeError: If an instance already exists.
+
         """
         super().__init__()
         if EventBus._instance is not None:

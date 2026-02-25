@@ -24,6 +24,7 @@ class PreprocessController(Observable):
 
     Attributes:
         study: Reference to the :class:`Study` backend instance.
+
     """
 
     def __init__(self, study):
@@ -31,6 +32,7 @@ class PreprocessController(Observable):
 
         Args:
             study: The :class:`Study` backend instance to operate on.
+
         """
         Observable.__init__(self)
         self.study = study
@@ -40,6 +42,7 @@ class PreprocessController(Observable):
 
         Returns:
             The preprocessed data list held by the study.
+
         """
         return self.study.preprocessed_data_list
 
@@ -54,6 +57,7 @@ class PreprocessController(Observable):
         Returns:
             ``True`` if the first preprocessed data object is epoched,
             ``False`` otherwise or if no data is loaded.
+
         """
         data_list = self.study.preprocessed_data_list
         if data_list:
@@ -65,6 +69,7 @@ class PreprocessController(Observable):
 
         Returns:
             ``True`` if the preprocessed data list is non-empty.
+
         """
         return bool(self.study.preprocessed_data_list)
 
@@ -74,6 +79,7 @@ class PreprocessController(Observable):
         Returns:
             List of channel name strings, or an empty list if no data
             is loaded.
+
         """
         if self.study.preprocessed_data_list:
             return self.study.preprocessed_data_list[0].get_mne().ch_names
@@ -84,6 +90,7 @@ class PreprocessController(Observable):
 
         Returns:
             The first data object, or ``None`` if no data is loaded.
+
         """
         if self.study.preprocessed_data_list:
             return self.study.preprocessed_data_list[0]
@@ -109,6 +116,7 @@ class PreprocessController(Observable):
             ValueError: If no data is available for preprocessing.
             Exception: Propagated from the underlying processor on
                 failure.
+
         """
         data_list = self.study.preprocessed_data_list
         if not data_list:
@@ -147,9 +155,13 @@ class PreprocessController(Observable):
 
         Raises:
             ValueError: If no data is available.
+
         """
         return self._apply_processor(
-            preprocessor.Filtering, l_freq, h_freq, notch_freqs=notch_freqs
+            preprocessor.Filtering,
+            l_freq,
+            h_freq,
+            notch_freqs=notch_freqs,
         )
 
     def apply_resample(self, sfreq):
@@ -163,6 +175,7 @@ class PreprocessController(Observable):
 
         Raises:
             ValueError: If no data is available.
+
         """
         return self._apply_processor(preprocessor.Resample, sfreq)
 
@@ -177,9 +190,11 @@ class PreprocessController(Observable):
 
         Raises:
             ValueError: If no data is available.
+
         """
         return self._apply_processor(
-            preprocessor.Rereference, ref_channels=ref_channels
+            preprocessor.Rereference,
+            ref_channels=ref_channels,
         )
 
     def apply_normalization(self, method):
@@ -193,6 +208,7 @@ class PreprocessController(Observable):
 
         Raises:
             ValueError: If no data is available.
+
         """
         return self._apply_processor(preprocessor.Normalize, norm=method)
 
@@ -201,6 +217,7 @@ class PreprocessController(Observable):
 
         Returns:
             A sorted list of unique event name strings.
+
         """
         events = set()
         for data in self.study.preprocessed_data_list:
@@ -230,9 +247,14 @@ class PreprocessController(Observable):
 
         Raises:
             ValueError: If no data is available.
+
         """
         result = self._apply_processor(
-            preprocessor.TimeEpoch, baseline, selected_events, tmin, tmax
+            preprocessor.TimeEpoch,
+            baseline,
+            selected_events,
+            tmin,
+            tmax,
         )
         if result:
             self.study.lock_dataset()
@@ -243,11 +265,12 @@ class PreprocessController(Observable):
         mapped_channels: list[str],
         mapped_positions: list[tuple[float, float, float]],
     ):
-        """
-        Applies montage configuration to the study.
+        """Applies montage configuration to the study.
+
         Args:
             mapped_channels: List of channel names.
             mapped_positions: List of pos tuples (x, y, z).
+
         """
         self.study.set_channels(mapped_channels, mapped_positions)
         # Notify UI about preprocessing change (montage affects visualization)

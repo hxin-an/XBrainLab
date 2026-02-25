@@ -17,6 +17,7 @@ class Visualizer:
         figsize: figure size
         dpi: figure dpi
         fig: figure to plot on. If None, a new figure will be created
+
     """
 
     MIN_LABEL_NUMBER_FOR_MULTI_ROW = 2
@@ -38,6 +39,7 @@ class Visualizer:
             dpi: Dots per inch for the figure.
             fig: Existing matplotlib ``Figure`` to draw on.  If ``None``, a new
                 figure is created on each call to :meth:`get_plt`.
+
         """
         self.eval_record = eval_record
         self.epoch_data = epoch_data
@@ -50,8 +52,9 @@ class Visualizer:
 
         Raises:
             NotImplementedError: Always; subclasses must override this method.
+
         """
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def get_plt(self, *args, **kwargs):
         """Create (or clear) the figure and delegate to :meth:`_get_plt`.
@@ -62,6 +65,7 @@ class Visualizer:
 
         Returns:
             matplotlib.figure.Figure: The rendered figure.
+
         """
         if self.fig is None:
             self.fig = plt.figure(figsize=self.figsize, dpi=self.dpi)
@@ -83,18 +87,18 @@ class Visualizer:
         Raises:
             NotImplementedError: If *saliency_name* is not a recognised method.
             ValueError: If *saliency_name* is ``None``.
+
         """
         if saliency_name is not None:
             if saliency_name == "Gradient":
                 return self.eval_record.get_gradient(label_index)
-            elif saliency_name == "Gradient * Input":
+            if saliency_name == "Gradient * Input":
                 return self.eval_record.get_gradient_input(label_index)
-            elif saliency_name == "SmoothGrad":
+            if saliency_name == "SmoothGrad":
                 return self.eval_record.get_smoothgrad(label_index)
-            elif saliency_name == "SmoothGrad_Squared":
+            if saliency_name == "SmoothGrad_Squared":
                 return self.eval_record.get_smoothgrad_sq(label_index)
-            elif saliency_name == "VarGrad":
+            if saliency_name == "VarGrad":
                 return self.eval_record.get_vargrad(label_index)
-            else:
-                raise NotImplementedError
+            raise NotImplementedError
         raise ValueError("Saliency name not provided")

@@ -22,6 +22,7 @@ class Resample(PreprocessBase):
 
         Returns:
             A string describing the resampling operation.
+
         """
         return f"Resample to {sfreq}Hz"
 
@@ -31,6 +32,7 @@ class Resample(PreprocessBase):
         Args:
             preprocessed_data: The data instance to preprocess.
             sfreq: Target sampling frequency in Hz.
+
         """
         preprocessed_data.get_mne().load_data()
         if preprocessed_data.is_raw():

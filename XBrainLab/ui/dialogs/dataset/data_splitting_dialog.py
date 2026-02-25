@@ -42,6 +42,7 @@ class DrawColor(Enum):
         TRAIN: Color used for training data regions.
         VAL: Color used for validation data regions.
         TEST: Color used for testing data regions.
+
     """
 
     TRAIN = QColor("DodgerBlue")
@@ -64,6 +65,7 @@ class DrawRegion:
         from_y: Starting Y coordinate of the active region.
         to_x: Ending X coordinate of the active region.
         to_y: Ending Y coordinate of the active region.
+
     """
 
     def __init__(self, w: int, h: int):
@@ -87,6 +89,7 @@ class DrawRegion:
         Args:
             x: Starting X coordinate.
             y: Starting Y coordinate.
+
         """
         self.reset()
         self.from_x = x
@@ -99,6 +102,7 @@ class DrawRegion:
             x: Ending X coordinate.
             y: Ending Y coordinate.
             ref: Reference DrawRegion to copy canvas values from.
+
         """
         self.to_x = x
         self.to_y = y
@@ -117,6 +121,7 @@ class DrawRegion:
             y: Ending Y coordinate.
             from_w: Value to fill in from_canvas.
             to_w: Value to fill in to_canvas.
+
         """
         self.to_x = x
         self.to_y = y
@@ -129,6 +134,7 @@ class DrawRegion:
         Args:
             x: New ending X coordinate.
             y: New ending Y coordinate.
+
         """
         self.to_x = x
         self.to_y = y
@@ -138,6 +144,7 @@ class DrawRegion:
 
         Args:
             rhs: DrawRegion whose boundaries define the mask.
+
         """
         idx = (
             rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
@@ -156,7 +163,7 @@ class DrawRegion:
         )
 
         self.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y] *= np.logical_not(
-            filter_idx
+            filter_idx,
         )
         self.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y] += (
             filter_idx * rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
@@ -185,6 +192,7 @@ class DrawRegion:
 
         Args:
             w: Proportion (0.0 to 1.0) to retain from the tail.
+
         """
         self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
             self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
@@ -196,6 +204,7 @@ class DrawRegion:
 
         Args:
             w: Proportion (0.0 to 1.0) to retain from the head.
+
         """
         self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
             self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
@@ -207,6 +216,7 @@ class DrawRegion:
 
         Args:
             rhs: Source DrawRegion to copy from.
+
         """
         self.from_x = rhs.from_x
         self.from_y = rhs.from_y
@@ -226,6 +236,7 @@ class PreviewCanvas(QWidget):
         regions: List of (DrawRegion, DrawColor) tuples to render.
         subject_num: Number of subjects (rows) in the grid.
         session_num: Number of sessions (columns) in the grid.
+
     """
 
     def __init__(self, parent):
@@ -240,6 +251,7 @@ class PreviewCanvas(QWidget):
 
         Args:
             regions: List of (DrawRegion, DrawColor) tuples.
+
         """
         self.regions = regions
         self.update()
@@ -249,6 +261,7 @@ class PreviewCanvas(QWidget):
 
         Args:
             event: The paint event.
+
         """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -329,6 +342,7 @@ class DataSplittingDialog(BaseDialog):
         test_region: DrawRegion for testing data visualization.
         step2_window: Reference to the preview dialog (step 2).
         split_result: The finalized split result after confirmation.
+
     """
 
     def __init__(self, parent, controller, dataset_generator=None):
@@ -337,8 +351,6 @@ class DataSplittingDialog(BaseDialog):
         # Get data through controller
         self.epoch_data = self.controller.get_epoch_data() if self.controller else None
 
-        # If dataset_generator is not passed (e.g. from TrainingPanel),
-        # try to get it from controller
         if dataset_generator:
             self.dataset_generator = dataset_generator
         elif self.controller:
@@ -454,7 +466,7 @@ class DataSplittingDialog(BaseDialog):
                 (self.train_region, DrawColor.TRAIN),
                 (self.val_region, DrawColor.VAL),
                 (self.test_region, DrawColor.TEST),
-            ]
+            ],
         )
 
     def handle_testing(self):
@@ -506,10 +518,13 @@ class DataSplittingDialog(BaseDialog):
         if val_type == ValSplitByType.SESSION.value:
             self.val_region.copy(self.train_region)
             self.val_region.set_from(
-                self.train_region.to_x - 1, self.train_region.from_y
+                self.train_region.to_x - 1,
+                self.train_region.from_y,
             )
             self.val_region.set_to_ref(
-                self.train_region.to_x, self.train_region.to_y, self.train_region
+                self.train_region.to_x,
+                self.train_region.to_y,
+                self.train_region,
             )
         elif val_type == ValSplitByType.TRIAL.value:
             self.val_region.copy(self.train_region)
@@ -517,10 +532,13 @@ class DataSplittingDialog(BaseDialog):
         elif val_type == ValSplitByType.SUBJECT.value:
             self.val_region.copy(self.train_region)
             self.val_region.set_from(
-                self.train_region.from_x, self.train_region.to_y - 1
+                self.train_region.from_x,
+                self.train_region.to_y - 1,
             )
             self.val_region.set_to_ref(
-                self.train_region.to_x, self.train_region.to_y, self.train_region
+                self.train_region.to_x,
+                self.train_region.to_y,
+                self.train_region,
             )
 
     def confirm(self):
@@ -574,7 +592,10 @@ class DataSplittingDialog(BaseDialog):
         )
 
         self.step2_window = DataSplittingPreviewDialog(
-            self.parent(), "Data Splitting Step 2", self.epoch_data, config
+            self.parent(),
+            "Data Splitting Step 2",
+            self.epoch_data,
+            config,
         )
         if self.step2_window.exec():
             self.split_result = self.step2_window.get_result()
@@ -587,5 +608,6 @@ class DataSplittingDialog(BaseDialog):
 
         Returns:
             The finalized DatasetGenerator or None if not confirmed.
+
         """
         return self.split_result

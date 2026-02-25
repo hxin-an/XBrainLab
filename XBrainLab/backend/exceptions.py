@@ -11,6 +11,7 @@ class FileCorruptedError(XBrainLabError):
     Attributes:
         filepath: Path to the corrupted file.
         message: Human-readable error message.
+
     """
 
     def __init__(self, filepath, message="File is corrupted or unreadable"):
@@ -25,6 +26,7 @@ class UnsupportedFormatError(XBrainLabError):
     Attributes:
         file_extension: The unsupported file extension.
         message: Human-readable error message.
+
     """
 
     def __init__(self, file_extension, message="Unsupported file format"):
@@ -38,6 +40,7 @@ class DataMismatchError(XBrainLabError):
 
     Attributes:
         message: Human-readable error message.
+
     """
 
     def __init__(self, message="Data parameters mismatch"):

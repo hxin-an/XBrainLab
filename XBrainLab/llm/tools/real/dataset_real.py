@@ -44,6 +44,7 @@ class RealListFilesTool(BaseListFilesTool):
         Returns:
             A string representation of the matched file list, or an
             error message on failure.
+
         """
         if not directory:
             return "Error: directory is required"
@@ -88,6 +89,7 @@ class RealLoadDataTool(BaseLoadDataTool):
         Returns:
             A success message with the count of loaded files, or an
             error message on failure.
+
         """
         if not paths:
             return "Error: paths list cannot be empty."
@@ -120,8 +122,7 @@ class RealLoadDataTool(BaseLoadDataTool):
             if errors:
                 return f"Successfully loaded {count} files. Errors: {errors}"
             return f"Successfully loaded {count} files."
-        else:
-            return f"Failed to load any data. Errors: {errors}"
+        return f"Failed to load any data. Errors: {errors}"
 
 
 class RealAttachLabelsTool(BaseAttachLabelsTool):
@@ -138,6 +139,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 
         Returns:
             ``True`` if data has been loaded.
+
         """
         return bool(study.loaded_data_list)
 
@@ -158,6 +160,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 
         Returns:
             A message indicating how many files received labels.
+
         """
         if mapping is None:
             return "Error: mapping is required"
@@ -167,8 +170,7 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 
         if success_count > 0:
             return f"Attached labels to {success_count} files."
-        else:
-            return "No labels attached. Check file name mapping."
+        return "No labels attached. Check file name mapping."
 
 
 class RealClearDatasetTool(BaseClearDatasetTool):
@@ -182,6 +184,7 @@ class RealClearDatasetTool(BaseClearDatasetTool):
 
         Returns:
             ``True`` if data has been loaded.
+
         """
         return bool(study.loaded_data_list)
 
@@ -194,6 +197,7 @@ class RealClearDatasetTool(BaseClearDatasetTool):
 
         Returns:
             A confirmation message.
+
         """
         facade = BackendFacade(study)
         facade.clear_data()
@@ -211,6 +215,7 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
         Returns:
             ``True`` if data has been loaded.
+
         """
         return bool(study.loaded_data_list)
 
@@ -223,6 +228,7 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
         Returns:
             A newline-separated summary string.
+
         """
         facade = BackendFacade(study)
         summary = facade.get_data_summary()
@@ -239,14 +245,8 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
         if "total" in summary:
             info.append(
-                f"Events: {summary['total']} (Unique: {summary['unique_count']})"
+                f"Events: {summary['total']} (Unique: {summary['unique_count']})",
             )
-
-        # MNE specifics (sfreq, channels) might be missing
-        # from Facade.get_data_summary()
-        # Should we enhance facade?
-        # Yes, let's make facade generic or stick to what's available.
-        # For now, let's trust the summary dict.
 
         return "\n".join(info)
 
@@ -265,6 +265,7 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
 
         Returns:
             ``True`` if ``study.epoch_data`` is available.
+
         """
         # Requires epoch_data to generate dataset
         return study.epoch_data is not None
@@ -292,6 +293,7 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
 
         Returns:
             A success message with dataset count or an error message.
+
         """
         facade = BackendFacade(study)
 

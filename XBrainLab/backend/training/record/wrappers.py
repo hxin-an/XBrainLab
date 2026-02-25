@@ -10,6 +10,7 @@ class ProxyRecord:
 
     Attributes:
         eval_record: An :class:`EvalRecord` with empty saliency dictionaries.
+
     """
 
     def __init__(self, labels, outputs):
@@ -18,6 +19,7 @@ class ProxyRecord:
         Args:
             labels: Ground truth label array.
             outputs: Model output array.
+
         """
         self.eval_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
 
@@ -30,8 +32,9 @@ class ProxyRecord:
 
         Returns:
             ``None``.
+
         """
-        return None
+        return
 
 
 class PooledRecordWrapper:
@@ -45,6 +48,7 @@ class PooledRecordWrapper:
         original: The original :class:`TrainRecord` instance.
         eval_record: An :class:`EvalRecord` with the pooled data.
         dataset: The dataset from the original record (for class names).
+
     """
 
     def __init__(self, original, labels, outputs):
@@ -54,6 +58,7 @@ class PooledRecordWrapper:
             original: The original :class:`TrainRecord` to wrap.
             labels: Pooled ground truth label array.
             outputs: Pooled model output array.
+
         """
         self.original = original
         self.eval_record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
@@ -68,7 +73,10 @@ class PooledRecordWrapper:
 
         Returns:
             A matplotlib :class:`~matplotlib.figure.Figure`, or ``None``.
+
         """
         return self.original.__class__.get_confusion_figure(
-            self, fig, show_percentage=show_percentage
+            self,
+            fig,
+            show_percentage=show_percentage,
         )

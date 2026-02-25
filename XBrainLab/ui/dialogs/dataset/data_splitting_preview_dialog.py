@@ -44,11 +44,15 @@ class DataSplitterHolder(DataSplitter):
     Attributes:
         is_option: Whether this splitter represents a user-configurable option.
         split_type: The type of split (e.g., by session, trial, subject).
+
     """
 
     def __init__(self, is_option, split_type):
         super().__init__(
-            split_type, value_var=None, split_unit=None, is_option=is_option
+            split_type,
+            value_var=None,
+            split_unit=None,
+            is_option=is_option,
         )
 
     def set_split_unit_var(self, val):
@@ -56,6 +60,7 @@ class DataSplitterHolder(DataSplitter):
 
         Args:
             val: String representation of the SplitUnit enum value.
+
         """
         # val is the string representation from the ComboBox
         self.split_unit = None
@@ -69,6 +74,7 @@ class DataSplitterHolder(DataSplitter):
 
         Args:
             val: String value representing the split amount.
+
         """
         self.value_var = val
 
@@ -94,6 +100,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         tree: QTreeWidget displaying dataset split information.
         val_splitter_list: List of DataSplitterHolder for validation splits.
         test_splitter_list: List of DataSplitterHolder for testing splits.
+
     """
 
     def __init__(self, parent, title, epoch_data, config):
@@ -208,13 +215,13 @@ class DataSplittingPreviewDialog(BaseDialog):
                     opts.append(SplitUnit.MANUAL.value)
                 combo.addItems(opts)
                 combo.currentTextChanged.connect(
-                    lambda t, s=splitter: self.on_split_type_change(s, t)
+                    lambda t, s=splitter: self.on_split_type_change(s, t),
                 )
                 val_layout.addWidget(combo, row + 1, 0)
 
                 entry = QLineEdit(DEFAULT_SPLIT_ENTRY_VALUE)
                 entry.textChanged.connect(
-                    lambda t, s=splitter: self.on_entry_change(s, t)
+                    lambda t, s=splitter: self.on_entry_change(s, t),
                 )
                 val_layout.addWidget(entry, row + 1, 1)
 
@@ -255,13 +262,13 @@ class DataSplittingPreviewDialog(BaseDialog):
                     opts.append(SplitUnit.MANUAL.value)
                 combo.addItems(opts)
                 combo.currentTextChanged.connect(
-                    lambda t, s=splitter: self.on_split_type_change(s, t)
+                    lambda t, s=splitter: self.on_split_type_change(s, t),
                 )
                 test_layout.addWidget(combo, row + 1, 0)
 
                 entry = QLineEdit(DEFAULT_SPLIT_ENTRY_VALUE)
                 entry.textChanged.connect(
-                    lambda t, s=splitter: self.on_entry_change(s, t)
+                    lambda t, s=splitter: self.on_entry_change(s, t),
                 )
                 test_layout.addWidget(entry, row + 1, 1)
 
@@ -290,6 +297,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         Args:
             splitter: The DataSplitterHolder being modified.
             text: The newly selected split unit text.
+
         """
         if hasattr(splitter, "set_split_unit_var"):
             splitter.set_split_unit_var(text)
@@ -303,6 +311,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         Args:
             splitter: The DataSplitterHolder being modified.
             text: The new split value text.
+
         """
         if hasattr(splitter, "set_entry_var"):
             splitter.set_entry_var(text)
@@ -313,6 +322,7 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         Args:
             splitter: The DataSplitterHolder requiring manual selection.
+
         """
         choices = []
         if splitter.split_type in [
@@ -346,7 +356,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self.val_widgets[idx][1].setText(value)
             elif splitter in self.test_splitter_list:
                 idx = [s for s in self.test_splitter_list if s.is_option].index(
-                    splitter
+                    splitter,
                 )
                 self.test_widgets[idx][1].setText(value)
 
@@ -372,7 +382,9 @@ class DataSplittingPreviewDialog(BaseDialog):
             self.dataset_generator.set_interrupt()
 
         self.dataset_generator = DatasetGenerator(
-            self.epoch_data, config=self.config, datasets=self.datasets
+            self.epoch_data,
+            config=self.config,
+            datasets=self.datasets,
         )
         self.preview_worker = threading.Thread(target=self.dataset_generator.generate)
         self.preview_worker.start()
@@ -447,5 +459,6 @@ class DataSplittingPreviewDialog(BaseDialog):
 
         Returns:
             The DatasetGenerator with prepared split results, or None.
+
         """
         return self.dataset_generator

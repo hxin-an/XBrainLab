@@ -29,6 +29,7 @@ def handle_error(func):
 
     Returns:
         The wrapped function with error logging and conversion.
+
     """
 
     @wraps(func)

@@ -35,6 +35,7 @@ class SCCNet(nn.Module):
         Drop1: Dropout layer.
         AvgPool1: Average pooling layer.
         classifier: Fully connected classification layer.
+
     """
 
     def __init__(self, n_classes, channels, samples, sfreq, ns=22):
@@ -50,6 +51,7 @@ class SCCNet(nn.Module):
         Raises:
             ValueError: If the epoch duration (samples) is too short for the
                 network architecture.
+
         """
         super().__init__()  # input:bs, 1, channel, sample
 
@@ -70,7 +72,7 @@ class SCCNet(nn.Module):
                 f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
                 f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
                 f"Please increase epoch length (tmax-tmin) to at least "
-                f"{min_duration:.2f}s or use a lower sampling frequency."
+                f"{min_duration:.2f}s or use a lower sampling frequency.",
             )
 
         # (1, n_ch, kernelsize=(n_ch,1))
@@ -78,7 +80,10 @@ class SCCNet(nn.Module):
         self.Bn1 = nn.BatchNorm2d(ns)  # (n_ch)
         # kernelsize=(1, floor(sf*0.1)) padding= (0, floor(sf*0.1)/2)
         self.conv2 = nn.Conv2d(
-            ns, 20, (1, self.octsf), padding=(0, int(np.ceil((self.octsf - 1) / 2)))
+            ns,
+            20,
+            (1, self.octsf),
+            padding=(0, int(np.ceil((self.octsf - 1) / 2))),
         )
         self.Bn2 = nn.BatchNorm2d(20)
 
@@ -96,7 +101,7 @@ class SCCNet(nn.Module):
                         - int(self.sf / 2)
                     )
                     / int(self.octsf)
-                    + 1
+                    + 1,
                 )
             ),
             self.n_class,
@@ -112,6 +117,7 @@ class SCCNet(nn.Module):
 
         Returns:
             Output logits tensor of shape ``(batch, n_classes)``.
+
         """
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
@@ -134,7 +140,7 @@ class SCCNet(nn.Module):
                     - int(self.sf / 2)
                 )
                 / int(self.octsf)
-                + 1
+                + 1,
             ),
         )
         x = self.classifier(x)

@@ -37,6 +37,7 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
 
         Returns:
             ``True`` if data has been loaded.
+
         """
         return bool(study.loaded_data_list)
 
@@ -66,6 +67,7 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
 
         Returns:
             A success message or an error description.
+
         """
         facade = BackendFacade(study)
 
@@ -119,6 +121,7 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if low_freq is None or high_freq is None:
             return "Error: low_freq and high_freq are required."
@@ -145,6 +148,7 @@ class RealNotchFilterTool(BaseNotchFilterTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if freq is None:
             return "Error: freq is required."
@@ -171,6 +175,7 @@ class RealResampleTool(BaseResampleTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if rate is None:
             return "Error: rate is required."
@@ -197,6 +202,7 @@ class RealNormalizeTool(BaseNormalizeTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if method is None:
             return "Error: method is required."
@@ -223,6 +229,7 @@ class RealRereferenceTool(BaseRereferenceTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if method is None:
             return "Error: method is required."
@@ -249,6 +256,7 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if channels is None:
             return "Error: channels list is required."
@@ -279,6 +287,7 @@ class RealSetMontageTool(BaseSetMontageTool):
 
         Returns:
             A request string for UI confirmation, or an error message.
+
         """
         if montage_name is None:
             return "Error: montage_name is required."
@@ -316,6 +325,7 @@ class RealEpochDataTool(BaseEpochDataTool):
 
         Returns:
             A confirmation message or an error description.
+
         """
         facade = BackendFacade(study)
 

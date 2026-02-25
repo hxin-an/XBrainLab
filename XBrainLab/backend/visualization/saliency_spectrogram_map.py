@@ -24,6 +24,7 @@ class SaliencySpectrogramMapViz(Visualizer):
 
         Returns:
             matplotlib.figure.Figure: The rendered spectrogram figure.
+
         """
         sfreq = self.epoch_data.get_model_args()["sfreq"]
         label_number = self.epoch_data.get_label_number()
@@ -63,14 +64,16 @@ class SaliencySpectrogramMapViz(Visualizer):
             plt.xlabel("time")
             plt.ylabel("frequency")
             plt.xticks(
-                ticks=ticks, labels=[str(label) for label in tick_label], fontsize=6
+                ticks=ticks,
+                labels=[str(label) for label in tick_label],
+                fontsize=6,
             )
             plt.yticks(ticks=freqs[np.where(freqs % 10 == 0)])
 
             plt.colorbar(im, orientation="vertical")
             plt.title(
                 f"Saliency spectrogram of class "
-                f"{self.epoch_data.label_map[label_index]}"
+                f"{self.epoch_data.label_map[label_index]}",
             )
         plt.tight_layout()
         return plt.gcf()

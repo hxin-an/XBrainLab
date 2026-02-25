@@ -11,12 +11,15 @@ def _get_type_name(type_class: type) -> str:
 
     Returns:
         A string in the format ``'module.ClassName'``.
+
     """
     return f"{type_class.__module__}.{type_class.__name__}"
 
 
 def validate_type(
-    instance: object, type_class: type | tuple[type, ...], message_name: str
+    instance: object,
+    type_class: type | tuple[type, ...],
+    message_name: str,
 ) -> None:
     """Validate the type of an instance.
 
@@ -28,6 +31,7 @@ def validate_type(
 
     Raises:
         TypeError: If the instance is not an instance of the acceptable type(s).
+
     """
     if not isinstance(type_class, (list, tuple)):
         type_class = (type_class,)
@@ -40,12 +44,14 @@ def validate_type(
             type_name = " or ".join(type_name_list)
         raise TypeError(
             f"{message_name} must be an instance of {type_name}, "
-            f"got {type(instance)} instead."
+            f"got {type(instance)} instead.",
         )
 
 
 def validate_list_type(
-    instance_list: list, type_class: type | tuple[type, ...], message_name: str
+    instance_list: list,
+    type_class: type | tuple[type, ...],
+    message_name: str,
 ) -> None:
     """Validate the type of a list of instances.
 
@@ -58,6 +64,7 @@ def validate_list_type(
     Raises:
         TypeError:
             If any instance in the list is not an instance of the acceptable type(s).
+
     """
     validate_type(instance_list, list, message_name)
     for instance in instance_list:
@@ -65,7 +72,9 @@ def validate_list_type(
 
 
 def validate_issubclass(
-    class_name: type, type_class: type | tuple[type, ...], message_name: str
+    class_name: type,
+    type_class: type | tuple[type, ...],
+    message_name: str,
 ) -> None:
     """Validate if a class is a subclass of a type.
 
@@ -76,6 +85,7 @@ def validate_issubclass(
 
     Raises:
         TypeError: If the class is not a subclass of the acceptable type.
+
     """
     if not isinstance(type_class, (list, tuple)):
         type_class = (type_class,)
@@ -88,5 +98,5 @@ def validate_issubclass(
 
         raise TypeError(
             f"{message_name} must be a subclass of {type_name}, "
-            f"got {_get_type_name(class_name)} instead."
+            f"got {_get_type_name(class_name)} instead.",
         )

@@ -28,10 +28,11 @@ class AppConfig:
         DEFAULT_FONT_SIZE: Default UI font size in points.
         REGEX_SESSION: Pattern for BIDS session identifiers.
         REGEX_SUBJECT: Pattern for BIDS subject identifiers.
+
     """
 
     APP_NAME = "XBrainLab"
-    VERSION = "0.5.2"
+    VERSION = "0.5.3"
 
     # Determine base path (handle frozen executable vs. development script)
     if getattr(sys, "frozen", False):
@@ -68,5 +69,6 @@ class AppConfig:
 
         Returns:
             Absolute filesystem path to the icon.
+
         """
         return str(cls.ICONS_DIR / icon_name)

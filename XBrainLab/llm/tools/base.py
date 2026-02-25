@@ -45,13 +45,13 @@ class BaseTool(ABC):
         Returns:
             ``True`` if the tool may be invoked; ``False`` otherwise.
                 Defaults to ``True``.
+
         """
         return True
 
     @abstractmethod
     def execute(self, study: Any, **kwargs) -> str:
-        """
-        Executes the tool action.
+        """Executes the tool action.
 
         Args:
             study: The global Study instance.
@@ -59,4 +59,5 @@ class BaseTool(ABC):
 
         Returns:
             str: A message describing the result of the execution.
+
         """

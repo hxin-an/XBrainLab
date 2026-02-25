@@ -25,6 +25,7 @@ class PlotFigureWindow(SinglePlotWindow):
         plan_combo: QComboBox for plan selection.
         real_plan_combo: QComboBox for repeat selection.
         saliency_combo: QComboBox for saliency method selection.
+
     """
 
     def __init__(
@@ -49,6 +50,7 @@ class PlotFigureWindow(SinglePlotWindow):
             plan_name: Optional pre-selected plan name.
             real_plan_name: Optional pre-selected repeat name.
             saliency_name: Optional pre-selected saliency method name.
+
         """
         self.trainers = trainers
         self.trainer = None
@@ -110,7 +112,7 @@ class PlotFigureWindow(SinglePlotWindow):
         self.saliency_combo = QComboBox()
         self.saliency_combo.addItem("Select saliency method")
         self.saliency_combo.addItems(
-            ["Gradient", "Gradient * Input", *supported_saliency_methods]
+            ["Gradient", "Gradient * Input", *supported_saliency_methods],
         )
         self.saliency_combo.currentTextChanged.connect(self.on_saliency_method_select)
         selector_layout.addWidget(self.saliency_combo)
@@ -125,6 +127,7 @@ class PlotFigureWindow(SinglePlotWindow):
 
         Args:
             plan_name: The selected plan name string.
+
         """
         self.set_selection(False)
         self.plan_to_plot = None
@@ -146,6 +149,7 @@ class PlotFigureWindow(SinglePlotWindow):
 
         Args:
             plan_name: The selected repeat plan name string.
+
         """
         self.set_selection(False)
         self.plan_to_plot = None
@@ -159,6 +163,7 @@ class PlotFigureWindow(SinglePlotWindow):
 
         Args:
             method_name: The selected saliency method name string.
+
         """
         self.set_selection(False)
         if method_name == "Select saliency method":
@@ -171,6 +176,7 @@ class PlotFigureWindow(SinglePlotWindow):
 
         Returns:
             A Matplotlib ``Figure`` object, or ``None`` on failure.
+
         """
         target_func = getattr(self.plan_to_plot, self.plot_type.value)
         # Ensure figure params are ready
@@ -237,6 +243,7 @@ class PlotFigureWindow(SinglePlotWindow):
         Args:
             allow: If ``True``, enables selectors; otherwise disables
                 and increments the draw counter.
+
         """
         if not allow:
             self.drawCounter += 1
@@ -251,6 +258,7 @@ class PlotFigureWindow(SinglePlotWindow):
             *args: Unused positional arguments.
             current_plot: Value to assign to ``current_plot`` to trigger
                 a re-check.
+
         """
         self.update_progress = -1
         self.current_plot = current_plot  # Force re-check in loop

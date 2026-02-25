@@ -29,6 +29,7 @@ class DatasetGenerator:
         preview_failed: Whether the preview generation failed.
         test_splitter_list: List of splitters for the test set.
         val_splitter_list: List of splitters for the validation set.
+
     """
 
     def __init__(
@@ -46,6 +47,7 @@ class DatasetGenerator:
 
         Raises:
             ValueError: If datasets list is non-empty.
+
         """
         validate_type(epoch_data, Epochs, "epoch_data")
         validate_type(config, DataSplittingConfig, "config")
@@ -109,7 +111,8 @@ class DatasetGenerator:
 
     def handle_ind(self) -> None:
         """Wrapper for generating datasets for individual scheme.
-        Called by :func:`generate`."""
+        Called by :func:`generate`.
+        """
         for subject_idx in range(len(self.epoch_data.get_subject_index_list())):
             name_prefix = f"Subject-{self.epoch_data.get_subject_name(subject_idx)}"
 
@@ -120,7 +123,8 @@ class DatasetGenerator:
 
     def handle_full(self) -> None:
         """Wrapper for generating datasets for full scheme.
-        Called by :func:`generate`."""
+        Called by :func:`generate`.
+        """
         name_prefix = "Fold"
         self.handle(name_prefix)
 
@@ -152,6 +156,7 @@ class DatasetGenerator:
             KeyboardInterrupt: If generation was interrupted.
             ValueError: If preview validation fails.
             NotImplementedError: If an unsupported split type is encountered.
+
         """
         idx = 0
         next_mask = mask.copy()
@@ -228,6 +233,7 @@ class DatasetGenerator:
             KeyboardInterrupt: If generation was interrupted.
             ValueError: If preview validation fails or split unit is unspecified.
             NotImplementedError: If an unsupported split type is encountered.
+
         """
         mask = dataset.get_remaining_mask()
         idx = 0
@@ -266,7 +272,8 @@ class DatasetGenerator:
         if idx > 0:
             if not mask.any():
                 logger.warning(
-                    "Validation set is empty! Please check your splitting configuration"
+                    "Validation set is empty! "
+                    "Please check your splitting configuration",
                 )
             dataset.set_val(mask)
 
@@ -282,6 +289,7 @@ class DatasetGenerator:
             dataset_hook: Optional callable applied to each dataset before
                 splitting, used to filter epochs for specific schemes
                 (e.g. restricting to a single subject).
+
         """
         group_idx = 0
         remaining_mask = None
@@ -317,10 +325,11 @@ class DatasetGenerator:
         Raises:
             ValueError: If the generator is not clean or no datasets were created.
             NotImplementedError: If an unsupported training type is encountered.
+
         """
         if not self.is_clean():
             raise ValueError(
-                "Dataset generation is not clean. Reset the generator and try again."
+                "Dataset generation is not clean. Reset the generator and try again.",
             )
         if self.datasets:
             return self.datasets
@@ -352,6 +361,7 @@ class DatasetGenerator:
 
         Raises:
             ValueError: If no valid datasets remain after filtering.
+
         """
         self.generate()
         # Filter out unselected datasets efficiently
@@ -368,6 +378,7 @@ class DatasetGenerator:
 
         Returns:
             True if the generator has completed or has not been interrupted.
+
         """
         return self.done or (not self.interrupted and not self.preview_failed)
 
@@ -387,6 +398,7 @@ class DatasetGenerator:
         Raises:
             TypeError: If study is not a valid Study instance.
             ValueError: If no valid datasets were generated.
+
         """
         from ..study import Study
 

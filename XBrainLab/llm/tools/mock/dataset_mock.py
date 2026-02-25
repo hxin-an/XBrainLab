@@ -20,7 +20,11 @@ class MockListFilesTool(BaseListFilesTool):
     """Mock implementation of :class:`BaseListFilesTool`."""
 
     def execute(
-        self, study: Any, directory: str | None = None, pattern: str = "*", **kwargs
+        self,
+        study: Any,
+        directory: str | None = None,
+        pattern: str = "*",
+        **kwargs,
     ) -> str:
         """Return a simulated file listing.
 
@@ -32,6 +36,7 @@ class MockListFilesTool(BaseListFilesTool):
 
         Returns:
             A string representation of matching files.
+
         """
         if directory is None:
             return "Error: directory is required"
@@ -51,6 +56,7 @@ class MockLoadDataTool(BaseLoadDataTool):
 
         Returns:
             A success message indicating how many paths were loaded.
+
         """
         if paths is None:
             return "Error: paths list is required"
@@ -77,6 +83,7 @@ class MockAttachLabelsTool(BaseAttachLabelsTool):
 
         Returns:
             A message summarising how many files received labels.
+
         """
         if mapping is None:
             return "Error: mapping is required"
@@ -95,6 +102,7 @@ class MockClearDatasetTool(BaseClearDatasetTool):
 
         Returns:
             A confirmation message.
+
         """
         return "Dataset cleared."
 
@@ -111,6 +119,7 @@ class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
         Returns:
             A canned dataset-info string.
+
         """
         return "Dataset Info: 2 files loaded, 250Hz, 22 channels."
 
@@ -139,5 +148,6 @@ class MockGenerateDatasetTool(BaseGenerateDatasetTool):
 
         Returns:
             A confirmation message with the split strategy and mode.
+
         """
         return f"Generated dataset (Split: {split_strategy}, Mode: {training_mode})."

@@ -4,8 +4,7 @@ from PyQt6.QtWidgets import QGroupBox, QListWidget, QVBoxLayout, QWidget
 
 
 class HistoryWidget(QWidget):
-    """
-    Widget to display preprocessing history as a list.
+    """Widget to display preprocessing history as a list.
     Updates dynamically based on controller state.
     """
 
@@ -14,6 +13,7 @@ class HistoryWidget(QWidget):
 
         Args:
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.init_ui()
@@ -40,6 +40,7 @@ class HistoryWidget(QWidget):
                 if no preprocessing has been applied.
             is_epoched: Whether the data has been epoched (locks further
                 preprocessing).
+
         """
         self.history_list.clear()
 

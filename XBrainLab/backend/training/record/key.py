@@ -8,6 +8,7 @@ class RecordKey:
         LOSS: Key for loss values.
         ACC: Key for accuracy values.
         AUC: Key for AUC values.
+
     """
 
     LOSS = "loss"
@@ -19,6 +20,7 @@ class RecordKey:
 
         Returns:
             An iterator over the string values of all non-private attributes.
+
         """
         keys = dir(self)
         keys = [getattr(self, key) for key in keys if not key.startswith("_")]
@@ -34,6 +36,7 @@ class TrainRecordKey(RecordKey):
     Attributes:
         TIME: Key for epoch duration values.
         LR: Key for learning rate values.
+
     """
 
     TIME = "time"

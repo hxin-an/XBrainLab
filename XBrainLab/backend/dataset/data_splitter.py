@@ -18,6 +18,7 @@ class DataSplitter:
         split_unit: Unit of the splitting value (ratio, number, kfold, manual).
         is_option: Whether this splitter is a real option or just a label.
         text: Human-readable string representation of the split type.
+
     """
 
     def __init__(
@@ -34,6 +35,7 @@ class DataSplitter:
             value_var: String representation of the splitting value.
             split_unit: Unit of the splitting value.
             is_option: Whether this splitter is a real option or just a label.
+
         """
         validate_type(split_type, (SplitByType, ValSplitByType), "split_type")
         if split_unit:
@@ -49,8 +51,8 @@ class DataSplitter:
 
         Returns:
             True if the value is valid for the configured split unit.
-        """
 
+        """
         # check if all required fields are filled
         if self.value_var is None:
             return False
@@ -92,6 +94,7 @@ class DataSplitter:
 
         Raises:
             ValueError: If the splitter is invalid or value_var is None.
+
         """
         if not self.is_valid():
             raise ValueError("Splitter is not valid")
@@ -101,8 +104,7 @@ class DataSplitter:
             return [
                 int(i) for i in self.value_var.strip().split(" ") if len(i.strip()) > 0
             ]
-        else:
-            return float(self.value_var)
+        return float(self.value_var)
 
     def get_raw_value(self) -> str:
         """Get the raw string value.
@@ -112,6 +114,7 @@ class DataSplitter:
 
         Raises:
             ValueError: If the splitter is invalid or value_var is None.
+
         """
         if not self.is_valid():
             raise ValueError("Splitter is not valid")
@@ -124,6 +127,7 @@ class DataSplitter:
 
         Returns:
             The split unit, or None if not set.
+
         """
         return self.split_unit
 
@@ -132,6 +136,7 @@ class DataSplitter:
 
         Returns:
             String in the form ``"SplitUnit.NAME"`` or ``"None"``.
+
         """
         if self.split_unit is None:
             return "None"
@@ -142,6 +147,7 @@ class DataSplitter:
 
         Returns:
             String in the form ``"SplitByType.NAME"``.
+
         """
         return f"{self.split_type.__class__.__name__}.{self.split_type.name}"
 
@@ -157,6 +163,7 @@ class DataSplittingConfig:
         is_cross_validation: Whether cross-validation is enabled.
         val_splitter_list: List of splitters for the validation set.
         test_splitter_list: List of splitters for the test set.
+
     """
 
     def __init__(
@@ -173,6 +180,7 @@ class DataSplittingConfig:
             is_cross_validation: Whether to use cross-validation.
             val_splitter_list: List of splitters for the validation set.
             test_splitter_list: List of splitters for the test set.
+
         """
         validate_type(train_type, TrainingType, "train_type")
         validate_type(is_cross_validation, bool, "is_cross_validation")
@@ -189,6 +197,7 @@ class DataSplittingConfig:
 
         Returns:
             Tuple of (val_splitter_list, test_splitter_list).
+
         """
         return self.val_splitter_list, self.test_splitter_list
 
@@ -197,5 +206,6 @@ class DataSplittingConfig:
 
         Returns:
             String in the form ``"TrainingType.NAME"``.
+
         """
         return f"{self.train_type.__class__.__name__}.{self.train_type.name}"

@@ -20,6 +20,7 @@ class TimeEpoch(PreprocessBase):
 
         Raises:
             ValueError: If data is already epoched or has no event markers.
+
         """
         super().check_data()
         for preprocessed_data in self.preprocessed_data_list:
@@ -28,11 +29,15 @@ class TimeEpoch(PreprocessBase):
             _, event_id = preprocessed_data.get_event_list()
             if not event_id:
                 raise ValueError(
-                    f"No event markers found for {preprocessed_data.get_filename()}"
+                    f"No event markers found for {preprocessed_data.get_filename()}",
                 )
 
     def get_preprocess_desc(
-        self, baseline: list, selected_event_names: list, tmin: float, tmax: float
+        self,
+        baseline: list,
+        selected_event_names: list,
+        tmin: float,
+        tmax: float,
     ):
         """Returns a description of the time-epoch step.
 
@@ -45,6 +50,7 @@ class TimeEpoch(PreprocessBase):
 
         Returns:
             A string describing the epoching parameters.
+
         """
         return f"Epoching {tmin} ~ {tmax} by event ({baseline} baseline)"
 
@@ -69,6 +75,7 @@ class TimeEpoch(PreprocessBase):
         Raises:
             ValueError: If no matching events are found or the data is
                 already epoched.
+
         """
         raw_events, raw_event_id = preprocessed_data.get_event_list()
 
@@ -84,7 +91,8 @@ class TimeEpoch(PreprocessBase):
         selection_mask = np.zeros(raw_events.shape[0], dtype=bool)
         for event_id in selected_event_id.values():
             selection_mask = np.logical_or(
-                selection_mask, raw_events[:, -1] == event_id
+                selection_mask,
+                raw_events[:, -1] == event_id,
             )
         selected_events = raw_events[selection_mask]
 
@@ -92,12 +100,12 @@ class TimeEpoch(PreprocessBase):
             available = list(raw_event_id.keys())
             raise ValueError(
                 f"No event markers found. Selected: {selected_event_names}. "
-                f"Available: {available}"
+                f"Available: {available}",
             )
 
         if not preprocessed_data.is_raw():
             raise ValueError(
-                "Data is already epoched. Cannot perform TimeEpoch on epoched data."
+                "Data is already epoched. Cannot perform TimeEpoch on epoched data.",
             )
 
         data = mne.Epochs(

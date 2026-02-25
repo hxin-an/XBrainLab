@@ -9,8 +9,7 @@ from .base_saliency_view import BaseSaliencyView
 
 
 class SaliencyMapWidget(BaseSaliencyView):
-    """
-    Widget for visualizing 2D Saliency Maps.
+    """Widget for visualizing 2D Saliency Maps.
     Uses Matplotlib backend.
     """
 

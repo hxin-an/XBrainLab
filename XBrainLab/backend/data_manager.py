@@ -22,6 +22,7 @@ class DataManager:
         dataset_generator: Dataset generator instance, or None.
         dataset_locked: Whether the dataset is locked for modification.
         backup_loaded_data_list: Backup of loaded data for undo, or None.
+
     """
 
     def __init__(self):
@@ -44,11 +45,14 @@ class DataManager:
 
         Returns:
             RawDataLoader: An instance of the raw data loader.
+
         """
         return RawDataLoader()
 
     def set_loaded_data_list(
-        self, loaded_data_list: list[Raw], force_update: bool = False
+        self,
+        loaded_data_list: list[Raw],
+        force_update: bool = False,
     ) -> None:
         """Set the loaded raw data list and propagate changes.
 
@@ -56,6 +60,7 @@ class DataManager:
             loaded_data_list (list[Raw]): List of loaded raw data objects.
             force_update (bool, optional): Whether to force update and clear
                 downstream data. Defaults to False.
+
         """
         validate_list_type(loaded_data_list, Raw, "loaded_data_list")
         # Note: clean_raw_data is internal or called by Study facade if needed.
@@ -64,21 +69,25 @@ class DataManager:
 
         # Copy to preprocessed (Initial state)
         self.set_preprocessed_data_list(
-            preprocessed_data_list=deepcopy(loaded_data_list), force_update=force_update
+            preprocessed_data_list=deepcopy(loaded_data_list),
+            force_update=force_update,
         )
         self.loaded_data_list = loaded_data_list
         logger.info("Loaded %s raw data files", len(loaded_data_list))
 
     def backup_loaded_data(self) -> None:
         """Backup the currently loaded data list to allow undoing changes
-        (e.g., channel selection)."""
+        (e.g., channel selection).
+        """
         if self.loaded_data_list:
             self.backup_loaded_data_list = deepcopy(self.loaded_data_list)
             logger.info("Backed up loaded data list")
 
     # --- Preprocessing ---
     def set_preprocessed_data_list(
-        self, preprocessed_data_list: list[Raw], force_update: bool = False
+        self,
+        preprocessed_data_list: list[Raw],
+        force_update: bool = False,
     ) -> None:
         """Set the preprocessed data list and generate epochs if possible.
 
@@ -86,13 +95,14 @@ class DataManager:
             preprocessed_data_list (list[Raw]): List of preprocessed data objects.
             force_update (bool, optional): Whether to force update and clear
                 downstream data. Defaults to False.
+
         """
         validate_list_type(preprocessed_data_list, Raw, "preprocessed_data_list")
         self.clean_datasets(force_update=force_update)
 
         self.preprocessed_data_list = preprocessed_data_list
         logger.info(
-            f"Set preprocessed data list with {len(preprocessed_data_list)} items"
+            f"Set preprocessed data list with {len(preprocessed_data_list)} items",
         )
 
         # Check if we should generate epochs
@@ -107,6 +117,7 @@ class DataManager:
 
         Args:
             force_update (bool, optional): Whether to force update. Defaults to False.
+
         """
         # Restore backup
         if self.backup_loaded_data_list:
@@ -117,7 +128,8 @@ class DataManager:
 
         if self.loaded_data_list:
             self.set_preprocessed_data_list(
-                deepcopy(self.loaded_data_list), force_update=force_update
+                deepcopy(self.loaded_data_list),
+                force_update=force_update,
             )
         logger.info("Reset preprocess to loaded data")
 
@@ -127,6 +139,7 @@ class DataManager:
         Args:
             preprocessor (type[PreprocessBase]): The preprocessor class to apply.
             **kwargs: Keyword arguments for the preprocessor's data_preprocess method.
+
         """
         validate_issubclass(preprocessor, PreprocessBase, "preprocessor")
         pp_instance = preprocessor(self.preprocessed_data_list)
@@ -142,6 +155,7 @@ class DataManager:
         Args:
             datasets (list[Dataset]): List of dataset objects.
             force_update (bool, optional): Whether to force update. Defaults to False.
+
         """
         validate_list_type(datasets, Dataset, "datasets")
         self.clean_datasets(force_update=force_update)
@@ -178,6 +192,7 @@ class DataManager:
 
         Args:
             force_update: If ``False``, raises when data already exists.
+
         """
         if not force_update:
             self._guard_clean_raw_data()
@@ -193,6 +208,7 @@ class DataManager:
 
         Args:
             force_update: If ``False``, raises when datasets already exist.
+
         """
         if not force_update:
             self._guard_clean_datasets()
@@ -215,5 +231,6 @@ class DataManager:
 
         Returns:
             bool: True if locked, False otherwise.
+
         """
         return self.dataset_locked

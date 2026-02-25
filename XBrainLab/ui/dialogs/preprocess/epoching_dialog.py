@@ -38,6 +38,7 @@ class EpochingDialog(BaseDialog):
         baseline_check: QCheckBox to enable/disable baseline correction.
         b_min_spin: QDoubleSpinBox for baseline start time.
         b_max_spin: QDoubleSpinBox for baseline end time.
+
     """
 
     def __init__(self, parent, data_list: list):
@@ -134,7 +135,7 @@ class EpochingDialog(BaseDialog):
         layout.addWidget(param_group)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -145,6 +146,7 @@ class EpochingDialog(BaseDialog):
 
         Args:
             checked: Whether baseline correction is enabled.
+
         """
         if self.b_min_spin:
             self.b_min_spin.setEnabled(checked)
@@ -174,13 +176,13 @@ class EpochingDialog(BaseDialog):
                 "Warning: Epoch duration < 1.0s may be too short for some models "
                 "(EEGNet, SCCNet, ShallowConvNet). "
                 "Consider using at least 1.2s to avoid errors during training plan "
-                "generation."
+                "generation.",
             )
             self.warning_label.show()
         elif duration < 1.2:
             self.warning_label.setText(
                 "Note: Epoch duration < 1.2s may cause issues with high sampling rates "
-                "(>250Hz)."
+                "(>250Hz).",
             )
             self.warning_label.show()
         else:
@@ -192,6 +194,7 @@ class EpochingDialog(BaseDialog):
         Raises:
             QMessageBox: Warning if no events are selected or time range
                 is invalid.
+
         """
         if (
             not self.event_list
@@ -214,13 +217,17 @@ class EpochingDialog(BaseDialog):
 
         if tmin >= tmax:
             QMessageBox.warning(
-                self, "Invalid Input", "Start time must be less than End time."
+                self,
+                "Invalid Input",
+                "Start time must be less than End time.",
             )
             return
 
         if (tmax - tmin) < 0.1:
             QMessageBox.warning(
-                self, "Invalid Input", "Epoch duration is too short (< 0.1s)."
+                self,
+                "Invalid Input",
+                "Epoch duration is too short (< 0.1s).",
             )
             return
 
@@ -236,6 +243,7 @@ class EpochingDialog(BaseDialog):
 
         Returns:
             Tuple of (baseline, selected_events, tmin, tmax) or None.
+
         """
         return self.params
 
@@ -244,6 +252,7 @@ class EpochingDialog(BaseDialog):
 
         Returns:
             Tuple of (baseline, selected_events, tmin, tmax) or None.
+
         """
         return self.get_params()
 
@@ -253,6 +262,7 @@ class EpochingDialog(BaseDialog):
         Args:
             data: EEG data object to extract events from.
             events: Set to add event name strings to.
+
         """
         try:
             # Use get_event_list which prioritizes imported/resampled events

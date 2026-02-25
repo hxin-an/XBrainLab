@@ -20,8 +20,7 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class ControlSidebar(QWidget):
-    """
-    Sidebar for Visualization Panel (Configuration & Operations).
+    """Sidebar for Visualization Panel (Configuration & Operations).
     Hosts controls for Montages, Saliency Settings, and export actions.
     """
 
@@ -31,6 +30,7 @@ class ControlSidebar(QWidget):
         Args:
             panel: The parent ``VisualizationPanel``.
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.panel = panel

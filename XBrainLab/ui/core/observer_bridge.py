@@ -17,6 +17,7 @@ class QtObserverBridge(QObject):
         triggered: Signal emitted as ``(args_tuple, kwargs_dict)``.
         observable: The backend ``Observable`` being subscribed to.
         event_name: The event name subscribed on the observable.
+
     """
 
     triggered = pyqtSignal(tuple, dict)  # (args), {kwargs}
@@ -28,6 +29,7 @@ class QtObserverBridge(QObject):
             observable: The backend ``Observable`` instance.
             event_name: Name of the event to subscribe to.
             parent: Optional parent QObject.
+
         """
         super().__init__(parent)
         self.observable = observable
@@ -45,6 +47,7 @@ class QtObserverBridge(QObject):
         Args:
             *args: Positional arguments from the backend event.
             **kwargs: Keyword arguments from the backend event.
+
         """
         # Wrap args/kwargs to send via signal
         # Note: Qt signals need pickle-able types usually, but tuple/dict are fine.
@@ -58,6 +61,7 @@ class QtObserverBridge(QObject):
 
         Args:
             slot: A callable to invoke when the event fires.
+
         """
         self._wrapper = lambda args, kwargs: slot(*args, **kwargs)
         self.triggered.connect(self._wrapper)

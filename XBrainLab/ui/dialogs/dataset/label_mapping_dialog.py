@@ -33,6 +33,7 @@ class LabelMappingDialog(BaseDialog):
         mapping: Dictionary mapping data file paths to label file paths.
         data_list: QListWidget displaying data files (fixed order).
         label_list: QListWidget displaying label files (reorderable).
+
     """
 
     def __init__(self, parent, data_files, label_files):
@@ -52,7 +53,9 @@ class LabelMappingDialog(BaseDialog):
         layout = QVBoxLayout(self)
 
         layout.addWidget(
-            QLabel("Drag and drop Label files (Right) to align with Data files (Left):")
+            QLabel(
+                "Drag and drop Label files (Right) to align with Data files (Left):"
+            ),
         )
 
         # Main layout for lists
@@ -63,7 +66,7 @@ class LabelMappingDialog(BaseDialog):
         data_layout.addWidget(QLabel("Data Files (Fixed)"))
         self.data_list = QListWidget()
         self.data_list.setSelectionMode(
-            QListWidget.SelectionMode.SingleSelection
+            QListWidget.SelectionMode.SingleSelection,
         )  # Allow selection for highlighting
         self.data_list.setUniformItemSizes(True)
         self.data_list.setAlternatingRowColors(True)
@@ -113,7 +116,7 @@ class LabelMappingDialog(BaseDialog):
         self.label_list.currentRowChanged.connect(self.data_list.setCurrentRow)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -128,11 +131,8 @@ class LabelMappingDialog(BaseDialog):
         Returns:
             List of label file paths aligned to the data file order,
             with None for any unmatched slots.
-        """
-        # Create a list of labels aligned with data_files
-        # If no match, put None? Or put at end?
-        # User wants 1-to-1 mapping mostly.
 
+        """
         aligned_labels = [None] * len(self.data_files)
         used_indices = set()
 
@@ -155,7 +155,7 @@ class LabelMappingDialog(BaseDialog):
                 if data_stem in label_name or label_stem in data_name:
                     best_match = label_file
                     best_match_idx = j
-                    break  # Take first match?
+                    break
 
             if best_match:
                 aligned_labels[i] = best_match
@@ -205,6 +205,7 @@ class LabelMappingDialog(BaseDialog):
 
         Returns:
             Dictionary mapping data file paths to label file paths.
+
         """
         return self.mapping
 
@@ -213,5 +214,6 @@ class LabelMappingDialog(BaseDialog):
 
         Returns:
             Dictionary mapping data file paths to label file paths.
+
         """
         return self.get_mapping()

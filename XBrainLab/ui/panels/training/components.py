@@ -8,8 +8,7 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class MetricTab(QWidget):
-    """
-    A tab component containing a Matplotlib plot for a specific training metric.
+    """A tab component containing a Matplotlib plot for a specific training metric.
     Updates dynamically with epoch data.
     """
 
@@ -20,6 +19,7 @@ class MetricTab(QWidget):
             metric_name: Display name of the metric (e.g., ``'Accuracy'``,
                 ``'Loss'``).
             color: Matplotlib-compatible color string for the train curve.
+
         """
         super().__init__()
         self.metric_name = metric_name
@@ -49,7 +49,10 @@ class MetricTab(QWidget):
         self.ax.set_ylabel(ylabel)
 
         self.ax.grid(
-            True, linestyle="--", alpha=0.3, color=Theme.TEXT_SECONDARY
+            True,
+            linestyle="--",
+            alpha=0.3,
+            color=Theme.TEXT_SECONDARY,
         )  # Subtle grid
         self.fig.tight_layout()
         layout.addWidget(self.canvas, stretch=1)
@@ -65,6 +68,7 @@ class MetricTab(QWidget):
             epoch: The epoch number (1-based).
             train_val: Training metric value for this epoch.
             val_val: Validation metric value for this epoch.
+
         """
         self.epochs.append(epoch)
         self.train_vals.append(train_val)

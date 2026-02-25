@@ -10,6 +10,7 @@ def get_optimizer_classes():
 
     Returns:
         A dictionary mapping optimizer class names to their class objects.
+
     """
     return {c[0]: c[1] for c in inspect.getmembers(torch.optim, inspect.isclass)}
 
@@ -26,6 +27,7 @@ def get_optimizer_params(optimizer_class):
 
     Returns:
         A list of ``(param_name, default_value_str)`` tuples.
+
     """
     sigs = inspect.signature(optimizer_class.__init__)
     params = list(sigs.parameters)[2:]  # skip self and params/lr usually
@@ -56,6 +58,7 @@ def instantiate_optimizer(optimizer_class, optim_params, lr=1):
 
     Returns:
         An instantiated optimizer bound to a dummy tensor.
+
     """
     # We use a dummy tensor to validate the optimizer init
     return optimizer_class([torch.Tensor()], lr=lr, **optim_params)
@@ -66,6 +69,7 @@ def get_device_count():
 
     Returns:
         An integer representing the number of CUDA devices.
+
     """
     return torch.cuda.device_count()
 
@@ -78,5 +82,6 @@ def get_device_name(index):
 
     Returns:
         A string with the device name (e.g., ``'NVIDIA GeForce RTX 3090'``).
+
     """
     return torch.cuda.get_device_name(index)

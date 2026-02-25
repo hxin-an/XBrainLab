@@ -35,6 +35,7 @@ class SaliencySettingDialog(BaseDialog):
             name lists (or None for no-parameter methods).
         params_tables: Dictionary mapping method names to QTableWidget
             instances.
+
     """
 
     def __init__(self, parent, saliency_params=None):
@@ -88,7 +89,7 @@ class SaliencySettingDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -134,6 +135,7 @@ class SaliencySettingDialog(BaseDialog):
 
         Raises:
             QMessageBox: Warning if any parameter value is invalid.
+
         """
         new_params: dict[str, dict] = {}
         try:
@@ -156,7 +158,7 @@ class SaliencySettingDialog(BaseDialog):
                             value = int(value_text)
                         else:
                             raise ValueError(  # noqa: TRY301
-                                f"Invalid value for {param}: {value_text}"
+                                f"Invalid value for {param}: {value_text}",
                             )
                     elif value_text == "None":
                         value = None
@@ -181,5 +183,6 @@ class SaliencySettingDialog(BaseDialog):
 
         Returns:
             Dictionary mapping method names to parameter dictionaries.
+
         """
         return self.saliency_params

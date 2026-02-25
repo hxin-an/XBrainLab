@@ -31,6 +31,7 @@ class APIBackend(BaseBackend):
             model settings.
         client: The ``OpenAI`` client instance (``None`` until ``load``
             is called).
+
     """
 
     def __init__(self, config: LLMConfig):
@@ -39,6 +40,7 @@ class APIBackend(BaseBackend):
         Args:
             config: LLM configuration containing API key, base URL,
                 and model name.
+
         """
         self.config = config
         self.client = None
@@ -51,6 +53,7 @@ class APIBackend(BaseBackend):
 
         Raises:
             ImportError: If the ``openai`` package is not installed.
+
         """
         if OpenAI is None:
             raise ImportError("OpenAI package is missing. Run `poetry add openai`.")
@@ -68,8 +71,9 @@ class APIBackend(BaseBackend):
 
         self.client = OpenAI(api_key=api_key, base_url=base_url)  # type: ignore[assignment]
         logger.info(
-            f"Initialized APIBackend with URL: {base_url} "
-            f"Model: {self.config.api_model_name}"
+            "Initialized APIBackend with URL: %s Model: %s",
+            base_url,
+            self.config.api_model_name,
         )
 
     def generate_stream(self, messages: list):
@@ -83,6 +87,7 @@ class APIBackend(BaseBackend):
 
         Yields:
             Text chunks from the streaming API response.
+
         """
         if not self.client:
             self.load()

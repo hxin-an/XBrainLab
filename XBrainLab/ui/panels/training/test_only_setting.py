@@ -15,13 +15,11 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.training import TestOnlyOption, parse_device_name
 from XBrainLab.ui.core.base_dialog import BaseDialog
-
-from .training_setting import SetDeviceWindow
+from XBrainLab.ui.dialogs.training.device_setting_dialog import DeviceSettingDialog
 
 
 class TestOnlySettingWindow(BaseDialog):
-    """
-    Dialog for configuring test-only execution parameters.
+    """Dialog for configuring test-only execution parameters.
     Allows setting batch size, device, and output directory.
     """
 
@@ -30,6 +28,7 @@ class TestOnlySettingWindow(BaseDialog):
 
         Args:
             parent: Parent widget.
+
         """
         super().__init__(parent, title="Test Only Setting", width=400, height=300)
 
@@ -68,7 +67,7 @@ class TestOnlySettingWindow(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.confirm)
         buttons.rejected.connect(self.reject)
@@ -76,7 +75,7 @@ class TestOnlySettingWindow(BaseDialog):
 
     def set_device(self):
         """Open the device-selection dialog and update the label."""
-        setter = SetDeviceWindow(self)
+        setter = DeviceSettingDialog(self)
         if setter.exec() == QDialog.DialogCode.Accepted:
             self.use_cpu, self.gpu_idx = setter.get_result()
             self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
@@ -93,6 +92,7 @@ class TestOnlySettingWindow(BaseDialog):
 
         Raises:
             Exception: Shown in a warning dialog on validation failure.
+
         """
         try:
             self.training_option = TestOnlyOption(
@@ -111,5 +111,6 @@ class TestOnlySettingWindow(BaseDialog):
         Returns:
             TestOnlyOption | None: The option object, or ``None`` if the
                 dialog was cancelled.
+
         """
         return self.training_option

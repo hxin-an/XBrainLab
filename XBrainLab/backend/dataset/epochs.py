@@ -20,6 +20,7 @@ class TrialSelectionSequence(Enum):
         SESSION: Select by session attribute.
         SUBJECT: Select by subject attribute.
         Label: Select by label attribute.
+
     """
 
     SESSION = "session"
@@ -54,6 +55,7 @@ class Epochs:
 
     Raises:
         ValueError: If any item in preprocessed_data_list is unsegmented raw.
+
     """
 
     def __init__(self, preprocessed_data_list: list[Raw]):
@@ -66,7 +68,7 @@ class Epochs:
             if preprocessed_data.is_raw():
                 raise ValueError(
                     "Items of preprocessed_data_list must be "
-                    f"{Raw.__module__}.Raw of type epoch."
+                    f"{Raw.__module__}.Raw of type epoch.",
                 )
 
         self.sfreq = None
@@ -164,6 +166,7 @@ class Epochs:
 
         Returns:
             A new independent Epochs instance with identical data.
+
         """
         return deepcopy(self)
 
@@ -187,6 +190,7 @@ class Epochs:
 
         Args:
             mask: Mask to filter out remaining epochs. 1D np.ndarray of bool.
+
         """
         return self.subject[mask]
 
@@ -195,6 +199,7 @@ class Epochs:
 
         Args:
             mask: Mask to filter out remaining epochs. 1D np.ndarray of bool.
+
         """
         return self.session[mask]
 
@@ -203,6 +208,7 @@ class Epochs:
 
         Args:
             mask: Mask to filter out remaining epochs. 1D np.ndarray of bool.
+
         """
         return self.label[mask]
 
@@ -211,6 +217,7 @@ class Epochs:
 
         Args:
             mask: Mask to filter out remaining epochs. 1D np.ndarray of bool.
+
         """
         return self.idx[mask]
 
@@ -220,6 +227,7 @@ class Epochs:
 
         Args:
             idx: Subject index.
+
         """
         return self.subject_map[idx]
 
@@ -228,6 +236,7 @@ class Epochs:
 
         Args:
             idx: Session index.
+
         """
         return self.session_map[idx]
 
@@ -236,6 +245,7 @@ class Epochs:
 
         Args:
             idx: Label index.
+
         """
         return self.label_map[idx]
 
@@ -262,6 +272,7 @@ class Epochs:
 
         Args:
             idx: Subject index.
+
         """
         return self.subject == idx
 
@@ -308,6 +319,7 @@ class Epochs:
         Returns:
             Nested dict with structure
             ``{label_idx: {subject_idx: {session_idx: [bool_mask, count]}}}``.
+
         """
         filter_preview_mask: dict[int, dict[int, dict[int, list]]] = {}
         unique_label_idx = np.unique(self.get_label_list())
@@ -345,8 +357,8 @@ class Epochs:
         Returns:
             ``[bool_mask, count]`` pair with the smallest count, or None if
             no selectable epochs remain.
-        """
 
+        """
         min_count = self.get_data_length()
         filtered_mask_pair = None
         sequence = [
@@ -379,6 +391,7 @@ class Epochs:
 
         Returns:
             Updated mask-counter dict.
+
         """
         for unique_subject_idx in filter_preview_mask.values():
             for unique_session_idx in unique_subject_idx.values():
@@ -416,6 +429,7 @@ class Epochs:
         Raises:
             ValueError: If value type does not match the expected split unit.
             NotImplementedError: If the split unit is unsupported.
+
         """
         if clean_mask is None:
             target = len(np.unique(target_type[mask]))
@@ -469,9 +483,15 @@ class Epochs:
 
         Returns:
             [selected_mask, remaining_mask]
+
         """
         num = self._get_real_num(
-            target_type, value, split_unit, mask, clean_mask, group_idx
+            target_type,
+            value,
+            split_unit,
+            mask,
+            clean_mask,
+            group_idx,
         )
         ret = mask & False
         filter_preview_mask = self._generate_mask_target(mask)
@@ -491,7 +511,10 @@ class Epochs:
         return ret, mask
 
     def _pick_manual(
-        self, target_type: np.ndarray, mask: np.ndarray, value: list[int]
+        self,
+        target_type: np.ndarray,
+        mask: np.ndarray,
+        value: list[int],
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return mask of selected epochs by manual selection.
 
@@ -505,6 +528,7 @@ class Epochs:
 
         Returns:
             [selected_mask, remaining_mask]
+
         """
         ret = mask & False
         for v in value:
@@ -537,16 +561,21 @@ class Epochs:
 
         Returns:
             [selected_mask, remaining_mask]
+
         """
         target_type = self.get_subject_list()
         if split_unit == SplitUnit.MANUAL:
             if not isinstance(value, list):
                 raise ValueError("Value must be a list for manual selection")
             return self._pick_manual(target_type, mask, value)
-        else:
-            return self._pick(
-                target_type, mask, clean_mask, value, split_unit, group_idx
-            )
+        return self._pick(
+            target_type,
+            mask,
+            clean_mask,
+            value,
+            split_unit,
+            group_idx,
+        )
 
     def pick_session(
         self,
@@ -573,16 +602,21 @@ class Epochs:
 
         Returns:
             [selected_mask, remaining_mask]
+
         """
         target_type = self.get_session_list()
         if split_unit == SplitUnit.MANUAL:
             if not isinstance(value, list):
                 raise ValueError("Value must be a list for manual selection")
             return self._pick_manual(target_type, mask, value)
-        else:
-            return self._pick(
-                target_type, mask, clean_mask, value, split_unit, group_idx
-            )
+        return self._pick(
+            target_type,
+            mask,
+            clean_mask,
+            value,
+            split_unit,
+            group_idx,
+        )
 
     def pick_trial(
         self,
@@ -610,6 +644,7 @@ class Epochs:
 
         Returns:
             [selected_mask, remaining_mask]
+
         """
         ret = mask & False
         # manual selection
@@ -657,6 +692,7 @@ class Epochs:
 
         Returns:
             Dict with keys ``n_classes``, ``channels``, ``samples``, ``sfreq``.
+
         """
         return {
             "n_classes": len(self.label_map),
@@ -670,6 +706,7 @@ class Epochs:
 
         Returns:
             3D array of shape ``(n_epochs, n_channels, n_samples)``.
+
         """
         return self.data
 
@@ -694,6 +731,7 @@ class Epochs:
         Args:
             ch_names: List of channel names.
             channel_position: List of channel positions as ``(x, y, z)`` tuples.
+
         """
         self.ch_names = ch_names
         self.channel_position = channel_position
@@ -706,6 +744,7 @@ class Epochs:
 
         Returns:
             List of channel positions as (x, y, z) tuples, or None if not set.
+
         """
         if hasattr(self, "channel_position"):
             return self.channel_position
@@ -717,8 +756,8 @@ class Epochs:
         Returns:
             ``mne.EpochsArray`` with the stored epoch data, channel info,
             and event mapping.
-        """
 
+        """
         info = mne.create_info(ch_names=self.ch_names, sfreq=self.sfreq, ch_types="eeg")
 
         n_epochs = len(self.data)

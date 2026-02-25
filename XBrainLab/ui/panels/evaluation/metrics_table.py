@@ -19,6 +19,7 @@ class MetricsTableWidget(QTableWidget):
 
         Args:
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.init_ui()
@@ -51,6 +52,7 @@ class MetricsTableWidget(QTableWidget):
 
         Args:
             metrics: Dict returned by EvalRecord.get_per_class_metrics()
+
         """
         self.setRowCount(0)
 
@@ -78,6 +80,7 @@ class MetricsTableWidget(QTableWidget):
                 ``'f1-score'``, and ``'support'``.
             is_summary: If ``True``, render the row with bold font and
                 a highlighted background.
+
         """
         row = self.rowCount()
         self.insertRow(row)
@@ -96,7 +99,9 @@ class MetricsTableWidget(QTableWidget):
 
         self.setItem(row, 0, create_item(label, is_bold=is_summary))
         self.setItem(
-            row, 1, create_item(f"{data['precision']:.4f}", is_bold=is_summary)
+            row,
+            1,
+            create_item(f"{data['precision']:.4f}", is_bold=is_summary),
         )
         self.setItem(row, 2, create_item(f"{data['recall']:.4f}", is_bold=is_summary))
         self.setItem(row, 3, create_item(f"{data['f1-score']:.4f}", is_bold=is_summary))

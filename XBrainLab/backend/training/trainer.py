@@ -16,6 +16,7 @@ class Status(Enum):
         INIT: Trainer is initializing.
         INTING: An interrupt has been requested.
         TRAIN: Training is in progress (formatted with plan name).
+
     """
 
     PENDING = "Pending"
@@ -36,6 +37,7 @@ class Trainer:
             List of training plan holders
         job_thread: :class:`threading.Thread`
             Thread for training in background
+
     """
 
     def __init__(self, training_plan_holders: list[TrainingPlanHolder]):
@@ -47,9 +49,12 @@ class Trainer:
 
         Raises:
             TypeError: If any element is not a :class:`TrainingPlanHolder`.
+
         """
         validate_list_type(
-            training_plan_holders, TrainingPlanHolder, "training_plan_holders"
+            training_plan_holders,
+            TrainingPlanHolder,
+            "training_plan_holders",
         )
         self._interrupt = threading.Event()
         self.progress_text: Status | str = Status.PENDING
@@ -62,6 +67,7 @@ class Trainer:
 
         Args:
             plan: The training plan holder to append.
+
         """
         self.training_plan_holders.append(plan)
 
@@ -70,6 +76,7 @@ class Trainer:
 
         Args:
             plans: List of :class:`TrainingPlanHolder` instances to append.
+
         """
         self.training_plan_holders.extend(plans)
 
@@ -78,6 +85,7 @@ class Trainer:
 
         Raises:
             RuntimeError: If training is currently running.
+
         """
         if self.is_running():
             raise RuntimeError("Cannot clear history while training is running")
@@ -109,7 +117,8 @@ class Trainer:
             self.progress_text = f"Error: {e}"
         finally:
             if not isinstance(
-                self.progress_text, str
+                self.progress_text,
+                str,
             ) or not self.progress_text.startswith("Error"):
                 self.progress_text = Status.PENDING
             self.job_thread = None
@@ -120,6 +129,7 @@ class Trainer:
         Args:
             interact: If ``True``, run the job in a background thread.
                 If ``False``, run synchronously in the current thread.
+
         """
         if self.is_running():
             return
@@ -136,6 +146,7 @@ class Trainer:
 
         Returns:
             The current status or progress message.
+
         """
         if isinstance(self.progress_text, Status):
             return self.progress_text.value
@@ -146,6 +157,7 @@ class Trainer:
 
         Returns:
             ``True`` if the background job thread is alive, ``False`` otherwise.
+
         """
         return self.job_thread is not None and self.job_thread.is_alive()
 
@@ -159,6 +171,7 @@ class Trainer:
         Raises:
             RuntimeError: If training is still in progress and
                 ``force_update`` is ``False``.
+
         """
         if force_update:
             self.set_interrupt()
@@ -170,6 +183,7 @@ class Trainer:
 
         Returns:
             List of :class:`TrainingPlanHolder` instances.
+
         """
         return self.training_plan_holders
 
@@ -204,6 +218,7 @@ class Trainer:
 
         Raises:
             ValueError: If the plan holder or the train record cannot be found.
+
         """
         for holder in self.training_plan_holders:
             if holder.get_name() == plan_name:

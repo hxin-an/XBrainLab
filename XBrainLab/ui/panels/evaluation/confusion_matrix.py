@@ -22,6 +22,7 @@ class ConfusionMatrixWidget(QWidget):
         fig: Current ``matplotlib.figure.Figure`` instance.
         canvas: ``FigureCanvas`` embedding the figure into Qt.
         ax: The matplotlib ``Axes`` used for the initial placeholder.
+
     """
 
     def __init__(self, parent=None):
@@ -29,6 +30,7 @@ class ConfusionMatrixWidget(QWidget):
 
         Args:
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.plot_type = PlotType.CONFUSION
@@ -70,6 +72,7 @@ class ConfusionMatrixWidget(QWidget):
         Args:
             plan: TrainingPlanHolder or TrainRecord
             show_percentage: Whether to show percentage
+
         """
         try:
             for i in reversed(range(self.plot_layout.count())):
@@ -110,7 +113,7 @@ class ConfusionMatrixWidget(QWidget):
 
             if not target_func:
                 raise ValueError(  # noqa: TRY301
-                    f"Object {type(plan)} has no method for confusion matrix"
+                    f"Object {type(plan)} has no method for confusion matrix",
                 )
 
             # Call the function with show_percentage
@@ -136,6 +139,7 @@ class ConfusionMatrixWidget(QWidget):
         Args:
             message: The text to display.
             color: CSS color string for the message text.
+
         """
         lbl = QLabel(message)
         lbl.setStyleSheet(f"color: {color};")

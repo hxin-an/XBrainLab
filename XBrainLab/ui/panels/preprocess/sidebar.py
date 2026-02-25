@@ -38,6 +38,7 @@ class PreprocessSidebar(QWidget):
         btn_normalize: Button to open the normalize dialog.
         btn_epoch: Button to open the epoching dialog.
         btn_reset: Button to reset all preprocessing.
+
     """
 
     def __init__(self, panel, parent=None):
@@ -46,6 +47,7 @@ class PreprocessSidebar(QWidget):
         Args:
             panel: The parent ``PreprocessPanel``.
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.panel = panel
@@ -168,11 +170,12 @@ class PreprocessSidebar(QWidget):
         Args:
             is_epoched: ``True`` if the data has been epoched and
                 preprocessing is locked.
+
         """
         # Filter
         if is_epoched:
             self.btn_filter.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (Data Epoched). Click to see details.",
             )
         else:
             self.btn_filter.setToolTip("Apply bandpass/notch filters")
@@ -180,7 +183,7 @@ class PreprocessSidebar(QWidget):
         # Resample
         if is_epoched:
             self.btn_resample.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (Data Epoched). Click to see details.",
             )
         else:
             self.btn_resample.setToolTip("Change sampling rate")
@@ -188,7 +191,7 @@ class PreprocessSidebar(QWidget):
         # Re-reference
         if is_epoched:
             self.btn_rereference.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (Data Epoched). Click to see details.",
             )
         else:
             self.btn_rereference.setToolTip("Change reference")
@@ -196,7 +199,7 @@ class PreprocessSidebar(QWidget):
         # Normalize
         if is_epoched:
             self.btn_normalize.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (Data Epoched). Click to see details.",
             )
         else:
             self.btn_normalize.setToolTip("Apply Z-Score or Min-Max normalization")
@@ -205,7 +208,7 @@ class PreprocessSidebar(QWidget):
         if is_epoched:
             self.btn_epoch.setText("Epoched (Locked)")
             self.btn_epoch.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details."
+                "Preprocessing is locked (Data Epoched). Click to see details.",
             )
         else:
             self.btn_epoch.setText("Epoching")
@@ -220,6 +223,7 @@ class PreprocessSidebar(QWidget):
 
         Returns:
             bool: ``True`` if the action is blocked, ``False`` otherwise.
+
         """
         if not self.controller:
             return False
@@ -240,10 +244,13 @@ class PreprocessSidebar(QWidget):
 
         Returns:
             bool: ``True`` if data is loaded, ``False`` otherwise.
+
         """
         if not self.controller or not self.controller.has_data():
             QMessageBox.warning(
-                self, "Warning", "No data loaded. Please import data first."
+                self,
+                "Warning",
+                "No data loaded. Please import data first.",
             )
             return False
         return True
@@ -332,12 +339,16 @@ class PreprocessSidebar(QWidget):
                 baseline, selected_events, tmin, tmax = params
                 try:
                     if self.controller.apply_epoching(
-                        baseline, selected_events, tmin, tmax
+                        baseline,
+                        selected_events,
+                        tmin,
+                        tmax,
                     ):
                         self.notify_update()
                         # Update main window info if needed (legacy)
                         if self.main_window and hasattr(
-                            self.main_window, "update_info_panel"
+                            self.main_window,
+                            "update_info_panel",
                         ):
                             self.main_window.update_info_panel()
 

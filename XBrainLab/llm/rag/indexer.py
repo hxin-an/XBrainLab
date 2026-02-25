@@ -33,6 +33,7 @@ class RAGIndexer:
         embeddings: The HuggingFace sentence-transformer embedding model.
         storage_path: Absolute path to the Qdrant on-disk storage.
         client: The ``QdrantClient`` instance.
+
     """
 
     def __init__(self):
@@ -60,6 +61,7 @@ class RAGIndexer:
 
         Raises:
             Exception: If the JSON file cannot be read or parsed.
+
         """
         try:
             with open(json_path, encoding="utf-8") as f:
@@ -97,6 +99,7 @@ class RAGIndexer:
 
         Raises:
             Exception: If indexing fails.
+
         """
         if not docs:
             logger.warning("No documents to index.")
@@ -118,7 +121,7 @@ class RAGIndexer:
                 )
             else:
                 logger.info(
-                    f"Appending to existing collection: {RAGConfig.COLLECTION_NAME}"
+                    f"Appending to existing collection: {RAGConfig.COLLECTION_NAME}",
                 )
 
             # Use LangChain wrapper with existing client
@@ -131,7 +134,7 @@ class RAGIndexer:
 
             logger.info(
                 f"Successfully indexed {len(docs)} documents to "
-                f"{RAGConfig.COLLECTION_NAME}"
+                f"{RAGConfig.COLLECTION_NAME}",
             )
 
         except Exception as e:

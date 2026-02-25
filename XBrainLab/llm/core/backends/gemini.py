@@ -28,6 +28,7 @@ class GeminiBackend(BaseBackend):
             model settings.
         client: The ``genai.Client`` instance (``None`` until ``load``
             is called).
+
     """
 
     def __init__(self, config: LLMConfig):
@@ -36,6 +37,7 @@ class GeminiBackend(BaseBackend):
         Args:
             config: LLM configuration containing Gemini API key and
                 model name.
+
         """
         self.config = config
         self.client: Any = None
@@ -48,10 +50,11 @@ class GeminiBackend(BaseBackend):
 
         Raises:
             ImportError: If the ``google-genai`` package is not installed.
+
         """
         if not genai:
             raise ImportError(
-                "google-genai package is missing. Run `poetry add google-genai`."
+                "google-genai package is missing. Run `poetry add google-genai`.",
             )
 
         api_key = self.config.gemini_api_key
@@ -64,8 +67,8 @@ class GeminiBackend(BaseBackend):
         # New SDK Initialization
         self.client = genai.Client(api_key=api_key)
         logger.info(
-            f"Initialized GeminiBackend (v2 SDK) with Model: "
-            f"{self.config.gemini_model_name}"
+            "Initialized GeminiBackend (v2 SDK) with Model: %s",
+            self.config.gemini_model_name,
         )
 
     def generate_stream(self, messages: list):
@@ -79,6 +82,7 @@ class GeminiBackend(BaseBackend):
 
         Yields:
             Text chunks from the streaming Gemini response.
+
         """
         if not self.client:
             self.load()

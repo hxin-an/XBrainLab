@@ -25,18 +25,18 @@ def load_label_file(filepath: str) -> np.ndarray:
     Raises:
         FileNotFoundError: If the file does not exist.
         ValueError: If the file format is unsupported or loading fails.
+
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
 
     if filepath.endswith(".txt"):
         return _load_txt(filepath)
-    elif filepath.endswith((".csv", ".tsv")):
+    if filepath.endswith((".csv", ".tsv")):
         return _load_csv_tsv(filepath)
-    elif filepath.endswith(".mat"):
+    if filepath.endswith(".mat"):
         return _load_mat(filepath)
-    else:
-        raise ValueError(f"Unsupported file format: {filepath}")
+    raise ValueError(f"Unsupported file format: {filepath}")
 
 
 def _load_txt(path: str) -> np.ndarray:
@@ -50,6 +50,7 @@ def _load_txt(path: str) -> np.ndarray:
 
     Raises:
         ValueError: If reading or parsing the file fails.
+
     """
     labels = []
     try:
@@ -79,6 +80,7 @@ def _load_mat(path: str) -> np.ndarray:
 
     Raises:
         ValueError: If the file contains no variables or loading fails.
+
     """
     try:
         mat = scipy.io.loadmat(path)
@@ -99,22 +101,20 @@ def _load_mat(path: str) -> np.ndarray:
         if len(label_list.shape) == 2:
             if label_list.shape[0] == 1:
                 return label_list[0]
-            elif label_list.shape[1] == 1:
+            if label_list.shape[1] == 1:
                 return label_list[:, 0]
             # Handle (n, 3) - MNE event format
-            elif label_list.shape[1] == 3:
+            if label_list.shape[1] == 3:
                 # Return the last column (event id)
                 return label_list[:, -1]
-            else:
-                # Fallback for non-standard 2D shapes: Flatten to 1D to attempt
-                # heuristic matching. This accommodates loose formats where dimensions
-                # might be ambiguous.
-                return label_list.flatten()
-
-        elif len(label_list.shape) == 1:
-            return label_list
-        else:
+            # Fallback for non-standard 2D shapes: Flatten to 1D to attempt
+            # heuristic matching. This accommodates loose formats where dimensions
+            # might be ambiguous.
             return label_list.flatten()
+
+        if len(label_list.shape) == 1:
+            return label_list
+        return label_list.flatten()
 
     except Exception as e:
         logger.error("Failed to load mat file %s: %s", path, e)
@@ -137,8 +137,8 @@ def _load_csv_tsv(path: str):
 
     Raises:
         ValueError: If reading or parsing the file fails.
-    """
 
+    """
     try:
         sep = "\t" if path.endswith(".tsv") else ","
         df = pd.read_csv(path, sep=sep)
@@ -168,14 +168,13 @@ def _load_csv_tsv(path: str):
             return result
         # Sequence Mode: Assume first column is labels if no specific label column found
         # Or if only one column exists
-        elif found_label:
+        if found_label:
             return df[found_label].values
-        elif len(df.columns) == 1:
+        if len(df.columns) == 1:
             return df.iloc[:, 0].values
-        else:
-            # Try to guess? Or raise error?
-            # Let's assume first column
-            return df.iloc[:, 0].values
+        # Try to guess? Or raise error?
+        # Let's assume first column
+        return df.iloc[:, 0].values
 
     except Exception as e:
         logger.error("Failed to load csv/tsv file %s: %s", path, e)

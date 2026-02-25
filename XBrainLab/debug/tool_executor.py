@@ -47,6 +47,7 @@ class ToolExecutor:
             corresponding ``BaseTool`` subclass types.
         study: The active :class:`Study` instance against which tools are
             executed.
+
     """
 
     TOOL_MAP: ClassVar[dict[str, type[BaseTool]]] = {
@@ -81,6 +82,7 @@ class ToolExecutor:
         Args:
             study: The backend :class:`Study` instance that each tool
                 receives as its first positional argument.
+
         """
         self.study = study
 
@@ -99,6 +101,7 @@ class ToolExecutor:
             The string result produced by the tool, or an error message
             prefixed with ``"Error:"`` if the tool is not found or raises
             an exception.
+
         """
         tool_class = self.TOOL_MAP.get(tool_name)
         if not tool_class:

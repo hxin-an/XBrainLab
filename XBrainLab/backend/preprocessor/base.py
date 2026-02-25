@@ -15,6 +15,7 @@ class PreprocessBase:
     Attributes:
         preprocessed_data_list: List of :class:`~XBrainLab.backend.load_data.Raw`
             instances to be preprocessed.
+
     """
 
     def __init__(self, preprocessed_data_list: list[Raw]):
@@ -28,6 +29,7 @@ class PreprocessBase:
         Raises:
             TypeError: If the list contains invalid types.
             ValueError: If the list is empty.
+
         """
         self.preprocessed_data_list = deepcopy(preprocessed_data_list)
         self.check_data()
@@ -39,6 +41,7 @@ class PreprocessBase:
             TypeError: If the data contains items that are
                         not instances of :class:`XBrainLab.backend.load_data.Raw`.
             ValueError: If the data is empty.
+
         """
         if not self.preprocessed_data_list:
             raise ValueError("No valid data is loaded")
@@ -60,6 +63,7 @@ class PreprocessBase:
 
         Raises:
             NotImplementedError: Must be overridden by subclasses.
+
         """
         raise NotImplementedError
 
@@ -79,6 +83,7 @@ class PreprocessBase:
         Returns:
             The list of preprocessed
             :class:`~XBrainLab.backend.load_data.Raw` instances.
+
         """
         for preprocessed_data in self.preprocessed_data_list:
             self._data_preprocess(preprocessed_data, *args, **kwargs)
@@ -95,5 +100,6 @@ class PreprocessBase:
 
         Raises:
             NotImplementedError: Must be overridden by subclasses.
+
         """
         raise NotImplementedError

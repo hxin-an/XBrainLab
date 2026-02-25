@@ -32,6 +32,7 @@ class SinglePlotWindow(BaseDialog):
         plot_number: Unique Matplotlib figure identifier string.
         fig_param: Dictionary of current figure parameters.
         toolbar: The ``NavigationToolbar2QT`` instance.
+
     """
 
     PLOT_COUNTER: int = 0
@@ -45,6 +46,7 @@ class SinglePlotWindow(BaseDialog):
                 Defaults to ``(6.4, 4.8)``.
             dpi: Optional dots-per-inch for the figure. Defaults to 100.
             title: Window title string.
+
         """
         if figsize is None:
             figsize = (6.4, 4.8)
@@ -77,9 +79,10 @@ class SinglePlotWindow(BaseDialog):
 
         Returns:
             ``None``.
+
         """
         # View-only dialog, no result
-        return None
+        return
 
     def active_figure(self):
         """Activate this window's Matplotlib figure as the current figure."""
@@ -99,6 +102,7 @@ class SinglePlotWindow(BaseDialog):
 
         Returns:
             Dictionary with ``"fig"``, ``"figsize"``, and ``"dpi"`` keys.
+
         """
         # Check if figure needs re-initialization (e.g., if closed or cleared).
         if self.plot_number is None or not plt.fignum_exists(self.plot_number):
@@ -133,6 +137,7 @@ class SinglePlotWindow(BaseDialog):
             figure: The Matplotlib ``Figure`` object.
             figsize: Tuple ``(width, height)`` in inches.
             dpi: Dots per inch for the figure.
+
         """
         if self.figure_canvas:
             self.main_layout.removeWidget(self.figure_canvas)
@@ -145,7 +150,8 @@ class SinglePlotWindow(BaseDialog):
 
         self.figure_canvas = FigureCanvasQTAgg(figure)
         self.figure_canvas.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
         )
         self.figure_canvas.updateGeometry()
 

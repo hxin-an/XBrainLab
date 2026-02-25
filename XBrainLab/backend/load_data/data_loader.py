@@ -23,6 +23,7 @@ class RawDataLoader(list):
 
     Raises:
         ValueError: If the initial data list is inconsistent.
+
     """
 
     def __init__(self, raw_data_list: list[Raw] | None = None):
@@ -38,6 +39,7 @@ class RawDataLoader(list):
 
         Args:
             filepath: Filepath of the raw data.
+
         """
         for raw_data in self:
             if filepath == raw_data.get_filepath():
@@ -49,6 +51,7 @@ class RawDataLoader(list):
 
         Raises:
             ValueError: If the loaded raw data is inconsistent or empty.
+
         """
         for i in range(len(self)):
             raw_data = self[i]
@@ -72,6 +75,7 @@ class RawDataLoader(list):
         Raises:
             ValueError: If the loaded raw data is inconsistent with
                         the raw data in the dataset.
+
         """
         validate_type(raw, Raw, "raw")
         # valide if the dataset is empty
@@ -80,12 +84,12 @@ class RawDataLoader(list):
         # check channel number
         if self[idx].get_nchan() != raw.get_nchan():
             raise DataMismatchError(
-                f"Dataset channel numbers inconsistent (got {raw.get_nchan()})."
+                f"Dataset channel numbers inconsistent (got {raw.get_nchan()}).",
             )
         # check sfreq
         if self[idx].get_sfreq() != raw.get_sfreq():
             raise DataMismatchError(
-                f"Dataset sample frequency inconsistent (got {raw.get_sfreq()})."
+                f"Dataset sample frequency inconsistent (got {raw.get_sfreq()}).",
             )
         # check same data type
         if self[idx].is_raw() != raw.is_raw():
@@ -95,7 +99,7 @@ class RawDataLoader(list):
             self[idx].get_epoch_duration() != raw.get_epoch_duration()
         ):
             raise DataMismatchError(
-                f"Epoch duration inconsistent (got {raw.get_epoch_duration()})."
+                f"Epoch duration inconsistent (got {raw.get_epoch_duration()}).",
             )
 
     def append(self, raw: Raw) -> None:
@@ -103,6 +107,7 @@ class RawDataLoader(list):
 
         Args:
             raw: Loaded raw data.
+
         """
         self.check_loaded_data_consistency(raw)
         super().append(raw)
@@ -114,6 +119,7 @@ class RawDataLoader(list):
             study: XBrainLab Study to apply the loaded raw data.
             force_update: Whether to force override and clear the data of
                 following steps.
+
         """
         from ..study import Study
 

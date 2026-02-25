@@ -33,6 +33,7 @@ class EventFilterDialog(BaseDialog):
         btn_all: Button to select all events.
         btn_none: Button to deselect all events.
         btn_toggle: Button to toggle selected items.
+
     """
 
     def __init__(self, parent, event_names):
@@ -96,7 +97,7 @@ class EventFilterDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -107,6 +108,7 @@ class EventFilterDialog(BaseDialog):
 
         Args:
             checked: If True, check all items; otherwise uncheck all.
+
         """
         if not self.list_widget:
             return
@@ -140,6 +142,7 @@ class EventFilterDialog(BaseDialog):
 
         Args:
             pos: Position where the context menu was requested.
+
         """
         if not self.list_widget:
             return
@@ -168,6 +171,7 @@ class EventFilterDialog(BaseDialog):
 
         Args:
             event: The key press event.
+
         """
         if event.key() == Qt.Key.Key_Space:
             self.toggle_selected()
@@ -193,6 +197,7 @@ class EventFilterDialog(BaseDialog):
 
         Returns:
             List of checked event name strings.
+
         """
         return self.selected_names
 
@@ -201,6 +206,7 @@ class EventFilterDialog(BaseDialog):
 
         Returns:
             List of checked event name strings.
+
         """
         return self.get_selected_ids()
 
@@ -212,6 +218,7 @@ class EventFilterDialog(BaseDialog):
 
         Args:
             names: List of event name strings to check.
+
         """
         # Uncheck all first? Or just check the ones in names?
         # Smart filter implies "These are the ones you want".

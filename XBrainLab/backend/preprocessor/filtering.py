@@ -26,6 +26,7 @@ class Filtering(PreprocessBase):
 
         Returns:
             A human-readable string describing the applied filters.
+
         """
         desc_parts = []
         if l_freq is not None or h_freq is not None:
@@ -37,7 +38,11 @@ class Filtering(PreprocessBase):
         return ", ".join(desc_parts)
 
     def _data_preprocess(
-        self, preprocessed_data: Raw, l_freq: float, h_freq: float, notch_freqs=None
+        self,
+        preprocessed_data: Raw,
+        l_freq: float,
+        h_freq: float,
+        notch_freqs=None,
     ):
         """Applies frequency filtering to a single data instance.
 
@@ -47,6 +52,7 @@ class Filtering(PreprocessBase):
             h_freq: High cut-off frequency in Hz, or ``None``.
             notch_freqs: Frequency or array of frequencies (Hz) to notch
                 filter, or ``None`` to skip.
+
         """
         preprocessed_data.get_mne().load_data()
         mne_data = preprocessed_data.get_mne()

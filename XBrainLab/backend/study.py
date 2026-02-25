@@ -37,6 +37,7 @@ class Study:
             The training option.
         trainer: :class:`XBrainLab.backend.training.Trainer` or None.
             The model trainer.
+
     """
 
     def __init__(self) -> None:
@@ -116,6 +117,7 @@ class Study:
 
         Raises:
             ValueError: If the controller type is unknown.
+
         """
         if controller_type not in self._controllers:
             if controller_type == "dataset":
@@ -142,7 +144,9 @@ class Study:
         self.data_manager.backup_loaded_data()
 
     def set_loaded_data_list(
-        self, loaded_data_list: list[Raw], force_update: bool = False
+        self,
+        loaded_data_list: list[Raw],
+        force_update: bool = False,
     ) -> None:
         """Set loaded data list in DataManager.
 
@@ -153,11 +157,14 @@ class Study:
 
     # step 2 - preprocess
     def set_preprocessed_data_list(
-        self, preprocessed_data_list: list[Raw], force_update: bool = False
+        self,
+        preprocessed_data_list: list[Raw],
+        force_update: bool = False,
     ) -> None:
         """Set preprocessed data list in DataManager."""
         self.data_manager.set_preprocessed_data_list(
-            preprocessed_data_list, force_update
+            preprocessed_data_list,
+            force_update,
         )
 
     def reset_preprocess(self, force_update=False) -> None:
@@ -170,6 +177,7 @@ class Study:
         Args:
             preprocessor: The preprocessor class to apply.
             **kwargs: Keyword arguments forwarded to the preprocessor.
+
         """
         self.data_manager.preprocess(preprocessor, **kwargs)
 
@@ -185,6 +193,7 @@ class Study:
 
         Raises:
             ValueError: If no epoch data is available.
+
         """
         if not self.epoch_data:
             raise ValueError("No valid epoch data is generated")
@@ -199,26 +208,32 @@ class Study:
 
     # step 4 - training config
     def set_training_option(
-        self, training_option: TrainingOption, force_update: bool = False
+        self,
+        training_option: TrainingOption,
+        force_update: bool = False,
     ) -> None:
         """Set training option.
 
         Args:
             training_option: The training option to set.
             force_update: Whether to force update.
+
         """
         validate_type(training_option, TrainingOption, "training_option")
         # Do not clean trainer here to allow multi-experiment history
         self.training_option = training_option
 
     def set_model_holder(
-        self, model_holder: ModelHolder, force_update: bool = False
+        self,
+        model_holder: ModelHolder,
+        force_update: bool = False,
     ) -> None:
         """Set model holder.
 
         Args:
             model_holder: The model holder to set.
             force_update: Whether to force update.
+
         """
         validate_type(model_holder, ModelHolder, "model_holder")
         # Do not clean trainer here to allow multi-experiment history
@@ -230,6 +245,7 @@ class Study:
         Args:
             force_update: Whether to clear existing plan.
             append: Whether to append to existing plan.
+
         """
         if not append:
             self.clean_trainer(force_update=force_update)
@@ -263,6 +279,7 @@ class Study:
 
         Args:
             interact: Whether to run interactively.
+
         """
         if not self.trainer:
             raise ValueError("No valid trainer is generated")
@@ -291,6 +308,7 @@ class Study:
             filepath: Path to save the CSV.
             plan_name: Name of the plan.
             real_plan_name: Real name of the plan.
+
         """
         if not self.trainer:
             raise ValueError("No valid training plan is generated")
@@ -360,12 +378,13 @@ class Study:
 
         Args:
             force_update: If ``False``, raises when a trainer exists.
+
         """
         if not force_update and self.has_trainer():
             raise ValueError(
                 "This step has already been done, "
                 "all following data will be removed if you reset this step.\n"
-                "Please clean_trainer first."
+                "Please clean_trainer first.",
             )
         if self.trainer:
             self.trainer.clean(force_update=force_update)

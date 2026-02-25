@@ -26,6 +26,7 @@ class Dataset:
         val_mask: Boolean mask of trials assigned to the validation set.
         test_mask: Boolean mask of trials assigned to the test set.
         is_selected: Whether this dataset is selected for downstream use.
+
     """
 
     SEQ = 0
@@ -36,6 +37,7 @@ class Dataset:
         Args:
             epoch_data: Epoch data to be split.
             config: Splitting configuration defining how data is partitioned.
+
         """
         validate_type(epoch_data, Epochs, "epoch_data")
         validate_type(config, DataSplittingConfig, "config")
@@ -70,6 +72,7 @@ class Dataset:
 
         Returns:
             (train_number, val_number, test_number)
+
         """
         train_number = sum(self.train_mask)
         val_number = sum(self.val_mask)
@@ -86,6 +89,7 @@ class Dataset:
              val_number: int,
              test_number: int
             )
+
         """
         train_number, val_number, test_number = self.get_all_trial_numbers()
         selected = "O" if self.is_selected else "X"
@@ -97,6 +101,7 @@ class Dataset:
 
         Args:
             select: Whether this dataset should be selected.
+
         """
         self.is_selected = select
 
@@ -105,6 +110,7 @@ class Dataset:
 
         Args:
             name: New name for the dataset.
+
         """
         self.name = name
 
@@ -113,6 +119,7 @@ class Dataset:
 
         Returns:
             True if any of the train, validation, or test sets has zero trials.
+
         """
         train_number, val_number, test_number = self.get_all_trial_numbers()
         return train_number == 0 or val_number == 0 or test_number == 0
@@ -122,6 +129,7 @@ class Dataset:
 
         Args:
             mask: Boolean mask indicating candidate test trials.
+
         """
         self.test_mask = mask & self.remaining_mask
         self.remaining_mask &= np.logical_not(mask)
@@ -131,6 +139,7 @@ class Dataset:
 
         Args:
             mask: Boolean mask indicating candidate validation trials.
+
         """
         self.val_mask = mask & self.remaining_mask
         self.remaining_mask &= np.logical_not(mask)
@@ -146,7 +155,9 @@ class Dataset:
 
     ## filter
     def intersection_with_subject_by_idx(
-        self, mask: np.ndarray, idx: int
+        self,
+        mask: np.ndarray,
+        idx: int,
     ) -> np.ndarray:
         """Return the intersection of the mask and the subject mask.
 
@@ -156,6 +167,7 @@ class Dataset:
 
         Returns:
             Boolean mask of trials matching both the input mask and the subject.
+
         """
         return mask & self.epoch_data.pick_subject_mask_by_idx(idx)
 
@@ -164,6 +176,7 @@ class Dataset:
 
         Args:
             subject_idx: Subject index to keep in the remaining mask.
+
         """
         subject_mask = self.epoch_data.pick_subject_mask_by_idx(subject_idx)
         self.remaining_mask &= subject_mask
@@ -173,6 +186,7 @@ class Dataset:
 
         Args:
             mask: Boolean mask of trials to discard from remaining.
+
         """
         self.remaining_mask &= np.logical_not(mask)
 
@@ -204,6 +218,7 @@ class Dataset:
 
         Returns:
             (X, y)
+
         """
         X = self.epoch_data.get_data()[self.val_mask]
         y = self.epoch_data.get_label_list()[self.val_mask]
@@ -214,6 +229,7 @@ class Dataset:
 
         Returns:
             (X, y)
+
         """
         X = self.epoch_data.get_data()[self.test_mask]
         y = self.epoch_data.get_label_list()[self.test_mask]

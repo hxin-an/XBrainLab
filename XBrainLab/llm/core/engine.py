@@ -25,6 +25,7 @@ class LLMEngine:
         config: The active ``LLMConfig`` instance.
         backends: Cache mapping mode names to instantiated backend objects.
         active_backend: The currently selected backend (or ``None``).
+
     """
 
     def __init__(self, config: LLMConfig | None = None):
@@ -33,13 +34,14 @@ class LLMEngine:
         Args:
             config: Optional ``LLMConfig`` instance.  If ``None``, a
                 default configuration is created.
+
         """
         self.config = config or LLMConfig()
         self.backends: dict[str, Any] = {}  # Cache for backends
         self.active_backend: Any | None = None
 
         logger.info(
-            f"Initializing LLMEngine with default mode: {self.config.inference_mode}"
+            f"Initializing LLMEngine with default mode: {self.config.inference_mode}",
         )
 
     def load_model(self):
@@ -55,6 +57,7 @@ class LLMEngine:
         Args:
             mode: Backend mode to activate (``'local'``, ``'api'``, or
                 ``'gemini'``).
+
         """
         logger.info("Switching backend to: %s", mode)
 
@@ -70,7 +73,7 @@ class LLMEngine:
                 if backend.config.model_name != self.config.model_name:
                     logger.info(
                         f"Stale local model ({backend.config.model_name} != "
-                        f"{self.config.model_name}). Reloading."
+                        f"{self.config.model_name}). Reloading.",
                     )
                     is_stale = True
 
@@ -85,9 +88,8 @@ class LLMEngine:
                 self.active_backend = backend
                 logger.info("Switched to cached backend: %s", mode)
                 return
-            else:
-                # Remove stale backend
-                del self.backends[mode]
+            # Remove stale backend
+            del self.backends[mode]
 
         # 2. Create if missing
         new_backend: Any = None
@@ -124,6 +126,7 @@ class LLMEngine:
 
         Raises:
             RuntimeError: If no active backend is loaded.
+
         """
         if not self.active_backend:
             raise RuntimeError("No active backend loaded")

@@ -54,6 +54,7 @@ class TrainingSettingDialog(BaseDialog):
         checkpoint_entry: QLineEdit for checkpoint save interval.
         repeat_entry: QLineEdit for number of training repeats.
         evaluation_combo: QComboBox for evaluation strategy selection.
+
     """
 
     def __init__(self, parent, controller):
@@ -188,7 +189,7 @@ class TrainingSettingDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -226,6 +227,7 @@ class TrainingSettingDialog(BaseDialog):
 
         Raises:
             QMessageBox: Warning if input validation fails.
+
         """
         if (
             not self.evaluation_combo
@@ -285,6 +287,7 @@ class TrainingSettingDialog(BaseDialog):
 
         Raises:
             ValueError: Always raised with the provided message.
+
         """
         raise ValueError(msg)
 
@@ -293,5 +296,6 @@ class TrainingSettingDialog(BaseDialog):
 
         Returns:
             TrainingOption instance with all training parameters, or None.
+
         """
         return self.training_option

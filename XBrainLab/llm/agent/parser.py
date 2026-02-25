@@ -35,6 +35,7 @@ class CommandParser:
         Returns:
             A list of ``(tool_name, parameters)`` tuples if commands are
             found, or ``None`` if no valid commands are detected.
+
         """
         # Clean up the text: remove code blocks if present
         # We want to scan the "inner" text of the code block if it exists

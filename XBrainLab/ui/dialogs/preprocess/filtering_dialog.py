@@ -29,6 +29,7 @@ class FilteringDialog(BaseDialog):
         h_freq_spin: QDoubleSpinBox for upper pass-band frequency.
         notch_check: QCheckBox to enable/disable notch filtering.
         notch_spin: QDoubleSpinBox for notch frequency.
+
     """
 
     def __init__(self, parent):
@@ -81,7 +82,7 @@ class FilteringDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -92,6 +93,7 @@ class FilteringDialog(BaseDialog):
 
         Args:
             checked: Whether notch filtering is enabled.
+
         """
         if self.notch_spin:
             self.notch_spin.setEnabled(checked)
@@ -101,6 +103,7 @@ class FilteringDialog(BaseDialog):
 
         Args:
             checked: Whether bandpass filtering is enabled.
+
         """
         if self.l_freq_spin:
             self.l_freq_spin.setEnabled(checked)
@@ -113,6 +116,7 @@ class FilteringDialog(BaseDialog):
         Raises:
             QMessageBox: Warning if frequency range is invalid or no
                 filter is selected.
+
         """
         if (
             not self.bandpass_check
@@ -133,7 +137,9 @@ class FilteringDialog(BaseDialog):
             # Validate
             if l_freq >= h_freq > 0:
                 QMessageBox.warning(
-                    self, "Invalid Input", "Lower freq must be less than Upper freq."
+                    self,
+                    "Invalid Input",
+                    "Lower freq must be less than Upper freq.",
                 )
                 return
 
@@ -157,6 +163,7 @@ class FilteringDialog(BaseDialog):
 
         Returns:
             Tuple of (l_freq, h_freq, notch_freq) or None.
+
         """
         return self.params
 
@@ -165,5 +172,6 @@ class FilteringDialog(BaseDialog):
 
         Returns:
             Tuple of (l_freq, h_freq, notch_freq) or None.
+
         """
         return self.get_params()

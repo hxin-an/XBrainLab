@@ -7,8 +7,7 @@ from logging.handlers import RotatingFileHandler
 
 
 def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
-    """
-    Sets up a logger with both console and file handlers.
+    """Sets up a logger with both console and file handlers.
 
     Args:
         name (str): Name of the logger.
@@ -17,6 +16,7 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
 
     Returns:
         logging.Logger: Configured logger instance.
+
     """
     # Create logs directory if it doesn't exist
     log_dir = os.path.dirname(log_file)
@@ -30,7 +30,7 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
     # Check if we already have a RotatingFileHandler attached to this log file
     for h in logger.handlers:
         if isinstance(h, RotatingFileHandler) and h.baseFilename == os.path.abspath(
-            log_file
+            log_file,
         ):
             return logger
 
@@ -61,7 +61,10 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
     # File Handler (Rotating)
     # Max size 5MB, keep 5 backup files
     file_handler = SafeRotatingFileHandler(
-        log_file, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
+        log_file,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
     )
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)

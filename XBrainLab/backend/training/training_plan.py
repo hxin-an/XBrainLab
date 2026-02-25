@@ -36,10 +36,15 @@ class SharedMemoryDataset(torch_data.Dataset):
         labels: Full label array shared across all splits.
         indices: Array of indices into ``data`` and ``labels`` for this split.
         device: Target PyTorch device string (e.g., ``'cpu'`` or ``'cuda:0'``).
+
     """
 
     def __init__(
-        self, data: np.ndarray, labels: np.ndarray, indices: np.ndarray, device: str
+        self,
+        data: np.ndarray,
+        labels: np.ndarray,
+        indices: np.ndarray,
+        device: str,
     ):
         """Initialize the shared memory dataset.
 
@@ -48,6 +53,7 @@ class SharedMemoryDataset(torch_data.Dataset):
             labels: Full label array of shape ``(N,)``.
             indices: Integer array of sample indices for this split.
             device: Target PyTorch device string.
+
         """
         self.data = data
         self.labels = labels
@@ -59,6 +65,7 @@ class SharedMemoryDataset(torch_data.Dataset):
 
         Returns:
             The number of indices in this dataset split.
+
         """
         return len(self.indices)
 
@@ -70,6 +77,7 @@ class SharedMemoryDataset(torch_data.Dataset):
 
         Returns:
             A tuple of ``(input_tensor, label_tensor)`` on the target device.
+
         """
         real_idx = self.indices[idx]
         # Data is transferred to device only when accessed (saves VRAM)
@@ -99,8 +107,8 @@ def to_holder(
     Returns:
         A :class:`torch.utils.data.DataLoader` wrapping a
         :class:`SharedMemoryDataset`, or ``None`` if ``indices`` is empty.
-    """
 
+    """
     if len(indices) == 0:
         return None
 
@@ -121,6 +129,7 @@ class Status(Enum):
         INIT: Initializing a specific training repeat.
         EVAL: Evaluating a specific training repeat.
         TRAIN: Training a specific repeat.
+
     """
 
     DONE = "Finished"
@@ -152,6 +161,7 @@ class TrainingPlanHolder:
             Error message
         status: str
             Training status
+
     """
 
     def __init__(
@@ -176,6 +186,7 @@ class TrainingPlanHolder:
         Raises:
             ValueError: If the dataset, option, or model holder is invalid,
                 or if model creation fails due to incompatible parameters.
+
         """
         self.model_holder = model_holder
         self.dataset = dataset
@@ -200,17 +211,17 @@ class TrainingPlanHolder:
             seed = set_seed(seed=None)
             try:
                 model = self.model_holder.get_model(
-                    self.dataset.get_epoch_data().get_model_args()
+                    self.dataset.get_epoch_data().get_model_args(),
                 )
             except (RuntimeError, ValueError) as e:
                 # Catch both RuntimeError (from PyTorch) and ValueError (from our
                 # validation)
                 if "Output size is too small" in str(
-                    e
+                    e,
                 ) or "Epoch duration is too short" in str(e):
                     model_name = self.model_holder.target_model.__name__
                     raise ValueError(
-                        f"Failed to create model '{model_name}': {e!s}"
+                        f"Failed to create model '{model_name}': {e!s}",
                     ) from e
                 raise
             self.train_record_list.append(
@@ -221,7 +232,7 @@ class TrainingPlanHolder:
                     option=self.option,
                     seed=seed,
                     plan_id=self.plan_id,
-                )
+                ),
             )
 
     def check_data(self) -> None:
@@ -230,6 +241,7 @@ class TrainingPlanHolder:
         Raises:
             ValueError: If any required component is ``None`` or invalid.
             TypeError: If components are not of the expected types.
+
         """
         if self.dataset is None:
             raise ValueError("dataset cannot be None")
@@ -256,7 +268,7 @@ class TrainingPlanHolder:
         try:
             for i in range(self.option.repeat_num):
                 self.status = Status.INIT.value.format(
-                    self.train_record_list[i].get_name()
+                    self.train_record_list[i].get_name(),
                 )
                 train_record = self.train_record_list[i]
                 train_record.resume()
@@ -290,6 +302,7 @@ class TrainingPlanHolder:
         Returns:
             A tuple of ``(train_loader, val_loader, test_loader)``. Any loader
             may be ``None`` if the corresponding split has no samples.
+
         """
         bs = self.option.bs
         dev = self.option.get_device()
@@ -304,13 +317,26 @@ class TrainingPlanHolder:
         test_idx = np.where(self.dataset.test_mask)[0]
 
         train_holder: torch_data.DataLoader | None = to_holder(
-            full_data, full_labels, train_idx, dev, bs, True
+            full_data,
+            full_labels,
+            train_idx,
+            dev,
+            bs,
+            True,
         )
         val_holder: torch_data.DataLoader | None = to_holder(
-            full_data, full_labels, val_idx, dev, bs
+            full_data,
+            full_labels,
+            val_idx,
+            dev,
+            bs,
         )
         test_holder: torch_data.DataLoader | None = to_holder(
-            full_data, full_labels, test_idx, dev, bs
+            full_data,
+            full_labels,
+            test_idx,
+            dev,
+            bs,
         )
         return train_holder, val_holder, test_holder
 
@@ -336,6 +362,7 @@ class TrainingPlanHolder:
 
         Raises:
             NotImplementedError: If the evaluation option is not recognized.
+
         """
         target_loader = test_loader or val_loader
 
@@ -356,7 +383,7 @@ class TrainingPlanHolder:
 
         # Only create the model on GPU once we know we have a valid state_dict
         target_model = self.model_holder.get_model(
-            self.dataset.get_epoch_data().get_model_args()
+            self.dataset.get_epoch_data().get_model_args(),
         ).to(self.option.get_device())
         target_model.load_state_dict(state)
         target_model = target_model.eval()
@@ -367,6 +394,7 @@ class TrainingPlanHolder:
 
         Args:
             train_record: Training record for storing training result
+
         """
         if train_record.is_finished():
             return
@@ -397,7 +425,9 @@ class TrainingPlanHolder:
         if train_record.epoch == self.option.epoch:
             self.status = Status.EVAL.value.format(train_record.get_name())
             target, target_loader = self.get_eval_pair(
-                train_record, val_loader, test_loader
+                train_record,
+                val_loader,
+                test_loader,
             )
 
             # Fallback: If no validation/test data, use training data for
@@ -410,7 +440,9 @@ class TrainingPlanHolder:
 
             if target and target_loader:
                 eval_record = Evaluator.evaluate_with_saliency(
-                    target, target_loader, self.saliency_params
+                    target,
+                    target_loader,
+                    self.saliency_params,
                 )
                 train_record.set_eval_record(eval_record)
 
@@ -436,13 +468,17 @@ class TrainingPlanHolder:
             optimizer (torch.optim.Optimizer): Optimizer for backpropagation.
             criterion (torch.nn.Module): Loss function.
             train_record (TrainRecord): Record to store training statistics.
+
         """
         start_time = time.time()
         model.train()
 
         # 1. Train Batch Loop
         running_loss, correct, total_count, y_true, y_pred = self._train_batch_loop(
-            model, train_loader, optimizer, criterion
+            model,
+            train_loader,
+            optimizer,
+            criterion,
         )
         if self._interrupt.is_set():
             return
@@ -494,6 +530,7 @@ class TrainingPlanHolder:
 
         Returns:
             tuple: (running_loss, correct_count, total_count, y_true, y_pred)
+
         """
         running_loss = 0.0
         correct = 0.0
@@ -531,19 +568,20 @@ class TrainingPlanHolder:
             auc: Training AUC for the current epoch.
             lr: Current learning rate.
             duration: Time elapsed for the current epoch in seconds.
+
         """
         train_record.update_train(
             {
                 RecordKey.LOSS: loss,
                 RecordKey.ACC: acc,
                 RecordKey.AUC: auc,
-            }
+            },
         )
         train_record.update_statistic(
             {
                 TrainRecordKey.LR: lr,
                 TrainRecordKey.TIME: duration,
-            }
+            },
         )
 
     @property
@@ -566,6 +604,7 @@ class TrainingPlanHolder:
 
         Returns:
             The dataset name string.
+
         """
         return self.dataset.get_name()
 
@@ -574,6 +613,7 @@ class TrainingPlanHolder:
 
         Returns:
             The :class:`Dataset` instance.
+
         """
         return self.dataset
 
@@ -582,6 +622,7 @@ class TrainingPlanHolder:
 
         Returns:
             List of :class:`TrainRecord` instances.
+
         """
         return self.train_record_list
 
@@ -590,6 +631,7 @@ class TrainingPlanHolder:
 
         Returns:
             Dictionary of saliency method parameters.
+
         """
         return self.saliency_params
 
@@ -599,17 +641,22 @@ class TrainingPlanHolder:
 
         Args:
             saliency_params: New dictionary of saliency method parameters.
+
         """
         self.saliency_params = saliency_params
         _, val_loader, test_loader = self.get_loader()
         for i in range(self.option.repeat_num):
             train_record = self.train_record_list[i]
             target, target_loader = self.get_eval_pair(
-                train_record, val_loader, test_loader
+                train_record,
+                val_loader,
+                test_loader,
             )
             if target is not None and target_loader is not None:  # model is trained
                 eval_record = Evaluator.evaluate_with_saliency(
-                    target, target_loader, self.saliency_params
+                    target,
+                    target_loader,
+                    self.saliency_params,
                 )
                 self.train_record_list[i].set_eval_record(eval_record)
 
@@ -619,6 +666,7 @@ class TrainingPlanHolder:
 
         Returns:
             The error message if an error occurred, otherwise the status string.
+
         """
         if self.error:
             return self.error
@@ -629,6 +677,7 @@ class TrainingPlanHolder:
 
         Returns:
             Zero-based index of the current training repetition.
+
         """
         for i in range(self.option.repeat_num):
             if not self.train_record_list[i].is_finished():
@@ -640,6 +689,7 @@ class TrainingPlanHolder:
 
         Returns:
             The epoch count for the current repetition.
+
         """
         return self.train_record_list[self.get_training_repeat()].get_epoch()
 
@@ -649,6 +699,7 @@ class TrainingPlanHolder:
         Returns:
             A tuple of ``(lr, train_loss, train_acc, train_auc, val_loss,
             val_acc, val_auc)``. Values default to ``'-'`` if unavailable.
+
         """
         record = self.train_record_list[self.get_training_repeat()]
 
@@ -680,6 +731,7 @@ class TrainingPlanHolder:
 
         Returns:
             ``True`` if the last repetition's training record is finished.
+
         """
         return self.train_record_list[-1].is_finished()
 
@@ -688,6 +740,7 @@ class TrainingPlanHolder:
 
         Returns:
             A string formatted as ``'completed / total'``.
+
         """
         total = 0
         for train_record in self.train_record_list:
@@ -702,6 +755,7 @@ class TrainingPlanHolder:
 
         Returns:
             The best accuracy value as a float.
+
         """
         record = self.train_record_list[self.get_training_repeat()]
         # Check validation accuracy first

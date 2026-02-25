@@ -20,6 +20,7 @@ class ChannelSelection(PreprocessBase):
 
         Returns:
             A string describing how many channels were selected.
+
         """
         return f"Select {len(selected_channels)} Channel"
 
@@ -32,6 +33,7 @@ class ChannelSelection(PreprocessBase):
 
         Raises:
             ValueError: If no channels are selected.
+
         """
         # Check if channel is selected
         if len(selected_channels) == 0:

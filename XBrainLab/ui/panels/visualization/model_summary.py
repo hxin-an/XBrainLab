@@ -23,6 +23,7 @@ class ModelSummaryWindow(BaseDialog):
         trainer_map: Mapping of trainer display names to ``Trainer`` objects.
         plan_combo: ``QComboBox`` for selecting a training plan.
         summary_text: ``QTextEdit`` displaying the model summary.
+
     """
 
     def __init__(self, parent, trainers):
@@ -31,6 +32,7 @@ class ModelSummaryWindow(BaseDialog):
         Args:
             parent: Parent widget.
             trainers: List of ``Trainer`` instances.
+
         """
         self.trainers = trainers
         self.trainer_map = {t.get_name(): t for t in trainers}
@@ -74,6 +76,7 @@ class ModelSummaryWindow(BaseDialog):
 
         Args:
             plan_name: The display name of the selected training plan.
+
         """
         self.summary_text.clear()
         if plan_name not in self.trainer_map:
@@ -83,7 +86,7 @@ class ModelSummaryWindow(BaseDialog):
         try:
             # Logic adapted from original
             model_instance = trainer.model_holder.get_model(
-                trainer.dataset.get_epoch_data().get_model_args()
+                trainer.dataset.get_epoch_data().get_model_args(),
             ).to(trainer.option.get_device())
 
             X, _ = trainer.dataset.get_training_data()
@@ -100,7 +103,7 @@ class ModelSummaryWindow(BaseDialog):
             from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
 
             summary_str = str(
-                summary(model_instance, input_size=train_shape, verbose=0)
+                summary(model_instance, input_size=train_shape, verbose=0),
             )
 
             self.summary_text.setText(summary_str)

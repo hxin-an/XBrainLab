@@ -37,6 +37,7 @@ class TrainingSidebar(QWidget):
         btn_start: Button to start training (enabled when ready).
         btn_stop: Button to stop an in-progress training run.
         btn_clear: Button to clear training history.
+
     """
 
     def __init__(self, panel, parent=None):
@@ -45,6 +46,7 @@ class TrainingSidebar(QWidget):
         Args:
             panel: The parent ``TrainingPanel``.
             parent: Optional parent widget.
+
         """
         super().__init__()
         self.panel = panel
@@ -182,7 +184,9 @@ class TrainingSidebar(QWidget):
         """
         if not self.controller.get_loaded_data_list():
             QMessageBox.warning(
-                self, "No Data", "Please load and preprocess data first."
+                self,
+                "No Data",
+                "Please load and preprocess data first.",
             )
             return
 
@@ -221,7 +225,9 @@ class TrainingSidebar(QWidget):
             if generator:
                 self.controller.apply_data_splitting(generator)
             QMessageBox.information(
-                self, "Success", "Data splitting configuration saved."
+                self,
+                "Success",
+                "Data splitting configuration saved.",
             )
             self.check_ready_to_train()
 
@@ -271,6 +277,7 @@ class TrainingSidebar(QWidget):
         Raises:
             Exception: Propagated from the controller on failure, shown
                 in a critical message box.
+
         """
         try:
             if not self.controller.is_training():
@@ -297,7 +304,9 @@ class TrainingSidebar(QWidget):
         try:
             if self.controller.is_training():
                 QMessageBox.warning(
-                    self, "Warning", "Cannot clear history while training is running."
+                    self,
+                    "Warning",
+                    "Cannot clear history while training is running.",
                 )
                 return
             self.controller.clear_history()

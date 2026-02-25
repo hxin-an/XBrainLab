@@ -20,6 +20,7 @@ class TrainingHistoryTable(QTableWidget):
         selection_changed_record: Signal emitted with the selected
             ``TrainRecord`` when the user clicks a row.
         row_map: Mapping of row index to ``(plan, record)`` tuples.
+
     """
 
     selection_changed_record = pyqtSignal(object)  # Emits record object
@@ -29,6 +30,7 @@ class TrainingHistoryTable(QTableWidget):
 
         Args:
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.row_map = {}  # Map row -> (plan, record)
@@ -50,7 +52,7 @@ class TrainingHistoryTable(QTableWidget):
                 "Val Acc",
                 "LR",
                 "Time",
-            ]
+            ],
         )
 
         self.setStyleSheet(Stylesheets.HISTORY_TABLE)
@@ -104,6 +106,7 @@ class TrainingHistoryTable(QTableWidget):
 
         Args:
             target_rows: List of formatted row dictionaries.
+
         """
         self.update_history(target_rows)
 
@@ -116,6 +119,7 @@ class TrainingHistoryTable(QTableWidget):
 
         Args:
             target_rows: List of dictionaries describing each row.
+
         """
         if self.rowCount() != len(target_rows):
             self.setRowCount(len(target_rows))

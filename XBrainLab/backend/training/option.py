@@ -14,6 +14,7 @@ class TrainingEvaluation(Enum):
         TEST_AUC: Select model with the best testing AUC.
         TEST_ACC: Select model with the best testing accuracy.
         LAST_EPOCH: Use the model from the last training epoch.
+
     """
 
     VAL_LOSS = "Best validation loss"
@@ -35,6 +36,7 @@ def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
 
     Raises:
         ValueError: If neither CPU nor a valid GPU index is specified.
+
     """
     if use_cpu:
         return "cpu"
@@ -52,6 +54,7 @@ def parse_optim_name(optim: type, optim_params: dict) -> str:
 
     Returns:
         A string formatted as ``'OptimizerName (param1=val1, ...)'``.
+
     """
     option_list = [f"{i}={optim_params[i]}" for i in optim_params if optim_params[i]]
     options = ", ".join(option_list)
@@ -74,6 +77,7 @@ class TrainingOption:
         evaluation_option: Model selection option
         repeat_num: Number of repeats
         criterion: Loss function
+
     """
 
     def __init__(
@@ -108,6 +112,7 @@ class TrainingOption:
 
         Raises:
             ValueError: If any option is invalid or not set.
+
         """
         self.output_dir = output_dir
         self.optim: type | None = optim
@@ -131,6 +136,7 @@ class TrainingOption:
             ValueError: If any option is invalid or not set.  When
                 multiple problems exist, all are reported in a single
                 semicolon-separated message.
+
         """
         errors: list[str] = []
         if self.output_dir is None:
@@ -188,6 +194,7 @@ class TrainingOption:
 
         Raises:
             ValueError: If the optimizer or its parameters are not set.
+
         """
         if self.optim is None or self.optim_params is None:
             raise ValueError("Optimizer not set")
@@ -198,6 +205,7 @@ class TrainingOption:
 
         Returns:
             The optimizer class name, or ``'None'`` if not set.
+
         """
         if self.optim is None:
             return "None"
@@ -208,6 +216,7 @@ class TrainingOption:
 
         Returns:
             The optimizer class name string.
+
         """
         return self.get_optimizer_name_repr()
 
@@ -217,6 +226,7 @@ class TrainingOption:
         Returns:
             A string formatted as ``'OptimizerName (param=value, ...)'``,
             or ``'None'`` if the optimizer is not set.
+
         """
         if self.optim is None or self.optim_params is None:
             return "None"
@@ -228,6 +238,7 @@ class TrainingOption:
         Returns:
             A string formatted as ``'OptimizerName (param=value, ...)'``,
             or ``'None'`` if the optimizer is not set.
+
         """
         if self.optim is None or self.optim_params is None:
             return "None"
@@ -239,6 +250,7 @@ class TrainingOption:
         Returns:
             A string describing the device (e.g., ``'cpu'`` or
             ``'0 - NVIDIA GeForce RTX 3090'``).
+
         """
         return parse_device_name(self.use_cpu, self.gpu_idx)
 
@@ -247,6 +259,7 @@ class TrainingOption:
 
         Returns:
             The device identifier string used by PyTorch.
+
         """
         if self.use_cpu:
             return "cpu"
@@ -257,6 +270,7 @@ class TrainingOption:
 
         Returns:
             A string in the format ``'ClassName.MEMBER_NAME'``.
+
         """
         module_name = self.evaluation_option.__class__.__name__
         class_name = self.evaluation_option.name
@@ -267,6 +281,7 @@ class TrainingOption:
 
         Returns:
             The path to the training output directory.
+
         """
         return self.output_dir
 
@@ -282,6 +297,7 @@ class TestOnlyOption(TrainingOption):
         use_cpu: Whether to use CPU.
         gpu_idx: GPU device index.
         bs: Batch size.
+
     """
 
     __test__ = False  # Not a test case
@@ -294,6 +310,7 @@ class TestOnlyOption(TrainingOption):
             use_cpu: Whether to use CPU for inference.
             gpu_idx: GPU device index.
             bs: Batch size for inference.
+
         """
         super().__init__(
             output_dir,
@@ -315,6 +332,7 @@ class TestOnlyOption(TrainingOption):
 
         Raises:
             ValueError: If any option is invalid or not set
+
         """
         reason = None
         if self.output_dir is None:
@@ -355,14 +373,16 @@ class TestOnlyOption(TrainingOption):
 
         Returns:
             ``None``.
+
         """
-        return None
+        return
 
     def get_optimizer_name_repr(self):
         """Return a placeholder string for the optimizer name.
 
         Returns:
             The string ``'-'``.
+
         """
         return "-"
 
@@ -371,6 +391,7 @@ class TestOnlyOption(TrainingOption):
 
         Returns:
             The string ``'-'``.
+
         """
         return "-"
 
@@ -379,6 +400,7 @@ class TestOnlyOption(TrainingOption):
 
         Returns:
             A string describing the device.
+
         """
         return parse_device_name(self.use_cpu, self.gpu_idx)
 
@@ -387,6 +409,7 @@ class TestOnlyOption(TrainingOption):
 
         Returns:
             The device identifier string (e.g., ``'cpu'`` or ``'cuda:0'``).
+
         """
         if self.use_cpu:
             return "cpu"
@@ -397,6 +420,7 @@ class TestOnlyOption(TrainingOption):
 
         Returns:
             A string in the format ``'ClassName.MEMBER_NAME'``.
+
         """
         module_name = self.evaluation_option.__class__.__name__
         class_name = self.evaluation_option.name
@@ -407,5 +431,6 @@ class TestOnlyOption(TrainingOption):
 
         Returns:
             The path to the output directory.
+
         """
         return self.output_dir

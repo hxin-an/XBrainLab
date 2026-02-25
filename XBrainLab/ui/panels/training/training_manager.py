@@ -22,8 +22,7 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class TrainingManagerWindow(BaseDialog):
-    """
-    Standalone window for managing training process.
+    """Standalone window for managing training process.
     Displays real-time status table and controls.
     NOTE: Appears to be legacy/alternative to `TrainingPanel`.
     """
@@ -34,6 +33,7 @@ class TrainingManagerWindow(BaseDialog):
         Args:
             parent: Parent widget.
             trainer: A ``Trainer`` instance managing the training loop.
+
         """
         self.trainer = trainer
         self.training_plan_holders = trainer.get_training_plan_holders()
@@ -114,7 +114,10 @@ class TrainingManagerWindow(BaseDialog):
     def plot_loss(self):
         """Open a loss-curve plot dialog."""
         win = PlotFigureWindow(
-            self, self.training_plan_holders, PlotType.LOSS, title="Loss Plot"
+            self,
+            self.training_plan_holders,
+            PlotType.LOSS,
+            title="Loss Plot",
         )
         win.show()
         # Keep reference to the window to prevent garbage collection if non-modal.
@@ -124,21 +127,30 @@ class TrainingManagerWindow(BaseDialog):
     def plot_acc(self):
         """Open an accuracy-curve plot dialog."""
         win = PlotFigureWindow(
-            self, self.training_plan_holders, PlotType.ACCURACY, title="Accuracy Plot"
+            self,
+            self.training_plan_holders,
+            PlotType.ACCURACY,
+            title="Accuracy Plot",
         )
         win.exec()
 
     def plot_auc(self):
         """Open an AUC-curve plot dialog."""
         win = PlotFigureWindow(
-            self, self.training_plan_holders, PlotType.AUC, title="AUC Plot"
+            self,
+            self.training_plan_holders,
+            PlotType.AUC,
+            title="AUC Plot",
         )
         win.exec()
 
     def plot_lr(self):
         """Open a learning-rate plot dialog."""
         win = PlotFigureWindow(
-            self, self.training_plan_holders, PlotType.LR, title="Learning Rate Plot"
+            self,
+            self.training_plan_holders,
+            PlotType.LR,
+            title="Learning Rate Plot",
         )
         win.exec()
 

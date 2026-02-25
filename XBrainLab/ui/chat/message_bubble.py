@@ -39,6 +39,7 @@ class MessageBubble(QWidget):
         is_user: Whether this bubble represents a user message.
         bubble_frame: The styled QFrame container for the bubble.
         text_edit: The QTextBrowser displaying the message content.
+
     """
 
     def __init__(self, text: str, is_user: bool, parent=None):
@@ -49,6 +50,7 @@ class MessageBubble(QWidget):
             is_user: Whether this is a user message (affects alignment
                 and styling).
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.is_user = is_user
@@ -63,6 +65,7 @@ class MessageBubble(QWidget):
 
         Args:
             text: The initial text content to display.
+
         """
         # Main horizontal layout for this row
         row_layout = QHBoxLayout(self)
@@ -73,7 +76,8 @@ class MessageBubble(QWidget):
         self.bubble_frame = QFrame()
         self.bubble_frame.setObjectName("BubbleFrame")
         self.bubble_frame.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Minimum,
         )
 
         # Create bubble's internal layout
@@ -88,16 +92,16 @@ class MessageBubble(QWidget):
         self.text_edit.setFrameStyle(QFrame.Shape.NoFrame)
         self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.text_edit.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
 
         # Interaction Flags: Enable selection AND links
         self.text_edit.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse,
         )
         self.text_edit.setOpenExternalLinks(
-            False
+            False,
         )  # We handle links manually for file:// support
         self.text_edit.anchorClicked.connect(self._on_link_clicked)
 
@@ -111,7 +115,7 @@ class MessageBubble(QWidget):
 
         # Transparent background
         self.text_edit.setStyleSheet(
-            "background: transparent; padding: 0px; margin: 0px; border: none;"
+            "background: transparent; padding: 0px; margin: 0px; border: none;",
         )
 
         bubble_layout.addWidget(self.text_edit)
@@ -138,6 +142,7 @@ class MessageBubble(QWidget):
 
         Args:
             url: The clicked URL.
+
         """
         scheme = url.scheme()
         if scheme == "file":
@@ -166,6 +171,7 @@ class MessageBubble(QWidget):
         Args:
             container_width: The available width in pixels from the
                 parent scroll area viewport.
+
         """
         if container_width <= 0:
             return
@@ -218,6 +224,7 @@ class MessageBubble(QWidget):
 
         Args:
             text: New Markdown text to render in the bubble.
+
         """
         self._raw_text = text
         if self.text_edit:
@@ -233,6 +240,7 @@ class MessageBubble(QWidget):
 
         Returns:
             The unmodified text string stored in this bubble.
+
         """
         return self._raw_text
 
@@ -241,6 +249,7 @@ class MessageBubble(QWidget):
 
         Args:
             event: The QShowEvent.
+
         """
         super().showEvent(event)
         parent = self.parent()
@@ -252,5 +261,6 @@ class MessageBubble(QWidget):
 
         Args:
             text: The text to set.
+
         """
         self.set_text(text)

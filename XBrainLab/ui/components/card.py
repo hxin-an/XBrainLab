@@ -14,6 +14,7 @@ class CardWidget(QFrame):
         main_layout: The top-level QVBoxLayout of the card.
         title_label: QLabel displaying the card title (if provided).
         content_layout: QVBoxLayout where child widgets should be added.
+
     """
 
     def __init__(self, title, parent=None):
@@ -23,6 +24,7 @@ class CardWidget(QFrame):
             title: The card title text. Pass ``None`` or empty string
                 to omit the title label.
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.setObjectName("CardWidget")
@@ -33,6 +35,7 @@ class CardWidget(QFrame):
 
         Args:
             title: The card title text.
+
         """
         # Main Layout
         self.main_layout = QVBoxLayout(self)
@@ -63,6 +66,7 @@ class CardWidget(QFrame):
 
         Args:
             widget: The QWidget to add.
+
         """
         self.content_layout.addWidget(widget)
 
@@ -71,5 +75,6 @@ class CardWidget(QFrame):
 
         Args:
             layout: The QLayout to add.
+
         """
         self.content_layout.addLayout(layout)

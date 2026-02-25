@@ -23,6 +23,7 @@ def set_seed(seed: int | None = None, deterministic: bool = False) -> int:
 
     Returns:
         The seed value that was applied.
+
     """
     if seed is None:
         seed = torch.seed() & 0xFFFF_FFFF  # Mask to 32 bits for safe serialisation
@@ -52,6 +53,7 @@ def get_random_state() -> tuple:
 
     Returns:
         A tuple of ``(torch_rng_state, random_state, numpy_state)``.
+
     """
     return torch.get_rng_state(), random.getstate(), np.random.get_state()
 
@@ -62,6 +64,7 @@ def set_random_state(state: tuple) -> None:
     Args:
         state: A tuple of ``(torch_rng_state, random_state, numpy_state)``
             as returned by :func:`get_random_state`.
+
     """
     torch_state, random_state, np_state = state
 

@@ -29,6 +29,7 @@ class RealSetModelTool(BaseSetModelTool):
 
         Returns:
             A success message or an error description.
+
         """
         if not model_name:
             return "Error: model_name must be provided."
@@ -72,6 +73,7 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
 
         Returns:
             A summary of the configured parameters, or an error message.
+
         """
         facade = BackendFacade(study)
 
@@ -114,6 +116,7 @@ class RealStartTrainingTool(BaseStartTrainingTool):
 
         Returns:
             ``True`` if training can proceed.
+
         """
         # Valid if we have a trainer (ready to run) OR we have all headers to create one
         has_trainer = study.trainer is not None
@@ -134,20 +137,11 @@ class RealStartTrainingTool(BaseStartTrainingTool):
 
         Returns:
             A success message or an error description.
+
         """
         facade = BackendFacade(study)
 
         try:
-            # Facade should handle plan generation if needed.
-            # If not, we might need to add it to Facade.
-            # Currently Facade.run_training starts the process.
-            # Assuming Facade or Controller handles prerequisites.
-
-            # To be safe and respect previous logic, we ensure plan exists via Facade
-            # But Facade doesn't expose generate_plan explicitly yet?
-            # It's better to update Facade.run_training to be robust.
-            # For now, we trust run_training does the job or we signal it.
-
             facade.run_training()
         except Exception as e:
             return f"Failed to start training: {e!s}"

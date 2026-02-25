@@ -47,6 +47,7 @@ class MockStandardPreprocessTool(BaseStandardPreprocessTool):
 
         Returns:
             A confirmation message summarising the pipeline.
+
         """
         return (
             f"Applied standard preprocessing pipeline (BP: {l_freq}-{h_freq}Hz, "
@@ -74,6 +75,7 @@ class MockBandPassFilterTool(BaseBandPassFilterTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if low_freq is None or high_freq is None:
             return "Error: frequencies are required"
@@ -93,6 +95,7 @@ class MockNotchFilterTool(BaseNotchFilterTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if freq is None:
             return "Error: frequency is required"
@@ -112,6 +115,7 @@ class MockResampleTool(BaseResampleTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if rate is None:
             return "Error: rate is required"
@@ -131,6 +135,7 @@ class MockNormalizeTool(BaseNormalizeTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if method is None:
             return "Error: method is required"
@@ -150,6 +155,7 @@ class MockRereferenceTool(BaseRereferenceTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if method is None:
             return "Error: method is required"
@@ -169,6 +175,7 @@ class MockChannelSelectionTool(BaseChannelSelectionTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if channels is None:
             return "Error: channels list is required"
@@ -188,6 +195,7 @@ class MockSetMontageTool(BaseSetMontageTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if montage_name is None:
             return "Error: montage_name is required"
@@ -218,5 +226,6 @@ class MockEpochDataTool(BaseEpochDataTool):
 
         Returns:
             A confirmation message with the epoch window.
+
         """
         return f"Epoched data from {t_min}s to {t_max}s."

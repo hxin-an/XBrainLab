@@ -9,8 +9,7 @@ from .base_saliency_view import BaseSaliencyView
 
 
 class SaliencyTopographicMapWidget(BaseSaliencyView):
-    """
-    Widget for visualizing Topographic Saliency Maps.
+    """Widget for visualizing Topographic Saliency Maps.
     Requires channel locations (montage) to be set.
     """
 
@@ -34,7 +33,7 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
         self.canvas.hide()
         self.error_label.setText(msg)
         self.error_label.setStyleSheet(
-            f"color: {Theme.WARNING}; font-size: 16px; font-weight: bold;"
+            f"color: {Theme.WARNING}; font-size: 16px; font-weight: bold;",
         )
         self.error_label.show()
 
@@ -54,7 +53,7 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
             positions = epoch_data.get_montage_position()
             if positions is None or len(positions) == 0:
                 self.show_warning(
-                    "Please Set Montage First\n(Go to Configuration -> Set Montage)"
+                    "Please Set Montage First\n(Go to Configuration -> Set Montage)",
                 )
                 return
 

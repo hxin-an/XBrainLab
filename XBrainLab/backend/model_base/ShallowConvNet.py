@@ -30,10 +30,17 @@ class ShallowConvNet(nn.Module):
         AvgPool1: Average pooling layer.
         Drop1: Dropout layer.
         classifier: Fully connected classification layer.
+
     """
 
     def __init__(
-        self, n_classes, channels, samples, sfreq, pool_len=75, pool_stride=15
+        self,
+        n_classes,
+        channels,
+        samples,
+        sfreq,
+        pool_len=75,
+        pool_stride=15,
     ):
         """Initializes ShallowConvNet.
 
@@ -48,6 +55,7 @@ class ShallowConvNet(nn.Module):
         Raises:
             ValueError: If the epoch duration (samples) is too short for the
                 network architecture.
+
         """
         super().__init__()
         self.temporal_filter = 40
@@ -65,11 +73,14 @@ class ShallowConvNet(nn.Module):
                 f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
                 f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
                 f"Please increase epoch length (tmax-tmin) to at least "
-                f"{min_duration:.2f}s or use a lower sampling frequency."
+                f"{min_duration:.2f}s or use a lower sampling frequency.",
             )
         self.conv1 = nn.Conv2d(1, self.temporal_filter, (1, self.kernel), bias=False)
         self.conv2 = nn.Conv2d(
-            self.temporal_filter, self.spatial_filter, (channels, 1), bias=False
+            self.temporal_filter,
+            self.spatial_filter,
+            (channels, 1),
+            bias=False,
         )
         self.Bn1 = nn.BatchNorm2d(self.spatial_filter)
         # self.SquareLayer = square_layer()
@@ -89,6 +100,7 @@ class ShallowConvNet(nn.Module):
 
         Returns:
             Output logits tensor of shape ``(batch, n_classes)``.
+
         """
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
@@ -114,6 +126,7 @@ class ShallowConvNet(nn.Module):
 
         Returns:
             Tensor size after flattening, as a ``torch.Size`` object.
+
         """
         data = torch.ones((1, 1, ch, tsamp))
         x = self.conv1(data)

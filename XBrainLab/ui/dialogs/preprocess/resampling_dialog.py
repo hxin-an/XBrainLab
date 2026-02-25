@@ -22,6 +22,7 @@ class ResampleDialog(BaseDialog):
     Attributes:
         sfreq: Target sampling frequency in Hz after acceptance.
         sfreq_spin: QDoubleSpinBox for entering the sampling rate.
+
     """
 
     def __init__(self, parent):
@@ -41,7 +42,7 @@ class ResampleDialog(BaseDialog):
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -58,6 +59,7 @@ class ResampleDialog(BaseDialog):
 
         Returns:
             Target sampling frequency in Hz as a float, or None.
+
         """
         return self.sfreq
 
@@ -66,5 +68,6 @@ class ResampleDialog(BaseDialog):
 
         Returns:
             Target sampling frequency in Hz as a float, or None.
+
         """
         return self.get_params()

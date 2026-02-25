@@ -33,6 +33,7 @@ class DatasetController(Observable):
     Attributes:
         study: Reference to the :class:`Study` backend instance.
         label_service: Service for batch label import operations.
+
     """
 
     def __init__(self, study):
@@ -45,6 +46,7 @@ class DatasetController(Observable):
 
         Returns:
             The list of raw data objects held by the study.
+
         """
         return self.study.loaded_data_list
 
@@ -56,6 +58,7 @@ class DatasetController(Observable):
 
         Returns:
             ``True`` if the dataset is locked, ``False`` otherwise.
+
         """
         return self.study.is_locked()
 
@@ -64,6 +67,7 @@ class DatasetController(Observable):
 
         Returns:
             ``True`` if the loaded data list is non-empty.
+
         """
         return bool(self.study.loaded_data_list)
 
@@ -86,6 +90,7 @@ class DatasetController(Observable):
         Raises:
             ValueError: If the existing dataset is in an inconsistent
                 state and cannot initialise a new loader.
+
         """
         existing_data = []
         if self.study.loaded_data_list:
@@ -149,6 +154,7 @@ class DatasetController(Observable):
         Args:
             indices: Sequence of zero-based integer indices identifying
                 the files to remove.
+
         """
         current_list = self.study.loaded_data_list
         if not current_list:
@@ -170,7 +176,12 @@ class DatasetController(Observable):
             self.notify("data_changed")
 
     def run_import_labels(
-        self, target_files, label_map, file_mapping, mapping, selected_event_names=None
+        self,
+        target_files,
+        label_map,
+        file_mapping,
+        mapping,
+        selected_event_names=None,
     ):
         """Run the label import logic via the label service.
 
@@ -183,9 +194,14 @@ class DatasetController(Observable):
 
         Returns:
             The number of files that were successfully updated.
+
         """
         count = self.label_service.apply_labels_batch(
-            target_files, label_map, file_mapping, mapping, selected_event_names
+            target_files,
+            label_map,
+            file_mapping,
+            mapping,
+            selected_event_names,
         )
         if count > 0:
             self.notify("data_changed")
@@ -204,6 +220,7 @@ class DatasetController(Observable):
             - ``unique_count`` (int): Number of unique event labels.
             - ``unique_labels`` (list[str]): Sorted list of unique
               event label strings.
+
         """
         total_events = 0
         unique_events = set()
@@ -228,6 +245,7 @@ class DatasetController(Observable):
                 data list.
             subject: New subject name, or ``None`` to leave unchanged.
             session: New session name, or ``None`` to leave unchanged.
+
         """
         current_list = self.study.loaded_data_list
         if 0 <= index < len(current_list):
@@ -255,6 +273,7 @@ class DatasetController(Observable):
 
         Returns:
             The number of files whose metadata was updated.
+
         """
         data_list = self.study.loaded_data_list
         count = 0
@@ -290,6 +309,7 @@ class DatasetController(Observable):
         Raises:
             Exception: Propagated from the underlying processor if
                 channel selection fails.
+
         """
         data_list = self.study.loaded_data_list
         process = preprocessor.ChannelSelection(data_list)
@@ -314,6 +334,7 @@ class DatasetController(Observable):
 
         Returns:
             List of file path strings.
+
         """
         return [d.get_filepath() for d in self.study.loaded_data_list]
 
@@ -332,12 +353,18 @@ class DatasetController(Observable):
 
         Returns:
             List of data objects corresponding to the valid indices.
+
         """
         data_list = self.study.loaded_data_list
         return [data_list[i] for i in indices if 0 <= i < len(data_list)]
 
     def apply_labels_batch(
-        self, target_files, label_map, file_mapping, mapping, selected_event_names
+        self,
+        target_files,
+        label_map,
+        file_mapping,
+        mapping,
+        selected_event_names,
     ):
         """Apply labels in batch via the label service.
 
@@ -350,16 +377,26 @@ class DatasetController(Observable):
 
         Returns:
             The number of files successfully updated.
+
         """
         count = self.label_service.apply_labels_batch(
-            target_files, label_map, file_mapping, mapping, selected_event_names
+            target_files,
+            label_map,
+            file_mapping,
+            mapping,
+            selected_event_names,
         )
         if count > 0:
             self.reset_preprocess()
         return count
 
     def apply_labels_legacy(
-        self, target_files, labels, mapping, selected_event_names, force_import=False
+        self,
+        target_files,
+        labels,
+        mapping,
+        selected_event_names,
+        force_import=False,
     ):
         """Apply labels using the legacy import path.
 
@@ -372,6 +409,7 @@ class DatasetController(Observable):
 
         Returns:
             The number of files successfully updated.
+
         """
         count = self.label_service.apply_labels_legacy(
             target_files,
@@ -393,6 +431,7 @@ class DatasetController(Observable):
 
         Returns:
             The number of epochs that would be produced.
+
         """
         return self.label_service.get_epoch_count_for_file(data, event_names)
 
@@ -405,6 +444,7 @@ class DatasetController(Observable):
 
         Returns:
             Suggested event IDs suitable for reaching *target_count*.
+
         """
         loader = EventLoader(data)
         return loader.smart_filter(target_count)

@@ -23,6 +23,7 @@ class DatasetActionHandler:
 
     Attributes:
         panel: The parent ``DatasetPanel`` instance.
+
     """
 
     def __init__(self, panel):
@@ -30,6 +31,7 @@ class DatasetActionHandler:
 
         Args:
             panel: The parent ``DatasetPanel`` that owns this handler.
+
         """
         self.panel = panel
 
@@ -59,7 +61,10 @@ class DatasetActionHandler:
             "EDF/BDF (*.edf *.bdf);;Neuroscan CNT (*.cnt);;BrainVision (*.vhdr)"
         )
         filepaths, _ = QFileDialog.getOpenFileNames(
-            self.panel, "Open EEG Data", "", filter_str
+            self.panel,
+            "Open EEG Data",
+            "",
+            filter_str,
         )
         if filepaths:
             try:
@@ -75,6 +80,7 @@ class DatasetActionHandler:
         Args:
             success_count: Number of files successfully imported.
             errors: List of error message strings for failed imports.
+
         """
         if success_count > 0:
             self.panel.update_panel()
@@ -84,7 +90,9 @@ class DatasetActionHandler:
             if len(errors) > 10:
                 error_msg += f"\n...and {len(errors) - 10} more errors."
             QMessageBox.warning(
-                self.panel, "Import Warnings", f"Failed files:\n{error_msg}"
+                self.panel,
+                "Import Warnings",
+                f"Failed files:\n{error_msg}",
             )
 
     def open_smart_parser(self):
@@ -139,7 +147,8 @@ class DatasetActionHandler:
             if not is_timestamp:
                 target_count = len(first_labels)
                 selected_event_names = self._filter_events_for_import(
-                    target_files, target_count
+                    target_files,
+                    target_count,
                 )
                 if selected_event_names is False:
                     return
@@ -148,29 +157,44 @@ class DatasetActionHandler:
             if len(label_map) > 1:  # Batch
                 data_paths = [d.get_filepath() for d in target_files]
                 map_dlg = LabelMappingDialog(
-                    self.panel, data_paths, list(label_map.keys())
+                    self.panel,
+                    data_paths,
+                    list(label_map.keys()),
                 )
                 if map_dlg.exec():
                     file_map = map_dlg.get_mapping()
                     count = self.controller.apply_labels_batch(
-                        target_files, label_map, file_map, mapping, selected_event_names
+                        target_files,
+                        label_map,
+                        file_map,
+                        mapping,
+                        selected_event_names,
                     )
             elif is_timestamp:  # Legacy
                 label_fname = next(iter(label_map.keys()))
                 file_map = {d.get_filepath(): label_fname for d in target_files}
                 count = self.controller.apply_labels_batch(
-                    target_files, label_map, file_map, mapping, selected_event_names
+                    target_files,
+                    label_map,
+                    file_map,
+                    mapping,
+                    selected_event_names,
                 )
             else:  # Single Same Length
                 labels = next(iter(label_map.values()))
                 count = self.controller.apply_labels_legacy(
-                    target_files, labels, mapping, selected_event_names
+                    target_files,
+                    labels,
+                    mapping,
+                    selected_event_names,
                 )
 
             if count > 0:
                 self.panel.update_panel()
                 QMessageBox.information(
-                    self.panel, "Success", f"Applied to {count} files."
+                    self.panel,
+                    "Success",
+                    f"Applied to {count} files.",
                 )
 
         except Exception as e:
@@ -186,9 +210,10 @@ class DatasetActionHandler:
         Returns:
             list: A list of data objects for the targeted files,
                 or an empty list if the operation is cancelled.
+
         """
         selected_rows = sorted(
-            {index.row() for index in self.panel.table.selectedIndexes()}
+            {index.row() for index in self.panel.table.selectedIndexes()},
         )
         if not selected_rows:
             reply = QMessageBox.question(
@@ -215,11 +240,8 @@ class DatasetActionHandler:
         Returns:
             set | None | False: A set of selected event names, ``None`` if
                 no filtering is needed, or ``False`` if the user cancelled.
+
         """
-        # ... logic extracted from original file ...
-        # For brevity in this prompt, using simplified delegation or need
-        # to copy full logic.
-        # Copying minimal logic for now.
         raw_files = [d for d in target_files if d.is_raw() and d.has_event()]
         if not raw_files:
             return None
@@ -237,7 +259,8 @@ class DatasetActionHandler:
         suggested = []
         if target_count and raw_files:
             s_ids = self.controller.get_smart_filter_suggestions(
-                raw_files[0], target_count
+                raw_files[0],
+                target_count,
             )
             _, ev_ids = raw_files[0].get_raw_event_list()
             id_map = {v: k for k, v in ev_ids.items()}

@@ -31,6 +31,7 @@ class SaliencyTopoMapViz(Visualizer):
 
         Raises:
             ValueError: If no montage positions are available.
+
         """
         positions = self.epoch_data.get_montage_position()
 

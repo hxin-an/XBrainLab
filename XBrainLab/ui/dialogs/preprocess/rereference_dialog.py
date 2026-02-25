@@ -29,6 +29,7 @@ class RereferenceDialog(BaseDialog):
         avg_check: QCheckBox for enabling average reference.
         chan_group: QGroupBox containing the channel selection list.
         chan_list: QListWidget displaying available channels.
+
     """
 
     def __init__(self, parent, data_list: list):
@@ -65,7 +66,7 @@ class RereferenceDialog(BaseDialog):
         layout.addWidget(self.chan_group)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -76,6 +77,7 @@ class RereferenceDialog(BaseDialog):
 
         Args:
             checked: Whether average reference is enabled.
+
         """
         if self.chan_group:
             self.chan_group.setEnabled(not checked)
@@ -85,6 +87,7 @@ class RereferenceDialog(BaseDialog):
 
         Raises:
             QMessageBox: Warning if no reference channel is selected.
+
         """
         if not self.avg_check or not self.chan_list:
             return
@@ -111,6 +114,7 @@ class RereferenceDialog(BaseDialog):
 
         Returns:
             String ``'average'`` or list of channel name strings, or None.
+
         """
         return self.reref_params
 
@@ -119,5 +123,6 @@ class RereferenceDialog(BaseDialog):
 
         Returns:
             String ``'average'`` or list of channel name strings, or None.
+
         """
         return self.get_params()

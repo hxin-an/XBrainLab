@@ -21,6 +21,7 @@ class DebugToolCall:
         tool: The name of the tool to execute (must match a key in
             ``ToolExecutor.TOOL_MAP``).
         params: Keyword arguments forwarded to the tool's ``execute`` method.
+
     """
 
     tool: str
@@ -38,6 +39,7 @@ class ToolDebugMode:
         script_path: Absolute or relative path to the JSON debug script.
         calls: Ordered list of raw call dictionaries loaded from the script.
         index: Zero-based position of the next call to return.
+
     """
 
     def __init__(self, script_path: str):
@@ -47,6 +49,7 @@ class ToolDebugMode:
             script_path: Path to a JSON file containing a ``calls`` array.
                 Each element must have a ``"tool"`` key and an optional
                 ``"params"`` dictionary.
+
         """
         self.script_path = script_path
         self.calls: list[dict] = []
@@ -83,6 +86,7 @@ class ToolDebugMode:
         Returns:
             A ``DebugToolCall`` containing the tool name and parameters,
             or ``None`` if all calls have been consumed.
+
         """
         if self.index >= len(self.calls):
             return None
@@ -99,5 +103,6 @@ class ToolDebugMode:
         Returns:
             ``True`` if the internal index has reached or exceeded the
             total number of calls; ``False`` otherwise.
+
         """
         return self.index >= len(self.calls)

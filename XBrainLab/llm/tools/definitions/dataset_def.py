@@ -71,7 +71,7 @@ class BaseLoadDataTool(BaseTool):
                     "description": (
                         "List of absolute file paths or directory paths to load."
                     ),
-                }
+                },
             },
             "required": ["paths"],
         }

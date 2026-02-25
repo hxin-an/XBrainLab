@@ -22,6 +22,7 @@ class ContextAssembler:
         study_state: Current application state used for tool filtering.
         context_notes: Temporary context strings (e.g. from RAG) appended
             to the system prompt.
+
     """
 
     SYSTEM_TEMPLATE = """You are XBrainLab Assistant.
@@ -55,6 +56,7 @@ Rules:
             tool_registry: Registry containing all available tools.
             study_state: The current application state (Study object) used
                 to determine which tools are active.
+
         """
         self.registry = tool_registry
         self.study_state = study_state
@@ -66,6 +68,7 @@ Rules:
         Returns:
             A newline-joined string of JSON-formatted tool definitions,
             or a fallback message if no tools are currently available.
+
         """
         active_tools = self.registry.get_active_tools(self.study_state)
 
@@ -89,6 +92,7 @@ Rules:
         Returns:
             The assembled system prompt string including tool definitions
             and any additional RAG context notes.
+
         """
         tools_str = self._format_tools()
         prompt = self.SYSTEM_TEMPLATE.format(tools_str=tools_str)
@@ -103,6 +107,7 @@ Rules:
 
         Args:
             text: Context string (e.g. RAG-retrieved examples) to append.
+
         """
         self.context_notes.append(text)
 
@@ -122,6 +127,7 @@ Rules:
         Returns:
             Complete message list starting with the system prompt followed
             by the conversation history.
+
         """
         messages = [{"role": "system", "content": self.build_system_prompt()}]
 

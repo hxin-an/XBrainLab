@@ -29,6 +29,7 @@ class ChatController(QObject):
             ``content`` keys.
         is_processing: Flag indicating whether an agent request is
             currently being processed.
+
     """
 
     # Signals
@@ -51,6 +52,7 @@ class ChatController(QObject):
 
         Args:
             text: The message content from the user.
+
         """
         self.messages.append({"role": "user", "content": text})
         self.message_added.emit(text, True)
@@ -60,6 +62,7 @@ class ChatController(QObject):
 
         Args:
             text: The response content from the agent.
+
         """
         self.messages.append({"role": "assistant", "content": text})
         self.message_added.emit(text, False)
@@ -75,6 +78,7 @@ class ChatController(QObject):
         Args:
             state: ``True`` if a request is being processed,
                 ``False`` otherwise.
+
         """
         self.is_processing = state
         self.processing_state_changed.emit(state)
@@ -85,5 +89,6 @@ class ChatController(QObject):
         Returns:
             A list of message dictionaries, each containing ``role``
             (``"user"`` or ``"assistant"``) and ``content`` keys.
+
         """
         return list(self.messages)

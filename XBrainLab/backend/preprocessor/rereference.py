@@ -21,6 +21,7 @@ class Rereference(PreprocessBase):
 
         Returns:
             A string describing the re-reference method applied.
+
         """
         if ref_channels == "average":
             return "Re-reference (Average)"
@@ -33,11 +34,13 @@ class Rereference(PreprocessBase):
             preprocessed_data: The data instance to preprocess.
             ref_channels: ``"average"`` for average reference, or a list
                 of channel names to use as reference.
+
         """
         preprocessed_data.get_mne().load_data()
 
         # Apply re-referencing
         # mne.set_eeg_reference returns (inst, ref_data), we just modify inst in-place
         preprocessed_data.get_mne().set_eeg_reference(
-            ref_channels=ref_channels, verbose=False
+            ref_channels=ref_channels,
+            verbose=False,
         )

@@ -18,6 +18,7 @@ class RAGConfig:
         SIMILARITY_THRESHOLD: Minimum cosine similarity for a retrieved
             example to be considered relevant.
         TOP_K: Number of nearest examples to retrieve per query.
+
     """
 
     # Qdrant Settings
@@ -42,6 +43,7 @@ class RAGConfig:
 
         Returns:
             Absolute filesystem path to the ``storage`` directory.
+
         """
         # Use path relative to this config file: XBrainLab/llm/rag/storage
         base_dir = Path(__file__).parent

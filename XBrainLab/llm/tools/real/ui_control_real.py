@@ -34,6 +34,7 @@ class RealSwitchPanelTool(BaseSwitchPanelTool):
 
         Returns:
             A formatted request string for the controller to parse.
+
         """
         if panel_name is None:
             return "Error: panel_name is required"

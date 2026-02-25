@@ -29,6 +29,7 @@ class DatasetSidebar(QWidget):
         smart_parse_btn: Button to auto-extract metadata from filenames.
         chan_select_btn: Button to open channel selection dialog.
         clear_btn: Button to clear the entire dataset.
+
     """
 
     def __init__(self, panel, parent=None):
@@ -37,6 +38,7 @@ class DatasetSidebar(QWidget):
         Args:
             panel: The parent ``DatasetPanel``.
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.panel = panel  # Reference to main panel (for actions access)
@@ -99,7 +101,7 @@ class DatasetSidebar(QWidget):
         self.smart_parse_btn.setToolTip("Auto-extract Subject/Session from filenames")
         self.smart_parse_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.smart_parse_btn.clicked.connect(
-            self.panel.action_handler.open_smart_parser
+            self.panel.action_handler.open_smart_parser,
         )
         ops_layout.addWidget(self.smart_parse_btn)
 
@@ -138,7 +140,7 @@ class DatasetSidebar(QWidget):
             # Channel Selection
             if is_locked:
                 self.chan_select_btn.setToolTip(
-                    "Dataset is locked. Click to see details."
+                    "Dataset is locked. Click to see details.",
                 )
             else:
                 self.chan_select_btn.setToolTip("Select specific channels to keep")
@@ -146,11 +148,11 @@ class DatasetSidebar(QWidget):
             # Smart Parse
             if is_locked:
                 self.smart_parse_btn.setToolTip(
-                    "Dataset is locked. Click to see details."
+                    "Dataset is locked. Click to see details.",
                 )
             else:
                 self.smart_parse_btn.setToolTip(
-                    "Auto-extract Subject/Session from filenames"
+                    "Auto-extract Subject/Session from filenames",
                 )
 
     # --- Actions moved from Panel ---
@@ -199,11 +201,15 @@ class DatasetSidebar(QWidget):
                     self.controller.apply_channel_selection(result)
                     self.panel.update_panel()
                     QMessageBox.information(
-                        self, "Success", "Channel selection applied."
+                        self,
+                        "Success",
+                        "Channel selection applied.",
                     )
                 except Exception as e:
                     QMessageBox.critical(
-                        self, "Error", f"Channel selection failed: {e}"
+                        self,
+                        "Error",
+                        f"Channel selection failed: {e}",
                     )
 
     def clear_dataset(self):

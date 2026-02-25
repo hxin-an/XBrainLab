@@ -31,6 +31,7 @@ class ToolRegistry:
             the corresponding backend class.
         _OPTIMIZERS: Mapping from lowercase optimiser name to
             ``torch.optim.Optimizer`` subclass.
+
     """
 
     _MODELS: ClassVar[dict[str, type[torch.nn.Module]]] = {
@@ -63,6 +64,7 @@ class ToolRegistry:
         Returns:
             The corresponding ``torch.nn.Module`` subclass, or ``None``
             if the name is not recognised.
+
         """
         return cls._MODELS.get(name.lower())
 
@@ -76,6 +78,7 @@ class ToolRegistry:
         Returns:
             The corresponding preprocessor class, or ``None`` if the
             name is not recognised.
+
         """
         return cls._PREPROCESSORS.get(name.lower())
 
@@ -90,5 +93,6 @@ class ToolRegistry:
 
         Returns:
             The corresponding ``torch.optim.Optimizer`` subclass.
+
         """
         return cls._OPTIMIZERS.get(name.lower(), torch.optim.Adam)

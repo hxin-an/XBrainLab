@@ -14,6 +14,7 @@ class BasePanel(QWidget):
     Attributes:
         controller: The backend controller bound to this panel.
         main_window: Reference to the parent ``MainWindow``, or ``None``.
+
     """
 
     def __init__(self, parent=None, controller=None):
@@ -22,6 +23,7 @@ class BasePanel(QWidget):
         Args:
             parent: Optional parent widget (typically ``MainWindow``).
             controller: Optional backend controller for data access.
+
         """
         super().__init__(parent)
         self.controller = controller
@@ -39,6 +41,7 @@ class BasePanel(QWidget):
 
         Raises:
             NotImplementedError: Always, unless overridden.
+
         """
         raise NotImplementedError
 
@@ -51,6 +54,7 @@ class BasePanel(QWidget):
         Args:
             *args: Variable positional arguments from observers.
             **kwargs: Variable keyword arguments from observers.
+
         """
 
     def _setup_bridges(self) -> None:
@@ -64,6 +68,7 @@ class BasePanel(QWidget):
 
         Args:
             busy: If ``True``, shows a wait cursor and disables the widget.
+
         """
         if busy:
             self.setCursor(Qt.CursorShape.WaitCursor)

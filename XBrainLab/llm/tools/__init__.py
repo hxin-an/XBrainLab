@@ -71,6 +71,7 @@ def get_tool_by_name(name: str) -> BaseTool | None:
     Returns:
         The matching ``BaseTool`` instance, or ``None`` if no tool
         with the given name exists in ``AVAILABLE_TOOLS``.
+
     """
     for tool in AVAILABLE_TOOLS:
         if tool.name == name:
@@ -91,6 +92,7 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
 
     Raises:
         ValueError: If *mode* is not ``'mock'`` or ``'real'``.
+
     """
     if mode == "mock":
         return [
@@ -118,10 +120,8 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             # UI Control
             MockSwitchPanelTool(),
         ]
-    elif mode == "real":
+    if mode == "real":
         return [
-            # Dataset (Reusing Mock for now if Real not ready, or Todo)
-            # For now we only implemented Real Training Tools as requested
             # Dataset
             RealListFilesTool(),
             RealLoadDataTool(),
@@ -146,8 +146,7 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             # UI Control
             RealSwitchPanelTool(),
         ]
-    else:
-        raise ValueError(f"Unknown tool mode: {mode}")
+    raise ValueError(f"Unknown tool mode: {mode}")
 
 
 # Default to mock for now, or read from env

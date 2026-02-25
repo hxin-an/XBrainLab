@@ -19,6 +19,7 @@ class WindowEpoch(PreprocessBase):
         Raises:
             ValueError: If data is already epoched, has no event markers,
                 or has more than one event label.
+
         """
         super().check_data()
         for preprocessed_data in self.preprocessed_data_list:
@@ -27,12 +28,12 @@ class WindowEpoch(PreprocessBase):
             events, event_id = preprocessed_data.get_event_list()
             if not event_id:
                 raise ValueError(
-                    f"No event markers found for {preprocessed_data.get_filename()}"
+                    f"No event markers found for {preprocessed_data.get_filename()}",
                 )
             if len(events) != 1 or len(event_id) != 1:
                 raise ValueError(
                     "Should only contain single event label, "
-                    f"found events={len(events)}, event_id={len(event_id)}"
+                    f"found events={len(events)}, event_id={len(event_id)}",
                 )
 
     def get_preprocess_desc(self, duration: float, overlap: float):
@@ -44,6 +45,7 @@ class WindowEpoch(PreprocessBase):
 
         Returns:
             A string describing the sliding-window epoching parameters.
+
         """
         return f"Epoching {duration}s ({overlap}s overlap) by sliding window"
 
@@ -55,13 +57,18 @@ class WindowEpoch(PreprocessBase):
             duration: Window duration in seconds.
             overlap: Overlap between consecutive windows in seconds.
                 An empty string is treated as ``0.0``.
+
         """
         mne_data = preprocessed_data.get_mne()
         duration = float(duration)
         overlap = 0.0 if overlap == "" else float(overlap)
         fixed_id = 0
         epoch = mne.make_fixed_length_epochs(
-            mne_data, duration=duration, overlap=overlap, preload=True, id=fixed_id
+            mne_data,
+            duration=duration,
+            overlap=overlap,
+            preload=True,
+            id=fixed_id,
         )
         _, event_id = preprocessed_data.get_event_list()
         epoch.event_id = {next(iter(event_id.keys())): fixed_id}

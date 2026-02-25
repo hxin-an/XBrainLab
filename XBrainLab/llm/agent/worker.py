@@ -21,6 +21,7 @@ class GenerationThread(QThread):
         error_occurred: Signal emitted with an error message on failure.
         engine: The LLM engine performing inference.
         messages: The message list to generate from.
+
     """
 
     chunk_received = pyqtSignal(str)
@@ -33,6 +34,7 @@ class GenerationThread(QThread):
         Args:
             engine: The ``LLMEngine`` instance to use for generation.
             messages: List of message dicts to pass to the engine.
+
         """
         super().__init__()
         self.engine = engine
@@ -65,6 +67,7 @@ class AgentWorker(QObject):
         log: Signal emitted with status/log messages.
         engine: The underlying ``LLMEngine`` instance (``None`` until initialized).
         generation_thread: The currently running ``GenerationThread``, if any.
+
     """
 
     finished = pyqtSignal(list)
@@ -87,6 +90,7 @@ class AgentWorker(QObject):
         Raises:
             Exception: Propagated via the ``error`` signal if model
                 loading fails.
+
         """
         if self.engine:
             return  # Already initialized
@@ -115,6 +119,7 @@ class AgentWorker(QObject):
         Args:
             messages: List of message dicts with ``role`` and ``content``
                 keys representing the conversation so far.
+
         """
         if not self.engine:
             self.initialize_agent()
@@ -183,10 +188,10 @@ class AgentWorker(QObject):
                 self.generation_thread.requestInterruption()  # Request stop
                 self.generation_thread.chunk_received.disconnect(self.chunk_received)
                 self.generation_thread.finished_generation.disconnect(
-                    self._on_generation_finished
+                    self._on_generation_finished,
                 )
                 self.generation_thread.error_occurred.disconnect(
-                    self._on_generation_error
+                    self._on_generation_error,
                 )
                 # self.generation_thread.terminate() # Dangerous, avoid unless necessary
             except Exception:
@@ -211,6 +216,7 @@ class AgentWorker(QObject):
 
         Args:
             err_msg: The error message string from the generation thread.
+
         """
         if self._is_timed_out:
             return
@@ -227,6 +233,7 @@ class AgentWorker(QObject):
             model_id: Identifier or display name of the target model.
                 May contain hints like ``'gemini'`` or ``'local'`` for
                 backend routing.
+
         """
         logger.info("Worker switching model to: %s", model_id)
         self.log.emit(f"Switching to {model_id}...")

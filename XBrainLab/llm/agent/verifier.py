@@ -14,6 +14,7 @@ class VerificationResult(NamedTuple):
         is_valid: Whether the tool call passed all verification checks.
         error_message: Human-readable reason for rejection, or ``None``
             if the call is valid.
+
     """
 
     is_valid: bool
@@ -29,6 +30,7 @@ class VerificationLayer:
     Attributes:
         confidence_threshold: Minimum confidence score (0.0-1.0) required
             for a tool call to pass verification.
+
     """
 
     def __init__(self, confidence_threshold: float = 0.5):
@@ -37,11 +39,14 @@ class VerificationLayer:
         Args:
             confidence_threshold: Minimum confidence score required for a
                 tool call to be considered valid. Defaults to ``0.5``.
+
         """
         self.confidence_threshold = confidence_threshold
 
     def verify_tool_call(
-        self, tool_call: tuple[str, dict], confidence: float | None = None
+        self,
+        tool_call: tuple[str, dict],
+        confidence: float | None = None,
     ) -> VerificationResult:
         """Verifies a proposed tool call before execution.
 
@@ -62,6 +67,7 @@ class VerificationLayer:
         Raises:
             ValueError: If ``tool_call`` is not a two-element tuple of
                 ``(str, dict)``.
+
         """
         # 1. Structure Check
         if not isinstance(tool_call, tuple) or len(tool_call) != 2:

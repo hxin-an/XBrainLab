@@ -56,6 +56,7 @@ class MainWindow(QMainWindow):
         nav_btns: List of navigation QPushButtons in the top bar.
         ai_btn: Toggle button for the AI assistant dock.
         agent_manager: AgentManager orchestrating AI agent lifecycle.
+
     """
 
     # Signals to control the worker
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         Args:
             study: The application Study instance providing controllers
                 and shared state.
+
         """
         super().__init__()
         self.study = study
@@ -145,6 +147,7 @@ class MainWindow(QMainWindow):
             name: Tooltip name for the button.
             index: Panel index in the stacked widget to switch to.
             text: Display text for the button.
+
         """
         btn = QPushButton(text)
         btn.setToolTip(name)
@@ -167,6 +170,7 @@ class MainWindow(QMainWindow):
 
         Args:
             index: Zero-based index of the panel to display.
+
         """
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
@@ -189,8 +193,7 @@ class MainWindow(QMainWindow):
             target_panel.update_panel()
 
     def init_panels(self):
-        """
-        Initializes and adds all main functional panels to the stacked widget.
+        """Initializes and adds all main functional panels to the stacked widget.
         The order of addition corresponds to the index used in navigation.
         """
         # Get Controllers
@@ -233,12 +236,12 @@ class MainWindow(QMainWindow):
         # M3.1: Debug tool execution handled by MainWindow for offline support
         if self.agent_manager.chat_panel:
             self.agent_manager.chat_panel.debug_tool_requested.connect(
-                self._on_debug_tool_requested
+                self._on_debug_tool_requested,
             )
 
         # Connect Status Updates
         self.agent_manager.status_message_received.connect(
-            self._on_agent_status_message
+            self._on_agent_status_message,
         )
 
     def _on_agent_status_message(self, msg: str):
@@ -257,6 +260,7 @@ class MainWindow(QMainWindow):
         Args:
             tool_name: Name of the tool to execute.
             params: Dictionary of parameters to pass to the tool.
+
         """
         logger.info("Debug Mode: Requesting %s", tool_name)
         result = self.debug_executor.execute(tool_name, params)
@@ -266,7 +270,8 @@ class MainWindow(QMainWindow):
             # We use the legacy or proper method to append message
             # Ideally via chat_controller but for Direct UI debug feedback:
             self.agent_manager.chat_panel.append_message(
-                "System", f"Tool '{tool_name}' executed.\nResult: {result}"
+                "System",
+                f"Tool '{tool_name}' executed.\nResult: {result}",
             )
             # Ensure we scroll to bottom
             self.agent_manager.chat_panel._scroll_to_bottom()
@@ -295,6 +300,7 @@ class MainWindow(QMainWindow):
 
         Args:
             event: The QCloseEvent triggered on window close.
+
         """
         logger.info("Closing application...")
         if hasattr(self, "agent_manager"):
@@ -309,6 +315,7 @@ def global_exception_handler(exctype, value, tb):
         exctype: The exception class.
         value: The exception instance.
         tb: The traceback object.
+
     """
     if issubclass(exctype, KeyboardInterrupt):
         sys.__excepthook__(exctype, value, tb)

@@ -38,6 +38,7 @@ class LabelImportService:
 
         Returns:
             Number of files successfully updated.
+
         """
         matched_count = 0
 
@@ -49,12 +50,16 @@ class LabelImportService:
                     matched_labels = label_map[label_fname]
                     try:
                         self.apply_labels_to_single_file(
-                            data, matched_labels, mapping, selected_event_names
+                            data,
+                            matched_labels,
+                            mapping,
+                            selected_event_names,
                         )
                         matched_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Error applying labels to {data_path}: {e}", exc_info=True
+                            f"Error applying labels to {data_path}: {e}",
+                            exc_info=True,
                         )
                         # Log error and continue to process remaining files.
 
@@ -84,6 +89,7 @@ class LabelImportService:
         Returns:
             Number of files successfully updated, or 0 on mismatch
             without force.
+
         """
         label_count = len(labels)
         total_epochs = sum(
@@ -99,11 +105,14 @@ class LabelImportService:
 
                 if n > 0:
                     self.apply_labels_to_single_file(
-                        data, file_labels, mapping, selected_event_names
+                        data,
+                        file_labels,
+                        mapping,
+                        selected_event_names,
                     )
             return len(target_files)
 
-        elif force_import:
+        if force_import:
             # Force Import Logic
             current_idx = 0
             applied_count = 0
@@ -120,14 +129,16 @@ class LabelImportService:
                     current_idx += n
 
                     self._force_apply_single(
-                        data, file_labels, mapping, selected_event_names
+                        data,
+                        file_labels,
+                        mapping,
+                        selected_event_names,
                     )
                     applied_count += 1
             return applied_count
 
-        else:
-            # Mismatch and not forced
-            return 0
+        # Mismatch and not forced
+        return 0
 
     def apply_labels_to_single_file(
         self,
@@ -147,9 +158,10 @@ class LabelImportService:
             mapping: Mapping from numeric label code to human-readable name.
             selected_event_names: Optional set of event names to filter by
                 when creating events in Sequence Mode.
+
         """
         logger.info(
-            f"Applying labels to {data.get_filename()}. Label count: {len(labels)}"
+            f"Applying labels to {data.get_filename()}. Label count: {len(labels)}",
         )
 
         loader = EventLoader(data)
@@ -176,7 +188,7 @@ class LabelImportService:
                     ]
                     logger.info(
                         f"Filtered IDs for {data.get_filename()}: {selected_ids} "
-                        f"(from names: {selected_event_names})"
+                        f"(from names: {selected_event_names})",
                     )
 
             loader.create_event(mapping, selected_event_ids=selected_ids)
@@ -199,6 +211,7 @@ class LabelImportService:
             labels: Integer labels to force-apply.
             mapping: Mapping from numeric label code to human-readable name.
             selected_event_names: Optional set of event names to filter by.
+
         """
         loader = EventLoader(data)
         loader.label_list = list(labels)  # type: ignore[assignment]
@@ -215,7 +228,7 @@ class LabelImportService:
                 ]
                 logger.info(
                     f"Force Import: Filtered IDs for {data.get_filename()}: "
-                    f"{selected_ids}"
+                    f"{selected_ids}",
                 )
 
         loader.create_event(mapping, selected_event_ids=selected_ids)
@@ -224,7 +237,9 @@ class LabelImportService:
         data.set_labels_imported(True)
 
     def get_epoch_count_for_file(
-        self, data: Any, selected_event_names: set[str] | None
+        self,
+        data: Any,
+        selected_event_names: set[str] | None,
     ) -> int:
         """Calculate the number of epochs or events in a file matching a filter.
 
@@ -235,6 +250,7 @@ class LabelImportService:
 
         Returns:
             Number of matching epochs or events.
+
         """
         if data.is_raw():
             events, event_id_map = data.get_event_list()
@@ -249,5 +265,4 @@ class LabelImportService:
                     return int(np.sum(mask))
                 return 0
             return len(events)
-        else:
-            return data.get_epochs_length()
+        return data.get_epochs_length()

@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.controller.chat_controller import ChatController
+from XBrainLab.backend.utils.logger import logger
 
 # M3.1: Debug Mode
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
@@ -56,6 +57,7 @@ class ChatPanel(QWidget):
         send_btn: Button to send messages or stop generation.
         feature_btn: Dropdown button for feature/persona selection.
         model_btn: Dropdown button for LLM model selection.
+
     """
 
     # UI-driven Signals
@@ -89,14 +91,14 @@ class ChatPanel(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         self.scroll_area.setStyleSheet(SCROLL_AREA_STYLE)
 
         # Container Widget inside ScrollArea
         self.chat_content_widget = QWidget()
         self.chat_content_widget.setStyleSheet(
-            f"background-color: {Theme.BACKGROUND_DARK};"
+            f"background-color: {Theme.BACKGROUND_DARK};",
         )
         self.chat_layout = QVBoxLayout(self.chat_content_widget)
         self.chat_layout.setContentsMargins(10, 10, 10, 10)
@@ -189,6 +191,7 @@ class ChatPanel(QWidget):
             config = LLMConfig.load_from_file() or LLMConfig()
             local_enabled = config.local_model_enabled
         except Exception:
+            logger.debug("Failed to load LLM config for model menu", exc_info=True)
             local_enabled = True
 
         modes = ["Gemini", "Local"]
@@ -214,6 +217,7 @@ class ChatPanel(QWidget):
 
         Args:
             controller: The ``ChatController`` instance to bind.
+
         """
         controller.message_added.connect(self._render_message)
         controller.processing_state_changed.connect(self._update_processing_ui)
@@ -224,6 +228,7 @@ class ChatPanel(QWidget):
 
         Args:
             feature_name: The selected feature/persona name.
+
         """
         self.feature_btn.setText(f"{feature_name} ▼")
 
@@ -232,6 +237,7 @@ class ChatPanel(QWidget):
 
         Args:
             model_name: The selected model name.
+
         """
         self.model_btn.setText(f"{model_name} ▼")
         self.model_changed.emit(model_name)
@@ -282,6 +288,7 @@ class ChatPanel(QWidget):
 
         Args:
             is_processing: Whether the agent is currently generating.
+
         """
         self._update_processing_ui(is_processing)
 
@@ -290,6 +297,7 @@ class ChatPanel(QWidget):
 
         Args:
             is_processing: Whether the agent is currently generating.
+
         """
         self.is_processing = is_processing  # Sync state
         if is_processing:
@@ -304,6 +312,7 @@ class ChatPanel(QWidget):
 
         Args:
             event: The ``QResizeEvent``.
+
         """
         super().resizeEvent(event)
         # M0.4: Dynamic Width Adjustment Fix
@@ -324,6 +333,7 @@ class ChatPanel(QWidget):
         Args:
             text: The message text content.
             is_user: Whether the message is from the user.
+
         """
         bubble = MessageBubble(text, is_user)
 
@@ -359,6 +369,7 @@ class ChatPanel(QWidget):
 
         Args:
             text: The incremental text chunk to append.
+
         """
         # Feature: Auto-create bubble if missing (Robustness)
         if not self.current_agent_bubble:
@@ -399,6 +410,7 @@ class ChatPanel(QWidget):
             sender: Message sender identifier (e.g., ``"user"``,
                 ``"assistant"``).
             text: The message text content.
+
         """
         is_user = sender.lower() == "user"
         self._render_message(text, is_user)
@@ -412,6 +424,7 @@ class ChatPanel(QWidget):
         Args:
             text_to_remove: Substring to remove from the current agent
                 bubble's text.
+
         """
         if self.current_agent_bubble:
             current_text = self.current_agent_bubble.get_text()

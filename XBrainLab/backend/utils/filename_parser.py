@@ -78,7 +78,7 @@ class FilenameParser:
                     sub = match.group(sub_group)
                 if sess_group <= len(match.groups()):
                     sess = match.group(sess_group)
-        except Exception as e:
+        except re.error as e:
             logger.debug("Failed to parse filename by regex: %s", e)
         return sub, sess
 
@@ -115,7 +115,7 @@ class FilenameParser:
                 # Otherwise assume parent is Subject, Session is unknown or same
                 sub = parent_name
                 sess = "-"
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.debug("Failed to parse filename by folder: %s", e)
         return sub, sess
 
@@ -154,7 +154,7 @@ class FilenameParser:
                 extracted = name_no_ext[se_start : se_start + sess_len]
                 if extracted:
                     sess = extracted
-        except Exception as e:
+        except (IndexError, ValueError) as e:
             logger.debug("Failed to parse filename by fixed position: %s", e)
         return sub, sess
 
@@ -192,6 +192,6 @@ class FilenameParser:
                     sub = groupdict["subject"]
                 if "session" in groupdict:
                     sess = groupdict["session"]
-        except Exception as e:
+        except re.error as e:
             logger.debug("Failed to parse filename by regex: %s", e)
         return sub, sess

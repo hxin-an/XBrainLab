@@ -34,6 +34,7 @@ class ExportSaliencyDialog(BaseDialog):
         plan_combo: QComboBox for selecting a training plan.
         repeat_combo: QComboBox for selecting a repeat.
         method_combo: QComboBox for selecting the saliency method.
+
     """
 
     def __init__(self, parent, trainers):
@@ -74,24 +75,9 @@ class ExportSaliencyDialog(BaseDialog):
         self.method_combo.addItem("---")
         layout.addWidget(self.method_combo, 2, 1)
 
-        # Export Button (Using Dialog Button Box logic or custom?)
-        # BaseDialog has standard buttons. Export is a specific action.
-        # But here export implies saving and closing?
-        # The original code dumps pickle then accepts.
-        # So I can keep the button or move it to standard buttons.
-        # For typical "Export" dialog, standard "Save" or "Ok" is fine.
-        # E501: Line 65 is fine.
-        # But here it asks for location inside select_location.
-        # Let's keep the custom button for now inside the layout,
-        # OR use the standard OK button to trigger export?
-        # Original: Button "Export location" -> select_location ->
-        # QFileDialog -> dump -> accept.
-        # If I use standard OK, I should validation in accept().
-        # Let's refactor to use standard OK button as "Export".
-
         # Standard Buttons
         self.button_box = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         ok_btn = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if ok_btn:
@@ -105,6 +91,7 @@ class ExportSaliencyDialog(BaseDialog):
 
         Args:
             plan_name: Name of the selected training plan.
+
         """
         if not self.repeat_combo:
             return
@@ -123,6 +110,7 @@ class ExportSaliencyDialog(BaseDialog):
 
         Args:
             repeat_name: Name of the selected repeat.
+
         """
         if not self.method_combo:
             return
@@ -131,7 +119,7 @@ class ExportSaliencyDialog(BaseDialog):
 
         if repeat_name != "---":
             self.method_combo.addItems(
-                ["Gradient", "Gradient * Input", *supported_saliency_methods]
+                ["Gradient", "Gradient * Input", *supported_saliency_methods],
             )
 
     def on_export_clicked(self):
@@ -155,7 +143,9 @@ class ExportSaliencyDialog(BaseDialog):
 
         if not eval_record:
             QMessageBox.warning(
-                self, "Warning", "No evaluation record found for selected plan."
+                self,
+                "Warning",
+                "No evaluation record found for selected plan.",
             )
             return
 

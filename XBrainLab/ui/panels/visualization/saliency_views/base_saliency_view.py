@@ -7,8 +7,7 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class BaseSaliencyView(QWidget):
-    """
-    Abstract base class for all Saliency views (Map, Spectrogram, Topo, 3D).
+    """Abstract base class for all Saliency views (Map, Spectrogram, Topo, 3D).
     Standardizes layout, error handling, and placeholder display.
     """
 
@@ -41,7 +40,7 @@ class BaseSaliencyView(QWidget):
         self.error_label = QLabel()
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.error_label.setStyleSheet(
-            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;"
+            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
         self.error_label.hide()
         self.main_layout.addWidget(self.error_label)
@@ -60,8 +59,7 @@ class BaseSaliencyView(QWidget):
         self.canvas.draw()
 
     def update_view(self, result, params):
-        """
-        Update the view with calculation results.
+        """Update the view with calculation results.
         Must be implemented by subclasses.
         """
         raise NotImplementedError

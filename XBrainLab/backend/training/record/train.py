@@ -66,6 +66,7 @@ class TrainRecord:
             Path to save the record
         random_state: tuple
             Random state for reproducibility
+
     """
 
     def __init__(
@@ -90,6 +91,7 @@ class TrainRecord:
             seed: Random seed for reproducibility.
             plan_id: Optional unique identifier (timestamp) for the training plan,
                 used to construct the output path.
+
         """
         self.repeat = repeat
         self.dataset = dataset
@@ -137,7 +139,10 @@ class TrainRecord:
         unique_id = f"{model_name}_{self.plan_id}" if self.plan_id else model_name
 
         target_path = os.path.join(
-            self.option.get_output_dir(), record_name, unique_id, repeat_name
+            self.option.get_output_dir(),
+            record_name,
+            unique_id,
+            repeat_name,
         )
 
         # Do NOT backup automatically. Just ensure it exists.
@@ -163,6 +168,7 @@ class TrainRecord:
 
         Returns:
             A string formatted as ``'Repeat-{index}'``.
+
         """
         return f"Repeat-{self.repeat}"
 
@@ -171,6 +177,7 @@ class TrainRecord:
 
         Returns:
             The number of epochs completed so far.
+
         """
         return self.epoch
 
@@ -182,6 +189,7 @@ class TrainRecord:
 
         Returns:
             The model on the target device.
+
         """
         return self.model.to(device)
 
@@ -191,6 +199,7 @@ class TrainRecord:
         Returns:
             ``True`` if the current epoch meets or exceeds the target and
             an evaluation record exists.
+
         """
         return self.get_epoch() >= self.option.epoch and self.eval_record is not None
 
@@ -202,6 +211,7 @@ class TrainRecord:
         Args:
             val: Value to be appended
             arr: Array to be appended
+
         """
         while len(arr) < self.epoch:
             arr.append(None)
@@ -221,6 +231,7 @@ class TrainRecord:
             update_type: Record type to update (``'val'`` or ``'test'``).
             test_result: Dictionary mapping :class:`RecordKey` values to
                 metric values for the current epoch.
+
         """
         for key, value in test_result.items():
             self.append_record(value, getattr(self, update_type)[key])
@@ -246,6 +257,7 @@ class TrainRecord:
 
         Args:
             test_result: Dictionary of validation metrics for the current epoch.
+
         """
         self.update("val", test_result)
 
@@ -254,6 +266,7 @@ class TrainRecord:
 
         Args:
             test_result: Dictionary of test metrics for the current epoch.
+
         """
         self.update("test", test_result)
 
@@ -262,6 +275,7 @@ class TrainRecord:
 
         Args:
             test_result: Dictionary of training metrics (loss, accuracy, AUC).
+
         """
         for key, value in test_result.items():
             self.append_record(value, self.train[key])
@@ -271,6 +285,7 @@ class TrainRecord:
 
         Args:
             statistic: Dictionary of statistic values to record.
+
         """
         for key, value in statistic.items():
             self.append_record(value, self.train[key])
@@ -284,6 +299,7 @@ class TrainRecord:
 
         Args:
             eval_record: The :class:`EvalRecord` containing final evaluation results.
+
         """
         self.eval_record = eval_record
 
@@ -354,6 +370,7 @@ class TrainRecord:
         Returns:
             A multi-line string containing epoch count, best performance
             metrics, and last-epoch statistics.
+
         """
         lines = []
         lines.append(f"=== Training Summary for {self.get_name()} ===")
@@ -392,7 +409,10 @@ class TrainRecord:
 
     # figure
     def get_loss_figure(
-        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+        self,
+        fig: Figure | None = None,
+        figsize: tuple = (6.4, 4.8),
+        dpi: int = 100,
     ) -> Figure | None:
         """Generate a line chart of training, validation, and test loss over epochs.
 
@@ -404,6 +424,7 @@ class TrainRecord:
         Returns:
             The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
             if no loss data is available.
+
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -433,7 +454,10 @@ class TrainRecord:
         return fig
 
     def get_acc_figure(
-        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+        self,
+        fig: Figure | None = None,
+        figsize: tuple = (6.4, 4.8),
+        dpi: int = 100,
     ) -> Figure | None:
         """Generate a line chart of training, validation, and test accuracy over epochs.
 
@@ -445,6 +469,7 @@ class TrainRecord:
         Returns:
             The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
             if no accuracy data is available.
+
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -474,7 +499,10 @@ class TrainRecord:
         return fig
 
     def get_auc_figure(
-        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+        self,
+        fig: Figure | None = None,
+        figsize: tuple = (6.4, 4.8),
+        dpi: int = 100,
     ) -> Figure | None:
         """Generate a line chart of training, validation, and test AUC over epochs.
 
@@ -486,6 +514,7 @@ class TrainRecord:
         Returns:
             The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
             if no AUC data is available.
+
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -515,7 +544,10 @@ class TrainRecord:
         return fig
 
     def get_lr_figure(
-        self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
+        self,
+        fig: Figure | None = None,
+        figsize: tuple = (6.4, 4.8),
+        dpi: int = 100,
     ) -> Figure | None:
         """Generate a line chart of learning rate over epochs.
 
@@ -527,6 +559,7 @@ class TrainRecord:
         Returns:
             The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
             if no learning rate data is available.
+
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -561,6 +594,7 @@ class TrainRecord:
         Returns:
             The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
             if no evaluation record is available.
+
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -615,7 +649,10 @@ class TrainRecord:
         # Ticks
         labels = [self.dataset.get_epoch_data().label_map[i] for i in range(class_num)]
         plt.xticks(
-            range(class_num), labels, rotation=0, ha="center"
+            range(class_num),
+            labels,
+            rotation=0,
+            ha="center",
         )  # Horizontal labels
         plt.yticks(range(class_num), labels, va="center")  # Vertically centered
 
@@ -636,6 +673,7 @@ class TrainRecord:
 
         Returns:
             Accuracy as a float, or ``None``.
+
         """
         if not self.eval_record:
             return None
@@ -646,6 +684,7 @@ class TrainRecord:
 
         Returns:
             AUC score as a float, or ``None``.
+
         """
         if not self.eval_record:
             return None
@@ -656,6 +695,7 @@ class TrainRecord:
 
         Returns:
             Kappa coefficient as a float, or ``None``.
+
         """
         if not self.eval_record:
             return None
@@ -666,5 +706,6 @@ class TrainRecord:
 
         Returns:
             The :class:`EvalRecord` instance, or ``None``.
+
         """
         return self.eval_record

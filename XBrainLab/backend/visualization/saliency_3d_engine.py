@@ -19,6 +19,7 @@ def inverse_dist_weighted_sum(dist, val):
 
     Returns:
         float: Weighted sum where closer sources contribute more.
+
     """
     weight = 1 / (dist + 1e-8)
     weight = weight / weight.sum()
@@ -36,6 +37,7 @@ def channel_convex_hull(ch_pos):
 
     Returns:
         pyvista.PolyData: Triangulated surface mesh.
+
     """
     cloud = pv.PolyData(ch_pos)
     # Delaunay 2D is better for surface reconstruction of EEG cap (manifold)
@@ -52,6 +54,7 @@ class ModelDownloadThread(QThread):
             or an error string prefixed with ``"Error: "`` on failure.
         url: Remote URL to download from.
         dest_path: Local filesystem path to save the file to.
+
     """
 
     download_finished = pyqtSignal(str)  # formatted path or error
@@ -62,6 +65,7 @@ class ModelDownloadThread(QThread):
         Args:
             url: Remote URL of the model file.
             dest_path: Local path where the file will be written.
+
         """
         super().__init__()
         self.url = url
@@ -73,8 +77,7 @@ class ModelDownloadThread(QThread):
             with requests.get(self.url, stream=True, timeout=60) as r:
                 r.raise_for_status()
                 with open(self.dest_path, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                    f.writelines(r.iter_content(chunk_size=8192))
             logger.info("Downloaded %s", self.dest_path)
             self.download_finished.emit(self.dest_path)
         except Exception as e:
@@ -102,6 +105,7 @@ class Saliency3DEngine(QObject):
         pos_on_3d: ``(N, 3)`` array of electrode positions in 3-D model space.
         saliency: ``(channels, time)`` saliency matrix for the current event.
         download_threads: Active :class:`ModelDownloadThread` instances.
+
     """
 
     model_loaded = pyqtSignal()
@@ -111,6 +115,7 @@ class Saliency3DEngine(QObject):
 
         Args:
             mesh_scale_scalar: Uniform scaling factor applied to all meshes.
+
         """
         super().__init__()
         self.mesh_scale_scalar = mesh_scale_scalar
@@ -157,7 +162,7 @@ class Saliency3DEngine(QObject):
                 # Use QThread's native finished signal (0 args) for cleanup
                 # Fix B023: bind thread=thread
                 thread.finished.connect(
-                    lambda t=thread: SALIENCY_DOWNLOAD_THREADS.discard(t)
+                    lambda t=thread: SALIENCY_DOWNLOAD_THREADS.discard(t),
                 )
 
                 self.download_threads.append(thread)
@@ -171,6 +176,7 @@ class Saliency3DEngine(QObject):
         Args:
             result: Destination file path on success, or an error string
                 beginning with ``"Error: "`` on failure.
+
         """
         if "Error" in result:
             logger.error(result)
@@ -200,6 +206,7 @@ class Saliency3DEngine(QObject):
 
         Args:
             model_dir: Directory containing ``head.ply`` and ``brain.ply``.
+
         """
         head_path = os.path.join(model_dir, "head.ply")
         brain_path = os.path.join(model_dir, "brain.ply")
@@ -235,14 +242,13 @@ class Saliency3DEngine(QObject):
             ValueError: If no montage positions are available or no channels
                 could be mapped.
             RuntimeError: If the head or brain mesh has not been loaded.
+
         """
         # get saliency
         label_index = epoch_data.event_id[selected_event_name]
         saliency_raw = eval_record.gradient[label_index]
         self.saliency = saliency_raw.mean(axis=0)
         self.scalar_bar_range = [self.saliency.min(), self.saliency.max()]
-
-        # self.max_time = self.saliency.shape[-1] # Unused?
 
         # get channel pos
         ch_pos = epoch_data.get_montage_position()
@@ -263,9 +269,6 @@ class Saliency3DEngine(QObject):
             0.00917,
             self.head_mesh.bounds[5] - 0.10024,
         ]
-
-        # Hull was unused variable F841
-        # hull = self.head_mesh.copy()
 
         for idx, _ele in enumerate(electrode):
             if idx >= len(ch_pos):
@@ -296,7 +299,8 @@ class Saliency3DEngine(QObject):
             self.brain_mesh.copy().scale(scaling * 0.001, inplace=False).triangulate()
         )
         self.saliency_cap = channel_convex_hull(self.pos_on_3d).scale(
-            scaling, inplace=False
+            scaling,
+            inplace=False,
         )
 
         self.scalar_buffer = np.zeros(self.saliency_cap.n_points)
@@ -317,6 +321,7 @@ class Saliency3DEngine(QObject):
         Returns:
             np.ndarray | None: Interpolated scalar array with one value per
                 cap-mesh vertex, or ``None`` if data is not yet available.
+
         """
         if self.saliency is None or self.saliency_cap is None:
             return None
@@ -329,19 +334,8 @@ class Saliency3DEngine(QObject):
         current_saliency = self.saliency[:, t_idx]
 
         points = self.saliency_cap.points
-        # For each point on the cap mesh, find k-nearest channels and interpolate
-        # Note: This is computationally expensive to do in Python loop for many points.
-        # But keeping original logic for fidelity.
-
-        # Optimization: use KDTree if points are static?
-        # For direct port, keep logic but maybe vectorizable?
-        # Original logic:
-        # for i in range(mesh.n_points):
-        #    ... find k nearest chs ...
-        #    val = inverse_dist_weighted_sum(...)
-
-        # Let's vectorize simply if possible, or stick to loop for safety.
-        # The mesh points count might be small (hundreds?).
+        # For each point on the cap mesh, find k-nearest channels and interpolate.
+        # Uses a simple distance matrix approach for vectorized computation.
 
         scalars = np.zeros(points.shape[0])
 

@@ -48,6 +48,7 @@ class LLMConfig:
         gemini_enabled: Whether the Gemini backend is enabled and verified.
         active_mode: Currently active UI mode (``'local'`` or ``'gemini'``).
         local_model_enabled: Whether local model features are enabled.
+
     """
 
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
@@ -63,26 +64,29 @@ class LLMConfig:
     # Paths
     # Store models inside the project directory: XBrainLab/llm/models
     cache_dir: str = field(
-        default_factory=lambda: os.path.join(os.path.dirname(__file__), "models")
+        default_factory=lambda: os.path.join(os.path.dirname(__file__), "models"),
     )
 
     # API Configuration
     inference_mode: str = field(
-        default_factory=lambda: os.getenv("INFERENCE_MODE", "local")
+        default_factory=lambda: os.getenv("INFERENCE_MODE", "local"),
     )  # 'local', 'api', or 'gemini'
     api_key: str = field(
-        default_factory=lambda: os.getenv("OPENAI_API_KEY", ""), repr=False
+        default_factory=lambda: os.getenv("OPENAI_API_KEY", ""),
+        repr=False,
     )
     base_url: str = field(
         default_factory=lambda: os.getenv(
-            "OPENAI_BASE_URL", "https://api.openai.com/v1"
-        )
+            "OPENAI_BASE_URL",
+            "https://api.openai.com/v1",
+        ),
     )
     api_model_name: str = "gpt-4o"  # or 'deepseek-chat', etc.
 
     # Gemini Configuration
     gemini_api_key: str = field(
-        default_factory=lambda: os.getenv("GEMINI_API_KEY", ""), repr=False
+        default_factory=lambda: os.getenv("GEMINI_API_KEY", ""),
+        repr=False,
     )
     gemini_model_name: str = "gemini-2.0-flash"
     gemini_enabled: bool = False
@@ -96,6 +100,7 @@ class LLMConfig:
 
         Returns:
             A dict representation of all configuration fields.
+
         """
         return asdict(self)
 
@@ -108,6 +113,7 @@ class LLMConfig:
         Args:
             filepath: Path to the output JSON file.  Defaults to
                 ``'settings.json'``.
+
         """
         data = {
             "local": {
@@ -141,6 +147,7 @@ class LLMConfig:
         Returns:
             A new ``LLMConfig`` instance, or ``None`` if the file does
             not exist or cannot be parsed.
+
         """
         if not os.path.exists(filepath):
             return None
@@ -155,10 +162,12 @@ class LLMConfig:
                 config.local_model_enabled = data["local"].get("enabled", True)
             if "gemini" in data:
                 config.gemini_model_name = data["gemini"].get(
-                    "model_name", config.gemini_model_name
+                    "model_name",
+                    config.gemini_model_name,
                 )
                 config.gemini_enabled = data["gemini"].get(
-                    "enabled", data["gemini"].get("verified", False)
+                    "enabled",
+                    data["gemini"].get("verified", False),
                 )
 
             config.active_mode = data.get("active_mode", "local")

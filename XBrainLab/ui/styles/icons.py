@@ -14,6 +14,7 @@ class Icons(Enum):
 
     Example:
         >>> icon_path = Icons.LOGO.path
+
     """
 
     # Define Icon Keys
@@ -33,6 +34,7 @@ class Icons(Enum):
 
         Returns:
             Absolute path string to the icon file.
+
         """
         return AppConfig.get_icon_path(self.value)
 
@@ -45,5 +47,6 @@ class Icons(Enum):
 
         Returns:
             Absolute path string to the icon file.
+
         """
         return icon_enum.path

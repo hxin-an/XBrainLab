@@ -44,6 +44,7 @@ class PreviewWidget(QWidget):
         time_slider: ``QSlider`` for scrubbing through time or epochs.
         time_spin: ``QDoubleSpinBox`` for precise time/epoch entry.
         plot_timer: ``QTimer`` used for debouncing parameter changes.
+
     """
 
     # Signal to request a plot update from the controller/plotter
@@ -54,6 +55,7 @@ class PreviewWidget(QWidget):
 
         Args:
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.init_ui()
@@ -253,6 +255,7 @@ class PreviewWidget(QWidget):
 
         Args:
             value: New slider position (integer, 10x the time in seconds).
+
         """
         self.time_spin.blockSignals(True)
         self.time_spin.setValue(value / 10.0)
@@ -264,6 +267,7 @@ class PreviewWidget(QWidget):
 
         Args:
             value: New time value in seconds (float).
+
         """
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(int(value * 10))
@@ -275,6 +279,7 @@ class PreviewWidget(QWidget):
 
         Args:
             evt: Mouse event tuple from ``pg.SignalProxy``.
+
         """
         self._update_crosshair(
             evt,
@@ -289,6 +294,7 @@ class PreviewWidget(QWidget):
 
         Args:
             evt: Mouse event tuple from ``pg.SignalProxy``.
+
         """
         self._update_crosshair(
             evt,
@@ -310,6 +316,7 @@ class PreviewWidget(QWidget):
             v_line: Vertical ``pg.InfiniteLine`` crosshair.
             h_line: Horizontal ``pg.InfiniteLine`` crosshair.
             label: ``pg.TextItem`` displaying coordinate values.
+
         """
         pos = evt[0]
         if plot.sceneBoundingRect().contains(pos):
@@ -337,7 +344,7 @@ class PreviewWidget(QWidget):
                     if idx >= len(x_data):
                         idx = len(x_data) - 1
                     elif idx > 0 and abs(x_mouse - x_data[idx - 1]) < abs(
-                        x_mouse - x_data[idx]
+                        x_mouse - x_data[idx],
                     ):
                         idx = idx - 1
 

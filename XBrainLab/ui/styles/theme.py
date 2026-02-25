@@ -128,6 +128,7 @@ class Theme:
             axes: Optional list of ``Axes`` instances to style.
                 If neither ``ax`` nor ``axes`` is provided, all axes
                 on the figure are styled.
+
         """
         if fig:
             fig.patch.set_facecolor(Theme.BACKGROUND_MID)
@@ -166,6 +167,7 @@ class Theme:
 
         Returns:
             A multi-line Qt CSS stylesheet string.
+
         """
         return f"""
             QWidget {{

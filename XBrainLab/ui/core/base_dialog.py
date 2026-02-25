@@ -11,6 +11,7 @@ class BaseDialog(QDialog):
 
     Attributes:
         controller: Optional backend controller bound to this dialog.
+
     """
 
     def __init__(
@@ -29,6 +30,7 @@ class BaseDialog(QDialog):
             width: Optional initial width in pixels.
             height: Optional initial height in pixels.
             controller: Optional backend controller for data access.
+
         """
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -49,6 +51,7 @@ class BaseDialog(QDialog):
 
         Raises:
             NotImplementedError: Always, unless overridden.
+
         """
         raise NotImplementedError
 
@@ -62,5 +65,6 @@ class BaseDialog(QDialog):
 
         Raises:
             NotImplementedError: Always, unless overridden.
+
         """
         raise NotImplementedError

@@ -20,8 +20,7 @@ if TYPE_CHECKING:
 
 
 class PreprocessPlotter:
-    """
-    Handles plotting logic for the PreprocessPanel using PyQtGraph.
+    """Handles plotting logic for the PreprocessPanel using PyQtGraph.
     Now supports threading for heavy calculations (PSD).
     """
 
@@ -32,6 +31,7 @@ class PreprocessPlotter:
             widget: The ``PreviewWidget`` containing the PyQtGraph plot
                 widgets to draw into.
             controller: The ``PreprocessController`` providing data access.
+
         """
         self.widget = widget
         self.controller = controller
@@ -66,29 +66,28 @@ class PreprocessPlotter:
             # We usually plot absolute time.
             x = np.arange(start_sample, start_sample + len(y)) / obj_sfreq
             return x, y
-        else:
-            # For epochs, data is usually already loaded in memory
-            # (unless on_demand? MNE Epochs default is preload=True usually)
-            # But if it's large and not preloaded, get_data() full might still be slow.
-            # Epochs.get_data() supports item slicing?
-            # obj.get_mne() returns MNE Epochs object.
-            # epoch_data = epochs[epoch_idx].get_data(picks=[ch_idx])
+        # For epochs, data is usually already loaded in memory
+        # (unless on_demand? MNE Epochs default is preload=True usually)
+        # But if it's large and not preloaded, get_data() full might still be slow.
+        # Epochs.get_data() supports item slicing?
+        # obj.get_mne() returns MNE Epochs object.
+        # epoch_data = epochs[epoch_idx].get_data(picks=[ch_idx])
 
-            # For Epochs, data is typically preloaded in memory.
-            # However, we still use get_data() for consistency.
-            data = mne_obj.get_data()
-            if data.ndim != 3:
-                return None, None
+        # For Epochs, data is typically preloaded in memory.
+        # However, we still use get_data() for consistency.
+        data = mne_obj.get_data()
+        if data.ndim != 3:
+            return None, None
 
-            # For epochs, start_time is the epoch index
-            epoch_idx = int(start_time)
-            epoch_idx = max(epoch_idx, 0)
-            if epoch_idx >= data.shape[0]:
-                epoch_idx = data.shape[0] - 1
+        # For epochs, start_time is the epoch index
+        epoch_idx = int(start_time)
+        epoch_idx = max(epoch_idx, 0)
+        if epoch_idx >= data.shape[0]:
+            epoch_idx = data.shape[0] - 1
 
-            y = data[epoch_idx, ch_idx, :]
-            x = mne_obj.times
-            return x, y
+        y = data[epoch_idx, ch_idx, :]
+        x = mne_obj.times
+        return x, y
 
     def _plot_events(self, obj, start_time, end_time):
         """Plot events or annotations on the time plot."""
@@ -105,13 +104,10 @@ class PreprocessPlotter:
                     if start_time <= onset <= end_time:
                         events.append((onset, desc))
 
-        # 2. Handle Epochs (if easy mapping available)
+        # 2. Handle Epochs — events not plotted in epoch mode
         else:
-            # For epochs, events are usually aligned to t=0 or based on events array
-            # If we are plotting a specific epoch, we usually don't plot
-            # *other* events inside it? Or maybe we do if it's a long epoch.
-            # TODO: Implement event mapping for Epochs if needed.
-            # Currently, events are visualized primarily in Raw mode.
+            # For epochs, events are usually aligned to t=0.
+            # Event markers are visualized primarily in Raw mode.
             pass
 
         # Draw Events
@@ -144,7 +140,9 @@ class PreprocessPlotter:
         f_orig, pxx_orig = None, None
         if sig_orig is not None:
             f_orig, pxx_orig = welch(
-                sig_orig, fs=sfreq, nperseg=min(len(sig_orig), 256 * 4)
+                sig_orig,
+                fs=sfreq,
+                nperseg=min(len(sig_orig), 256 * 4),
             )
 
         return f, pxx, f_orig, pxx_orig
@@ -195,7 +193,9 @@ class PreprocessPlotter:
             x_orig, y_orig = None, None
             if orig_obj:
                 x_orig, y_orig = self._get_chan_data(
-                    orig_obj, chan_idx, start_time=start_t
+                    orig_obj,
+                    chan_idx,
+                    start_time=start_t,
                 )
 
             # --- Time Domain Plot (Immediate) ---
@@ -226,7 +226,7 @@ class PreprocessPlotter:
                     self.widget.plot_time.setTitle(f"{chan_name} (Time)")
                 else:
                     self.widget.plot_time.setTitle(
-                        f"{chan_name} (Epoch {int(start_t)})"
+                        f"{chan_name} (Epoch {int(start_t)})",
                     )
 
                 # Ensure X-Axis follows the data (Link slider to view)
@@ -250,7 +250,10 @@ class PreprocessPlotter:
 
                 # Prepare args for worker
                 worker = Worker(
-                    self._calc_psd_task, y_curr_uv, sfreq, sig_orig=y_orig_uv
+                    self._calc_psd_task,
+                    y_curr_uv,
+                    sfreq,
+                    sig_orig=y_orig_uv,
                 )
 
                 # Pass data needed for plotting via closure or args

@@ -26,6 +26,7 @@ class MockSetModelTool(BaseSetModelTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if model_name is None:
             return "Error: model_name is required"
@@ -62,6 +63,7 @@ class MockConfigureTrainingTool(BaseConfigureTrainingTool):
 
         Returns:
             A confirmation or error message.
+
         """
         if epoch is None or batch_size is None or learning_rate is None:
             return "Error: epoch, batch_size, and learning_rate are required"
@@ -83,5 +85,6 @@ class MockStartTrainingTool(BaseStartTrainingTool):
 
         Returns:
             A message indicating mock training completed.
+
         """
         return "Training started. (Mock: Training completed successfully.)"

@@ -11,8 +11,7 @@ from XBrainLab.ui.panels.preprocess.sidebar import PreprocessSidebar
 
 
 class PreprocessPanel(BasePanel):
-    """
-    Panel for signal preprocessing.
+    """Panel for signal preprocessing.
     Features: Plotting (Time/Freq), Operations (Filter, Resample, etc.), History.
     Refactored to compose PreviewWidget, HistoryWidget, and Sidebar.
     Connects `PreprocessController` and `DatasetController`.
@@ -27,6 +26,7 @@ class PreprocessPanel(BasePanel):
             dataset_controller: Optional ``DatasetController`` for
                 data-change event subscription.
             parent: Parent widget (typically the main window).
+
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
@@ -62,12 +62,16 @@ class PreprocessPanel(BasePanel):
 
             if self.dataset_controller:
                 self.data_bridge = QtObserverBridge(
-                    self.dataset_controller, "data_changed", self
+                    self.dataset_controller,
+                    "data_changed",
+                    self,
                 )
                 self.data_bridge.connect_to(self.update_panel)
 
                 self.import_bridge = QtObserverBridge(
-                    self.dataset_controller, "import_finished", self
+                    self.dataset_controller,
+                    "import_finished",
+                    self,
                 )
                 self.import_bridge.connect_to(self.update_panel)
 
@@ -103,7 +107,8 @@ class PreprocessPanel(BasePanel):
             first_data = data_list[0]
             is_epoched = not first_data.is_raw()
             self.history_widget.update_history(
-                first_data.get_preprocess_history(), is_epoched
+                first_data.get_preprocess_history(),
+                is_epoched,
             )
         else:
             self.history_widget.show_no_data()
@@ -113,7 +118,7 @@ class PreprocessPanel(BasePanel):
             first_data = data_list[0]
             if is_epoched:
                 self.preview_widget.show_locked_message(
-                    "Data is Epoched - Preprocessing Locked"
+                    "Data is Epoched - Preprocessing Locked",
                 )
                 return
 

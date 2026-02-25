@@ -19,6 +19,7 @@ class PlotType(Enum):
         AUC: AUC curve figure.
         LR: Learning-rate schedule figure.
         CONFUSION: Confusion-matrix figure.
+
     """
 
     LOSS = "get_loss_figure"
@@ -35,6 +36,7 @@ class VisualizerType(Enum):
         SaliencyMap: Channel-by-time saliency map visualizer.
         SaliencyTopoMap: Topographic saliency map visualizer.
         SaliencySpectrogramMap: Frequency-by-time saliency spectrogram visualizer.
+
     """
 
     SaliencyMap = SaliencyMapViz

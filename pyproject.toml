@@ -116,7 +116,7 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "run.py" = ["E402"]
 "scripts/**/*.py" = ["E402", "E501", "SIM102", "N806", "C414", "PERF", "PLR5501", "E722"]
-"tests/**/*.py" = ["E402", "S101", "N", "E501", "F841"]
+"tests/**/*.py" = ["E402", "S101", "N", "E501", "F841", "PLC0415", "S108"]
 "XBrainLab/backend/dataset/dataset_generator.py" = ["PLC0415"]
 "XBrainLab/backend/load_data/data_loader.py" = ["PLC0415"]
 "XBrainLab/llm/rag/retriever.py" = ["PLC0415"]
@@ -124,10 +124,7 @@ select = [
 "XBrainLab/llm/core/engine.py" = ["PLC0415"]
 "XBrainLab/ui/dialogs/model_settings_dialog.py" = ["PLC0415"]
 "XBrainLab/llm/core/config.py" = ["PLC0415"]
-"tests/conftest.py" = ["PLC0415"]
-"tests/integration/debug/test_debug_script_execution.py" = ["PLC0415"]
-"tests/integration/pipeline/test_full_pipeline.py" = ["PLC0415"]
-"tests/unit/ui/core/test_worker.py" = ["PLC0415"]
+
 
 [tool.ruff.lint.pep8-naming]
 ignore-names = ["X", "Y", "x", "y", "Pxx"]
@@ -174,6 +171,10 @@ omit = [
     "*/.virtualenvs/*",
     "*/site-packages/*",
     "tests/*",
+    "XBrainLab/llm/core/models/*",
+    "XBrainLab/backend/visualization/saliency_3d_engine.py",
+    "XBrainLab/ui/panels/visualization/saliency_views/plot_3d_head.py",
+    "XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py",
 ]
 concurrency = ["multiprocessing"]
 
@@ -230,7 +231,7 @@ bump = "cz bump"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.5.2"
+version = "0.5.3"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",

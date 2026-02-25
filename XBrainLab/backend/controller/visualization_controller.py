@@ -33,6 +33,7 @@ class VisualizationController(Observable):
 
     Attributes:
         _study: Reference to the :class:`Study` backend instance.
+
     """
 
     def __init__(self, study: Study):
@@ -40,6 +41,7 @@ class VisualizationController(Observable):
 
         Args:
             study: The :class:`Study` backend instance to query.
+
         """
         Observable.__init__(self)
         self._study = study
@@ -49,6 +51,7 @@ class VisualizationController(Observable):
 
         Returns:
             The list of raw data objects held by the study.
+
         """
         return self._study.loaded_data_list
 
@@ -57,6 +60,7 @@ class VisualizationController(Observable):
 
         Returns:
             The list of preprocessed data objects held by the study.
+
         """
         return self._study.preprocessed_data_list
 
@@ -66,13 +70,16 @@ class VisualizationController(Observable):
         Returns:
             A list of :class:`TrainingPlanHolder` instances, or an
             empty list if no trainer exists.
+
         """
         if self._study.trainer:
             return self._study.trainer.get_training_plan_holders()
         return []
 
     def set_montage(
-        self, chs: list[str], positions: list[tuple[float, float, float]]
+        self,
+        chs: list[str],
+        positions: list[tuple[float, float, float]],
     ) -> None:
         """Set the channel montage in the study.
 
@@ -80,6 +87,7 @@ class VisualizationController(Observable):
             chs: List of channel name strings.
             positions: List of ``(x, y, z)`` position tuples for each
                 channel.
+
         """
         self._study.set_channels(chs, positions)
         self.notify("montage_changed")
@@ -89,6 +97,7 @@ class VisualizationController(Observable):
 
         Returns:
             ``True`` if epoch data has been set in the study.
+
         """
         return self._study.epoch_data is not None
 
@@ -98,6 +107,7 @@ class VisualizationController(Observable):
         Returns:
             List of channel name strings, or an empty list if no
             epoch data is loaded.
+
         """
         if self._study.epoch_data:
             return self._study.epoch_data.get_channel_names()
@@ -109,6 +119,7 @@ class VisualizationController(Observable):
         Returns:
             A dictionary of saliency parameters, or ``None`` if not
             configured.
+
         """
         return self._study.get_saliency_params()
 
@@ -117,12 +128,14 @@ class VisualizationController(Observable):
 
         Args:
             params: Dictionary of saliency configuration values.
+
         """
         self._study.set_saliency_params(params)
         self.notify("saliency_changed")
 
     def get_averaged_record(
-        self, trainer_holder: TrainingPlanHolder
+        self,
+        trainer_holder: TrainingPlanHolder,
     ) -> EvalRecord | None:
         """Compute an averaged :class:`EvalRecord` across finished runs.
 
@@ -137,6 +150,7 @@ class VisualizationController(Observable):
         Returns:
             An :class:`EvalRecord` with averaged gradient maps, or
             ``None`` if no finished runs contain evaluation records.
+
         """
         plans = trainer_holder.get_plans()
         # Filter for plans with valid eval records

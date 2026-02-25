@@ -40,6 +40,7 @@ class OptimizerSettingDialog(BaseDialog):
         algo_map: Dictionary mapping optimizer names to classes.
         algo_combo: QComboBox for selecting the optimizer algorithm.
         params_table: QTableWidget displaying configurable parameters.
+
     """
 
     def __init__(self, parent):
@@ -86,7 +87,7 @@ class OptimizerSettingDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -97,6 +98,7 @@ class OptimizerSettingDialog(BaseDialog):
 
         Args:
             algo_name: Name of the selected optimizer algorithm.
+
         """
         if not self.params_table:
             return
@@ -119,6 +121,7 @@ class OptimizerSettingDialog(BaseDialog):
         Raises:
             QMessageBox: Warning if parameter validation or test
                 instantiation fails.
+
         """
         if not self.algo_combo or not self.params_table:
             return
@@ -160,5 +163,6 @@ class OptimizerSettingDialog(BaseDialog):
 
         Returns:
             Tuple of (optimizer_class, optimizer_params_dict).
+
         """
         return self.optim, self.optim_params

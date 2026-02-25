@@ -24,6 +24,7 @@ class NormalizeDialog(BaseDialog):
         method_group: QGroupBox containing the method radio buttons.
         zscore_radio: QRadioButton for Z-Score normalization.
         minmax_radio: QRadioButton for Min-Max normalization.
+
     """
 
     def __init__(self, parent):
@@ -51,7 +52,7 @@ class NormalizeDialog(BaseDialog):
         layout.addWidget(self.method_group)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -70,6 +71,7 @@ class NormalizeDialog(BaseDialog):
 
         Returns:
             String ``'z score'`` or ``'minmax'``, or None if not set.
+
         """
         return self.params
 
@@ -78,5 +80,6 @@ class NormalizeDialog(BaseDialog):
 
         Returns:
             String ``'z score'`` or ``'minmax'``, or None if not set.
+
         """
         return self.get_params()

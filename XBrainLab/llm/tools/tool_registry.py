@@ -6,6 +6,8 @@ Provides registration, lookup, and state-aware filtering of
 
 from typing import Any
 
+from XBrainLab.backend.utils.logger import logger
+
 from .base import BaseTool
 
 
@@ -17,6 +19,7 @@ class ToolRegistry:
 
     Attributes:
         _tools: Internal mapping from tool name to ``BaseTool`` instance.
+
     """
 
     def __init__(self):
@@ -30,10 +33,10 @@ class ToolRegistry:
 
         Args:
             tool: The ``BaseTool`` instance to register.
+
         """
         if tool.name in self._tools:
-            # logger.warning(f"Overwriting tool {tool.name}")
-            pass
+            logger.warning("Overwriting tool %s", tool.name)
         self._tools[tool.name] = tool
 
     def get_tool(self, name: str) -> BaseTool | None:
@@ -44,6 +47,7 @@ class ToolRegistry:
 
         Returns:
             The matching ``BaseTool`` instance, or ``None`` if not found.
+
         """
         return self._tools.get(name)
 
@@ -52,6 +56,7 @@ class ToolRegistry:
 
         Returns:
             A list of every ``BaseTool`` instance currently registered.
+
         """
         return list(self._tools.values())
 
@@ -67,5 +72,6 @@ class ToolRegistry:
         Returns:
             A filtered list of ``BaseTool`` instances whose
             preconditions are currently satisfied.
+
         """
         return [tool for tool in self._tools.values() if tool.is_valid(study)]

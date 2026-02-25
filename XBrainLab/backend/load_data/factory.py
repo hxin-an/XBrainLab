@@ -18,13 +18,16 @@ class RawDataLoaderFactory:
     Attributes:
         _loaders: Class-level registry mapping lowercase file extensions
             to loader callables.
+
     """
 
     _loaders: ClassVar[dict[str, Callable[[str], Raw | None]]] = {}
 
     @classmethod
     def register_loader(
-        cls, extension: str, loader_func: Callable[[str], Raw | None]
+        cls,
+        extension: str,
+        loader_func: Callable[[str], Raw | None],
     ) -> None:
         """Register a loader function for a specific file extension.
 
@@ -32,6 +35,7 @@ class RawDataLoaderFactory:
             extension: File extension (including dot, e.g., '.gdf').
             loader_func: Function that takes a filepath and returns a Raw
                 object or None.
+
         """
         cls._loaders[extension.lower()] = loader_func
 
@@ -47,6 +51,7 @@ class RawDataLoaderFactory:
 
         Raises:
             UnsupportedFormatError: If no loader is registered for the file extension.
+
         """
         _, ext = os.path.splitext(filepath)
         ext = ext.lower()
@@ -69,6 +74,7 @@ class RawDataLoaderFactory:
         Raises:
             UnsupportedFormatError: If format is not supported.
             FileCorruptedError: If file loading fails due to corruption/IO error.
+
         """
         if not os.path.exists(filepath):
             raise FileNotFoundError(f"File not found: {filepath}")

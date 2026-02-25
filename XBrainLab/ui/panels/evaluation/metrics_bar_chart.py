@@ -19,6 +19,7 @@ class MetricsBarChartWidget(QWidget):
         fig: Current ``matplotlib.figure.Figure`` instance.
         canvas: ``FigureCanvas`` embedding the figure into Qt.
         ax: The matplotlib ``Axes`` used for plotting.
+
     """
 
     def __init__(self, parent=None):
@@ -26,6 +27,7 @@ class MetricsBarChartWidget(QWidget):
 
         Args:
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.init_ui()
@@ -65,6 +67,7 @@ class MetricsBarChartWidget(QWidget):
 
         Args:
             metrics: Dictionary containing per-class metrics from EvalRecord.
+
         """
         try:
             self.ax.clear()
@@ -122,7 +125,11 @@ class MetricsBarChartWidget(QWidget):
             )
             self.ax.bar(x, recall, width, label="Recall", color=Theme.CHART_PRIMARY)
             self.ax.bar(
-                x + width, f1, width, label="F1-Score", color=Theme.CHART_TERTIARY
+                x + width,
+                f1,
+                width,
+                label="F1-Score",
+                color=Theme.CHART_TERTIARY,
             )
 
             # Apply Theme
@@ -142,7 +149,11 @@ class MetricsBarChartWidget(QWidget):
 
             # Grid
             self.ax.grid(
-                True, axis="y", linestyle="--", alpha=0.3, color=Theme.TEXT_MUTED
+                True,
+                axis="y",
+                linestyle="--",
+                alpha=0.3,
+                color=Theme.TEXT_MUTED,
             )
 
             self.fig.tight_layout()

@@ -10,6 +10,7 @@ def get_builtin_montages():
     Returns:
         A list of strings, each being a valid montage name
         (e.g., ``'standard_1020'``).
+
     """
     return mne.channels.get_builtin_montages()
 
@@ -23,6 +24,7 @@ def get_montage_positions(montage_name: str) -> dict:
     Returns:
         A dictionary containing channel positions and other montage metadata,
         as returned by :meth:`mne.channels.DigMontage.get_positions`.
+
     """
     montage = mne.channels.make_standard_montage(montage_name)
     return montage.get_positions()
@@ -37,6 +39,7 @@ def get_montage_channel_positions(montage_name, channel_names):
 
     Returns:
         A numpy array of shape ``(len(channel_names), 3)`` with XYZ positions.
+
     """
     montage = mne.channels.make_standard_montage(montage_name)
     positions = montage.get_positions()["ch_pos"]

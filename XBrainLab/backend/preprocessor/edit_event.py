@@ -22,6 +22,7 @@ class EditEventName(PreprocessBase):
 
         Raises:
             ValueError: If any data instance is raw (not epoched).
+
         """
         super().check_data()
         for preprocessed_data in self.preprocessed_data_list:
@@ -36,10 +37,11 @@ class EditEventName(PreprocessBase):
 
         Returns:
             A string describing how many event names were updated.
+
         """
         diff = np.sum(
             np.array(list(new_event_name.values()))
-            != np.array(list(new_event_name.keys()))
+            != np.array(list(new_event_name.keys())),
         )
         return f"Update {diff} event names"
 
@@ -53,6 +55,7 @@ class EditEventName(PreprocessBase):
         Raises:
             ValueError: If a specified event name is not found, no names were
                 changed, or the renaming would create duplicate names.
+
         """
         # update parent event name to event id dict
         events, event_id = preprocessed_data.get_event_list()
@@ -85,6 +88,7 @@ class EditEventId(PreprocessBase):
 
         Raises:
             ValueError: If any data instance is raw (not epoched).
+
         """
         super().check_data()
         for preprocessed_data in self.preprocessed_data_list:
@@ -99,6 +103,7 @@ class EditEventId(PreprocessBase):
 
         Returns:
             A string indicating that event IDs were updated.
+
         """
         return "Update event ids"
 
@@ -111,6 +116,7 @@ class EditEventId(PreprocessBase):
 
         Raises:
             ValueError: If no event IDs were actually changed.
+
         """
         # update parent event data
         events, event_id = preprocessed_data.get_event_list()
@@ -126,14 +132,15 @@ class EditEventId(PreprocessBase):
 
         new_events, new_event_id = events.copy(), {}
         if len(np.unique(list(new_event_ids.keys()))) != len(
-            np.unique(list(new_event_ids.values()))
+            np.unique(list(new_event_ids.values())),
         ):
             logger.warning(
                 "Updated with duplicate new event IDs. "
-                "Event names of same event ID are automatically merged."
+                "Event names of same event ID are automatically merged.",
             )
             uq, cnt = np.unique(
-                list(new_event_ids.values()), return_counts=True
+                list(new_event_ids.values()),
+                return_counts=True,
             )  # [1,2,3], [1,1,2]
             dup = uq[cnt > 1]  # 3
             event_id_dup: dict[int, list] = {v: [] for v in dup}  # 3: [768_2, 768_3]

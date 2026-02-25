@@ -14,6 +14,7 @@ class ModelHolder:
         target_model (type): Model class, inherited from `torch.nn.Module`
         model_params_map (dict): Model parameters
         pretrained_weight_path (str): Path to pretrained weight
+
     """
 
     def __init__(
@@ -32,6 +33,7 @@ class ModelHolder:
         Returns:
             A string containing the model name and its non-empty parameters,
             formatted as ``'ModelName (param1=val1, param2=val2)'``.
+
         """
         option_list = [
             f"{i}={self.model_params_map[i]}"
@@ -52,10 +54,11 @@ class ModelHolder:
 
         Returns:
             A new instance of the target model with weights loaded if applicable.
+
         """
         model = self.target_model(**self.model_params_map, **args)
         if self.pretrained_weight_path:
             model.load_state_dict(
-                torch.load(self.pretrained_weight_path, weights_only=True)
+                torch.load(self.pretrained_weight_path, weights_only=True),
             )
         return model

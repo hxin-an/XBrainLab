@@ -29,6 +29,7 @@ class MockSwitchPanelTool(BaseSwitchPanelTool):
 
         Returns:
             A message confirming the simulated panel switch.
+
         """
         if panel_name is None:
             return "Error: panel_name is required"

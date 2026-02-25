@@ -16,6 +16,7 @@ class DataType(Enum):
     Attributes:
         RAW: Unsegmented continuous raw data.
         EPOCH: Segmented epoch data.
+
     """
 
     RAW = "raw"

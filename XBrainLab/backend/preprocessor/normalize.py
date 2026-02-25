@@ -24,6 +24,7 @@ class Normalize(PreprocessBase):
 
         Returns:
             A string describing the normalization applied.
+
         """
         return f"{norm} normalization"
 
@@ -33,6 +34,7 @@ class Normalize(PreprocessBase):
         Args:
             preprocessed_data: The data instance to preprocess.
             norm: Normalization method (``"z score"`` or ``"minmax"``).
+
         """
         preprocessed_data.get_mne().load_data()
         # Normalize variant names (accept 'z-score', 'z score', 'zscore')
@@ -57,7 +59,8 @@ class Normalize(PreprocessBase):
                     arrdata[ep, :, :] = (
                         arrdata[ep, :, :]
                         - np.multiply(
-                            trial_mean[:, None], np.ones_like(arrdata[ep, :, :])
+                            trial_mean[:, None],
+                            np.ones_like(arrdata[ep, :, :]),
                         )
                     ) / np.multiply(
                         trial_std[:, None] + 1e-12,
@@ -91,5 +94,5 @@ class Normalize(PreprocessBase):
         else:
             raise ValueError(
                 f"Unknown normalization method: '{norm}'. "
-                f"Supported methods are 'z score' and 'minmax'."
+                f"Supported methods are 'z score' and 'minmax'.",
             )

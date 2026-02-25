@@ -10,6 +10,7 @@ class Metric(Enum):
         ACC: Classification accuracy as a percentage.
         AUC: Area under the Receiver Operating Characteristic curve.
         KAPPA: Cohen's kappa coefficient for inter-rater agreement.
+
     """
 
     ACC = "Accuracy (%)"

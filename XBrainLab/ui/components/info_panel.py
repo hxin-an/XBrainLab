@@ -26,6 +26,7 @@ class AggregateInfoPanel(QGroupBox):
     Attributes:
         table: QTableWidget displaying key-value data rows.
         row_map: Dictionary mapping metric names to table row indices.
+
     """
 
     def __init__(self, parent=None):
@@ -34,6 +35,7 @@ class AggregateInfoPanel(QGroupBox):
         Args:
             parent: Optional parent widget. If the parent has an
                 ``info_service`` attribute, the panel auto-registers.
+
         """
         super().__init__("Aggregate Information", parent)
         self.init_ui()
@@ -62,12 +64,6 @@ class AggregateInfoPanel(QGroupBox):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
 
-        # Apply style from centralized Stylesheets
-        # Note: We apply table style here inline or extract it?
-        # Creating a specific table style in Stylesheets is better pattern.
-        # For now, I'll keep the custom table style but use the group box style
-        # from Stylesheets
-
         self.table.setStyleSheet(
             f"""
             QTableWidget {{
@@ -80,7 +76,7 @@ class AggregateInfoPanel(QGroupBox):
                 padding: 4px;
                 border: none;
             }}
-            """
+            """,
         )
 
         header = self.table.horizontalHeader()
@@ -117,7 +113,7 @@ class AggregateInfoPanel(QGroupBox):
             val_item = QTableWidgetItem("-")
             val_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             val_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             )
             self.table.setItem(i, 1, val_item)
 
@@ -145,7 +141,8 @@ class AggregateInfoPanel(QGroupBox):
         # Use Expanding to ensure it takes up available space up to MaximumHeight
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.table.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Expanding,
         )
 
         # Apply GroupBox Style
@@ -161,6 +158,7 @@ class AggregateInfoPanel(QGroupBox):
             loaded_data_list: List of loaded data objects, or ``None``.
             preprocessed_data_list: List of preprocessed data objects,
                 or ``None``.
+
         """
         # Always use preprocessed data if available, otherwise loaded data.
         # This ensures consistent information across all panels.
@@ -241,6 +239,7 @@ class AggregateInfoPanel(QGroupBox):
         Args:
             key: The metric name (must exist in ``row_map``).
             value: The string value to display.
+
         """
         if key in self.row_map:
             row = self.row_map[key]

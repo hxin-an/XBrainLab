@@ -27,8 +27,7 @@ from .saliency_views.topomap_view import SaliencyTopographicMapWidget
 
 
 class VisualizationPanel(BasePanel):
-    """
-    Panel for visualizing data and model explanations with unified controls.
+    """Panel for visualizing data and model explanations with unified controls.
     Manages multiple view tabs (Map, Topomap, Spectrogram, 3D) and coordinates updates.
     """
 
@@ -41,6 +40,7 @@ class VisualizationPanel(BasePanel):
             training_controller: Optional ``TrainingController`` for
                 subscribing to training-stopped events.
             parent: Parent widget (typically the main window).
+
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
@@ -67,7 +67,9 @@ class VisualizationPanel(BasePanel):
         if training_ctrl:
             # When training stops, update the plan lists
             self.training_bridge = QtObserverBridge(
-                training_ctrl, "training_stopped", self
+                training_ctrl,
+                "training_stopped",
+                self,
             )
             self.training_bridge.connect_to(self.update_panel)
 
@@ -179,6 +181,7 @@ class VisualizationPanel(BasePanel):
 
         Returns:
             list: Trainer instances available for visualization.
+
         """
         return self.controller.get_trainers()
 
@@ -274,7 +277,7 @@ class VisualizationPanel(BasePanel):
                         eval_record = target_plan.get_eval_record()
                     else:
                         logger.warning(
-                            f"Run index {run_idx} out of range (0-{len(plans) - 1})"
+                            f"Run index {run_idx} out of range (0-{len(plans) - 1})",
                         )
                 else:
                     logger.warning("Could not parse run number from: %s", run_name)
@@ -290,7 +293,11 @@ class VisualizationPanel(BasePanel):
         # Call update_plot on the active widget
         if current_widget and hasattr(current_widget, "update_plot"):
             current_widget.update_plot(
-                target_plan, trainer, method_name, absolute, eval_record
+                target_plan,
+                trainer,
+                method_name,
+                absolute,
+                eval_record,
             )
 
             # Force UI update to ensure plot appears immediately

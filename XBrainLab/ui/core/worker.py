@@ -18,6 +18,7 @@ class WorkerSignals(QObject):
             on failure.
         result: Emitted with the return value of the callback function.
         progress: Emitted with an ``int`` indicating percentage progress.
+
     """
 
     finished = pyqtSignal()
@@ -37,6 +38,7 @@ class Worker(QRunnable):
         args: Positional arguments for the callback.
         kwargs: Keyword arguments for the callback.
         signals: ``WorkerSignals`` instance for communicating results.
+
     """
 
     def __init__(self, fn, *args, **kwargs):
@@ -46,6 +48,7 @@ class Worker(QRunnable):
             fn: The callable to run in the worker thread.
             *args: Positional arguments passed to ``fn``.
             **kwargs: Keyword arguments passed to ``fn``.
+
         """
         super().__init__()
 

@@ -29,6 +29,7 @@ class RAGRetriever:
         vectorstore: The LangChain ``Qdrant`` vectorstore wrapper.
         embeddings: The HuggingFace embedding model.
         is_initialized: Whether initialization has completed successfully.
+
     """
 
     def __init__(self):
@@ -55,7 +56,7 @@ class RAGRetriever:
             from qdrant_client import QdrantClient
 
             self.embeddings = HuggingFaceEmbeddings(
-                model_name=RAGConfig.EMBEDDING_MODEL
+                model_name=RAGConfig.EMBEDDING_MODEL,
             )
 
             # Initialize Client explicitly
@@ -84,6 +85,7 @@ class RAGRetriever:
 
         Returns:
             ``True`` if the collection is present, ``False`` otherwise.
+
         """
         if not self.client:
             return False
@@ -91,6 +93,7 @@ class RAGRetriever:
             cols = self.client.get_collections().collections
             return any(c.name == RAGConfig.COLLECTION_NAME for c in cols)
         except Exception:
+            logger.debug("Failed to check Qdrant collection existence", exc_info=True)
             return False
 
     def _auto_initialize(self):
@@ -147,6 +150,7 @@ class RAGRetriever:
             A formatted string of similar examples suitable for prompt
             injection, or an empty string if RAG is unavailable or no
             matches are found.
+
         """
         if not self.client or not self.embeddings:
             return ""

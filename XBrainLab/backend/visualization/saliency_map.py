@@ -27,6 +27,7 @@ class SaliencyMapViz(Visualizer):
 
         Returns:
             matplotlib.figure.Figure: The rendered saliency map figure.
+
         """
         label_number = self.epoch_data.get_label_number()
         # row and col of subplot

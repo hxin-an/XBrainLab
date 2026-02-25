@@ -36,6 +36,7 @@ class BackendFacade:
         preprocess: Controller for preprocessing operations.
         training: Controller for training operations.
         evaluation: Controller for evaluation operations.
+
     """
 
     def __init__(self, study: Study | None = None):
@@ -43,6 +44,7 @@ class BackendFacade:
 
         Args:
             study: Optional existing Study instance. If None, creates a new one.
+
         """
         self.study = study if study is not None else Study()
         # Use Study's cached controllers for singleton-like access
@@ -61,6 +63,7 @@ class BackendFacade:
 
         Returns:
             A tuple of (success_count, error_list).
+
         """
         return self.dataset.import_files(filepaths)
 
@@ -72,8 +75,8 @@ class BackendFacade:
 
         Returns:
             The number of files that had labels successfully attached.
-        """
 
+        """
         success_count = 0
         data_list = self.dataset.get_loaded_data_list()
 
@@ -105,7 +108,8 @@ class BackendFacade:
 
             except Exception as e:
                 logger.error(
-                    f"Failed to attach label for {base_name}: {e}", exc_info=True
+                    f"Failed to attach label for {base_name}: {e}",
+                    exc_info=True,
                 )
 
         if success_count > 0:
@@ -122,6 +126,7 @@ class BackendFacade:
 
         Returns:
             Dictionary containing file count and filenames.
+
         """
         data_list = self.dataset.get_loaded_data_list()
 
@@ -137,7 +142,10 @@ class BackendFacade:
 
     # --- Preprocessing Operations ---
     def apply_filter(
-        self, low_freq: float, high_freq: float, notch_freq: float | None = None
+        self,
+        low_freq: float,
+        high_freq: float,
+        notch_freq: float | None = None,
     ):
         """Apply bandpass and optionally notch filter.
 
@@ -145,6 +153,7 @@ class BackendFacade:
             low_freq: Low cutoff frequency for the bandpass filter (Hz).
             high_freq: High cutoff frequency for the bandpass filter (Hz).
             notch_freq: Frequency to notch out (Hz), or None to skip.
+
         """
         notch_list = [notch_freq] if notch_freq else None
         self.preprocess.apply_filter(low_freq, high_freq, notch_list)
@@ -154,6 +163,7 @@ class BackendFacade:
 
         Args:
             freq: The frequency (Hz) to notch out.
+
         """
         self.preprocess.apply_filter(None, None, [freq])
 
@@ -162,6 +172,7 @@ class BackendFacade:
 
         Args:
             rate: Target sampling rate in Hz.
+
         """
         self.preprocess.apply_resample(rate)
 
@@ -170,6 +181,7 @@ class BackendFacade:
 
         Args:
             method: Normalization method name.
+
         """
         self.preprocess.apply_normalization(method)
 
@@ -178,6 +190,7 @@ class BackendFacade:
 
         Args:
             method: Reference method — ``"average"`` or a specific channel name.
+
         """
         if method == "average":
             self.preprocess.apply_rereference("average")
@@ -189,6 +202,7 @@ class BackendFacade:
 
         Args:
             channels: List of channel names to retain.
+
         """
         self.dataset.apply_channel_selection(channels)
 
@@ -200,6 +214,7 @@ class BackendFacade:
 
         Returns:
             Status string describing the result of the montage application.
+
         """
         data_list = self.dataset.get_loaded_data_list()
         target_info = None
@@ -273,6 +288,7 @@ class BackendFacade:
             t_max: End time of the epoch relative to the event (seconds).
             baseline: Start and end times for baseline correction, or None.
             event_ids: List of event names to keep, or None for all events.
+
         """
         self.preprocess.apply_epoching(baseline, event_ids, t_min, t_max)
 
@@ -292,6 +308,7 @@ class BackendFacade:
             split_strategy: Split granularity — ``"trial"``, ``"session"``,
                 or ``"subject"``.
             training_mode: Training paradigm — ``"individual"`` or ``"group"``.
+
         """
         s_strat = SplitByType.TRIAL
         if split_strategy.lower() == "session":
@@ -343,6 +360,7 @@ class BackendFacade:
 
         Raises:
             ValueError: If the model name is not recognized.
+
         """
         models_map = {
             "eegnet": EEGNet,
@@ -380,6 +398,7 @@ class BackendFacade:
             save_checkpoints_every: Save a checkpoint every *N* epochs
                 (0 to disable).
             output_dir: Directory for saving training outputs.
+
         """
         # Resolve Optimizer
         optimizers_map = {
@@ -423,6 +442,7 @@ class BackendFacade:
 
         Returns:
             True if training is active, False otherwise.
+
         """
         return self.training.is_training()
 
@@ -432,6 +452,7 @@ class BackendFacade:
 
         Returns:
             Dictionary with plan counts, run counts, and training status.
+
         """
         plans = self.evaluation.get_plans()
         if not plans:

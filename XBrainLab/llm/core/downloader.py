@@ -35,6 +35,7 @@ def run_download_task(repo_id, cache_dir, result_queue):
             messages back to the parent process.  Messages are tuples
             of ``(msg_type, data)`` where *msg_type* is one of
             ``'progress'``, ``'finished'``, or ``'error'``.
+
     """
     if snapshot_download is None:
         result_queue.put(("error", "Missing library: huggingface_hub"))
@@ -73,6 +74,7 @@ class DownloadWorker(QObject):
         download_failed: Signal emitting an error message on failure.
         repo_id: HuggingFace repository identifier.
         cache_dir: Local cache directory for model files.
+
     """
 
     progress_update = pyqtSignal(int, str)  # progress (%), status message
@@ -85,6 +87,7 @@ class DownloadWorker(QObject):
         Args:
             repo_id: HuggingFace repository identifier to download.
             cache_dir: Local directory for storing downloaded files.
+
         """
         super().__init__()
         self.repo_id = repo_id
@@ -142,6 +145,7 @@ class DownloadWorker(QObject):
         Returns:
             ``True`` if the download finished or failed (terminal state),
             ``False`` if only progress updates were received.
+
         """
         try:
             # Get all available messages
@@ -200,6 +204,7 @@ class ModelDownloader(QObject):
         finished: Signal emitting the downloaded model path.
         failed: Signal emitting an error message.
         worker: The active ``DownloadWorker``, if any.
+
     """
 
     # ... (signals same)
@@ -221,6 +226,7 @@ class ModelDownloader(QObject):
         Args:
             repo_id: HuggingFace repository identifier to download.
             cache_dir: Local directory for storing downloaded files.
+
         """
         if self._thread:
             try:
@@ -276,6 +282,7 @@ class ModelDownloader(QObject):
 
         Args:
             path: Local filesystem path to the downloaded model.
+
         """
         self._thread = None
         self.finished.emit(path)
@@ -285,5 +292,6 @@ class ModelDownloader(QObject):
 
         Args:
             error: Error message describing the failure.
+
         """
         self.failed.emit(error)

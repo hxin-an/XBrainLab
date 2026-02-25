@@ -45,6 +45,7 @@ class ModelSelectionDialog(BaseDialog):
         params_table: QTableWidget displaying model-specific parameters.
         model_map: Dictionary mapping model names to model classes.
         model_list: List of available model class names.
+
     """
 
     def __init__(self, parent, controller):
@@ -110,7 +111,7 @@ class ModelSelectionDialog(BaseDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -121,6 +122,7 @@ class ModelSelectionDialog(BaseDialog):
 
         Args:
             model_name: Name of the selected model class.
+
         """
         if not self.params_table or not self.params_group:
             return
@@ -164,7 +166,9 @@ class ModelSelectionDialog(BaseDialog):
             return
 
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Select Pretrained Weight", filter="Model Weights (*)"
+            self,
+            "Select Pretrained Weight",
+            filter="Model Weights (*)",
         )
         if filepath:
             self.pretrained_weight_path = filepath
@@ -176,6 +180,7 @@ class ModelSelectionDialog(BaseDialog):
 
         Raises:
             QMessageBox: Warning if parameter parsing fails.
+
         """
         if not self.model_combo or not self.params_table:
             return
@@ -208,7 +213,9 @@ class ModelSelectionDialog(BaseDialog):
                     model_params_map[param] = value
 
             self.model_holder = ModelHolder(
-                target_model, model_params_map, self.pretrained_weight_path
+                target_model,
+                model_params_map,
+                self.pretrained_weight_path,
             )
             super().accept()
 
@@ -220,5 +227,6 @@ class ModelSelectionDialog(BaseDialog):
 
         Returns:
             ModelHolder instance with selected model and parameters, or None.
+
         """
         return self.model_holder

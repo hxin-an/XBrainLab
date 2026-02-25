@@ -20,6 +20,7 @@ def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
         A confusion matrix of shape ``(num_classes, num_classes)`` where
         entry ``[i][j]`` is the count of samples with true label ``i``
         predicted as label ``j``.
+
     """
     class_num = output.shape[1] if output.ndim > 1 else len(np.unique(label))
     confusion = np.zeros((class_num, class_num), dtype=np.uint32)
@@ -46,6 +47,7 @@ class EvalRecord:
         smoothgrad: Dictionary mapping class indices to SmoothGrad arrays.
         smoothgrad_sq: Dictionary mapping class indices to SmoothGrad² arrays.
         vargrad: Dictionary mapping class indices to VarGrad arrays.
+
     """
 
     def __init__(
@@ -68,6 +70,7 @@ class EvalRecord:
             smoothgrad: Per-class SmoothGrad saliency maps.
             smoothgrad_sq: Per-class SmoothGrad² saliency maps.
             vargrad: Per-class VarGrad saliency maps.
+
         """
         self.label = label
         self.output = output
@@ -82,6 +85,7 @@ class EvalRecord:
 
         Args:
             target_path: Directory path where the ``'eval'`` file will be saved.
+
         """
         record = {
             "label": self.label,
@@ -104,6 +108,7 @@ class EvalRecord:
         Returns:
             An :class:`EvalRecord` instance, or ``None`` if the file does not
             exist or cannot be loaded.
+
         """
         path = os.path.join(target_path, "eval")
         if not os.path.exists(path):
@@ -131,12 +136,18 @@ class EvalRecord:
 
         Args:
             target_path: Full file path for the CSV output.
+
         """
         data = np.c_[self.output, self.label, self.output.argmax(axis=1)]
         index_header_str = ",".join([str(i) for i in range(self.output.shape[1])])
         header = f"{index_header_str},ground_truth,predict"
         np.savetxt(
-            target_path, data, delimiter=",", newline="\n", header=header, comments=""
+            target_path,
+            data,
+            delimiter=",",
+            newline="\n",
+            header=header,
+            comments="",
         )
 
     def export_saliency(self, method: str, target_path: str | None = None) -> dict:
@@ -151,6 +162,7 @@ class EvalRecord:
 
         Returns:
             The saliency dictionary for the requested method.
+
         """
         if method == "Gradient":
             saliency = self.gradient
@@ -173,6 +185,7 @@ class EvalRecord:
 
         Returns:
             Accuracy as a float between 0 and 1.
+
         """
         return sum(self.output.argmax(axis=1) == self.label) / len(self.label)
 
@@ -183,6 +196,7 @@ class EvalRecord:
 
         Returns:
             AUC score as a float.
+
         """
         if (
             torch.nn.functional.softmax(torch.Tensor(self.output), dim=1)
@@ -193,27 +207,28 @@ class EvalRecord:
             return roc_auc_score(
                 self.label,
                 torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy()[
-                    :, -1
+                    :,
+                    -1,
                 ],
             )
-        else:
-            return roc_auc_score(
-                self.label,
-                torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy(),
-                multi_class="ovr",
-            )
+        return roc_auc_score(
+            self.label,
+            torch.nn.functional.softmax(torch.Tensor(self.output), dim=1).numpy(),
+            multi_class="ovr",
+        )
 
     def get_kappa(self) -> float:
         """Compute Cohen's Kappa coefficient.
 
         Returns:
             The Kappa statistic as a float.
+
         """
         confusion = calculate_confusion(self.output, self.label)
         class_num = len(confusion)
         p0 = np.diagonal(confusion).sum() / confusion.sum()
         pe = sum(
-            [confusion[:, i].sum() * confusion[i].sum() for i in range(class_num)]
+            [confusion[:, i].sum() * confusion[i].sum() for i in range(class_num)],
         ) / (confusion.sum() * confusion.sum())
         if pe >= 1.0:
             return 0.0
@@ -225,6 +240,7 @@ class EvalRecord:
         Returns:
             Dictionary where keys are class indices and values are dicts containing:
             'precision', 'recall', 'f1-score', 'support'
+
         """
         y_true = self.label
         y_pred = self.output.argmax(axis=1)
@@ -232,7 +248,10 @@ class EvalRecord:
         labels = np.arange(class_num)
 
         precision, recall, f1, support = precision_recall_fscore_support(
-            y_true, y_pred, labels=labels, zero_division=0
+            y_true,
+            y_pred,
+            labels=labels,
+            zero_division=0,
         )
 
         metrics: dict[int | str, dict[str, float | int]] = {}
@@ -262,6 +281,7 @@ class EvalRecord:
 
         Returns:
             Numpy array of gradient saliency maps for the given class.
+
         """
         return self.gradient[label_index]
 
@@ -273,6 +293,7 @@ class EvalRecord:
 
         Returns:
             Numpy array of gradient*input saliency maps for the given class.
+
         """
         return self.gradient_input[label_index]
 
@@ -284,6 +305,7 @@ class EvalRecord:
 
         Returns:
             Numpy array of SmoothGrad saliency maps for the given class.
+
         """
         return self.smoothgrad[label_index]
 
@@ -295,6 +317,7 @@ class EvalRecord:
 
         Returns:
             Numpy array of SmoothGrad² saliency maps for the given class.
+
         """
         return self.smoothgrad_sq[label_index]
 
@@ -306,5 +329,6 @@ class EvalRecord:
 
         Returns:
             Numpy array of VarGrad saliency maps for the given class.
+
         """
         return self.vargrad[label_index]

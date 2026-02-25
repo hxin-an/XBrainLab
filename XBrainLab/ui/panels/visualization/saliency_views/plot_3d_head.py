@@ -32,7 +32,9 @@ class Saliency3D:
         try:
             self.engine = Saliency3DEngine(mesh_scale_scalar=mesh_scale_scalar)
             self.channel_count = self.engine.process_data(
-                eval_record, epoch_data, selected_event_name
+                eval_record,
+                epoch_data,
+                selected_event_name,
             )
         except Exception:
             logger.exception("Failed to initialize Saliency3D engine")
@@ -112,7 +114,8 @@ class Saliency3D:
                     and "saliency" in self.plotter.scalar_bars
                 ):
                     self.plotter.update_scalar_bar_range(
-                        self.engine.scalar_bar_range, "saliency"
+                        self.engine.scalar_bar_range,
+                        "saliency",
                     )
             except Exception:
                 logger.exception("Error updating 3D visualization")
@@ -125,7 +128,9 @@ class Saliency3D:
         if self.headBox.ctrl:
             if self.headActor is None:
                 self.headActor = self.plotter.add_mesh(
-                    self.engine.head_scaled, opacity=0.3, color=Theme.TEXT_PRIMARY
+                    self.engine.head_scaled,
+                    opacity=0.3,
+                    color=Theme.TEXT_PRIMARY,
                 )
         else:
             self.plotter.remove_actor(self.headActor)
@@ -160,11 +165,16 @@ class Saliency3D:
             **CHECKBOX_KWARGS,
         )
         self.plotter.add_text(
-            "Show channel", position=(60, 197), **CHECKBOX_TEXT_KWARGS
+            "Show channel",
+            position=(60, 197),
+            **CHECKBOX_TEXT_KWARGS,
         )
 
         self.plotter.add_checkbox_button_widget(
-            self.headBox, value=self.showHead, position=(25, 250), **CHECKBOX_KWARGS
+            self.headBox,
+            value=self.showHead,
+            position=(25, 250),
+            **CHECKBOX_KWARGS,
         )
         self.plotter.add_text("Show head", position=(60, 247), **CHECKBOX_TEXT_KWARGS)
 
@@ -185,7 +195,10 @@ class Saliency3D:
             show_scalar_bar=False,
         )
         self.plotter.add_scalar_bar(
-            "saliency", interactive=False, vertical=False, color=Theme.TEXT_PRIMARY
+            "saliency",
+            interactive=False,
+            vertical=False,
+            color=Theme.TEXT_PRIMARY,
         )
         self.plotter.update_scalar_bar_range(self.engine.scalar_bar_range, "saliency")
         self.plotter.add_mesh(self.engine.brain_scaled, color=Theme.BRAIN_MESH)

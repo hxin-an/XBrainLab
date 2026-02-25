@@ -31,6 +31,7 @@ class EvaluationController(Observable):
 
     Attributes:
         _study: Reference to the :class:`Study` backend instance.
+
     """
 
     def __init__(self, study: Study):
@@ -38,6 +39,7 @@ class EvaluationController(Observable):
 
         Args:
             study: The :class:`Study` backend instance to query.
+
         """
         Observable.__init__(self)
         self._study = study
@@ -47,6 +49,7 @@ class EvaluationController(Observable):
 
         Returns:
             The list of raw data objects held by the study.
+
         """
         return self._study.loaded_data_list
 
@@ -55,6 +58,7 @@ class EvaluationController(Observable):
 
         Returns:
             The list of preprocessed data objects held by the study.
+
         """
         return self._study.preprocessed_data_list
 
@@ -64,13 +68,15 @@ class EvaluationController(Observable):
         Returns:
             A list of :class:`TrainingPlanHolder` instances, or an
             empty list if no trainer exists.
+
         """
         if self._study.trainer:
             return self._study.trainer.get_training_plan_holders()
         return []
 
     def get_pooled_eval_result(
-        self, plan: TrainingPlanHolder
+        self,
+        plan: TrainingPlanHolder,
     ) -> tuple[np.ndarray | None, np.ndarray | None, dict]:
         """Pool evaluation labels and outputs from all finished runs.
 
@@ -91,6 +97,7 @@ class EvaluationController(Observable):
               if no finished runs exist.
             - *metrics*: Per-class metrics dictionary, or an empty
               dictionary if no data is available.
+
         """
         records = [r for r in plan.get_plans() if r.is_finished()]
         if not records:
@@ -121,7 +128,9 @@ class EvaluationController(Observable):
         return pooled_labels, pooled_outputs, metrics
 
     def get_model_summary_str(
-        self, plan: TrainingPlanHolder, record: TrainRecord | None = None
+        self,
+        plan: TrainingPlanHolder,
+        record: TrainRecord | None = None,
     ) -> str:
         """Generate a human-readable model architecture summary.
 
@@ -140,6 +149,7 @@ class EvaluationController(Observable):
             A string representation of the model summary produced by
             ``torchinfo.summary``, or an error message if summary
             generation fails.
+
         """
         try:
             from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
@@ -153,7 +163,7 @@ class EvaluationController(Observable):
                 # We need input shape to initialize some models or just for summary
                 args = plan.dataset.get_epoch_data().get_model_args()
                 model_instance = plan.model_holder.get_model(args).to(
-                    plan.option.get_device()
+                    plan.option.get_device(),
                 )
 
             # Get input shape
@@ -164,7 +174,7 @@ class EvaluationController(Observable):
             train_shape = (plan.option.bs, 1, *X.shape[-2:])
 
             summary_str = str(
-                summary(model_instance, input_size=train_shape, verbose=0)
+                summary(model_instance, input_size=train_shape, verbose=0),
             )
 
             if record:

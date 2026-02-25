@@ -31,6 +31,7 @@ class ChannelSelectionDialog(BaseDialog):
         list_widget: QListWidget displaying available channels.
         btn_all: Button to select all channels.
         btn_none: Button to deselect all channels.
+
     """
 
     def __init__(self, parent, data_list: list):
@@ -76,6 +77,7 @@ class ChannelSelectionDialog(BaseDialog):
 
         Args:
             text: Search string to filter channels by (case-insensitive).
+
         """
         if not self.list_widget:
             return
@@ -90,6 +92,7 @@ class ChannelSelectionDialog(BaseDialog):
 
         Args:
             layout: Parent layout to add buttons to.
+
         """
         # Select All / None
         btn_layout = QHBoxLayout()
@@ -103,7 +106,7 @@ class ChannelSelectionDialog(BaseDialog):
 
         # Dialog Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -114,6 +117,7 @@ class ChannelSelectionDialog(BaseDialog):
 
         Args:
             checked: If True, check all items; otherwise uncheck all.
+
         """
         if not self.list_widget:
             return
@@ -128,6 +132,7 @@ class ChannelSelectionDialog(BaseDialog):
 
         Raises:
             QMessageBox: Warning displayed if no channels are selected.
+
         """
         if not self.list_widget:
             super().accept()
@@ -151,5 +156,6 @@ class ChannelSelectionDialog(BaseDialog):
 
         Returns:
             List of selected channel name strings.
+
         """
         return self.selected_channels

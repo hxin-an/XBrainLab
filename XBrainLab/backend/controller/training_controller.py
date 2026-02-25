@@ -41,6 +41,7 @@ class TrainingController(Observable):
         _monitor_thread: Background thread that polls training status.
         _shutdown_event: Threading event used to signal the monitor
             thread to stop.
+
     """
 
     events: ClassVar[list[str]] = [
@@ -56,6 +57,7 @@ class TrainingController(Observable):
 
         Args:
             study: The :class:`Study` backend instance to operate on.
+
         """
         Observable.__init__(self)
         self._study = study
@@ -68,6 +70,7 @@ class TrainingController(Observable):
 
         Returns:
             ``True`` if training is active, ``False`` otherwise.
+
         """
         return self._study.is_training()
 
@@ -132,7 +135,6 @@ class TrainingController(Observable):
         Runs in a background thread. Exits when training finishes
         or the shutdown event is set.
         """
-
         while not self._shutdown_event.is_set():
             if not self.is_training():
                 # Training finished naturally or stopped
@@ -151,6 +153,7 @@ class TrainingController(Observable):
 
         Raises:
             RuntimeError: If training is currently running.
+
         """
         if self.is_training():
             raise RuntimeError("Cannot clear history while training is running")
@@ -164,6 +167,7 @@ class TrainingController(Observable):
 
         Returns:
             The active trainer, or ``None`` if no trainer exists.
+
         """
         return self._study.trainer
 
@@ -186,6 +190,7 @@ class TrainingController(Observable):
               being trained.
             - ``is_current_run`` (bool): Whether this record is the
               active run within the plan.
+
         """
         trainer = self._study.trainer
         if not trainer:
@@ -212,7 +217,7 @@ class TrainingController(Observable):
                             is_active_plan
                             and plan.get_training_repeat() == record.repeat
                         ),
-                    }
+                    },
                 )
         return history
 
@@ -222,6 +227,7 @@ class TrainingController(Observable):
         Returns:
             ``True`` if datasets, model, and training option are all
             configured.
+
         """
         return self.has_datasets() and self.has_model() and self.has_training_option()
 
@@ -231,6 +237,7 @@ class TrainingController(Observable):
         Returns:
             Human-readable requirement names that have not been
             configured yet (e.g. ``"Data Splitting"``).
+
         """
         missing = []
         if not self.has_datasets():
@@ -247,6 +254,7 @@ class TrainingController(Observable):
 
         Returns:
             ``True`` if the loaded data list is non-empty.
+
         """
         return bool(self._study.loaded_data_list)
 
@@ -255,6 +263,7 @@ class TrainingController(Observable):
 
         Returns:
             ``True`` if epoch data has been set in the study.
+
         """
         return self._study.epoch_data is not None
 
@@ -263,6 +272,7 @@ class TrainingController(Observable):
 
         Returns:
             The epoch data instance, or ``None`` if not set.
+
         """
         return self._study.epoch_data
 
@@ -271,6 +281,7 @@ class TrainingController(Observable):
 
         Returns:
             ``True`` if at least one dataset exists.
+
         """
         return self._study.datasets is not None and len(self._study.datasets) > 0
 
@@ -279,6 +290,7 @@ class TrainingController(Observable):
 
         Returns:
             ``True`` if a model holder is set.
+
         """
         return self._study.model_holder is not None
 
@@ -287,6 +299,7 @@ class TrainingController(Observable):
 
         Returns:
             ``True`` if a training option is set.
+
         """
         return self._study.training_option is not None
 
@@ -296,6 +309,7 @@ class TrainingController(Observable):
 
         Args:
             force_update: If ``True``, force downstream state updates.
+
         """
         self._study.clean_datasets(force_update=force_update)
 
@@ -305,6 +319,7 @@ class TrainingController(Observable):
         Args:
             generator: A splitting generator with an ``apply()``
                 method that accepts a :class:`Study`.
+
         """
         generator.apply(self._study)
 
@@ -313,6 +328,7 @@ class TrainingController(Observable):
 
         Args:
             holder: The model holder instance to use for training.
+
         """
         self._study.set_model_holder(holder)
 
@@ -321,6 +337,7 @@ class TrainingController(Observable):
 
         Args:
             option: The training option instance.
+
         """
         self._study.set_training_option(option)
 
@@ -330,6 +347,7 @@ class TrainingController(Observable):
 
         Returns:
             The training option instance, or ``None``.
+
         """
         return self._study.training_option
 
@@ -338,6 +356,7 @@ class TrainingController(Observable):
 
         Returns:
             The model holder instance, or ``None``.
+
         """
         return self._study.model_holder
 
@@ -346,6 +365,7 @@ class TrainingController(Observable):
 
         Returns:
             The dataset generator instance, or ``None``.
+
         """
         return self._study.dataset_generator
 
@@ -354,6 +374,7 @@ class TrainingController(Observable):
 
         Returns:
             List of raw data objects.
+
         """
         return self._study.loaded_data_list
 
@@ -362,5 +383,6 @@ class TrainingController(Observable):
 
         Returns:
             List of preprocessed data objects.
+
         """
         return self._study.preprocessed_data_list

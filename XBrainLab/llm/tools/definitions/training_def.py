@@ -33,7 +33,7 @@ class BaseSetModelTool(BaseTool):
                 "model_name": {
                     "type": "string",
                     "enum": ["EEGNet", "ShallowConvNet", "SCCNet"],
-                }
+                },
             },
             "required": ["model_name"],
         }

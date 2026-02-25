@@ -34,6 +34,7 @@ class EEGNet(nn.Module):
         conv2: Second convolutional block (depthwise spatial filtering).
         conv3: Third convolutional block (separable pointwise filtering).
         classifier: Fully connected classification layer.
+
     """
 
     def __init__(
@@ -67,6 +68,7 @@ class EEGNet(nn.Module):
         Raises:
             ValueError: If the epoch duration (samples) is too short for the
                 network architecture.
+
         """
         super().__init__()
 
@@ -89,7 +91,7 @@ class EEGNet(nn.Module):
                 f"Current: {samples} samples ({epoch_duration:.3f}s at {sfreq}Hz). "
                 f"Minimum required: {min_samples} samples ({min_duration:.3f}s). "
                 f"Please increase epoch length (tmax-tmin) to at least "
-                f"{min_duration:.2f}s or use a lower sampling frequency."
+                f"{min_duration:.2f}s or use a lower sampling frequency.",
             )
 
         self.F1 = f1
@@ -103,7 +105,11 @@ class EEGNet(nn.Module):
             # temporal kernel size(1, floor(sf*0.5)) means 500ms EEG at sf/2
             # padding=(0, floor(sf*0.5)/2) maintain raw data shape
             nn.Conv2d(
-                1, self.F1, (1, self.half_sf), padding="valid", bias=False
+                1,
+                self.F1,
+                (1, self.half_sf),
+                padding="valid",
+                bias=False,
             ),  # 62,32
             nn.BatchNorm2d(self.F1),
         )
@@ -111,7 +117,11 @@ class EEGNet(nn.Module):
         self.conv2 = nn.Sequential(
             # spatial kernel size (n_ch, 1)
             nn.Conv2d(
-                self.F1, self.D * self.F1, (self.ch, 1), groups=self.F1, bias=False
+                self.F1,
+                self.D * self.F1,
+                (self.ch, 1),
+                groups=self.F1,
+                bias=False,
             ),
             nn.BatchNorm2d(self.D * self.F1),
             nn.ELU(),
@@ -153,6 +163,7 @@ class EEGNet(nn.Module):
 
         Returns:
             Output logits tensor of shape ``(batch, n_classes)``.
+
         """
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
@@ -174,6 +185,7 @@ class EEGNet(nn.Module):
 
         Returns:
             Tensor size after flattening, as a ``torch.Size`` object.
+
         """
         data = torch.ones((2, 1, ch, tsamp))
         x = self.conv1(data)

@@ -30,6 +30,7 @@ class EventLoader:
         events: Event array in MNE format ``(n_events, 3)`` after creation.
         event_id: Event ID mapping ``{name: int}`` after creation.
         annotations: MNE Annotations object for Timestamp Mode.
+
     """
 
     def __init__(self, raw: Raw):
@@ -37,6 +38,7 @@ class EventLoader:
 
         Args:
             raw: Raw data object to load events into.
+
         """
         validate_type(raw, Raw, "raw")
         self.raw = raw
@@ -56,6 +58,7 @@ class EventLoader:
         Returns:
             List containing the single best-matching event ID, or empty
             if no events exist.
+
         """
         if not self.raw.has_event():
             return []
@@ -74,14 +77,15 @@ class EventLoader:
                 min_diff = diff
                 best_id = eid
 
-        # TODO: Implement more complex subset sum if needed (e.g. Left + Right = Total)
-        # For now, return the single best match
+        # Returns the single best matching event ID
         if best_id is not None:
             return [best_id]
         return []
 
     def align_sequence(
-        self, seq_eeg: list[int], seq_label: list[int]
+        self,
+        seq_eeg: list[int],
+        seq_label: list[int],
     ) -> tuple[list[int], list[int]]:
         """Align EEG trigger sequence with label sequence.
 
@@ -95,6 +99,7 @@ class EventLoader:
         Returns:
             Tuple of (eeg_indices, label_indices) representing matched
             positions in both sequences.
+
         """
         n = len(seq_eeg)
         m = len(seq_label)
@@ -194,6 +199,7 @@ class EventLoader:
         Raises:
             ValueError: If no labels have been loaded, if the raw data has
                 no events for sequence alignment, or if an event name is empty.
+
         """
         if self.label_list is None:
             raise ValueError("No label has been loaded.")
@@ -216,13 +222,16 @@ class EventLoader:
 
             # Create Annotations
             self.annotations = mne.Annotations(
-                onset=onsets, duration=durations, description=descriptions
+                onset=onsets,
+                duration=durations,
+                description=descriptions,
             )
             self.raw.get_mne().set_annotations(self.annotations)
 
             try:
                 events, event_id = mne.events_from_annotations(
-                    self.raw.get_mne(), event_id=None
+                    self.raw.get_mne(),
+                    event_id=None,
                 )
                 self.events = events
                 self.event_id = event_id
@@ -232,79 +241,80 @@ class EventLoader:
             return events, event_id
 
         # --- Sequence Mode ---
+        # label_list is ndarray or list of ints
+        labels = np.array(self.label_list)
+        if labels.ndim > 1 and labels.shape[1] == 3:
+            # Already in MNE format (e.g. from GDF)
+            events = labels
+            event_id = {
+                event_name_map.get(i, str(i)): i for i in np.unique(events[:, -1])
+            }
+            self.events = events
+            self.event_id = event_id
+            return events, event_id
+
+        # Pure Sequence of Labels
+        labels = labels.flatten()
+
+        # Get EEG Triggers
+        if not self.raw.has_event():
+            raise ValueError("Raw data has no events for sequence alignment.")
+
+        eeg_events, _ = self.raw.get_event_list()
+
+        # Filter EEG Triggers
+        if selected_event_ids is not None:
+            mask = np.isin(eeg_events[:, -1], selected_event_ids)
+            filtered_eeg_events = eeg_events[mask]
         else:
-            # label_list is ndarray or list of ints
-            labels = np.array(self.label_list)
-            if labels.ndim > 1 and labels.shape[1] == 3:
-                # Already in MNE format (e.g. from GDF)
-                events = labels
-                event_id = {
-                    event_name_map.get(i, str(i)): i for i in np.unique(events[:, -1])
-                }
-                self.events = events
-                self.event_id = event_id
-                return events, event_id
+            filtered_eeg_events = eeg_events
 
-            # Pure Sequence of Labels
-            labels = labels.flatten()
+        # Align
+        # We pass indices to align_sequence (dummy for now as we don't use content)
+        eeg_indices, label_indices = self.align_sequence(
+            list(range(len(filtered_eeg_events))),
+            list(range(len(labels))),
+        )
 
-            # Get EEG Triggers
-            if not self.raw.has_event():
-                raise ValueError("Raw data has no events for sequence alignment.")
-
-            eeg_events, _ = self.raw.get_event_list()
-
-            # Filter EEG Triggers
-            if selected_event_ids is not None:
-                mask = np.isin(eeg_events[:, -1], selected_event_ids)
-                filtered_eeg_events = eeg_events[mask]
-            else:
-                filtered_eeg_events = eeg_events
-
-            # Align
-            # We pass indices to align_sequence (dummy for now as we don't use content)
-            eeg_indices, label_indices = self.align_sequence(
-                list(range(len(filtered_eeg_events))), list(range(len(labels)))
+        if len(eeg_indices) != len(labels):
+            logger.warning(
+                f"Alignment truncated: EEG={len(filtered_eeg_events)}, "
+                f"Label={len(labels)} -> {len(eeg_indices)} matches.",
             )
 
-            if len(eeg_indices) != len(labels):
-                logger.warning(
-                    f"Alignment truncated: EEG={len(filtered_eeg_events)}, "
-                    f"Label={len(labels)} -> {len(eeg_indices)} matches."
-                )
+        # Create new events
+        count = len(eeg_indices)
+        new_events = np.zeros((count, 3), dtype=int)
 
-            # Create new events
-            count = len(eeg_indices)
-            new_events = np.zeros((count, 3), dtype=int)
+        # Use aligned indices
+        # filtered_eeg_events[eeg_indices] gives the matched EEG events
+        # labels[label_indices] gives the matched labels
 
-            # Use aligned indices
-            # filtered_eeg_events[eeg_indices] gives the matched EEG events
-            # labels[label_indices] gives the matched labels
+        # Note: eeg_indices and label_indices are lists of indices into the
+        # respective arrays
+        new_events[:, 0] = filtered_eeg_events[eeg_indices, 0]  # Timestamps
+        new_events[:, 1] = filtered_eeg_events[eeg_indices, 1]  # Previous val
+        new_events[:, -1] = labels[label_indices]  # New Labels
 
-            # Note: eeg_indices and label_indices are lists of indices into the
-            # respective arrays
-            new_events[:, 0] = filtered_eeg_events[eeg_indices, 0]  # Timestamps
-            new_events[:, 1] = filtered_eeg_events[eeg_indices, 1]  # Previous val
-            new_events[:, -1] = labels[label_indices]  # New Labels
+        # Create Event ID map
+        unique_labels = np.unique(new_events[:, -1])
+        new_event_id = {}
+        for lbl in unique_labels:
+            name = event_name_map.get(lbl, str(lbl))
+            if not name.strip():
+                raise ValueError("Event name cannot be empty.")
+            new_event_id[name] = int(lbl)
 
-            # Create Event ID map
-            unique_labels = np.unique(new_events[:, -1])
-            new_event_id = {}
-            for lbl in unique_labels:
-                name = event_name_map.get(lbl, str(lbl))
-                if not name.strip():
-                    raise ValueError("Event name cannot be empty.")
-                new_event_id[name] = int(lbl)
-
-            self.events = new_events
-            self.event_id = new_event_id
-            return new_events, new_event_id
+        self.events = new_events
+        self.event_id = new_event_id
+        return new_events, new_event_id
 
     def apply(self) -> None:
         """Apply the loaded event data to the raw data.
 
         Raises:
             ValueError: If no label has been loaded.
+
         """
         if self.annotations:
             self.raw.get_mne().set_annotations(self.annotations)

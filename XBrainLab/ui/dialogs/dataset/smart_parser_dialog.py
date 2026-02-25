@@ -45,12 +45,14 @@ class SmartParserDialog(BaseDialog):
         mode_group: QButtonGroup for selecting the parsing mode.
         settings_stack: QStackedWidget holding mode-specific settings pages.
         table: QTableWidget displaying the live parsing preview.
+
     """
 
     def __init__(self, filenames: list[str], parent=None):
         self.filenames = filenames
         self.parsed_data: dict[
-            str, tuple[str, str]
+            str,
+            tuple[str, str],
         ] = {}  # filename -> (subject, session)
 
         # UI Elements
@@ -129,7 +131,7 @@ class SmartParserDialog(BaseDialog):
 
         self.split_sep_combo = QComboBox()
         self.split_sep_combo.addItems(
-            ["Underscore (_)", "Hyphen (-)", "Space ( )", "Dot (.)"]
+            ["Underscore (_)", "Hyphen (-)", "Space ( )", "Dot (.)"],
         )
         self.split_sep_combo.currentIndexChanged.connect(self.update_preview)
 
@@ -157,10 +159,10 @@ class SmartParserDialog(BaseDialog):
 
         self.regex_preset_combo = QComboBox()
         self.regex_preset_combo.addItems(
-            ["Custom", "Subject_Session (e.g. Sub01_Ses01)", "BIDS (sub-01_ses-01)"]
+            ["Custom", "Subject_Session (e.g. Sub01_Ses01)", "BIDS (sub-01_ses-01)"],
         )
         self.regex_preset_combo.currentIndexChanged.connect(
-            self.on_regex_preset_changed
+            self.on_regex_preset_changed,
         )
 
         self.regex_input = QLineEdit()
@@ -189,10 +191,10 @@ class SmartParserDialog(BaseDialog):
         page_folder = QWidget()
         layout_folder = QVBoxLayout(page_folder)
         layout_folder.addWidget(
-            QLabel("Automatically extracts metadata from parent folder names.")
+            QLabel("Automatically extracts metadata from parent folder names."),
         )
         layout_folder.addWidget(
-            QLabel("Structure assumed: .../Subject/Session/filename.gdf")
+            QLabel("Structure assumed: .../Subject/Session/filename.gdf"),
         )
         layout_folder.addStretch()
 
@@ -248,7 +250,7 @@ class SmartParserDialog(BaseDialog):
         self.table = QTableWidget()
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(
-            ["Filename", "Extracted Subject", "Extracted Session"]
+            ["Filename", "Extracted Subject", "Extracted Session"],
         )
         header = self.table.horizontalHeader()
         if header is not None:
@@ -290,6 +292,7 @@ class SmartParserDialog(BaseDialog):
 
         Args:
             index: Index of the selected preset in the combo box.
+
         """
         if not self.regex_input:
             return
@@ -383,6 +386,7 @@ class SmartParserDialog(BaseDialog):
 
         Returns:
             Dictionary mapping file paths to ``(subject, session)`` tuples.
+
         """
         return self.parsed_data
 
@@ -441,7 +445,7 @@ class SmartParserDialog(BaseDialog):
         # Load Split Settings
         if self.split_sep_combo:
             self.split_sep_combo.setCurrentIndex(
-                settings.value("split_sep", 0, type=int)
+                settings.value("split_sep", 0, type=int),
             )
         if self.split_sub_idx:
             self.split_sub_idx.setValue(settings.value("split_sub_idx", 1, type=int))
@@ -451,7 +455,7 @@ class SmartParserDialog(BaseDialog):
         # Load Regex Settings
         if self.regex_preset_combo:
             self.regex_preset_combo.setCurrentIndex(
-                settings.value("regex_preset", 0, type=int)
+                settings.value("regex_preset", 0, type=int),
             )
         if self.regex_input:
             self.regex_input.setText(settings.value("regex_pattern", "", type=str))
@@ -463,13 +467,13 @@ class SmartParserDialog(BaseDialog):
         # Load Fixed Settings
         if self.fixed_sub_start:
             self.fixed_sub_start.setValue(
-                settings.value("fixed_sub_start", 1, type=int)
+                settings.value("fixed_sub_start", 1, type=int),
             )
         if self.fixed_sub_len:
             self.fixed_sub_len.setValue(settings.value("fixed_sub_len", 3, type=int))
         if self.fixed_sess_start:
             self.fixed_sess_start.setValue(
-                settings.value("fixed_sess_start", 4, type=int)
+                settings.value("fixed_sess_start", 4, type=int),
             )
         if self.fixed_sess_len:
             self.fixed_sess_len.setValue(settings.value("fixed_sess_len", 1, type=int))

@@ -10,6 +10,7 @@ class CheckboxObj:
     Attributes:
         ctrl: The current checkbox state value.
         callback: Optional callable invoked with the new state.
+
     """
 
     def __init__(self, init_val, callback=None):
@@ -18,6 +19,7 @@ class CheckboxObj:
         Args:
             init_val: Initial state value for the checkbox.
             callback: Optional callable to invoke on state change.
+
         """
         self.ctrl = init_val
         self.callback = callback
@@ -27,6 +29,7 @@ class CheckboxObj:
 
         Args:
             state: The new checkbox state value.
+
         """
         self.ctrl = state
         if self.callback:

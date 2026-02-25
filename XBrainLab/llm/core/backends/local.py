@@ -6,10 +6,7 @@ HuggingFace ``transformers`` with optional 4-bit quantization.
 
 import logging
 from threading import Thread
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 from XBrainLab.llm.core.config import LLMConfig
 
@@ -31,6 +28,7 @@ class LocalBackend(BaseBackend):
             until ``load`` is called).
         tokenizer: The loaded ``AutoTokenizer`` instance.
         is_loaded: Whether the model has been successfully loaded.
+
     """
 
     def __init__(self, config: LLMConfig):
@@ -39,6 +37,7 @@ class LocalBackend(BaseBackend):
         Args:
             config: LLM configuration containing model name, device,
                 quantization, and generation settings.
+
         """
         self.config = config
         self.model: Any = None
@@ -53,6 +52,7 @@ class LocalBackend(BaseBackend):
 
         Raises:
             Exception: If model loading fails for any reason.
+
         """
         if self.is_loaded:
             return
@@ -64,11 +64,12 @@ class LocalBackend(BaseBackend):
         )
 
         logger.info(
-            f"Loading local model: {self.config.model_name} on {self.config.device}"
+            f"Loading local model: {self.config.model_name} on {self.config.device}",
         )
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.config.model_name, cache_dir=self.config.cache_dir
+                self.config.model_name,
+                cache_dir=self.config.cache_dir,
             )
 
             # Load model with optional quantization
@@ -85,7 +86,8 @@ class LocalBackend(BaseBackend):
                 model_kwargs["torch_dtype"] = torch.float16
 
             self.model = AutoModelForCausalLM.from_pretrained(
-                self.config.model_name, **model_kwargs
+                self.config.model_name,
+                **model_kwargs,
             )
 
             self.is_loaded = True
@@ -111,6 +113,7 @@ class LocalBackend(BaseBackend):
         Returns:
             A new message list with system content merged and strict
             alternation enforced.
+
         """
         if not messages:
             return messages
@@ -140,7 +143,8 @@ class LocalBackend(BaseBackend):
                     break
             if not merged_system:
                 filtered.insert(
-                    0, {"role": "user", "content": f"[Instructions]\n{system_content}"}
+                    0,
+                    {"role": "user", "content": f"[Instructions]\n{system_content}"},
                 )
 
         # Step 3: Ensure strict user/assistant alternation
@@ -177,6 +181,7 @@ class LocalBackend(BaseBackend):
 
         Raises:
             RuntimeError: If the model or tokenizer is not loaded.
+
         """
         if not self.is_loaded:
             self.load()
@@ -190,7 +195,9 @@ class LocalBackend(BaseBackend):
 
         # Apply chat template
         prompt = self.tokenizer.apply_chat_template(
-            processed_messages, tokenize=False, add_generation_prompt=True
+            processed_messages,
+            tokenize=False,
+            add_generation_prompt=True,
         )
 
         if self.model is None:
@@ -198,7 +205,9 @@ class LocalBackend(BaseBackend):
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
 
         streamer = TextIteratorStreamer(
-            self.tokenizer, skip_prompt=True, skip_special_tokens=True
+            self.tokenizer,
+            skip_prompt=True,
+            skip_special_tokens=True,
         )
 
         generation_kwargs = dict(

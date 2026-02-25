@@ -11,8 +11,7 @@ from .plot_3d_head import Saliency3D
 
 
 class Saliency3DPlotWidget(QWidget):
-    """
-    Widget for visualizing 3D Brain Saliency Maps using PyVista.
+    """Widget for visualizing 3D Brain Saliency Maps using PyVista.
     Embeds a QtInteractor for interactive 3D rendering.
     """
 
@@ -43,7 +42,7 @@ class Saliency3DPlotWidget(QWidget):
         self.clear_plot()
         lbl = QLabel(f"Error: {msg}")
         lbl.setStyleSheet(
-            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;"
+            f"color: {Theme.ACCENT_ERROR}; font-size: 14px; font-weight: bold;",
         )
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
@@ -52,7 +51,7 @@ class Saliency3DPlotWidget(QWidget):
         self.clear_plot()
         lbl = QLabel(msg)
         lbl.setStyleSheet(
-            f"color: {Theme.WARNING}; font-size: 16px; font-weight: bold;"
+            f"color: {Theme.WARNING}; font-size: 16px; font-weight: bold;",
         )
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
@@ -89,7 +88,7 @@ class Saliency3DPlotWidget(QWidget):
             positions = epoch_data.get_montage_position()
             if positions is None or len(positions) == 0:
                 self.show_message(
-                    "Please Set Montage First\n(Go to Configuration -> Set Montage)"
+                    "Please Set Montage First\n(Go to Configuration -> Set Montage)",
                 )
                 return
 
@@ -128,7 +127,10 @@ class Saliency3DPlotWidget(QWidget):
                 return
 
             saliency = Saliency3D(
-                eval_record, epoch_data, selected_event, plotter=self.plotter_widget
+                eval_record,
+                epoch_data,
+                selected_event,
+                plotter=self.plotter_widget,
             )
             saliency.get_3d_head_plot()
         except Exception as e:

@@ -12,6 +12,7 @@ class PlaceholderWidget(QWidget):
     Attributes:
         icon_label: QLabel displaying the icon text (emoji or character).
         msg_label: QLabel displaying the descriptive message.
+
     """
 
     def __init__(self, icon_text, message, parent=None):
@@ -21,6 +22,7 @@ class PlaceholderWidget(QWidget):
             icon_text: Large text or emoji to display as the icon.
             message: Descriptive message displayed below the icon.
             parent: Optional parent widget.
+
         """
         super().__init__(parent)
         self.init_ui(icon_text, message)
@@ -31,6 +33,7 @@ class PlaceholderWidget(QWidget):
         Args:
             icon_text: Large text or emoji for the icon label.
             message: Descriptive text for the message label.
+
         """
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)

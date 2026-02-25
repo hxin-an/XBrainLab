@@ -26,6 +26,7 @@ class DeviceSettingDialog(BaseDialog):
         use_cpu: Whether CPU was selected.
         gpu_idx: Index of the selected GPU, or None if CPU.
         device_list: QListWidget displaying available devices.
+
     """
 
     def __init__(self, parent):
@@ -58,7 +59,7 @@ class DeviceSettingDialog(BaseDialog):
         layout.addWidget(self.device_list)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -86,5 +87,6 @@ class DeviceSettingDialog(BaseDialog):
         Returns:
             Tuple of (use_cpu, gpu_idx) where use_cpu is a bool and
             gpu_idx is an int or None.
+
         """
         return self.use_cpu, self.gpu_idx

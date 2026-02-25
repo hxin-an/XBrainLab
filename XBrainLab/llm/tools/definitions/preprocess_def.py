@@ -134,7 +134,7 @@ class BaseNormalizeTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "method": {"type": "string", "enum": ["z-score", "min-max"]}
+                "method": {"type": "string", "enum": ["z-score", "min-max"]},
             },
             "required": ["method"],
         }

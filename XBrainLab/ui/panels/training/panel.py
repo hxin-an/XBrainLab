@@ -40,6 +40,7 @@ class TrainingPanel(BasePanel):
         log_text: ``QTextEdit`` for training log messages.
         history_table: ``TrainingHistoryTable`` for run status.
         sidebar: ``TrainingSidebar`` with configuration and execution buttons.
+
     """
 
     def __init__(self, controller=None, dataset_controller=None, parent=None):
@@ -51,6 +52,7 @@ class TrainingPanel(BasePanel):
             dataset_controller: Optional ``DatasetController`` for
                 data-change event subscription.
             parent: Parent widget (typically the main window).
+
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
@@ -80,12 +82,16 @@ class TrainingPanel(BasePanel):
 
         # Connect to controller events for automatic UI updates
         self.bridge_started = QtObserverBridge(
-            self.controller, "training_started", self
+            self.controller,
+            "training_started",
+            self,
         )
         self.bridge_started.connect_to(self._on_training_started)
 
         self.bridge_stopped = QtObserverBridge(
-            self.controller, "training_stopped", self
+            self.controller,
+            "training_stopped",
+            self,
         )
         self.bridge_stopped.connect_to(self._on_training_stopped)
 
@@ -95,7 +101,9 @@ class TrainingPanel(BasePanel):
 
         # Connect to training updates
         self.bridge_updated = QtObserverBridge(
-            self.controller, "training_updated", self
+            self.controller,
+            "training_updated",
+            self,
         )
         # We wrap update_loop to accept *args, **kwargs safely
         self.bridge_updated.connect_to(lambda *args, **kwargs: self.update_loop())
@@ -106,15 +114,19 @@ class TrainingPanel(BasePanel):
         # Connect to Dataset events (Updates info panel and check readiness)
         if self.dataset_controller:
             self.data_bridge = QtObserverBridge(
-                self.dataset_controller, "data_changed", self
+                self.dataset_controller,
+                "data_changed",
+                self,
             )
             self.data_bridge.connect_to(self.update_panel)
 
             self.import_bridge = QtObserverBridge(
-                self.dataset_controller, "import_finished", self
+                self.dataset_controller,
+                "import_finished",
+                self,
             )
             self.import_bridge.connect_to(
-                self.update_panel
+                self.update_panel,
             )  # Or specific handler if needed
 
         # Event-driven update: 'training_updated' signal triggers update_loop
@@ -168,7 +180,7 @@ class TrainingPanel(BasePanel):
         # History Table
         self.history_table = TrainingHistoryTable()
         self.history_table.selection_changed_record.connect(
-            self.on_history_selection_changed
+            self.on_history_selection_changed,
         )
 
         history_layout.addWidget(self.history_table)
@@ -225,6 +237,7 @@ class TrainingPanel(BasePanel):
 
         Args:
             record: The newly selected ``TrainRecord``, or ``None``.
+
         """
         self.current_plotting_record = record
         if record:
@@ -235,6 +248,7 @@ class TrainingPanel(BasePanel):
 
         Args:
             record: The ``TrainRecord`` whose history should be plotted.
+
         """
         self.tab_acc.clear()
         self.tab_loss.clear()
@@ -307,7 +321,7 @@ class TrainingPanel(BasePanel):
         if self.current_plotting_record:
             try:
                 current_epochs = len(
-                    self.current_plotting_record.train.get(TrainRecordKey.ACC, [])
+                    self.current_plotting_record.train.get(TrainRecordKey.ACC, []),
                 )
                 last_count = getattr(self, "_last_epoch_count", -1)
                 if last_count != current_epochs:
@@ -316,7 +330,8 @@ class TrainingPanel(BasePanel):
             except Exception:
                 # Fallback: just refresh
                 logger.warning(
-                    "Error reading training epoch data, refreshing plot", exc_info=True
+                    "Error reading training epoch data, refreshing plot",
+                    exc_info=True,
                 )
                 self.refresh_plot(self.current_plotting_record)
 
@@ -327,6 +342,7 @@ class TrainingPanel(BasePanel):
 
         Args:
             event: The ``QCloseEvent``.
+
         """
         if hasattr(self, "timer") and self.timer.isActive():
             self.timer.stop()

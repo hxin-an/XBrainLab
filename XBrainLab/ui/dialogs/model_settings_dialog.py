@@ -41,10 +41,14 @@ class ModelSettingsDialog(QDialog):
         local_downloaded: Whether the selected local model is downloaded.
         downloader: ModelDownloader instance for managing model downloads.
         is_downloading: Whether a download is currently in progress.
+
     """
 
     def __init__(
-        self, parent=None, config: LLMConfig | None = None, agent_manager=None
+        self,
+        parent=None,
+        config: LLMConfig | None = None,
+        agent_manager=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("AI Assistant Settings")
@@ -87,7 +91,7 @@ class ModelSettingsDialog(QDialog):
                 "google/gemma-2b-it",
                 "microsoft/Phi-3.5-mini-instruct",
                 "meta-llama/Llama-3.1-8B-Instruct",
-            ]
+            ],
         )
         self.local_model_combo.currentTextChanged.connect(self.check_local_model_status)
         local_layout.addWidget(QLabel("Select Model:"))
@@ -153,7 +157,7 @@ class ModelSettingsDialog(QDialog):
                 "gemini-1.5-pro",
                 "gemini-1.5-flash",
                 "gemini-1.5-flash-8b",
-            ]
+            ],
         )
         gemini_layout.addWidget(self.gemini_model_combo)
 
@@ -178,7 +182,7 @@ class ModelSettingsDialog(QDialog):
                 padding: 6px 12px;
             }
             QPushButton:disabled { background-color: #555; color: #aaa; }
-        """
+        """,
         )
 
         btn_layout.addWidget(self.btn_cancel)
@@ -299,6 +303,7 @@ class ModelSettingsDialog(QDialog):
         Args:
             percent: Download completion percentage.
             msg: Progress message to display.
+
         """
         self.local_status_label.setText(msg)
 
@@ -307,6 +312,7 @@ class ModelSettingsDialog(QDialog):
 
         Args:
             path: Path where the model was downloaded.
+
         """
         self.is_downloading = False
         self.check_local_model_status()
@@ -317,6 +323,7 @@ class ModelSettingsDialog(QDialog):
 
         Args:
             error: Error message describing the failure.
+
         """
         self.is_downloading = False
         self.local_status_label.setText("[x] Failed")
@@ -346,7 +353,9 @@ class ModelSettingsDialog(QDialog):
                 QMessageBox.information(self, "Cleanup", "Partial files removed.")
         except Exception as e:
             QMessageBox.warning(
-                self, "Cleanup Error", f"Failed to cleanup partials directly: {e}"
+                self,
+                "Cleanup Error",
+                f"Failed to cleanup partials directly: {e}",
             )
 
     def on_test_connection_clicked(self):
@@ -395,6 +404,7 @@ class ModelSettingsDialog(QDialog):
 
         Args:
             api_key: The verified API key.
+
         """
         self.gemini_enabled = True
         self.gemini_status_label.setText("Status: Verified")
@@ -412,6 +422,7 @@ class ModelSettingsDialog(QDialog):
 
         Args:
             error_msg: Error message from the connection attempt.
+
         """
         self.gemini_enabled = False
         self.gemini_status_label.setText("Status: Failed")
@@ -473,7 +484,7 @@ class ModelSettingsDialog(QDialog):
 
         # Resolve to project root (4 levels up from ui/dialogs/)
         package_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         env_path = os.path.join(os.path.dirname(package_root), ".env")
         try:
@@ -522,6 +533,7 @@ class ModelSettingsDialog(QDialog):
 
         Returns:
             The LLMConfig instance with the current settings.
+
         """
         return self.config
 
@@ -532,6 +544,7 @@ class ConnectionTestWorker(QObject):
     Attributes:
         finished: Signal emitted with the API key on successful connection.
         error: Signal emitted with an error message on failure.
+
     """
 
     finished = pyqtSignal(str)  # api_key
@@ -542,6 +555,7 @@ class ConnectionTestWorker(QObject):
 
         Args:
             api_key: Gemini API key to test.
+
         """
         super().__init__()
         self.api_key = api_key

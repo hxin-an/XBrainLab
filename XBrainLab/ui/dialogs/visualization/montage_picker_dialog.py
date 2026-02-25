@@ -45,6 +45,7 @@ class PickMontageDialog(BaseDialog):
         settings: QSettings for persisting montage selections.
         montage_combo: QComboBox for selecting the montage standard.
         table: QTableWidget with mapping from dataset to montage channels.
+
     """
 
     def __init__(self, parent, channel_names, default_montage=None):
@@ -118,7 +119,7 @@ class PickMontageDialog(BaseDialog):
         # Reset Saved Button (for demoing Smart Match)
         self.btn_reset_saved = QPushButton("Reset Saved")
         self.btn_reset_saved.setToolTip(
-            "Clear saved settings for this montage and re-run Smart Match"
+            "Clear saved settings for this montage and re-run Smart Match",
         )
         self.btn_reset_saved.clicked.connect(self.reset_saved_settings)
         top_layout.addWidget(self.btn_reset_saved)
@@ -139,7 +140,7 @@ class PickMontageDialog(BaseDialog):
 
         # Bottom: Dialog Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -164,6 +165,7 @@ class PickMontageDialog(BaseDialog):
 
         Args:
             montage_name: Name of the selected montage standard.
+
         """
         if not self.table or not self.settings:
             return
@@ -224,7 +226,7 @@ class PickMontageDialog(BaseDialog):
                 if isinstance(widget, QComboBox):
                     # Use lambda with captured row to identify source
                     widget.currentIndexChanged.connect(
-                        lambda idx, r=row: self.on_channel_changed(r, idx)
+                        lambda idx, r=row: self.on_channel_changed(r, idx),
                     )
 
         except Exception as e:
@@ -285,6 +287,7 @@ class PickMontageDialog(BaseDialog):
 
         Returns:
             True if a match was found and set, False otherwise.
+
         """
         target = target_name.lower().strip()
 
@@ -297,7 +300,8 @@ class PickMontageDialog(BaseDialog):
 
         # 1. Exact Match (Case Insensitive)
         idx = combo.findText(
-            target_name, Qt.MatchFlag.MatchFixedString | Qt.MatchFlag.MatchCaseSensitive
+            target_name,
+            Qt.MatchFlag.MatchFixedString | Qt.MatchFlag.MatchCaseSensitive,
         )
         if idx != -1:
             best_match_idx = idx
@@ -328,6 +332,7 @@ class PickMontageDialog(BaseDialog):
         Args:
             row: Row index where the change occurred.
             index: New combo box index.
+
         """
         if not self.table:
             return
@@ -423,6 +428,7 @@ class PickMontageDialog(BaseDialog):
         Raises:
             QMessageBox: Warning if no channels are mapped or montage
                 processing fails.
+
         """
         if not self.table or not self.montage_combo:
             return
@@ -468,5 +474,6 @@ class PickMontageDialog(BaseDialog):
 
         Returns:
             Tuple of (mapped_channel_names, channel_positions).
+
         """
         return self.chs, self.positions

@@ -22,6 +22,9 @@ from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
+VIZ_TAB_3D_PLOT = 3
+"""Index of the 3D Plot tab in the visualization panel."""
+
 
 class AgentManager(QObject):
     """Manages the lifecycle and UI integration of the AI Agent System.
@@ -40,6 +43,7 @@ class AgentManager(QObject):
         agent_controller: The ``LLMController`` for AI inference, or
             ``None`` before lazy initialization.
         agent_initialized: Whether the agent system has been started.
+
     """
 
     def __init__(self, main_window, study):
@@ -49,6 +53,7 @@ class AgentManager(QObject):
             main_window: The parent ``MainWindow`` instance.
             study: The application ``Study`` instance providing
                 controllers and shared state.
+
         """
         super().__init__(main_window)
         self.main_window = main_window
@@ -60,7 +65,7 @@ class AgentManager(QObject):
         self.chat_controller = ChatController()
         # Connect Chat Controller Signals
         self.chat_controller.processing_state_changed.connect(
-            self.on_processing_state_changed
+            self.on_processing_state_changed,
         )
         self.preprocess_controller = study.get_controller("preprocess")  # M3.6
         self.agent_controller = None
@@ -71,7 +76,7 @@ class AgentManager(QObject):
         # Connect to Visualization Panel signals if available
         if hasattr(self.main_window, "visualization_panel"):
             self.main_window.visualization_panel.tabs.currentChanged.connect(
-                self.on_viz_tab_changed
+                self.on_viz_tab_changed,
             )
 
     def init_ui(self):
@@ -95,7 +100,8 @@ class AgentManager(QObject):
         self.chat_dock = QDockWidget("AI Assistant", self.main_window)
         self.chat_dock.setWidget(self.chat_panel)
         self.chat_dock.setAllowedAreas(
-            Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.LeftDockWidgetArea
+            Qt.DockWidgetArea.RightDockWidgetArea
+            | Qt.DockWidgetArea.LeftDockWidgetArea,
         )
 
         # Custom Title Bar with Float + New Conversation Buttons
@@ -137,7 +143,8 @@ class AgentManager(QObject):
         self.chat_dock.setTitleBarWidget(title_bar)
 
         self.main_window.addDockWidget(
-            Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock
+            Qt.DockWidgetArea.RightDockWidgetArea,
+            self.chat_dock,
         )
 
         self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
@@ -148,6 +155,7 @@ class AgentManager(QObject):
 
         Args:
             visible: Whether the dock is currently visible.
+
         """
         if hasattr(self.main_window, "ai_btn"):
             self.main_window.ai_btn.blockSignals(True)
@@ -205,6 +213,7 @@ class AgentManager(QObject):
 
         Returns:
             ``True`` if it is safe to proceed with deletion.
+
         """
         if not self.agent_controller or not self.agent_controller.worker:
             return True
@@ -251,7 +260,7 @@ class AgentManager(QObject):
         # 1. Response Ready -> Add to ChatController
         # Note: 'sender' argument from LLMController is usually 'Assistant' or 'Tool'
         self.agent_controller.response_ready.connect(
-            lambda sender, text: self.chat_controller.add_agent_message(text)
+            lambda sender, text: self.chat_controller.add_agent_message(text),
         )
 
         # 2. Status Updates -> Update UI Status (Legacy behavior, maybe simplify later)
@@ -262,7 +271,7 @@ class AgentManager(QObject):
 
         # 4. Human Interaction
         self.agent_controller.request_user_interaction.connect(
-            self.handle_user_interaction
+            self.handle_user_interaction,
         )
 
         # 5. Generation Started -> Set Processing State AND Reset Bubble
@@ -274,7 +283,7 @@ class AgentManager(QObject):
 
         # 7. Remove Content (Tool Calls) -> Forward to ChatPanel
         self.agent_controller.remove_content.connect(
-            self.chat_panel.collapse_agent_message
+            self.chat_panel.collapse_agent_message,
         )
 
         # 8. M3.1 Debug Mode: Handled by MainWindow (offline support)
@@ -296,6 +305,7 @@ class AgentManager(QObject):
 
         Args:
             text: The user's message text.
+
         """
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
@@ -316,6 +326,7 @@ class AgentManager(QObject):
         Args:
             model_name: The model name to switch to (e.g., ``"Gemini"``,
                 ``"Local"``).
+
         """
         if self.agent_controller:
             self.agent_controller.set_model(model_name)
@@ -329,10 +340,10 @@ class AgentManager(QObject):
 
         Args:
             index: The newly selected tab index.
+
         """
-        # Index 3 is 3D Plot
-        # WARN: Hardcoded tab index assumes specific order.
-        if index == 3:
+        # 3D Plot tab triggers VRAM check
+        if index == VIZ_TAB_3D_PLOT:
             self.check_vram_conflict(switching_to_3d=True)
 
     def check_vram_conflict(self, switching_to_local=False, switching_to_3d=False):
@@ -346,6 +357,7 @@ class AgentManager(QObject):
                 model mode.
             switching_to_3d: Whether the user is switching to the 3D
                 visualization tab.
+
         """
         # 1. Check Agent Mode
         # If we are switching TO local, we assume local.
@@ -378,7 +390,7 @@ class AgentManager(QObject):
         is_3d_active = False
         viz_panel = self.main_window.visualization_panel
         if switching_to_3d or (
-            viz_panel.tabs.currentIndex() == 3
+            viz_panel.tabs.currentIndex() == VIZ_TAB_3D_PLOT
             and not viz_panel.isHidden()
             and self.main_window.stack.currentIndex() == 4
         ):
@@ -398,6 +410,7 @@ class AgentManager(QObject):
 
         Args:
             is_processing: Whether the agent is currently generating.
+
         """
         if self.chat_panel:
             self.chat_panel.set_processing_state(is_processing)
@@ -411,7 +424,8 @@ class AgentManager(QObject):
 
         # 2. Reset Agent State
         if self.agent_controller and hasattr(
-            self.agent_controller, "reset_conversation"
+            self.agent_controller,
+            "reset_conversation",
         ):
             self.agent_controller.reset_conversation()
             logger.info("Agent conversation state reset successfully")
@@ -445,6 +459,7 @@ class AgentManager(QObject):
 
         Args:
             msg: The status message string from the agent.
+
         """
         self.status_message_received.emit(msg)
 
@@ -458,6 +473,7 @@ class AgentManager(QObject):
 
         Args:
             error_msg: The error message string.
+
         """
         self.chat_controller.set_processing(False)
         self.chat_controller.add_agent_message(f"?? **Error**: {error_msg}")
@@ -475,6 +491,7 @@ class AgentManager(QObject):
             command: The interaction command (e.g., ``"confirm_montage"``,
                 ``"switch_panel"``).
             params: Dictionary of parameters for the command.
+
         """
         if command == "confirm_montage":
             self.open_montage_picker_dialog(params)
@@ -487,6 +504,7 @@ class AgentManager(QObject):
         Args:
             params: Dictionary with ``"panel"`` (panel name) and optional
                 ``"view_mode"`` (sub-tab identifier).
+
         """
         panel_name = params.get("panel", "").lower()
         view_mode = params.get("view_mode")
@@ -516,7 +534,7 @@ class AgentManager(QObject):
             if sb:
                 sb.showMessage(
                     f"Switched to {panel_name} "
-                    f"(View: {view_mode if view_mode else 'Default'})"
+                    f"(View: {view_mode if view_mode else 'Default'})",
                 )
         else:
             sb = self.main_window.statusBar()
@@ -524,7 +542,7 @@ class AgentManager(QObject):
                 sb.showMessage(f"Error: Unknown panel '{panel_name}'")
             # Notify user via chat
             self.chat_controller.add_agent_message(
-                f"Error: Could not switch to {panel_name}"
+                f"Error: Could not switch to {panel_name}",
             )
 
     def _switch_sub_view(self, panel_index, view_mode):
@@ -534,6 +552,7 @@ class AgentManager(QObject):
             panel_index: Index of the panel in the stacked widget.
             view_mode: String identifier for the target sub-view
                 (e.g., ``"saliency_map"``, ``"3d_plot"``).
+
         """
         # Map panel index to view mode mapping
         view_map = {
@@ -553,7 +572,7 @@ class AgentManager(QObject):
             if hasattr(target_panel, "tabs"):
                 target_panel.tabs.setCurrentIndex(target_tab_index)
                 logger.info(
-                    f"Switched sub-view to {view_mode} (Tab {target_tab_index})"
+                    f"Switched sub-view to {view_mode} (Tab {target_tab_index})",
                 )
 
     def open_montage_picker_dialog(self, params):
@@ -565,6 +584,7 @@ class AgentManager(QObject):
 
         Args:
             params: Dictionary with optional ``"montage_name"`` key.
+
         """
         montage_name = params.get("montage_name")  # Pre-selected montage from Agent
 
