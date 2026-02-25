@@ -75,7 +75,7 @@ class Evaluator:
 
         except Exception as e:
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to calculate AUC: {e}")
+            logger.warning("Failed to calculate AUC: %s", e)
             return 0.0
         else:
             # roc_auc_score may return nan for undefined cases (e.g. single class)

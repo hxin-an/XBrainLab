@@ -67,7 +67,7 @@ class DataManager:
             preprocessed_data_list=deepcopy(loaded_data_list), force_update=force_update
         )
         self.loaded_data_list = loaded_data_list
-        logger.info(f"Loaded {len(loaded_data_list)} raw data files")
+        logger.info("Loaded %s raw data files", len(loaded_data_list))
 
     def backup_loaded_data(self) -> None:
         """Backup the currently loaded data list to allow undoing changes
@@ -133,7 +133,7 @@ class DataManager:
         pp_instance.check_data()
         preprocessed_data_list = pp_instance.data_preprocess(**kwargs)
         self.set_preprocessed_data_list(preprocessed_data_list)
-        logger.info(f"Applied preprocessing: {pp_instance.__class__.__name__}")
+        logger.info("Applied preprocessing: %s", pp_instance.__class__.__name__)
 
     # --- Datasets ---
     def set_datasets(self, datasets: list[Dataset], force_update: bool = False) -> None:
@@ -146,7 +146,7 @@ class DataManager:
         validate_list_type(datasets, Dataset, "datasets")
         self.clean_datasets(force_update=force_update)
         self.datasets = datasets
-        logger.info(f"Set {len(datasets)} datasets for training")
+        logger.info("Set %s datasets for training", len(datasets))
 
     # --- Cleaning ---
     def has_raw_data(self) -> bool:

@@ -61,7 +61,7 @@ def _load_txt(path: str) -> np.ndarray:
                         labels.append(int(p))
         return np.array(labels)
     except Exception as e:
-        logger.error(f"Failed to load txt file {path}: {e}")
+        logger.error("Failed to load txt file %s: %s", path, e)
         raise ValueError(f"Failed to load txt file: {e}") from e
 
 
@@ -117,7 +117,7 @@ def _load_mat(path: str) -> np.ndarray:
             return label_list.flatten()
 
     except Exception as e:
-        logger.error(f"Failed to load mat file {path}: {e}")
+        logger.error("Failed to load mat file %s: %s", path, e)
         raise ValueError(f"Invalid .mat file: {e}") from e
 
 
@@ -178,5 +178,5 @@ def _load_csv_tsv(path: str):
             return df.iloc[:, 0].values
 
     except Exception as e:
-        logger.error(f"Failed to load csv/tsv file {path}: {e}")
+        logger.error("Failed to load csv/tsv file %s: %s", path, e)
         raise ValueError(f"Failed to load csv/tsv file: {e}") from e

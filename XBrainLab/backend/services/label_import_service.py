@@ -183,7 +183,7 @@ class LabelImportService:
 
         loader.apply()
         data.set_labels_imported(True)
-        logger.info(f"Successfully applied labels to {data.get_filename()}")
+        logger.info("Successfully applied labels to %s", data.get_filename())
 
     def _force_apply_single(
         self,

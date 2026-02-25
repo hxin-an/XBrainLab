@@ -41,10 +41,10 @@ def load_set_file(filepath):
         try:
             selected_data = mne.io.read_epochs_eeglab(filepath, uint16_codec="latin1")
         except Exception as e:
-            logger.warning(f"Failed to load as Epochs: {e}")
+            logger.warning("Failed to load as Epochs: %s", e)
             raise FileCorruptedError(filepath, f"Failed to load as Epochs: {e}") from e
     except Exception as e:
-        logger.warning(f"Failed to load as Raw: {e}")
+        logger.warning("Failed to load as Raw: %s", e)
         # Try Epochs if Raw failed due to other reasons (e.g. ValueError)
         try:
             selected_data = mne.io.read_epochs_eeglab(filepath, uint16_codec="latin1")
@@ -83,7 +83,7 @@ def load_gdf_file(filepath):
             return raw_wrapper
 
     except Exception as e:
-        logger.error(f"Failed to load GDF file {filepath}: {e}", exc_info=True)
+        logger.error("Failed to load GDF file %s: %s", filepath, e, exc_info=True)
         raise FileCorruptedError(filepath, str(e)) from e
 
     return None
@@ -106,7 +106,7 @@ def load_fif_file(filepath):
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
-        logger.error(f"Failed to load FIF file {filepath}: {e}", exc_info=True)
+        logger.error("Failed to load FIF file %s: %s", filepath, e, exc_info=True)
         raise FileCorruptedError(filepath, str(e)) from e
     return None
 
@@ -128,7 +128,7 @@ def load_edf_file(filepath):
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
-        logger.error(f"Failed to load EDF file {filepath}: {e}", exc_info=True)
+        logger.error("Failed to load EDF file %s: %s", filepath, e, exc_info=True)
         raise FileCorruptedError(filepath, str(e)) from e
     return None
 
@@ -150,7 +150,7 @@ def load_bdf_file(filepath):
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
-        logger.error(f"Failed to load BDF file {filepath}: {e}", exc_info=True)
+        logger.error("Failed to load BDF file %s: %s", filepath, e, exc_info=True)
         raise FileCorruptedError(filepath, str(e)) from e
     return None
 
@@ -172,7 +172,7 @@ def load_cnt_file(filepath):
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
-        logger.error(f"Failed to load CNT file {filepath}: {e}", exc_info=True)
+        logger.error("Failed to load CNT file %s: %s", filepath, e, exc_info=True)
         raise FileCorruptedError(filepath, str(e)) from e
     return None
 
@@ -194,7 +194,9 @@ def load_brainvision_file(filepath):
         if selected_data:
             return Raw(filepath, selected_data)
     except Exception as e:
-        logger.error(f"Failed to load BrainVision file {filepath}: {e}", exc_info=True)
+        logger.error(
+            "Failed to load BrainVision file %s: %s", filepath, e, exc_info=True
+        )
         raise FileCorruptedError(filepath, str(e)) from e
     return None
 

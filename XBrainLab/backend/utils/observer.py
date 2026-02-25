@@ -69,4 +69,4 @@ class Observable:
         except Exception as e:
             # Prevent one subscriber's error from breaking others
 
-            logger.error(f"Error in subscriber for {event_name}: {e}", exc_info=True)
+            logger.error("Error in subscriber for %s: %s", event_name, e, exc_info=True)

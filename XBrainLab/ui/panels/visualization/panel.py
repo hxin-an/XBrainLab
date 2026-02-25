@@ -277,10 +277,10 @@ class VisualizationPanel(BasePanel):
                             f"Run index {run_idx} out of range (0-{len(plans) - 1})"
                         )
                 else:
-                    logger.warning(f"Could not parse run number from: {run_name}")
+                    logger.warning("Could not parse run number from: %s", run_name)
 
             except Exception as e:
-                logger.warning(f"Failed to find plan for run {run_name}: {e}")
+                logger.warning("Failed to find plan for run %s: %s", run_name, e)
 
         if not eval_record:
             if current_widget and hasattr(current_widget, "show_error"):

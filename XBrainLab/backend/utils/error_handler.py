@@ -36,10 +36,10 @@ def handle_error(func):
         try:
             return func(*args, **kwargs)
         except XBrainLabError as e:
-            logger.error(f"XBrainLab Error in {func.__name__}: {e}")
+            logger.error("XBrainLab Error in %s: %s", func.__name__, e)
             raise
         except Exception as e:
-            logger.exception(f"Unexpected Error in {func.__name__}: {e}")
+            logger.exception("Unexpected Error in %s: %s", func.__name__, e)
             raise XBrainLabError(f"Unexpected error: {e!s}") from e
 
     return wrapper

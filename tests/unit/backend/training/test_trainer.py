@@ -18,6 +18,8 @@ class FakeTrainingPlanHolder(TrainingPlanHolder):
     def __init__(self, i):
         self.i = i
         self.train_record_list = [FakePlan("test")]
+        self._interrupt = threading.Event()
+        self.error = None
 
     def get_name(self):
         return "Fake" + str(self.i)

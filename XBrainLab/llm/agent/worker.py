@@ -48,7 +48,7 @@ class GenerationThread(QThread):
                 self.chunk_received.emit(chunk)
             self.finished_generation.emit()
         except Exception as e:
-            logger.error(f"Generation error: {e}", exc_info=True)
+            logger.error("Generation error: %s", e, exc_info=True)
             self.error_occurred.emit(str(e))
 
 
@@ -129,7 +129,7 @@ class AgentWorker(QObject):
                 else last_msg["content"]
             )
             self.log.emit("Processing...")
-            logger.info(f"Agent generating for input: {log_text}")
+            logger.info("Agent generating for input: %s", log_text)
         else:
             self.log.emit("Processing...")
 
@@ -145,7 +145,7 @@ class AgentWorker(QObject):
                 if fresh_config.inference_mode != old_mode:
                     self.engine.switch_backend(fresh_config.inference_mode)
         except Exception as e:
-            logger.error(f"Failed to sync config: {e}")
+            logger.error("Failed to sync config: %s", e)
 
         # Start Generation Thread
         self.generation_thread = GenerationThread(self.engine, messages)
@@ -225,7 +225,7 @@ class AgentWorker(QObject):
                 May contain hints like ``'gemini'`` or ``'local'`` for
                 backend routing.
         """
-        logger.info(f"Worker switching model to: {model_id}")
+        logger.info("Worker switching model to: %s", model_id)
         self.log.emit(f"Switching to {model_id}...")
 
         try:
@@ -261,8 +261,8 @@ class AgentWorker(QObject):
             self.engine.config.save_to_file()
 
             self.log.emit(f"Switched to {new_mode.capitalize()}")
-            logger.info(f"Model switch successful to {new_mode}")
+            logger.info("Model switch successful to %s", new_mode)
 
         except Exception as e:
-            logger.error(f"Failed to switch model: {e}", exc_info=True)
+            logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")

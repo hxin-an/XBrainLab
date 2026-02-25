@@ -218,7 +218,7 @@ class PlotFigureWindow(SinglePlotWindow):
                                 self.set_figure(figure, self.figsize, self.dpi)
                                 self.redraw()
                         except Exception as e:
-                            logger.error(f"Plotting error: {e}", exc_info=True)
+                            logger.error("Plotting error: %s", e, exc_info=True)
                             self.empty_data_figure()
 
                     if not self.plan_to_plot.is_finished():

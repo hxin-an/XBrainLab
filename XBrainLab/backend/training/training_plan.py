@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import threading
 import time
 from enum import Enum
 
@@ -192,7 +193,7 @@ class TrainingPlanHolder:
         self.plan_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
         self.train_record_list = []
-        self.interrupt = False
+        self._interrupt = threading.Event()
         self.error: str | None = None
         self.status = Status.PENDING.value
         for i in range(self.option.repeat_num):
@@ -336,35 +337,29 @@ class TrainingPlanHolder:
         Raises:
             NotImplementedError: If the evaluation option is not recognized.
         """
-        target_model = target_loader = None
+        target_loader = test_loader or val_loader
+
+        # Determine the state_dict to load before allocating the model on GPU
+        if self.option.evaluation_option == TrainingEvaluation.VAL_LOSS:
+            state = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
+        elif self.option.evaluation_option == TrainingEvaluation.TEST_ACC:
+            state = getattr(train_record, f"best_test_{RecordKey.ACC}_model")
+        elif self.option.evaluation_option == TrainingEvaluation.TEST_AUC:
+            state = getattr(train_record, f"best_test_{RecordKey.AUC}_model")
+        elif self.option.evaluation_option == TrainingEvaluation.LAST_EPOCH:
+            state = train_record.model.state_dict()
+        else:
+            raise NotImplementedError
+
+        if not state:
+            return None, target_loader
+
+        # Only create the model on GPU once we know we have a valid state_dict
         target_model = self.model_holder.get_model(
             self.dataset.get_epoch_data().get_model_args()
         ).to(self.option.get_device())
-        target_loader = test_loader or val_loader
-        if self.option.evaluation_option == TrainingEvaluation.VAL_LOSS:
-            model = getattr(train_record, f"best_val_{RecordKey.LOSS}_model")
-            if model:
-                target_model.load_state_dict(model)
-            else:
-                target_model = None
-        elif self.option.evaluation_option == TrainingEvaluation.TEST_ACC:
-            model = getattr(train_record, f"best_test_{RecordKey.ACC}_model")
-            if model:
-                target_model.load_state_dict(model)
-            else:
-                target_model = None
-        elif self.option.evaluation_option == TrainingEvaluation.TEST_AUC:
-            model = getattr(train_record, f"best_test_{RecordKey.AUC}_model")
-            if model:
-                target_model.load_state_dict(model)
-            else:
-                target_model = None
-        elif self.option.evaluation_option == TrainingEvaluation.LAST_EPOCH:
-            target_model.load_state_dict(train_record.model.state_dict())
-        else:
-            raise NotImplementedError
-        if target_model:
-            target_model = target_model.eval()
+        target_model.load_state_dict(state)
+        target_model = target_model.eval()
         return target_model, target_loader
 
     def train_one_repeat(self, train_record: TrainRecord) -> None:
@@ -385,7 +380,7 @@ class TrainingPlanHolder:
         self.status = Status.TRAIN.value.format(train_record.get_name())
         # train one epoch
         while train_record.epoch < self.option.epoch:
-            if self.interrupt:
+            if self._interrupt.is_set():
                 break
             if train_loader is None:
                 raise ValueError("train_loader cannot be None during training loop")
@@ -449,7 +444,7 @@ class TrainingPlanHolder:
         running_loss, correct, total_count, y_true, y_pred = self._train_batch_loop(
             model, train_loader, optimizer, criterion
         )
-        if self.interrupt:
+        if self._interrupt.is_set():
             return
 
         # 2. Compute Metrics (AUC) using Evaluator
@@ -551,14 +546,19 @@ class TrainingPlanHolder:
             }
         )
 
+    @property
+    def interrupt(self) -> bool:
+        """Whether an interrupt has been requested (thread-safe)."""
+        return self._interrupt.is_set()
+
     def set_interrupt(self) -> None:
         """Set the interrupt flag to stop training after the current batch."""
-        self.interrupt = True
+        self._interrupt.set()
 
     def clear_interrupt(self) -> None:
         """Clear the interrupt flag and reset the error status."""
         self.error = None
-        self.interrupt = False
+        self._interrupt.clear()
 
     # getter
     def get_name(self) -> str:

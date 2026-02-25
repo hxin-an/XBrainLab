@@ -227,7 +227,7 @@ class EventLoader:
                 self.events = events
                 self.event_id = event_id
             except Exception as e:
-                logger.warning(f"Could not convert annotations to events: {e}")
+                logger.warning("Could not convert annotations to events: %s", e)
                 return None, None
             return events, event_id
 

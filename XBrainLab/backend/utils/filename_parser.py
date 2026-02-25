@@ -71,15 +71,15 @@ class FilenameParser:
         try:
             regex = re.compile(pattern)
             match = regex.search(name_no_ext)
-            logger.debug(f"DEBUG: pattern='{pattern}', name='{name_no_ext}'")
+            logger.debug("DEBUG: pattern='%s', name='%s'", pattern, name_no_ext)
             if match:
-                logger.debug(f"DEBUG: groups={match.groups()}")
+                logger.debug("DEBUG: groups=%s", match.groups())
                 if sub_group <= len(match.groups()):
                     sub = match.group(sub_group)
                 if sess_group <= len(match.groups()):
                     sess = match.group(sess_group)
         except Exception as e:
-            logger.debug(f"Failed to parse filename by regex: {e}")
+            logger.debug("Failed to parse filename by regex: %s", e)
         return sub, sess
 
     @staticmethod
@@ -116,7 +116,7 @@ class FilenameParser:
                 sub = parent_name
                 sess = "-"
         except Exception as e:
-            logger.debug(f"Failed to parse filename by folder: {e}")
+            logger.debug("Failed to parse filename by folder: %s", e)
         return sub, sess
 
     @staticmethod
@@ -155,7 +155,7 @@ class FilenameParser:
                 if extracted:
                     sess = extracted
         except Exception as e:
-            logger.debug(f"Failed to parse filename by fixed position: {e}")
+            logger.debug("Failed to parse filename by fixed position: %s", e)
         return sub, sess
 
     @staticmethod
@@ -193,5 +193,5 @@ class FilenameParser:
                 if "session" in groupdict:
                     sess = groupdict["session"]
         except Exception as e:
-            logger.debug(f"Failed to parse filename by regex: {e}")
+            logger.debug("Failed to parse filename by regex: %s", e)
         return sub, sess

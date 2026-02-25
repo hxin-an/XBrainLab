@@ -188,7 +188,7 @@ class LLMController(QObject):
             # 3. Start Generation Loop
             self._generate_response()
         except Exception as e:
-            logger.error(f"Error in handle_user_input: {e}")
+            logger.error("Error in handle_user_input: %s", e)
             self.error_occurred.emit(str(e))
             self.is_processing = False
             self.processing_finished.emit()
@@ -373,7 +373,9 @@ class LLMController(QObject):
             validation = self.verifier.verify_tool_call((cmd, params), confidence=None)
 
             if not validation.is_valid:
-                logger.warning(f"Tool rejected by Verifier: {validation.error_message}")
+                logger.warning(
+                    "Tool rejected by Verifier: %s", validation.error_message
+                )
                 self.status_update.emit(f"Blocked: {validation.error_message}")
                 self._append_history(
                     "user", f"System: Tool call REJECTED: {validation.error_message}"
@@ -649,7 +651,7 @@ class LLMController(QObject):
             params: Dictionary of parameters for the tool.
         """
 
-        logger.info(f"Debug Execution: {tool_name} with {params}")
+        logger.info("Debug Execution: %s with %s", tool_name, params)
 
         self.is_processing = True
         self.status_update.emit(f"Debug: Executing {tool_name}...")

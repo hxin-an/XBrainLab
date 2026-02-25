@@ -285,5 +285,5 @@ class PreprocessPlotter:
                 self.threadpool.start(worker)  # type: ignore[union-attr]
 
         except Exception as e:
-            logger.error(f"Plotting failed: {e}")
+            logger.error("Plotting failed: %s", e)
             self.widget.plot_time.setTitle("Plot Error")

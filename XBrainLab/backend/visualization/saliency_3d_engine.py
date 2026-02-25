@@ -85,16 +85,16 @@ class ModelDownloadThread(QThread):
 
     def run(self):
         try:
-            logger.info(f"Downloading {os.path.basename(self.dest_path)}...")
+            logger.info("Downloading %s...", os.path.basename(self.dest_path))
             with requests.get(self.url, stream=True, timeout=60) as r:
                 r.raise_for_status()
                 with open(self.dest_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
-            logger.info(f"Downloaded {self.dest_path}")
+            logger.info("Downloaded %s", self.dest_path)
             self.download_finished.emit(self.dest_path)
         except Exception as e:
-            logger.error(f"Download failed: {e}")
+            logger.error("Download failed: %s", e)
             self.download_finished.emit(f"Error: {e}")
 
 
@@ -230,7 +230,7 @@ class Saliency3DEngine(QObject):
             logger.info("3D Models loaded successfully.")
             self.model_loaded.emit()
         except Exception as e:
-            logger.error(f"Failed to load meshes: {e}")
+            logger.error("Failed to load meshes: %s", e)
 
     def process_data(self, eval_record, epoch_data, selected_event_name):
         """Process epoch data and evaluation record for 3-D visualisation.

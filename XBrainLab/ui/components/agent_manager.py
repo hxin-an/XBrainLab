@@ -460,7 +460,7 @@ class AgentManager(QObject):
         """
         self.chat_controller.set_processing(False)
         self.chat_controller.add_agent_message(f"?? **Error**: {error_msg}")
-        logger.error(f"Agent Error: {error_msg}")
+        logger.error("Agent Error: %s", error_msg)
 
     def close(self):
         """Clean up the agent controller resources."""

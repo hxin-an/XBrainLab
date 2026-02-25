@@ -369,5 +369,5 @@ class PreprocessSidebar(QWidget):
                     self.main_window.update_info_panel()
                 QMessageBox.information(self, "Success", "Preprocessing reset.")
             except Exception as e:
-                logger.error(f"Reset failed: {e}")
+                logger.error("Reset failed: %s", e)
                 QMessageBox.critical(self, "Error", f"Reset failed: {e}")

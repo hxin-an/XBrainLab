@@ -51,7 +51,7 @@ class Trainer:
         validate_list_type(
             training_plan_holders, TrainingPlanHolder, "training_plan_holders"
         )
-        self.interrupt = False
+        self._interrupt = threading.Event()
         self.progress_text: Status | str = Status.PENDING
         self.training_plan_holders = training_plan_holders
         self.current_idx = 0
@@ -94,7 +94,7 @@ class Trainer:
         """
         try:
             while self.current_idx < len(self.training_plan_holders):
-                if self.interrupt:
+                if self._interrupt.is_set():
                     break
 
                 plan_holder = self.training_plan_holders[self.current_idx]
@@ -173,16 +173,21 @@ class Trainer:
         """
         return self.training_plan_holders
 
+    @property
+    def interrupt(self) -> bool:
+        """Whether an interrupt has been requested (thread-safe)."""
+        return self._interrupt.is_set()
+
     def set_interrupt(self) -> None:
         """Set the interrupt flag and propagate to all plan holders."""
-        self.interrupt = True
+        self._interrupt.set()
         self.progress_text = Status.INTING
         for holder in self.training_plan_holders:
             holder.set_interrupt()
 
     def clear_interrupt(self) -> None:
         """Clear the interrupt flag and propagate to all plan holders."""
-        self.interrupt = False
+        self._interrupt.clear()
         self.progress_text = Status.PENDING
         for holder in self.training_plan_holders:
             holder.clear_interrupt()

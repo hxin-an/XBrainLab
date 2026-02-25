@@ -107,7 +107,7 @@ class ToolExecutor:
             return msg
 
         try:
-            logger.info(f"Executing debug tool: {tool_name} with params: {params}")
+            logger.info("Executing debug tool: %s with params: %s", tool_name, params)
             tool = tool_class()
             # execute method signature: (study, **kwargs)
             result = tool.execute(self.study, **params)

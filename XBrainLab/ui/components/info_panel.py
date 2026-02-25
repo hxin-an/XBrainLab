@@ -189,7 +189,7 @@ class AggregateInfoPanel(QGroupBox):
                 if event_id:
                     classes_set.update(event_id)
             except Exception as e:
-                logger.warning(f"Failed to get event list for data: {e}")
+                logger.warning("Failed to get event list for data: %s", e)
 
             total_epochs += data.get_epochs_length()
 
@@ -201,7 +201,7 @@ class AggregateInfoPanel(QGroupBox):
                 else:
                     total_events += data.get_epochs_length()
             except Exception as e:
-                logger.warning(f"Failed to count events: {e}")
+                logger.warning("Failed to count events: %s", e)
 
         tmin = "None"
         duration = "None"
@@ -215,7 +215,7 @@ class AggregateInfoPanel(QGroupBox):
                 )
                 duration = str(dur_val)
             except Exception as e:
-                logger.warning(f"Failed to calc duration: {e}")
+                logger.warning("Failed to calc duration: %s", e)
                 duration = "?"
 
         highpass, lowpass = first_data.get_filter_range()

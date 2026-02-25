@@ -65,5 +65,5 @@ class SaliencyMapWidget(BaseSaliencyView):
                 self.show_error("No Data Available")
 
         except Exception as e:
-            logger.error(f"Error plotting saliency map: {e}", exc_info=True)
+            logger.error("Error plotting saliency map: %s", e, exc_info=True)
             self.show_error(str(e))

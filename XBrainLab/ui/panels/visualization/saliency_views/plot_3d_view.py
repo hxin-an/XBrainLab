@@ -119,7 +119,7 @@ class Saliency3DPlotWidget(QWidget):
             )
 
         except Exception as e:
-            logger.error(f"Error initializing 3D plot: {e}", exc_info=True)
+            logger.error("Error initializing 3D plot: %s", e, exc_info=True)
             self.show_error(f"Error: {e}")
 
     def _do_3d_plot(self, eval_record, epoch_data, selected_event):
@@ -132,7 +132,7 @@ class Saliency3DPlotWidget(QWidget):
             )
             saliency.get_3d_head_plot()
         except Exception as e:
-            logger.error(f"Error executing 3D plot: {e}", exc_info=True)
+            logger.error("Error executing 3D plot: %s", e, exc_info=True)
             # We can't easily show error in widget if it crashes here, but we can print
             # it
             # or try to show error if widget is still valid

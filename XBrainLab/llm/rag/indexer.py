@@ -42,7 +42,7 @@ class RAGIndexer:
 
         # Initialize Client
         self.client = QdrantClient(path=self.storage_path)
-        logger.info(f"Initialized Qdrant at {self.storage_path}")
+        logger.info("Initialized Qdrant at %s", self.storage_path)
 
     def load_gold_set(self, json_path: str) -> list[Document]:
         """Parses a gold-set JSON file into LangChain Documents.
@@ -65,7 +65,7 @@ class RAGIndexer:
             with open(json_path, encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load gold set: {e}")
+            logger.error("Failed to load gold set: %s", e)
             raise
 
         docs = []
@@ -83,7 +83,7 @@ class RAGIndexer:
             if content:
                 docs.append(Document(page_content=content, metadata=metadata))
 
-        logger.info(f"Loaded {len(docs)} documents from {json_path}")
+        logger.info("Loaded %s documents from %s", len(docs), json_path)
         return docs
 
     def index_data(self, docs: list[Document]):
@@ -108,7 +108,7 @@ class RAGIndexer:
             exists = any(c.name == RAGConfig.COLLECTION_NAME for c in collections)
 
             if not exists:
-                logger.info(f"Creating new collection: {RAGConfig.COLLECTION_NAME}")
+                logger.info("Creating new collection: %s", RAGConfig.COLLECTION_NAME)
                 self.client.create_collection(
                     collection_name=RAGConfig.COLLECTION_NAME,
                     vectors_config=rest.VectorParams(
@@ -135,7 +135,7 @@ class RAGIndexer:
             )
 
         except Exception as e:
-            logger.error(f"Indexing failed: {e}")
+            logger.error("Indexing failed: %s", e)
             raise
 
     def close(self):

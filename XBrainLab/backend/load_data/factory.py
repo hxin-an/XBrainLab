@@ -84,5 +84,5 @@ class RawDataLoaderFactory:
             # errors for better UI feedback.
             # For now, we assume loaders might log and return None, or raise
             # specific errors.
-            logger.error(f"Error loading file {filepath}: {e}", exc_info=True)
+            logger.error("Error loading file %s: %s", filepath, e, exc_info=True)
             raise FileCorruptedError(filepath, str(e)) from e

@@ -258,7 +258,7 @@ class MainWindow(QMainWindow):
             tool_name: Name of the tool to execute.
             params: Dictionary of parameters to pass to the tool.
         """
-        logger.info(f"Debug Mode: Requesting {tool_name}")
+        logger.info("Debug Mode: Requesting %s", tool_name)
         result = self.debug_executor.execute(tool_name, params)
 
         # Feedback to Chat

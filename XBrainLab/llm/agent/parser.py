@@ -87,7 +87,7 @@ class CommandParser:
                     cursor = start_idx + 1
 
         except Exception as e:
-            logger.error(f"Error parsing command: {e}")
+            logger.error("Error parsing command: %s", e)
             return None
 
         if found_commands:

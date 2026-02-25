@@ -121,7 +121,7 @@ class EvalRecord:
                 vargrad=data.get("vargrad", {}),
             )
         except Exception as e:
-            logger.error(f"Failed to load EvalRecord: {e}", exc_info=True)
+            logger.error("Failed to load EvalRecord: %s", e, exc_info=True)
             return None
 
     def export_csv(self, target_path: str) -> None:

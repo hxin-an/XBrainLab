@@ -103,11 +103,11 @@ class DatasetController(Observable):
         for path in filepaths:
             # Check duplicates
             if any(d.get_filepath() == path for d in loader):
-                logger.info(f"Skipping duplicate: {path}")
+                logger.info("Skipping duplicate: %s", path)
                 continue
 
             try:
-                logger.info(f"Loading file: {path}")
+                logger.info("Loading file: %s", path)
                 raw = RawDataLoaderFactory.load(path)
 
                 if raw:
@@ -117,13 +117,13 @@ class DatasetController(Observable):
                     errors.append(f"{path}: Loader returned None.")
 
             except UnsupportedFormatError:
-                logger.error(f"Unsupported format: {path}")
+                logger.error("Unsupported format: %s", path)
                 errors.append(f"{path}: Unsupported format.")
             except FileCorruptedError:
-                logger.error(f"File corrupted: {path}")
+                logger.error("File corrupted: %s", path)
                 errors.append(f"{path}: File corrupted.")
             except Exception as e:
-                logger.error(f"Error loading {path}: {e}")
+                logger.error("Error loading %s: %s", path, e)
                 errors.append(f"{path}: {e!s}")
 
         if success_count > 0:
@@ -298,7 +298,7 @@ class DatasetController(Observable):
             # Performs processing
             result = process.data_preprocess(selected_channels)
         except Exception as e:
-            logger.error(f"Channel selection failed: {e}")
+            logger.error("Channel selection failed: %s", e)
             raise
 
         # Apply changes

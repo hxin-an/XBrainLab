@@ -174,7 +174,7 @@ class DatasetActionHandler:
                 )
 
         except Exception as e:
-            logger.error(f"Import label error: {e}", exc_info=True)
+            logger.error("Import label error: %s", e, exc_info=True)
             QMessageBox.critical(self.panel, "Error", f"Failed: {e}")
 
     def _get_target_files_for_import(self):

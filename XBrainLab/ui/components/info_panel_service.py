@@ -109,7 +109,7 @@ class InfoPanelService(QObject):
             pass
         except Exception as e:
             # Log other unexpected errors
-            logger.error(f"Error updating info panel: {e}")
+            logger.error("Error updating info panel: %s", e)
 
     def update_single(self, panel):
         """Manually update a single panel with current data.

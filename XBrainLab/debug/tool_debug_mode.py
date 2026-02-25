@@ -60,7 +60,7 @@ class ToolDebugMode:
         and ``self.calls`` remains empty.
         """
         if not os.path.exists(self.script_path):
-            logger.error(f"Debug script not found: {self.script_path}")
+            logger.error("Debug script not found: %s", self.script_path)
             return
 
         try:
@@ -73,7 +73,7 @@ class ToolDebugMode:
                 )
                 logger.info(msg)
         except Exception as e:
-            logger.error(f"Failed to load debug script: {e}")
+            logger.error("Failed to load debug script: %s", e)
 
     def next_call(self) -> DebugToolCall | None:
         """Return the next tool call in the sequence.

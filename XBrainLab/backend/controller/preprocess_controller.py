@@ -130,7 +130,7 @@ class PreprocessController(Observable):
             self.study.set_preprocessed_data_list(result, force_update=True)
             self.notify("preprocess_changed")
         except Exception as e:
-            logger.error(f"Preprocessing failed: {e}")
+            logger.error("Preprocessing failed: %s", e)
             raise
         return True
 
@@ -209,7 +209,7 @@ class PreprocessController(Observable):
                 if ev_ids:
                     events.update(ev_ids.keys())
             except Exception as e:  # noqa: PERF203
-                logger.warning(f"Failed to get events from preprocessed data: {e}")
+                logger.warning("Failed to get events from preprocessed data: %s", e)
         return sorted(events)
 
     def apply_epoching(self, baseline, selected_events, tmin, tmax):

@@ -75,7 +75,7 @@ class RAGRetriever:
             self.is_initialized = True
             logger.info("RAGRetriever initialized.")
         except Exception as e:
-            logger.error(f"Failed to init RAGRetriever: {e}")
+            logger.error("Failed to init RAGRetriever: %s", e)
             self.vectorstore = None
             self.client = None
 
@@ -107,7 +107,7 @@ class RAGRetriever:
 
         gold_set_path = Path(__file__).parent / "data" / "gold_set.json"
         if not gold_set_path.exists():
-            logger.warning(f"Gold set not found: {gold_set_path}")
+            logger.warning("Gold set not found: %s", gold_set_path)
             return
 
         try:
@@ -126,7 +126,7 @@ class RAGRetriever:
             finally:
                 indexer.close()
         except Exception as e:
-            logger.error(f"RAG auto-init failed: {e}")
+            logger.error("RAG auto-init failed: %s", e)
 
     def close(self):
         """Closes the Qdrant client connection and releases resources."""
@@ -191,7 +191,7 @@ class RAGRetriever:
                 result_str += f"Assistant: ```json\n{tool_calls_json}\n```\n"
 
         except Exception as e:
-            logger.error(f"Retrieval failed: {e}")
+            logger.error("Retrieval failed: %s", e)
             return ""
 
         return result_str

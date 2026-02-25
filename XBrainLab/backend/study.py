@@ -252,7 +252,7 @@ class Study:
 
         if append and self.trainer:
             self.trainer.add_training_plan_holders(training_plan_holders)
-            logger.info(f"Appended {len(training_plan_holders)} training plans")
+            logger.info("Appended %s training plans", len(training_plan_holders))
         else:
             self.trainer = Trainer(training_plan_holders)
             logger.info("Generated training plan")
@@ -268,7 +268,7 @@ class Study:
             raise ValueError("No valid trainer is generated")
 
         self.trainer.run(interact=interact)
-        logger.info(f"Started training (interact={interact})")
+        logger.info("Started training (interact=%s)", interact)
 
     def stop_training(self) -> None:
         """Stop training execution."""

@@ -56,7 +56,7 @@ class LLMEngine:
             mode: Backend mode to activate (``'local'``, ``'api'``, or
                 ``'gemini'``).
         """
-        logger.info(f"Switching backend to: {mode}")
+        logger.info("Switching backend to: %s", mode)
 
         # 1. Check Cache and Validity
         if mode in self.backends:
@@ -83,7 +83,7 @@ class LLMEngine:
 
             if not is_stale:
                 self.active_backend = backend
-                logger.info(f"Switched to cached backend: {mode}")
+                logger.info("Switched to cached backend: %s", mode)
                 return
             else:
                 # Remove stale backend
@@ -110,7 +110,7 @@ class LLMEngine:
 
         self.backends[mode] = new_backend
         self.active_backend = new_backend
-        logger.info(f"Created and switched to backend: {mode}")
+        logger.info("Created and switched to backend: %s", mode)
 
     def generate_stream(self, messages: list):
         """Generates a response in a streaming fashion.

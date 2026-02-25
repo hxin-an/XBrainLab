@@ -92,7 +92,7 @@ class LocalBackend(BaseBackend):
             logger.info("Model loaded successfully.")
 
         except Exception as e:
-            logger.error(f"Failed to load model: {e}")
+            logger.error("Failed to load model: %s", e)
             raise
 
     def _process_messages_for_template(self, messages: list) -> list:

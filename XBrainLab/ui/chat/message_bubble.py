@@ -147,7 +147,7 @@ class MessageBubble(QWidget):
                 try:
                     subprocess.Popen(f'explorer /select,"{local_path}"')  # noqa: S603
                 except Exception:
-                    logger.exception(f"Failed to open explorer for {local_path}")
+                    logger.exception("Failed to open explorer for %s", local_path)
                     # Fallback to standard open
                     QDesktopServices.openUrl(url)
             else:

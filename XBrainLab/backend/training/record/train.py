@@ -343,7 +343,7 @@ class TrainRecord:
                 # Restore epoch from train loss length
                 self.epoch = len(self.train[RecordKey.LOSS])
             except Exception as e:
-                logger.error(f"Failed to load TrainRecord stats: {e}", exc_info=True)
+                logger.error("Failed to load TrainRecord stats: %s", e, exc_info=True)
 
         # Load EvalRecord
         self.eval_record = EvalRecord.load(self.target_path)

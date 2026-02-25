@@ -1,5 +1,7 @@
 """Unit tests for preprocessor/edit_event — EditEventName and EditEventId."""
 
+import logging
+
 import mne
 import numpy as np
 import pytest
@@ -118,16 +120,13 @@ class TestEditEventId:
         with pytest.raises(ValueError, match="No Event Id updated"):
             pp.data_preprocess(new_event_ids={"left": 1, "right": 2})
 
-    def test_duplicate_ids_merges(self, capsys):
+    def test_duplicate_ids_merges(self, caplog):
         epoch_raw = _make_epoch_raw()
         pp = EditEventId([epoch_raw])
-        pp.data_preprocess(new_event_ids={"left": 99, "right": 99})
+        with caplog.at_level(logging.WARNING):
+            pp.data_preprocess(new_event_ids={"left": 99, "right": 99})
         _, event_id = pp.get_preprocessed_data_list()[0].get_event_list()
         # Should merge names
         assert 99 in event_id.values()
-        captured = capsys.readouterr()
-        assert (
-            "duplicate" in captured.out.lower()
-            or "merged" in captured.out.lower()
-            or "UserWarning" in captured.out
-        )
+        log_text = caplog.text.lower()
+        assert "duplicate" in log_text or "merged" in log_text
