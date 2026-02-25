@@ -59,7 +59,7 @@ torchinfo = "^1.8.0"
 bitsandbytes = "^0.49.1"
 
 [tool.poetry.group.dev.dependencies]
-ruff = ">=0.1.0"
+ruff = "^0.14.0"
 pre-commit = "^3.6.0"
 poethepoet = "^0.40.0"
 mypy = "^1.19.1"
