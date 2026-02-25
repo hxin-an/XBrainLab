@@ -283,8 +283,6 @@ class TestDataSplittingPreviewDialogDeep:
         assert dlg is not None
 
     def test_get_result(self, dlg):
-        dlg.get_result()
-
-    def test_update_preview(self, dlg):
-        if hasattr(dlg, "update_preview"):
-            dlg.update_preview()
+        result = dlg.get_result()
+        # Before preview runs, result should be the generator (or None)
+        assert result is None or hasattr(result, "__iter__")

@@ -560,7 +560,7 @@ class AgentManager(QObject):
                 "saliency_map": 0,
                 "spectrogram": 1,
                 "topographic_map": 2,
-                "3d_plot": 3,
+                "3d_plot": VIZ_TAB_3D_PLOT,
             },
             # Future: Add Preprocess or Evaluation panels if they have tabs
         }
@@ -572,7 +572,9 @@ class AgentManager(QObject):
             if hasattr(target_panel, "tabs"):
                 target_panel.tabs.setCurrentIndex(target_tab_index)
                 logger.info(
-                    f"Switched sub-view to {view_mode} (Tab {target_tab_index})",
+                    "Switched sub-view to %s (Tab %d)",
+                    view_mode,
+                    target_tab_index,
                 )
 
     def open_montage_picker_dialog(self, params):

@@ -59,8 +59,8 @@ class TestExportSaliencyMethods:
         dialog.on_plan_change("Plan_0")
         dialog.on_repeat_change("Plan_0_repeat_0")
         # Select a saliency method
-        if hasattr(dialog, "saliency_combo"):
-            dialog.saliency_combo.setCurrentIndex(1)
+        if hasattr(dialog, "method_combo") and dialog.method_combo is not None:
+            dialog.method_combo.setCurrentIndex(1)
         with (
             patch(
                 "PyQt6.QtWidgets.QFileDialog.getExistingDirectory",

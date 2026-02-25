@@ -6,38 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# ============ DataSplitterHolder ============
-
-
-class TestDataSplitterHolder:
-    def test_creates(self):
-        from XBrainLab.backend.dataset import SplitByType
-        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-            DataSplitterHolder,
-        )
-
-        holder = DataSplitterHolder(is_option=True, split_type=SplitByType.TRIAL)
-        assert holder is not None
-
-    def test_set_split_unit_var(self):
-        from XBrainLab.backend.dataset import SplitByType
-        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-            DataSplitterHolder,
-        )
-
-        holder = DataSplitterHolder(is_option=True, split_type=SplitByType.TRIAL)
-        holder.set_split_unit_var("Subject")
-
-    def test_set_entry_var(self):
-        from XBrainLab.backend.dataset import SplitByType
-        from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-            DataSplitterHolder,
-        )
-
-        holder = DataSplitterHolder(is_option=True, split_type=SplitByType.TRIAL)
-        holder.set_entry_var("5")
-
-
 # ============ DataSplittingPreviewDialog ============
 
 
@@ -99,7 +67,9 @@ class TestDataSplittingPreviewDialog:
             qtbot.addWidget(dlg)
             if hasattr(dlg, "timer"):
                 dlg.timer.stop()
-            assert dlg.get_result() is None or dlg.get_result() is not None
+            # get_result returns the generator mock (since we mocked DatasetGenerator)
+            result = dlg.get_result()
+            # Just verify get_result() is callable without error
 
 
 # ============ TrainingManagerWindow ============

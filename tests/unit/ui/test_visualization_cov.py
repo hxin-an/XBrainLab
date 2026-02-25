@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import contextlib
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 # ============ Saliency3DEngine ============
 
@@ -93,8 +93,15 @@ class TestSaliencyMapWidget:
         epoch.get_channel_names.return_value = ["C3", "C4", "Cz", "Fz"]
         trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
 
-        with contextlib.suppress(Exception):  # matplotlib may fail headless
+        # update_plot exercises the rendering path; matplotlib may raise
+        # in headless environments, so we just verify it doesn't crash with
+        # TypeError/AttributeError (real bugs), while allowing rendering errors.
+        try:
             w.update_plot(plan, trainer, "Gradient", False, None)
+        except (TypeError, AttributeError):
+            pytest.fail("update_plot raised unexpected error")
+        except Exception:
+            pass  # matplotlib rendering backend errors are acceptable
 
 
 # ============ SaliencySpectrogramWidget ============

@@ -159,7 +159,6 @@ class Saliency3DEngine(QObject):
                 # Robustness: Prevent QThread: Destroyed by keeping global ref
                 SALIENCY_DOWNLOAD_THREADS.add(thread)
                 # Use QThread's native finished signal (0 args) for cleanup
-                # Use QThread's native finished signal (0 args) for cleanup
                 # Fix B023: bind thread=thread
                 thread.finished.connect(
                     lambda t=thread: SALIENCY_DOWNLOAD_THREADS.discard(t),

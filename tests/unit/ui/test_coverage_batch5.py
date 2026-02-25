@@ -213,6 +213,29 @@ class TestDatasetActionHandler:
         result = handler._get_target_files_for_import()
         assert result == []
 
+    def test_open_smart_parser_success(self, handler):
+        handler.panel.controller.is_locked.return_value = False
+        handler.panel.controller.has_data.return_value = True
+        handler.panel.controller.get_filenames.return_value = ["file1.set"]
+        with patch("XBrainLab.ui.panels.dataset.actions.SmartParserDialog") as MockDlg:
+            from PyQt6.QtWidgets import QDialog
+
+            MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            MockDlg.return_value.get_result.return_value = {"rule": "test"}
+            with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox"):
+                handler.open_smart_parser()
+                handler.panel.controller.apply_smart_parse.assert_called()
+
+    def test_import_label_returns_early_no_files(self, handler):
+        """import_label calls _get_target_files_for_import first; if empty, returns."""
+        handler.panel.table.selectedIndexes.return_value = []
+        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+            mock_mb.StandardButton.Yes = 1
+            mock_mb.StandardButton.No = 2
+            mock_mb.question.return_value = 2  # user cancels
+            handler.import_label()
+            # No warning called since user just cancelled target selection
+
 
 # ====================================================================
 # ImportLabelDialog

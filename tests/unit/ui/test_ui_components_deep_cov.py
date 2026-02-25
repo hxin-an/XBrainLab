@@ -18,14 +18,12 @@ class TestSinglePlotWindow:
         qtbot.addWidget(w)
         assert w.windowTitle() == "Test Plot"
 
-    def test_update_canvas(self, qtbot):
+    def test_has_figure_canvas(self, qtbot):
         from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
 
         w = SinglePlotWindow(None, title="Test")
         qtbot.addWidget(w)
-        # Should accept matplotlib figure operations
-        if hasattr(w, "figure"):
-            w.figure.clear()
+        assert hasattr(w, "figure_canvas")
 
 
 # ============ MessageBubble ============
@@ -46,21 +44,12 @@ class TestMessageBubble:
         qtbot.addWidget(b)
         assert b is not None
 
-    def test_append_text(self, qtbot):
-        from XBrainLab.ui.chat.message_bubble import MessageBubble
-
-        b = MessageBubble(text="", is_user=False)
-        qtbot.addWidget(b)
-        if hasattr(b, "append_text"):
-            b.append_text(" more text")
-
     def test_set_text(self, qtbot):
         from XBrainLab.ui.chat.message_bubble import MessageBubble
 
         b = MessageBubble(text="initial", is_user=False)
         qtbot.addWidget(b)
-        if hasattr(b, "set_text"):
-            b.set_text("updated")
+        b.set_text("updated")
 
 
 # ============ ConfusionMatrix & MetricsBarChart ============
@@ -83,18 +72,7 @@ class TestConfusionMatrix:
 
         w = ConfusionMatrixWidget()
         qtbot.addWidget(w)
-        if hasattr(w, "update_plot"):
-            w.update_plot(None, None)
-
-    def test_clear(self, qtbot):
-        from XBrainLab.ui.panels.evaluation.confusion_matrix import (
-            ConfusionMatrixWidget,
-        )
-
-        w = ConfusionMatrixWidget()
-        qtbot.addWidget(w)
-        if hasattr(w, "clear"):
-            w.clear()
+        w.update_plot(None)
 
 
 class TestMetricsBarChart:
@@ -114,8 +92,7 @@ class TestMetricsBarChart:
 
         w = MetricsBarChartWidget()
         qtbot.addWidget(w)
-        if hasattr(w, "update_plot"):
-            w.update_plot(None)
+        w.update_plot(None)
 
 
 # ============ History Table ============
@@ -129,21 +106,14 @@ class TestHistoryTable:
         qtbot.addWidget(w)
         assert w is not None
 
-    def test_set_records(self, qtbot):
+    def test_clear_history(self, qtbot):
         from XBrainLab.ui.panels.training.history_table import TrainingHistoryTable
 
         w = TrainingHistoryTable()
         qtbot.addWidget(w)
-        if hasattr(w, "set_records"):
-            w.set_records([])
-
-    def test_clear(self, qtbot):
-        from XBrainLab.ui.panels.training.history_table import TrainingHistoryTable
-
-        w = TrainingHistoryTable()
-        qtbot.addWidget(w)
-        if hasattr(w, "clear"):
-            w.clear()
+        w.clear_history()
+        assert w.rowCount() == 0
+        assert w.row_map == {}
 
 
 # ============ FilteringDialog ============
@@ -162,8 +132,9 @@ class TestFilteringDialog:
 
         d = FilteringDialog(None)
         qtbot.addWidget(d)
-        if hasattr(d, "get_params"):
-            result = d.get_params()
+        # get_params returns None before the dialog is accepted
+        result = d.get_params()
+        assert result is None or isinstance(result, tuple)
 
 
 # ============ DatasetPanel ============
@@ -186,10 +157,6 @@ class TestDatasetPanel:
 
     def test_update_panel(self, panel):
         panel.update_panel()
-
-    def test_update_info(self, panel):
-        if hasattr(panel, "update_info"):
-            panel.update_info()
 
 
 # ============ TrainingPanel ============
@@ -224,5 +191,4 @@ class TestTrainingPanel:
         panel.update_panel()
 
     def test_update_info(self, panel):
-        if hasattr(panel, "update_info"):
-            panel.update_info()
+        panel.update_info()

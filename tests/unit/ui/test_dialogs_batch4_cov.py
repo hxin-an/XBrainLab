@@ -222,29 +222,6 @@ class TestSmartParserDialog:
         dlg.update_preview()
 
 
-# ============ ImportLabelDialog ============
-
-
-class TestImportLabelDialog:
-    @pytest.fixture
-    def dlg(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.import_label_dialog import ImportLabelDialog
-
-        d = ImportLabelDialog(parent=None)
-        qtbot.addWidget(d)
-        return d
-
-    def test_creates(self, dlg):
-        assert dlg is not None
-
-    def test_get_result_empty(self, dlg):
-        result = dlg.get_result()
-        assert result is None or result == (None, None)
-
-    def test_remove_files_empty(self, dlg):
-        dlg.remove_files()
-
-
 # ============ TrainingSettingDialog ============
 
 

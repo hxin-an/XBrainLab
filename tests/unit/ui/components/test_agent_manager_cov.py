@@ -64,9 +64,9 @@ class TestAgentManagerMethods:
 
     def test_start_new_conversation(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
+        agent_mgr.agent_controller.reset_conversation = MagicMock()
         agent_mgr.start_new_conversation()
-        if hasattr(agent_mgr.agent_controller, "reset_conversation"):
-            agent_mgr.agent_controller.reset_conversation.assert_called()
+        agent_mgr.agent_controller.reset_conversation.assert_called()
 
     def test_open_settings_dialog(self, agent_mgr):
         with patch(
