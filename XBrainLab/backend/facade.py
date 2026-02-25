@@ -255,6 +255,7 @@ class BackendFacade:
             return f"Set Montage '{montage_name}' (Matched {len(mapped_chs)} channels)"
 
         except Exception as e:
+            logger.error("SetMontage failed", exc_info=True)
             return f"SetMontage failed: {e!s}"
 
     # --- Epoching ---

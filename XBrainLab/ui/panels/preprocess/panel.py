@@ -1,7 +1,5 @@
 """Preprocessing panel for signal filtering, resampling, and epoching."""
 
-from typing import TYPE_CHECKING
-
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from XBrainLab.ui.core.base_panel import BasePanel
@@ -10,9 +8,6 @@ from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
 from XBrainLab.ui.panels.preprocess.sidebar import PreprocessSidebar
-
-if TYPE_CHECKING:
-    pass
 
 
 class PreprocessPanel(BasePanel):

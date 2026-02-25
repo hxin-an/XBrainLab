@@ -125,47 +125,49 @@ class TrainingOption:
         self.validate()
 
     def validate(self) -> None:
-        """Validate training options
+        """Validate training options.
 
         Raises:
-            ValueError: If any option is invalid or not set
+            ValueError: If any option is invalid or not set.  When
+                multiple problems exist, all are reported in a single
+                semicolon-separated message.
         """
-        reason = None
+        errors: list[str] = []
         if self.output_dir is None:
-            reason = "Output directory not set"
+            errors.append("Output directory not set")
         if self.optim is None or self.optim_params is None:
-            reason = "Optimizer not set"
+            errors.append("Optimizer not set")
         if self.use_cpu is None:
-            reason = "Device not set"
+            errors.append("Device not set")
         if not self.use_cpu and self.gpu_idx is None:
-            reason = "Device not set"
+            errors.append("Device not set")
         if self.evaluation_option is None:
-            reason = "Evaluation option not set"
+            errors.append("Evaluation option not set")
 
         def check_num(i):
-            """Return True if i is not a number"""
+            """Return True if *i* is not a valid number."""
             try:
                 float(i)
-            except Exception:
+            except (TypeError, ValueError):
                 return True
             else:
                 return False
 
         if self.gpu_idx is not None and check_num(self.gpu_idx):
-            reason = "Invalid gpu_idx"
+            errors.append("Invalid gpu_idx")
         if check_num(self.epoch):
-            reason = "Invalid epoch"
+            errors.append("Invalid epoch")
         if check_num(self.bs):
-            reason = "Invalid batch size"
+            errors.append("Invalid batch size")
         if check_num(self.lr):
-            reason = "Invalid learning rate"
+            errors.append("Invalid learning rate")
         if check_num(self.checkpoint_epoch):
-            reason = "Invalid checkpoint epoch"
+            errors.append("Invalid checkpoint epoch")
         if check_num(self.repeat_num) or int(self.repeat_num) <= 0:
-            reason = "Invalid repeat number"
+            errors.append("Invalid repeat number")
 
-        if reason:
-            raise ValueError(reason)
+        if errors:
+            raise ValueError("; ".join(errors))
 
         self.epoch = int(self.epoch)
         self.bs = int(self.bs)

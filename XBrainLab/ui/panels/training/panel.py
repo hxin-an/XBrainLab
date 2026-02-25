@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -238,19 +239,19 @@ class TrainingPanel(BasePanel):
         self.tab_acc.clear()
         self.tab_loss.clear()
 
+        def get_val(key, source, idx):
+            if idx < len(source[key]):
+                val = source[key][idx]
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return 0.0
+            return 0.0
+
         # Re-populate data
         epochs = len(record.train[TrainRecordKey.ACC])
         for i in range(epochs):
             epoch = i + 1
-
-            def get_val(key, source, idx):
-                if idx < len(source[key]):
-                    val = source[key][idx]
-                    try:
-                        return float(val)
-                    except (ValueError, TypeError):
-                        return 0.0
-                return 0.0
 
             train_acc = get_val(TrainRecordKey.ACC, record.train, i)
             val_acc = get_val(RecordKey.ACC, record.val, i)
@@ -314,6 +315,9 @@ class TrainingPanel(BasePanel):
                     self.refresh_plot(self.current_plotting_record)
             except Exception:
                 # Fallback: just refresh
+                logger.warning(
+                    "Error reading training epoch data, refreshing plot", exc_info=True
+                )
                 self.refresh_plot(self.current_plotting_record)
 
     # check_ready_to_train moved to Sidebar

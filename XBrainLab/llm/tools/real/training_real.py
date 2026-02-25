@@ -77,9 +77,9 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
 
         try:
             facade.configure_training(
-                epoch=epoch or 10,
-                batch_size=batch_size or 32,
-                learning_rate=learning_rate or 0.001,
+                epoch=epoch if epoch is not None else 10,
+                batch_size=batch_size if batch_size is not None else 32,
+                learning_rate=learning_rate if learning_rate is not None else 0.001,
                 repeat=repeat,
                 device=device,
                 optimizer=optimizer,
@@ -90,9 +90,9 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
         else:
             return (
                 f"Training configured: {optimizer} on {device}, "
-                f"Epochs: {epoch or 10}, "
-                f"Batch: {batch_size or 32}, "
-                f"LR: {learning_rate or 0.001}"
+                f"Epochs: {epoch if epoch is not None else 10}, "
+                f"Batch: {batch_size if batch_size is not None else 32}, "
+                f"LR: {learning_rate if learning_rate is not None else 0.001}"
             )
 
 

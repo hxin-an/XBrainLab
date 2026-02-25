@@ -1,5 +1,7 @@
 """Qt-compatible observer bridge for thread-safe backend-to-UI signalling."""
 
+import contextlib
+
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from XBrainLab.backend.utils.observer import Observable
@@ -57,8 +59,11 @@ class QtObserverBridge(QObject):
         Args:
             slot: A callable to invoke when the event fires.
         """
-        self.triggered.connect(lambda args, kwargs: slot(*args, **kwargs))
+        self._wrapper = lambda args, kwargs: slot(*args, **kwargs)
+        self.triggered.connect(self._wrapper)
 
     def cleanup(self):
-        """Unsubscribe from the backend observable event."""
+        """Unsubscribe from the backend observable event and disconnect signals."""
         self.observable.unsubscribe(self.event_name, self._on_event)
+        with contextlib.suppress(TypeError):
+            self.triggered.disconnect()

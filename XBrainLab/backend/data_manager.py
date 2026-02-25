@@ -179,9 +179,9 @@ class DataManager:
         Args:
             force_update: If ``False``, raises when data already exists.
         """
-        self.clean_datasets(force_update=force_update)
         if not force_update:
             self._guard_clean_raw_data()
+        self.clean_datasets(force_update=force_update)
         self.loaded_data_list = []
         self.preprocessed_data_list = []
         self.epoch_data = None

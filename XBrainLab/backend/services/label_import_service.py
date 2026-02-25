@@ -16,6 +16,9 @@ class LabelImportService:
     Supports batch mapping, sequential legacy mode, and force-import mode.
     """
 
+    _FORCE_IMPORT_FALLBACK_EPOCHS = 100
+    """Legacy default epoch count used when the actual count is unknown."""
+
     def apply_labels_batch(
         self,
         target_files: list[Any],
@@ -110,7 +113,7 @@ class LabelImportService:
                 # get_epoch_count_for_file(data, None)
                 n = self.get_epoch_count_for_file(data, None)
                 if n == 0:
-                    n = 100  # Default fallback from original code
+                    n = self._FORCE_IMPORT_FALLBACK_EPOCHS
 
                 if current_idx + n <= len(labels):
                     file_labels = labels[current_idx : current_idx + n]

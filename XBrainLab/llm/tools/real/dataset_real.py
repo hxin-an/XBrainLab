@@ -50,11 +50,8 @@ class RealListFilesTool(BaseListFilesTool):
 
         # Resolve to absolute path and guard against directory traversal
         directory = os.path.realpath(directory)
-        if not os.path.isabs(directory) or ".." in os.path.normpath(directory):
-            return (
-                f"Error: Access denied — '{directory}' contains "
-                "directory traversal sequences."
-            )
+        if not os.path.isabs(directory):
+            return f"Error: Access denied — '{directory}' is not an absolute path."
 
         if not os.path.isdir(directory):
             return f"Error: Directory '{directory}' does not exist."

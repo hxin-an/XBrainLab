@@ -138,13 +138,12 @@ class AgentWorker(QObject):
         try:
             fresh_config = LLMConfig.load_from_file()
             if fresh_config:
-                # We simply update the engine's config object in place or replace it
-                # Replacing is safer for simple dataclasses
-                # Preserve some runtime state if needed? No, config is improved.
+                old_mode = self.engine.config.inference_mode
                 self.engine.config = fresh_config
 
-                # Ensure backend is consistent with new config (e.g. if model changed)
-                self.engine.switch_backend(self.engine.config.inference_mode)
+                # Only switch backend if inference mode actually changed
+                if fresh_config.inference_mode != old_mode:
+                    self.engine.switch_backend(fresh_config.inference_mode)
         except Exception as e:
             logger.error(f"Failed to sync config: {e}")
 
@@ -185,6 +184,9 @@ class AgentWorker(QObject):
                 self.generation_thread.chunk_received.disconnect(self.chunk_received)
                 self.generation_thread.finished_generation.disconnect(
                     self._on_generation_finished
+                )
+                self.generation_thread.error_occurred.disconnect(
+                    self._on_generation_error
                 )
                 # self.generation_thread.terminate() # Dangerous, avoid unless necessary
             except Exception:

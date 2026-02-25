@@ -9,6 +9,7 @@ from typing import Any
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QMainWindow,
@@ -301,18 +302,21 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def global_exception_handler(exctype, value, traceback):
+def global_exception_handler(exctype, value, tb):
     """Global exception handler that logs errors and displays an error dialog.
 
     Args:
         exctype: The exception class.
         value: The exception instance.
-        traceback: The traceback object.
+        tb: The traceback object.
     """
     if issubclass(exctype, KeyboardInterrupt):
-        sys.__excepthook__(exctype, value, traceback)
+        sys.__excepthook__(exctype, value, tb)
         return
-    logger.error("Uncaught exception", exc_info=(exctype, value, traceback))
+    logger.error("Uncaught exception", exc_info=(exctype, value, tb))
+    app = QApplication.instance()
+    if app is None:
+        return
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Icon.Critical)
     msg.setText("An unexpected error occurred.")

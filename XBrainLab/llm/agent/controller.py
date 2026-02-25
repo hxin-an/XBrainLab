@@ -114,7 +114,6 @@ class LLMController(QObject):
         self.is_processing = False
 
         # Robustness State
-        # Robustness State
         self._recent_tool_calls: deque = deque(maxlen=10)
         self._retry_count = 0
         self._max_retries = 2
@@ -588,6 +587,11 @@ class LLMController(QObject):
 
     def close(self):
         """Shuts down the worker thread and cleans up resources."""
+        if hasattr(self, "rag_retriever") and self.rag_retriever:
+            try:
+                self.rag_retriever.close()
+            except Exception:
+                logger.debug("RAG retriever cleanup failed", exc_info=True)
         if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
             self.worker_thread.quit()
             self.worker_thread.wait()
@@ -597,8 +601,12 @@ class LLMController(QObject):
         if self.is_processing:
             self.status_update.emit("Stopping...")
             self.is_processing = False
-            # Signal the worker to stop via thread interruption
-            self.worker_thread.requestInterruption()
+            # Signal the generation thread (not worker thread) to stop
+            if (
+                self.worker.generation_thread
+                and self.worker.generation_thread.isRunning()
+            ):
+                self.worker.generation_thread.requestInterruption()
             self.processing_finished.emit()
 
     def set_model(self, model_display_name: str):
@@ -622,6 +630,7 @@ class LLMController(QObject):
         self.current_response = ""
         self._retry_count = 0
         self._tool_failure_count = 0
+        self._loop_break_count = 0
         self._recent_tool_calls.clear()
 
         # Clear Assembler context as well

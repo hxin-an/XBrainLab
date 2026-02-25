@@ -3,7 +3,6 @@
 import re
 
 from PyQt6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QGroupBox,
@@ -297,8 +296,6 @@ class VisualizationPanel(BasePanel):
             # Force UI update to ensure plot appears immediately
             if current_widget:
                 current_widget.repaint()
-
-            QApplication.processEvents()
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""

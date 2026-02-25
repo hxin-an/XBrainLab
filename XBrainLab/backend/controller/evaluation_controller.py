@@ -13,6 +13,7 @@ from torchinfo import summary
 
 from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record import EvalRecord, TrainRecord
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.observer import Observable
 
 if TYPE_CHECKING:
@@ -169,6 +170,7 @@ class EvaluationController(Observable):
                 summary_str = f"=== Run: {record.get_name()} ===\n" + summary_str
 
         except Exception as e:
+            logger.error("Error generating model summary", exc_info=True)
             return f"Error generating summary: {e}"
 
         return summary_str
