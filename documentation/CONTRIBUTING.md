@@ -124,8 +124,7 @@ Red → Green → Refactor
 |------|------|------|
 | **Unit Tests** | `tests/unit/` | 單一函數/類別測試 |
 | **Integration Tests** | `tests/integration/` | 模組間整合測試 |
-| **UI Tests** | `tests/ui/` | Headless UI 測試 (QtTest) |
-| **Agent Tests** | `tests/agent/` | Tool Call 準確率評測 |
+| **Regression Tests** | `tests/regression/` | Bug 回歸測試 |
 
 ### 3. 測試指令
 
@@ -140,10 +139,10 @@ pytest tests/unit/
 pytest tests/ui/
 
 # Agent 準確率評測
-python -m xbrainlab.eval --model gpt-4
+poe benchmark-llm
 
 # Interactive Debug Mode
-python run.py --tool-debug scripts/debug_filter.json
+python run.py --tool-debug scripts/agent/debug/debug_filter.json
 ```
 
 ### 4. 覆蓋率要求
@@ -161,7 +160,7 @@ python run.py --tool-debug scripts/debug_filter.json
 1. **更新 Benchmark Dataset**：
    ```bash
    # 新增測試案例到
-   benchmarks/tool_call_v1.json
+   scripts/agent/benchmarks/data/external_validation_set.json
    ```
 
 2. **使用 Debug Mode 驗證**：
@@ -181,7 +180,7 @@ python run.py --tool-debug scripts/debug_filter.json
 
 4. **執行評測確認準確率**：
    ```bash
-   python -m xbrainlab.eval --model gpt-4
+   poe benchmark-llm
    # 確認新工具準確率 > 90%
    ```
 

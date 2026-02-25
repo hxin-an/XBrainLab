@@ -1,6 +1,6 @@
 # LLM Benchmark Methodology (認知能力評測)
 
-本文件說明 `scripts/benchmark/eval_agent.py` 如何評估 LLM Agent 的認知能力，並解釋其與真實運作環境的關係。
+本文件說明 `scripts/agent/benchmarks/simple_bench.py` 如何評估 LLM Agent 的認知能力，並解釋其與真實運作環境的關係。
 
 ## 1. 核心評測機制：意圖攔截 (Intent Interception)
 
@@ -21,9 +21,9 @@ graph LR
 
 答案是：**是的。**
 
-評測腳本 (`eval_agent.py`) 匯入了 **真實的專案程式碼**：
+評測腳本 (`simple_bench.py`) 匯入了 **真實的專案程式碼**：
 ```python
-# scripts/benchmark/eval_agent.py Line 13
+# scripts/agent/benchmarks/simple_bench.py
 from XBrainLab.llm.agent.controller import LLMController
 ```
 
@@ -39,7 +39,7 @@ from XBrainLab.llm.agent.controller import LLMController
 
 ## 2. 黃金測試集 (Gold Set)
 
-測試集位於 `scripts/benchmark/data/gold_set.json`，格式如下：
+測試集位於 `scripts/agent/benchmarks/data/gold_set.json`，格式如下：
 
 ```json
 {

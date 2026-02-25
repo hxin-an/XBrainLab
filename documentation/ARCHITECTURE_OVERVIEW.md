@@ -39,8 +39,7 @@ graph TD
         end
 
         subgraph Services ["Services (服務)"]
-            DataSvc[DataService<br/>數據處理]
-            ModelSvc[ModelService<br/>模型管理]
+            LabelSvc[LabelImportService<br/>標籤匯入]
         end
 
         Facade[BackendFacade<br/>統一接口]
@@ -121,14 +120,9 @@ graph TD
     EvalCtrl --> Study
     VisCtrl --> Study
 
-    DatasetCtrl --> DataSvc
-    PreprocessCtrl --> DataSvc
-    TrainingCtrl --> ModelSvc
-    EvalCtrl --> ModelSvc
-    VisCtrl --> ModelSvc
+    DatasetCtrl --> LabelSvc
 
-    DataSvc --> Study
-    ModelSvc --> Study
+    LabelSvc --> Study
 
     Study --> Observable
 

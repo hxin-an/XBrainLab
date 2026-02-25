@@ -163,19 +163,15 @@ poetry run benchmark-llm
 
 ### 模組詳細文件
 *   **UI (前端介面)** - `documentation/ui/`
-    *   [Architecture](ui/architecture.md): 介面架構與 Signal 機制。
-    *   [Flows](ui/flows.md): 使用者操作流程圖。
+    *   [Architecture 2.0](ui/ARCHITECTURE_2_0.md): 介面架構與 Observer Bridge 機制。
 *   **Backend (後端核心)** - `documentation/backend/`
-    *   [Architecture](backend/architecture.md): 資料處理管線設計。
-    *   [API Reference](backend/api_reference.md): 核心類別與函式定義。
-    *   [Flows](backend/flows.md): 資料流向圖。
+    *   [Architecture](backend/architecture.md): 後端架構、Facade、Controller 與資料處理管線設計。
 *   **Agent (AI 代理)** - `documentation/agent/`
-    *   [Architecture](agent/architecture.md): RAG 與 Agent 架構。
-    *   [Tools API](agent/tools_api.md): 工具呼叫介面定義。
+    *   [Agent Architecture](agent/agent_architecture.md): ReAct 迴圈、Agent 系統全貌。
+    *   [Tool Definitions](agent/tool_definitions.md): 工具呼叫介面定義（19 個工具）。
+    *   [Benchmark](agent/benchmark.md): 認知能力評測方法論。
+    *   [Context Assembler](agent/context_assembler.md): Context Assembler 架構設計。
 *   **Test (測試)** - `documentation/test/`
-    *   [Guide](test/guide.md): 測試執行入門。
-    *   [Strategy](test/strategy.md): 測試策略與 Mocking 技巧。
-    *   **Cases**:
-        *   [Backend Cases](test/cases/backend.md)
-        *   [UI Cases](test/cases/ui.md)
-        *   [Agent Cases](test/cases/agent.md)
+    *   [Testing Guide](test/README.md): 測試策略、執行方式與目錄結構。
+    *   [LLM Test Cases](test/llm/llm_test_cases.md): LLM 模組單元測試案例。
+    *   [UI Testing Strategy](test/ui/ui_testing_strategy.md): UI 測試策略與 Mock 技巧。

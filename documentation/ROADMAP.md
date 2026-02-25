@@ -71,9 +71,9 @@
     - [ ] 實作 `BasePanel` 統一集成 Bridge 邏輯
     - [ ] 更新 `Observable` 支援更豐富的 Payload
 - [ ] **完全解耦 (Complete Decoupling)**
-    - [ ] **服務層遷移**: 移動 `LabelImportService` 至 Backend
+    - [x] **服務層遷移**: `LabelImportService` 已移至 Backend (v0.5.0)
     - [ ] **移除全局依賴**: MainWindow 不再持有 `Study` 引用 (Dependency Injection)
-    - [ ] **Agent 層解耦**: 引入 `BackendFacade` 介面，移除對 `Study` 的直接引用
+    - [x] **Agent 層解耦**: `BackendFacade` 介面已建立 (v0.5.0)
 
 ### 第四階段：測試與驗證體系 (Testing & Verification Infrastructure) - **[Planned]**
 *目標：確保各層級穩定性*
@@ -114,7 +114,7 @@
 - [x] **黃金測試集 (Gold Set)**
     - [x] 擴充至 50+ 測試案例，覆蓋 Dataset, Preprocess, Training, UI。
 - [x] **自動化評測 (Benchmark Script)**
-    - [x] 實作 `eval_agent.py`，支援分類準確率報告與詳細失敗分析。
+    - [x] 實作 `simple_bench.py`，支援分類準確率報告與詳細失敗分析。
     - [x] 達成 88.0% 通過率。
 - [x] **架構重構**
     - [x] 實作 `ContextAssembler` 以支援動態 System Prompt 與 Context。
@@ -164,7 +164,7 @@
 #### 4.3 Benchmark 改進
 **測試集隔離策略**：
 - [ ] **歷史隔離模式**
-    - [ ] 修改 `eval_agent.py` 為每個測試案例建立獨立 Controller（避免歷史污染）
+    - [ ] 修改 `simple_bench.py` 為每個測試案例建立獨立 Controller（避免歷史污染）
     - [ ] 優化：重用 AgentWorker 避免重複加載模型
 - [ ] **測試集分工**
     - [ ] 將 Benchmark 預設改為 `external_validation_set.json` (175 題 OOD 測試)
@@ -217,7 +217,7 @@
     - [ ] 建立「模型選擇指南」文件（根據硬體推薦模型）
 - [ ] **評估框架**
     - [ ] 引入 **Ragas** 或 **Arize Phoenix**
-    - [ ] 建立自動化評分 Pipeline（擴充 `scripts/benchmark/eval_agent.py`）
+    - [ ] 建立自動化評分 Pipeline（擴充 `scripts/agent/benchmarks/simple_bench.py`）
     - [ ] 支援指定模型進行 Benchmark：`--model qwen2.5-3b`
 
 #### 4.7 混合推論引擎 (Hybrid Inference Engine) - **[✅ Mostly Done]**

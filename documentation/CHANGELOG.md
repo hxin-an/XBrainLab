@@ -5,7 +5,7 @@
 ## [0.5.3] - 2026-02-25
 ### Fixed
 - **Comprehensive Code Review — Tier 0-2 修復（25 項）**:
-    - 完整審查報告見 `documentation/FULL_CODE_REVIEW_2025-02-25.md`（199 項發現，16 CRITICAL / 43 HIGH / 74 MEDIUM / 66 LOW）。
+    - 全專案 199 項發現（16 CRITICAL / 43 HIGH / 74 MEDIUM / 66 LOW），已完成 Tier 0-2 修復。
 
 #### Tier 0 — 崩潰 / 資料錯誤修復
 - **SCCNet / ShallowConvNet `torch.log(0)` NaN**: 加入 `torch.clamp(x, min=1e-7)` 防止 `log(0) = -inf`。
