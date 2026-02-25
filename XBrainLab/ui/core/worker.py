@@ -1,9 +1,12 @@
 """Background worker utilities for offloading tasks to QThreadPool."""
 
+import logging
 import sys
 import traceback
 
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal
+
+logger = logging.getLogger(__name__)
 
 
 class WorkerSignals(QObject):
@@ -58,7 +61,7 @@ class Worker(QRunnable):
             result = self.fn(*self.args, **self.kwargs)
         except Exception:
             # Emit error signal
-            traceback.print_exc()
+            logger.error("Worker task failed", exc_info=True)
             exctype, value = sys.exc_info()[:2]
             self.signals.error.emit((exctype, value, traceback.format_exc()))
         else:

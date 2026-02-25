@@ -366,7 +366,7 @@ class AgentManager(QObject):
                     if mode == "local":
                         is_local = True
             except Exception:
-                pass
+                pass  # Best-effort check; engine may not be initialized yet
 
         if not is_local:
             return

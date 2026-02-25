@@ -1,7 +1,6 @@
 """Trainer module for managing and executing training plan queues."""
 
 import threading
-import traceback
 from enum import Enum
 
 from ..utils import validate_list_type
@@ -108,7 +107,6 @@ class Trainer:
             error_msg = f"Training thread crashed: {e}"
             logger.error(error_msg, exc_info=True)
             self.progress_text = f"Error: {e}"
-            traceback.print_exc()  # Print to console for dev visibility
         finally:
             if not isinstance(
                 self.progress_text, str

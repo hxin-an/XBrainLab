@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import datetime
 import time
-import traceback
 from enum import Enum
 
 import numpy as np
@@ -267,7 +266,7 @@ class TrainingPlanHolder:
             else:
                 self.status = Status.PENDING.value
         except Exception as e:
-            traceback.print_exc()
+            logger.error("Training plan execution failed: %s", e, exc_info=True)
             self.error = str(e)
             self.status = Status.PENDING.value
         finally:
