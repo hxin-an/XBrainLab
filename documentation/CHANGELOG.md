@@ -2,6 +2,41 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [0.5.3] - 2026-02-25
+### Fixed
+- **Comprehensive Code Review — Tier 0-2 修復（25 項）**:
+    - 完整審查報告見 `documentation/FULL_CODE_REVIEW_2025-02-25.md`（199 項發現，16 CRITICAL / 43 HIGH / 74 MEDIUM / 66 LOW）。
+
+#### Tier 0 — 崩潰 / 資料錯誤修復
+- **SCCNet / ShallowConvNet `torch.log(0)` NaN**: 加入 `torch.clamp(x, min=1e-7)` 防止 `log(0) = -inf`。
+- **PlotFigureWindow 缺少 `super().__init__()`**: 補上父類別初始化，修復 `AttributeError` 崩潰。
+- **KFOLD 類型不匹配**: `_get_real_num` / `pick_trial` 接受 `float` 並轉型為 `int`，修復 KFOLD 分割永遠失敗的問題。
+- **`get_kappa()` 除零錯誤**: 加入 `pe >= 1.0` 防護，避免 `ZeroDivisionError`。
+- **scipy `nperseg` 型別錯誤**: `saliency_spectrogram_map.py` 將 `sfreq` 轉型為 `int`。
+- **`stop_generation()` 狀態洩漏**: 發出 `processing_finished` 信號，修復 UI 永遠卡在忙碌狀態。
+- **Config 推理模式同步**: `load_from_file` 同步 `inference_mode = active_mode`，修復切換 Gemini 後被靜默切回。
+- **ModelSummaryWindow 雙重 `init_ui()`**: 重新排列屬性初始化順序，移除重複呼叫。
+- **`handle_user_input` 異常處理**: 加入 `try/except` + 迴圈偵測上限計數器（`_max_loop_breaks = 3`）。
+
+#### Tier 1 — 資源洩漏 / 安全性修復
+- **GPU VRAM 洩漏**: `training_plan.train()` 加入 `finally` 區塊，訓練結束後 `model.cpu()` + `torch.cuda.empty_cache()`。
+- **`state_dict` GPU 記憶體浪費**: `deepcopy(state_dict())` → `{k: v.cpu().clone()}`，避免在 GPU 上複製。
+- **`trust_remote_code` 安全風險**: 預設值從 `True` 改為 `False`。
+- **路徑遍歷攻擊防護**: `RealListFilesTool` 加入 `os.path.realpath` + `..` 偵測。
+- **預處理狀態不一致**: `_apply_processor` 傳入 `force_update=True`，修復已分割後無法重新預處理。
+- **Observer 迭代中修改**: `notify()` 改為迭代 `list()` 副本，防止 callback 觸發 subscribe/unsubscribe 時崩潰。
+- **`Epochs.__init__` O(n²) 效能**: 迴圈內 `np.concatenate` 改為收集後一次 concat。
+
+#### Tier 2 — 正確性 / 效能改善
+- **Confusion Matrix 類別數不正確**: `calculate_confusion` 使用 `output.shape[1]` 取代 `np.unique(label)`。
+- **Training 迴圈 `torch.cat` O(n²)**: `training_plan.py` / `evaluator.py` 改為 parts-list + 單次 concat。
+- **`clean_datasets` 殘留引用**: 清除 `dataset_generator = None`。
+- **MNE 棄用 API**: `pick_channels()` → `pick()`。
+- **Normalize 未知方法靜默忽略**: 加入 variant name 正規化 + `else: raise ValueError`。
+
+### Changed
+- 更新 2 個測試檔案以配合修復（`test_preprocess_controller.py`、`test_real_tools.py`）。
+
 ## [0.5.2] - 2026-02-05
 ### Added
 - **Real Tool Testing Platform (M3)**:
