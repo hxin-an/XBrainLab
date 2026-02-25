@@ -157,12 +157,6 @@ class MainWindow(QMainWindow):
 
         if index == 0:
             btn.setChecked(True)
-        elif index == 1:
-            # This block was added based on the instruction's intent.
-            # Assuming it was meant to be a conditional check.
-            pass
-            # The original instruction had invalid syntax.
-            # Keeping this as a placeholder for potential future logic.
 
     def switch_page(self, index):
         """Switch the active panel in the stacked widget.

@@ -62,11 +62,11 @@
 - [x] **架構驗證 (Architecture Verification)**
     - [x] 設計 `QtObserverBridge` 模式 (Event-Driven Bridge)
     - [x] 驗證 `DatasetPanel` 遷移效果 (解決 White Screen Issue)
-- [ ] **系統遷移 (System-Wide Rollout)**
-    - [ ] **TrainingPanel**: 遷移 `QTimer` 輪詢至 `QtObserverBridge`
-    - [ ] **PreprocessPanel**: 監聽預處理完成事件
-    - [ ] **VisualizationPanel**: 監聽 Montage/Data 變更事件
-    - [ ] **EvaluationPanel**: 監聽評估結果事件
+- [x] **系統遷移 (System-Wide Rollout)**
+    - [x] **TrainingPanel**: 遷移 `QTimer` 輪詢至 `QtObserverBridge`
+    - [x] **PreprocessPanel**: 監聽預處理完成事件
+    - [x] **VisualizationPanel**: 監聽 Montage/Data 變更事件
+    - [x] **EvaluationPanel**: 監聽評估結果事件
 - [ ] **基礎建設完善**
     - [ ] 實作 `BasePanel` 統一集成 Bridge 邏輯
     - [ ] 更新 `Observable` 支援更豐富的 Payload
@@ -78,8 +78,8 @@
 ### 第四階段：測試與驗證體系 (Testing & Verification Infrastructure) - **[Planned]**
 *目標：確保各層級穩定性*
 
-- [ ] **UI/Integration Testing**
-    - [ ] 引入 `pytest-qt`
+- [x] **UI/Integration Testing**
+    - [x] 引入 `pytest-qt`
     - [ ] 建立 E2E 測試 (Import -> Train -> Result)
 - [ ] **Backend Independence Verification**
     - [ ] 驗證 Backend 可在無 Qt 環境執行 (Headless Test)

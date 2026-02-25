@@ -52,7 +52,7 @@ graph TD
     VP --> OB
     CP --> AM
 
-    OB -->|"Qt Signal (QueuedConnection)"| DC & PC & TC
+    OB -->|"Qt Signal (AutoConnection)"| DC & PC & TC
     AM -->|"BackendFacade"| DC
 ```
 
@@ -63,7 +63,7 @@ graph TD
 ```
 XBrainLab/ui/
 ├── __init__.py
-├── main_window.py              # QMainWindow (334 行)
+├── main_window.py              # QMainWindow (328 行)
 │                                 # ├── StackedWidget (面板切換)
 │                                 # ├── AgentManager (Agent 生命週期)
 │                                 # └── ToolExecutor (Agent 工具分發)
@@ -165,12 +165,12 @@ XBrainLab/ui/
 
 ### 4.1 MainWindow
 
-`MainWindow` (267 行) 是 `QMainWindow` 子類別，職責為 **面板編排**，不包含業務邏輯。
+`MainWindow` (328 行) 是 `QMainWindow` 子類別，職責為 **面板編排**，不包含業務邏輯。
 
 **主要組成**:
 - `QStackedWidget`: 管理 5 + 1 個面板（Dataset / Preprocess / Training / Evaluation / Visualization + Chat）
 - `AgentManager`: 管理 LLM Agent 生命週期（啟動、停止、模型切換）
-- `DebugExecutor / ToolExecutor`: 分發 Agent 工具呼叫到對應 Controller
+- `ToolExecutor`: 分發 Agent 工具呼叫到對應 Controller
 
 ### 4.2 BasePanel（面板基類）
 
@@ -179,10 +179,13 @@ XBrainLab/ui/
 ```python
 class BasePanel(QWidget):
     def __init__(self, parent=None, controller=None):
+        super().__init__(parent)
         self.controller = controller
-        self.main_window = parent     # 從 parent 推導
-        self.init_ui()                # 子類別實作 UI 佈局
-        self._setup_bridges()         # 子類別設定 Observer 綁定
+        # 從 parent 推導 main_window（僅當 parent 含 study 屬性時）
+        self.main_window = parent if getattr(parent, "study", None) else None
+
+        # 注意：__init__ 不呼叫 init_ui() 和 _setup_bridges()，
+        # 子類別必須在自身初始化完成後顯式呼叫。
 
     def init_ui(self):               # 子類別覆寫（raise NotImplementedError）
         raise NotImplementedError
@@ -196,7 +199,7 @@ class BasePanel(QWidget):
     def set_busy(self, busy: bool):  # 設定忙碌狀態
         ...
 
-    def cleanup(self):               # 清理資源
+    def cleanup(self):               # 清理資源（含 Bridge 清理）
         ...
 ```
 
@@ -220,7 +223,7 @@ QtObserverBridge                  │
 
 實作原理：
 - `QtObserverBridge(QObject)` 持有一個 `pyqtSignal`
-- `__init__` 時呼叫 `controller.subscribe(event, self._on_event)`
+- `__init__` 時呼叫 `observable.subscribe(event, self._on_event)`
 - `_on_event` 透過 `emit()` 將呼叫排入 Qt 事件佇列
 - Qt 事件迴圈在主執行緒中執行已連接的 slot
 - 使用 `connect_to(slot)` 方法連接目標 slot

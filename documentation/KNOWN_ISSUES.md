@@ -35,14 +35,14 @@
 ## ⚠️ 高優先級 (High Priority)
 
 ### 1. VerificationLayer 信心度檢查未啟用
-- **位置**: [`controller.py:289`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L289)
+- **位置**: [`controller.py:374`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L374)
 - **問題**: `confidence=None` 永遠被傳入 `verify_tool_call()`，導致信心度閾值檢查永遠被跳過。
 - **影響**: Agent 無法根據 LLM 信心度拒絕低信心度的工具呼叫。
 - **建議**: 整合 LLM logprobs 或實作 confidence 估算機制。
 - **狀態**: <span style="color:orange">待修復</span>
 
 ### 2. VerificationLayer 腳本驗證未實作
-- **位置**: [`verifier.py:49-51`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/verifier.py#L49)
+- **位置**: [`verifier.py:84`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/verifier.py#L84)
 - **問題**: 程式碼註解標記為 "Future"，但 `ScriptValidator` 策略模式未實作。
 - **影響**: 無法驗證工具參數的邏輯正確性 (如 `high_freq < low_freq` 檢測)。
 - **建議**: 實作 Validator 策略模式。
@@ -73,7 +73,7 @@
 - **狀態**: <span style="color:blue">技術債 (可選)</span>
 
 ### 3. RAG Embedding 同步執行
-- **位置**: [`retriever.py:103`](file:///c:/lab/XBrainLab/XBrainLab/llm/rag/retriever.py#L103)
+- **位置**: [`retriever.py:153`](file:///c:/lab/XBrainLab/XBrainLab/llm/rag/retriever.py#L153)
 - **問題**: `embed_query()` 在主執行緒執行，可能阻塞 UI。
 - **影響**: 首次 RAG 查詢可能造成短暫卡頓。
 - **建議**: 移至背景執行緒執行。
@@ -88,7 +88,7 @@
 ## ℹ️ 低優先級 / 設計限制 (Design Limitations)
 
 ### 1. JSON 偵測邏輯脆弱
-- **位置**: [`controller.py:234-235`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L234)
+- **位置**: [`controller.py:238`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L238)
 - **問題**: 使用簡單字串匹配偵測 JSON，可能誤判非 JSON 輸出。
 - **現狀**: 目前運作良好，僅在極端情況可能觸發不必要的重試。
 
