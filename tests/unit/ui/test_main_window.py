@@ -28,7 +28,7 @@ def main_window(qapp, qtbot):
 def test_mainwindow_launch(main_window, qtbot):
     """Smoke test: Ensure MainWindow launches and is visible."""
     main_window.show()
-    qtbot.waitUntil(lambda: main_window.isVisible())
+    qtbot.waitUntil(main_window.isVisible)
     assert main_window.isVisible()
 
 

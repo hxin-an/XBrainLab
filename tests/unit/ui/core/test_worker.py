@@ -43,7 +43,7 @@ class TestWorker:
             return a + b
 
         w = Worker(add, 3, 4)
-        w.signals.result.connect(lambda r: results.append(r))
+        w.signals.result.connect(results.append)
         w.signals.finished.connect(lambda: finished.append(True))
 
         w.run()
@@ -59,7 +59,7 @@ class TestWorker:
             raise ValueError("boom")
 
         w = Worker(fail)
-        w.signals.error.connect(lambda e: errors.append(e))
+        w.signals.error.connect(errors.append)
         w.signals.finished.connect(lambda: finished.append(True))
 
         w.run()
@@ -79,7 +79,7 @@ class TestWorker:
             raise RuntimeError("err")
 
         w = Worker(fail)
-        w.signals.result.connect(lambda r: results.append(r))
+        w.signals.result.connect(results.append)
         w.run()
 
         assert results == []
@@ -91,7 +91,7 @@ class TestWorker:
             return f"hello {name}"
 
         w = Worker(greet, name="test")
-        w.signals.result.connect(lambda r: results.append(r))
+        w.signals.result.connect(results.append)
         w.run()
 
         assert results == ["hello test"]
@@ -106,6 +106,6 @@ class TestWorker:
         """progress signal can be emitted and received externally."""
         values = []
         w = Worker(lambda: None)
-        w.signals.progress.connect(lambda v: values.append(v))
+        w.signals.progress.connect(values.append)
         w.signals.progress.emit(50)
         assert values == [50]

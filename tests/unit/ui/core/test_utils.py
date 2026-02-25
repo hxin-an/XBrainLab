@@ -15,7 +15,7 @@ class TestCheckboxObj:
 
     def test_callback_invoked(self):
         received = []
-        cb = CheckboxObj(0, callback=lambda val: received.append(val))
+        cb = CheckboxObj(0, callback=received.append)
         cb(42)
         assert cb.ctrl == 42
         assert received == [42]
@@ -27,7 +27,7 @@ class TestCheckboxObj:
 
     def test_multiple_calls(self):
         calls = []
-        cb = CheckboxObj("a", callback=lambda v: calls.append(v))
+        cb = CheckboxObj("a", callback=calls.append)
         cb("b")
         cb("c")
         assert cb.ctrl == "c"

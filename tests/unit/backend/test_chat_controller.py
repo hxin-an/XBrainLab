@@ -51,9 +51,7 @@ class TestChatController:
 
     def test_set_processing(self, controller):
         processing_signal = []
-        controller.processing_state_changed.connect(
-            lambda state: processing_signal.append(state)
-        )
+        controller.processing_state_changed.connect(processing_signal.append)
 
         controller.set_processing(True)
         assert controller.is_processing is True

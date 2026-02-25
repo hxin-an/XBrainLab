@@ -41,7 +41,7 @@ class TestEventBusSignals:
     def test_error_occurred_signal(self, qtbot):
         bus = EventBus.get_instance()
         received = []
-        bus.error_occurred.connect(lambda msg: received.append(msg))
+        bus.error_occurred.connect(received.append)
         bus.error_occurred.emit("oops")
         qtbot.wait(50)
         assert received == ["oops"]
@@ -57,7 +57,7 @@ class TestEventBusSignals:
     def test_model_updated_signal(self, qtbot):
         bus = EventBus.get_instance()
         received = []
-        bus.model_updated.connect(lambda name: received.append(name))
+        bus.model_updated.connect(received.append)
         bus.model_updated.emit("EEGNet")
         qtbot.wait(50)
         assert received == ["EEGNet"]
