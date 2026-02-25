@@ -62,7 +62,7 @@ class PlotFigureWindow(SinglePlotWindow):
         self.trainer_map = {trainer.get_name(): trainer for trainer in trainers}
         self.real_plan_map = {}
 
-        self.init_ui()
+        super().__init__(parent, figsize=figsize, title=title)
 
         self.drawCounter = 0
         self.update_progress = -1
@@ -88,6 +88,7 @@ class PlotFigureWindow(SinglePlotWindow):
 
     def init_ui(self):
         """Build the selector controls for plan, repeat, and saliency method."""
+        super().init_ui()
         # Insert selector frame at the top
         self.selector_group = QGroupBox("Controls")
         selector_layout = QHBoxLayout(self.selector_group)

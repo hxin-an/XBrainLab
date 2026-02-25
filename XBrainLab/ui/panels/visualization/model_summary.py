@@ -33,13 +33,12 @@ class ModelSummaryWindow(BaseDialog):
             parent: Parent widget.
             trainers: List of ``Trainer`` instances.
         """
-        super().__init__(parent, title="Model Summary")
-
         self.trainers = trainers
         self.trainer_map = {t.get_name(): t for t in trainers}
 
         self.check_data()
-        self.init_ui()
+        # super().__init__ calls init_ui via BaseDialog
+        super().__init__(parent, title="Model Summary")
 
     def check_data(self):
         """Validate that at least one trainer is available."""

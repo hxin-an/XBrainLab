@@ -35,7 +35,9 @@ class Normalize(PreprocessBase):
             norm: Normalization method (``"z score"`` or ``"minmax"``).
         """
         preprocessed_data.get_mne().load_data()
-        if norm == "z score":
+        # Normalize variant names (accept 'z-score', 'z score', 'zscore')
+        norm_key = norm.lower().replace("-", " ").replace("_", " ").strip()
+        if norm_key == "z score":
             if preprocessed_data.is_raw():
                 arrdata = preprocessed_data.get_mne()._data.copy()
                 preprocessed_data.get_mne()._data = (
@@ -62,7 +64,7 @@ class Normalize(PreprocessBase):
                         np.ones_like(arrdata[ep, :, :]),
                     )
                 preprocessed_data.get_mne()._data = arrdata
-        elif norm == "minmax":
+        elif norm_key == "minmax":
             if preprocessed_data.is_raw():
                 arrdata = preprocessed_data.get_mne()._data.copy()
                 ch_min, ch_max = (
@@ -86,3 +88,8 @@ class Normalize(PreprocessBase):
                         ch_max - ch_min + 1e-12
                     )
                 preprocessed_data.get_mne()._data = arrdata
+        else:
+            raise ValueError(
+                f"Unknown normalization method: '{norm}'. "
+                f"Supported methods are 'z score' and 'minmax'."
+            )

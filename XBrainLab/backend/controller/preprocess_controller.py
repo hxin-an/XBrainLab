@@ -127,7 +127,7 @@ class PreprocessController(Observable):
 
             # Atomic swap of the results back to the study
             # This update is safe because it replaces the list reference
-            self.study.set_preprocessed_data_list(result)
+            self.study.set_preprocessed_data_list(result, force_update=True)
             self.notify("preprocess_changed")
         except Exception as e:
             logger.error(f"Preprocessing failed: {e}")

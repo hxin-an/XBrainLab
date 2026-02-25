@@ -97,7 +97,7 @@ class ShallowConvNet(nn.Module):
         x = self.Bn1(x)
         x = x**2
         x = self.AvgPool1(x)
-        x = torch.log(x)
+        x = torch.log(torch.clamp(x, min=1e-7))
         x = self.Drop1(x)
         x = x.view(x.size()[0], -1)
         x = self.classifier(x)

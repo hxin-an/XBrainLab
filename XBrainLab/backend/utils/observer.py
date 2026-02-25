@@ -52,7 +52,7 @@ class Observable:
             **kwargs: Keyword arguments to pass to each callback.
         """
         if event_name in self._observers:
-            for callback in self._observers[event_name]:
+            for callback in list(self._observers[event_name]):
                 self._safe_call(event_name, callback, *args, **kwargs)
 
     def _safe_call(self, event_name: str, callback: Callable, *args, **kwargs):

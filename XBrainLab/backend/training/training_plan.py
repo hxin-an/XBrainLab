@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import time
 import traceback
@@ -269,6 +270,13 @@ class TrainingPlanHolder:
             traceback.print_exc()
             self.error = str(e)
             self.status = Status.PENDING.value
+        finally:
+            # Ensure GPU models are moved back to CPU to prevent VRAM leaks
+            for tr in self.train_record_list:
+                with contextlib.suppress(Exception):
+                    tr.model.cpu()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     def get_loader(
         self,
@@ -496,7 +504,8 @@ class TrainingPlanHolder:
         running_loss = 0.0
         correct = 0.0
         total_count = 0
-        y_true, y_pred = None, None
+        y_true_parts: list[torch.Tensor] = []
+        y_pred_parts: list[torch.Tensor] = []
 
         for inputs, labels in train_loader:
             if self.interrupt:
@@ -508,14 +517,13 @@ class TrainingPlanHolder:
             optimizer.step()
 
             correct += (outputs.argmax(axis=1) == labels).float().sum().item()
-            if y_true is None or y_pred is None:
-                y_true = labels.detach().cpu()
-                y_pred = outputs.detach().cpu()
-            else:
-                y_true = torch.cat((y_true, labels.detach().cpu()))
-                y_pred = torch.cat((y_pred, outputs.detach().cpu()))
+            y_true_parts.append(labels.detach().cpu())
+            y_pred_parts.append(outputs.detach().cpu())
             total_count += len(labels)
             running_loss += loss.item()
+
+        y_true = torch.cat(y_true_parts) if y_true_parts else None
+        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
 
         return running_loss, correct, total_count, y_true, y_pred
 

@@ -75,7 +75,7 @@ class LocalBackend(BaseBackend):
             model_kwargs = {
                 "device_map": self.config.device,
                 "cache_dir": self.config.cache_dir,
-                "trust_remote_code": True,
+                "trust_remote_code": getattr(self.config, "trust_remote_code", False),
             }
 
             if self.config.load_in_4bit:

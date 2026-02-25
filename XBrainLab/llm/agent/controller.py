@@ -122,6 +122,8 @@ class LLMController(QObject):
         # Tool Failure Loop Protection
         self._tool_failure_count = 0
         self._max_tool_failures = 3
+        self._loop_break_count = 0
+        self._max_loop_breaks = 3
 
     def initialize(self):
         """Initializes the underlying worker engine and RAG retriever.
@@ -169,23 +171,28 @@ class LLMController(QObject):
         self.is_processing = True
         self.status_update.emit("Thinking...")
 
-        # 1. Update History
-        self._append_history("user", text)
+        try:
+            # 1. Update History
+            self._append_history("user", text)
 
-        # Reset retry counters for new turn
-        self._retry_count = 0
-        self._tool_failure_count = 0
+            # Reset retry counters for new turn
+            self._retry_count = 0
+            self._tool_failure_count = 0
+            self._loop_break_count = 0
 
-        # 2. Retrieve RAG Context (Examples)
-        features = self.rag_retriever.get_similar_examples(text)
-        self.assembler.clear_context()
-        if features:
-            self.assembler.add_context(features)
-            # Log for debugging (optional), visible in tool output usually
-            # self.status_update.emit("Context retrieved for query.")
+            # 2. Retrieve RAG Context (Examples)
+            features = self.rag_retriever.get_similar_examples(text)
+            self.assembler.clear_context()
+            if features:
+                self.assembler.add_context(features)
 
-        # 3. Start Generation Loop
-        self._generate_response()
+            # 3. Start Generation Loop
+            self._generate_response()
+        except Exception as e:
+            logger.error(f"Error in handle_user_input: {e}")
+            self.error_occurred.emit(str(e))
+            self.is_processing = False
+            self.processing_finished.emit()
 
     def _generate_response(self):
         """Triggers LLM generation based on the current history.
@@ -434,6 +441,18 @@ class LLMController(QObject):
         Args:
             cmd: The tool name that was called repeatedly.
         """
+        self._loop_break_count += 1
+        if self._loop_break_count >= self._max_loop_breaks:
+            msg = (
+                f"System: Persistent loop detected for '{cmd}'. "
+                "Aborting to prevent infinite recursion."
+            )
+            self._append_history("user", msg)
+            self.status_update.emit("Loop detected, aborting.")
+            self.is_processing = False
+            self.processing_finished.emit()
+            return
+
         msg = (
             f"System: Loop detected. You have called '{cmd}' "
             "with these params multiple times. Stop."
@@ -578,9 +597,9 @@ class LLMController(QObject):
         if self.is_processing:
             self.status_update.emit("Stopping...")
             self.is_processing = False
-            # Ideally, we should signal the worker to stop.
-            # checks worker.requestInterruption() inside long loops?
+            # Signal the worker to stop via thread interruption
             self.worker_thread.requestInterruption()
+            self.processing_finished.emit()
 
     def set_model(self, model_display_name: str):
         """Switches the active LLM model.

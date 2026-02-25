@@ -122,6 +122,13 @@ class Epochs:
         map_subject: dict[str, int] = {}
         map_session: dict[str, int] = {}
 
+        # Collect arrays in lists first, then concatenate once (O(n) vs O(n²))
+        subject_parts: list[np.ndarray] = []
+        session_parts: list[np.ndarray] = []
+        label_parts: list[np.ndarray] = []
+        idx_parts: list[np.ndarray] = []
+        data_parts: list[np.ndarray] = []
+
         for preprocessed_data in preprocessed_data_list:
             data = preprocessed_data.get_mne()
             epoch_len = preprocessed_data.get_epochs_length()
@@ -134,16 +141,20 @@ class Epochs:
             subject_idx = map_subject[subject_name]
             session_idx = map_session[session_name]
 
-            self.subject = np.concatenate((self.subject, [subject_idx] * epoch_len))
-            self.session = np.concatenate((self.session, [session_idx] * epoch_len))
-            self.label = np.concatenate((self.label, data.events[:, 2]))
-            self.idx = np.concatenate((self.idx, range(epoch_len)))
-            if len(self.data) == 0:
-                self.data = data.get_data()
-            else:
-                self.data = np.concatenate((self.data, data.get_data()))
+            subject_parts.append(np.full(epoch_len, subject_idx))
+            session_parts.append(np.full(epoch_len, session_idx))
+            label_parts.append(data.events[:, 2])
+            idx_parts.append(np.arange(epoch_len))
+            data_parts.append(data.get_data())
             self.sfreq = data.info["sfreq"]
             self.ch_names = data.info.ch_names.copy()
+
+        if subject_parts:
+            self.subject = np.concatenate(subject_parts)
+            self.session = np.concatenate(session_parts)
+            self.label = np.concatenate(label_parts)
+            self.idx = np.concatenate(idx_parts)
+            self.data = np.concatenate(data_parts)
 
         self.session_map = {map_session[i]: i for i in map_session}
         self.subject_map = {map_subject[i]: i for i in map_subject}
@@ -411,8 +422,9 @@ class Epochs:
         else:
             target = len(np.unique(target_type[clean_mask]))
         if split_unit == SplitUnit.KFOLD:
-            if not isinstance(value, int):
-                raise ValueError("Value must be int")
+            if not isinstance(value, (int, float)):
+                raise ValueError("Value must be int or float")
+            value = int(value)
             inc = target % value
             num = target // value
             if inc > group_idx:
@@ -612,6 +624,7 @@ class Epochs:
         # get number of epochs to be selected
         target = sum(mask) if clean_mask is None else sum(clean_mask)
         if split_unit == SplitUnit.KFOLD:
+            value = int(value)
             inc = target % value
             num = target // value
             if inc > group_idx:

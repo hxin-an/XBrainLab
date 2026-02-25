@@ -71,7 +71,9 @@ def test_apply_filter(controller, mock_study):
 
         assert result is True
         instance.data_preprocess.assert_called_with(1.0, 40.0, notch_freqs=[50.0])
-        mock_study.set_preprocessed_data_list.assert_called_with(processed_data)
+        mock_study.set_preprocessed_data_list.assert_called_with(
+            processed_data, force_update=True
+        )
 
 
 def test_apply_resample(controller, mock_study):

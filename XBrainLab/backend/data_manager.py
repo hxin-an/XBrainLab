@@ -197,6 +197,7 @@ class DataManager:
         if not force_update:
             self._guard_clean_datasets()
         self.datasets = []
+        self.dataset_generator = None
 
     # --- Locking ---
     def lock_dataset(self) -> None:

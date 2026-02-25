@@ -39,7 +39,11 @@ class SaliencySpectrogramMapViz(Visualizer):
                 continue
 
             freqs, timestamps, saliency = signal.stft(
-                saliency, fs=sfreq, axis=-1, nperseg=sfreq, noverlap=sfreq // 2
+                saliency,
+                fs=sfreq,
+                axis=-1,
+                nperseg=int(sfreq),
+                noverlap=int(sfreq) // 2,
             )
             # [:saliency.shape[0]//2,:]
             saliency = np.mean(np.mean(abs(saliency), axis=0), axis=0)

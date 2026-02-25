@@ -95,7 +95,7 @@ class TestRealDatasetTools:
         tool = RealListFilesTool()
         with (
             patch("os.listdir", return_value=["A.gdf", "B.txt"]),
-            patch("os.path.exists", return_value=True),
+            patch("os.path.isdir", return_value=True),
         ):
             res = tool.execute(mock_study, directory="/mock_dir", pattern="*.gdf")
             assert "A.gdf" in res

@@ -105,7 +105,8 @@ class Evaluator:
         running_loss = 0.0
         total_count = 0
         correct = 0.0
-        y_true, y_pred = None, None
+        y_true_parts: list[torch.Tensor] = []
+        y_pred_parts: list[torch.Tensor] = []
 
         with torch.no_grad():
             for inputs, labels in data_loader:
@@ -116,12 +117,11 @@ class Evaluator:
                 correct += (outputs.argmax(axis=1) == labels).float().sum().item()
                 total_count += len(labels)
 
-                if y_true is None or y_pred is None:
-                    y_true = labels.detach().cpu()
-                    y_pred = outputs.detach().cpu()
-                else:
-                    y_true = torch.cat((y_true, labels.detach().cpu()))
-                    y_pred = torch.cat((y_pred, outputs.detach().cpu()))
+                y_true_parts.append(labels.detach().cpu())
+                y_pred_parts.append(outputs.detach().cpu())
+
+        y_true = torch.cat(y_true_parts) if y_true_parts else None
+        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
 
         if total_count == 0:
             return {RecordKey.ACC: 0, RecordKey.AUC: 0, RecordKey.LOSS: 0}

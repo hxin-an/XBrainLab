@@ -161,6 +161,8 @@ class LLMConfig:
                 )
 
             config.active_mode = data.get("active_mode", "local")
+            # Sync inference_mode with active_mode from saved settings
+            config.inference_mode = config.active_mode
 
             # Load API key from env still (security)
             load_dotenv()

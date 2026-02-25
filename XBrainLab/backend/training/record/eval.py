@@ -21,7 +21,7 @@ def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
         entry ``[i][j]`` is the count of samples with true label ``i``
         predicted as label ``j``.
     """
-    class_num = len(np.unique(label))
+    class_num = output.shape[1] if output.ndim > 1 else len(np.unique(label))
     confusion = np.zeros((class_num, class_num), dtype=np.uint32)
     output = output.argmax(axis=1)
     for ground_truth in range(class_num):
@@ -209,6 +209,8 @@ class EvalRecord:
         pe = sum(
             [confusion[:, i].sum() * confusion[i].sum() for i in range(class_num)]
         ) / (confusion.sum() * confusion.sum())
+        if pe >= 1.0:
+            return 0.0
         return (p0 - pe) / (1 - pe)
 
     def get_per_class_metrics(self) -> dict:

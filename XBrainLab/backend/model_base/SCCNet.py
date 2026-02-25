@@ -123,7 +123,7 @@ class SCCNet(nn.Module):
         x = x**2
         x = self.Drop1(x)
         x = self.AvgPool1(x)  # (128,20,1,42)
-        x = torch.log(x)
+        x = torch.log(torch.clamp(x, min=1e-7))
         x = x.view(
             -1,
             20

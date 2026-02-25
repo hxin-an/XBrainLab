@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import time
-from copy import deepcopy
 from typing import Any
 
 import torch
@@ -239,7 +238,7 @@ class TrainRecord:
                 setattr(
                     self,
                     "best_" + update_type + "_" + key + "_model",
-                    deepcopy(self.model.state_dict()),
+                    {k: v.cpu().clone() for k, v in self.model.state_dict().items()},
                 )
 
     def update_eval(self, test_result: dict[str, float]) -> None:
