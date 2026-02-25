@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
 )
-from torchinfo import summary
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
@@ -97,6 +96,8 @@ class ModelSummaryWindow(BaseDialog):
             # But let's trust the original logic.
 
             train_shape = (trainer.option.bs, 1, *X.shape[-2:])
+
+            from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
 
             summary_str = str(
                 summary(model_instance, input_size=train_shape, verbose=0)

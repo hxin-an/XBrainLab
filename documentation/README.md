@@ -1,5 +1,7 @@
 # XBrainLab
 
+[![CI](https://github.com/hxin-an/XBrainLab/actions/workflows/ci.yml/badge.svg)](https://github.com/hxin-an/XBrainLab/actions/workflows/ci.yml)
+
 XBrainLab 是一個專為腦波 (EEG) 研究設計的智慧分析平台。本專案的核心目標是**評估腦波數據的分析價值**，透過結合深度學習模型與顯著圖 (Saliency Map) 技術，協助研究人員判斷數據品質並理解模型決策依據。
 
 ## 核心功能 (Key Features)

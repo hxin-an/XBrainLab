@@ -2,7 +2,7 @@
 
 本文件記錄目前專案中已確認存在的 Bug、限制與待解決的問題。
 
-**最後更新**: 2026-02-09 (v0.5.3)
+**最後更新**: 2026-02-25 (v0.5.3)
 
 ---
 
@@ -29,6 +29,15 @@
     - **NEW**: `VerificationLayer` 已整合，結構驗證運作正常。
     - **NEW**: Agent Timeout 機制已加入 (60 秒超時)。
     - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 2375+ 測試通過。
+- **執行緒安全 & 資源管理 (v0.5.3)**:
+    - **NEW**: `Trainer` / `TrainingPlanHolder` 中斷旗標從裸 `bool` 升級為 `threading.Event`，解決跨執行緒競爭條件。
+    - **NEW**: `get_eval_pair()` 重構——延遲 GPU 模型建立至 state_dict 確認有效後，避免孤立 GPU 記憶體分配。
+    - **NEW**: `facade.configure_training()` 的 `output_dir` 從壞掉的 `getattr(study, ...)` 改為明確參數。
+- **程式碼衛生 & CI/CD (v0.5.3)**:
+    - **NEW**: 89 處 logger f-string 轉為 %-style lazy formatting。
+    - **NEW**: GitHub Actions CI Pipeline：lint + test + coverage，跨平台 (Linux/Windows/macOS)。
+    - **NEW**: Ruff 版本統一為 ^0.14.0 (poetry / pre-commit / CI)。
+    - **NEW**: `torchinfo` lazy import 修正 (optional dep 不再破壞 CI 測試收集)。
 
 ---
 
@@ -81,7 +90,7 @@
 
 ### 4. 測試覆蓋缺口
 - **UI 互動**: 缺乏真實 Widget 點擊與互動的 E2E 測試 (`pytest-qt`)。
-- **環境相依**: 缺乏 CI/CD 流水線驗證 Windows/Linux 差異。
+- ~~**環境相依**: 缺乏 CI/CD 流水線驗證 Windows/Linux 差異。~~ ✔️ 已解決：CI 跨平台矩陣已建立。
 
 ---
 
@@ -111,6 +120,7 @@
 | --- | --- | --- |
 | **Linting (Ruff)** | ✅ 0 錯誤 | 全部通過 |
 | **Type Check (Mypy)** | ✅ 0 錯誤 | 全部通過 |
-| **Unit Tests** | ✅ 2375+ 通過 | 0 失敗 |
+| **Unit Tests** | ✅ 2913 通過 | 0 失敗, 22 skipped |
 | **Pre-commit** | ✅ 全部通過 | 包含 secrets 掃描 |
 | **架構遷移** | ✅ 完成 | Assembler + Verifier 已整合 |
+| **CI/CD** | ✅ 運作中 | Linux + Windows + macOS |

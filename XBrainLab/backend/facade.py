@@ -366,6 +366,7 @@ class BackendFacade:
         device: str = "auto",
         optimizer: str = "adam",
         save_checkpoints_every: int = 0,
+        output_dir: str = "./output",
     ):
         """Set training hyperparameters.
 
@@ -378,6 +379,7 @@ class BackendFacade:
             optimizer: Optimizer name — ``"adam"``, ``"sgd"``, or ``"adamw"``.
             save_checkpoints_every: Save a checkpoint every *N* epochs
                 (0 to disable).
+            output_dir: Directory for saving training outputs.
         """
         # Resolve Optimizer
         optimizers_map = {
@@ -392,7 +394,7 @@ class BackendFacade:
         gpu_idx = 0 if not use_cpu else None
 
         option = TrainingOption(
-            output_dir=getattr(self.study, "output_dir", "./output"),
+            output_dir=output_dir,
             optim=optim_class,
             optim_params={},
             use_cpu=use_cpu,

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xbrainlab"
-version = "0.5.2"
+version = "0.5.3"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
 readme = "documentation/README.md"
