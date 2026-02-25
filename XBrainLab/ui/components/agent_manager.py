@@ -99,8 +99,6 @@ class AgentManager(QObject):
         )
 
         # Custom Title Bar with Float + New Conversation Buttons
-
-        # TODO: Move inline styles to XBrainLab.ui.styles.stylesheets
         title_bar = QWidget()
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
@@ -366,7 +364,10 @@ class AgentManager(QObject):
                     if mode == "local":
                         is_local = True
             except Exception:
-                pass  # Best-effort check; engine may not be initialized yet
+                logger.debug(
+                    "Engine not yet initialized, skipping local mode check",
+                    exc_info=True,
+                )
 
         if not is_local:
             return

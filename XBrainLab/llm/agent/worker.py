@@ -190,7 +190,10 @@ class AgentWorker(QObject):
                 )
                 # self.generation_thread.terminate() # Dangerous, avoid unless necessary
             except Exception:
-                pass  # Signals may already be disconnected after timeout
+                logger.debug(
+                    "Signal disconnect failed (already disconnected)",
+                    exc_info=True,
+                )
 
             self.error.emit("Error: Generation timed out (Local LLM is too slow).")
             self.finished.emit([])  # Unblock the UI

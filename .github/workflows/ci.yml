@@ -4,7 +4,7 @@
 # Cross-platform notes:
 # - Coverage only on Linux (pytest-cov conflicts with PyTorch on Windows;
 #   see https://github.com/pytorch/pytorch/issues/96606)
-# - macOS uses Intel runner (macos-13) because VTK 9.3.1 lacks ARM wheels
+# - macOS uses macos-latest (ARM); VTK >=9.4 provides ARM wheels
 # - Qt tests run headless via QT_QPA_PLATFORM=offscreen
 # - VTK/PyVista are mocked in conftest.py (no GPU/OpenGL required)
 
@@ -50,7 +50,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-13]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.11"]
     env:
       QT_QPA_PLATFORM: offscreen

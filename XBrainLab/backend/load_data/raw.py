@@ -216,7 +216,10 @@ class Raw:
             if self.mne_data.event_id:
                 return self.mne_data.events, self.mne_data.event_id
         except Exception:
-            pass
+            logger.debug(
+                "No epoch events available, trying stim channel",
+                exc_info=True,
+            )
         # stim channel
         try:
             events = mne.find_events(self.mne_data, verbose=False)

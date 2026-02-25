@@ -6,7 +6,6 @@ import numpy as np
 import pyvista as pv
 import requests
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
-from scipy.spatial import ConvexHull  # noqa: F401
 
 from XBrainLab.backend.utils.logger import logger
 
@@ -38,21 +37,6 @@ def channel_convex_hull(ch_pos):
     Returns:
         pyvista.PolyData: Triangulated surface mesh.
     """
-    # hull = ConvexHull(ch_pos) # Unused
-    # Extract the vertices of the convex hull
-    # Extract the vertices of the convex hull
-    # vertices = ch_pos[hull.vertices]  # Unused variable F841
-    # Create pyvista PolyData from the vertices
-    # Note: ConvexHull just gives vertices. We need triangulation for a surface.
-    # Note: ConvexHull just gives vertices. We need triangulation for a surface.
-    # PyVista has a delaunay_3d or similar, but often PolyData(vertices)
-    # delaunay_3d().extract_surface() works.
-
-    # Original logic was simpler or assumed pv.PolyData can fit?
-    # Let's inspect original usage:
-    # self.saliency_cap = channel_convex_hull(self.pos_on_3d).scale(...)
-    # It likely returned a PyVista mesh.
-
     cloud = pv.PolyData(ch_pos)
     # Delaunay 2D is better for surface reconstruction of EEG cap (manifold)
     # Delaunay 3D tries to make a volume, which fails for scalp points.

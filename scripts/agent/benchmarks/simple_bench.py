@@ -26,13 +26,13 @@ import torch
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from XBrainLab.llm.agent.prompt_manager import PromptManager
-
+from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.parser import CommandParser
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.rag.retriever import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
+from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 
 def timeout_handler(signum, frame):
@@ -197,7 +197,10 @@ def run_benchmark(model_name: str, timeout_sec: int = 30):
     engine = LLMEngine(config)
     engine.load_model()
 
-    prompt_manager = PromptManager(AVAILABLE_TOOLS)
+    registry = ToolRegistry()
+    for tool in AVAILABLE_TOOLS:
+        registry.register(tool)
+    prompt_manager = ContextAssembler(registry, study_state=None)
     parser = CommandParser()
 
     # Init RAG

@@ -75,8 +75,6 @@ class ChatPanel(QWidget):
         self.init_ui()
 
         # M3.1 Interactive Debug Mode
-        # TODO: Refactor Debug Mode logic into a separate interceptor class
-        # to decouple from UI.
         app = QApplication.instance()
         script_path = app.property("tool_debug_script") if app else None
         self.debug_mode = ToolDebugMode(script_path) if script_path else None
@@ -394,9 +392,8 @@ class ChatPanel(QWidget):
         if scroll_bar:
             scroll_bar.setValue(scroll_bar.maximum())
 
-    # --- Legacy Compatibility Methods (Deprecated) ---
     def append_message(self, sender: str, text: str):
-        """Append a message bubble (legacy compatibility).
+        """Append a message bubble.
 
         Args:
             sender: Message sender identifier (e.g., ``"user"``,
@@ -425,10 +422,3 @@ class ChatPanel(QWidget):
                 self.current_agent_bubble.hide()
             elif text_to_remove:
                 self.current_agent_bubble.set_text(current_text.strip())
-
-    def set_status(self, status: str):
-        """Set status display (legacy no-op).
-
-        Args:
-            status: Status message string (unused).
-        """

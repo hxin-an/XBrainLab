@@ -328,7 +328,7 @@ class TestOnlyOption(TrainingOption):
             """Return True if i is not a number"""
             try:
                 float(i)
-            except Exception:
+            except (ValueError, TypeError):
                 return True
             else:
                 return False

@@ -18,7 +18,6 @@ from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
-# from .prompt_manager import PromptManager # Deprecated
 from .assembler import ContextAssembler
 from .parser import CommandParser
 from .verifier import VerificationLayer
@@ -83,8 +82,6 @@ class LLMController(QObject):
 
         self.assembler = ContextAssembler(self.registry, self.study)
         self.verifier = VerificationLayer()  # Default confidence threshold
-
-        # self.prompt_manager = PromptManager(AVAILABLE_TOOLS) # Deprecated
 
         # Initialize RAG Retriever
         self.rag_retriever = RAGRetriever()
@@ -367,9 +364,7 @@ class LLMController(QObject):
                 self._handle_loop_detected(cmd)
                 return
 
-            # --- Verification Layer (New in Future Architecture) ---
-            # TODO: Get confidence from LLM output if available (e.g. from logprobs)
-            # available (e.g. from logprobs)
+            # --- Verification Layer ---
             validation = self.verifier.verify_tool_call((cmd, params), confidence=None)
 
             if not validation.is_valid:
@@ -569,17 +564,10 @@ class LLMController(QObject):
                 )
                 return True
 
-        if not result.startswith("Request:"):
+        if not result.startswith("Request:") and not success:
             # Only report as System Error if the tool actually failed
-            if not success:
-                self.response_ready.emit("System", f"Tool Error: {result}")
-            else:
-                pass
+            self.response_ready.emit("System", f"Tool Error: {result}")
         return False
-
-    # Deprecated/Removed old _execute_tool and _handle_tool_result to avoid confusion
-    # But for safety, keep _handle_tool_result if referenced elsewhere?
-    # It was internal. I'll replace it completely.
 
     def _on_worker_error(self, error_msg):
         self.error_occurred.emit(error_msg)

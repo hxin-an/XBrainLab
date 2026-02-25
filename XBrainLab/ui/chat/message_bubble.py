@@ -145,7 +145,9 @@ class MessageBubble(QWidget):
             if platform.system() == "Windows":
                 # Open explorer with file selected
                 try:
-                    subprocess.Popen(f'explorer /select,"{local_path}"')  # noqa: S603
+                    subprocess.Popen(  # noqa: S603
+                        ["explorer", "/select,", local_path],  # noqa: S607
+                    )
                 except Exception:
                     logger.exception("Failed to open explorer for %s", local_path)
                     # Fallback to standard open
