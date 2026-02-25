@@ -5,6 +5,7 @@ API, and Gemini inference backends, with JSON persistence support.
 """
 
 import json
+import logging
 import os
 from dataclasses import asdict, dataclass, field
 
@@ -123,7 +124,7 @@ class LLMConfig:
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
-            print(f"Error saving settings: {e}")
+            logging.getLogger(__name__).error("Error saving settings: %s", e)
 
     @classmethod
     def load_from_file(cls, filepath: str = "settings.json"):
@@ -169,7 +170,7 @@ class LLMConfig:
             config.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
         except Exception as e:
-            print(f"Error loading settings: {e}")
+            logging.getLogger(__name__).error("Error loading settings: %s", e)
             return None
 
         return config

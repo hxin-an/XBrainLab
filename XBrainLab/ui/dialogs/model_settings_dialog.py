@@ -471,7 +471,11 @@ class ModelSettingsDialog(QDialog):
         if not key or not key.startswith("AIza"):
             return
 
-        env_path = ".env"
+        # Resolve to project root (4 levels up from ui/dialogs/)
+        package_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        env_path = os.path.join(os.path.dirname(package_root), ".env")
         try:
             # Read existing
             lines = []

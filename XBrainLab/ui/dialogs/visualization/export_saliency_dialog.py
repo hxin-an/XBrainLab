@@ -164,7 +164,7 @@ class ExportSaliencyDialog(BaseDialog):
             return
 
         try:
-            saliency = eval_record.export_saliency(method_name, file_location)
+            saliency = eval_record.export_saliency(method_name)
 
             file_name = [plan_name, repeat_name, method_name]
             output_path = os.path.join(file_location, "_".join(file_name) + ".pickle")

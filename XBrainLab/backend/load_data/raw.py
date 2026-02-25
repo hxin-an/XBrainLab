@@ -9,6 +9,7 @@ import numpy as np
 
 from ..utils import validate_type
 from ..utils.filename_parser import FilenameParser
+from ..utils.logger import logger
 
 
 class Raw:
@@ -144,9 +145,9 @@ class Raw:
         ):
             # check event consistency
             if len(self.raw_events) != len(data.events):
-                print(
-                    "UserWarning: Number of events from loaded label file and "
-                    "selected events for epoching are inconsistent."
+                logger.warning(
+                    "Number of events from loaded label file and "
+                    "selected events for epoching are inconsistent. "
                     "Please proceed with caution."
                 )
             data.events = self.raw_events

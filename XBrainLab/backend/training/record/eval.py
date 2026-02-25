@@ -139,14 +139,18 @@ class EvalRecord:
             target_path, data, delimiter=",", newline="\n", header=header, comments=""
         )
 
-    def export_saliency(self, method: str, target_path: str) -> None:
-        """Export a specific saliency map as a torch file.
+    def export_saliency(self, method: str, target_path: str | None = None) -> dict:
+        """Return (and optionally save) a specific saliency map.
 
         Args:
             method: Saliency method name. One of ``'Gradient'``,
                 ``'Gradient * Input'``, ``'SmoothGrad'``,
                 ``'SmoothGrad_Squared'``, or ``'VarGrad'``.
-            target_path: Full file path for the output.
+            target_path: Optional file path. If provided, the saliency
+                data is also saved via ``torch.save``.
+
+        Returns:
+            The saliency dictionary for the requested method.
         """
         if method == "Gradient":
             saliency = self.gradient
@@ -160,7 +164,9 @@ class EvalRecord:
             saliency = self.vargrad
         else:
             raise ValueError(f"Unknown saliency method: {method}")
-        torch.save(saliency, target_path)
+        if target_path:
+            torch.save(saliency, target_path)
+        return saliency
 
     def get_acc(self) -> float:
         """Compute the classification accuracy.

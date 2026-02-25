@@ -113,15 +113,18 @@ class RAGRetriever:
         try:
             logger.info("Delegating auto-initialization to RAGIndexer...")
             indexer = RAGIndexer()
-            docs = indexer.load_gold_set(str(gold_set_path))
-            if docs:
-                indexer.index_data(docs)
-                # Re-initialize vectorstore after indexing
-                self.vectorstore = Qdrant(
-                    client=self.client,
-                    collection_name=RAGConfig.COLLECTION_NAME,
-                    embeddings=self.embeddings,
-                )
+            try:
+                docs = indexer.load_gold_set(str(gold_set_path))
+                if docs:
+                    indexer.index_data(docs)
+                    # Re-initialize vectorstore after indexing
+                    self.vectorstore = Qdrant(
+                        client=self.client,
+                        collection_name=RAGConfig.COLLECTION_NAME,
+                        embeddings=self.embeddings,
+                    )
+            finally:
+                indexer.close()
         except Exception as e:
             logger.error(f"RAG auto-init failed: {e}")
 

@@ -602,9 +602,9 @@ class TrainingPlanHolder:
             saliency_params: New dictionary of saliency method parameters.
         """
         self.saliency_params = saliency_params
+        _, val_loader, test_loader = self.get_loader()
         for i in range(self.option.repeat_num):
             train_record = self.train_record_list[i]
-            _, val_loader, test_loader = self.get_loader()
             target, target_loader = self.get_eval_pair(
                 train_record, val_loader, test_loader
             )

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 if TYPE_CHECKING:
@@ -88,7 +89,6 @@ class InfoPanelService(QObject):
             ).get_preprocessed_data_list()
 
         # Notify listeners
-        # Notify listeners
         for panel in self._listeners:
             self._safe_update_panel(panel, loaded, preprocessed)
 
@@ -109,7 +109,7 @@ class InfoPanelService(QObject):
             pass
         except Exception as e:
             # Log other unexpected errors
-            print(f"Error updating info panel: {e}")
+            logger.error(f"Error updating info panel: {e}")
 
     def update_single(self, panel):
         """Manually update a single panel with current data.

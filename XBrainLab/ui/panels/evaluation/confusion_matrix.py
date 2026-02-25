@@ -6,6 +6,7 @@ from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import PlotType
 from XBrainLab.ui.styles.theme import Theme
 
@@ -126,7 +127,7 @@ class ConfusionMatrixWidget(QWidget):
                 self._show_message("No data available for this plan.")
 
         except Exception as e:
-            print(f"Error plotting matrix: {e}")
+            logger.error("Error plotting matrix: %s", e, exc_info=True)
             self._show_message(f"Error: {e}", color=Theme.ERROR)
 
     def _show_message(self, message, color=Theme.TEXT_MUTED):

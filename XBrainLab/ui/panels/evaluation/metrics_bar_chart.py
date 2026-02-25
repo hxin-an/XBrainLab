@@ -5,6 +5,7 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -148,4 +149,4 @@ class MetricsBarChartWidget(QWidget):
             self.canvas.draw()
 
         except Exception as e:
-            print(f"Error plotting bar chart: {e}")
+            logger.error("Error plotting bar chart: %s", e, exc_info=True)

@@ -434,6 +434,14 @@ class DataSplittingPreviewDialog(BaseDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
+    def closeEvent(self, event):  # noqa: N802
+        """Stop the polling timer and interrupt background workers on close."""
+        if self.timer:
+            self.timer.stop()
+        if self.dataset_generator:
+            self.dataset_generator.set_interrupt()
+        super().closeEvent(event)
+
     def get_result(self):
         """Return the finalized DatasetGenerator.
 

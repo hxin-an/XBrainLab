@@ -45,7 +45,6 @@ class EpochingDialog(BaseDialog):
         self.params: tuple | None = None
 
         # UI Elements
-        # UI Elements
         self.event_list: QListWidget | None = None
         self.tmin_spin: QDoubleSpinBox | None = None
         self.tmax_spin: QDoubleSpinBox | None = None

@@ -255,3 +255,9 @@ class PlotFigureWindow(SinglePlotWindow):
         self.update_progress = -1
         self.current_plot = current_plot  # Force re-check in loop
         self.plot_gap = 100  # Force immediate update
+
+    def closeEvent(self, event):  # noqa: N802
+        """Stop the polling timer and clean up."""
+        if self.timer:
+            self.timer.stop()
+        super().closeEvent(event)

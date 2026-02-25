@@ -64,13 +64,6 @@ class DeviceSettingDialog(BaseDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    def confirm(self):
-        """Legacy confirm handler (no-op, logic moved to accept)."""
-        # Override accept? Or confirm is accept logic?
-        # Original called confirm() on accepted signal.
-        # I'll rename to accept? No, standard is accept() overrides QDialog.accept
-        # But BaseDialog doesn't enforce. UI connects logic.
-
     def accept(self):
         """Store the selected device and accept the dialog."""
         # Logic from confirm()

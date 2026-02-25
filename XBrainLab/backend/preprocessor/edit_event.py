@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..load_data import Raw
+from ..utils.logger import logger
 from .base import PreprocessBase
 
 
@@ -127,9 +128,9 @@ class EditEventId(PreprocessBase):
         if len(np.unique(list(new_event_ids.keys()))) != len(
             np.unique(list(new_event_ids.values()))
         ):
-            print(
-                "UserWarning: Updated with duplicate new event Ids. "
-                "Event names of same event id are automatically merged."
+            logger.warning(
+                "Updated with duplicate new event IDs. "
+                "Event names of same event ID are automatically merged."
             )
             uq, cnt = np.unique(
                 list(new_event_ids.values()), return_counts=True

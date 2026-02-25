@@ -67,13 +67,13 @@
 - **狀態**: <span style="color:blue">技術債 (可選)</span>
 
 ### 2. `TrainingPlanHolder.train_one_epoch` 過於複雜
-- **位置**: [`training_plan.py:316-381`](file:///c:/lab/XBrainLab/XBrainLab/backend/training/training_plan.py#L316)
+- **位置**: [`training_plan.py:425-492`](file:///c:/lab/XBrainLab/XBrainLab/backend/training/training_plan.py#L425)
 - **問題**: 65 行大方法，包含訓練迴圈、評估、記錄更新等多重職責。
 - **建議**: 抽取 `EpochRunner` 類別 (已標記為 Optional，未實作)。
 - **狀態**: <span style="color:blue">技術債 (可選)</span>
 
 ### 3. RAG Embedding 同步執行
-- **位置**: [`retriever.py:153`](file:///c:/lab/XBrainLab/XBrainLab/llm/rag/retriever.py#L153)
+- **位置**: [`retriever.py:156`](file:///c:/lab/XBrainLab/XBrainLab/llm/rag/retriever.py#L156)
 - **問題**: `embed_query()` 在主執行緒執行，可能阻塞 UI。
 - **影響**: 首次 RAG 查詢可能造成短暫卡頓。
 - **建議**: 移至背景執行緒執行。

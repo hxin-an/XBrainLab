@@ -63,7 +63,7 @@ graph TD
 ```
 XBrainLab/ui/
 ├── __init__.py
-├── main_window.py              # QMainWindow (328 行)
+├── main_window.py              # QMainWindow (265 行)
 │                                 # ├── StackedWidget (面板切換)
 │                                 # ├── AgentManager (Agent 生命週期)
 │                                 # └── ToolExecutor (Agent 工具分發)
@@ -165,7 +165,7 @@ XBrainLab/ui/
 
 ### 4.1 MainWindow
 
-`MainWindow` (328 行) 是 `QMainWindow` 子類別，職責為 **面板編排**，不包含業務邏輯。
+`MainWindow` (265 行) 是 `QMainWindow` 子類別，職責為 **面板編排**，不包含業務邏輯。
 
 **主要組成**:
 - `QStackedWidget`: 管理 5 + 1 個面板（Dataset / Preprocess / Training / Evaluation / Visualization + Chat）
