@@ -52,16 +52,11 @@ class TestIOIntegration:
         with pytest.raises((FileCorruptedError, FileNotFoundError)):
             load_gdf_file(fake_path)
 
-    def test_load_invalid_extension(self):
+    def test_load_invalid_extension(self, tmp_path):
         """Test loading a file with wrong extension."""
-        # Create a dummy text file
-        dummy_path = os.path.join(TEST_DATA_DIR, "dummy.txt")
+        dummy_path = str(tmp_path / "dummy.txt")
         with open(dummy_path, "w") as f:
             f.write("This is not a GDF file.")
 
-        try:
-            with pytest.raises((FileCorruptedError, FileNotFoundError, ValueError)):
-                load_gdf_file(dummy_path)
-        finally:
-            if os.path.exists(dummy_path):
-                os.remove(dummy_path)
+        with pytest.raises((FileCorruptedError, FileNotFoundError, ValueError)):
+            load_gdf_file(dummy_path)

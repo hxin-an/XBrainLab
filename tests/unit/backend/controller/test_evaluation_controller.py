@@ -1,9 +1,15 @@
+import sys
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from XBrainLab.backend.controller.evaluation_controller import EvaluationController
+
+# Ensure torchinfo is mockable even when not installed
+_mock_torchinfo = MagicMock()
+if "torchinfo" not in sys.modules:
+    sys.modules["torchinfo"] = _mock_torchinfo
 
 
 @pytest.fixture
@@ -113,6 +119,7 @@ def test_get_model_summary_error(controller):
     plan = MagicMock()
     plan.dataset.get_training_data.side_effect = Exception("Shape error")
 
-    s = controller.get_model_summary_str(plan)
+    with patch("torchinfo.summary"):
+        s = controller.get_model_summary_str(plan)
     assert "Error generating summary" in s
     assert "Shape error" in s
