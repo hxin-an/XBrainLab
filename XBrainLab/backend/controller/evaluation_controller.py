@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from torchinfo import summary
 
 from XBrainLab.backend.training import TrainingPlanHolder
 from XBrainLab.backend.training.record import EvalRecord, TrainRecord
@@ -143,6 +142,8 @@ class EvaluationController(Observable):
             generation fails.
         """
         try:
+            from torchinfo import summary  # noqa: PLC0415 — lazy: optional dep
+
             # Get model instance
             # If record is provided, use its trained model
             if record and hasattr(record, "model"):

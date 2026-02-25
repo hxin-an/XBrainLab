@@ -81,9 +81,7 @@ def test_get_model_summary_str_from_record(controller):
     record.model = MagicMock()
     record.get_name.return_value = "Run 1"
 
-    with patch(
-        "XBrainLab.backend.controller.evaluation_controller.summary"
-    ) as mock_summary:
+    with patch("torchinfo.summary") as mock_summary:
         mock_summary.return_value = "Model Summary"
 
         # Setup dataset shape
@@ -103,9 +101,7 @@ def test_get_model_summary_str_new_model(controller):
     mock_model = MagicMock()
     plan.model_holder.get_model.return_value = mock_model
 
-    with patch(
-        "XBrainLab.backend.controller.evaluation_controller.summary"
-    ) as mock_summary:
+    with patch("torchinfo.summary") as mock_summary:
         mock_summary.return_value = "Fresh Model"
 
         s = controller.get_model_summary_str(plan, None)
