@@ -22,101 +22,46 @@ XBrainLab 採用 **三層測試金字塔**，確保從單元到端對端的全�
 ```
 tests/
 ├── __init__.py
-├── conftest.py                     # 全域 Fixture (study, facade, tmp_path)
+├── conftest.py                     # 全域 Fixture (mock_ui_blocking, configure_matplotlib, test_app)
 ├── architecture_compliance.py      # 架構合規性檢查
 │
 ├── data/                           # 測試用資料
-│   └── *.gdf / *.mat              # 真實 EEG 檔案（.gitignore 排除大型檔案）
+│   ├── *.gdf                       # 真實 EEG 檔案 (A01T, A02T, A03T)
+│   └── label/                      # 標籤檔案 (*.mat)
 │
-├── fixtures/                       # 共用 Fixture 模組
-│   └── *.py
+├── fixtures/                       # 共用 Fixture
 │
 ├── unit/                           # ========== 單元測試 ==========
 │   ├── backend/                    # 後端單元測試
-│   │   ├── controller/             # Controller 邏輯測試
-│   │   │   ├── test_dataset_controller.py
-│   │   │   ├── test_preprocess_controller.py
-│   │   │   ├── test_training_controller.py
-│   │   │   ├── test_evaluation_controller.py
-│   │   │   ├── test_visualization_controller.py
-│   │   │   ├── test_chat_controller.py
-│   │   │   └── test_controller_error_handling.py
-│   │   ├── dataset/                # Dataset 相關
-│   │   │   ├── test_dataset.py
-│   │   │   ├── test_dataset_generator.py
-│   │   │   ├── test_data_splitter.py
-│   │   │   ├── test_epochs.py
-│   │   │   └── test_option.py
-│   │   ├── load_data/              # 資料載入
-│   │   │   ├── test_raw_data_loader.py
-│   │   │   ├── test_data_loader.py
-│   │   │   ├── test_event_loader.py
-│   │   │   ├── test_label_loader.py
-│   │   │   └── ... (11 test files)
-│   │   ├── model_base/             # 模型定義
-│   │   │   └── test_model_base.py
-│   │   ├── preprocessor/           # 預處理操作
-│   │   │   ├── test_filtering.py
-│   │   │   ├── test_resample.py
-│   │   │   ├── test_normalize.py
-│   │   │   ├── test_rereference.py
-│   │   │   └── ... (9 test files)
-│   │   ├── training/               # 訓練子系統
-│   │   │   ├── test_trainer.py
-│   │   │   ├── test_training_plan.py
-│   │   │   ├── test_model_holder.py
-│   │   │   ├── test_evaluator.py
-│   │   │   ├── record/             # 訓練紀錄
-│   │   │   │   ├── test_train_record.py
-│   │   │   │   ├── test_eval_record.py
-│   │   │   │   └── ...
-│   │   │   └── ... (8 + 5 test files)
-│   │   ├── utils/                  # 基礎設施
-│   │   │   ├── test_observer.py
-│   │   │   ├── test_logger.py
-│   │   │   ├── test_error_handler.py
-│   │   │   └── ... (7 test files)
-│   │   └── visualization/
-│   │       ├── test_saliency_map.py
-│   │       └── ... (3 test files)
+│   │   ├── controller/             # Controller 邏輯 (7 test files)
+│   │   ├── dataset/                # Dataset 相關 (5 test files)
+│   │   ├── evaluation/             # 評估指標 (1 test file)
+│   │   ├── load_data/              # 資料載入 (11 test files)
+│   │   ├── model_base/             # 模型定義 (1 test file)
+│   │   ├── preprocessor/           # 預處理 (9 test files)
+│   │   ├── training/               # 訓練子系統 + record/ (8 + 5 test files)
+│   │   ├── utils/                  # 基礎設施 (7 test files)
+│   │   ├── visualization/          # 視覺化 (3 test files)
+│   │   └── test_*.py               # 根層級測試 (study, facade, data_manager, etc.)
 │   │
 │   ├── llm/                        # LLM / Agent 單元測試
-│   │   ├── agent/                  # Agent 邏輯
-│   │   │   ├── test_agent.py
-│   │   │   ├── test_context_assembler.py
-│   │   │   ├── test_react_agent.py
-│   │   │   └── ... (5 test files)
-│   │   ├── core/                   # LLM 核心
-│   │   │   ├── test_api_engine.py
-│   │   │   ├── test_gemini_engine.py
-│   │   │   ├── test_parser.py
-│   │   │   └── ... (6 test files)
-│   │   ├── rag/                    # RAG 相關
-│   │   │   └── ... (3 test files)
-│   │   └── tools/                  # 工具呼叫 (Mocked)
-│   │       ├── test_tool_definitions.py
-│   │       ├── test_tool_executor.py
-│   │       └── real/               # 真實工具測試
-│   │           └── test_real_tools.py
+│   │   ├── agent/                  # Agent 邏輯 (context_assembler, verification, worker, etc.)
+│   │   ├── core/                   # LLM 核心 (backend, config, engine, downloader, etc.)
+│   │   ├── rag/                    # RAG 相關 (3 test files)
+│   │   ├── tools/                  # 工具呼叫 + real/ (Mocked & Real)
+│   │   └── test_*.py               # 根層級測試 (api_engine, parser, controller, etc.)
 │   │
 │   └── ui/                         # UI 單元測試
-│       ├── core/
-│       │   ├── test_base_panel.py
-│       │   ├── test_observer_bridge.py
-│       │   ├── test_event_bus.py
-│       │   └── ... (5 test files)
-│       ├── chat/
-│       │   └── test_chat_panel.py
-│       ├── components/
-│       │   ├── test_agent_manager.py
-│       │   ├── test_info_panel.py
-│       │   └── test_placeholder.py
+│       ├── core/                   # base_panel, base_dialog, event_bus, utils, worker
+│       ├── chat/                   # message_bubble
+│       ├── components/             # info_panel_service, dialogs, etc.
 │       ├── dataset/                # 6 test files
 │       ├── preprocess/             # 4 test files
 │       ├── training/               # 7 test files
 │       ├── visualization/          # 1 test file
-│       ├── dialogs/                # 2 test files
-│       └── styles/                 # 2 test files
+│       ├── dialogs/                # dataset/ 等子目錄
+│       ├── styles/                 # 2 test files
+│       └── test_*.py               # 根層級測試 (main_window, observer_bridge, workflow, etc.)
 │
 ├── integration/                    # ========== 整合測試 ==========
 │   ├── controller/                 # Phase 1: 後端核心
@@ -131,15 +76,16 @@ tests/
 │   │   ├── test_full_pipeline.py            # 完整管線
 │   │   ├── test_multi_model.py              # 模型切換
 │   │   ├── test_real_data_pipeline.py       # 真實資料管線
-│   │   └── test_tool_execution_pipeline.py  # 工具執行鏈
+│   │   ├── test_pipeline_integration.py     # 管線整合
+│   │   └── test_preprocess_validation.py    # 預處理驗證
 │   │
 │   ├── ui/                         # Phase 3: UI 互動
 │   │   ├── test_panel_controller_binding.py # Panel ↔ Controller 綁定
 │   │   ├── test_ui_headless.py              # Headless UI 穩定性
 │   │   ├── test_ui_integration.py           # UI 整合
-│   │   ├── test_refresh_panels.py           # 面板重新整理
+│   │   ├── test_ui_refresh.py               # 面板重新整理
 │   │   ├── test_agent_manager_switch.py     # Agent 切換
-│   │   └── test_dialog_integration.py       # 對話框整合
+│   │   └── test_real_tools_e2e.py           # 真實工具 E2E
 │   │
 │   ├── training/                   # 訓練整合
 │   │   └── test_training_integration.py
@@ -152,7 +98,7 @@ tests/
 │       └── test_debug_script_execution.py
 │
 └── regression/                     # ========== 迴歸測試 ==========
-    ├── test_reproduce_val_issue.py  # 驗證集問題重現
+    ├── reproduce_val_issue.py       # 驗證集問題重現
     └── test_epoch_duration_bug.py   # Epoch 時長 Bug 重現
 ```
 
@@ -185,11 +131,11 @@ def test_training_with_real_data(study):
 ```python
 def test_full_pipeline(facade, real_data_path):
     facade.load_data([str(real_data_path)])
-    facade.apply_bandpass_filter(1.0, 40.0)
-    facade.epoch_data(tmin=-0.2, tmax=0.8)
+    facade.apply_filter(1.0, 40.0)              # 帶通濾波
+    facade.epoch_data(t_min=-0.2, t_max=0.8)    # Epoching
     facade.set_model("EEGNet")
-    facade.start_training()
-    assert facade.get_training_status() == "completed"
+    facade.run_training()                        # 開始訓練
+    assert facade.is_training() is False         # 已完成
 ```
 
 ### Phase 3: UI 綁定測試
@@ -242,10 +188,10 @@ poetry run pytest -k "test_training"              # 關鍵字過濾
 ### 全域 Fixture (`conftest.py`)
 | Fixture | 範圍 | 用途 |
 |---------|------|------|
-| `study` | function | 全新 Study 實例 |
-| `facade` | function | BackendFacade（含 Study） |
+| `mock_ui_blocking` | function (autouse) | Mock UI 阻塞操作 |
+| `configure_matplotlib` | session (autouse) | 設定 Matplotlib 非互動後端 |
+| `test_app` | function | QApplication 實例（搭配 qtbot） |
 | `tmp_path` | function | 暫存目錄（pytest 內建） |
-| `real_data_path` | session | 真實 EEG 測試檔案路徑 |
 
 ### 撰寫規則
 1. **使用 `Study` 入口**: 透過 `study.get_controller()` 取得 Controller，不直接實例化

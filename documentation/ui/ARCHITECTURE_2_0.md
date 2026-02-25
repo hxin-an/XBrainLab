@@ -165,7 +165,7 @@ XBrainLab/ui/
 
 ### 4.1 MainWindow
 
-`MainWindow` (334 行) 是 `QMainWindow` 子類別，職責為 **面板編排**，不包含業務邏輯。
+`MainWindow` (267 行) 是 `QMainWindow` 子類別，職責為 **面板編排**，不包含業務邏輯。
 
 **主要組成**:
 - `QStackedWidget`: 管理 5 + 1 個面板（Dataset / Preprocess / Training / Evaluation / Visualization + Chat）
@@ -177,25 +177,30 @@ XBrainLab/ui/
 所有面板繼承 `BasePanel`，強制實作標準介面：
 
 ```python
-class BasePanel(QWidget, ABC):
-    def __init__(self, controller, main_window):
+class BasePanel(QWidget):
+    def __init__(self, parent=None, controller=None):
         self.controller = controller
-        self.main_window = main_window
-        self._bridges: list[QtObserverBridge] = []
-        self.init_ui()           # 子類別實作 UI 佈局
-        self._setup_bridges()    # 子類別設定 Observer 綁定
+        self.main_window = parent     # 從 parent 推導
+        self.init_ui()                # 子類別實作 UI 佈局
+        self._setup_bridges()         # 子類別設定 Observer 綁定
 
-    @abstractmethod
-    def init_ui(self): ...
+    def init_ui(self):               # 子類別覆寫（raise NotImplementedError）
+        raise NotImplementedError
 
-    @abstractmethod
-    def update_panel(self): ...  # Controller 事件觸發後的更新邏輯
+    def update_panel(self, *args, **kwargs):  # Controller 事件觸發後的更新
+        pass
 
-    def _setup_bridges(self):    # 綁定 Controller 事件
-        bridge = QtObserverBridge(self.controller, "data_changed", self)
-        bridge.connect_to(self.update_panel)
-        self._bridges.append(bridge)
+    def _setup_bridges(self):        # 子類別覆寫以綁定 Controller 事件
+        pass
+
+    def set_busy(self, busy: bool):  # 設定忙碌狀態
+        ...
+
+    def cleanup(self):               # 清理資源
+        ...
 ```
+
+> **注意**: BasePanel 不使用 `ABC` / `@abstractmethod`，而是透過 `NotImplementedError` 強制子類別實作 `init_ui`。
 
 ### 4.3 QtObserverBridge（執行緒安全橋接）
 
@@ -209,7 +214,7 @@ Controller.notify("event")        │
      ▼                            │
 QtObserverBridge                  │
   ├── pyqtSignal.emit() ──────►  │
-  │   (QueuedConnection)          ▼
+  │   (AutoConnection)            ▼
   │                         slot: self.update_panel()
 ```
 
@@ -218,22 +223,40 @@ QtObserverBridge                  │
 - `__init__` 時呼叫 `controller.subscribe(event, self._on_event)`
 - `_on_event` 透過 `emit()` 將呼叫排入 Qt 事件佇列
 - Qt 事件迴圈在主執行緒中執行已連接的 slot
+- 使用 `connect_to(slot)` 方法連接目標 slot
+
+> **注意**: 使用 Qt 預設的 `AutoConnection`（跨執行緒時自動退化為 `QueuedConnection`）。
 
 ### 4.4 EventBus（全域事件匯流排）
 
-跨面板通訊機制，避免面板間直接引用：
+跨面板通訊機制（Singleton `QObject`），透過預定義的 `pyqtSignal` 廣播事件：
 
 ```python
-EventBus.emit("panel_switch", target="training")
-EventBus.on("panel_switch", self._handle_switch)
+class EventBus(QObject):
+    status_message = pyqtSignal(str, int)   # 狀態列訊息
+    error_occurred = pyqtSignal(str)         # 錯誤通知
+    data_refreshed = pyqtSignal()            # 資料刷新
+    model_updated  = pyqtSignal(str)         # 模型更新
+
+    @classmethod
+    def get_instance(cls) -> "EventBus":    # Singleton
+```
+
+使用方式：
+```python
+EventBus.get_instance().status_message.emit("載入完成", 3000)
+EventBus.get_instance().data_refreshed.connect(self._on_refresh)
 ```
 
 ### 4.5 AgentManager（Agent 生命週期）
 
 管理 LLM Agent 的啟動/停止/模型切換：
-- 對外暴露 `start_agent()` / `stop_agent()` / `switch_model()`
-- 與 ChatPanel 連接，處理使用者輸入
-- 透過 BackendFacade 執行 Agent 工具呼叫
+- `start_system()` — 啟動 Agent 系統
+- `stop_generation()` — 停止當前生成
+- `set_model(model_name)` — 切換 LLM 模型
+- `handle_user_input(text)` — 處理使用者輸入
+- `start_new_conversation()` — 開始新對話
+- 與 ChatPanel 連接，透過 BackendFacade 執行 Agent 工具呼叫
 
 ---
 

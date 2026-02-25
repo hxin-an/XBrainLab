@@ -31,9 +31,9 @@ graph TD
         DC["DatasetController<br/>(Observable)"]
         PC["PreprocessController<br/>(Observable)"]
         TC["TrainingController<br/>(Observable)"]
-        EC["EvaluationController"]
-        VC["VisualizationController"]
-        CC["ChatController"]
+        EC["EvaluationController<br/>(Observable)"]
+        VC["VisualizationController<br/>(Observable)"]
+        CC["ChatController<br/>(QObject)"]
     end
 
     subgraph ServiceLayer ["Service Layer"]
@@ -88,13 +88,13 @@ XBrainLab/backend/
 ├── exceptions.py               # 自定義 Exception 類別
 ├── __init__.py
 │
-├── controller/                 # 業務邏輯層 (每個繼承 Observable)
-│   ├── dataset_controller.py   # 資料載入、移除、標籤管理、Channel 選擇
-│   ├── preprocess_controller.py# 濾波、重取樣、重參考、正規化、Epoching
-│   ├── training_controller.py  # 訓練迴圈、進度監控、模型儲存
-│   ├── evaluation_controller.py# 評估指標計算
-│   ├── visualization_controller.py # Saliency Map、Topomap
-│   └── chat_controller.py      # 對話相關邏輯
+├── controller/                 # 業務邏輯層
+│   ├── dataset_controller.py   # 資料載入、移除、標籤管理 (Observable)
+│   ├── preprocess_controller.py# 濾波、重取樣、重參考、正規化 (Observable)
+│   ├── training_controller.py  # 訓練迴圈、進度監控 (Observable)
+│   ├── evaluation_controller.py# 評估指標計算 (Observable)
+│   ├── visualization_controller.py # Saliency Map、Topomap (Observable)
+│   └── chat_controller.py      # 對話相關邏輯 (QObject, 非 Observable)
 │
 ├── dataset/                    # 資料結構
 │   ├── dataset.py              # Dataset 類別 (PyTorch Dataset)
@@ -144,13 +144,17 @@ XBrainLab/backend/
 ├── services/                   # 跨領域服務
 │   └── label_import_service.py # 批次標籤匯入 (Smart Parser)
 │
+├── evaluation/                 # 評估指標
+│   └── metric.py               # Metric 計算 (Accuracy, F1, etc.)
+│
 ├── visualization/              # 視覺化引擎 (無 Qt 依賴)
 │   ├── base.py                 # VisualizerBase
 │   ├── plot_type.py            # PlotType 列舉
 │   ├── saliency_map.py         # Saliency Map 計算
 │   ├── saliency_topomap.py     # Topomap 渲染
 │   ├── saliency_spectrogram_map.py # Spectrogram
-│   └── saliency_3d_engine.py   # 3D Head 渲染
+│   ├── saliency_3d_engine.py   # 3D Head 渲染
+│   └── 3Dmodel/                # 3D Head 模型資源
 │
 └── utils/                      # 基礎設施
     ├── observer.py             # Observable 模式 (純 Python, 無 Qt)
@@ -176,9 +180,12 @@ XBrainLab/backend/
 - `preprocessed_data_list: list[Raw]` — 委派至 DataManager
 - `epoch_data: Epochs | None` — 委派至 DataManager
 - `datasets: list[Dataset]` — 委派至 DataManager
+- `dataset_generator: DatasetGenerator | None` — 委派至 DataManager
+- `dataset_locked: bool` — 委派至 DataManager
 - `model_holder: ModelHolder | None` — 模型 + 優化器
 - `training_option: TrainingOption | None` — 訓練超參數
 - `trainer: Trainer | None` — 訓練執行器
+- `saliency_params: dict | None` — 視覺化參數
 
 **Controller 快取機制**:
 ```python
@@ -197,7 +204,11 @@ study.get_controller("training")   # → TrainingController
 
 ### 4.3 Controllers（業務邏輯核心）
 
-所有 Controller 繼承 `Observable`，透過事件通知訂閱者。
+除 `ChatController`（繼承 `QObject`）外，所有 Controller 繼承 `Observable`，透過事件通知訂閱者。
+
+> **注意**: `ChatController` 是唯一繼承 `QObject` 而非 `Observable` 的 Controller，
+> 且未在 `Study.get_controller()` 中註冊。`Study.get_controller()` 支援的類型為：
+> `dataset` / `preprocess` / `training` / `evaluation` / `visualization`。
 
 #### DatasetController
 | 事件 | 觸發時機 |
@@ -205,7 +216,6 @@ study.get_controller("training")   # → TrainingController
 | `data_changed` | 載入/移除/修改資料後 |
 | `dataset_locked(bool)` | 鎖定狀態變更 |
 | `import_finished(int, list)` | 匯入完成（成功數, 錯誤列表） |
-| `error_occurred(str)` | 可恢復錯誤 |
 
 #### PreprocessController
 | 事件 | 觸發時機 |
@@ -218,7 +228,6 @@ study.get_controller("training")   # → TrainingController
 | `training_started` | 訓練開始 |
 | `training_stopped` | 訓練完成/中斷 |
 | `training_updated` | 訓練進度更新（~每秒） |
-| `config_changed` | 訓練設定變更 |
 | `history_cleared` | 訓練歷史清除 |
 
 **執行緒安全**: TrainingController 使用 `threading.Thread` 監控訓練進度，透過 `threading.Event` 同步停止信號。
@@ -236,16 +245,16 @@ facade.attach_labels({"A01T.gdf": "/data/A01T.mat"})
 facade.get_data_summary()
 
 # 預處理
-facade.apply_bandpass_filter(low_freq=1.0, high_freq=40.0)
-facade.apply_notch_filter(freq=50.0)
-facade.resample(target_freq=128)
-facade.set_montage(name="standard_1020")
-facade.epoch_data(tmin=-0.2, tmax=0.8)
+facade.apply_filter(low_freq=1.0, high_freq=40.0)          # 帶通濾波
+facade.apply_notch_filter(freq=50.0)                        # 陷波濾波
+facade.resample_data(rate=128)                              # 重取樣
+facade.set_montage(montage_name="standard_1020")            # 設定 Montage
+facade.epoch_data(t_min=-0.2, t_max=0.8)                    # Epoching
 
 # 訓練
 facade.set_model(model_name="EEGNet")
-facade.configure_training(epochs=50, batch_size=64, lr=0.001)
-facade.start_training()
+facade.configure_training(epoch=50, batch_size=64, learning_rate=0.001)
+facade.run_training()                                       # 開始訓練
 ```
 
 ### 4.5 Observable（觀察者模式）
@@ -254,10 +263,10 @@ facade.start_training()
 
 ```python
 class Observable:
-    def subscribe(event_name, callback)   # 訂閱
-    def unsubscribe(event_name, callback) # 取消訂閱
-    def notify(event_name, *args, **kwargs) # 通知所有訂閱者
-    def _safe_call(event_name, callback)  # 安全呼叫（錯誤不傳播）
+    def subscribe(event_name, callback)               # 訂閱
+    def unsubscribe(event_name, callback)             # 取消訂閱
+    def notify(event_name, *args, **kwargs)           # 通知所有訂閱者
+    def _safe_call(event_name, callback, *args, **kwargs)  # 安全呼叫（錯誤不傳播）
 ```
 
 **跨執行緒**: Observable 本身不處理執行緒問題。UI 層透過 `QtObserverBridge` 將事件轉為 Qt Signal（`QueuedConnection`），安全投射到主執行緒。
