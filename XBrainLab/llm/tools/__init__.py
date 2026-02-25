@@ -1,3 +1,10 @@
+"""LLM tools package for the XBrainLab agent framework.
+
+Provides mock and real tool implementations for dataset management,
+preprocessing, training, and UI control. Use ``get_all_tools`` to
+obtain the appropriate tool set based on the execution mode.
+"""
+
 from .base import BaseTool
 
 # Import Mock Tools
@@ -56,8 +63,14 @@ from .real.ui_control_real import RealSwitchPanelTool
 
 
 def get_tool_by_name(name: str) -> BaseTool | None:
-    """
-    Returns the tool instance with the given name.
+    """Look up a registered tool by its canonical name.
+
+    Args:
+        name: The canonical name of the tool (e.g., ``'load_data'``).
+
+    Returns:
+        The matching ``BaseTool`` instance, or ``None`` if no tool
+        with the given name exists in ``AVAILABLE_TOOLS``.
     """
     for tool in AVAILABLE_TOOLS:
         if tool.name == name:
@@ -66,8 +79,18 @@ def get_tool_by_name(name: str) -> BaseTool | None:
 
 
 def get_all_tools(mode: str = "mock") -> list[BaseTool]:
-    """
-    Factory function to get all tools based on the mode.
+    """Create and return all tool instances for the given execution mode.
+
+    Args:
+        mode: Execution mode — ``'mock'`` for simulated tools or
+            ``'real'`` for backend-integrated tools.
+
+    Returns:
+        A list of ``BaseTool`` instances appropriate for the
+        requested mode.
+
+    Raises:
+        ValueError: If *mode* is not ``'mock'`` or ``'real'``.
     """
     if mode == "mock":
         return [

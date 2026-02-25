@@ -1,5 +1,9 @@
-# Chat Panel Stylesheet Constants
-# Centralized styles for maintainability
+"""Centralized stylesheet constants for the Chat Panel.
+
+Defines all Qt stylesheet strings used by chat components including
+bubble frames, scroll areas, control panels, and input fields.
+"""
+
 from ..styles.theme import Theme
 
 # Scroll Area Styles

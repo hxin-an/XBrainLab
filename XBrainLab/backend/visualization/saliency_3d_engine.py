@@ -1,3 +1,5 @@
+"""3-D saliency visualisation engine using PyVista and Qt threading."""
+
 import os
 
 import numpy as np
@@ -10,12 +12,32 @@ from XBrainLab.backend.utils.logger import logger
 
 
 def inverse_dist_weighted_sum(dist, val):
+    """Compute an inverse-distance weighted sum of values.
+
+    Args:
+        dist: Array of distances from the query point to each source.
+        val: Array of scalar values at each source.
+
+    Returns:
+        float: Weighted sum where closer sources contribute more.
+    """
     weight = 1 / (dist + 1e-8)
     weight = weight / weight.sum()
     return (weight * val).sum()
 
 
 def channel_convex_hull(ch_pos):
+    """Build a triangulated surface mesh from channel positions.
+
+    Uses Delaunay 2-D triangulation on a point cloud to create a surface
+    suitable for scalp-level EEG visualisation.
+
+    Args:
+        ch_pos: ``(N, 3)`` array of 3-D channel positions.
+
+    Returns:
+        pyvista.PolyData: Triangulated surface mesh.
+    """
     # hull = ConvexHull(ch_pos) # Unused
     # Extract the vertices of the convex hull
     # Extract the vertices of the convex hull
@@ -39,9 +61,24 @@ def channel_convex_hull(ch_pos):
 
 
 class ModelDownloadThread(QThread):
+    """Background thread that downloads a single 3-D model file.
+
+    Attributes:
+        download_finished: Signal emitted with the destination path on success
+            or an error string prefixed with ``"Error: "`` on failure.
+        url: Remote URL to download from.
+        dest_path: Local filesystem path to save the file to.
+    """
+
     download_finished = pyqtSignal(str)  # formatted path or error
 
     def __init__(self, url, dest_path):
+        """Initialise the download thread.
+
+        Args:
+            url: Remote URL of the model file.
+            dest_path: Local path where the file will be written.
+        """
         super().__init__()
         self.url = url
         self.dest_path = dest_path
@@ -66,14 +103,31 @@ SALIENCY_DOWNLOAD_THREADS = set()
 
 
 class Saliency3DEngine(QObject):
-    """
-    Backend engine for Saliency 3D visualization.
-    Handles mesh loading, data processing, and PyVista actor management.
+    """Backend engine for 3-D saliency visualisation.
+
+    Handles mesh loading, electrode-to-mesh mapping, saliency interpolation,
+    and PyVista actor management.
+
+    Attributes:
+        model_loaded: Signal emitted once both head and brain meshes are
+            loaded and ready.
+        mesh_scale_scalar: Uniform scaling factor applied to meshes.
+        head_mesh: Loaded head ``PolyData`` mesh, or ``None``.
+        brain_mesh: Loaded brain ``PolyData`` mesh, or ``None``.
+        saliency_cap: Triangulated cap mesh derived from channel positions.
+        pos_on_3d: ``(N, 3)`` array of electrode positions in 3-D model space.
+        saliency: ``(channels, time)`` saliency matrix for the current event.
+        download_threads: Active :class:`ModelDownloadThread` instances.
     """
 
     model_loaded = pyqtSignal()
 
     def __init__(self, mesh_scale_scalar=0.8):
+        """Initialise the engine and begin asynchronous model loading.
+
+        Args:
+            mesh_scale_scalar: Uniform scaling factor applied to all meshes.
+        """
         super().__init__()
         self.mesh_scale_scalar = mesh_scale_scalar
         self.head_mesh = None
@@ -89,6 +143,7 @@ class Saliency3DEngine(QObject):
         self._load_models()
 
     def _load_models(self):
+        """Locate 3-D model files and download missing ones in background threads."""
         current_dir = os.path.dirname(os.path.abspath(__file__))
         model_dir = os.path.join(current_dir, "3Dmodel")
 
@@ -127,6 +182,12 @@ class Saliency3DEngine(QObject):
             self._init_meshes(model_dir)
 
     def _on_download_complete(self, result):
+        """Handle a finished download and attempt to initialise meshes.
+
+        Args:
+            result: Destination file path on success, or an error string
+                beginning with ``"Error: "`` on failure.
+        """
         if "Error" in result:
             logger.error(result)
             return
@@ -151,6 +212,11 @@ class Saliency3DEngine(QObject):
             self._init_meshes(model_dir)
 
     def _init_meshes(self, model_dir):
+        """Read head and brain PLY meshes from *model_dir*.
+
+        Args:
+            model_dir: Directory containing ``head.ply`` and ``brain.ply``.
+        """
         head_path = os.path.join(model_dir, "head.ply")
         brain_path = os.path.join(model_dir, "brain.ply")
 
@@ -167,7 +233,25 @@ class Saliency3DEngine(QObject):
             logger.error(f"Failed to load meshes: {e}")
 
     def process_data(self, eval_record, epoch_data, selected_event_name):
-        """Process epoch data and eval record to prepare for visualization."""
+        """Process epoch data and evaluation record for 3-D visualisation.
+
+        Computes saliency values, maps channels onto the 3-D head model,
+        builds scaled meshes, and prepares the interpolation cap.
+
+        Args:
+            eval_record: Evaluation record containing gradient data.
+            epoch_data: Epoch data providing channel names, montage positions
+                and event IDs.
+            selected_event_name: Name of the event class to visualise.
+
+        Returns:
+            int: Number of channels in the saliency matrix.
+
+        Raises:
+            ValueError: If no montage positions are available or no channels
+                could be mapped.
+            RuntimeError: If the head or brain mesh has not been loaded.
+        """
         # get saliency
         label_index = epoch_data.event_id[selected_event_name]
         saliency_raw = eval_record.gradient[label_index]
@@ -199,11 +283,7 @@ class Saliency3DEngine(QObject):
         # Hull was unused variable F841
         # hull = self.head_mesh.copy()
 
-        for ele in electrode:
-            # Safety check for index
-            if ele not in electrode:
-                continue
-            idx = electrode.index(ele)
+        for idx, _ele in enumerate(electrode):
             if idx >= len(ch_pos):
                 continue
 
@@ -240,9 +320,19 @@ class Saliency3DEngine(QObject):
         return self.saliency.shape[0]  # Number of channels
 
     def update_scalars(self, timestamp, neighbor=3):
-        """
-        Update scalar values on the saliency cap based on timestamp.
-        Returns the updated scalar array.
+        """Update scalar values on the saliency cap for a given time point.
+
+        For each vertex of the cap mesh the *neighbor* nearest channels are
+        found and their saliency values are combined using inverse-distance
+        weighting.
+
+        Args:
+            timestamp: Time-step index into the saliency matrix.
+            neighbor: Number of nearest channels to use for interpolation.
+
+        Returns:
+            np.ndarray | None: Interpolated scalar array with one value per
+                cap-mesh vertex, or ``None`` if data is not yet available.
         """
         if self.saliency is None or self.saliency_cap is None:
             return None

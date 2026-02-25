@@ -1,3 +1,5 @@
+"""Enum definitions for dataset splitting and training configuration options."""
+
 from enum import Enum
 
 

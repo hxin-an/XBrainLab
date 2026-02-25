@@ -1,9 +1,21 @@
+"""Abstract base tool definitions for dataset operations.
+
+Each class defines the tool's name, description, and JSON-schema
+parameters.  Concrete (mock or real) implementations must override
+:meth:`execute`.
+"""
+
 from typing import Any
 
 from ..base import BaseTool
 
 
 class BaseListFilesTool(BaseTool):
+    """List files in a directory to explore dataset structure.
+
+    Allows the agent to discover available data files before loading.
+    """
+
     @property
     def name(self) -> str:
         return "list_files"
@@ -34,6 +46,12 @@ class BaseListFilesTool(BaseTool):
 
 
 class BaseLoadDataTool(BaseTool):
+    """Load raw EEG/GDF data files into the Study.
+
+    Accepts absolute file paths or directory paths. Directories are
+    expanded to include all contained files.
+    """
+
     @property
     def name(self) -> str:
         return "load_data"
@@ -63,6 +81,11 @@ class BaseLoadDataTool(BaseTool):
 
 
 class BaseAttachLabelsTool(BaseTool):
+    """Attach label files to previously loaded data files.
+
+    Maps each data filename to its corresponding label file path.
+    """
+
     @property
     def name(self) -> str:
         return "attach_labels"
@@ -93,6 +116,8 @@ class BaseAttachLabelsTool(BaseTool):
 
 
 class BaseClearDatasetTool(BaseTool):
+    """Clear all loaded data and reset the Study state."""
+
     @property
     def name(self) -> str:
         return "clear_dataset"
@@ -110,6 +135,8 @@ class BaseClearDatasetTool(BaseTool):
 
 
 class BaseGetDatasetInfoTool(BaseTool):
+    """Retrieve summary information about the currently loaded dataset."""
+
     @property
     def name(self) -> str:
         return "get_dataset_info"
@@ -127,6 +154,12 @@ class BaseGetDatasetInfoTool(BaseTool):
 
 
 class BaseGenerateDatasetTool(BaseTool):
+    """Generate a training/validation/test dataset from epoched data.
+
+    Supports multiple split strategies (trial, session, subject) and
+    training modes (individual, group).
+    """
+
     @property
     def name(self) -> str:
         return "generate_dataset"

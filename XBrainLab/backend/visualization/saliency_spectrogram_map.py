@@ -1,3 +1,5 @@
+"""Frequency-by-time saliency spectrogram visualiser."""
+
 from typing import Any
 
 import numpy as np
@@ -8,14 +10,20 @@ from .base import Visualizer
 
 
 class SaliencySpectrogramMapViz(Visualizer):
-    """Visualizer that generate frequency by time saliency spectrogram
-    from evaluation record"""
+    """Visualizer that generates a frequency-by-time saliency spectrogram.
+
+    The saliency is transformed via STFT and averaged across trials and
+    channels, producing one subplot per class label.
+    """
 
     def _get_plt(self, method) -> Any:
-        """Return saliency spectrogram plot
+        """Render the saliency spectrogram figure.
 
         Args:
-            absolute: whether to plot absolute value of saliency
+            method: Name of the saliency method (e.g. ``"Gradient"``).
+
+        Returns:
+            matplotlib.figure.Figure: The rendered spectrogram figure.
         """
         sfreq = self.epoch_data.get_model_args()["sfreq"]
         label_number = self.epoch_data.get_label_number()

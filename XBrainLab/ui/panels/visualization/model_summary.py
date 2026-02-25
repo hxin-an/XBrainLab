@@ -1,3 +1,5 @@
+"""Dialog window for displaying a model architecture summary."""
+
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -12,7 +14,25 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ModelSummaryWindow(BaseDialog):
+    """Dialog that displays a ``torchinfo`` model summary for a selected plan.
+
+    Allows the user to choose from available training plans and shows
+    a monospace-formatted summary of the model architecture.
+
+    Attributes:
+        trainers: List of ``Trainer`` instances to summarize.
+        trainer_map: Mapping of trainer display names to ``Trainer`` objects.
+        plan_combo: ``QComboBox`` for selecting a training plan.
+        summary_text: ``QTextEdit`` displaying the model summary.
+    """
+
     def __init__(self, parent, trainers):
+        """Initialize the model summary dialog.
+
+        Args:
+            parent: Parent widget.
+            trainers: List of ``Trainer`` instances.
+        """
         super().__init__(parent, title="Model Summary")
 
         self.trainers = trainers
@@ -22,6 +42,7 @@ class ModelSummaryWindow(BaseDialog):
         self.init_ui()
 
     def check_data(self):
+        """Validate that at least one trainer is available."""
         if not self.trainers:
             QMessageBox.warning(self, "Warning", "No valid training plan is generated")
             # We don't reject here immediately to allow window to show empty state if
@@ -29,6 +50,7 @@ class ModelSummaryWindow(BaseDialog):
             # but usually this is called before showing.
 
     def init_ui(self):
+        """Build the layout with plan selector and summary text area."""
         layout = QVBoxLayout(self)
 
         # Top: Plan Selection
@@ -50,6 +72,11 @@ class ModelSummaryWindow(BaseDialog):
         layout.addWidget(self.summary_text)
 
     def on_plan_select(self, plan_name):
+        """Generate and display the model summary for the selected plan.
+
+        Args:
+            plan_name: The display name of the selected training plan.
+        """
         self.summary_text.clear()
         if plan_name not in self.trainer_map:
             return

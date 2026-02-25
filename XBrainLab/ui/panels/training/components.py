@@ -1,3 +1,5 @@
+"""Reusable metric-tab component for training loss and accuracy plots."""
+
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
@@ -12,12 +14,20 @@ class MetricTab(QWidget):
     """
 
     def __init__(self, metric_name, color=Theme.ACCENT_SUCCESS):
+        """Initialize the metric tab.
+
+        Args:
+            metric_name: Display name of the metric (e.g., ``'Accuracy'``,
+                ``'Loss'``).
+            color: Matplotlib-compatible color string for the train curve.
+        """
         super().__init__()
         self.metric_name = metric_name
         self.color = color
         self.init_ui()
 
     def init_ui(self):
+        """Build the layout with a matplotlib figure and empty axes."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 10, 0, 0)
 
@@ -49,6 +59,13 @@ class MetricTab(QWidget):
         self.val_vals = []
 
     def update_plot(self, epoch, train_val, val_val):
+        """Append a new data point and redraw the plot.
+
+        Args:
+            epoch: The epoch number (1-based).
+            train_val: Training metric value for this epoch.
+            val_val: Validation metric value for this epoch.
+        """
         self.epochs.append(epoch)
         self.train_vals.append(train_val)
         self.val_vals.append(val_val)
@@ -96,6 +113,7 @@ class MetricTab(QWidget):
         self.canvas.draw()
 
     def clear(self):
+        """Clear the plot and reset accumulated data history."""
         # Clear plot
         self.ax.clear()
         self.ax.set_title(f"{self.metric_name} vs Epoch")

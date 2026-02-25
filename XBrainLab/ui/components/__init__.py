@@ -1,3 +1,5 @@
+"""Reusable UI components for XBrainLab panels and dialogs."""
+
 from .card import CardWidget
 from .placeholder import PlaceholderWidget
 from .plot_figure_window import PlotFigureWindow

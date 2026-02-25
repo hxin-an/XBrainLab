@@ -1,3 +1,5 @@
+"""Plot figure window with plan, repeat, and saliency method selectors."""
+
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout
 
@@ -8,6 +10,23 @@ from .single_plot_window import SinglePlotWindow
 
 
 class PlotFigureWindow(SinglePlotWindow):
+    """A plot window with combo-box selectors for plan, repeat, and saliency.
+
+    Extends ``SinglePlotWindow`` with a control panel for selecting a
+    training plan, its repeat, and a saliency method. A polling timer
+    drives periodic plot updates while visible.
+
+    Attributes:
+        trainers: List of trainer objects to select from.
+        trainer: The currently selected trainer, or ``None``.
+        plot_type: The plot type enum value to invoke.
+        plan_to_plot: The selected plan object, or ``None``.
+        saliency_name: Optional saliency method name.
+        plan_combo: QComboBox for plan selection.
+        real_plan_combo: QComboBox for repeat selection.
+        saliency_combo: QComboBox for saliency method selection.
+    """
+
     def __init__(
         self,
         parent,
@@ -19,7 +38,18 @@ class PlotFigureWindow(SinglePlotWindow):
         real_plan_name=None,
         saliency_name=None,
     ):
-        super().__init__(parent, figsize, title=title)
+        """Initialize the plot figure window.
+
+        Args:
+            parent: Parent widget.
+            trainers: List of trainer objects available for plotting.
+            plot_type: Enum value specifying the plot function to call.
+            figsize: Optional tuple ``(width, height)`` in inches.
+            title: Window title string.
+            plan_name: Optional pre-selected plan name.
+            real_plan_name: Optional pre-selected repeat name.
+            saliency_name: Optional pre-selected saliency method name.
+        """
         self.trainers = trainers
         self.trainer = None
         self.check_data()
@@ -50,12 +80,14 @@ class PlotFigureWindow(SinglePlotWindow):
             self.saliency_combo.setCurrentText(saliency_name)
 
     def check_data(self):
+        """Validate that trainers data is non-empty."""
         if not isinstance(self.trainers, list) or len(self.trainers) == 0:
             # In PyQt we might want to show a message box, but init shouldn't
             # block/fail ideally
             pass
 
     def init_ui(self):
+        """Build the selector controls for plan, repeat, and saliency method."""
         # Insert selector frame at the top
         self.selector_group = QGroupBox("Controls")
         selector_layout = QHBoxLayout(self.selector_group)
@@ -86,6 +118,13 @@ class PlotFigureWindow(SinglePlotWindow):
         self.main_layout.insertWidget(0, self.selector_group)
 
     def on_plan_select(self, plan_name):
+        """Handle plan combo-box selection change.
+
+        Populates the repeat combo-box with plans from the selected trainer.
+
+        Args:
+            plan_name: The selected plan name string.
+        """
         self.set_selection(False)
         self.plan_to_plot = None
         self.trainer = None
@@ -102,6 +141,11 @@ class PlotFigureWindow(SinglePlotWindow):
         self.real_plan_combo.addItems(list(self.real_plan_map.keys()))
 
     def on_real_plan_select(self, plan_name):
+        """Handle repeat combo-box selection change.
+
+        Args:
+            plan_name: The selected repeat plan name string.
+        """
         self.set_selection(False)
         self.plan_to_plot = None
         if plan_name not in self.real_plan_map:
@@ -110,6 +154,11 @@ class PlotFigureWindow(SinglePlotWindow):
         # self.add_plot_command() # Scripting not fully ported yet
 
     def on_saliency_method_select(self, method_name):
+        """Handle saliency method combo-box selection change.
+
+        Args:
+            method_name: The selected saliency method name string.
+        """
         self.set_selection(False)
         if method_name == "Select saliency method":
             return
@@ -117,6 +166,11 @@ class PlotFigureWindow(SinglePlotWindow):
         self.recreate_fig()
 
     def _create_figure(self):
+        """Create a Matplotlib figure using the selected plan's plot function.
+
+        Returns:
+            A Matplotlib ``Figure`` object, or ``None`` on failure.
+        """
         target_func = getattr(self.plan_to_plot, self.plot_type.value)
         # Ensure figure params are ready
         params = self.get_figure_params()
@@ -124,6 +178,7 @@ class PlotFigureWindow(SinglePlotWindow):
         return figure
 
     def update_loop(self):
+        """Polling loop invoked by timer to refresh the plot when visible."""
         if not self.isVisible():
             return
 
@@ -176,6 +231,12 @@ class PlotFigureWindow(SinglePlotWindow):
         # Original code did this, maybe we skip for now or implement if needed
 
     def set_selection(self, allow):
+        """Enable or disable the selector controls.
+
+        Args:
+            allow: If ``True``, enables selectors; otherwise disables
+                and increments the draw counter.
+        """
         if not allow:
             self.drawCounter += 1
             self.selector_group.setEnabled(False)
@@ -183,6 +244,13 @@ class PlotFigureWindow(SinglePlotWindow):
             self.selector_group.setEnabled(True)
 
     def recreate_fig(self, *args, current_plot=True):
+        """Force a figure recreation on the next update loop iteration.
+
+        Args:
+            *args: Unused positional arguments.
+            current_plot: Value to assign to ``current_plot`` to trigger
+                a re-check.
+        """
         self.update_progress = -1
         self.current_plot = current_plot  # Force re-check in loop
         self.plot_gap = 100  # Force immediate update

@@ -24,29 +24,36 @@ def mock_raw_data():
 
 def test_filtering_bandpass(mock_raw_data):
     """Test standard bandpass filtering."""
+    # Capture original 50Hz power
+    orig_data = mock_raw_data.get_mne().get_data()
+    orig_psd = np.abs(np.fft.rfft(orig_data[0])) ** 2
+    freqs = np.fft.rfftfreq(1000, 1 / 250.0)
+    idx_50 = np.argmin(np.abs(freqs - 50))
+    orig_power_50 = orig_psd[idx_50]
+
     filt = Filtering([mock_raw_data])
 
     # Apply 1-40Hz bandpass
     filt.data_preprocess(l_freq=1.0, h_freq=40.0)
 
     processed = filt.get_preprocessed_data_list()[0]
-    processed = filt.get_preprocessed_data_list()[0]
     assert "Filtering 1.0 ~ 40.0 Hz" in processed.get_preprocess_history()[-1]
 
-    # Verify data is filtered (check if 50Hz noise is reduced)
-    # Simple check: power at 50Hz should be low
+    # Verify 50Hz power is significantly reduced
     data = processed.get_mne().get_data()
-    np.abs(np.fft.rfft(data[0])) ** 2
-    freqs = np.fft.rfftfreq(1000, 1 / 250.0)
-
-    np.argmin(np.abs(freqs - 50))
-    # Power at 50Hz should be significantly reduced compared to original
-    # (which was huge)
-    # But bandpass 1-40 should kill 50Hz anyway.
+    psd = np.abs(np.fft.rfft(data[0])) ** 2
+    assert psd[idx_50] < orig_power_50 * 0.1, "50Hz power not sufficiently reduced"
 
 
 def test_filtering_notch(mock_raw_data):
     """Test notch filtering."""
+    # Capture original 50Hz power
+    orig_data = mock_raw_data.get_mne().get_data()
+    orig_psd = np.abs(np.fft.rfft(orig_data[0])) ** 2
+    freqs = np.fft.rfftfreq(1000, 1 / 250.0)
+    idx_50 = np.argmin(np.abs(freqs - 50))
+    orig_power_50 = orig_psd[idx_50]
+
     filt = Filtering([mock_raw_data])
 
     # Apply Notch at 50Hz
@@ -54,23 +61,15 @@ def test_filtering_notch(mock_raw_data):
 
     processed = filt.get_preprocessed_data_list()[0]
     history = processed.get_preprocess_history()[-1]
-    processed = filt.get_preprocessed_data_list()[0]
-    processed = filt.get_preprocessed_data_list()[0]
-    history = processed.get_preprocess_history()[-1]
 
     # Verify history contains Notch but NOT Filtering
     assert "Notch 50.0 Hz" in history
     assert "Filtering" not in history
 
-    # Verify 50Hz is removed
+    # Verify 50Hz power is reduced
     data = processed.get_mne().get_data()
-    # Check PSD at 50Hz
-    np.abs(np.fft.rfft(data[0])) ** 2
-    freqs = np.fft.rfftfreq(1000, 1 / 250.0)
-    np.argmin(np.abs(freqs - 50))
-
-    # It's hard to assert exact values without baseline, but we can assume it runs.
-    # The main goal is ensuring the method runs and updates history.
+    psd = np.abs(np.fft.rfft(data[0])) ** 2
+    assert psd[idx_50] < orig_power_50 * 0.5, "Notch did not reduce 50Hz power"
 
 
 def test_filtering_combined(mock_raw_data):
@@ -79,8 +78,6 @@ def test_filtering_combined(mock_raw_data):
 
     filt.data_preprocess(l_freq=1.0, h_freq=100.0, notch_freqs=50.0)
 
-    processed = filt.get_preprocessed_data_list()[0]
-    history = processed.get_preprocess_history()[-1]
     processed = filt.get_preprocessed_data_list()[0]
     history = processed.get_preprocess_history()[-1]
     assert "Filtering 1.0 ~ 100.0 Hz" in history

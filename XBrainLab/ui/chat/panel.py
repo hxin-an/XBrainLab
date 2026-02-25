@@ -1,7 +1,8 @@
-"""
-Chat Panel - Main chat interface component.
-Copilot-style chat interface using MessageBubble widgets.
-Refactored to maintain UI logic only, delegating state to ChatController.
+"""Chat Panel - Main chat interface component.
+
+Provides the ``ChatPanel`` widget implementing a Copilot-style chat interface
+using ``MessageBubble`` widgets. Handles user input, model/feature selection,
+streaming responses, and debug-mode interception.
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -38,10 +39,23 @@ from .styles import (
 
 
 class ChatPanel(QWidget):
-    """
-    Copilot-style chat interface using MessageBubble widgets.
-    Features: QFrame Bubbles, Perfect Alignment, Dynamic Width Adjustment.
-    Decoupled: State managed by ChatController.
+    """Copilot-style chat interface using MessageBubble widgets.
+
+    Features QFrame-based bubbles, sender-based alignment, dynamic width
+    adjustment, and streaming text support. UI state is decoupled from
+    business logic via ``ChatController``.
+
+    Attributes:
+        current_agent_bubble: The active agent ``MessageBubble`` being
+            streamed into, or ``None``.
+        is_processing: Whether the panel is currently awaiting a response.
+        debug_mode: Optional ``ToolDebugMode`` for interactive debug
+            script playback.
+        scroll_area: Scrollable area containing chat messages.
+        input_field: Text input for user messages.
+        send_btn: Button to send messages or stop generation.
+        feature_btn: Dropdown button for feature/persona selection.
+        model_btn: Dropdown button for LLM model selection.
     """
 
     # UI-driven Signals
@@ -52,6 +66,7 @@ class ChatPanel(QWidget):
     debug_tool_requested = pyqtSignal(str, dict)  # M3.1 Debug Mode
 
     def __init__(self):
+        """Initialize the ChatPanel with UI components and optional debug mode."""
         super().__init__()
         # Temporary state for current streaming bubble
         self.current_agent_bubble: MessageBubble | None = None
@@ -67,6 +82,7 @@ class ChatPanel(QWidget):
         self.debug_mode = ToolDebugMode(script_path) if script_path else None
 
     def init_ui(self):
+        """Initialize all UI sub-components including chat display and controls."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -162,7 +178,11 @@ class ChatPanel(QWidget):
         layout.addWidget(control_panel)
 
     def update_model_menu(self):
-        """Update available models based on configuration."""
+        """Update the model dropdown menu based on current LLM configuration.
+
+        Reads ``LLMConfig`` to determine whether the local model option
+        should be enabled or disabled.
+        """
         self.model_menu.clear()
 
         # Load config without blocking UI too cleanly (it's small JSON)
@@ -188,22 +208,47 @@ class ChatPanel(QWidget):
             self.model_menu.addAction(action)
 
     def connect_controller(self, controller: ChatController):
-        """M0.1: Connect to the backend ChatController."""
+        """Connect to a backend ChatController for state synchronization.
+
+        Wires the controller's signals (``message_added``,
+        ``processing_state_changed``, ``conversation_cleared``) to the
+        corresponding UI rendering methods.
+
+        Args:
+            controller: The ``ChatController`` instance to bind.
+        """
         controller.message_added.connect(self._render_message)
         controller.processing_state_changed.connect(self._update_processing_ui)
         controller.conversation_cleared.connect(self._clear_ui)
 
     def _set_feature(self, feature_name: str):
+        """Update the feature selector button text.
+
+        Args:
+            feature_name: The selected feature/persona name.
+        """
         self.feature_btn.setText(f"{feature_name} ▼")
 
     def _set_model(self, model_name: str):
+        """Update the model selector button and emit model change signal.
+
+        Args:
+            model_name: The selected model name.
+        """
         self.model_btn.setText(f"{model_name} ▼")
         self.model_changed.emit(model_name)
 
     def _on_new_conversation(self):
+        """Emit the new conversation requested signal."""
         self.new_conversation_requested.emit()
 
     def _on_send(self):
+        """Handle send button click or Enter key press.
+
+        If currently processing, emits ``stop_generation``. If debug mode
+        is active, dispatches the next debug tool call. Otherwise, emits
+        ``send_message`` with the user's input text.
+        """
         # UI Check: Processing state is now managed via signals
         # Use internal state instead of checking button text
         if self.is_processing:
@@ -235,10 +280,19 @@ class ChatPanel(QWidget):
         # Controller will call set_processing(True) which updates UI.
 
     def set_processing_state(self, is_processing: bool):
-        """Public method to update processing state UI."""
+        """Update the processing state and refresh the UI accordingly.
+
+        Args:
+            is_processing: Whether the agent is currently generating.
+        """
         self._update_processing_ui(is_processing)
 
     def _update_processing_ui(self, is_processing: bool):
+        """Toggle send button appearance between send and stop states.
+
+        Args:
+            is_processing: Whether the agent is currently generating.
+        """
         self.is_processing = is_processing  # Sync state
         if is_processing:
             self.send_btn.setText("■")  # Pure text square, no emoji background
@@ -248,6 +302,11 @@ class ChatPanel(QWidget):
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
 
     def resizeEvent(self, event):  # noqa: N802
+        """Re-adjust all bubble widths on window resize.
+
+        Args:
+            event: The ``QResizeEvent``.
+        """
         super().resizeEvent(event)
         # M0.4: Dynamic Width Adjustment Fix
         viewport = self.scroll_area.viewport()
@@ -262,7 +321,12 @@ class ChatPanel(QWidget):
                         widget.adjust_width(container_width)
 
     def _render_message(self, text: str, is_user: bool):
-        """Render a message bubble from the controller."""
+        """Create and display a message bubble.
+
+        Args:
+            text: The message text content.
+            is_user: Whether the message is from the user.
+        """
         bubble = MessageBubble(text, is_user)
 
         # M0.4: Initial width adjustment
@@ -279,7 +343,7 @@ class ChatPanel(QWidget):
             self.current_agent_bubble = bubble
 
     def _clear_ui(self):
-        """Clear all messages from UI."""
+        """Remove all message bubbles from the chat layout."""
         # Remove all widgets except stretch
         while self.chat_layout.count() > 1:
             item = self.chat_layout.takeAt(0)
@@ -290,12 +354,13 @@ class ChatPanel(QWidget):
         self.current_agent_bubble = None
 
     def on_chunk_received(self, text: str):
-        """
-        Handle streaming text chunk.
-        Ideally this logic should be in Controller accumulating state,
-        sending updates to specific message ID.
-        For M0 phase, we keep streaming logic partly in UI for simplicity
-        until full backend streaming architecture is ready.
+        """Handle a streaming text chunk from the agent.
+
+        Appends the chunk to the current agent bubble, creating one
+        if necessary, and triggers width recalculation.
+
+        Args:
+            text: The incremental text chunk to append.
         """
         # Feature: Auto-create bubble if missing (Robustness)
         if not self.current_agent_bubble:
@@ -314,24 +379,43 @@ class ChatPanel(QWidget):
             self._scroll_to_bottom()
 
     def start_agent_message(self):
-        """Preparation for streaming - Controller usage."""
+        """Prepare for a new streaming agent message.
+
+        In the current flow the controller calls ``add_agent_message("")``
+        to start, so this may be redundant. Kept for backward compatibility.
+        """
         # In the new flow, Controller calls add_agent_message("") to start
         # so this might be redundant if Controller handles it.
         # Kept for compatibility if AgentManager calls it expclicity.
 
     def _scroll_to_bottom(self):
+        """Scroll the chat area to the bottom."""
         scroll_bar = self.scroll_area.verticalScrollBar()
         if scroll_bar:
             scroll_bar.setValue(scroll_bar.maximum())
 
     # --- Legacy Compatibility Methods (Deprecated) ---
     def append_message(self, sender: str, text: str):
-        """Legacy method for AgentManager compatibility."""
+        """Append a message bubble (legacy compatibility).
+
+        Args:
+            sender: Message sender identifier (e.g., ``"user"``,
+                ``"assistant"``).
+            text: The message text content.
+        """
         is_user = sender.lower() == "user"
         self._render_message(text, is_user)
 
     def collapse_agent_message(self, text_to_remove: str):
-        """Legacy method - kept for AgentManager."""
+        """Remove or collapse specific text from the current agent bubble.
+
+        If the remaining content is empty after removal, the bubble is
+        hidden entirely.
+
+        Args:
+            text_to_remove: Substring to remove from the current agent
+                bubble's text.
+        """
         if self.current_agent_bubble:
             current_text = self.current_agent_bubble.get_text()
             if text_to_remove and text_to_remove in current_text:
@@ -343,4 +427,8 @@ class ChatPanel(QWidget):
                 self.current_agent_bubble.set_text(current_text.strip())
 
     def set_status(self, status: str):
-        """Legacy method - no-op."""
+        """Set status display (legacy no-op).
+
+        Args:
+            status: Status message string (unused).
+        """

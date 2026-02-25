@@ -1,3 +1,5 @@
+"""Topographic saliency map visualiser using MNE topomap routines."""
+
 from typing import Any
 
 import mne
@@ -8,13 +10,28 @@ from .base import Visualizer
 
 
 class SaliencyTopoMapViz(Visualizer):
-    """Visualizer that generate topographic saliency map from evaluation record
+    """Visualizer that generates topographic saliency maps.
 
-    Args:
-        absolute: whether to plot absolute value of saliency
+    Saliency values are averaged across trials and time, then displayed on
+    a 2-D scalp topographic map using :func:`mne.viz.plot_topomap`.  One
+    subplot is created per class label.
     """
 
     def _get_plt(self, method, absolute: bool) -> Any:
+        """Render the topographic saliency map figure.
+
+        Args:
+            method: Name of the saliency method (e.g. ``"Gradient"``).
+            absolute: If ``True``, use absolute saliency values with a
+                ``"Reds"`` colour map; otherwise use signed values with
+                ``"coolwarm"``.
+
+        Returns:
+            matplotlib.figure.Figure: The rendered topomap figure.
+
+        Raises:
+            ValueError: If no montage positions are available.
+        """
         positions = self.epoch_data.get_montage_position()
 
         if positions is None or len(positions) == 0:

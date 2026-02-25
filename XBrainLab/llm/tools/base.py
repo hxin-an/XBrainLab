@@ -1,9 +1,21 @@
+"""Base class definition for LLM-callable tools.
+
+All tools exposed to the LLM agent must inherit from :class:`BaseTool`
+and implement its abstract interface.
+"""
+
 from abc import ABC, abstractmethod
 from typing import Any
 
 
 class BaseTool(ABC):
-    """Abstract base class for all LLM tools."""
+    """Abstract base class for all LLM tools.
+
+    Subclasses must provide concrete implementations for :pyattr:`name`,
+    :pyattr:`description`, :pyattr:`parameters`, and :meth:`execute`.
+    Optionally override :meth:`is_valid` to restrict tool availability
+    based on the current ``Study`` state.
+    """
 
     @property
     @abstractmethod
@@ -21,9 +33,18 @@ class BaseTool(ABC):
         """JSON schema describing the parameters."""
 
     def is_valid(self, study: Any) -> bool:
-        """
-        Checks if the tool is valid to use in the current state.
-        Default is True. Override in subclasses for state-dependent tools.
+        """Check whether the tool is valid in the current application state.
+
+        Override in subclasses to enforce preconditions (e.g., data must
+        be loaded before preprocessing tools become available).
+
+        Args:
+            study: The global ``Study`` instance representing the
+                current application state.
+
+        Returns:
+            ``True`` if the tool may be invoked; ``False`` otherwise.
+                Defaults to ``True``.
         """
         return True
 

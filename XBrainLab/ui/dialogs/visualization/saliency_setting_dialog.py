@@ -1,3 +1,9 @@
+"""Saliency method parameter configuration dialog.
+
+Dynamically generates editable parameter tables for each supported
+saliency method (e.g., SmoothGrad, VarGrad) based on backend definitions.
+"""
+
 import contextlib
 from typing import Any
 
@@ -17,9 +23,18 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class SaliencySettingDialog(BaseDialog):
-    """
-    Dialog for configuring saliency method parameters (e.g., SmoothGrad stdevs).
-    Dynamically generates parameter tables based on supported methods.
+    """Dialog for configuring saliency method parameters.
+
+    Dynamically generates a parameter table for each supported saliency
+    method based on backend definitions, with validation on acceptance.
+
+    Attributes:
+        saliency_params: Dictionary mapping method names to parameter
+            dictionaries.
+        algo_map: Dictionary mapping method names to their parameter
+            name lists (or None for no-parameter methods).
+        params_tables: Dictionary mapping method names to QTableWidget
+            instances.
     """
 
     def __init__(self, parent, saliency_params=None):
@@ -35,6 +50,7 @@ class SaliencySettingDialog(BaseDialog):
             self.display_data()
 
     def check_init_data(self):
+        """Populate the algorithm map from backend saliency method definitions."""
         # Dynamically load from backend constant to avoid hardcoding
 
         for method in supported_saliency_methods:
@@ -48,6 +64,7 @@ class SaliencySettingDialog(BaseDialog):
                 ]
 
     def init_ui(self):
+        """Initialize the dialog UI with parameter tables for each method."""
         layout = QVBoxLayout(self)
 
         if not self.algo_map:
@@ -78,6 +95,7 @@ class SaliencySettingDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def display_data(self):
+        """Populate parameter tables with default or previously saved values."""
         for algo, params_list in self.algo_map.items():
             table = self.params_tables.get(algo)
             if not table:
@@ -112,6 +130,11 @@ class SaliencySettingDialog(BaseDialog):
                 table.setItem(row, 1, item_val)
 
     def accept(self):
+        """Parse and validate all parameter values, then accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if any parameter value is invalid.
+        """
         new_params: dict[str, dict] = {}
         try:
             for algo, table in self.params_tables.items():
@@ -154,4 +177,9 @@ class SaliencySettingDialog(BaseDialog):
             QMessageBox.warning(self, "Validation Error", str(e))
 
     def get_result(self):
+        """Return the configured saliency parameters.
+
+        Returns:
+            Dictionary mapping method names to parameter dictionaries.
+        """
         return self.saliency_params

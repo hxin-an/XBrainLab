@@ -1,3 +1,8 @@
+"""Normalization dialog for selecting EEG data normalization method.
+
+Provides a choice between Z-Score (standardization) and Min-Max scaling.
+"""
+
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QGroupBox,
@@ -9,9 +14,16 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class NormalizeDialog(BaseDialog):
-    """
-    Dialog for selecting data normalization method.
-    Options: Z-Score (Standardization) or Min-Max Scaling.
+    """Dialog for selecting data normalization method.
+
+    Provides radio button selection between Z-Score (standardization)
+    and Min-Max scaling methods.
+
+    Attributes:
+        params: Selected normalization method string after acceptance.
+        method_group: QGroupBox containing the method radio buttons.
+        zscore_radio: QRadioButton for Z-Score normalization.
+        minmax_radio: QRadioButton for Min-Max normalization.
     """
 
     def __init__(self, parent):
@@ -23,6 +35,7 @@ class NormalizeDialog(BaseDialog):
         self.resize(300, 150)
 
     def init_ui(self):
+        """Initialize the dialog UI with normalization method selection."""
         layout = QVBoxLayout(self)
 
         self.method_group = QGroupBox("Normalization Method")
@@ -45,6 +58,7 @@ class NormalizeDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def accept(self):
+        """Store the selected normalization method and accept the dialog."""
         if not self.zscore_radio:
             return
         method = "z score" if self.zscore_radio.isChecked() else "minmax"
@@ -52,7 +66,17 @@ class NormalizeDialog(BaseDialog):
         super().accept()
 
     def get_params(self):
+        """Return the selected normalization method.
+
+        Returns:
+            String ``'z score'`` or ``'minmax'``, or None if not set.
+        """
         return self.params
 
     def get_result(self):
+        """Return the selected normalization method.
+
+        Returns:
+            String ``'z score'`` or ``'minmax'``, or None if not set.
+        """
         return self.get_params()

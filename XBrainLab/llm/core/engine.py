@@ -1,3 +1,10 @@
+"""LLM engine facade.
+
+Provides a unified interface for loading and generating text across
+multiple backends (local, OpenAI-compatible API, Google Gemini),
+with caching and hot-swap support.
+"""
+
 import logging
 from typing import Any
 
@@ -7,12 +14,26 @@ logger = logging.getLogger("XBrainLab.LLM")
 
 
 class LLMEngine:
-    """
-    Core engine for handling LLM loading and inference.
-    Acts as a Facade to LocalBackend or APIBackend.
+    """Core engine for handling LLM loading and inference.
+
+    Acts as a facade over ``LocalBackend``, ``APIBackend``, and
+    ``GeminiBackend``, lazily instantiating and caching backends as
+    needed. Stale backends are automatically replaced when the
+    configured model changes.
+
+    Attributes:
+        config: The active ``LLMConfig`` instance.
+        backends: Cache mapping mode names to instantiated backend objects.
+        active_backend: The currently selected backend (or ``None``).
     """
 
     def __init__(self, config: LLMConfig | None = None):
+        """Initializes the LLMEngine.
+
+        Args:
+            config: Optional ``LLMConfig`` instance.  If ``None``, a
+                default configuration is created.
+        """
         self.config = config or LLMConfig()
         self.backends: dict[str, Any] = {}  # Cache for backends
         self.active_backend: Any | None = None
@@ -22,11 +43,19 @@ class LLMEngine:
         )
 
     def load_model(self):
-        """Loads the model (or client) for the underlying backend."""
+        """Loads the model for the backend specified by ``config.inference_mode``."""
         self.switch_backend(self.config.inference_mode)
 
     def switch_backend(self, mode: str):
-        """Switch active backend, creating it if necessary."""
+        """Switches the active backend, creating it if necessary.
+
+        If a cached backend exists for the requested mode but its model
+        configuration is stale, the backend is recreated.
+
+        Args:
+            mode: Backend mode to activate (``'local'``, ``'api'``, or
+                ``'gemini'``).
+        """
         logger.info(f"Switching backend to: {mode}")
 
         # 1. Check Cache and Validity
@@ -84,7 +113,18 @@ class LLMEngine:
         logger.info(f"Created and switched to backend: {mode}")
 
     def generate_stream(self, messages: list):
-        """Generates response in a streaming fashion."""
+        """Generates a response in a streaming fashion.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content``
+                keys.
+
+        Yields:
+            Text chunks from the active backend.
+
+        Raises:
+            RuntimeError: If no active backend is loaded.
+        """
         if not self.active_backend:
             raise RuntimeError("No active backend loaded")
         yield from self.active_backend.generate_stream(messages)

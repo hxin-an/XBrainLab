@@ -1,14 +1,13 @@
+"""Custom exception classes and error handling decorator for XBrainLab."""
+
 from functools import wraps
 
+from XBrainLab.backend.exceptions import XBrainLabError
 from XBrainLab.backend.utils.logger import logger
 
 
-class XBrainLabError(Exception):
-    """Base exception for XBrainLab application."""
-
-
 class DataNotLoadedError(XBrainLabError):
-    """Raised when an operation requires data but none is loaded."""
+    """Raised when an operation requires data that has not been loaded yet."""
 
 
 class PreprocessingError(XBrainLabError):
@@ -20,10 +19,16 @@ class AgentError(XBrainLabError):
 
 
 def handle_error(func):
-    """
-    Decorator: Unified error handling mechanism.
-    Intercepts XBrainLabError and logs it;
-    Intercepts unexpected Exceptions and converts them to XBrainLabError.
+    """Decorator providing unified error handling for XBrainLab functions.
+
+    Intercepts :class:`XBrainLabError` and logs it. Catches unexpected
+    exceptions and wraps them in :class:`XBrainLabError` before re-raising.
+
+    Args:
+        func: The function to wrap with error handling.
+
+    Returns:
+        The wrapped function with error logging and conversion.
     """
 
     @wraps(func)

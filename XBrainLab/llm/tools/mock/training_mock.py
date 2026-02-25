@@ -1,3 +1,9 @@
+"""Mock implementations of model training tools.
+
+Return canned success/error strings without running any actual
+training, enabling offline agent testing and development.
+"""
+
 from typing import Any
 
 from ..definitions.training_def import (
@@ -8,13 +14,27 @@ from ..definitions.training_def import (
 
 
 class MockSetModelTool(BaseSetModelTool):
+    """Mock implementation of :class:`BaseSetModelTool`."""
+
     def execute(self, study: Any, model_name: str | None = None, **kwargs) -> str:
+        """Return a simulated model-set result.
+
+        Args:
+            study: The global ``Study`` instance (unused in mock).
+            model_name: Name of the model architecture.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if model_name is None:
             return "Error: model_name is required"
         return f"Model set to {model_name}."
 
 
 class MockConfigureTrainingTool(BaseConfigureTrainingTool):
+    """Mock implementation of :class:`BaseConfigureTrainingTool`."""
+
     def execute(
         self,
         study: Any,
@@ -27,6 +47,22 @@ class MockConfigureTrainingTool(BaseConfigureTrainingTool):
         save_checkpoints_every: int = 0,
         **kwargs,
     ) -> str:
+        """Return a simulated training-configuration result.
+
+        Args:
+            study: The global ``Study`` instance (unused in mock).
+            epoch: Number of training epochs.
+            batch_size: Mini-batch size.
+            learning_rate: Optimiser learning rate.
+            repeat: Number of experiment repetitions.
+            device: Compute device (``'cpu'`` or ``'cuda'``).
+            optimizer: Optimiser name.
+            save_checkpoints_every: Checkpoint save interval (0 = disabled).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if epoch is None or batch_size is None or learning_rate is None:
             return "Error: epoch, batch_size, and learning_rate are required"
         return (
@@ -36,5 +72,16 @@ class MockConfigureTrainingTool(BaseConfigureTrainingTool):
 
 
 class MockStartTrainingTool(BaseStartTrainingTool):
+    """Mock implementation of :class:`BaseStartTrainingTool`."""
+
     def execute(self, study: Any, **kwargs) -> str:
+        """Return a simulated training-start result.
+
+        Args:
+            study: The global ``Study`` instance (unused in mock).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A message indicating mock training completed.
+        """
         return "Training started. (Mock: Training completed successfully.)"

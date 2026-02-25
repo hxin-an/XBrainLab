@@ -1,3 +1,10 @@
+"""Background worker for LLM inference.
+
+Provides a Qt-based worker that runs LLM generation in a separate
+thread, with streaming output, timeout handling, and hot-swap model
+switching.
+"""
+
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
@@ -6,18 +13,33 @@ from XBrainLab.llm.core.engine import LLMEngine
 
 
 class GenerationThread(QThread):
-    """Thread for running LLM generation without blocking UI."""
+    """QThread for running LLM generation without blocking the UI.
+
+    Attributes:
+        chunk_received: Signal emitted for each text chunk generated.
+        finished_generation: Signal emitted when generation completes.
+        error_occurred: Signal emitted with an error message on failure.
+        engine: The LLM engine performing inference.
+        messages: The message list to generate from.
+    """
 
     chunk_received = pyqtSignal(str)
     finished_generation = pyqtSignal()
     error_occurred = pyqtSignal(str)
 
     def __init__(self, engine, messages):
+        """Initializes the GenerationThread.
+
+        Args:
+            engine: The ``LLMEngine`` instance to use for generation.
+            messages: List of message dicts to pass to the engine.
+        """
         super().__init__()
         self.engine = engine
         self.messages = messages
 
     def run(self):
+        """Executes streaming generation, emitting chunks until done."""
         try:
             for chunk in self.engine.generate_stream(self.messages):
                 if self.isInterruptionRequested():
@@ -31,8 +53,18 @@ class GenerationThread(QThread):
 
 
 class AgentWorker(QObject):
-    """
-    Worker class for AI Agent inference using Local LLM.
+    """Worker managing LLM initialization, generation, and model switching.
+
+    Runs inside a dedicated ``QThread`` to keep the UI responsive.  Emits
+    Qt signals for streaming chunks, completion, errors, and status logs.
+
+    Attributes:
+        finished: Signal emitted (with empty list) when generation ends.
+        chunk_received: Signal forwarding text chunks from the generation thread.
+        error: Signal emitted with an error message string.
+        log: Signal emitted with status/log messages.
+        engine: The underlying ``LLMEngine`` instance (``None`` until initialized).
+        generation_thread: The currently running ``GenerationThread``, if any.
     """
 
     finished = pyqtSignal(list)
@@ -41,12 +73,21 @@ class AgentWorker(QObject):
     log = pyqtSignal(str)
 
     def __init__(self):
+        """Initializes the AgentWorker with no engine loaded."""
         super().__init__()
         self.engine = None
         self.generation_thread = None
 
     def initialize_agent(self):
-        """Initialize the local LLM engine."""
+        """Initializes the LLM engine and loads the model.
+
+        Reads configuration from ``LLMConfig`` defaults.  If the engine
+        is already initialized, this method is a no-op.
+
+        Raises:
+            Exception: Propagated via the ``error`` signal if model
+                loading fails.
+        """
         if self.engine:
             return  # Already initialized
 
@@ -65,7 +106,16 @@ class AgentWorker(QObject):
             self.error.emit(f"Model Load Error: {e!s}")
 
     def generate_from_messages(self, messages):
-        """Run generation with full message history."""
+        """Runs LLM generation using a full message history.
+
+        Reloads configuration from the settings file to capture any
+        runtime changes (e.g. temperature, API key), then spawns a
+        ``GenerationThread`` with a configurable timeout.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content``
+                keys representing the conversation so far.
+        """
         if not self.engine:
             self.initialize_agent()
             if not self.engine:
@@ -118,7 +168,12 @@ class AgentWorker(QObject):
         self.generation_thread.start()
 
     def _on_timeout(self):
-        """Handle generation timeout."""
+        """Handles generation timeout.
+
+        Requests interruption of the generation thread and emits an
+        error signal.  The timed-out flag prevents stale callbacks from
+        further processing.
+        """
         if self.generation_thread and self.generation_thread.isRunning():
             self._is_timed_out = True
             logger.error("Agent generation timed out.")
@@ -139,6 +194,7 @@ class AgentWorker(QObject):
             self.finished.emit([])  # Unblock the UI
 
     def _on_generation_finished(self):
+        """Handles successful completion of the generation thread."""
         if self._is_timed_out:
             return
         self.timeout_timer.stop()
@@ -146,13 +202,27 @@ class AgentWorker(QObject):
         self.log.emit("Generation completed.")
 
     def _on_generation_error(self, err_msg):
+        """Handles an error emitted by the generation thread.
+
+        Args:
+            err_msg: The error message string from the generation thread.
+        """
         if self._is_timed_out:
             return
         self.timeout_timer.stop()
         self.error.emit(err_msg)
 
     def reinitialize_agent(self, model_id: str):
-        """Re-initialize engine with new model configuration. Supports Hot-Swap."""
+        """Re-initializes the engine with a new model configuration.
+
+        Supports hot-swap between local, API, and Gemini backends based
+        on the provided ``model_id``.
+
+        Args:
+            model_id: Identifier or display name of the target model.
+                May contain hints like ``'gemini'`` or ``'local'`` for
+                backend routing.
+        """
         logger.info(f"Worker switching model to: {model_id}")
         self.log.emit(f"Switching to {model_id}...")
 

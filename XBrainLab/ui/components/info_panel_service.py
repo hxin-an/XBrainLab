@@ -1,3 +1,5 @@
+"""Service for coordinating AggregateInfoPanel updates across the application."""
+
 import weakref
 from typing import TYPE_CHECKING
 
@@ -10,19 +12,29 @@ if TYPE_CHECKING:
 
 
 class InfoPanelService(QObject):
-    """
-    Service to manage AggregateInfoPanel updates across the application.
-    Centralizes data fetching and ensures all registered panels show consistent state.
+    """Service to manage AggregateInfoPanel updates across the application.
+
+    Centralizes data fetching from dataset and preprocess controllers,
+    and ensures all registered panels show consistent state via
+    ``QtObserverBridge`` subscriptions.
+
+    Attributes:
+        study: The application ``Study`` instance.
     """
 
     def __init__(self, study: "Study"):
+        """Initialize the service and connect to backend controllers.
+
+        Args:
+            study: The application ``Study`` instance.
+        """
         super().__init__()
         self.study = study
         self._listeners: weakref.WeakSet = weakref.WeakSet()
         self._setup_bridges()
 
     def _setup_bridges(self):
-        """Connect to backend controllers."""
+        """Connect observer bridges to dataset and preprocess controllers."""
         self.dataset_bridge = QtObserverBridge(
             self.study.get_controller("dataset"), "data_changed", self
         )
@@ -40,7 +52,14 @@ class InfoPanelService(QObject):
         self.import_bridge.connect_to(self.notify_all)
 
     def register(self, panel):
-        """Register an InfoPanel to receive updates."""
+        """Register an info panel to receive automatic updates.
+
+        Adds the panel to the weak listener set and triggers an
+        immediate update with current data.
+
+        Args:
+            panel: An ``AggregateInfoPanel`` instance.
+        """
         self._listeners.add(panel)
         # Robustness: Remove if explicitly destroyed (though WeakSet handles GC)
         if hasattr(panel, "destroyed"):
@@ -48,11 +67,15 @@ class InfoPanelService(QObject):
         self.update_single(panel)  # Initial update
 
     def unregister(self, panel):
-        """Explicitly remove a panel from listeners."""
+        """Remove a panel from the listener set.
+
+        Args:
+            panel: The panel to unregister.
+        """
         self._listeners.discard(panel)
 
     def notify_all(self, *args, **kwargs):
-        """Update all registered panels with latest data."""
+        """Fetch current data and update all registered panels."""
         # Fetch current state
         loaded = []
         if self.study.get_controller("dataset"):
@@ -70,6 +93,13 @@ class InfoPanelService(QObject):
             self._safe_update_panel(panel, loaded, preprocessed)
 
     def _safe_update_panel(self, panel, loaded, preprocessed):
+        """Update a single panel, catching runtime errors gracefully.
+
+        Args:
+            panel: The info panel to update.
+            loaded: List of loaded data objects.
+            preprocessed: List of preprocessed data objects.
+        """
         try:
             panel.update_info(
                 loaded_data_list=loaded, preprocessed_data_list=preprocessed
@@ -82,7 +112,11 @@ class InfoPanelService(QObject):
             print(f"Error updating info panel: {e}")
 
     def update_single(self, panel):
-        """Manually update a single panel."""
+        """Manually update a single panel with current data.
+
+        Args:
+            panel: The info panel to update.
+        """
         loaded = []
         if self.study.get_controller("dataset"):
             loaded = self.study.get_controller("dataset").get_loaded_data_list()

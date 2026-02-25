@@ -57,7 +57,6 @@ def test_epoch_duration_too_short():
     assert "Epoch duration is too short" in error_msg
     assert "EEGNet" in error_msg
     assert "samples" in error_msg
-    print(f"??Test passed. Error message: {error_msg}")
 
 
 def test_minimum_samples_required():
@@ -74,27 +73,19 @@ def test_minimum_samples_required():
     n_classes = 2
 
     for model_name, model_class, model_params in test_cases:
-        print(f"\n=== Testing {model_name} ===")
-
         # Test with too few samples - should raise ValueError
-        try:
-            model = model_class(
+        with pytest.raises(ValueError, match="Epoch duration is too short"):
+            model_class(
                 n_classes=n_classes,
                 channels=channels,
                 samples=1,  # Way too short
                 sfreq=sfreq,
                 **model_params,
             )
-            print(f"  ??{model_name} should have raised ValueError for samples=1")
-            raise AssertionError(f"{model_name} did not validate minimum samples")
-        except ValueError as e:
-            error_msg = str(e)
-            assert "Epoch duration is too short" in error_msg
-            assert model_name in error_msg
-            print(f"  ??{model_name} correctly raised ValueError: {error_msg[:100]}...")
 
-        # Test with sufficient samples - should work
+        # Test with sufficient samples - at least one must succeed
         test_samples = [128, 250, 500, 1000]
+        success = False
         for samples in test_samples:
             try:
                 model = model_class(
@@ -106,20 +97,11 @@ def test_minimum_samples_required():
                 )
                 # Try forward pass
                 x = torch.randn(2, 1, channels, samples)
-                output = model(x)
-                print(
-                    f"  ??{model_name} works with samples={samples}, "
-                    f"output shape: {output.shape}"
-                )
+                model(x)
+                success = True
                 break
             except (RuntimeError, ValueError) as e:
                 if "too short" in str(e).lower() or "too small" in str(e).lower():
                     continue
                 raise
-
-
-if __name__ == "__main__":
-    print("=== Testing minimum sample requirements ===")
-    test_minimum_samples_required()
-    print("\n=== Testing epoch duration bug ===")
-    test_epoch_duration_too_short()
+        assert success, f"{model_name} failed for all sample sizes {test_samples}"

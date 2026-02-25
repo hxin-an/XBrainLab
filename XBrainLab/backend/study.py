@@ -1,3 +1,5 @@
+"""Study module providing the central state container for an XBrainLab experiment."""
+
 from .controller.dataset_controller import DatasetController
 from .controller.evaluation_controller import EvaluationController
 from .controller.preprocess_controller import PreprocessController
@@ -44,7 +46,7 @@ class Study:
         self.model_holder: ModelHolder | None = None
         self.training_option: TrainingOption | None = None
         self.trainer: Trainer | None = None
-        # visulaization
+        # visualization
         self.saliency_params: dict | None = None
 
         # Controller cache for singleton-like access
@@ -53,12 +55,16 @@ class Study:
         logger.info("Study initialized (with DataManager)")
 
     # --- DataManager Delegation Properties ---
+    # NOTE: Setters write directly to DataManager attributes for backward
+    # compatibility and test convenience. Production code should use the
+    # dedicated set_* / clean_* methods which include validation.
+
     @property
     def loaded_data_list(self) -> list[Raw]:
         return self.data_manager.loaded_data_list
 
     @loaded_data_list.setter
-    def loaded_data_list(self, value):
+    def loaded_data_list(self, value: list[Raw]) -> None:
         self.data_manager.loaded_data_list = value
 
     @property
@@ -66,7 +72,7 @@ class Study:
         return self.data_manager.preprocessed_data_list
 
     @preprocessed_data_list.setter
-    def preprocessed_data_list(self, value):
+    def preprocessed_data_list(self, value: list[Raw]) -> None:
         self.data_manager.preprocessed_data_list = value
 
     @property
@@ -74,7 +80,7 @@ class Study:
         return self.data_manager.epoch_data
 
     @epoch_data.setter
-    def epoch_data(self, value):
+    def epoch_data(self, value: Epochs | None) -> None:
         self.data_manager.epoch_data = value
 
     @property
@@ -82,7 +88,7 @@ class Study:
         return self.data_manager.datasets
 
     @datasets.setter
-    def datasets(self, value):
+    def datasets(self, value: list[Dataset]) -> None:
         self.data_manager.datasets = value
 
     @property
@@ -97,13 +103,20 @@ class Study:
     def dataset_locked(self) -> bool:
         return self.data_manager.dataset_locked
 
-    @dataset_locked.setter
-    def dataset_locked(self, value):
-        self.data_manager.dataset_locked = value
-
     # --- Controller Access ---
     def get_controller(self, controller_type: str):
-        """Get or create a cached controller instance."""
+        """Get or create a cached controller instance.
+
+        Args:
+            controller_type: One of ``"dataset"``, ``"preprocess"``,
+                ``"training"``, ``"evaluation"``, or ``"visualization"``.
+
+        Returns:
+            The controller instance for the given type.
+
+        Raises:
+            ValueError: If the controller type is unknown.
+        """
         if controller_type not in self._controllers:
             if controller_type == "dataset":
                 self._controllers[controller_type] = DatasetController(self)
@@ -131,7 +144,11 @@ class Study:
     def set_loaded_data_list(
         self, loaded_data_list: list[Raw], force_update: bool = False
     ) -> None:
-        """Set loaded data list in DataManager."""
+        """Set loaded data list in DataManager.
+
+        Cleans trainer first since new raw data invalidates it.
+        """
+        self.clean_trainer(force_update=force_update)
         self.data_manager.set_loaded_data_list(loaded_data_list, force_update)
 
     # step 2 - preprocess
@@ -147,15 +164,28 @@ class Study:
         """Reset preprocessing via DataManager."""
         self.data_manager.reset_preprocess(force_update)
 
-    def preprocess(self, preprocessor: type[PreprocessBase], **kargs: dict) -> None:
-        """Apply preprocessing via DataManager."""
-        self.data_manager.preprocess(preprocessor, **kargs)
+    def preprocess(self, preprocessor: type[PreprocessBase], **kwargs) -> None:
+        """Apply a preprocessing step via DataManager.
+
+        Args:
+            preprocessor: The preprocessor class to apply.
+            **kwargs: Keyword arguments forwarded to the preprocessor.
+        """
+        self.data_manager.preprocess(preprocessor, **kwargs)
 
     # step 3 - split data for training
     def get_datasets_generator(self, config: DataSplittingConfig) -> DatasetGenerator:
-        """Create a dataset generator based on current epoch data."""
-        # Helper still needs validation logic from manager or accessing epoch_data
-        # via property
+        """Create a dataset generator based on current epoch data.
+
+        Args:
+            config: Data splitting configuration.
+
+        Returns:
+            A dataset generator ready to produce train/val/test splits.
+
+        Raises:
+            ValueError: If no epoch data is available.
+        """
         if not self.epoch_data:
             raise ValueError("No valid epoch data is generated")
         validate_type(config, DataSplittingConfig, "config")
@@ -288,20 +318,8 @@ class Study:
             for training_plan_holder in self.trainer.get_training_plan_holders():
                 training_plan_holder.set_saliency_params(saliency_params)
 
-    # Clean Workflow Stage 1 & 2
-    def should_clean_raw_data(self, interact: bool = True) -> bool:
-        """Check if raw data needs cleaning via DataManager."""
-        response = bool(self.loaded_data_list) or self.should_clean_datasets(interact)
-        if response and interact:
-            raise ValueError("This step has already been done... clean_raw_data first.")
-        return response
-
-    def clean_raw_data(self, force_update: bool = True) -> None:
-        """Clean raw data via DataManager."""
-        self.clean_datasets(force_update=force_update)
-        if not force_update:
-            self.should_clean_raw_data(interact=True)
-        self.data_manager.clean_raw_data(force_update)
+    # --- Clean Workflow ---
+    # Study extends DataManager's cleaning by adding trainer awareness.
 
     def lock_dataset(self) -> None:
         """Lock dataset via DataManager."""
@@ -315,45 +333,40 @@ class Study:
         """Check if dataset is locked via DataManager."""
         return self.data_manager.is_locked()
 
-    def should_clean_datasets(self, interact: bool = True) -> bool:
-        """Check if datasets need cleaning."""
-        response = bool(self.datasets) or self.should_clean_trainer(interact)
-        if response and interact:
-            raise ValueError("This step has already been done... clean_datasets first.")
-        return response
+    def has_raw_data(self) -> bool:
+        """Return whether raw data or downstream state exists (pure query)."""
+        return self.data_manager.has_raw_data() or self.has_trainer()
+
+    def has_datasets(self) -> bool:
+        """Return whether datasets or a trainer exist (pure query)."""
+        return self.data_manager.has_datasets() or self.has_trainer()
+
+    def has_trainer(self) -> bool:
+        """Return whether a trainer is configured (pure query)."""
+        return self.trainer is not None
+
+    def clean_raw_data(self, force_update: bool = True) -> None:
+        """Clean raw data and all downstream state including trainer."""
+        self.clean_datasets(force_update=force_update)
+        self.data_manager.clean_raw_data(force_update)
 
     def clean_datasets(self, force_update: bool = True) -> None:
-        """Clean datasets via DataManager and clean trainer."""
+        """Clean datasets and trainer."""
         self.clean_trainer(force_update=force_update)
-        if not force_update:
-            self.should_clean_datasets(interact=True)
         self.data_manager.clean_datasets(force_update)
 
-    # stage 3
-    def should_clean_trainer(self, interact: bool = True) -> bool:
-        """Return whether trainer is generated.
+    def clean_trainer(self, force_update: bool = True) -> None:
+        """Clean the trainer.
 
         Args:
-            interact: Whether to raise error if trainer is generated.
+            force_update: If ``False``, raises when a trainer exists.
         """
-        response = self.trainer is not None
-        if response and interact:
+        if not force_update and self.has_trainer():
             raise ValueError(
                 "This step has already been done, "
                 "all following data will be removed if you reset this step.\n"
                 "Please clean_trainer first."
             )
-        return response
-
-    def clean_trainer(self, force_update: bool = True) -> None:
-        """Clean trainer.
-
-        Args:
-            force_update: Whether to force override and
-                          clear the data of following steps.
-        """
-        if not force_update:
-            self.should_clean_trainer(interact=True)
         if self.trainer:
             self.trainer.clean(force_update=force_update)
         self.trainer = None

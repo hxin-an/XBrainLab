@@ -1,3 +1,6 @@
+"""Confusion matrix widget for displaying classification results."""
+
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
@@ -8,12 +11,30 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class ConfusionMatrixWidget(QWidget):
+    """Widget for rendering a confusion matrix plot.
+
+    Displays per-class classification performance using a color-coded
+    matrix. Supports optional percentage display.
+
+    Attributes:
+        plot_type: ``PlotType.CONFUSION`` identifier for the plot kind.
+        fig: Current ``matplotlib.figure.Figure`` instance.
+        canvas: ``FigureCanvas`` embedding the figure into Qt.
+        ax: The matplotlib ``Axes`` used for the initial placeholder.
+    """
+
     def __init__(self, parent=None):
+        """Initialize the confusion matrix widget.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.plot_type = PlotType.CONFUSION
         self.init_ui()
 
     def init_ui(self):
+        """Build the initial layout with a placeholder plot."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -56,6 +77,10 @@ class ConfusionMatrixWidget(QWidget):
                     w = item.widget()
                     if w:
                         w.setParent(None)
+
+            # Close old matplotlib figure to prevent memory leak
+            if hasattr(self, "fig") and self.fig is not None:
+                plt.close(self.fig)
 
             if plan is None:
                 self._show_message("No Data Available")
@@ -105,6 +130,12 @@ class ConfusionMatrixWidget(QWidget):
             self._show_message(f"Error: {e}", color=Theme.ERROR)
 
     def _show_message(self, message, color=Theme.TEXT_MUTED):
+        """Display a centered text message in place of the plot.
+
+        Args:
+            message: The text to display.
+            color: CSS color string for the message text.
+        """
         lbl = QLabel(message)
         lbl.setStyleSheet(f"color: {color};")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)

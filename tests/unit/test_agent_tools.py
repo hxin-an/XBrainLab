@@ -1,6 +1,8 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from XBrainLab.llm.tools.real.dataset_real import RealLoadDataTool
 
 
@@ -63,4 +65,6 @@ class TestRealLoadDataTool:
     @patch("XBrainLab.llm.tools.real.dataset_real.BackendFacade")
     def test_mixed_paths_expansion(self, mock_facade_cls):
         """Test mixing file paths and directory paths."""
-        # This test might require more complex mocking, simplified here
+        pytest.skip(
+            "Requires complex filesystem mocking — covered by test_directory_expansion"
+        )

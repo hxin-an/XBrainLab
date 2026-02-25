@@ -1,3 +1,5 @@
+"""Raw data module for wrapping MNE data objects with metadata and event management."""
+
 from __future__ import annotations
 
 import os
@@ -10,30 +12,29 @@ from ..utils.filename_parser import FilenameParser
 
 
 class Raw:
-    """Class for storing raw data.
+    """Wrapper around MNE data objects with metadata and event tracking.
 
-    Holds data loaded from `mne`, preprocess history and event information.
+    Holds loaded EEG data (raw or epoched) along with subject/session
+    metadata, preprocessing history, and optionally imported event labels.
 
     Attributes:
-        filepath: str
-            Filepath of the raw data.
-        mne_data: :class:`mne.io.BaseRaw` | :class:`mne.BaseEpochs`
-            Loaded data from MNE.
-        preprocess_history: list[str]
-            List of preprocess history.
-        # list of
-        raw_events: np.ndarray | None
-            Raw events. Same as `mne` format,
-            (onset, immediately preceding sample, event_id).
-        raw_event_id: dict[str, int] | None
-            Raw event id. Same as `mne` format, {event_name: event_id}.
-        subject: str
-            Subject name.
-        session: str
-            Session name.
+        filepath: Absolute path to the source data file.
+        mne_data: Underlying MNE data object (raw or epochs).
+        preprocess_history: Ordered list of preprocessing step descriptions.
+        raw_events: Imported event array in MNE format, or None.
+        raw_event_id: Imported event ID mapping, or None.
+        subject: Subject identifier string.
+        session: Session identifier string.
+        labels_imported: Whether external labels have been applied.
     """
 
     def __init__(self, filepath: str, mne_data: mne.io.BaseRaw | mne.BaseEpochs):
+        """Initialize a Raw wrapper.
+
+        Args:
+            filepath: Path to the source data file.
+            mne_data: Loaded MNE data object (raw or epochs).
+        """
         validate_type(filepath, str, "filepath")
         validate_type(mne_data, (mne.io.BaseRaw, mne.BaseEpochs), "mne_data")
         self.filepath = filepath
@@ -66,7 +67,11 @@ class Raw:
         return self.preprocess_history
 
     def add_preprocess(self, desc: str) -> None:
-        """Add preprocess description to the preprocess history."""
+        """Append a preprocessing description to the history.
+
+        Args:
+            desc: Human-readable description of the preprocessing step.
+        """
         self.preprocess_history.append(desc)
 
     def parse_filename(self, regex: str) -> None:
@@ -123,10 +128,13 @@ class Raw:
         self.raw_event_id = event_id
 
     def set_mne(self, data: mne.io.BaseRaw | mne.BaseEpochs) -> None:
-        """Set new mne data.
+        """Set new MNE data, transferring loaded events if applicable.
+
+        If the new data is epoch-type and events were previously imported,
+        the imported events are applied to the new data and then cleared.
 
         Args:
-            data: New mne data.
+            data: New MNE data object to replace the current one.
         """
         # set loaded event to new data
         if (
@@ -148,10 +156,10 @@ class Raw:
         self.mne_data = data
 
     def set_mne_and_wipe_events(self, data: mne.io.BaseRaw | mne.BaseEpochs) -> None:
-        """Set new mne data and wipe loaded event.
+        """Set new MNE data and discard all imported events.
 
         Args:
-            data: New mne data.
+            data: New MNE data object to replace the current one.
         """
         self.raw_events = None
         self.raw_event_id = None

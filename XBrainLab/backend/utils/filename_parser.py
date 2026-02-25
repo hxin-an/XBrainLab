@@ -1,3 +1,5 @@
+"""Filename parsing utilities for extracting subject and session metadata."""
+
 import os
 import re
 
@@ -5,26 +7,27 @@ from XBrainLab.backend.utils.logger import logger
 
 
 class FilenameParser:
-    """
-    Utility class for parsing metadata (Subject, Session) from filenames or paths.
-    Supports multiple strategies: Split, Regex, Folder structure, and Fixed position.
+    """Utility class for parsing subject and session metadata from filenames.
+
+    Supports multiple strategies: split-based, regex, folder structure,
+    fixed character positions, and named regex groups.
     """
 
     @staticmethod
     def parse_by_split(
         filename: str, separator: str, sub_idx: int, sess_idx: int
     ) -> tuple[str, str]:
-        """
-        Parse filename by splitting with a separator.
+        """Parse subject and session from a filename by splitting on a separator.
 
         Args:
             filename: The filename (with or without extension).
-            separator: The character to split by (e.g., '_', '-').
-            sub_idx: 1-based index for Subject part.
-            sess_idx: 1-based index for Session part.
+            separator: The character to split by (e.g., ``'_'``, ``'-'``).
+            sub_idx: 1-based index of the subject part after splitting.
+            sess_idx: 1-based index of the session part after splitting.
 
         Returns:
-            (subject, session) or ("-", "-") if not found.
+            A tuple of ``(subject, session)``, defaulting to ``('-', '-')``
+            if indices are out of range.
         """
         name_no_ext = os.path.splitext(filename)[0]
         parts = name_no_ext.split(separator)
@@ -47,14 +50,17 @@ class FilenameParser:
     def parse_by_regex(
         filename: str, pattern: str, sub_group: int, sess_group: int
     ) -> tuple[str, str]:
-        """
-        Parse filename using Regular Expression.
+        """Parse subject and session from a filename using a regular expression.
 
         Args:
-            filename: The filename.
-            pattern: The regex pattern string.
-            sub_group: The group index for Subject.
-            sess_group: The group index for Session.
+            filename: The filename (with or without extension).
+            pattern: The regex pattern string with capture groups.
+            sub_group: 1-based group index for the subject.
+            sess_group: 1-based group index for the session.
+
+        Returns:
+            A tuple of ``(subject, session)``, defaulting to ``('-', '-')``
+            if the pattern does not match.
         """
         # Remove extension for easier parsing, similar to split method
         name_no_ext = os.path.splitext(filename)[0]
@@ -75,13 +81,21 @@ class FilenameParser:
         except Exception as e:
             logger.debug(f"Failed to parse filename by regex: {e}")
         return sub, sess
-        return sub, sess
 
     @staticmethod
     def parse_by_folder(filepath: str) -> tuple[str, str]:
-        """
-        Parse metadata from parent folder names.
-        Assumes structure like: .../Subject/Session/filename.gdf
+        """Parse subject and session from parent folder names.
+
+        Assumes a directory structure like ``.../<Subject>/<Session>/filename``.
+        If the immediate parent contains ``'ses'``, it is treated as session
+        and the grandparent as subject.
+
+        Args:
+            filepath: Full file path.
+
+        Returns:
+            A tuple of ``(subject, session)``, defaulting to ``('-', '-')``
+            if parsing fails.
         """
         sub = "-"
         sess = "-"
@@ -102,22 +116,25 @@ class FilenameParser:
                 sub = parent_name
                 sess = "-"
         except Exception as e:
-            logger.debug(f"Failed to parse filename by regex: {e}")
+            logger.debug(f"Failed to parse filename by folder: {e}")
         return sub, sess
 
     @staticmethod
     def parse_by_fixed_position(
         filename: str, sub_start: int, sub_len: int, sess_start: int, sess_len: int
     ) -> tuple[str, str]:
-        """
-        Parse filename by fixed character positions.
+        """Parse subject and session from fixed character positions in a filename.
 
         Args:
-            filename: The filename.
-            sub_start: 1-based start index for Subject.
-            sub_len: Length of Subject part.
-            sess_start: 1-based start index for Session.
-            sess_len: Length of Session part.
+            filename: The filename (with or without extension).
+            sub_start: 1-based start index for the subject substring.
+            sub_len: Length of the subject substring.
+            sess_start: 1-based start index for the session substring.
+            sess_len: Length of the session substring.
+
+        Returns:
+            A tuple of ``(subject, session)``, defaulting to ``('-', '-')``
+            if positions are out of range.
         """
         name_no_ext = os.path.splitext(filename)[0]
         sub = "-"
@@ -138,20 +155,23 @@ class FilenameParser:
                 if extracted:
                     sess = extracted
         except Exception as e:
-            logger.debug(f"Failed to parse filename by regex: {e}")
+            logger.debug(f"Failed to parse filename by fixed position: {e}")
         return sub, sess
 
     @staticmethod
     def parse_by_named_regex(filename: str, pattern: str) -> tuple[str, str]:
-        """
-        Parse filename using Named Regular Expression (e.g. (?P<subject>...)).
+        """Parse subject and session using named regex groups.
+
+        Expects the pattern to define ``(?P<subject>...)`` and/or
+        ``(?P<session>...)`` named groups.
 
         Args:
-            filename: The filename.
-            pattern: The regex pattern string with named groups 'subject' and 'session'.
+            filename: The filename (with or without extension).
+            pattern: Regex pattern with named groups ``'subject'`` and ``'session'``.
 
         Returns:
-            (subject, session) or ("-", "-") if not found.
+            A tuple of ``(subject, session)``, defaulting to ``('-', '-')``
+            if the pattern does not match.
         """
         # Remove extension for easier parsing
         name_no_ext = os.path.splitext(filename)[0]

@@ -1,3 +1,9 @@
+"""RAG indexer for embedding and storing gold-set examples.
+
+Loads gold-set JSON files, converts them into LangChain ``Document``
+objects, and indexes their embeddings into a Qdrant vector store.
+"""
+
 import json
 import logging
 
@@ -21,9 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 class RAGIndexer:
-    """Handles indexing of gold set examples into Qdrant."""
+    """Handles indexing of gold-set examples into a Qdrant collection.
+
+    Attributes:
+        embeddings: The HuggingFace sentence-transformer embedding model.
+        storage_path: Absolute path to the Qdrant on-disk storage.
+        client: The ``QdrantClient`` instance.
+    """
 
     def __init__(self):
+        """Initializes the RAGIndexer with embedding model and Qdrant client."""
         self.embeddings = HuggingFaceEmbeddings(model_name=RAGConfig.EMBEDDING_MODEL)
         self.storage_path = RAGConfig.get_storage_path()
 
@@ -32,7 +45,22 @@ class RAGIndexer:
         logger.info(f"Initialized Qdrant at {self.storage_path}")
 
     def load_gold_set(self, json_path: str) -> list[Document]:
-        """Parses gold_set.json into LangChain Documents."""
+        """Parses a gold-set JSON file into LangChain Documents.
+
+        Each entry in the JSON array is expected to have an ``input``
+        field (used as searchable content) and optional ``id``,
+        ``category``, and ``expected_tool_calls`` fields (stored as
+        metadata).
+
+        Args:
+            json_path: Path to the gold-set JSON file.
+
+        Returns:
+            A list of ``Document`` objects ready for indexing.
+
+        Raises:
+            Exception: If the JSON file cannot be read or parsed.
+        """
         try:
             with open(json_path, encoding="utf-8") as f:
                 data = json.load(f)
@@ -59,7 +87,17 @@ class RAGIndexer:
         return docs
 
     def index_data(self, docs: list[Document]):
-        """Embeds and indexes documents into Qdrant."""
+        """Embeds and indexes documents into the Qdrant collection.
+
+        Creates the collection if it does not exist, then adds the
+        provided documents using LangChain's Qdrant wrapper.
+
+        Args:
+            docs: List of ``Document`` objects to embed and store.
+
+        Raises:
+            Exception: If indexing fails.
+        """
         if not docs:
             logger.warning("No documents to index.")
             return
@@ -101,6 +139,6 @@ class RAGIndexer:
             raise
 
     def close(self):
-        """Closes the Qdrant client connection."""
+        """Closes the Qdrant client connection and releases resources."""
         if self.client:
             self.client.close()

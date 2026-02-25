@@ -1,3 +1,5 @@
+"""Sidebar widget for the dataset panel: info, operations, and controls."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -14,12 +16,28 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class DatasetSidebar(QWidget):
-    """
-    Sidebar for DatasetPanel containing Info, Operations, and Execution controls.
-    Hosts aggregate info panel and buttons for imports/clearing.
+    """Sidebar for ``DatasetPanel`` containing information and action controls.
+
+    Hosts an aggregate info panel, import/parse buttons, channel selection,
+    and a clear-dataset button.
+
+    Attributes:
+        panel: The parent ``DatasetPanel`` reference.
+        info_panel: ``AggregateInfoPanel`` displaying summary statistics.
+        import_btn: Button to import EEG data files.
+        import_label_btn: Button to import external labels.
+        smart_parse_btn: Button to auto-extract metadata from filenames.
+        chan_select_btn: Button to open channel selection dialog.
+        clear_btn: Button to clear the entire dataset.
     """
 
     def __init__(self, panel, parent=None):
+        """Initialize the dataset sidebar.
+
+        Args:
+            panel: The parent ``DatasetPanel``.
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.panel = panel  # Reference to main panel (for actions access)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -27,13 +45,16 @@ class DatasetSidebar(QWidget):
 
     @property
     def controller(self):
+        """DatasetController: The dataset controller from the parent panel."""
         return self.panel.controller
 
     @property
     def main_window(self):
+        """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
     def init_ui(self):
+        """Build sidebar layout: info panel, operation and execution buttons."""
         self.setFixedWidth(260)
         self.setObjectName("RightPanel")
         self.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
@@ -135,6 +156,11 @@ class DatasetSidebar(QWidget):
     # --- Actions moved from Panel ---
 
     def open_channel_selection(self):
+        """Open the channel selection dialog.
+
+        Blocked if the dataset is locked or no data is loaded.
+        Shows a confirmation prompt before applying.
+        """
         if not self.controller:
             return
 
@@ -181,6 +207,7 @@ class DatasetSidebar(QWidget):
                     )
 
     def clear_dataset(self):
+        """Prompt the user and clear the entire loaded dataset."""
         reply = QMessageBox.question(
             self,
             "Confirm Clear",

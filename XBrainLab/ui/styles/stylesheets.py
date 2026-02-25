@@ -1,10 +1,17 @@
+"""Centralized collection of reusable Qt CSS stylesheets.
+
+All stylesheet constants reference ``Theme`` color tokens for
+consistent application-wide styling.
+"""
+
 from XBrainLab.ui.styles.theme import Theme
 
 
 class Stylesheets:
-    """
-    Centralized collection of reusable CSS stylesheets.
-    Uses generic selectors and Theme constants to ensure consistency.
+    """Centralized collection of reusable Qt CSS stylesheets.
+
+    Each class attribute is a multi-line stylesheet string using generic
+    selectors and ``Theme`` constants to ensure visual consistency.
     """
 
     # Generic GroupBox (Used in AggregateInfoPanel, etc.)

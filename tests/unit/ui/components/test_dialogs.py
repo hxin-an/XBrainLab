@@ -1,9 +1,6 @@
-import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog, SmartParserDialog
@@ -14,9 +11,6 @@ from XBrainLab.ui.dialogs.preprocess import (
     RereferenceDialog,
     ResampleDialog,
 )
-
-# Ensure QApplication exists
-app = QApplication.instance() or QApplication(sys.argv)
 
 
 def test_channel_selection_dialog(qtbot):
@@ -192,7 +186,3 @@ def test_normalize_dialog_init(qtbot):
     dialog.accept()
 
     assert dialog.get_params() == "z score"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

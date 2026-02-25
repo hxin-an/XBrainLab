@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "xbrainlab"
-version = "0.4.2"
+version = "0.5.2"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
 readme = "documentation/README.md"
@@ -31,26 +31,23 @@ tqdm = "^4.66.0"
 requests = "^2.31.0"
 pyyaml = "^6.0"
 psutil = "^5.9.0"
-pyqt6 = "^6.10.2"
-openai = "^2.15.0"
-google-genai = "^1.59.0"
 python-dotenv = "^1.2.1"
-langchain = "^0.2.0"
-langchain-community = "^0.2.0"
-qdrant-client = "^1.9.0"
-sentence-transformers = "^2.2.2"
+
+# GUI (Required)
+pyqt6 = "^6.10.2"
 pyqtgraph = "^0.14.0"
-google-generativeai = "^0.8.6"
-
-[tool.poetry.group.gui]
-optional = true
-
-[tool.poetry.group.gui.dependencies]
-PyQt6 = "^6.6.0"
 qdarkstyle = "^3.2"
 vtk = "9.3.1"
 pyvista = ">=0.43.0,<0.45.0"
 pyvistaqt = ">=0.11.0,<0.12.0"
+
+# LLM / Agent
+openai = "^2.15.0"
+google-genai = "^1.59.0"
+langchain = "^0.2.0"
+langchain-community = "^0.2.0"
+qdrant-client = "^1.9.0"
+sentence-transformers = "^2.2.2"
 
 [tool.poetry.group.llm]
 optional = true
@@ -62,10 +59,8 @@ torchinfo = "^1.8.0"
 bitsandbytes = "^0.49.1"
 
 [tool.poetry.group.dev.dependencies]
-ruff = "^0.1.0"
-black = "^24.0.0"
+ruff = ">=0.1.0"
 pre-commit = "^3.6.0"
-isort = "^5.13.0"
 poethepoet = "^0.40.0"
 mypy = "^1.19.1"
 types-requests = "^2.32.4.20260107"
@@ -113,7 +108,6 @@ select = [
     "PIE",
     "PL",
     "RUF",
-    "RUF",
     "TRY3",
     "S",
     "N",
@@ -129,8 +123,11 @@ select = [
 "XBrainLab/llm/core/backends/local.py" = ["PLC0415"]
 "XBrainLab/llm/core/engine.py" = ["PLC0415"]
 "XBrainLab/ui/dialogs/model_settings_dialog.py" = ["PLC0415"]
+"XBrainLab/llm/core/config.py" = ["PLC0415"]
 "tests/conftest.py" = ["PLC0415"]
 "tests/integration/debug/test_debug_script_execution.py" = ["PLC0415"]
+"tests/integration/pipeline/test_full_pipeline.py" = ["PLC0415"]
+"tests/unit/ui/core/test_worker.py" = ["PLC0415"]
 
 [tool.ruff.lint.pep8-naming]
 ignore-names = ["X", "Y", "x", "y", "Pxx"]
@@ -150,25 +147,34 @@ exclude = [
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q"
-testpaths = [
-    "tests",
+addopts = "-ra -q -v"
+pythonpath = "."
+testpaths = ["tests"]
+norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]
+markers = [
+    "timeout: Mark test with a timeout.",
+]
+filterwarnings = [
+    "ignore::pytest.PytestUnknownMarkWarning",
+    "ignore:The class.*was deprecated:DeprecationWarning",
+    "ignore:`recreate_collection` method is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]
-# Prevent coverage from instrumenting torch internals which causes collection errors
+source = ["XBrainLab"]
 omit = [
     "**/torch/*",
     "**/torchvision/*",
     "**/torchaudio/*",
     "**/captum/*",
     "**/pyvista/*",
+    "**/pyvistaqt/*",
     "**/vtk*",
     "**/mne/*",
     "*/.virtualenvs/*",
     "*/site-packages/*",
+    "tests/*",
 ]
-# Use multiprocessing-safe concurrency
 concurrency = ["multiprocessing"]
 
 [tool.coverage.report]
@@ -176,28 +182,20 @@ exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
+    "@abstractmethod",
 ]
 
-[tool.black]
-line-length = 88
-target-version = ['py310']
-include = '\.pyi?$'
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-
 [tool.poetry.scripts]
-test-backend = "scripts.run_tests:backend"
-test-ui = "scripts.run_tests:ui"
-test-llm = "scripts.run_tests:run_llm_tests"
-test-remote = "scripts.run_tests:run_remote_tests"
-benchmark-llm = "scripts.benchmark.simple_bench:main"
-# test-all = "scripts.run_tests:all_tests"
+test-backend = "scripts.dev.run_tests:backend"
+test-ui = "scripts.dev.run_tests:ui"
+test-llm = "scripts.dev.run_tests:run_llm_tests"
+test-remote = "scripts.dev.run_tests:run_remote_tests"
+benchmark-llm = "scripts.agent.benchmarks.simple_bench:main"
+# test-all = "scripts.dev.run_tests:all_tests"
 
 [tool.poe.tasks]
 # Development
-verify = "python scripts/verify_real_tools.py"
+verify = "python scripts/dev/verify_real_tools.py"
 run = "python run.py"
 
 # Testing
@@ -219,9 +217,8 @@ check-architecture = "python tests/architecture_compliance.py"
 check = ["lint", "mypy", "test-unit", "check-architecture"]
 
 # LLM Tools
-verify-api = "python scripts/verify_api_llm.py"
-verify-gemini = "python scripts/verify_gemini_llm.py"
-list-models = "python scripts/list_gemini_models.py"
+verify-gemini = "python scripts/dev/verify_gemini_llm.py"
+list-models = "python scripts/dev/list_gemini_models.py"
 
 # Utilities
 clean = { cmd = "rm -rf output __pycache__ .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage", help = "Remove temporary files" }
@@ -233,10 +230,11 @@ bump = "cz bump"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.4.2"
+version = "0.5.2"
 tag_format = "v$version"
 version_files = [
     "pyproject.toml:version",
+    "XBrainLab/config.py:VERSION",
 ]
 update_changelog_on_bump = true
 changelog_file = "documentation/CHANGELOG.md"

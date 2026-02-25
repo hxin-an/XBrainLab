@@ -18,14 +18,9 @@ class TestTrainingManager:
 
     @pytest.fixture
     def window(self, qtbot, mock_trainer):
-        # Mock Trainer check in __init__
-        with patch(
-            "XBrainLab.ui.panels.training.training_manager.isinstance",
-            return_value=True,
-        ):
-            window = TrainingManagerWindow(None, mock_trainer)
-            qtbot.addWidget(window)
-            return window
+        window = TrainingManagerWindow(None, mock_trainer)
+        qtbot.addWidget(window)
+        return window
 
     def test_init(self, window, mock_trainer):
         assert window.windowTitle() == "Training Manager"

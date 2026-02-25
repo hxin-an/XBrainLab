@@ -1,3 +1,5 @@
+"""Trainer module for managing and executing training plan queues."""
+
 import threading
 import traceback
 from enum import Enum
@@ -8,7 +10,14 @@ from .training_plan import TrainingPlanHolder
 
 
 class Status(Enum):
-    """Utility class for training status"""
+    """Enumeration of possible trainer states.
+
+    Attributes:
+        PENDING: No active training job.
+        INIT: Trainer is initializing.
+        INTING: An interrupt has been requested.
+        TRAIN: Training is in progress (formatted with plan name).
+    """
 
     PENDING = "Pending"
     INIT = "Initializing"
@@ -31,6 +40,15 @@ class Trainer:
     """
 
     def __init__(self, training_plan_holders: list[TrainingPlanHolder]):
+        """Initialize the trainer with a list of training plan holders.
+
+        Args:
+            training_plan_holders: List of :class:`TrainingPlanHolder` instances
+                to be executed sequentially.
+
+        Raises:
+            TypeError: If any element is not a :class:`TrainingPlanHolder`.
+        """
         validate_list_type(
             training_plan_holders, TrainingPlanHolder, "training_plan_holders"
         )
@@ -41,15 +59,27 @@ class Trainer:
         self.job_thread: threading.Thread | None = None
 
     def add_plan(self, plan: TrainingPlanHolder) -> None:
-        """Add a new training plan to the queue"""
+        """Add a new training plan to the queue.
+
+        Args:
+            plan: The training plan holder to append.
+        """
         self.training_plan_holders.append(plan)
 
     def add_training_plan_holders(self, plans: list[TrainingPlanHolder]) -> None:
-        """Add a list of training plans to the queue"""
+        """Add a list of training plans to the queue.
+
+        Args:
+            plans: List of :class:`TrainingPlanHolder` instances to append.
+        """
         self.training_plan_holders.extend(plans)
 
     def clear_history(self) -> None:
-        """Clear training history and pending jobs"""
+        """Clear training history and pending jobs.
+
+        Raises:
+            RuntimeError: If training is currently running.
+        """
         if self.is_running():
             raise RuntimeError("Cannot clear history while training is running")
         self.training_plan_holders = []
@@ -57,7 +87,12 @@ class Trainer:
         self.progress_text = Status.PENDING
 
     def job(self) -> None:
-        """Training job running in background"""
+        """Execute the training job, iterating through all pending plan holders.
+
+        Runs sequentially through :attr:`training_plan_holders` starting from
+        :attr:`current_idx`. Stops early if :attr:`interrupt` is set. On
+        exception, logs the error and updates :attr:`progress_text`.
+        """
         try:
             while self.current_idx < len(self.training_plan_holders):
                 if self.interrupt:
@@ -82,11 +117,11 @@ class Trainer:
             self.job_thread = None
 
     def run(self, interact: bool = False) -> None:
-        """Run training job
+        """Start executing the training job.
 
-        Parameters:
-            interact: bool
-                Whether to run training in background
+        Args:
+            interact: If ``True``, run the job in a background thread.
+                If ``False``, run synchronously in the current thread.
         """
         if self.is_running():
             return
@@ -99,25 +134,33 @@ class Trainer:
             self.job()
 
     def get_progress_text(self) -> str:
-        """Return string representation of training progress"""
+        """Return a string representation of the current training progress.
+
+        Returns:
+            The current status or progress message.
+        """
         if isinstance(self.progress_text, Status):
             return self.progress_text.value
         return self.progress_text
 
     def is_running(self) -> bool:
-        """Return whether training is running"""
+        """Check whether a training job is currently running.
+
+        Returns:
+            ``True`` if the background job thread is alive, ``False`` otherwise.
+        """
         return self.job_thread is not None and self.job_thread.is_alive()
 
     def clean(self, force_update: bool = False) -> None:
-        """Stop and clean training job
+        """Stop and clean up the training job.
 
-        Parameters:
-            force_update: bool
-                Whether to force update
+        Args:
+            force_update: If ``True``, forcefully interrupt training.
+                If ``False``, raises an error when training is still running.
 
         Raises:
-            ValueError: If training is still in progress and
-                        :attr:`force_update` is False
+            RuntimeError: If training is still in progress and
+                ``force_update`` is ``False``.
         """
         if force_update:
             self.set_interrupt()
@@ -125,25 +168,40 @@ class Trainer:
             raise RuntimeError("Training still in progress")
 
     def get_training_plan_holders(self) -> list[TrainingPlanHolder]:
-        """Get list of training plan holders"""
+        """Return the list of all training plan holders.
+
+        Returns:
+            List of :class:`TrainingPlanHolder` instances.
+        """
         return self.training_plan_holders
 
     def set_interrupt(self) -> None:
-        """Set interrupt flag"""
+        """Set the interrupt flag and propagate to all plan holders."""
         self.interrupt = True
         self.progress_text = Status.INTING
         for holder in self.training_plan_holders:
             holder.set_interrupt()
 
     def clear_interrupt(self) -> None:
-        """Clear interrupt flag"""
+        """Clear the interrupt flag and propagate to all plan holders."""
         self.interrupt = False
         self.progress_text = Status.PENDING
         for holder in self.training_plan_holders:
             holder.clear_interrupt()
 
     def get_real_training_plan(self, plan_name: str, real_plan_name: str):
-        """Get the real training plan (TrainRecord) from the holder"""
+        """Retrieve a specific :class:`TrainRecord` from a named plan holder.
+
+        Args:
+            plan_name: The name of the :class:`TrainingPlanHolder`.
+            real_plan_name: The name of the :class:`TrainRecord` within the holder.
+
+        Returns:
+            The matching :class:`TrainRecord` instance.
+
+        Raises:
+            ValueError: If the plan holder or the train record cannot be found.
+        """
         for holder in self.training_plan_holders:
             if holder.get_name() == plan_name:
                 for plan in holder.get_plans():

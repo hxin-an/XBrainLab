@@ -1,14 +1,16 @@
-"""
-Centralized Theme Definitions for XBrainLab.
-Refactoring Goal: Remove hardcoded colors from UI components.
+"""Centralized theme definitions for XBrainLab.
+
+Provides color constants, semantic tokens, and utility methods for
+consistent styling across Qt widgets and Matplotlib figures.
 """
 
 
 class Theme:
-    """
-    Centralized Theme Definitions for XBrainLab.
-    Provides color constants and utility methods for styling (e.g., Matplotlib
-    integration).
+    """Centralized theme color constants and styling utilities.
+
+    Provides named color tokens grouped by category (backgrounds, text,
+    accents, chat, buttons, etc.) and static helpers for applying themes
+    to Matplotlib figures.
     """
 
     # Main Application Colors
@@ -115,8 +117,17 @@ class Theme:
 
     @staticmethod
     def apply_matplotlib_dark_theme(fig, ax=None, axes=None):
-        """
-        Apply standard dark theme to Matplotlib Figure and Axes.
+        """Apply the standard dark theme to a Matplotlib figure.
+
+        Sets background colors, tick/label colors, spine colors, and
+        legend styling to match the application dark theme.
+
+        Args:
+            fig: The Matplotlib ``Figure`` to style.
+            ax: Optional single ``Axes`` instance to style.
+            axes: Optional list of ``Axes`` instances to style.
+                If neither ``ax`` nor ``axes`` is provided, all axes
+                on the figure are styled.
         """
         if fig:
             fig.patch.set_facecolor(Theme.BACKGROUND_MID)
@@ -151,7 +162,11 @@ class Theme:
 
     @staticmethod
     def get_style_sheet() -> str:
-        """Global Update for QWidget generic styles if needed."""
+        """Return a global Qt stylesheet for generic widget styling.
+
+        Returns:
+            A multi-line Qt CSS stylesheet string.
+        """
         return f"""
             QWidget {{
                 background-color: {Theme.BACKGROUND_DARK};

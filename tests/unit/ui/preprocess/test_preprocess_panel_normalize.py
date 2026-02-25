@@ -1,8 +1,7 @@
-import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-from PyQt6.QtWidgets import QApplication, QWidget
+from PyQt6.QtWidgets import QWidget
 
 # Import the module under test
 from XBrainLab.ui.dialogs.preprocess import NormalizeDialog
@@ -24,9 +23,6 @@ class TestNormalizeDialog(unittest.TestCase):
         self.assertEqual(dialog.get_params(), "minmax")
 
     def setUp(self):
-        if not QApplication.instance():
-            self.app = QApplication(sys.argv)
-
         self.mock_controller = MagicMock()
         self.mock_controller.has_data.return_value = True
         self.mock_controller.is_locked.return_value = False
@@ -59,7 +55,3 @@ class TestNormalizeDialog(unittest.TestCase):
             # update_panel on main panel is called via notify_update from sidebar
             mock_update.assert_called_once()
             MockBox.information.assert_called_once()  # Success message
-
-
-if __name__ == "__main__":
-    unittest.main()

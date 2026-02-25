@@ -33,7 +33,6 @@ def test_setup_logger(temp_log_dir):
 
     # Check handlers (File + Console)
     # Note: pytest might add its own handlers, so we check if OUR handlers are present
-    print(f"Handlers: {logger.handlers}")
 
     has_file_handler = any(isinstance(h, logging.FileHandler) for h in logger.handlers)
     has_stream_handler = any(

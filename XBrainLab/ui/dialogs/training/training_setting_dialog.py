@@ -1,3 +1,9 @@
+"""Training settings dialog for configuring model training parameters.
+
+Aggregates settings for epochs, batch size, learning rate, optimizer,
+device, output directory, evaluation strategy, and repeat count.
+"""
+
 from typing import Any
 
 from PyQt6.QtWidgets import (
@@ -29,10 +35,25 @@ from .optimizer_setting_dialog import OptimizerSettingDialog
 
 
 class TrainingSettingDialog(BaseDialog):
-    """
-    Main configuration dialog for training parameters.
-    Aggregates settings for epochs, batch size, learning rate, optimizer, device,
-    and output.
+    """Main configuration dialog for training parameters.
+
+    Aggregates settings for epochs, batch size, learning rate, optimizer,
+    device, output directory, evaluation strategy, and repeat count.
+
+    Attributes:
+        training_option: Configured TrainingOption after acceptance.
+        output_dir: Path to the training output directory.
+        optim_classes: Dictionary of available optimizer classes.
+        optim: Currently selected optimizer class.
+        optim_params: Dictionary of optimizer parameters.
+        use_cpu: Whether to use CPU for training.
+        gpu_idx: Index of the selected GPU, or None.
+        epoch_entry: QLineEdit for number of training epochs.
+        bs_entry: QLineEdit for batch size.
+        lr_entry: QLineEdit for learning rate.
+        checkpoint_entry: QLineEdit for checkpoint save interval.
+        repeat_entry: QLineEdit for number of training repeats.
+        evaluation_combo: QComboBox for evaluation strategy selection.
     """
 
     def __init__(self, parent, controller):
@@ -71,6 +92,7 @@ class TrainingSettingDialog(BaseDialog):
         self.load_settings()
 
     def load_settings(self):
+        """Load previously saved training settings from the controller."""
         if not self.controller:
             return
         opt = self.controller.get_training_option()
@@ -108,6 +130,7 @@ class TrainingSettingDialog(BaseDialog):
                 self.evaluation_combo.setCurrentText(opt.evaluation_option.value)
 
     def init_ui(self):
+        """Initialize the dialog UI with training parameter controls."""
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
 
@@ -172,6 +195,7 @@ class TrainingSettingDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def set_optimizer(self):
+        """Open the optimizer setting dialog and apply the result."""
         setter = OptimizerSettingDialog(self)
         if setter.exec():
             optim, optim_params = setter.get_result()
@@ -182,6 +206,7 @@ class TrainingSettingDialog(BaseDialog):
                     self.opt_label.setText(parse_optim_name(optim, optim_params))
 
     def set_device(self):
+        """Open the device setting dialog and apply the result."""
         setter = DeviceSettingDialog(self)
         if setter.exec():
             self.use_cpu, self.gpu_idx = setter.get_result()
@@ -189,6 +214,7 @@ class TrainingSettingDialog(BaseDialog):
                 self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
 
     def set_output_dir(self):
+        """Open a directory picker for the training output path."""
         filepath = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if filepath:
             self.output_dir = filepath
@@ -196,6 +222,11 @@ class TrainingSettingDialog(BaseDialog):
                 self.output_dir_label.setText(filepath)
 
     def accept(self):
+        """Validate all inputs, build TrainingOption, and accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if input validation fails.
+        """
         if (
             not self.evaluation_combo
             or not self.epoch_entry
@@ -247,7 +278,20 @@ class TrainingSettingDialog(BaseDialog):
             QMessageBox.warning(self, "Validation Error", str(e))
 
     def _raise_value_error(self, msg: str):
+        """Raise a ValueError with the given message.
+
+        Args:
+            msg: Error message string.
+
+        Raises:
+            ValueError: Always raised with the provided message.
+        """
         raise ValueError(msg)
 
     def get_result(self):
+        """Return the configured training option.
+
+        Returns:
+            TrainingOption instance with all training parameters, or None.
+        """
         return self.training_option

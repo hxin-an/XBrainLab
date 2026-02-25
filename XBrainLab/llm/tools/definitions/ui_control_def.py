@@ -1,9 +1,22 @@
+"""Abstract base tool definitions for UI control operations.
+
+Defines the interface for tools that switch the main application
+window between different panels and sub-views.
+"""
+
 from typing import Any
 
 from ..base import BaseTool
 
 
 class BaseSwitchPanelTool(BaseTool):
+    """Switch the main window view to a specific panel.
+
+    Panels include dashboard, dataset, preprocess, training,
+    visualization, and evaluation.  An optional *view_mode* selects
+    a sub-view within the chosen panel.
+    """
+
     @property
     def name(self) -> str:
         return "switch_panel"

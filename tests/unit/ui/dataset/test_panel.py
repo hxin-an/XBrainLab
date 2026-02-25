@@ -1,13 +1,9 @@
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
-
-# Ensure QApplication exists
-app = QApplication.instance() or QApplication(sys.argv)
 
 
 @pytest.fixture
@@ -61,13 +57,6 @@ def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot)
     panel.close()
     real_window.close()
 
-    # Check if controller was instantiated
-    assert hasattr(panel, "controller")
-
-    # Clean up
-    panel.close()
-    real_window.close()
-
 
 def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qtbot):
     """Test successful data import delegates to controller."""
@@ -92,7 +81,6 @@ def test_dataset_panel_import_data_success(mock_main_window, mock_controller, qt
 
 
 def test_dataset_panel_clear_dataset(mock_main_window, mock_controller, qtbot):
-    """Test clearing the dataset."""
     """Test clearing the dataset."""
 
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
@@ -204,7 +192,3 @@ def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):
             mock_controller.apply_smart_parse.assert_called_with(
                 {"/path/file.set": ("sub", "ses")}
             )
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

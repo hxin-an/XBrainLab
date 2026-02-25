@@ -1,3 +1,5 @@
+"""Factory module for dispatching raw data loading by file extension."""
+
 import os
 from collections.abc import Callable
 from typing import ClassVar
@@ -8,7 +10,15 @@ from XBrainLab.backend.utils.logger import logger
 
 
 class RawDataLoaderFactory:
-    """Factory for creating Raw data loaders based on file extension."""
+    """Factory for creating Raw data loaders based on file extension.
+
+    Maintains a registry of loader functions keyed by file extension.
+    New formats can be supported by calling :meth:`register_loader`.
+
+    Attributes:
+        _loaders: Class-level registry mapping lowercase file extensions
+            to loader callables.
+    """
 
     _loaders: ClassVar[dict[str, Callable[[str], Raw | None]]] = {}
 

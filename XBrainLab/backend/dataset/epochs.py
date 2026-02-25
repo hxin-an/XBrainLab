@@ -1,3 +1,5 @@
+"""Epochs module for converting Raw data into epoch arrays for splitting."""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -12,7 +14,13 @@ from .option import SplitUnit
 
 
 class TrialSelectionSequence(Enum):
-    """Utility class for trial selection sequence in dataset splitting."""
+    """Enumeration defining the attribute order for balanced trial selection.
+
+    Attributes:
+        SESSION: Select by session attribute.
+        SUBJECT: Select by subject attribute.
+        Label: Select by label attribute.
+    """
 
     SESSION = "session"
     SUBJECT = "subject"
@@ -20,39 +28,32 @@ class TrialSelectionSequence(Enum):
 
 
 class Epochs:
-    """Class for storing epoch data.
+    """Container for epoch data derived from preprocessed EEG recordings.
 
-    Handles list of `Raw` objects, which are preprocessed data,
-        and convert them into epoch data.
-    With functions to corporate with dataset generator.
+    Aggregates multiple ``Raw`` objects into a unified epoch array with
+    consistent label, subject, and session mappings. Provides picking and
+    splitting utilities used by the dataset generator.
 
-    Parameters:
-        preprocessed_data_list: List of preprocessed data.
+    Args:
+        preprocessed_data_list: List of preprocessed ``Raw`` objects. Each must
+            be of epoch type (not unsegmented raw).
 
     Attributes:
-        sfreq: float
-            Sampling frequency of the data.
-        subject_map: dict[int, str]
-            Mapping from subject index to subject name.
-        session_map: dict[int, str]
-            Mapping from session index to session name.
-        label_map: dict[int, str]
-            Mapping from label index to label name.
-        event_id: dict[str, int]
-            Mapping from event name to event id.
-        ch_names: list[str]
-            List of channel names.
-        channel_position: list | None
-            List of channel positions. None if not set.
-            Channel format is (x, y, z).
-        subject: np.ndarray
-            List of subject index of each epoch.
-        session: np.ndarray
-            List of session index of each epoch.
-        label: np.ndarray
-            List of label index of each epoch.
-        idx: np.ndarray
-            List of epoch index within each preprocessed data.
+        sfreq: Sampling frequency of the data in Hz.
+        subject_map: Mapping from subject index to subject name.
+        session_map: Mapping from session index to session name.
+        label_map: Mapping from label index to label name.
+        event_id: Mapping from event name to event ID.
+        ch_names: List of EEG channel names.
+        channel_position: List of channel (x, y, z) positions, or None.
+        subject: Array of subject index for each epoch.
+        session: Array of session index for each epoch.
+        label: Array of label index for each epoch.
+        idx: Array of within-file epoch index for each epoch.
+        data: 3D array of shape ``(n_epochs, n_channels, n_samples)``.
+
+    Raises:
+        ValueError: If any item in preprocessed_data_list is unsegmented raw.
     """
 
     def __init__(self, preprocessed_data_list: list[Raw]):
@@ -148,7 +149,11 @@ class Epochs:
         self.subject_map = {map_subject[i]: i for i in map_subject}
 
     def copy(self) -> Epochs:
-        """Return a copy of the object."""
+        """Return a deep copy of this Epochs object.
+
+        Returns:
+            A new independent Epochs instance with identical data.
+        """
         return deepcopy(self)
 
     # data splitting
@@ -280,13 +285,18 @@ class Epochs:
     """
 
     def _generate_mask_target(self, mask: np.ndarray) -> dict:
-        """Return mask-counter pair, group by label, subject, and session.
+        """Generate mask-counter pairs grouped by label, subject, and session.
+
+        Creates a nested dictionary structure that tracks which epochs belong
+        to each (label, subject, session) combination and how many have been
+        selected so far.
 
         Args:
-            mask: Mask to filter out remaining epochs. 1D np.ndarray of bool.
+            mask: Boolean mask of available epochs.
 
         Returns:
-            dict[label_idx][subject_idx][session_idx] = [target_filter_mask, count]
+            Nested dict with structure
+            ``{label_idx: {subject_idx: {session_idx: [bool_mask, count]}}}``.
         """
         filter_preview_mask: dict[int, dict[int, dict[int, list]]] = {}
         unique_label_idx = np.unique(self.get_label_list())
@@ -312,14 +322,18 @@ class Epochs:
         return filter_preview_mask
 
     def _get_filtered_mask_pair(self, filter_preview_mask: dict) -> list | None:
-        """Return mask-counter pair with least selected group.
+        """Find the mask-counter pair with the least-selected group.
+
+        Used for balanced epoch selection to ensure even distribution across
+        label/subject/session combinations.
 
         Args:
-            filter_preview_mask:
-                Mask-counter pair, group by label, subject, and session.
+            filter_preview_mask: Nested mask-counter dict from
+                :meth:`_generate_mask_target`.
 
         Returns:
-            [target_filter_mask, count] with least count.
+            ``[bool_mask, count]`` pair with the smallest count, or None if
+            no selectable epochs remain.
         """
 
         min_count = self.get_data_length()
@@ -343,16 +357,17 @@ class Epochs:
         return filtered_mask_pair
 
     def _update_mask_target(self, filter_preview_mask: dict, pos: np.ndarray) -> dict:
-        """Update mask-counter pair by selected mask.
+        """Update mask-counter pairs after selecting epochs.
+
+        Removes selected epochs from available masks and increments counters
+        for all groups that contained the selected epochs.
 
         Args:
-            filter_preview_mask:
-                Mask-counter pair, group by label, subject, and session.
-            pos:
-                Mask of selected epochs.
+            filter_preview_mask: Nested mask-counter dict to update.
+            pos: Boolean mask of newly selected epochs.
 
         Returns:
-            Updated mask-counter pair.
+            Updated mask-counter dict.
         """
         for unique_subject_idx in filter_preview_mask.values():
             for unique_session_idx in unique_subject_idx.values():
@@ -370,22 +385,26 @@ class Epochs:
         clean_mask: np.ndarray | None,
         group_idx: int,
     ) -> int:
-        """Return number of epochs to be selected.
+        """Calculate the number of unique IDs to select for splitting.
+
+        Converts a ratio, absolute number, or k-fold specification into an
+        actual count of unique target IDs to pick.
 
         Args:
-            target_type:
-                List of index of target type.
-                Can be list index of subject or session.
-            value: Value of splitting option.
-                   Can be ratio, number, or list of manual selection.
-            split_unit: SplitUnit of splitting option.
-            mask: Mask to filter out remaining epochs,
-                  ecxluding already selected cross validation part.
-                  1D np.ndarray of bool.
-            clean_mask: Mask to filter out remaining epochs,
-                        including all available selection.
-                        1D np.ndarray of bool.
-            group_idx: Group index of cross validation.
+            target_type: Array of target attribute indices (e.g. subject or
+                session index per epoch).
+            value: Splitting value (ratio, count, or manual list).
+            split_unit: Unit of the splitting value.
+            mask: Boolean mask of available epochs (excluding prior CV folds).
+            clean_mask: Boolean mask of all selectable epochs, or None.
+            group_idx: Current cross-validation group index.
+
+        Returns:
+            Number of unique IDs to select.
+
+        Raises:
+            ValueError: If value type does not match the expected split unit.
+            NotImplementedError: If the split unit is unsupported.
         """
         if clean_mask is None:
             target = len(np.unique(target_type[mask]))
@@ -621,7 +640,11 @@ class Epochs:
 
     # train
     def get_model_args(self):
-        """Return args for model initialization."""
+        """Return arguments needed for model initialization.
+
+        Returns:
+            Dict with keys ``n_classes``, ``channels``, ``samples``, ``sfreq``.
+        """
         return {
             "n_classes": len(self.label_map),
             "channels": len(self.ch_names),
@@ -630,7 +653,11 @@ class Epochs:
         }
 
     def get_data(self) -> np.ndarray:
-        """Return data."""
+        """Return the epoch data array.
+
+        Returns:
+            3D array of shape ``(n_epochs, n_channels, n_samples)``.
+        """
         return self.data
 
     # eval
@@ -649,11 +676,11 @@ class Epochs:
         return np.round(self.data.shape[-1] / self.sfreq, 2)
 
     def set_channels(self, ch_names: list[str], channel_position: list) -> None:
-        """Set channel names and positions.
+        """Set channel names and montage positions.
 
         Args:
             ch_names: List of channel names.
-            channel_position: List of channel positions. Position format is (x, y, z).
+            channel_position: List of channel positions as ``(x, y, z)`` tuples.
         """
         self.ch_names = ch_names
         self.channel_position = channel_position
@@ -672,7 +699,12 @@ class Epochs:
         return None
 
     def get_mne(self):
-        """Reconstruct MNE Epochs object from stored data."""
+        """Reconstruct an MNE ``EpochsArray`` from stored data.
+
+        Returns:
+            ``mne.EpochsArray`` with the stored epoch data, channel info,
+            and event mapping.
+        """
 
         info = mne.create_info(ch_names=self.ch_names, sfreq=self.sfreq, ch_types="eeg")
 

@@ -92,7 +92,3 @@ def test_ui_refresh_on_tab_switch(qtbot, mock_study):
         eval_panel.update_panel.assert_not_called()
         vis_panel.update_panel.assert_not_called()
         dataset_panel.update_panel.assert_called()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

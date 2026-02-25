@@ -1,3 +1,5 @@
+"""Unified facade providing a simplified, high-level API for the XBrainLab backend."""
+
 import os
 
 import numpy as np
@@ -23,17 +25,24 @@ from XBrainLab.backend.utils.mne_helper import get_montage_positions
 
 
 class BackendFacade:
-    """
-    A unified facade for the XBrainLab backend.
-    Provides a simplified, high-level API for data loading, training, and evaluation.
-    Designed for use by LLM Agents and headless scripts.
+    """Unified facade for the XBrainLab backend.
+
+    Provides a simplified, high-level API for data loading, preprocessing,
+    training, and evaluation. Designed for use by LLM agents and headless scripts.
+
+    Attributes:
+        study: The underlying Study instance managing state.
+        dataset: Controller for dataset operations.
+        preprocess: Controller for preprocessing operations.
+        training: Controller for training operations.
+        evaluation: Controller for evaluation operations.
     """
 
     def __init__(self, study: Study | None = None):
-        """
-        Initialize the backend stack.
+        """Initialize the backend stack.
+
         Args:
-             study: Optional existing Study instance. If None, creates a new one.
+            study: Optional existing Study instance. If None, creates a new one.
         """
         self.study = study if study is not None else Study()
         # Use Study's cached controllers for singleton-like access
@@ -45,18 +54,24 @@ class BackendFacade:
 
     # --- Dataset Operations ---
     def load_data(self, filepaths: list[str]) -> tuple[int, list[str]]:
-        """
-        Load raw data files.
-        Returns: (success_count, error_list)
+        """Load raw data files.
+
+        Args:
+            filepaths: List of file paths to load.
+
+        Returns:
+            A tuple of (success_count, error_list).
         """
         return self.dataset.import_files(filepaths)
 
     def attach_labels(self, mapping: dict[str, str]) -> int:
-        """
-        Attach label files to loaded data files.
+        """Attach label files to loaded data files.
+
         Args:
-            mapping: Dict of {data_filename: label_filepath}
-        Returns: success count
+            mapping: Dict mapping ``{data_filename: label_filepath}``.
+
+        Returns:
+            The number of files that had labels successfully attached.
         """
 
         success_count = 0
@@ -103,7 +118,11 @@ class BackendFacade:
         self.dataset.clean_dataset()
 
     def get_data_summary(self) -> dict:
-        """Get summary of loaded data."""
+        """Get a summary of loaded data.
+
+        Returns:
+            Dictionary containing file count and filenames.
+        """
         data_list = self.dataset.get_loaded_data_list()
 
         summary = {
@@ -120,53 +139,69 @@ class BackendFacade:
     def apply_filter(
         self, low_freq: float, high_freq: float, notch_freq: float | None = None
     ):
-        """Apply Bandpass and optionally Notch filter."""
-        # Note: PreprocessController.apply_filter takes (l, h, notch_list)
+        """Apply bandpass and optionally notch filter.
+
+        Args:
+            low_freq: Low cutoff frequency for the bandpass filter (Hz).
+            high_freq: High cutoff frequency for the bandpass filter (Hz).
+            notch_freq: Frequency to notch out (Hz), or None to skip.
+        """
         notch_list = [notch_freq] if notch_freq else None
         self.preprocess.apply_filter(low_freq, high_freq, notch_list)
 
     def apply_notch_filter(self, freq: float):
-        """Apply Notch filter only."""
-        # Using apply_filter with None for bandpass?
-        # Check PreprocessController implementation: likely allows None?
-        # If not, we might need a specific notch method or check underlying code.
-        # PreprocessController.apply_filter delegates to Filtering class.
+        """Apply a notch filter at the specified frequency.
+
+        Args:
+            freq: The frequency (Hz) to notch out.
+        """
         self.preprocess.apply_filter(None, None, [freq])
 
     def resample_data(self, rate: int):
+        """Resample data to the specified sampling rate.
+
+        Args:
+            rate: Target sampling rate in Hz.
+        """
         self.preprocess.apply_resample(rate)
 
     def normalize_data(self, method: str):
+        """Apply normalization to the data.
+
+        Args:
+            method: Normalization method name.
+        """
         self.preprocess.apply_normalization(method)
 
     def set_reference(self, method: str):
-        # "average" or specific channel
+        """Set the EEG reference.
+
+        Args:
+            method: Reference method — ``"average"`` or a specific channel name.
+        """
         if method == "average":
             self.preprocess.apply_rereference("average")
         else:
             self.preprocess.apply_rereference([method])
 
     def select_channels(self, channels: list[str]):
-        # This is on DatasetController in the current code, not PreprocessController?
-        # Let's check. Yes, apply_channel_selection is in DatasetController.
+        """Select a subset of EEG channels to keep.
+
+        Args:
+            channels: List of channel names to retain.
+        """
         self.dataset.apply_channel_selection(channels)
 
     def set_montage(self, montage_name: str) -> str:
-        """
-        Set EEG channel positions using a standard montage with fuzzy matching.
-        Returns status string.
-        """
+        """Set EEG channel positions using a standard montage with fuzzy matching.
 
-        # Backend requires epoch data for set_channels currently?
-        # Check Controller logic or study. Actually logic works on existing 'channels'.
-        # If we have preprocessed data, we can set montage.
-        data_list = self.dataset.get_loaded_data_list()  # or preprocessed?
-        # The tool looked at study.epoch_data.
-        # But montage can be set on Raw too (MNE supports it).
-        # Let's support whatever current state is.
-        # Ideally we check PreprocessController.
+        Args:
+            montage_name: Name of a standard MNE montage (e.g., ``"standard_1020"``).
 
-        # For MVP, assume we work on the first available data to find channel names.
+        Returns:
+            Status string describing the result of the montage application.
+        """
+        data_list = self.dataset.get_loaded_data_list()
         target_info = None
         if self.training.has_epoch_data():
             target_info = self.training.get_epoch_data().get_mne().info
@@ -216,8 +251,6 @@ class BackendFacade:
                     f"(Only {len(mapped_chs)}/{len(current_chs)} channels matched)"
                 )
 
-            # Delegate to study.set_channels via wrapper if possible,
-            # or direct study access. Facade has access to self.study.
             self.study.set_channels(mapped_chs, mapped_positions)
             return f"Set Montage '{montage_name}' (Matched {len(mapped_chs)} channels)"
 
@@ -232,14 +265,14 @@ class BackendFacade:
         baseline: list[float] | None = None,
         event_ids: list[str] | None = None,
     ):
+        """Slice continuous data into epochs around events.
+
+        Args:
+            t_min: Start time of the epoch relative to the event (seconds).
+            t_max: End time of the epoch relative to the event (seconds).
+            baseline: Start and end times for baseline correction, or None.
+            event_ids: List of event names to keep, or None for all events.
         """
-        Slice data into epochs.
-        t_min, t_max: relative times (e.g. -0.1, 1.0)
-        baseline: [start, end]
-        event_ids: list of event names to keep
-        """
-        # PreprocessController.apply_epoching(baseline, selected_events, tmin, tmax)
-        # Note args order.
         self.preprocess.apply_epoching(baseline, event_ids, t_min, t_max)
 
     # --- Training Configuration ---
@@ -250,12 +283,15 @@ class BackendFacade:
         split_strategy: str = "subject",
         training_mode: str = "individual",
     ):
-        """
-        Configure how dataset is split and generated for training.
-        """
-        # Import Enums
+        """Configure how the dataset is split and generated for training.
 
-        # Map strings to Enums
+        Args:
+            test_ratio: Fraction of data reserved for testing.
+            val_ratio: Fraction of training data reserved for validation.
+            split_strategy: Split granularity — ``"trial"``, ``"session"``,
+                or ``"subject"``.
+            training_mode: Training paradigm — ``"individual"`` or ``"group"``.
+        """
         s_strat = SplitByType.TRIAL
         if split_strategy.lower() == "session":
             s_strat = SplitByType.SESSION
@@ -295,25 +331,18 @@ class BackendFacade:
 
         generator = self.study.get_datasets_generator(config)
 
-        # Apply logic via TrainingController
-        # (which delegates to study.set_datasets usually?)
-        # TrainingController.apply_data_splitting calls generator.apply(study)
         self.training.apply_data_splitting(generator)
 
-        # Return count if possible?
-        # The generator.generate() happens inside verify/apply?
-        # generator.apply() calls generate() and sets datasets
-
     def set_model(self, model_name: str):
-        """Select model architecture."""
-        # Resolve Model Class using Registry
-        # (imported locally to avoid circular dep if needed)
-        # Or better, replicate the mapping here or use backend's mechanism if specific
-        # Reusing the logic from ToolRegistry
-        # (manual mapping for now
-        # or finding where mappings live)
-        # Actually, let's look for backend.model_base
+        """Select a model architecture by name.
 
+        Args:
+            model_name: Model name (case-insensitive). Supported values:
+                ``"eegnet"``, ``"sccnet"``, ``"shallowconvnet"``.
+
+        Raises:
+            ValueError: If the model name is not recognized.
+        """
         models_map = {
             "eegnet": EEGNet,
             "sccnet": SCCNet,
@@ -337,8 +366,18 @@ class BackendFacade:
         optimizer: str = "adam",
         save_checkpoints_every: int = 0,
     ):
-        """Set training hyperparameters."""
+        """Set training hyperparameters.
 
+        Args:
+            epoch: Number of training epochs.
+            batch_size: Mini-batch size.
+            learning_rate: Learning rate for the optimizer.
+            repeat: Number of times to repeat the experiment.
+            device: Device string — ``"cpu"``, ``"auto"``, or a CUDA device.
+            optimizer: Optimizer name — ``"adam"``, ``"sgd"``, or ``"adamw"``.
+            save_checkpoints_every: Save a checkpoint every *N* epochs
+                (0 to disable).
+        """
         # Resolve Optimizer
         optimizers_map = {
             "adam": torch.optim.Adam,
@@ -349,8 +388,7 @@ class BackendFacade:
 
         # Resolve Device
         use_cpu = device.lower() == "cpu"
-        gpu_idx = 0 if not use_cpu else None  # Default to 0 if not cpu
-        # If device="cuda:1", we might need parsing. MVP: "cpu" or "gpu" (auto)
+        gpu_idx = 0 if not use_cpu else None
 
         option = TrainingOption(
             output_dir=getattr(self.study, "output_dir", "./output"),
@@ -374,14 +412,24 @@ class BackendFacade:
         self.training.start_training()
 
     def stop_training(self):
+        """Stop the current training run."""
         self.training.stop_training()
 
     def is_training(self) -> bool:
+        """Check whether training is currently running.
+
+        Returns:
+            True if training is active, False otherwise.
+        """
         return self.training.is_training()
 
     # --- Evaluation ---
     def get_latest_results(self) -> dict:
-        """Get results from the latest training run."""
+        """Get results from the latest training run.
+
+        Returns:
+            Dictionary with plan counts, run counts, and training status.
+        """
         plans = self.evaluation.get_plans()
         if not plans:
             return {"status": "no_plans"}

@@ -1,3 +1,9 @@
+"""Smart metadata parser dialog for extracting subject/session info from filenames.
+
+Provides multiple parsing strategies (split, regex, folder structure, fixed
+position) with a live preview table showing extracted metadata for each file.
+"""
+
 import contextlib
 import os
 import re
@@ -27,9 +33,18 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class SmartParserDialog(BaseDialog):
-    """
-    Dialog for configuring automated metadata extraction from filenames.
-    Supports split, regex, folder structure, and fixed position strategies.
+    """Dialog for configuring automated metadata extraction from filenames.
+
+    Supports simple split, advanced regex, folder structure, and fixed
+    position parsing strategies with a live preview table. Settings are
+    persisted via QSettings.
+
+    Attributes:
+        filenames: List of file paths to parse.
+        parsed_data: Dictionary mapping filepath to ``(subject, session)`` tuples.
+        mode_group: QButtonGroup for selecting the parsing mode.
+        settings_stack: QStackedWidget holding mode-specific settings pages.
+        table: QTableWidget displaying the live parsing preview.
     """
 
     def __init__(self, filenames: list[str], parent=None):
@@ -71,6 +86,7 @@ class SmartParserDialog(BaseDialog):
         self.update_preview()
 
     def init_ui(self):
+        """Initialize dialog UI with parsing mode controls and preview table."""
         layout = QVBoxLayout(self)
 
         # 1. Configuration Area
@@ -254,6 +270,7 @@ class SmartParserDialog(BaseDialog):
         self.toggle_mode()  # Init visibility
 
     def toggle_mode(self):
+        """Switch the settings stack page based on the selected parsing mode."""
         if not self.mode_group or not self.settings_stack:
             return
 
@@ -269,6 +286,11 @@ class SmartParserDialog(BaseDialog):
         self.update_preview()
 
     def on_regex_preset_changed(self, index):
+        """Populate the regex input with a preset pattern.
+
+        Args:
+            index: Index of the selected preset in the combo box.
+        """
         if not self.regex_input:
             return
 
@@ -278,6 +300,7 @@ class SmartParserDialog(BaseDialog):
             self.regex_input.setText(r"sub-([^_]+)_ses-([^_]+)")
 
     def update_preview(self):
+        """Re-parse all filenames and refresh the preview table."""
         if not self.table or not self.split_sep_combo:
             return
 
@@ -356,13 +379,20 @@ class SmartParserDialog(BaseDialog):
                 self.parsed_data[filepath] = (sub, sess)
 
     def get_result(self):
+        """Return the parsed metadata mapping.
+
+        Returns:
+            Dictionary mapping file paths to ``(subject, session)`` tuples.
+        """
         return self.parsed_data
 
     def accept(self):
+        """Save current settings and accept the dialog."""
         self.save_settings()  # Save settings on apply
         super().accept()
 
     def save_settings(self):
+        """Persist current parsing settings to QSettings."""
         settings = QSettings("XBrainLab", "SmartParser")
 
         # Save Mode
@@ -398,6 +428,7 @@ class SmartParserDialog(BaseDialog):
             settings.setValue("fixed_sess_len", self.fixed_sess_len.value())
 
     def load_settings(self):
+        """Restore parsing settings from QSettings."""
         settings = QSettings("XBrainLab", "SmartParser")
 
         # Load Mode

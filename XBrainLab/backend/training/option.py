@@ -1,3 +1,5 @@
+"""Training option and configuration classes for model training."""
+
 from enum import Enum
 
 import torch
@@ -5,7 +7,14 @@ from torch import nn
 
 
 class TrainingEvaluation(Enum):
-    """Utility class for model selection option"""
+    """Enumeration of model selection strategies for evaluation.
+
+    Attributes:
+        VAL_LOSS: Select model with the best (lowest) validation loss.
+        TEST_AUC: Select model with the best testing AUC.
+        TEST_ACC: Select model with the best testing accuracy.
+        LAST_EPOCH: Use the model from the last training epoch.
+    """
 
     VAL_LOSS = "Best validation loss"
     TEST_AUC = "Best testing AUC"
@@ -14,7 +23,19 @@ class TrainingEvaluation(Enum):
 
 
 def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
-    """Return device description string"""
+    """Return a human-readable device description string.
+
+    Args:
+        use_cpu: Whether to use CPU.
+        gpu_idx: GPU device index, or ``None`` if CPU is used.
+
+    Returns:
+        A string describing the device (e.g., ``'cpu'`` or
+        ``'0 - NVIDIA GeForce RTX 3090'``).
+
+    Raises:
+        ValueError: If neither CPU nor a valid GPU index is specified.
+    """
     if use_cpu:
         return "cpu"
     if gpu_idx is not None:
@@ -23,7 +44,15 @@ def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
 
 
 def parse_optim_name(optim: type, optim_params: dict) -> str:
-    """Return optimizer description string, including optimizer name and parameters"""
+    """Return a formatted optimizer description string.
+
+    Args:
+        optim: Optimizer class (e.g., :class:`torch.optim.Adam`).
+        optim_params: Dictionary of optimizer parameters.
+
+    Returns:
+        A string formatted as ``'OptimizerName (param1=val1, ...)'``.
+    """
     option_list = [f"{i}={optim_params[i]}" for i in optim_params if optim_params[i]]
     options = ", ".join(option_list)
     return f"{optim.__name__} ({options})"
@@ -61,6 +90,25 @@ class TrainingOption:
         evaluation_option: TrainingEvaluation,
         repeat_num: int,
     ):
+        """Initialize training options and validate them.
+
+        Args:
+            output_dir: Directory path for saving training outputs.
+            optim: Optimizer class (subclass of :class:`torch.optim.Optimizer`),
+                or ``None``.
+            optim_params: Dictionary of optimizer-specific parameters, or ``None``.
+            use_cpu: Whether to train on CPU.
+            gpu_idx: GPU device index, or ``None`` if using CPU.
+            epoch: Total number of training epochs.
+            bs: Batch size.
+            lr: Learning rate.
+            checkpoint_epoch: Save checkpoint every N epochs.
+            evaluation_option: Model selection strategy.
+            repeat_num: Number of training repetitions.
+
+        Raises:
+            ValueError: If any option is invalid or not set.
+        """
         self.output_dir = output_dir
         self.optim: type | None = optim
         self.optim_params: dict | None = optim_params
@@ -128,67 +176,123 @@ class TrainingOption:
             self.gpu_idx = int(self.gpu_idx)
 
     def get_optim(self, model: torch.nn.Module) -> torch.optim.Optimizer:
-        """Return optimizer instance"""
+        """Create and return an optimizer instance for the given model.
+
+        Args:
+            model: The PyTorch model whose parameters will be optimized.
+
+        Returns:
+            An instantiated optimizer bound to the model's parameters.
+
+        Raises:
+            ValueError: If the optimizer or its parameters are not set.
+        """
         if self.optim is None or self.optim_params is None:
             raise ValueError("Optimizer not set")
         return self.optim(params=model.parameters(), lr=self.lr, **self.optim_params)
 
     def get_optimizer_name_repr(self) -> str:
-        """Return optimizer name string"""
+        """Return the optimizer class name as a string.
+
+        Returns:
+            The optimizer class name, or ``'None'`` if not set.
+        """
         if self.optim is None:
             return "None"
         return self.optim.__name__
 
     def get_optim_name(self) -> str:
-        """Alias for get_optimizer_name_repr for backward compatibility"""
+        """Alias for :meth:`get_optimizer_name_repr` for backward compatibility.
+
+        Returns:
+            The optimizer class name string.
+        """
         return self.get_optimizer_name_repr()
 
     def get_optim_desc_str(self) -> str:
-        """Return optimizer description string,
-        including optimizer name and parameters"""
+        """Return a formatted optimizer description string.
+
+        Returns:
+            A string formatted as ``'OptimizerName (param=value, ...)'``,
+            or ``'None'`` if the optimizer is not set.
+        """
         if self.optim is None or self.optim_params is None:
             return "None"
         return parse_optim_name(self.optim, self.optim_params)
 
     def get_optimizer_repr(self) -> str:
-        """Return optimizer description string"""
+        """Return a formatted optimizer description string.
+
+        Returns:
+            A string formatted as ``'OptimizerName (param=value, ...)'``,
+            or ``'None'`` if the optimizer is not set.
+        """
         if self.optim is None or self.optim_params is None:
             return "None"
         return parse_optim_name(self.optim, self.optim_params)
 
     def get_device_name(self) -> str:
-        """Return device description string"""
+        """Return a human-readable device description string.
+
+        Returns:
+            A string describing the device (e.g., ``'cpu'`` or
+            ``'0 - NVIDIA GeForce RTX 3090'``).
+        """
         return parse_device_name(self.use_cpu, self.gpu_idx)
 
     def get_device(self) -> str:
-        """Return device name used by PyTorch"""
+        """Return the PyTorch device string (e.g., ``'cpu'`` or ``'cuda:0'``).
+
+        Returns:
+            The device identifier string used by PyTorch.
+        """
         if self.use_cpu:
             return "cpu"
         return f"cuda:{self.gpu_idx}"
 
     def get_evaluation_option_repr(self) -> str:
-        """Return model selection option description string"""
+        """Return a string representation of the model selection option.
+
+        Returns:
+            A string in the format ``'ClassName.MEMBER_NAME'``.
+        """
         module_name = self.evaluation_option.__class__.__name__
         class_name = self.evaluation_option.name
         return f"{module_name}.{class_name}"
 
     def get_output_dir(self) -> str:
-        """Return output directory"""
+        """Return the output directory path.
+
+        Returns:
+            The path to the training output directory.
+        """
         return self.output_dir
 
 
 class TestOnlyOption(TrainingOption):
-    __test__ = False  # Not a test case
-    """Utility class for storing test-only options
+    """Training option subclass for test-only (inference) scenarios.
 
-    Parameters:
-        output_dir: Output directory
-        use_cpu: Whether to use CPU
-        gpu_idx: GPU index
-        bs: Batch size
+    Sets epoch, learning rate, and repeat count to zero/one defaults,
+    using ``TrainingEvaluation.LAST_EPOCH`` as the evaluation strategy.
+
+    Attributes:
+        output_dir: Output directory.
+        use_cpu: Whether to use CPU.
+        gpu_idx: GPU device index.
+        bs: Batch size.
     """
 
+    __test__ = False  # Not a test case
+
     def __init__(self, output_dir: str, use_cpu: bool, gpu_idx: int, bs: int):
+        """Initialize test-only options.
+
+        Args:
+            output_dir: Directory path for saving outputs.
+            use_cpu: Whether to use CPU for inference.
+            gpu_idx: GPU device index.
+            bs: Batch size for inference.
+        """
         super().__init__(
             output_dir,
             None,
@@ -242,26 +346,64 @@ class TestOnlyOption(TrainingOption):
             self.gpu_idx = int(self.gpu_idx)
 
     def get_optim(self, model):
+        """Return ``None`` since test-only mode does not use an optimizer.
+
+        Args:
+            model: Unused. Present for interface compatibility.
+
+        Returns:
+            ``None``.
+        """
         return None
 
     def get_optimizer_name_repr(self):
+        """Return a placeholder string for the optimizer name.
+
+        Returns:
+            The string ``'-'``.
+        """
         return "-"
 
     def get_optim_desc_str(self):
+        """Return a placeholder string for the optimizer description.
+
+        Returns:
+            The string ``'-'``.
+        """
         return "-"
 
     def get_device_name(self):
+        """Return a human-readable device description string.
+
+        Returns:
+            A string describing the device.
+        """
         return parse_device_name(self.use_cpu, self.gpu_idx)
 
     def get_device(self):
+        """Return the PyTorch device string.
+
+        Returns:
+            The device identifier string (e.g., ``'cpu'`` or ``'cuda:0'``).
+        """
         if self.use_cpu:
             return "cpu"
         return f"cuda:{self.gpu_idx}"
 
     def get_evaluation_option_repr(self):
+        """Return a string representation of the evaluation option.
+
+        Returns:
+            A string in the format ``'ClassName.MEMBER_NAME'``.
+        """
         module_name = self.evaluation_option.__class__.__name__
         class_name = self.evaluation_option.name
         return f"{module_name}.{class_name}"
 
     def get_output_dir(self):
+        """Return the output directory path.
+
+        Returns:
+            The path to the output directory.
+        """
         return self.output_dir

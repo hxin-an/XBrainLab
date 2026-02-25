@@ -1,3 +1,5 @@
+"""Legacy standalone training manager window with real-time status table."""
+
 import contextlib
 
 from PyQt6.QtCore import QTimer
@@ -27,6 +29,12 @@ class TrainingManagerWindow(BaseDialog):
     """
 
     def __init__(self, parent, trainer):
+        """Initialize the training manager window.
+
+        Args:
+            parent: Parent widget.
+            trainer: A ``Trainer`` instance managing the training loop.
+        """
         self.trainer = trainer
         self.training_plan_holders = trainer.get_training_plan_holders()
 
@@ -43,12 +51,14 @@ class TrainingManagerWindow(BaseDialog):
             self.start_training()
 
     def check_data(self):
+        """Validate that the trainer and training plans are valid."""
         if not isinstance(self.trainer, Trainer):
             QMessageBox.critical(self, "Error", "Invalid trainer object")
         if not isinstance(self.training_plan_holders, list):
             QMessageBox.critical(self, "Error", "Invalid training plans")
 
     def init_ui(self):
+        """Build the layout with menu bar, status table, status label, and buttons."""
         layout = QVBoxLayout(self)
 
         # Menu Bar (Simulated or real QMenuBar)
@@ -102,6 +112,7 @@ class TrainingManagerWindow(BaseDialog):
         self.update_table()
 
     def plot_loss(self):
+        """Open a loss-curve plot dialog."""
         win = PlotFigureWindow(
             self, self.training_plan_holders, PlotType.LOSS, title="Loss Plot"
         )
@@ -111,29 +122,34 @@ class TrainingManagerWindow(BaseDialog):
         win.exec()
 
     def plot_acc(self):
+        """Open an accuracy-curve plot dialog."""
         win = PlotFigureWindow(
             self, self.training_plan_holders, PlotType.ACCURACY, title="Accuracy Plot"
         )
         win.exec()
 
     def plot_auc(self):
+        """Open an AUC-curve plot dialog."""
         win = PlotFigureWindow(
             self, self.training_plan_holders, PlotType.AUC, title="AUC Plot"
         )
         win.exec()
 
     def plot_lr(self):
+        """Open a learning-rate plot dialog."""
         win = PlotFigureWindow(
             self, self.training_plan_holders, PlotType.LR, title="Learning Rate Plot"
         )
         win.exec()
 
     def start_training(self):
+        """Disable the start button and launch the trainer."""
         self.start_btn.setEnabled(False)
         if not self.trainer.is_running():
             self.trainer.run(interact=True)
 
     def stop_training(self):
+        """Request the trainer to stop the current run."""
         if not self.trainer.is_running():
             QMessageBox.warning(self, "Warning", "No training is in progress")
             return
@@ -141,12 +157,14 @@ class TrainingManagerWindow(BaseDialog):
             self.trainer.set_interrupt()
 
     def finish_training(self):
+        """Re-enable the start button and show a completion dialog."""
         self.start_btn.setEnabled(True)
         self.status_bar.setText("IDLE")
         self.update_table()
         QMessageBox.information(self, "Success", "Training has stopped")
 
     def update_loop(self):
+        """Periodic callback to refresh the table and detect training completion."""
         if not self.isVisible():
             return
 
@@ -155,6 +173,8 @@ class TrainingManagerWindow(BaseDialog):
             self.finish_training()
 
     def update_table(self):
+        """Synchronize the status table rows with current trainer state."""
+
         def get_table_values(plan):
             return (
                 plan.get_name(),

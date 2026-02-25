@@ -1,3 +1,9 @@
+"""Plotting engine for the preprocessing panel.
+
+Handles time-domain and frequency-domain (PSD) signal rendering
+with support for original-vs-current overlays and event markers.
+"""
+
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -20,6 +26,13 @@ class PreprocessPlotter:
     """
 
     def __init__(self, widget: "PreviewWidget", controller):
+        """Initialize the plotter.
+
+        Args:
+            widget: The ``PreviewWidget`` containing the PyQtGraph plot
+                widgets to draw into.
+            controller: The ``PreprocessController`` providing data access.
+        """
         self.widget = widget
         self.controller = controller
         self.threadpool = QThreadPool.globalInstance()

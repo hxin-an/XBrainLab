@@ -1,1 +1,1 @@
-# UI Styles module
+"""UI styles module providing themes, icons, and stylesheet constants."""

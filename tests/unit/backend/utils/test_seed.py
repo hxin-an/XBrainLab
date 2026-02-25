@@ -26,7 +26,7 @@ def test_set_random_state():
     seed.set_random_state(state)
     result = seed.get_random_state()
     # torch
-    np.allclose(state[0], result[0])
+    assert np.allclose(state[0], result[0])
     # random
     assert state[1] == result[1]
     # numpy

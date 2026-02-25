@@ -1,3 +1,5 @@
+"""Label loader for reading files in various formats (.txt, .mat, .csv, .tsv)."""
+
 import contextlib
 import os
 
@@ -9,17 +11,20 @@ from XBrainLab.backend.utils.logger import logger
 
 
 def load_label_file(filepath: str) -> np.ndarray:
-    """
-    Load label data from a file (.txt or .mat).
+    """Load label data from a file.
+
+    Supports ``.txt``, ``.csv``, ``.tsv``, and ``.mat`` formats.
 
     Args:
         filepath: Path to the label file.
 
     Returns:
-        np.ndarray: 1D array of labels.
+        1D array of integer labels (Sequence Mode), or a list of dicts
+        for Timestamp Mode (CSV/TSV with time columns).
 
     Raises:
-        ValueError: If file format is not supported or loading fails.
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the file format is unsupported or loading fails.
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"File not found: {filepath}")
@@ -35,7 +40,17 @@ def load_label_file(filepath: str) -> np.ndarray:
 
 
 def _load_txt(path: str) -> np.ndarray:
-    """Load labels from a text file (space-separated integers)."""
+    """Load labels from a text file containing space-separated integers.
+
+    Args:
+        path: Path to the text file.
+
+    Returns:
+        1D array of integer labels.
+
+    Raises:
+        ValueError: If reading or parsing the file fails.
+    """
     labels = []
     try:
         with open(path) as f:
@@ -51,7 +66,20 @@ def _load_txt(path: str) -> np.ndarray:
 
 
 def _load_mat(path: str) -> np.ndarray:
-    """Load labels from a .mat file."""
+    """Load labels from a MATLAB ``.mat`` file.
+
+    Handles common shapes including ``(n,)``, ``(n, 1)``, ``(1, n)``,
+    and MNE-format ``(n, 3)`` arrays.
+
+    Args:
+        path: Path to the ``.mat`` file.
+
+    Returns:
+        1D array of integer labels.
+
+    Raises:
+        ValueError: If the file contains no variables or loading fails.
+    """
     try:
         mat = scipy.io.loadmat(path)
         # Filter out __header__, __version__, __globals__
@@ -94,11 +122,21 @@ def _load_mat(path: str) -> np.ndarray:
 
 
 def _load_csv_tsv(path: str):
-    """Load labels from CSV/TSV file.
+    """Load labels from a CSV or TSV file.
+
+    Detects whether the file contains timestamp data (columns like ``onset``,
+    ``time``, ``latency``) or sequence data (single column of labels).
+
+    Args:
+        path: Path to the CSV/TSV file.
+
     Returns:
-        np.ndarray: If sequence data (single column or no header).
-        List[dict]: If timestamp data (headers 'time', 'latency', 'onset',
-            'duration', 'label', 'trial_type').
+        np.ndarray: 1D label array for Sequence Mode.
+        list[dict]: List of ``{onset, label, duration}`` dicts for
+            Timestamp Mode.
+
+    Raises:
+        ValueError: If reading or parsing the file fails.
     """
 
     try:

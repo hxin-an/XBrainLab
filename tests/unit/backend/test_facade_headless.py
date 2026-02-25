@@ -88,9 +88,3 @@ def test_backend_facade_headless():
         facade.training.start_training = MagicMock()
         facade.run_training()
         facade.training.start_training.assert_called_once()
-
-    print("BackendFacade headless verification passed.")
-
-
-if __name__ == "__main__":
-    test_backend_facade_headless()

@@ -1,3 +1,9 @@
+"""Label-to-data file mapping dialog for aligning label files with data files.
+
+Provides a dual-list interface where data files are fixed and label files
+can be reordered via drag-and-drop to establish correct alignment.
+"""
+
 import os
 
 from PyQt6.QtCore import Qt
@@ -15,6 +21,20 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class LabelMappingDialog(BaseDialog):
+    """Dialog for mapping label files to their corresponding data files.
+
+    Displays data files in a fixed list on the left and label files in a
+    reorderable (drag-and-drop) list on the right. Supports automatic
+    name-based sorting and synchronized scrolling.
+
+    Attributes:
+        data_files: List of data file paths.
+        label_files: List of label file paths.
+        mapping: Dictionary mapping data file paths to label file paths.
+        data_list: QListWidget displaying data files (fixed order).
+        label_list: QListWidget displaying label files (reorderable).
+    """
+
     def __init__(self, parent, data_files, label_files):
         self.data_files = data_files  # List of data file paths/names
         self.label_files = label_files  # List of label file paths/names
@@ -28,6 +48,7 @@ class LabelMappingDialog(BaseDialog):
         self.resize(600, 400)
 
     def init_ui(self):
+        """Initialize the dialog UI with data and label file lists."""
         layout = QVBoxLayout(self)
 
         layout.addWidget(
@@ -99,6 +120,15 @@ class LabelMappingDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def auto_sort_labels(self):
+        """Automatically align label files with data files by name matching.
+
+        Attempts to match label files to data files using filename
+        containment heuristics, then fills remaining slots sequentially.
+
+        Returns:
+            List of label file paths aligned to the data file order,
+            with None for any unmatched slots.
+        """
         # Create a list of labels aligned with data_files
         # If no match, put None? Or put at end?
         # User wants 1-to-1 mapping mostly.
@@ -154,6 +184,7 @@ class LabelMappingDialog(BaseDialog):
         return aligned_labels
 
     def accept(self):
+        """Build the data-to-label mapping from current list order and accept."""
         self.mapping = {}
         # Map based on index
         if self.data_list and self.label_list:
@@ -170,7 +201,17 @@ class LabelMappingDialog(BaseDialog):
         super().accept()
 
     def get_mapping(self):
+        """Return the data-to-label file mapping.
+
+        Returns:
+            Dictionary mapping data file paths to label file paths.
+        """
         return self.mapping
 
     def get_result(self):
+        """Return the data-to-label file mapping.
+
+        Returns:
+            Dictionary mapping data file paths to label file paths.
+        """
         return self.get_mapping()

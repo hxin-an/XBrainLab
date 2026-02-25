@@ -1,3 +1,5 @@
+"""Training panel for configuring, running, and monitoring model training."""
+
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -20,11 +22,35 @@ from .sidebar import TrainingSidebar
 
 
 class TrainingPanel(BasePanel):
-    """
-    Panel for managing the training process.
+    """Panel for managing the model-training workflow.
+
+    Provides real-time accuracy/loss plots, a training-history table,
+    log output, and a sidebar for configuration and execution controls.
+    Subscribes to controller events for live updates.
+
+    Attributes:
+        dataset_controller: Injected ``DatasetController`` for data-change
+            events.
+        current_plotting_record: The ``TrainRecord`` currently displayed
+            in the metric plots.
+        tabs: ``QTabWidget`` holding accuracy, loss, and log tabs.
+        tab_acc: ``MetricTab`` for accuracy plotting.
+        tab_loss: ``MetricTab`` for loss plotting.
+        log_text: ``QTextEdit`` for training log messages.
+        history_table: ``TrainingHistoryTable`` for run status.
+        sidebar: ``TrainingSidebar`` with configuration and execution buttons.
     """
 
     def __init__(self, controller=None, dataset_controller=None, parent=None):
+        """Initialize the training panel.
+
+        Args:
+            controller: Optional ``TrainingController``. Resolved from
+                the parent study if not provided.
+            dataset_controller: Optional ``DatasetController`` for
+                data-change event subscription.
+            parent: Parent widget (typically the main window).
+        """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("training")
@@ -47,6 +73,7 @@ class TrainingPanel(BasePanel):
         self.training_completed_shown = False
 
     def _setup_bridges(self):
+        """Register Qt observer bridges for training and dataset events."""
         if not self.controller:
             return
 
@@ -93,6 +120,7 @@ class TrainingPanel(BasePanel):
         self.training_completed_shown = False
 
     def init_ui(self):
+        """Build the panel layout with metric plots, history table, log, and sidebar."""
         # Main Layout: Horizontal (Left: Content, Right: Controls)
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)  # Full width
@@ -162,6 +190,7 @@ class TrainingPanel(BasePanel):
     # Removed action methods (now in Sidebar)
 
     def _on_config_changed(self):
+        """Re-evaluate the ready-to-train state when configuration changes."""
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
 
@@ -191,13 +220,21 @@ class TrainingPanel(BasePanel):
     # Clear history method moved to Sidebar
 
     def on_history_selection_changed(self, record):
-        """Handle history table selection change."""
+        """Handle history-table selection change.
+
+        Args:
+            record: The newly selected ``TrainRecord``, or ``None``.
+        """
         self.current_plotting_record = record
         if record:
             self.refresh_plot(record)
 
     def refresh_plot(self, record):
-        """Refresh the plots with the full history of the given record."""
+        """Re-draw the accuracy and loss plots with the full history of a record.
+
+        Args:
+            record: The ``TrainRecord`` whose history should be plotted.
+        """
         self.tab_acc.clear()
         self.tab_loss.clear()
 
@@ -224,6 +261,7 @@ class TrainingPanel(BasePanel):
             self.tab_loss.update_plot(epoch, train_loss, val_loss)
 
     def training_finished(self):
+        """Display a completion dialog when all training jobs finish."""
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
 
@@ -234,6 +272,7 @@ class TrainingPanel(BasePanel):
             QMessageBox.information(self, "Done", "All training jobs finished.")
 
     def update_info(self):
+        """Delegate info-panel updates to the sidebar."""
         self.info_panel = None  # Handled by Sidebar
         # But the Controller logic might call update_info on Panel
         if hasattr(self, "sidebar"):
@@ -280,7 +319,11 @@ class TrainingPanel(BasePanel):
     # check_ready_to_train moved to Sidebar
 
     def closeEvent(self, event):  # noqa: N802
-        """Cleanup on close."""
+        """Stop the update timer on close.
+
+        Args:
+            event: The ``QCloseEvent``.
+        """
         if hasattr(self, "timer") and self.timer.isActive():
             self.timer.stop()
         super().closeEvent(event)

@@ -38,21 +38,4 @@ def test_model_switching(test_app, qtbot):
         # or creates new engine if not existing.
 
         # Verify Mock interaction
-        # If worker kept the same engine instance (which it should if configured correctly),
-        # we check calls.
-        # But wait, config changes. Worker logic:
-        # if not self.engine: self.engine = LLMEngine(config)
-        # else: self.engine.switch_backend(mode)
-
-        # Since we just started, self.engine was created.
-        # Then set_model calls reinit.
-
-        # Ensure switch_backend was called
-        # We need to verify that `MockEngine` was instantiated
         assert MockEngine.called
-
-        # Optionally verify switch_backend called
-        # mock_engine_instance.switch_backend.assert_called_with(...)
-        # Depending on implementation details.
-        # For now, asserting True helps confirm no crash happened.
-        assert True

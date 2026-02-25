@@ -1,3 +1,9 @@
+"""Label import dialog for loading and mapping external label files.
+
+Provides file selection, automatic label code detection, and a mapping
+table for assigning human-readable event names to numeric label codes.
+"""
+
 import os
 from typing import Any
 
@@ -24,6 +30,20 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ImportLabelDialog(BaseDialog):
+    """Dialog for importing label files and mapping codes to event names.
+
+    Supports loading label files in various formats (txt, mat, csv, tsv),
+    detecting unique label codes, and allowing the user to assign
+    descriptive event names to each code.
+
+    Attributes:
+        label_data_map: Mapping of filename to loaded label data arrays.
+        unique_labels: Sorted list of unique label codes across all files.
+        file_list: QListWidget displaying loaded label files.
+        map_table: QTableWidget for code-to-event-name mapping.
+        info_label: QLabel showing summary statistics.
+    """
+
     def __init__(self, parent=None):
         self.label_data_map: dict[str, Any] = {}  # {filename: label_array}
         self.unique_labels: list[int] = []
@@ -37,6 +57,7 @@ class ImportLabelDialog(BaseDialog):
         self.resize(500, 400)
 
     def init_ui(self):
+        """Initialize the dialog UI with file list, mapping table, and buttons."""
         layout = QVBoxLayout(self)
 
         # 1. File Selection
@@ -89,6 +110,7 @@ class ImportLabelDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def browse_files(self):
+        """Open a file picker and load selected label files."""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Open Label Files", "", "Label Files (*.txt *.mat *.csv *.tsv)"
         )
@@ -111,6 +133,7 @@ class ImportLabelDialog(BaseDialog):
         self.update_unique_labels()
 
     def remove_files(self):
+        """Remove selected files from the loaded list."""
         if not self.file_list:
             return
 
@@ -127,10 +150,15 @@ class ImportLabelDialog(BaseDialog):
         self.update_unique_labels()
 
     def on_file_selection_changed(self):
+        """Handle file list selection changes (reserved for future use)."""
         # Maybe show info for selected file?
-        pass
 
     def load_file(self, path):
+        """Load a label file and store its data.
+
+        Args:
+            path: Absolute path to the label file.
+        """
         filename = os.path.basename(path)
         labels = load_label_file(path)
         if labels is not None:
@@ -197,7 +225,13 @@ class ImportLabelDialog(BaseDialog):
             self.map_table.setItem(i, 1, item_name)
 
     def get_results(self):
-        """Returns (label_data_map, mapping_dict)"""
+        """Return the loaded label data and code-to-name mapping.
+
+        Returns:
+            Tuple of (label_data_map, mapping_dict) where label_data_map maps
+            filenames to label arrays and mapping_dict maps integer codes
+            to event name strings. Returns (None, None) if no data loaded.
+        """
         if not self.label_data_map or not self.map_table:
             return None, None
 
@@ -214,9 +248,15 @@ class ImportLabelDialog(BaseDialog):
         return self.label_data_map, mapping
 
     def get_result(self):
+        """Return the import results.
+
+        Returns:
+            Tuple of (label_data_map, mapping_dict).
+        """
         return self.get_results()
 
     def accept(self):
+        """Validate loaded data and mapping before accepting the dialog."""
         if not self.label_data_map:
             QMessageBox.warning(self, "Warning", "No labels loaded.")
             return

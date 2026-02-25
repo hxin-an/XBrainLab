@@ -1,3 +1,5 @@
+"""Preprocessor for resampling EEG data to a new sampling frequency."""
+
 import numpy as np
 
 from ..load_data import Raw
@@ -5,16 +7,31 @@ from .base import PreprocessBase
 
 
 class Resample(PreprocessBase):
-    """Preprocessing class for resampling data.
+    """Resamples EEG data to a target sampling frequency.
 
-    Input:
-        sfreq: Sampling frequency.
+    For raw (continuous) data, event sample indices are rescaled
+    proportionally after resampling. For epoched data, MNE's built-in
+    epoch resampling is used.
     """
 
     def get_preprocess_desc(self, sfreq: float):
+        """Returns a description of the resampling step.
+
+        Args:
+            sfreq: Target sampling frequency in Hz.
+
+        Returns:
+            A string describing the resampling operation.
+        """
         return f"Resample to {sfreq}Hz"
 
     def _data_preprocess(self, preprocessed_data: Raw, sfreq: float):
+        """Resamples a single data instance to the target frequency.
+
+        Args:
+            preprocessed_data: The data instance to preprocess.
+            sfreq: Target sampling frequency in Hz.
+        """
         preprocessed_data.get_mne().load_data()
         if preprocessed_data.is_raw():
             events, event_id = preprocessed_data.get_event_list()

@@ -1,3 +1,5 @@
+"""Event loader module for importing and aligning event/label data with raw EEG."""
+
 from __future__ import annotations
 
 from collections import Counter
@@ -12,22 +14,30 @@ from .raw import Raw
 
 
 class EventLoader:
-    """Helper class for loading event data.
+    """Loader for creating and applying event data to a raw EEG recording.
+
+    Supports two modes:
+
+    - **Sequence Mode**: Labels are a flat array of event codes aligned with
+      EEG triggers by order.
+    - **Timestamp Mode**: Labels are dicts with ``onset``, ``label``, and
+      ``duration`` keys, converted to MNE ``Annotations``.
 
     Attributes:
-        raw: :class:`Raw`
-            Raw data.
-        label_list: Union[np.ndarray, List[Dict]] | None
-            List of event codes (Sequence Mode) or list of dicts (Timestamp Mode).
-        events: list[list[int]] | None
-            Event array. Same as `mne` format.
-        event_id: dict[str, int] | None
-            Event id. Same as `mne` format.
-        annotations: mne.Annotations | None
-            Annotations for Timestamp Mode.
+        raw: The raw data object to attach events to.
+        label_list: Loaded labels — either an array of event codes
+            (Sequence Mode) or a list of timestamp dicts (Timestamp Mode).
+        events: Event array in MNE format ``(n_events, 3)`` after creation.
+        event_id: Event ID mapping ``{name: int}`` after creation.
+        annotations: MNE Annotations object for Timestamp Mode.
     """
 
     def __init__(self, raw: Raw):
+        """Initialize the EventLoader.
+
+        Args:
+            raw: Raw data object to load events into.
+        """
         validate_type(raw, Raw, "raw")
         self.raw = raw
         self.label_list = None
@@ -36,9 +46,16 @@ class EventLoader:
         self.annotations = None
 
     def smart_filter(self, target_count: int) -> list[int]:
-        """
-        Suggest Event IDs from raw data that sum up to approximately target_count.
-        This is a heuristic for Sequence Mode.
+        """Suggest event IDs whose count best matches a target trial count.
+
+        Uses a simple closest-count heuristic over the raw data's event IDs.
+
+        Args:
+            target_count: Desired number of trials.
+
+        Returns:
+            List containing the single best-matching event ID, or empty
+            if no events exist.
         """
         if not self.raw.has_event():
             return []
@@ -66,9 +83,18 @@ class EventLoader:
     def align_sequence(
         self, seq_eeg: list[int], seq_label: list[int]
     ) -> tuple[list[int], list[int]]:
-        """
-        Align EEG trigger sequence with Label sequence using LCS.
-        Returns indices of matched elements in both sequences.
+        """Align EEG trigger sequence with label sequence.
+
+        Currently uses simple truncation to the shorter sequence length.
+        Full LCS/DTW alignment may be implemented in the future.
+
+        Args:
+            seq_eeg: List of EEG trigger indices or codes.
+            seq_label: List of label indices or codes.
+
+        Returns:
+            Tuple of (eeg_indices, label_indices) representing matched
+            positions in both sequences.
         """
         n = len(seq_eeg)
         m = len(seq_label)
@@ -150,15 +176,24 @@ class EventLoader:
         event_name_map: dict[int, str],
         selected_event_ids: list[int] | None = None,
     ) -> tuple[np.ndarray | None, dict[str, int] | None]:
-        """Create event array and event id.
+        """Create event array and event ID mapping from loaded labels.
+
+        Dispatches to Timestamp Mode or Sequence Mode based on the format
+        of ``label_list``.
 
         Args:
-            event_name_map: Mapping from event code to event name.
-            selected_event_ids: List of EEG event IDs to use for alignment
-                (Sequence Mode).
+            event_name_map: Mapping from numeric event codes to event names.
+            selected_event_ids: List of EEG event IDs to filter triggers
+                by before alignment (Sequence Mode only).
 
         Returns:
-            Tuple of event array and event id.
+            Tuple of ``(events, event_id)`` where events is an
+            ``(n_events, 3)`` array and event_id is ``{name: int}``,
+            or ``(None, None)`` on failure.
+
+        Raises:
+            ValueError: If no labels have been loaded, if the raw data has
+                no events for sequence alignment, or if an event name is empty.
         """
         if self.label_list is None:
             raise ValueError("No label has been loaded.")
@@ -183,6 +218,7 @@ class EventLoader:
             self.annotations = mne.Annotations(
                 onset=onsets, duration=durations, description=descriptions
             )
+            self.raw.get_mne().set_annotations(self.annotations)
 
             try:
                 events, event_id = mne.events_from_annotations(

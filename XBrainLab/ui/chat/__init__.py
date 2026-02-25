@@ -1,5 +1,4 @@
-# Chat Module
-# This module provides the Chat Panel UI components for the LLM Agent.
+"""Chat module providing the Chat Panel UI components for the LLM Agent."""
 
 from .message_bubble import MessageBubble
 from .panel import ChatPanel

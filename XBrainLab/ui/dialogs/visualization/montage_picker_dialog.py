@@ -1,3 +1,9 @@
+"""Montage picker dialog for mapping dataset channels to standard montage positions.
+
+Features smart matching, saved settings persistence, and live cascading
+fill to streamline the channel-to-montage mapping workflow.
+"""
+
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -23,9 +29,22 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class PickMontageDialog(BaseDialog):
-    """
-    Dialog for mapping dataset channels to standard montage channels.
-    Features 'Smart Match' and 'Live Cascading Fill' to assist user.
+    """Dialog for mapping dataset channels to standard montage channels.
+
+    Features Smart Match for automatic channel name matching, Live
+    Cascading Fill for sequential channel propagation, and persistent
+    settings for remembering previous mappings.
+
+    Attributes:
+        channel_names: List of dataset channel names to map.
+        default_montage: Pre-selected montage name, or None.
+        chs: List of mapped dataset channel names after acceptance.
+        positions: Channel position data from the selected montage.
+        montage_channels: List of channel names from the current montage.
+        anchors: Set of row indices explicitly set by the user.
+        settings: QSettings for persisting montage selections.
+        montage_combo: QComboBox for selecting the montage standard.
+        table: QTableWidget with mapping from dataset to montage channels.
     """
 
     def __init__(self, parent, channel_names, default_montage=None):
@@ -57,6 +76,7 @@ class PickMontageDialog(BaseDialog):
             self.on_montage_select(self.montage_list[0])
 
     def init_ui(self):
+        """Initialize the dialog UI with montage selector and mapping table."""
         if not self.channel_names:
             QMessageBox.critical(self, "Error", "No valid channel name is provided")
             self.reject()
@@ -128,6 +148,7 @@ class PickMontageDialog(BaseDialog):
         self.init_table()
 
     def init_table(self):
+        """Populate the table with dataset channel names as read-only rows."""
         if not self.table:
             return
         self.table.setRowCount(len(self.channel_names))
@@ -138,6 +159,11 @@ class PickMontageDialog(BaseDialog):
             self.table.setItem(i, 0, item)
 
     def on_montage_select(self, montage_name):
+        """Load montage channels and apply smart match / saved settings.
+
+        Args:
+            montage_name: Name of the selected montage standard.
+        """
         if not self.table or not self.settings:
             return
 
@@ -247,9 +273,17 @@ class PickMontageDialog(BaseDialog):
                 offset += 1
 
     def smart_match(self, combo, target_name):
-        """
-        Try to find best match for target_name in combo items.
-        Returns True if matched, False otherwise.
+        """Try to find the best montage channel match for a dataset channel.
+
+        Performs exact match, case-insensitive match, then cleaned fuzzy
+        match to find the closest montage channel.
+
+        Args:
+            combo: QComboBox containing montage channel options.
+            target_name: Dataset channel name to match.
+
+        Returns:
+            True if a match was found and set, False otherwise.
         """
         target = target_name.lower().strip()
 
@@ -285,11 +319,14 @@ class PickMontageDialog(BaseDialog):
         return False
 
     def on_channel_changed(self, row, index):
-        """
-        Live Cascading Fill:
-        When a channel is selected in 'row', automatically fill subsequent rows
-        with the next channels in the montage sequence.
-        Stops at the next ANCHOR or end of list.
+        """Handle channel selection changes with live cascading fill.
+
+        When a channel is selected, automatically fills subsequent rows
+        with sequential montage channels until the next anchor or end.
+
+        Args:
+            row: Row index where the change occurred.
+            index: New combo box index.
         """
         if not self.table:
             return
@@ -346,6 +383,7 @@ class PickMontageDialog(BaseDialog):
             offset += 1
 
     def clear_selections(self):
+        """Clear all channel mappings and anchors."""
         if not self.table:
             return
         self.anchors.clear()
@@ -379,6 +417,12 @@ class PickMontageDialog(BaseDialog):
         )
 
     def accept(self):
+        """Build the channel mapping, save settings, and accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if no channels are mapped or montage
+                processing fails.
+        """
         if not self.table or not self.montage_combo:
             return
 
@@ -419,4 +463,9 @@ class PickMontageDialog(BaseDialog):
             QMessageBox.critical(self, "Error", f"Error processing montage: {e}")
 
     def get_result(self):
+        """Return the channel mapping and position data.
+
+        Returns:
+            Tuple of (mapped_channel_names, channel_positions).
+        """
         return self.chs, self.positions

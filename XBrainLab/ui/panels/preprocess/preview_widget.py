@@ -1,3 +1,9 @@
+"""Signal preview widget with time-domain and frequency-domain plots.
+
+Uses PyQtGraph for high-performance interactive visualization with
+crosshair cursors and debounced navigation controls.
+"""
+
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -23,20 +29,38 @@ pg.setConfigOption("antialias", True)
 
 
 class PreviewWidget(QWidget):
-    """
-    Widget handling signal visualization (Time/Frequency) using PyQtGraph.
-    Features: High performance plotting, Crosshair cursor, Interactive controls.
+    """Widget for signal visualization (time and frequency domains).
+
+    Provides interactive PyQtGraph plots with crosshair cursors,
+    channel selection, Y-scale control, and time/epoch navigation.
+
+    Attributes:
+        request_plot_update: Signal emitted when plot parameters change
+            and a redraw is needed.
+        plot_time: ``pg.PlotWidget`` for the time-domain view.
+        plot_freq: ``pg.PlotWidget`` for the frequency-domain (PSD) view.
+        chan_combo: ``QComboBox`` for selecting the displayed channel.
+        yscale_spin: ``QDoubleSpinBox`` for manual Y-axis scaling.
+        time_slider: ``QSlider`` for scrubbing through time or epochs.
+        time_spin: ``QDoubleSpinBox`` for precise time/epoch entry.
+        plot_timer: ``QTimer`` used for debouncing parameter changes.
     """
 
     # Signal to request a plot update from the controller/plotter
     request_plot_update = pyqtSignal()
 
     def __init__(self, parent=None):
+        """Initialize the preview widget.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.init_ui()
         self.setup_timer()
 
     def init_ui(self):
+        """Build layout: tabbed plots, channel/Y-scale controls, and navigation."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
@@ -215,26 +239,43 @@ class PreviewWidget(QWidget):
         layout.addWidget(self.plot_group)
 
     def setup_timer(self):
+        """Create a single-shot debounce timer for plot-parameter changes."""
         self.plot_timer = QTimer()
         self.plot_timer.setSingleShot(True)
         self.plot_timer.timeout.connect(self.request_plot_update.emit)
 
     def _on_plot_param_changed(self):
+        """Start the debounce timer when a plot parameter changes."""
         self.plot_timer.start(50)  # Debounce
 
     def _on_time_slider_changed(self, value):
+        """Synchronize the spin box when the time slider moves.
+
+        Args:
+            value: New slider position (integer, 10x the time in seconds).
+        """
         self.time_spin.blockSignals(True)
         self.time_spin.setValue(value / 10.0)
         self.time_spin.blockSignals(False)
         self.plot_timer.start(50)
 
     def _on_time_spin_changed(self, value):
+        """Synchronize the slider when the time spin box changes.
+
+        Args:
+            value: New time value in seconds (float).
+        """
         self.time_slider.blockSignals(True)
         self.time_slider.setValue(int(value * 10))
         self.time_slider.blockSignals(False)
         self.plot_timer.start(50)
 
     def _mouse_moved_time(self, evt):
+        """Handle mouse movement over the time-domain plot.
+
+        Args:
+            evt: Mouse event tuple from ``pg.SignalProxy``.
+        """
         self._update_crosshair(
             evt,
             self.plot_time,
@@ -244,6 +285,11 @@ class PreviewWidget(QWidget):
         )
 
     def _mouse_moved_freq(self, evt):
+        """Handle mouse movement over the frequency-domain plot.
+
+        Args:
+            evt: Mouse event tuple from ``pg.SignalProxy``.
+        """
         self._update_crosshair(
             evt,
             self.plot_freq,
@@ -253,6 +299,18 @@ class PreviewWidget(QWidget):
         )
 
     def _update_crosshair(self, evt, plot, v_line, h_line, label):
+        """Update crosshair lines and label for a given plot widget.
+
+        Snaps the crosshair to the nearest point on the *Current* data
+        curve when available.
+
+        Args:
+            evt: Mouse event tuple from ``pg.SignalProxy``.
+            plot: The ``pg.PlotWidget`` to map coordinates in.
+            v_line: Vertical ``pg.InfiniteLine`` crosshair.
+            h_line: Horizontal ``pg.InfiniteLine`` crosshair.
+            label: ``pg.TextItem`` displaying coordinate values.
+        """
         pos = evt[0]
         if plot.sceneBoundingRect().contains(pos):
             mouse_point = plot.plotItem.vb.mapSceneToView(pos)
@@ -308,6 +366,7 @@ class PreviewWidget(QWidget):
             label.hide()
 
     def reset_view(self):
+        """Clear both plots and show a *No Data* title."""
         self.plot_time.clear()
         self.plot_freq.clear()
         self.plot_time.setTitle("No Data")

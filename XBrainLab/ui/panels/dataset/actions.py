@@ -1,3 +1,9 @@
+"""Action handler for dataset panel operations.
+
+Provides logic for importing EEG data files, applying labels,
+running smart parse, and managing event filtering.
+"""
+
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
 
 from XBrainLab.backend.utils.logger import logger
@@ -10,20 +16,31 @@ from XBrainLab.ui.dialogs.dataset import (
 
 
 class DatasetActionHandler:
-    """
-    Helper class to handle complex actions for DatasetPanel.
-    Decouples logic from the main View class.
+    """Helper class to handle complex actions for DatasetPanel.
+
+    Decouples action logic (import, labeling, parsing) from the main
+    ``DatasetPanel`` view class.
+
+    Attributes:
+        panel: The parent ``DatasetPanel`` instance.
     """
 
     def __init__(self, panel):
+        """Initialize the action handler.
+
+        Args:
+            panel: The parent ``DatasetPanel`` that owns this handler.
+        """
         self.panel = panel
 
     @property
     def controller(self):
+        """DatasetController: The dataset controller from the parent panel."""
         return getattr(self.panel, "controller", None)
 
     @property
     def main_window(self):
+        """QMainWindow: The application main window reference."""
         return getattr(self.panel, "main_window", None)
 
     def import_data(self):
@@ -51,7 +68,14 @@ class DatasetActionHandler:
                 QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
 
     def on_import_finished(self, success_count, errors):
-        """Handle callback from controller."""
+        """Handle the import-finished callback from the controller.
+
+        Updates the panel on success and shows warnings for any failures.
+
+        Args:
+            success_count: Number of files successfully imported.
+            errors: List of error message strings for failed imports.
+        """
         if success_count > 0:
             self.panel.update_panel()
 
@@ -64,6 +88,10 @@ class DatasetActionHandler:
             )
 
     def open_smart_parser(self):
+        """Open the smart-parser dialog to auto-extract metadata from filenames.
+
+        Blocked if the dataset is locked or no data is loaded.
+        """
         if self.controller.is_locked():
             QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
             return
@@ -82,6 +110,11 @@ class DatasetActionHandler:
             QMessageBox.information(self.panel, "Success", f"Updated {count} files.")
 
     def import_label(self):
+        """Import external label files and apply them to loaded EEG data.
+
+        Supports single-file, batch, and timestamp-based label mapping.
+        Prompts the user for event filtering when applicable.
+        """
         target_files = self._get_target_files_for_import()
         if not target_files:
             return
@@ -145,6 +178,15 @@ class DatasetActionHandler:
             QMessageBox.critical(self.panel, "Error", f"Failed: {e}")
 
     def _get_target_files_for_import(self):
+        """Determine which data files should receive imported labels.
+
+        If no rows are selected in the table, asks the user whether to
+        apply labels to all files.
+
+        Returns:
+            list: A list of data objects for the targeted files,
+                or an empty list if the operation is cancelled.
+        """
         selected_rows = sorted(
             {index.row() for index in self.panel.table.selectedIndexes()}
         )
@@ -164,6 +206,16 @@ class DatasetActionHandler:
         return [data_list[i] for i in selected_rows if i < len(data_list)]
 
     def _filter_events_for_import(self, target_files, target_count):
+        """Show an event filter dialog for selecting which events to relabel.
+
+        Args:
+            target_files: List of data objects that contain raw events.
+            target_count: Expected number of labels per event category.
+
+        Returns:
+            set | None | False: A set of selected event names, ``None`` if
+                no filtering is needed, or ``False`` if the user cancelled.
+        """
         # ... logic extracted from original file ...
         # For brevity in this prompt, using simplified delegation or need
         # to copy full logic.

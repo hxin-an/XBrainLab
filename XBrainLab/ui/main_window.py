@@ -1,3 +1,9 @@
+"""Main application window module for XBrainLab.
+
+Provides the top-level QMainWindow that manages navigation, panel switching,
+AI assistant integration, and debug tool execution.
+"""
+
 import sys
 from typing import Any
 
@@ -30,15 +36,25 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class MainWindow(QMainWindow):
-    """
-    The main application window for XBrainLab (PyQt6 version).
+    """The main application window for XBrainLab (PyQt6 version).
 
     This window manages the overall layout, including:
-    - Top Navigation Bar: For switching between main panels (Dataset, Preprocess, \
-Training, etc.).
+
+    - Top Navigation Bar: For switching between main panels (Dataset,
+      Preprocess, Training, etc.).
     - Stacked Widget: Holds the content of each panel.
     - Dock Widgets: For the AI Assistant and Data Info panel.
     - Agent System: Initializes and manages the background AI agent thread.
+
+    Attributes:
+        study: The application Study instance holding controllers and data.
+        agent_initialized: Whether the AI agent has been lazily initialized.
+        debug_executor: ToolExecutor for offline debug-mode tool execution.
+        info_service: InfoPanelService managing aggregate info panel updates.
+        stack: QStackedWidget holding all main functional panels.
+        nav_btns: List of navigation QPushButtons in the top bar.
+        ai_btn: Toggle button for the AI assistant dock.
+        agent_manager: AgentManager orchestrating AI agent lifecycle.
     """
 
     # Signals to control the worker
@@ -46,6 +62,12 @@ Training, etc.).
     sig_generate = pyqtSignal(str, str)
 
     def __init__(self, study):
+        """Initialize the main window.
+
+        Args:
+            study: The application Study instance providing controllers
+                and shared state.
+        """
         super().__init__()
         self.study = study
         self.setWindowTitle("XBrainLab")
@@ -112,9 +134,17 @@ Training, etc.).
         logger.info("MainWindow initialized")
 
     def apply_vscode_theme(self):
+        """Apply the VS Code dark theme stylesheet to the main window."""
         self.setStyleSheet(Stylesheets.MAIN_WINDOW)
 
     def add_nav_btn(self, name, index, text):
+        """Create and add a navigation button to the top bar.
+
+        Args:
+            name: Tooltip name for the button.
+            index: Panel index in the stacked widget to switch to.
+            text: Display text for the button.
+        """
         btn = QPushButton(text)
         btn.setToolTip(name)
         btn.setCheckable(True)
@@ -135,6 +165,14 @@ Training, etc.).
             # Keeping this as a placeholder for potential future logic.
 
     def switch_page(self, index):
+        """Switch the active panel in the stacked widget.
+
+        Updates button check states and calls ``update_panel()`` on the
+        target panel if available.
+
+        Args:
+            index: Zero-based index of the panel to display.
+        """
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
@@ -188,6 +226,11 @@ Training, etc.).
         self.stack.addWidget(self.visualization_panel)
 
     def init_agent(self):
+        """Initialize the AI agent system via AgentManager.
+
+        Creates the ``AgentManager``, sets up its UI, and connects
+        the debug tool execution signal.
+        """
         # Delegate to AgentManager
         self.agent_manager = AgentManager(self, self.study)
         self.agent_manager.init_ui()
@@ -210,7 +253,16 @@ Training, etc.).
             sb.showMessage(msg)
 
     def _on_debug_tool_requested(self, tool_name: str, params: dict):
-        """M3.1: Handle debug tool execution request."""
+        """Handle debug tool execution request (M3.1).
+
+        Executes the requested tool via ``debug_executor`` and posts the
+        result back to the chat panel. Also handles ``switch_panel``
+        commands that would normally be parsed by the LLM controller.
+
+        Args:
+            tool_name: Name of the tool to execute.
+            params: Dictionary of parameters to pass to the tool.
+        """
         logger.info(f"Debug Mode: Requesting {tool_name}")
         result = self.debug_executor.execute(tool_name, params)
 
@@ -235,13 +287,20 @@ Training, etc.).
                 self.agent_manager.switch_panel({"panel": panel, "view_mode": view})
 
     def toggle_ai_dock(self):
+        """Toggle the AI assistant dock widget visibility."""
         self.agent_manager.toggle()
 
     def update_info_panel(self):
+        """Refresh the aggregate info panel if it exists."""
         if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
     def closeEvent(self, event):  # noqa: N802
+        """Handle application close by cleaning up the agent manager.
+
+        Args:
+            event: The QCloseEvent triggered on window close.
+        """
         logger.info("Closing application...")
         if hasattr(self, "agent_manager"):
             self.agent_manager.close()
@@ -249,6 +308,13 @@ Training, etc.).
 
 
 def global_exception_handler(exctype, value, traceback):
+    """Global exception handler that logs errors and displays an error dialog.
+
+    Args:
+        exctype: The exception class.
+        value: The exception instance.
+        traceback: The traceback object.
+    """
     if issubclass(exctype, KeyboardInterrupt):
         sys.__excepthook__(exctype, value, traceback)
         return

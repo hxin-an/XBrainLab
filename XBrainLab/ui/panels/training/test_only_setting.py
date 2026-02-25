@@ -1,3 +1,5 @@
+"""Dialog for configuring test-only (inference) execution parameters."""
+
 from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -24,6 +26,11 @@ class TestOnlySettingWindow(BaseDialog):
     """
 
     def __init__(self, parent):
+        """Initialize the test-only settings dialog.
+
+        Args:
+            parent: Parent widget.
+        """
         super().__init__(parent, title="Test Only Setting", width=400, height=300)
 
         self.training_option = None
@@ -31,9 +38,8 @@ class TestOnlySettingWindow(BaseDialog):
         self.use_cpu = None
         self.gpu_idx = None
 
-        self.init_ui()
-
     def init_ui(self):
+        """Build form layout: batch-size, device, and output-directory fields."""
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
 
@@ -69,18 +75,25 @@ class TestOnlySettingWindow(BaseDialog):
         layout.addWidget(buttons)
 
     def set_device(self):
+        """Open the device-selection dialog and update the label."""
         setter = SetDeviceWindow(self)
         if setter.exec() == QDialog.DialogCode.Accepted:
             self.use_cpu, self.gpu_idx = setter.get_result()
             self.dev_label.setText(parse_device_name(self.use_cpu, self.gpu_idx))
 
     def set_output_dir(self):
+        """Open a directory picker for the output path."""
         filepath = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if filepath:
             self.output_dir = filepath
             self.output_dir_label.setText(filepath)
 
     def confirm(self):
+        """Validate inputs, build a ``TestOnlyOption``, and accept the dialog.
+
+        Raises:
+            Exception: Shown in a warning dialog on validation failure.
+        """
         try:
             self.training_option = TestOnlyOption(
                 self.output_dir or "./output",
@@ -93,4 +106,10 @@ class TestOnlySettingWindow(BaseDialog):
             QMessageBox.warning(self, "Validation Error", str(e))
 
     def get_result(self):
+        """Return the configured ``TestOnlyOption``.
+
+        Returns:
+            TestOnlyOption | None: The option object, or ``None`` if the
+                dialog was cancelled.
+        """
         return self.training_option

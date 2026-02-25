@@ -71,7 +71,3 @@ class TestEvalMetrics(unittest.TestCase):
         expected_macro_p = (2 / 3 + 2 / 3 + 0.75) / 3
         self.assertAlmostEqual(metrics["macro_avg"]["precision"], expected_macro_p)
         self.assertEqual(metrics["macro_avg"]["support"], 10)
-
-
-if __name__ == "__main__":
-    unittest.main()

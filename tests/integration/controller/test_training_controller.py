@@ -104,10 +104,16 @@ class TestTrainingControllerLifecycle:
             training_controller.shutdown()
 
     def test_training_events_emitted(self, training_controller, study):
-        """Verify observant events are emitted correctly."""
+        """Verify observer events are emitted correctly."""
 
-        # Mock the notify method to track events
-        training_controller.notify = MagicMock()
+        # Use a real observer spy instead of mocking notify
+        events_received = []
+        training_controller.subscribe(
+            "training_started", lambda: events_received.append("training_started")
+        )
+        training_controller.subscribe(
+            "training_stopped", lambda: events_received.append("training_stopped")
+        )
 
         # Setup mocks
         study.is_training = MagicMock(return_value=False)
@@ -117,13 +123,12 @@ class TestTrainingControllerLifecycle:
 
         # Start
         training_controller.start_training()
-        # Should notify started
-        training_controller.notify.assert_any_call("training_started")
+        assert "training_started" in events_received
 
         # Stop
         with patch.object(training_controller, "is_training", return_value=True):
             training_controller.stop_training()
-            training_controller.notify.assert_any_call("training_stopped")
+            assert "training_stopped" in events_received
 
 
 class TestTrainingHistory:
@@ -160,6 +165,7 @@ class TestTrainingHistory:
         assert item["plan"] == mock_plan
         assert item["record"] == mock_record
         assert item["is_active"] is False
+        assert "is_current_run" in item
 
     def test_clear_history_safety(self, training_controller, study):
         """Test validation when clearing history."""

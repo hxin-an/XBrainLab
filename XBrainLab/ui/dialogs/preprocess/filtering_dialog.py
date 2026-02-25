@@ -1,3 +1,9 @@
+"""Frequency filtering dialog for configuring bandpass and notch filters.
+
+Provides controls for setting low/high pass-band frequencies and
+optional notch frequency for EEG signal filtering.
+"""
+
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -11,9 +17,18 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class FilteringDialog(BaseDialog):
-    """
-    Dialog for configuring frequency filters.
-    Supports Bandpass (Low/High cut) and Notch filters.
+    """Dialog for configuring frequency filters.
+
+    Supports bandpass (low/high cut) and notch filters with validation
+    to ensure correct frequency ranges.
+
+    Attributes:
+        params: Tuple of (l_freq, h_freq, notch_freq) after acceptance.
+        bandpass_check: QCheckBox to enable/disable bandpass filtering.
+        l_freq_spin: QDoubleSpinBox for lower pass-band frequency.
+        h_freq_spin: QDoubleSpinBox for upper pass-band frequency.
+        notch_check: QCheckBox to enable/disable notch filtering.
+        notch_spin: QDoubleSpinBox for notch frequency.
     """
 
     def __init__(self, parent):
@@ -28,6 +43,7 @@ class FilteringDialog(BaseDialog):
         self.resize(300, 250)
 
     def init_ui(self):
+        """Initialize the dialog UI with filter controls and buttons."""
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
 
@@ -72,16 +88,32 @@ class FilteringDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def toggle_notch(self, checked):
+        """Enable or disable the notch frequency spin box.
+
+        Args:
+            checked: Whether notch filtering is enabled.
+        """
         if self.notch_spin:
             self.notch_spin.setEnabled(checked)
 
     def toggle_bandpass(self, checked):
+        """Enable or disable the bandpass frequency spin boxes.
+
+        Args:
+            checked: Whether bandpass filtering is enabled.
+        """
         if self.l_freq_spin:
             self.l_freq_spin.setEnabled(checked)
         if self.h_freq_spin:
             self.h_freq_spin.setEnabled(checked)
 
     def accept(self):
+        """Validate filter parameters and accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if frequency range is invalid or no
+                filter is selected.
+        """
         if (
             not self.bandpass_check
             or not self.l_freq_spin
@@ -121,7 +153,17 @@ class FilteringDialog(BaseDialog):
         super().accept()
 
     def get_params(self):
+        """Return the configured filter parameters.
+
+        Returns:
+            Tuple of (l_freq, h_freq, notch_freq) or None.
+        """
         return self.params
 
     def get_result(self):
+        """Return the configured filter parameters.
+
+        Returns:
+            Tuple of (l_freq, h_freq, notch_freq) or None.
+        """
         return self.get_params()

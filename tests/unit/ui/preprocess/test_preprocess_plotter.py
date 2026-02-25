@@ -1,14 +1,9 @@
-import sys
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
-
-# Ensure QApp
-app = QApplication.instance() or QApplication(sys.argv)
 
 
 @pytest.fixture

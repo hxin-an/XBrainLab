@@ -1,8 +1,6 @@
-import sys
 from unittest.mock import MagicMock, patch
 
-import pytest
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QDialog
 
 from XBrainLab.backend.dataset.option import SplitByType, SplitUnit
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
@@ -11,9 +9,6 @@ from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     DataSplittingPreviewDialog as DataSplittingWindow,
 )
-
-# Ensure QApplication exists
-app = QApplication.instance() or QApplication(sys.argv)
 
 
 def test_data_splitter_holder_validation():
@@ -195,7 +190,3 @@ def test_data_splitting_window_confirm(qtbot):
             # Fixed typo: prepare_result
             window.dataset_generator.prepare_result.assert_called_once()
             mock_accept.assert_called_once()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

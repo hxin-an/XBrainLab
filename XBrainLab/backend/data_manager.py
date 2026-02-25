@@ -1,3 +1,5 @@
+"""Data lifecycle management for loading, preprocessing, epoching, and datasets."""
+
 from copy import deepcopy
 
 from .dataset import Dataset, DatasetGenerator, Epochs
@@ -8,9 +10,18 @@ from .utils.logger import logger
 
 
 class DataManager:
-    """
-    Manages the data lifecycle: Loading, Preprocessing, Epoching, and Dataset
-    Generation. Extracted from the monolithic Study class (Reference: BR01).
+    """Manages the data lifecycle for loading, preprocessing, epoching, and datasets.
+
+    Extracted from the monolithic Study class (Reference: BR01).
+
+    Attributes:
+        loaded_data_list: List of loaded raw data objects.
+        preprocessed_data_list: List of preprocessed raw data objects.
+        epoch_data: Epoch data generated from preprocessed data, or None.
+        datasets: List of generated dataset objects.
+        dataset_generator: Dataset generator instance, or None.
+        dataset_locked: Whether the dataset is locked for modification.
+        backup_loaded_data_list: Backup of loaded data for undo, or None.
     """
 
     def __init__(self):
@@ -80,6 +91,9 @@ class DataManager:
         self.clean_datasets(force_update=force_update)
 
         self.preprocessed_data_list = preprocessed_data_list
+        logger.info(
+            f"Set preprocessed data list with {len(preprocessed_data_list)} items"
+        )
 
         # Check if we should generate epochs
         for pp_data in preprocessed_data_list:
@@ -87,9 +101,6 @@ class DataManager:
                 self.epoch_data = None
                 return
         self.epoch_data = Epochs(preprocessed_data_list)
-        logger.info(
-            f"Set preprocessed data list with {len(preprocessed_data_list)} items"
-        )
 
     def reset_preprocess(self, force_update=False) -> None:
         """Reset preprocessing to the original loaded data state.
@@ -110,17 +121,17 @@ class DataManager:
             )
         logger.info("Reset preprocess to loaded data")
 
-    def preprocess(self, preprocessor: type[PreprocessBase], **kargs: dict) -> None:
+    def preprocess(self, preprocessor: type[PreprocessBase], **kwargs) -> None:
         """Apply a preprocessing step to the current data.
 
         Args:
             preprocessor (type[PreprocessBase]): The preprocessor class to apply.
-            **kargs: Keyword arguments for the preprocessor's data_preprocess method.
+            **kwargs: Keyword arguments for the preprocessor's data_preprocess method.
         """
         validate_issubclass(preprocessor, PreprocessBase, "preprocessor")
         pp_instance = preprocessor(self.preprocessed_data_list)
         pp_instance.check_data()
-        preprocessed_data_list = pp_instance.data_preprocess(**kargs)
+        preprocessed_data_list = pp_instance.data_preprocess(**kwargs)
         self.set_preprocessed_data_list(preprocessed_data_list)
         logger.info(f"Applied preprocessing: {pp_instance.__class__.__name__}")
 
@@ -138,72 +149,53 @@ class DataManager:
         logger.info(f"Set {len(datasets)} datasets for training")
 
     # --- Cleaning ---
-    def should_clean_raw_data(self, interact: bool = True) -> bool:
-        """Check if raw data is loaded and needs cleaning before reloading.
+    def has_raw_data(self) -> bool:
+        """Return whether raw data (or downstream datasets) exist.
 
-        Args:
-            interact (bool, optional): Whether to raise an error if data exists.
-                Defaults to True.
-
-        Returns:
-            bool: True if raw data is loaded, False otherwise.
-
-        Raises:
-            ValueError: If interact is True and data is loaded.
+        Pure query — never raises.
         """
-        response = bool(self.loaded_data_list) or self.should_clean_datasets(interact)
-        if response and interact:
-            raise ValueError("This step has already been done... clean_raw_data first.")
-        return response
+        return bool(self.loaded_data_list) or self.has_datasets()
+
+    def has_datasets(self) -> bool:
+        """Return whether generated datasets exist.
+
+        Pure query — never raises.
+        """
+        return bool(self.datasets)
+
+    def _guard_clean_raw_data(self) -> None:
+        """Raise if raw data or datasets exist (interactive guard)."""
+        if self.has_raw_data():
+            raise ValueError("This step has already been done… clean_raw_data first.")
+
+    def _guard_clean_datasets(self) -> None:
+        """Raise if datasets exist (interactive guard)."""
+        if self.has_datasets():
+            raise ValueError("This step has already been done… clean_datasets first.")
 
     def clean_raw_data(self, force_update: bool = True) -> None:
         """Clear all raw, preprocessed, and epoch data.
 
         Args:
-            force_update (bool, optional): Whether to force clear without checking.
-                Defaults to True.
+            force_update: If ``False``, raises when data already exists.
         """
         self.clean_datasets(force_update=force_update)
         if not force_update:
-            self.should_clean_raw_data(interact=True)
+            self._guard_clean_raw_data()
         self.loaded_data_list = []
         self.preprocessed_data_list = []
         self.epoch_data = None
         self.unlock_dataset()
         logger.info("Cleared raw data and downstream data")
 
-    def should_clean_datasets(self, interact: bool = True) -> bool:
-        """Check if datasets are generated and need cleaning.
-
-        Args:
-            interact (bool, optional): Whether to raise an error if datasets exist.
-                Defaults to True.
-
-        Returns:
-            bool: True if datasets exist, False otherwise.
-
-        Raises:
-            ValueError: If interact is True and datasets exist.
-        """
-        # Note: Trainer cleaning is usually orchestrated by Study/Trainer,
-        # but DataManager should check if datasets exist.
-        response = bool(self.datasets)
-        # In Study, it also checked trainer. DataManager doesn't know about Trainer.
-        # But if Trainer exists, generally Datasets exist?
-        # IMPORTANT: If DataManager handles data, it should know if data is present.
-        if response and interact:
-            raise ValueError("This step has already been done... clean_datasets first.")
-        return response
-
     def clean_datasets(self, force_update: bool = True) -> None:
         """Clear generated datasets.
 
         Args:
-            force_update (bool, optional): Whether to force update and clear
-                downstream data. Defaults to False.
+            force_update: If ``False``, raises when datasets already exist.
         """
         if not force_update:
-            self.should_clean_datasets(interact=True)
+            self._guard_clean_datasets()
         self.datasets = []
 
     # --- Locking ---

@@ -1,3 +1,5 @@
+"""Backend utility sub-package: validation, seeding, and random state."""
+
 from .check import validate_issubclass, validate_list_type, validate_type
 from .seed import get_random_state, set_random_state, set_seed
 

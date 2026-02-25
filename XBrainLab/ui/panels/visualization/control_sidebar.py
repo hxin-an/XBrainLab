@@ -1,3 +1,5 @@
+"""Sidebar widget for the visualization panel with configuration and export controls."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -24,6 +26,12 @@ class ControlSidebar(QWidget):
     """
 
     def __init__(self, panel, parent=None):
+        """Initialize the control sidebar.
+
+        Args:
+            panel: The parent ``VisualizationPanel``.
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.panel = panel
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -32,13 +40,16 @@ class ControlSidebar(QWidget):
 
     @property
     def controller(self):
+        """VisualizationController: The controller from the parent panel."""
         return self.panel.controller
 
     @property
     def main_window(self):
+        """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
     def init_ui(self):
+        """Build the sidebar layout with info, configuration, and operation groups."""
         self.setFixedWidth(260)
         self.setObjectName("RightPanel")
         self.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
@@ -94,6 +105,7 @@ class ControlSidebar(QWidget):
         layout.addStretch()
 
     def update_info(self):
+        """Refresh the aggregate info panel (delegated to InfoPanelService)."""
         if not self.info_panel:
             return
 
@@ -102,6 +114,7 @@ class ControlSidebar(QWidget):
     # --- Actions ---
 
     def set_montage(self):
+        """Open the montage-picker dialog and apply channel positions."""
         if not self.controller.has_epoch_data():
             QMessageBox.warning(self, "Warning", "No epoch data available.")
             return
@@ -120,6 +133,7 @@ class ControlSidebar(QWidget):
                     self.panel.on_update()
 
     def set_saliency(self):
+        """Open the saliency-settings dialog and apply parameters."""
         win = SaliencySettingDialog(self, self.controller.get_saliency_params())
         if win.exec():
             params = win.get_result()
@@ -131,6 +145,7 @@ class ControlSidebar(QWidget):
                     self.panel.on_update()
 
     def export_saliency(self):
+        """Open the saliency-export dialog to save computed saliency data."""
         if self.panel and hasattr(self.panel, "get_trainers"):
             trainers = self.panel.get_trainers()
         else:

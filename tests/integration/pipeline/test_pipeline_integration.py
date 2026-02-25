@@ -18,7 +18,6 @@ def test_pipeline_integration():
     # 1. Setup Mock Data and Environment
     # We allow real GPU usage if available
     use_cuda = torch.cuda.is_available()
-    use_cuda = torch.cuda.is_available()
 
     # 2. Create Dataset Generator (Mocking data loading)
     # We'll use synthetic data instead of loading from files
@@ -91,10 +90,9 @@ def test_pipeline_integration():
         "bs": 2,
         "lr": 0.001,
         "checkpoint_epoch": 1,
-        "evaluation_option": "TrainingEvaluation.VAL_LOSS",
+        "evaluation_option": TrainingEvaluation.TEST_ACC,
         "repeat_num": 1,
     }
-    option_args["evaluation_option"] = TrainingEvaluation.TEST_ACC
 
     option = TrainingOption(**option_args)
 
@@ -141,9 +139,3 @@ def test_pipeline_integration():
 
         # Check if model state dict is saved (mocked)
         # We can check if torch.save was called
-
-        print("Pipeline integration test passed!")
-
-
-if __name__ == "__main__":
-    test_pipeline_integration()

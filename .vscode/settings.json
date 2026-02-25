@@ -1,1 +1,17 @@
-{}
+{
+    "chat.tools.terminal.autoApprove": {
+        "poetry": true,
+        "/^python -m py_compile XBrainLab/backend/dataset/__init__\\.py; python -m py_compile XBrainLab/backend/dataset/dataset\\.py; python -m py_compile XBrainLab/backend/dataset/dataset_generator\\.py; python -m py_compile XBrainLab/backend/dataset/data_splitter\\.py; python -m py_compile XBrainLab/backend/dataset/epochs\\.py; python -m py_compile XBrainLab/backend/dataset/option\\.py; python -m py_compile XBrainLab/backend/load_data/__init__\\.py; python -m py_compile XBrainLab/backend/load_data/data_loader\\.py; python -m py_compile XBrainLab/backend/load_data/event_loader\\.py; python -m py_compile XBrainLab/backend/load_data/factory\\.py; python -m py_compile XBrainLab/backend/load_data/label_loader\\.py; python -m py_compile XBrainLab/backend/load_data/raw\\.py; python -m py_compile XBrainLab/backend/load_data/raw_data_loader\\.py; python -m py_compile XBrainLab/backend/services/label_import_service\\.py; python -m py_compile XBrainLab/backend/evaluation/__init__\\.py; python -m py_compile XBrainLab/backend/evaluation/metric\\.py; Write-Output \"All 16 files compiled OK\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python -m py_compile XBrainLab/backend/model_base/__init__\\.py; python -m py_compile XBrainLab/backend/model_base/EEGNet\\.py; python -m py_compile XBrainLab/backend/model_base/SCCNet\\.py; python -m py_compile XBrainLab/backend/model_base/ShallowConvNet\\.py; python -m py_compile XBrainLab/backend/preprocessor/__init__\\.py; python -m py_compile XBrainLab/backend/preprocessor/base\\.py; python -m py_compile XBrainLab/backend/preprocessor/channel_selection\\.py; python -m py_compile XBrainLab/backend/preprocessor/edit_event\\.py; python -m py_compile XBrainLab/backend/preprocessor/export\\.py; python -m py_compile XBrainLab/backend/preprocessor/filtering\\.py; python -m py_compile XBrainLab/backend/preprocessor/normalize\\.py; python -m py_compile XBrainLab/backend/preprocessor/rereference\\.py; python -m py_compile XBrainLab/backend/preprocessor/resample\\.py; python -m py_compile XBrainLab/backend/preprocessor/time_epoch\\.py; python -m py_compile XBrainLab/backend/preprocessor/window_epoch\\.py; Write-Output \"All 15 files compiled OK\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^git add -A$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

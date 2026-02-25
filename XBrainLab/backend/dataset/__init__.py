@@ -1,3 +1,5 @@
+"""Dataset package for data splitting, epoch management, and dataset generation."""
+
 from .data_splitter import DataSplitter, DataSplittingConfig
 from .dataset import Dataset
 from .dataset_generator import DatasetGenerator

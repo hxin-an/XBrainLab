@@ -85,18 +85,13 @@ def test_train_record_init_dir(
     seed = set_seed(0)
     model = model_holder.get_model({})
     record = TrainRecord(repeat, dataset, model, training_option, seed)
-    os.path.join(
+    expected_path = os.path.join(
         training_option.get_output_dir(),
         dataset.get_name(),
         f"FakeModel_{record.plan_id}" if record.plan_id else "FakeModel",
         record.get_name(),
     )
-    # The unique_id logic in TrainRecord uses model.__class__.__name__
-    # FakeModel name is FakeModel
-    # plan_id is None by default
-
-    # Let's verify target_path attribute instead of reconstructing the path logic here,
-    # or ensure we match the logic exactly.
+    assert record.target_path == expected_path
     assert os.path.exists(record.target_path)
     assert os.path.isdir(record.target_path)
 

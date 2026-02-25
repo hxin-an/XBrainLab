@@ -1,3 +1,9 @@
+"""Agent Manager for AI assistant lifecycle and UI integration.
+
+Orchestrates the ChatController, LLMController, and ChatPanel dock widget,
+handling initialization, user interaction, model switching, and VRAM checks.
+"""
+
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QDockWidget,
@@ -18,12 +24,32 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class AgentManager(QObject):
-    """
-    Manages the lifecycle and UI integration of the AI Agent System.
-    Orchestrates: ChatController (UI Logic) <-> LLMController (AI Logic)
+    """Manages the lifecycle and UI integration of the AI Agent System.
+
+    Orchestrates the interaction between the ``ChatController`` (UI-side
+    state management), ``LLMController`` (AI inference), and the
+    ``ChatPanel`` (visual chat interface).
+
+    Attributes:
+        main_window: Reference to the parent ``MainWindow``.
+        study: The application ``Study`` instance.
+        chat_panel: The ``ChatPanel`` widget, or ``None`` before init.
+        chat_dock: The ``QDockWidget`` hosting the chat panel.
+        chat_controller: The ``ChatController`` managing chat state.
+        preprocess_controller: Controller for preprocessing operations.
+        agent_controller: The ``LLMController`` for AI inference, or
+            ``None`` before lazy initialization.
+        agent_initialized: Whether the agent system has been started.
     """
 
     def __init__(self, main_window, study):
+        """Initialize the AgentManager.
+
+        Args:
+            main_window: The parent ``MainWindow`` instance.
+            study: The application ``Study`` instance providing
+                controllers and shared state.
+        """
         super().__init__(main_window)
         self.main_window = main_window
         self.study = study
@@ -49,7 +75,12 @@ class AgentManager(QObject):
             )
 
     def init_ui(self):
-        """Initialize Dock and Panel UI components."""
+        """Initialize the chat dock widget and panel UI components.
+
+        Creates the ``ChatPanel``, wires its signals, builds the dock
+        title bar with float/settings/new-conversation buttons, and
+        adds the dock to the main window's right area.
+        """
         self.chat_panel = ChatPanel()
 
         # Connect UI to ChatController
@@ -115,6 +146,11 @@ class AgentManager(QObject):
         self.chat_dock.hide()
 
     def update_ai_btn_state(self, visible):
+        """Sync the AI toggle button checked state with dock visibility.
+
+        Args:
+            visible: Whether the dock is currently visible.
+        """
         if hasattr(self.main_window, "ai_btn"):
             self.main_window.ai_btn.blockSignals(True)
             self.main_window.ai_btn.setChecked(visible)
@@ -126,7 +162,11 @@ class AgentManager(QObject):
             self.chat_dock.setFloating(not self.chat_dock.isFloating())
 
     def toggle(self):
-        """Toggle the visibility of the Agent Dock, initializing if needed."""
+        """Toggle the Agent dock visibility, initializing on first open.
+
+        On first invocation, shows the ``ModelSettingsDialog`` to
+        configure the LLM backend before starting the agent system.
+        """
         if not self.agent_initialized:
             # Show Model Settings Dialog instead of Warning
             dialog = ModelSettingsDialog(self.main_window)
@@ -149,7 +189,7 @@ class AgentManager(QObject):
             self.chat_dock.show()
 
     def open_settings_dialog(self):
-        """Open settings dialog safely."""
+        """Open the model settings dialog and refresh the UI on accept."""
         # Pass self to allow the dialog to request model unloading/switching
         dialog = ModelSettingsDialog(self.main_window, agent_manager=self)
         if dialog.exec() and self.chat_panel:
@@ -157,10 +197,16 @@ class AgentManager(QObject):
             self.chat_panel.update_model_menu()
 
     def prepare_model_deletion(self, model_name: str):
-        """
-        Called by ModelSettingsDialog before deleting a model.
-        Checks if the model is currently active/loaded and switches to Gemini if so.
-        Returns True if safe to proceed.
+        """Prepare for model file deletion by switching away if active.
+
+        Called by ``ModelSettingsDialog`` before deleting a model. If the
+        model is currently loaded in local mode, switches to Gemini.
+
+        Args:
+            model_name: The name of the model being deleted.
+
+        Returns:
+            ``True`` if it is safe to proceed with deletion.
         """
         if not self.agent_controller or not self.agent_controller.worker:
             return True
@@ -245,7 +291,14 @@ class AgentManager(QObject):
         self.agent_initialized = True
 
     def handle_user_input(self, text):
-        """Handle input from ChatPanel."""
+        """Handle text input from ChatPanel.
+
+        Adds the message to ``ChatController`` history and forwards it
+        to the ``LLMController`` for processing.
+
+        Args:
+            text: The user's message text.
+        """
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
 
@@ -254,11 +307,18 @@ class AgentManager(QObject):
             self.agent_controller.handle_user_input(text)
 
     def stop_generation(self):
+        """Stop the currently running LLM generation."""
         if self.agent_controller:
             self.agent_controller.stop_generation()
         self.chat_controller.set_processing(False)
 
     def set_model(self, model_name):
+        """Switch the active LLM model and check for VRAM conflicts.
+
+        Args:
+            model_name: The model name to switch to (e.g., ``"Gemini"``,
+                ``"Local"``).
+        """
         if self.agent_controller:
             self.agent_controller.set_model(model_name)
 
@@ -267,16 +327,27 @@ class AgentManager(QObject):
             self.check_vram_conflict(switching_to_local=True)
 
     def on_viz_tab_changed(self, index):
-        """Monitor Visualization Tab changes for VRAM conflict."""
+        """Monitor visualization tab changes for VRAM conflict.
+
+        Args:
+            index: The newly selected tab index.
+        """
         # Index 3 is 3D Plot
         # WARN: Hardcoded tab index assumes specific order.
         if index == 3:
             self.check_vram_conflict(switching_to_3d=True)
 
     def check_vram_conflict(self, switching_to_local=False, switching_to_3d=False):
-        """
-        Check if Local Agent + 3D Visualization are active simultaneously.
-        Warning user about potential VRAM crash.
+        """Check for VRAM conflict between local LLM and 3D visualization.
+
+        Warns the user if both the local model and 3D visualization are
+        active simultaneously, which may cause memory exhaustion.
+
+        Args:
+            switching_to_local: Whether the user is switching to local
+                model mode.
+            switching_to_3d: Whether the user is switching to the 3D
+                visualization tab.
         """
         # 1. Check Agent Mode
         # If we are switching TO local, we assume local.
@@ -322,12 +393,16 @@ class AgentManager(QObject):
             )
 
     def on_processing_state_changed(self, is_processing):
-        """Update ChatPanel when processing state changes (from ChatController)."""
+        """Forward processing state changes to the ChatPanel.
+
+        Args:
+            is_processing: Whether the agent is currently generating.
+        """
         if self.chat_panel:
             self.chat_panel.set_processing_state(is_processing)
 
     def start_new_conversation(self):
-        """M0.3: Handle New Conversation Request."""
+        """Clear the chat UI and reset the agent conversation state."""
         logger.info("Starting new conversation - clearing UI and resetting agent state")
 
         # 1. Clear UI / History
@@ -350,18 +425,26 @@ class AgentManager(QObject):
     status_message_received = pyqtSignal(str)
 
     def _on_generation_started(self):
-        """Called when LLM starts generating a new response."""
+        """Handle the start of a new LLM response generation.
+
+        Resets the current agent bubble reference and sets processing
+        state to ``True``.
+        """
         # Reset bubble reference so a new one will be created for this turn
         if self.chat_panel:
             self.chat_panel.current_agent_bubble = None
         self.chat_controller.set_processing(True)
 
     def on_processing_finished(self):
-        """Robust handler for end of processing."""
+        """Handle the end of LLM processing by resetting state."""
         self.chat_controller.set_processing(False)
 
     def on_agent_status_update(self, msg):
-        # Decoupled: Emit signal instead of accessing UI directly
+        """Forward agent status messages and handle error states.
+
+        Args:
+            msg: The status message string from the agent.
+        """
         self.status_message_received.emit(msg)
 
         # Note: We now rely on processing_finished signal for state handling!
@@ -370,22 +453,40 @@ class AgentManager(QObject):
             self.chat_controller.set_processing(False)
 
     def handle_agent_error(self, error_msg):
+        """Handle an agent error by resetting state and showing the error.
+
+        Args:
+            error_msg: The error message string.
+        """
         self.chat_controller.set_processing(False)
         self.chat_controller.add_agent_message(f"?? **Error**: {error_msg}")
         logger.error(f"Agent Error: {error_msg}")
 
     def close(self):
+        """Clean up the agent controller resources."""
         if self.agent_controller:
             self.agent_controller.close()
 
     def handle_user_interaction(self, command, params):
-        """Dispatcher for Human-in-the-loop requests."""
+        """Dispatch human-in-the-loop interaction requests.
+
+        Args:
+            command: The interaction command (e.g., ``"confirm_montage"``,
+                ``"switch_panel"``).
+            params: Dictionary of parameters for the command.
+        """
         if command == "confirm_montage":
             self.open_montage_picker_dialog(params)
         elif command == "switch_panel":
             self.switch_panel(params)
 
     def switch_panel(self, params):
+        """Switch the main window to a specified panel and optional sub-view.
+
+        Args:
+            params: Dictionary with ``"panel"`` (panel name) and optional
+                ``"view_mode"`` (sub-tab identifier).
+        """
         panel_name = params.get("panel", "").lower()
         view_mode = params.get("view_mode")
         target_index = -1
@@ -426,7 +527,13 @@ class AgentManager(QObject):
             )
 
     def _switch_sub_view(self, panel_index, view_mode):
-        """Switch to specific tab/view within a panel."""
+        """Switch to a specific tab or view within a panel.
+
+        Args:
+            panel_index: Index of the panel in the stacked widget.
+            view_mode: String identifier for the target sub-view
+                (e.g., ``"saliency_map"``, ``"3d_plot"``).
+        """
         # Map panel index to view mode mapping
         view_map = {
             4: {  # Visualization Panel
@@ -449,6 +556,15 @@ class AgentManager(QObject):
                 )
 
     def open_montage_picker_dialog(self, params):
+        """Open the montage picker dialog for channel configuration.
+
+        Presents a ``PickMontageDialog`` pre-populated with an optional
+        montage suggestion from the agent. On acceptance, applies the
+        montage via the preprocess controller.
+
+        Args:
+            params: Dictionary with optional ``"montage_name"`` key.
+        """
         montage_name = params.get("montage_name")  # Pre-selected montage from Agent
 
         if not self.study.epoch_data:

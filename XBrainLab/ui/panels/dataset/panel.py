@@ -1,3 +1,5 @@
+"""Dataset panel for managing EEG data loading, metadata, and table display."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
@@ -19,13 +21,28 @@ from .sidebar import DatasetSidebar
 
 
 class DatasetPanel(BasePanel):
-    """
-    Panel for managing the dataset loading and metadata.
-    Features: Import Data, Import Label, Smart Parse, Channel Selection, Table View.
-    Integrates with `DatasetController`.
+    """Panel for managing dataset loading and metadata.
+
+    Provides file import, label import, smart-parse, channel selection,
+    and a table view of loaded EEG recordings.  Integrates with
+    ``DatasetController`` via observer bridges.
+
+    Attributes:
+        action_handler: ``DatasetActionHandler`` for complex panel actions.
+        table: ``QTableWidget`` displaying loaded file metadata.
+        sidebar: ``DatasetSidebar`` with operations and info panel.
+        bridge: Observer bridge for ``data_changed`` events.
+        bridge_import: Observer bridge for ``import_finished`` events.
     """
 
     def __init__(self, controller=None, parent=None):
+        """Initialize the dataset panel.
+
+        Args:
+            controller: Optional ``DatasetController``. Resolved from the
+                parent study if not provided.
+            parent: Parent widget (typically the main window).
+        """
         # 1. Controller Resolution (Legacy/Test support)
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("dataset")
@@ -41,6 +58,7 @@ class DatasetPanel(BasePanel):
         self.init_ui()
 
     def _setup_bridges(self):
+        """Register Qt observer bridges for controller events."""
         if self.controller:
             self.bridge = QtObserverBridge(self.controller, "data_changed", self)
             self.bridge.connect_to(self.update_panel)
@@ -51,6 +69,7 @@ class DatasetPanel(BasePanel):
             self.bridge_import.connect_to(self.action_handler.on_import_finished)
 
     def init_ui(self):
+        """Build the panel layout with a file table and sidebar."""
         # Main Layout: Horizontal Split (Table | Info & Controls)
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -83,6 +102,12 @@ class DatasetPanel(BasePanel):
         main_layout.addWidget(self.sidebar, stretch=0)
 
     def apply_loader(self, loader):
+        """Apply a data loader to the current study.
+
+        Args:
+            loader: A data loader instance that supports ``apply()``
+                and ``__len__``.
+        """
         if self.main_window and hasattr(self.main_window, "study"):
             try:
                 # Use force_update=True to allow updating the dataset (e.g. appending)
@@ -96,6 +121,7 @@ class DatasetPanel(BasePanel):
                 QMessageBox.critical(self, "Error", f"Failed to apply data: {e}")
 
     def update_panel(self):
+        """Refresh the sidebar and table contents from the controller."""
         if not hasattr(self, "controller"):
             return
 
@@ -172,6 +198,11 @@ class DatasetPanel(BasePanel):
         self.table.blockSignals(False)
 
     def on_item_changed(self, item):
+        """Handle in-place editing of Subject or Session cells.
+
+        Args:
+            item: The ``QTableWidgetItem`` that was modified.
+        """
         row = item.row()
         col = item.column()
 

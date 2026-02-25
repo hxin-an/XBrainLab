@@ -1,3 +1,5 @@
+"""EEGNet model implementation for EEG-based brain-computer interfaces."""
+
 import math
 
 import torch
@@ -5,17 +7,33 @@ from torch import nn
 
 
 class EEGNet(nn.Module):
-    """Implementation of EEGNet
-    https://iopscience.iop.org/article/10.1088/1741-2552/aace8c/meta
+    """Compact convolutional neural network for EEG-based BCIs.
 
-    Parameters:
-        n_classes: Number of classes.
-        channels: Number of channels.
-        samples: Number of samples.
-        sfreq: Sampling frequency.
+    EEGNet is a compact convolutional neural network designed for EEG-based
+    brain-computer interfaces. It uses depthwise and separable convolutions
+    to learn frequency-specific spatial filters and temporal patterns.
+
+    Reference:
+        Lawhern, V. J., et al. (2018). "EEGNet: a compact convolutional neural
+        network for EEG-based brain-computer interfaces." *Journal of Neural
+        Engineering*, 15(5), 056013.
+        https://iopscience.iop.org/article/10.1088/1741-2552/aace8c/meta
+
+    Attributes:
+        tp: Number of time samples.
+        ch: Number of EEG channels.
+        sf: Sampling frequency in Hz.
+        n_class: Number of output classes.
+        half_sf: Half of the sampling frequency (temporal kernel size).
         F1: Number of temporal filters.
         F2: Number of pointwise filters.
-        D: Number of spatial filters within each temporal filter.
+        D: Depth multiplier for depthwise convolutions.
+        pool_1: First average pooling kernel size.
+        pool_2: Second average pooling kernel size.
+        conv1: First convolutional block (temporal filtering).
+        conv2: Second convolutional block (depthwise spatial filtering).
+        conv3: Third convolutional block (separable pointwise filtering).
+        classifier: Fully connected classification layer.
     """
 
     def __init__(
@@ -30,6 +48,26 @@ class EEGNet(nn.Module):
         pool_1: int = 4,
         pool_2: int = 8,
     ):
+        """Initializes EEGNet.
+
+        Args:
+            n_classes: Number of output classes for classification.
+            channels: Number of EEG channels.
+            samples: Number of time samples per trial.
+            sfreq: Sampling frequency in Hz.
+            f1: Number of temporal filters. Defaults to 8.
+            f2: Number of pointwise filters. Defaults to 16.
+            d: Depth multiplier for depthwise spatial convolutions.
+                Defaults to 2.
+            pool_1: Kernel size for the first average pooling layer.
+                Defaults to 4.
+            pool_2: Kernel size for the second average pooling layer.
+                Defaults to 8.
+
+        Raises:
+            ValueError: If the epoch duration (samples) is too short for the
+                network architecture.
+        """
         super().__init__()
 
         self.tp = samples
@@ -107,6 +145,15 @@ class EEGNet(nn.Module):
         self.classifier = nn.Linear(fc_in_size, self.n_class, bias=True)
 
     def forward(self, x):
+        """Performs the forward pass of EEGNet.
+
+        Args:
+            x: Input EEG tensor of shape ``(batch, channels, samples)`` or
+                ``(batch, 1, channels, samples)``.
+
+        Returns:
+            Output logits tensor of shape ``(batch, n_classes)``.
+        """
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
         x = self.conv1(x)
@@ -119,6 +166,15 @@ class EEGNet(nn.Module):
         return x
 
     def _get_size(self, ch, tsamp):
+        """Computes the flattened feature size after convolutional layers.
+
+        Args:
+            ch: Number of EEG channels.
+            tsamp: Number of time samples.
+
+        Returns:
+            Tensor size after flattening, as a ``torch.Size`` object.
+        """
         data = torch.ones((2, 1, ch, tsamp))
         x = self.conv1(data)
         x = self.conv2(x)

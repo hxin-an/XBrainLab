@@ -111,7 +111,6 @@ class TestTrainingPanelRealUsage:
 
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
-        mock_trainer.is_running.return_value = True
         mock_trainer.get_progress_text.return_value = "Training..."
         mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
         mock_plan.model_holder.target_model.__name__ = "TestModel"
@@ -132,10 +131,7 @@ class TestTrainingPanelRealUsage:
         study.trainer = mock_trainer
 
         # This should not raise any type errors
-        try:
-            panel.update_loop()
-        except TypeError as e:
-            pytest.fail(f"update_loop raised TypeError: {e}")
+        panel.update_loop()
 
         # Verify progress bar was updated
         # Verify progress in history table
@@ -192,24 +188,13 @@ class TestEvaluationPanelIntegration:
         parent = QWidget()
         parent.study = study
 
-        # Panel initialization might fail with incomplete mocks, which is expected
         # The important thing is that get_trainers() method works
-        try:
-            panel = EvaluationPanel(parent=parent)
-            qtbot.addWidget(panel)
+        panel = EvaluationPanel(parent=parent)
+        qtbot.addWidget(panel)
 
-            # Verify panel is populated
-            panel.update_panel()
-            assert panel.model_combo.count() > 0
-            # Should have items besides "No Data Available" or check specific item
-            # Since we mocked one plan, it should have it
-            # But update_logic iterates plans
-
-        except TypeError:
-            # If initialization fails due to other mocks properties
-            # (like widget parents), ignore for now
-            # but ideally we fix the mocks.
-            pass
+        # Verify panel is populated
+        panel.update_panel()
+        assert panel.model_combo.count() > 0
 
 
 class TestVisualizationPanelIntegration:
@@ -279,8 +264,6 @@ class TestTrainingWorkflowWithUI:
         )
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
-        mock_trainer.is_running.return_value = True
-        mock_trainer.get_progress_text.return_value = "Epoch 5/10"
         mock_trainer.get_progress_text.return_value = "Epoch 5/10"
         mock_plan.get_epoch_progress_text.return_value = "Epoch 5/10"
         mock_plan.model_holder.target_model.__name__ = "TestModel"
@@ -304,7 +287,6 @@ class TestTrainingWorkflowWithUI:
 
         # Progress should be shown in history table
         # Row 0, Column 1 is Progress
-        assert panel.history_table.rowCount() > 0
         assert panel.history_table.rowCount() > 0
         assert panel.history_table.item(0, 4).text() == "5/10"
 
@@ -394,16 +376,8 @@ class TestTrainingWorkflowWithUI:
         study.trainer = mock_trainer
 
         # This should NOT raise TypeError about '>' comparison
-        try:
-            print(
-                f"DEBUG: plan.get_epoch_progress_text() = "
-                f"{mock_plan.get_epoch_progress_text()}"
-            )
-            panel.update_loop()
-        except TypeError as e:
-            if "'>' not supported" in str(e):
-                pytest.fail(f"update_loop failed to handle string metrics: {e}")
-            raise
+        # This should handle string metrics without raising TypeError
+        panel.update_loop()
 
         # Verify metrics were converted to float and plotted
         # Check the last value in the accuracy tab's validation values
@@ -433,7 +407,3 @@ class TestTrainingWorkflowWithUI:
         assert tab.epochs == [1, 2, 3]
         assert len(tab.train_vals) == 3
         assert len(tab.val_vals) == 3
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])

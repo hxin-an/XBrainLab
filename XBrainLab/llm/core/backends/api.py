@@ -1,3 +1,9 @@
+"""OpenAI-compatible API backend.
+
+Implements the ``BaseBackend`` interface for remote inference via any
+OpenAI-compatible chat completions API.
+"""
+
 import logging
 import os
 from typing import Any
@@ -15,13 +21,37 @@ logger = logging.getLogger("XBrainLab.LLM.API")
 
 
 class APIBackend(BaseBackend):
-    """OpenAI-compatible API backend."""
+    """OpenAI-compatible API backend.
+
+    Connects to any OpenAI-compatible endpoint using the ``openai``
+    Python package and streams chat completion responses.
+
+    Attributes:
+        config: The ``LLMConfig`` instance providing API credentials and
+            model settings.
+        client: The ``OpenAI`` client instance (``None`` until ``load``
+            is called).
+    """
 
     def __init__(self, config: LLMConfig):
+        """Initializes the APIBackend.
+
+        Args:
+            config: LLM configuration containing API key, base URL,
+                and model name.
+        """
         self.config = config
         self.client = None
 
     def load(self):
+        """Initializes the OpenAI client.
+
+        Reads API key from config or falls back to the
+        ``OPENAI_API_KEY`` environment variable.
+
+        Raises:
+            ImportError: If the ``openai`` package is not installed.
+        """
         if OpenAI is None:
             raise ImportError("OpenAI package is missing. Run `poetry add openai`.")
 
@@ -43,6 +73,17 @@ class APIBackend(BaseBackend):
         )
 
     def generate_stream(self, messages: list):
+        """Streams chat completion responses from the API.
+
+        Automatically calls ``load`` if the client has not been
+        initialized.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content``.
+
+        Yields:
+            Text chunks from the streaming API response.
+        """
         if not self.client:
             self.load()
 

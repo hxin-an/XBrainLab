@@ -1,8 +1,24 @@
+"""RAG configuration constants.
+
+Centralizes embedding model selection, Qdrant collection naming,
+retrieval thresholds, and storage path resolution.
+"""
+
 from pathlib import Path
 
 
 class RAGConfig:
-    """Configuration for RAG (Retrieval Augmented Generation)."""
+    """Configuration for Retrieval-Augmented Generation.
+
+    Attributes:
+        COLLECTION_NAME: Name of the Qdrant collection storing gold-set
+            example embeddings.
+        EMBEDDING_MODEL: Sentence-transformer model name used for
+            embedding queries and documents.
+        SIMILARITY_THRESHOLD: Minimum cosine similarity for a retrieved
+            example to be considered relevant.
+        TOP_K: Number of nearest examples to retrieve per query.
+    """
 
     # Qdrant Settings
     COLLECTION_NAME = "gold_set_examples"
@@ -19,7 +35,14 @@ class RAGConfig:
 
     @staticmethod
     def get_storage_path() -> str:
-        """Returns parsed absolute path for storage."""
+        """Returns the absolute path to the Qdrant storage directory.
+
+        The directory is created if it does not already exist.  The path
+        is resolved relative to this module's parent directory.
+
+        Returns:
+            Absolute filesystem path to the ``storage`` directory.
+        """
         # Use path relative to this config file: XBrainLab/llm/rag/storage
         base_dir = Path(__file__).parent
         path = base_dir / "storage"

@@ -1,3 +1,9 @@
+"""Tool executor for the Interactive Debug Mode.
+
+Maps human-readable tool name strings to their concrete ``Real*Tool``
+implementations and dispatches execution against a :class:`Study` instance.
+"""
+
 from typing import Any, ClassVar
 
 from XBrainLab.backend.utils.logger import logger
@@ -30,9 +36,17 @@ from XBrainLab.llm.tools.real.ui_control_real import RealSwitchPanelTool
 
 
 class ToolExecutor:
-    """
-    Executes tools requested by the Interactive Debug Mode.
-    Maps string tool names to Real*Tool implementations.
+    """Executes tools requested by the Interactive Debug Mode.
+
+    Maintains a class-level registry (``TOOL_MAP``) that maps short string
+    names to concrete ``Real*Tool`` classes covering dataset, preprocessing,
+    training, and UI-control operations.
+
+    Attributes:
+        TOOL_MAP: Class-variable mapping tool name strings to their
+            corresponding ``BaseTool`` subclass types.
+        study: The active :class:`Study` instance against which tools are
+            executed.
     """
 
     TOOL_MAP: ClassVar[dict[str, type[BaseTool]]] = {
@@ -61,13 +75,30 @@ class ToolExecutor:
         "switch_panel": RealSwitchPanelTool,
     }
 
-    def __init__(self, study: Any):
+    def __init__(self, study: Any) -> None:
+        """Initialise the executor with a study context.
+
+        Args:
+            study: The backend :class:`Study` instance that each tool
+                receives as its first positional argument.
+        """
         self.study = study
 
     def execute(self, tool_name: str, params: dict) -> str:
-        """
-        Execute a tool by name with provided parameters.
-        Returns the result string.
+        """Execute a tool by name with the provided parameters.
+
+        Looks up ``tool_name`` in ``TOOL_MAP``, instantiates the tool, and
+        calls its ``execute`` method with ``self.study`` and ``**params``.
+
+        Args:
+            tool_name: Key into ``TOOL_MAP`` identifying the tool to run.
+            params: Keyword arguments forwarded to the tool's ``execute``
+                method.
+
+        Returns:
+            The string result produced by the tool, or an error message
+            prefixed with ``"Error:"`` if the tool is not found or raises
+            an exception.
         """
         tool_class = self.TOOL_MAP.get(tool_name)
         if not tool_class:

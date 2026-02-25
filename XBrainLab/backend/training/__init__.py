@@ -1,3 +1,5 @@
+"""Training module providing model training, evaluation, and plan management."""
+
 from .model_holder import ModelHolder
 from .option import (
     TestOnlyOption,

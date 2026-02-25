@@ -114,22 +114,16 @@ def test_export():
         )
 
 
-@pytest.fixture
-def clean_csv():
-    yield
-    if os.path.exists("target_path"):
-        os.remove("target_path")
-
-
-def test_export_csv(clean_csv):
+def test_export_csv(tmp_path):
+    csv_file = str(tmp_path / "output.csv")
     gradient = {"123": "test"}
     label = [1, 2]
     output = np.array([[0, 1], [1, 0]])
     eval_record = EvalRecord(label, output, gradient, {}, {}, {}, {})
-    eval_record.export_csv("target_path")
-    assert os.path.exists("target_path")
+    eval_record.export_csv(csv_file)
+    assert os.path.exists(csv_file)
 
-    with open("target_path") as f:
+    with open(csv_file) as f:
         assert f.readline() == "0,1,ground_truth,predict\n"
         assert [float(i) for i in f.readline().split(",")] == [0, 1, 1, 1]
         assert [float(i) for i in f.readline().split(",")] == [1, 0, 2, 0]

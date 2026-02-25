@@ -1,9 +1,22 @@
+"""Abstract base tool definitions for EEG preprocessing operations.
+
+Each class defines the tool's name, description, and JSON-schema
+parameters.  Concrete (mock or real) implementations must override
+:meth:`execute`.
+"""
+
 from typing import Any
 
 from ..base import BaseTool
 
 
 class BaseStandardPreprocessTool(BaseTool):
+    """Apply a standard EEG preprocessing pipeline.
+
+    Sequentially applies bandpass filtering, notch filtering,
+    re-referencing, resampling, and normalisation in one step.
+    """
+
     @property
     def name(self) -> str:
         return "apply_standard_preprocess"
@@ -34,6 +47,8 @@ class BaseStandardPreprocessTool(BaseTool):
 
 
 class BaseBandPassFilterTool(BaseTool):
+    """Apply a bandpass filter to the loaded EEG data."""
+
     @property
     def name(self) -> str:
         return "apply_bandpass_filter"
@@ -58,6 +73,8 @@ class BaseBandPassFilterTool(BaseTool):
 
 
 class BaseNotchFilterTool(BaseTool):
+    """Apply a notch filter to remove power-line noise."""
+
     @property
     def name(self) -> str:
         return "apply_notch_filter"
@@ -79,6 +96,8 @@ class BaseNotchFilterTool(BaseTool):
 
 
 class BaseResampleTool(BaseTool):
+    """Resample the loaded EEG data to a new sampling rate."""
+
     @property
     def name(self) -> str:
         return "resample_data"
@@ -100,6 +119,8 @@ class BaseResampleTool(BaseTool):
 
 
 class BaseNormalizeTool(BaseTool):
+    """Normalise data using Z-Score or Min-Max scaling."""
+
     @property
     def name(self) -> str:
         return "normalize_data"
@@ -123,6 +144,8 @@ class BaseNormalizeTool(BaseTool):
 
 
 class BaseRereferenceTool(BaseTool):
+    """Set the EEG reference (e.g., average or specific channels)."""
+
     @property
     def name(self) -> str:
         return "set_reference"
@@ -144,6 +167,8 @@ class BaseRereferenceTool(BaseTool):
 
 
 class BaseChannelSelectionTool(BaseTool):
+    """Select a subset of EEG channels to keep."""
+
     @property
     def name(self) -> str:
         return "select_channels"
@@ -165,6 +190,8 @@ class BaseChannelSelectionTool(BaseTool):
 
 
 class BaseSetMontageTool(BaseTool):
+    """Set a standard EEG montage (channel locations) for visualisation."""
+
     @property
     def name(self) -> str:
         return "set_montage"
@@ -186,6 +213,8 @@ class BaseSetMontageTool(BaseTool):
 
 
 class BaseEpochDataTool(BaseTool):
+    """Epoch continuous EEG data based on event markers."""
+
     @property
     def name(self) -> str:
         return "epoch_data"

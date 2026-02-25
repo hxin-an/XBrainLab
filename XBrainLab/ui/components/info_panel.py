@@ -1,3 +1,5 @@
+"""Aggregate information panel displaying dataset summary statistics."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QGroupBox,
@@ -15,7 +17,24 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class AggregateInfoPanel(QGroupBox):
+    """A grouped information panel displaying aggregate dataset statistics.
+
+    Shows key dataset metrics (type, subjects, channels, sample rate, etc.)
+    in a two-column table format. Auto-registers with ``InfoPanelService``
+    when available on the parent widget.
+
+    Attributes:
+        table: QTableWidget displaying key-value data rows.
+        row_map: Dictionary mapping metric names to table row indices.
+    """
+
     def __init__(self, parent=None):
+        """Initialize the aggregate info panel.
+
+        Args:
+            parent: Optional parent widget. If the parent has an
+                ``info_service`` attribute, the panel auto-registers.
+        """
         super().__init__("Aggregate Information", parent)
         self.init_ui()
 
@@ -24,6 +43,7 @@ class AggregateInfoPanel(QGroupBox):
             parent.info_service.register(self)
 
     def init_ui(self):
+        """Build the table layout with predefined metric rows."""
         # Main Layout for the GroupBox
         main_layout = QVBoxLayout(self)
         main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -132,9 +152,15 @@ class AggregateInfoPanel(QGroupBox):
         self.setStyleSheet(Stylesheets.GROUP_BOX_MINIMAL)
 
     def update_info(self, loaded_data_list=None, preprocessed_data_list=None):
-        """
-        Update the info panel with the provided data lists.
-        If preprocessed_data_list is provided and not empty, it takes precedence.
+        """Update displayed metrics from the provided data lists.
+
+        If ``preprocessed_data_list`` is non-empty it takes precedence over
+        ``loaded_data_list`` to ensure consistent information.
+
+        Args:
+            loaded_data_list: List of loaded data objects, or ``None``.
+            preprocessed_data_list: List of preprocessed data objects,
+                or ``None``.
         """
         # Always use preprocessed data if available, otherwise loaded data.
         # This ensures consistent information across all panels.
@@ -210,6 +236,12 @@ class AggregateInfoPanel(QGroupBox):
         self.set_val("Classes", str(len(classes_set)))
 
     def set_val(self, key, value):
+        """Set the display value for a specific metric row.
+
+        Args:
+            key: The metric name (must exist in ``row_map``).
+            value: The string value to display.
+        """
         if key in self.row_map:
             row = self.row_map[key]
             item = self.table.item(row, 1)
@@ -217,6 +249,7 @@ class AggregateInfoPanel(QGroupBox):
                 item.setText(value)
 
     def reset_labels(self):
+        """Reset all metric values to the default placeholder ``'-'``."""
         for i in range(self.table.rowCount()):
             item = self.table.item(i, 1)
             if item:

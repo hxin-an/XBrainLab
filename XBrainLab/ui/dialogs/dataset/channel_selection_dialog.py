@@ -1,3 +1,9 @@
+"""Channel selection dialog for picking EEG channels.
+
+Provides a searchable list interface for selecting specific channels
+from an EEG dataset, with Select All/Deselect All convenience actions.
+"""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
@@ -14,9 +20,17 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ChannelSelectionDialog(BaseDialog):
-    """
-    Dialog for selecting specific channels from an EEG dataset.
-    Provides a list of available channels with Select All/None options.
+    """Dialog for selecting specific channels from an EEG dataset.
+
+    Provides a filterable list of available channels with Select All/None
+    options and a search bar for quick channel lookup.
+
+    Attributes:
+        data_list: List of loaded EEG data objects.
+        selected_channels: List of channel names selected by the user.
+        list_widget: QListWidget displaying available channels.
+        btn_all: Button to select all channels.
+        btn_none: Button to deselect all channels.
     """
 
     def __init__(self, parent, data_list: list):
@@ -32,6 +46,7 @@ class ChannelSelectionDialog(BaseDialog):
         self.resize(300, 400)
 
     def init_ui(self):
+        """Initialize the dialog UI with search bar, channel list, and buttons."""
         layout = QVBoxLayout(self)
 
         # Search Filter
@@ -57,7 +72,11 @@ class ChannelSelectionDialog(BaseDialog):
         self.create_buttons(layout)
 
     def filter_channels(self, text: str):
-        """Filter the list widget items based on search text."""
+        """Filter the list widget items based on search text.
+
+        Args:
+            text: Search string to filter channels by (case-insensitive).
+        """
         if not self.list_widget:
             return
 
@@ -67,6 +86,11 @@ class ChannelSelectionDialog(BaseDialog):
                 item.setHidden(text.lower() not in item.text().lower())
 
     def create_buttons(self, layout: QVBoxLayout):
+        """Create Select All, Deselect All, and OK/Cancel buttons.
+
+        Args:
+            layout: Parent layout to add buttons to.
+        """
         # Select All / None
         btn_layout = QHBoxLayout()
         self.btn_all = QPushButton("Select All")
@@ -86,6 +110,11 @@ class ChannelSelectionDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def set_all_checked(self, checked):
+        """Set the check state for all items in the list.
+
+        Args:
+            checked: If True, check all items; otherwise uncheck all.
+        """
         if not self.list_widget:
             return
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
@@ -95,6 +124,11 @@ class ChannelSelectionDialog(BaseDialog):
                 item.setCheckState(state)
 
     def accept(self):
+        """Validate selection and accept the dialog.
+
+        Raises:
+            QMessageBox: Warning displayed if no channels are selected.
+        """
         if not self.list_widget:
             super().accept()
             return
@@ -113,4 +147,9 @@ class ChannelSelectionDialog(BaseDialog):
         super().accept()
 
     def get_result(self):
+        """Return the list of selected channel names.
+
+        Returns:
+            List of selected channel name strings.
+        """
         return self.selected_channels

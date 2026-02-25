@@ -1,3 +1,5 @@
+"""Dataset generator module for creating train/val/test splits from epoch data."""
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -14,23 +16,19 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class DatasetGenerator:
-    """Class for generating dataset from epoch data and splitting configuration.
+    """Generator for creating datasets from epoch data and splitting configuration.
+
+    Orchestrates the full dataset generation pipeline including test/validation
+    splitting, cross-validation fold management, and independent/full-data schemes.
 
     Attributes:
-        epoch_data: :class:`Epochs`
-            Epoch data to be splitted
-        config: :class:`DataSplittingConfig`
-            Splitting configuration
-        datasets: list[:class:`Dataset`]
-            List of generated datasets
-        interrupted: bool
-            Whether the dataset generation is interrupted
-        preview_failed: bool
-            Whether the preview failed
-        test_splitter_list: List[`DataSplitter`]
-            List of splitters for test set
-        val_splitter_list: List[`DataSplitter`]
-            List of splitters for validation set
+        epoch_data: Epoch data to be split.
+        config: Splitting configuration defining train/val/test partitioning.
+        datasets: List of generated datasets.
+        interrupted: Whether the dataset generation was interrupted.
+        preview_failed: Whether the preview generation failed.
+        test_splitter_list: List of splitters for the test set.
+        val_splitter_list: List of splitters for the validation set.
     """
 
     def __init__(
@@ -39,6 +37,16 @@ class DatasetGenerator:
         config: DataSplittingConfig,
         datasets: list[Dataset] | None = None,
     ):
+        """Initialize the dataset generator.
+
+        Args:
+            epoch_data: Epoch data to split into datasets.
+            config: Splitting configuration for partitioning.
+            datasets: Initial list of datasets. Must be empty or None.
+
+        Raises:
+            ValueError: If datasets list is non-empty.
+        """
         validate_type(epoch_data, Epochs, "epoch_data")
         validate_type(config, DataSplittingConfig, "config")
         if datasets is None:
@@ -123,21 +131,27 @@ class DatasetGenerator:
         mask: np.ndarray,
         clean_mask: np.ndarray | None,
     ) -> np.ndarray:
-        """Split the test set of the dataset.
+        """Split the test set from the dataset.
+
+        Iterates through test splitters, selecting epochs for the test set
+        and tracking remaining epochs for cross-validation.
 
         Args:
-            dataset: Dataset to be splitted
-            group_idx: Index of the group
-            mask: Mask to filter out remaining epochs,
-                  ecxluding already selected cross validation part.
-                  1D np.ndarray of bool.
-            clean_mask: Mask to filter out remaining epochs,
-                        including all available selection. 1D np.ndarray of bool.
+            dataset: Dataset instance to assign test trials to.
+            group_idx: Index of the current cross-validation group.
+            mask: Boolean mask of available epochs excluding already-selected
+                cross-validation parts.
+            clean_mask: Boolean mask of all available epochs including all
+                selectable trials. ``None`` if not in cross-validation mode.
 
         Returns:
-            Mask to filter out remaining epochs,
-            ecxluding already selected cross validation part.
-            1D np.ndarray of bool.
+            Updated mask excluding the selected cross-validation part,
+            for use in the next fold.
+
+        Raises:
+            KeyboardInterrupt: If generation was interrupted.
+            ValueError: If preview validation fails.
+            NotImplementedError: If an unsupported split type is encountered.
         """
         idx = 0
         next_mask = mask.copy()
@@ -201,11 +215,19 @@ class DatasetGenerator:
         return next_mask
 
     def split_validate(self, dataset: Dataset, group_idx: int) -> None:
-        """Split the validation set of the dataset.
+        """Split the validation set from the dataset.
+
+        Iterates through validation splitters, selecting epochs for the
+        validation set from the remaining (non-test) trials.
 
         Args:
-            dataset: Dataset to be splitted
-            group_idx: Index of the group
+            dataset: Dataset instance to assign validation trials to.
+            group_idx: Index of the current cross-validation group.
+
+        Raises:
+            KeyboardInterrupt: If generation was interrupted.
+            ValueError: If preview validation fails or split unit is unspecified.
+            NotImplementedError: If an unsupported split type is encountered.
         """
         mask = dataset.get_remaining_mask()
         idx = 0
@@ -249,11 +271,17 @@ class DatasetGenerator:
             dataset.set_val(mask)
 
     def handle(self, name_prefix: str, dataset_hook: Callable | None = None) -> None:
-        """Internal function for generating datasets
+        """Generate datasets for a given name prefix and optional hook.
+
+        Creates one or more datasets depending on whether cross-validation
+        is enabled. Each dataset is split into test, validation, and train
+        partitions.
 
         Args:
-            name_prefix: Prefix of dataset name
-            dataset_hook: Function for setting up dataset for specific scheme
+            name_prefix: Prefix for naming generated datasets (e.g. ``"Fold"``).
+            dataset_hook: Optional callable applied to each dataset before
+                splitting, used to filter epochs for specific schemes
+                (e.g. restricting to a single subject).
         """
         group_idx = 0
         remaining_mask = None
@@ -278,7 +306,18 @@ class DatasetGenerator:
             group_idx += 1
 
     def generate(self) -> list[Dataset]:
-        """Internal function for calling the dataset generation function."""
+        """Execute the dataset generation pipeline.
+
+        Delegates to the appropriate handler based on the training type
+        (individual or full-data scheme).
+
+        Returns:
+            List of generated datasets.
+
+        Raises:
+            ValueError: If the generator is not clean or no datasets were created.
+            NotImplementedError: If an unsupported training type is encountered.
+        """
         if not self.is_clean():
             raise ValueError(
                 "Dataset generation is not clean. Reset the generator and try again."
@@ -306,7 +345,14 @@ class DatasetGenerator:
         self.interrupted = True
 
     def prepare_result(self) -> list:
-        """Generate the datasets and remove unselcted datasets."""
+        """Generate datasets and filter out unselected ones.
+
+        Returns:
+            List of selected datasets.
+
+        Raises:
+            ValueError: If no valid datasets remain after filtering.
+        """
         self.generate()
         # Filter out unselected datasets efficiently
         self.datasets = [d for d in self.datasets if d.is_selected]
@@ -318,7 +364,11 @@ class DatasetGenerator:
         return self.datasets
 
     def is_clean(self) -> bool:
-        """Check if the dataset generation is clean."""
+        """Check whether the generator is in a clean state for generation.
+
+        Returns:
+            True if the generator has completed or has not been interrupted.
+        """
         return self.done or (not self.interrupted and not self.preview_failed)
 
     def reset(self) -> None:
@@ -329,7 +379,15 @@ class DatasetGenerator:
         Dataset.SEQ = 0
 
     def apply(self, study: "Study") -> None:
-        """Apply the generated datasets to the study."""
+        """Apply the generated datasets to the study.
+
+        Args:
+            study: Study instance to receive the generated datasets.
+
+        Raises:
+            TypeError: If study is not a valid Study instance.
+            ValueError: If no valid datasets were generated.
+        """
         from ..study import Study
 
         validate_type(study, Study, "study")

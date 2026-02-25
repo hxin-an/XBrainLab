@@ -1,3 +1,10 @@
+"""Central LLM agent controller.
+
+Orchestrates conversation management, the ReAct reasoning loop, tool
+execution, and communication between the UI layer and the backend
+worker thread.
+"""
+
 import json
 import logging
 import re
@@ -21,10 +28,23 @@ logger = logging.getLogger(__name__)
 
 
 class LLMController(QObject):
-    """
-    Central controller for the LLM Agent.
-    Manages conversation history, ReAct loop, and tool execution.
-    Separates logic from UI (MainWindow) and Generation (AgentWorker).
+    """Central controller for the LLM agent.
+
+    Manages conversation history with a sliding window, drives the ReAct
+    reasoning loop (parse → verify → execute → feedback), and bridges
+    UI signals with the background ``AgentWorker``.
+
+    Attributes:
+        study: The application Study object providing experiment state.
+        registry: Tool registry holding all registered tools.
+        assembler: Context assembler for building system prompts.
+        verifier: Verification layer for validating tool calls.
+        rag_retriever: RAG retriever for augmenting prompts with examples.
+        worker_thread: Background QThread running the AgentWorker.
+        worker: AgentWorker performing LLM inference.
+        history: List of message dicts representing conversation history.
+        current_response: Accumulated text of the current LLM response.
+        is_processing: Flag indicating whether a generation is in progress.
     """
 
     # Signals to UI
@@ -45,6 +65,14 @@ class LLMController(QObject):
     MAX_HISTORY = 20
 
     def __init__(self, study):
+        """Initializes the LLMController.
+
+        Sets up the tool registry, context assembler, verification layer,
+        RAG retriever, and background worker thread.
+
+        Args:
+            study: The application Study object providing experiment context.
+        """
         super().__init__()
         self.study = study
 
@@ -96,7 +124,11 @@ class LLMController(QObject):
         self._max_tool_failures = 3
 
     def initialize(self):
-        """Initialize the underlying worker/engine."""
+        """Initializes the underlying worker engine and RAG retriever.
+
+        Emits the initialization signal to the worker thread and starts
+        RAG initialization in a separate daemon thread.
+        """
         self.sig_initialize.emit()
 
         # Start RAG initialization in a separate thread to not block UI
@@ -104,7 +136,12 @@ class LLMController(QObject):
         threading.Thread(target=self.rag_retriever.initialize, daemon=True).start()
 
     def _append_history(self, role: str, content: str):
-        """Append to history and prune if necessary."""
+        """Appends a message to history and prunes to the sliding window.
+
+        Args:
+            role: Message role (``'user'``, ``'assistant'``, or ``'system'``).
+            content: The message text.
+        """
         self.history.append({"role": role, "content": content})
 
         # Sliding Window: Keep last N turns (N=20 ≈ 10 user-assistant pairs)
@@ -112,7 +149,15 @@ class LLMController(QObject):
             self.history = self.history[-self.MAX_HISTORY :]
 
     def handle_user_input(self, text: str):
-        """Entry point for user input from UI."""
+        """Entry point for user input from the UI.
+
+        Appends the user message to history, retrieves RAG context, and
+        triggers LLM generation.  Ignores empty input or input received
+        while the agent is already processing.
+
+        Args:
+            text: The user's input text.
+        """
         if not text.strip():
             return
 
@@ -143,7 +188,11 @@ class LLMController(QObject):
         self._generate_response()
 
     def _generate_response(self):
-        """Triggers the LLM generation based on current history."""
+        """Triggers LLM generation based on the current history.
+
+        Builds the full message list via the assembler, resets the
+        response accumulator, and emits signals to the worker thread.
+        """
         # Use Assembler to construct messages (Dynamic Prompting)
         messages = self.assembler.get_messages(self.history)
         self.current_response = ""  # Reset accumulator
@@ -158,7 +207,15 @@ class LLMController(QObject):
         self.sig_generate.emit(messages)
 
     def _on_chunk_received(self, chunk: str):
-        """Accumulate chunk and stream to UI with speculative buffering."""
+        """Accumulates a streaming chunk and forwards it to the UI.
+
+        Implements speculative buffering: the first few characters are
+        held back to detect tool-call JSON signatures before deciding
+        whether to stream or suppress the output.
+
+        Args:
+            chunk: A text fragment received from the LLM generation stream.
+        """
         self.current_response += chunk
 
         # Heuristic: Determine if we should buffer (hide) this output
@@ -167,8 +224,6 @@ class LLMController(QObject):
             # Buffer the first few chars to identify tool calls vs text
             return
 
-        # 2. Check for Tool Signatures
-        stripped = self.current_response.strip()
         # 2. Check for Tool Signatures
         stripped = self.current_response.strip()
         is_tool_start = stripped.startswith(("{", "Request:"))
@@ -191,7 +246,11 @@ class LLMController(QObject):
             pass
 
     def _on_generation_finished(self):
-        """Called when LLM finishes generating one turn."""
+        """Handles completion of one LLM generation turn.
+
+        Parses the accumulated response for tool commands, retries on
+        broken JSON, or finalizes the turn if no commands are found.
+        """
         response_text = self.current_response.strip()
 
         # Flush buffer if we detained text thinking it was a tool, but it's not
@@ -219,9 +278,20 @@ class LLMController(QObject):
     def _handle_json_broken_retry(
         self, response_text: str, command_result: Any
     ) -> bool:
-        """
-        Checks if output looks like broken JSON and triggers retry.
-        Returns True if retry was triggered (caller should return).
+        """Checks for broken JSON output and triggers a retry if needed.
+
+        If the response looks like a JSON tool call but failed parsing,
+        appends an error hint to history and re-triggers generation up to
+        ``_max_retries`` times.
+
+        Args:
+            response_text: The full accumulated LLM response.
+            command_result: The result from ``CommandParser.parse``, or
+                ``None`` if parsing failed.
+
+        Returns:
+            ``True`` if a retry was triggered (caller should return early),
+            ``False`` otherwise.
         """
         if command_result:
             return False
@@ -253,7 +323,16 @@ class LLMController(QObject):
         return False
 
     def _process_tool_calls(self, command_result: Any, response_text: str):
-        """Iterates through parsed commands and executes them."""
+        """Iterates through parsed commands and executes them.
+
+        Verifies each command via the verification layer, executes valid
+        calls, feeds tool output back into history, and decides whether
+        to retry on failure or finalize the turn on success.
+
+        Args:
+            command_result: Parsed command(s) from ``CommandParser.parse``.
+            response_text: The raw LLM response text (used for UI hiding).
+        """
         commands = (
             command_result if isinstance(command_result, list) else [command_result]
         )
@@ -337,19 +416,24 @@ class LLMController(QObject):
             self._finalize_turn_after_tool()
 
     def _finalize_turn_after_tool(self):
-        """Finalizes turn immediately after tool execution (Safe Mode)."""
-        # We don't generate more text. We just stop.
-        # But we ensure the UI knows we are done.
+        """Finalizes the turn after tool execution.
+
+        Stops generation and signals the UI that the agent is ready for
+        new input (Safe Mode — does not auto-generate follow-up text).
+        """
         self.status_update.emit("Ready")
         self.is_processing = False
-
-        # Optional: If the tool output is hidden, the user sees nothing?
-        # The user said "Tool call doesn't show...".
-        # If we successfully hid the tool call JSON, the chat is blank?
-        # We might want to show a standard "Action Completed" if silence.
+        self.processing_finished.emit()
 
     def _handle_loop_detected(self, cmd: str):
-        """Handles logic when a loop is detected."""
+        """Handles detection of a repeated tool-call loop.
+
+        Injects a system message into history informing the LLM of the
+        loop and re-triggers generation to break the cycle.
+
+        Args:
+            cmd: The tool name that was called repeatedly.
+        """
         msg = (
             f"System: Loop detected. You have called '{cmd}' "
             "with these params multiple times. Stop."
@@ -359,16 +443,29 @@ class LLMController(QObject):
         self._generate_response()
 
     def _finalize_turn(self, response_text: str):
-        """Finalizes the turn when no commands are present."""
+        """Finalizes the turn when no tool commands are present.
+
+        Appends the assistant response to history and emits the
+        ``processing_finished`` signal.
+
+        Args:
+            response_text: The assistant's final response text.
+        """
         self._append_history("assistant", response_text)
         self.status_update.emit("Ready")
         self.is_processing = False
         self.processing_finished.emit()
 
     def _execute_tool_no_loop(self, command_name, params):
-        """
-        Executes tool and returns (success, result_str).
-        Does NOT trigger generation.
+        """Executes a single tool call without triggering generation.
+
+        Args:
+            command_name: Name of the tool to execute.
+            params: Dictionary of parameters to pass to the tool.
+
+        Returns:
+            A ``(success, result_str)`` tuple where *success* is a bool
+            and *result_str* is the tool's output or an error message.
         """
         tool = get_tool_by_name(command_name)
         if tool:
@@ -385,9 +482,15 @@ class LLMController(QObject):
             return False, f"Error: Unknown tool '{command_name}'"
 
     def _detect_loop(self, current_call_signature) -> bool:
-        """
-        Check if the same tool call has been made > 3 times recently.
-        current_call_signature: (cmd_name, params_str)
+        """Checks whether the same tool call has been made excessively.
+
+        Args:
+            current_call_signature: A ``(cmd_name, params_str)`` tuple
+                uniquely identifying the tool call.
+
+        Returns:
+            ``True`` if the signature appears 3 or more times in the
+            recent call history.
         """
         count = 0
         for call in self._recent_tool_calls:
@@ -396,7 +499,20 @@ class LLMController(QObject):
         return count >= 3
 
     def _handle_tool_result_logic(self, result: str, success: bool = True):
-        """Processes tool result for UI side effects (Switch Panel, etc)."""
+        """Processes tool output for UI side effects.
+
+        Detects special ``Request:`` prefixed results (e.g. panel switches,
+        montage confirmations) and emits the appropriate interaction
+        signals to the UI.
+
+        Args:
+            result: The tool's output string.
+            success: Whether the tool execution was successful.
+
+        Returns:
+            ``True`` if the result triggered a UI interaction signal,
+            ``False`` otherwise.
+        """
         if result.startswith("Request:"):
             # Format: "Request: CMD params... (View: view_mode)"
             # Example: "Request: Switch UI to 'visualization' (View: 3d_plot)"
@@ -421,7 +537,6 @@ class LLMController(QObject):
 
             # Handle confirm_montage requests
             if "confirm_montage" in cmd_part.lower():
-                # Extract montage name: "confirm_montage 'standard_1020'"
                 # Extract montage name: "confirm_montage 'standard_1020'"
                 pattern = r"confirm_montage\s+['\"](\w+)['\"]"
                 montage_match = re.search(pattern, cmd_part, re.IGNORECASE)
@@ -453,13 +568,13 @@ class LLMController(QObject):
         self.processing_finished.emit()
 
     def close(self):
-        """Cleanup thread."""
+        """Shuts down the worker thread and cleans up resources."""
         if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
             self.worker_thread.quit()
             self.worker_thread.wait()
 
     def stop_generation(self):
-        """Stops the current generation process."""
+        """Stops the current generation process and resets processing state."""
         if self.is_processing:
             self.status_update.emit("Stopping...")
             self.is_processing = False
@@ -468,7 +583,12 @@ class LLMController(QObject):
             self.worker_thread.requestInterruption()
 
     def set_model(self, model_display_name: str):
-        """Updates the model configuration."""
+        """Switches the active LLM model.
+
+        Args:
+            model_display_name: Display name or identifier of the model
+                to switch to (e.g. ``'Gemini'``, ``'Local'``).
+        """
         # Map Display Name to Model ID
         # "Gemini", "Local"
         # We pass these directly to worker.reinitialize_agent which now handles logic
@@ -478,7 +598,7 @@ class LLMController(QObject):
         self.sig_reinit.emit(_mode_id)
 
     def reset_conversation(self):
-        """M0.3: Reset conversation history and state."""
+        """Resets conversation history and all internal state counters."""
         self.history.clear()
         self.current_response = ""
         self._retry_count = 0
@@ -491,7 +611,15 @@ class LLMController(QObject):
         self.status_update.emit("Conversation reset.")
 
     def execute_debug_tool(self, tool_name: str, params: dict):
-        """M3.1: Execute a tool directly from Debug Mode (bypassing LLM generation)."""
+        """Executes a tool directly, bypassing LLM generation.
+
+        Used by Debug Mode to invoke tools manually.  The call and its
+        result are recorded in conversation history.
+
+        Args:
+            tool_name: Name of the tool to execute.
+            params: Dictionary of parameters for the tool.
+        """
 
         logger.info(f"Debug Execution: {tool_name} with {params}")
 

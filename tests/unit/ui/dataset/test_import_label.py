@@ -1,18 +1,13 @@
-import sys
 from unittest.mock import patch
 
-import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QDialog
 
 from XBrainLab.ui.dialogs.dataset import (
     EventFilterDialog,
     ImportLabelDialog,
     LabelMappingDialog,
 )
-
-# Ensure QApplication exists
-app = QApplication.instance() or QApplication(sys.argv)
 
 
 def test_import_label_dialog_init(qtbot):
@@ -112,7 +107,3 @@ def test_label_mapping_dialog(qtbot):
     mapping = dialog.get_mapping()
     assert mapping["/path/sub01.set"] == "/path/sub01_labels.txt"
     assert mapping["/path/sub02.set"] == "/path/sub02_labels.txt"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

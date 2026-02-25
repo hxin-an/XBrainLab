@@ -1,3 +1,10 @@
+"""Real implementations of EEG preprocessing tools.
+
+These tools interact with the ``BackendFacade`` to apply actual
+preprocessing operations (filtering, resampling, normalisation, etc.)
+to the loaded EEG data.
+"""
+
 from typing import Any
 
 from XBrainLab.backend.facade import BackendFacade
@@ -16,7 +23,21 @@ from ..definitions.preprocess_def import (
 
 
 class RealStandardPreprocessTool(BaseStandardPreprocessTool):
+    """Real implementation of :class:`BaseStandardPreprocessTool`.
+
+    Applies a full preprocessing pipeline (bandpass, notch, resample,
+    re-reference, normalise) via :class:`BackendFacade`.
+    """
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data before preprocessing.
+
+        Args:
+            study: The global ``Study`` instance.
+
+        Returns:
+            ``True`` if data has been loaded.
+        """
         return bool(study.loaded_data_list)
 
     def execute(
@@ -30,6 +51,22 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
         normalize_method: str = "z-score",
         **kwargs,
     ) -> str:
+        """Apply the standard preprocessing pipeline.
+
+        Args:
+            study: The global ``Study`` instance.
+            l_freq: Lower bandpass cutoff in Hz.
+            h_freq: Upper bandpass cutoff in Hz.
+            notch_freq: Notch filter frequency in Hz.
+            rereference: Re-reference method (e.g., ``'average'``).
+            resample_rate: Target sampling rate in Hz.
+            normalize_method: Normalisation method (``'z-score'`` or
+                ``'min-max'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A success message or an error description.
+        """
         facade = BackendFacade(study)
 
         try:
@@ -59,7 +96,10 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
 
 
 class RealBandPassFilterTool(BaseBandPassFilterTool):
+    """Real implementation of :class:`BaseBandPassFilterTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(
@@ -69,6 +109,17 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
         high_freq: float | None = None,
         **kwargs,
     ) -> str:
+        """Apply a bandpass filter to loaded EEG data.
+
+        Args:
+            study: The global ``Study`` instance.
+            low_freq: Lower cutoff frequency in Hz.
+            high_freq: Upper cutoff frequency in Hz.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if low_freq is None or high_freq is None:
             return "Error: low_freq and high_freq are required."
 
@@ -78,10 +129,23 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
 
 
 class RealNotchFilterTool(BaseNotchFilterTool):
+    """Real implementation of :class:`BaseNotchFilterTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, freq: float | None = None, **kwargs) -> str:
+        """Apply a notch filter to remove power-line noise.
+
+        Args:
+            study: The global ``Study`` instance.
+            freq: Notch frequency in Hz.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if freq is None:
             return "Error: freq is required."
 
@@ -91,10 +155,23 @@ class RealNotchFilterTool(BaseNotchFilterTool):
 
 
 class RealResampleTool(BaseResampleTool):
+    """Real implementation of :class:`BaseResampleTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, rate: int | None = None, **kwargs) -> str:
+        """Resample the loaded EEG data to a new sampling rate.
+
+        Args:
+            study: The global ``Study`` instance.
+            rate: Target sampling rate in Hz.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if rate is None:
             return "Error: rate is required."
 
@@ -104,10 +181,23 @@ class RealResampleTool(BaseResampleTool):
 
 
 class RealNormalizeTool(BaseNormalizeTool):
+    """Real implementation of :class:`BaseNormalizeTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
+        """Normalise the loaded EEG data.
+
+        Args:
+            study: The global ``Study`` instance.
+            method: Normalisation method (``'z-score'`` or ``'min-max'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if method is None:
             return "Error: method is required."
 
@@ -117,10 +207,23 @@ class RealNormalizeTool(BaseNormalizeTool):
 
 
 class RealRereferenceTool(BaseRereferenceTool):
+    """Real implementation of :class:`BaseRereferenceTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
+        """Set the EEG reference.
+
+        Args:
+            study: The global ``Study`` instance.
+            method: Reference method (e.g., ``'average'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if method is None:
             return "Error: method is required."
 
@@ -130,10 +233,23 @@ class RealRereferenceTool(BaseRereferenceTool):
 
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
+    """Real implementation of :class:`BaseChannelSelectionTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, channels: list[str] | None = None, **kwargs) -> str:
+        """Select specific EEG channels to keep.
+
+        Args:
+            study: The global ``Study`` instance.
+            channels: List of channel names to retain.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation or error message.
+        """
         if channels is None:
             return "Error: channels list is required."
 
@@ -143,10 +259,27 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
 
 
 class RealSetMontageTool(BaseSetMontageTool):
+    """Real implementation of :class:`BaseSetMontageTool`.
+
+    Requests UI confirmation instead of auto-applying, allowing the
+    user to visually verify the channel-to-electrode mapping.
+    """
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, montage_name: str | None = None, **kwargs) -> str:
+        """Request montage application with UI confirmation.
+
+        Args:
+            study: The global ``Study`` instance.
+            montage_name: Standard montage name (e.g., ``'standard_1020'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A request string for UI confirmation, or an error message.
+        """
         if montage_name is None:
             return "Error: montage_name is required."
 
@@ -156,7 +289,10 @@ class RealSetMontageTool(BaseSetMontageTool):
 
 
 class RealEpochDataTool(BaseEpochDataTool):
+    """Real implementation of :class:`BaseEpochDataTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require loaded data."""
         return bool(study.loaded_data_list)
 
     def execute(
@@ -168,6 +304,19 @@ class RealEpochDataTool(BaseEpochDataTool):
         event_id: list[str] | None = None,  # Note: Definitions use 'event_id'
         **kwargs,
     ) -> str:
+        """Epoch continuous EEG data based on event markers.
+
+        Args:
+            study: The global ``Study`` instance.
+            t_min: Start time of each epoch in seconds.
+            t_max: End time of each epoch in seconds.
+            baseline: Baseline correction interval ``[start, end]``.
+            event_id: Event identifiers to epoch around.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation message or an error description.
+        """
         facade = BackendFacade(study)
 
         try:

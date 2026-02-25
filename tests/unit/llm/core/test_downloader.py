@@ -2,18 +2,8 @@ import multiprocessing
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QCoreApplication
 
 from XBrainLab.llm.core.downloader import ModelDownloader
-
-
-# Ensure QApp exists for signals
-@pytest.fixture(scope="session", autouse=True)
-def qapp():
-    app = QCoreApplication.instance()
-    if app is None:
-        app = QCoreApplication([])
-    yield app
 
 
 # Mock multiprocessing.Process AND Queue

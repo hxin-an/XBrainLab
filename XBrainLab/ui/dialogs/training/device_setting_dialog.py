@@ -1,3 +1,8 @@
+"""Device selection dialog for choosing CPU or GPU computation device.
+
+Lists available CUDA devices alongside the CPU option for model training.
+"""
+
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QListWidget,
@@ -12,9 +17,15 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class DeviceSettingDialog(BaseDialog):
-    """
-    Dialog for selecting the computation device (CPU or specific GPU).
-    Lists available CUDA devices if present.
+    """Dialog for selecting the computation device (CPU or specific GPU).
+
+    Lists available CUDA devices if present and defaults to the last
+    GPU or CPU.
+
+    Attributes:
+        use_cpu: Whether CPU was selected.
+        gpu_idx: Index of the selected GPU, or None if CPU.
+        device_list: QListWidget displaying available devices.
     """
 
     def __init__(self, parent):
@@ -28,6 +39,7 @@ class DeviceSettingDialog(BaseDialog):
         self.resize(300, 400)
 
     def init_ui(self):
+        """Initialize the dialog UI with a device list and buttons."""
         layout = QVBoxLayout(self)
 
         self.device_list = QListWidget()
@@ -53,13 +65,14 @@ class DeviceSettingDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def confirm(self):
+        """Legacy confirm handler (no-op, logic moved to accept)."""
         # Override accept? Or confirm is accept logic?
         # Original called confirm() on accepted signal.
         # I'll rename to accept? No, standard is accept() overrides QDialog.accept
         # But BaseDialog doesn't enforce. UI connects logic.
-        pass
 
     def accept(self):
+        """Store the selected device and accept the dialog."""
         # Logic from confirm()
         if not self.device_list:
             super().accept()
@@ -75,4 +88,10 @@ class DeviceSettingDialog(BaseDialog):
         super().accept()
 
     def get_result(self):
+        """Return the selected device configuration.
+
+        Returns:
+            Tuple of (use_cpu, gpu_idx) where use_cpu is a bool and
+            gpu_idx is an int or None.
+        """
         return self.use_cpu, self.gpu_idx

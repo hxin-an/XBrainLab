@@ -1,3 +1,9 @@
+"""Optimizer configuration dialog for selecting and parameterizing optimizers.
+
+Dynamically loads available PyTorch optimizers and their parameters,
+allowing users to configure training optimization settings.
+"""
+
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -23,9 +29,17 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class OptimizerSettingDialog(BaseDialog):
-    """
-    Dialog for configuring the training optimizer (e.g., Adam, SGD).
-    Dynamically loads optimizer parameters.
+    """Dialog for configuring the training optimizer (e.g., Adam, SGD).
+
+    Dynamically loads optimizer classes and generates parameter tables
+    with validation on acceptance.
+
+    Attributes:
+        optim: Selected optimizer class after acceptance.
+        optim_params: Dictionary of optimizer parameters.
+        algo_map: Dictionary mapping optimizer names to classes.
+        algo_combo: QComboBox for selecting the optimizer algorithm.
+        params_table: QTableWidget displaying configurable parameters.
     """
 
     def __init__(self, parent):
@@ -46,6 +60,7 @@ class OptimizerSettingDialog(BaseDialog):
             self.on_algo_select(next(iter(self.algo_map.keys())))
 
     def init_ui(self):
+        """Initialize dialog UI: algorithm combo, parameter table, buttons."""
         layout = QVBoxLayout(self)
 
         # Algorithm Selection
@@ -78,6 +93,11 @@ class OptimizerSettingDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def on_algo_select(self, algo_name):
+        """Populate the parameter table for the selected optimizer.
+
+        Args:
+            algo_name: Name of the selected optimizer algorithm.
+        """
         if not self.params_table:
             return
         target = self.algo_map[algo_name]
@@ -94,6 +114,12 @@ class OptimizerSettingDialog(BaseDialog):
                 self.params_table.setItem(i, 1, QTableWidgetItem(val))
 
     def accept(self):
+        """Parse and validate optimizer parameters, then accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if parameter validation or test
+                instantiation fails.
+        """
         if not self.algo_combo or not self.params_table:
             return
         optim_params = {}
@@ -130,4 +156,9 @@ class OptimizerSettingDialog(BaseDialog):
             QMessageBox.warning(self, "Validation Error", f"Invalid parameter: {e}")
 
     def get_result(self):
+        """Return the selected optimizer class and parameters.
+
+        Returns:
+            Tuple of (optimizer_class, optimizer_params_dict).
+        """
         return self.optim, self.optim_params

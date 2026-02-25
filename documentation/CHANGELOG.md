@@ -2,59 +2,6 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
-## [0.6.1] - 2026-02-13
-### Fixed
-- **Phase 1 — Critical Runtime Fixes**:
-    - **A-01**: `processing_finished` signal 現在正確在 `_finalize_turn` 中發送，修復 UI 狀態重置問題。
-    - **C-01**: 修復 `engine.py` 中 Gemini stale model 檢查的不可達程式碼（`elif` 縮排錯誤）。
-    - **U-01**: 移除 `AgentManager` 中重複的 `clicked.connect` 訊號連接。
-    - **D-01**: 移除 `tool_executor.py` 中 `return` 之後的不可達 dead code。
-- **Phase 2 — Error Handling & Logic**:
-    - **C-03**: 修復 `api.py` 及 `gemini.py` 中 `try-except` 吞掉異常的問題，改為讓異常自然傳播。
-    - **X-01**: 修復所有 `raise e` 反模式為 `raise`，保留完整 traceback：
-        - `indexer.py`, `local.py`, `preprocess_controller.py`, `dataset_controller.py`
-    - **A-03**: 統一歷史記錄管理邏輯 — `Assembler` 不再獨立裁切歷史，由 `Controller.MAX_HISTORY` 統一管理。
-    - **R-02**: `indexer.py` 的 RAG 選用依賴 (`langchain`, `qdrant`) 以 `try-except ImportError` 保護，避免缺少套件時應用崩潰。
-
-### Removed
-- **A-02**: 刪除已棄用的 `prompt_manager.py`（功能已由 `ContextAssembler` 完全取代）。
-- 刪除對應的測試檔案 `test_prompt_manager.py`。
-
-### Refactored
-- **T-01**: 將 `llm/tools/real/registry.py` 重新命名為 `backend_resolver.py`，避免與 `tool_registry.py` 混淆。
-- **Controller 清理**: 合併 `controller.py` 中的重複註解，清理歷史裁切邏輯。
-
-### Changed
-- **pyproject.toml**:
-    - 新增 5 個檔案的 `PLC0415` (lazy import) Ruff 忽略規則。
-    - Mypy 排除清單新增 `XBrainLab/llm/rag`（optional dependency 模組）。
-
-## [0.6.0] - 2026-02-09
-### Added
-- **BackendFacade**: 新增 `backend/facade.py` 提供統一高層 API，讓 Agent 無需直接存取 Controller。
-- **Benchmark System**:
-    - `scripts/benchmark/simple_bench.py`: 全新 Agent 認知基準測試框架。
-    - `scripts/benchmark/audit_dataset.py` / `patch_dataset.py`: 測試資料集管理工具。
-- **驗證腳本**:
-    - `scripts/verify_headless.py`: Headless 環境驗證。
-    - `scripts/verify_lazy_import.py`: Lazy Import 合規驗證。
-    - `scripts/verify_rag.py`: RAG 子系統驗證。
-- **新測試**:
-    - `test_facade_headless.py`, `test_worker.py`, `test_worker_timeout.py`
-    - `test_engine.py`, `test_indexer.py`, `test_retriever.py`
-    - `test_agent_tools.py`, `test_architecture.py`
-    - UI 測試: `test_message_bubble.py`, `test_observer_bridge.py`, `test_ui_structure_refactored.py`
-
-### Refactored
-- **Event-Driven Migration**: 完成所有 Controller 的事件驅動架構遷移。
-- **Test Infrastructure**: 大規模整理測試目錄結構，移除過時測試檔案，新增架構合規測試。
-- **Debug Cleanup**: 清理除錯檔案並解決循環依賴問題。
-
-### Fixed
-- **Global Lint Compliance**: 修復全域 Ruff/Mypy 錯誤，達成 Pre-commit 全通過。
-- **Test Repairs**: 修復多個因重構導致的測試回歸，確保 2000+ 測試通過。
-
-
 ## [0.5.2] - 2026-02-05
 ### Added
 - **Real Tool Testing Platform (M3)**:

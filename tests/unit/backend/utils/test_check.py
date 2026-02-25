@@ -60,7 +60,7 @@ def test_validate_issubclass():
     answer = ".*test_check.B"
     with pytest.raises(
         TypeError,
-        match=r"test must be an instance of builtins.int, got .*test_check.B instead.",
+        match=r"test must be a subclass of builtins.int, got .*test_check.B instead.",
     ):
         check.validate_issubclass(B, int, "test")
     with pytest.raises(

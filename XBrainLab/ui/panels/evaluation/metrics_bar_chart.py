@@ -1,3 +1,5 @@
+"""Bar chart widget for per-class precision, recall, and F1-score visualization."""
+
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -7,11 +9,28 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class MetricsBarChartWidget(QWidget):
+    """Widget for rendering a grouped bar chart of classification metrics.
+
+    Displays precision, recall, and F1-score per class using a
+    matplotlib bar chart with dark-theme styling.
+
+    Attributes:
+        fig: Current ``matplotlib.figure.Figure`` instance.
+        canvas: ``FigureCanvas`` embedding the figure into Qt.
+        ax: The matplotlib ``Axes`` used for plotting.
+    """
+
     def __init__(self, parent=None):
+        """Initialize the metrics bar chart widget.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.init_ui()
 
     def init_ui(self):
+        """Build the initial layout with a placeholder bar chart."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 

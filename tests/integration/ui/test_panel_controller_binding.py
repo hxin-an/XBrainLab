@@ -67,10 +67,7 @@ class TestPanelControllerBinding:
         """Test 'training_updated' event failsafe."""
         # This test ensures that receiving the event doesn't crash the UI
         # even if data is empty.
-        try:
-            training_panel.update_loop()  # Correct method name
-        except Exception as e:
-            pytest.fail(f"UI crashed on training update: {e}")
+        training_panel.update_loop()
 
     def test_controller_resolution(self, training_panel, mock_study):
         """Verify panel correctly resolved the controller from study."""

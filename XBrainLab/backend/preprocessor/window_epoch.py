@@ -1,3 +1,5 @@
+"""Preprocessor for segmenting continuous EEG using a sliding window."""
+
 import mne
 
 from ..load_data import Raw
@@ -5,14 +7,19 @@ from .base import PreprocessBase
 
 
 class WindowEpoch(PreprocessBase):
-    """Class for epoching data by sliding window
+    """Segments continuous (raw) EEG data into fixed-length sliding-window epochs.
 
-    Input:
-        duration: Window duration in seconds
-        overlap: Window overlap in seconds
+    Creates epochs of a given duration with optional overlap. The data must
+    be raw (not already epoched) and must contain exactly one event label.
     """
 
     def check_data(self):
+        """Validates that data is raw and contains exactly one event label.
+
+        Raises:
+            ValueError: If data is already epoched, has no event markers,
+                or has more than one event label.
+        """
         super().check_data()
         for preprocessed_data in self.preprocessed_data_list:
             if not preprocessed_data.is_raw():
@@ -29,9 +36,26 @@ class WindowEpoch(PreprocessBase):
                 )
 
     def get_preprocess_desc(self, duration: float, overlap: float):
+        """Returns a description of the window-epoch step.
+
+        Args:
+            duration: Window duration in seconds.
+            overlap: Overlap between consecutive windows in seconds.
+
+        Returns:
+            A string describing the sliding-window epoching parameters.
+        """
         return f"Epoching {duration}s ({overlap}s overlap) by sliding window"
 
     def _data_preprocess(self, preprocessed_data: Raw, duration: float, overlap: float):
+        """Segments a single raw data instance into sliding-window epochs.
+
+        Args:
+            preprocessed_data: The raw data instance to epoch.
+            duration: Window duration in seconds.
+            overlap: Overlap between consecutive windows in seconds.
+                An empty string is treated as ``0.0``.
+        """
         mne_data = preprocessed_data.get_mne()
         duration = float(duration)
         overlap = 0.0 if overlap == "" else float(overlap)

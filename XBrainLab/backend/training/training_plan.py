@@ -1,3 +1,5 @@
+"""Training plan management, including data loading, training loops, and evaluation."""
+
 from __future__ import annotations
 
 import datetime
@@ -23,20 +25,51 @@ from .record import RecordKey, TrainRecord, TrainRecordKey
 
 
 class SharedMemoryDataset(torch_data.Dataset):
-    """Dataset that references original data to save RAM/VRAM."""
+    """A PyTorch Dataset that references shared numpy arrays to save RAM/VRAM.
+
+    Data is transferred to the target device only when accessed via
+    ``__getitem__``, avoiding upfront copies of the full dataset.
+
+    Attributes:
+        data: Full data array shared across all splits.
+        labels: Full label array shared across all splits.
+        indices: Array of indices into ``data`` and ``labels`` for this split.
+        device: Target PyTorch device string (e.g., ``'cpu'`` or ``'cuda:0'``).
+    """
 
     def __init__(
         self, data: np.ndarray, labels: np.ndarray, indices: np.ndarray, device: str
     ):
+        """Initialize the shared memory dataset.
+
+        Args:
+            data: Full data array of shape ``(N, ...)``, shared across splits.
+            labels: Full label array of shape ``(N,)``.
+            indices: Integer array of sample indices for this split.
+            device: Target PyTorch device string.
+        """
         self.data = data
         self.labels = labels
         self.indices = indices
         self.device = device
 
     def __len__(self):
+        """Return the number of samples in this split.
+
+        Returns:
+            The number of indices in this dataset split.
+        """
         return len(self.indices)
 
     def __getitem__(self, idx):
+        """Retrieve a single sample and transfer it to the target device.
+
+        Args:
+            idx: Index into :attr:`indices`.
+
+        Returns:
+            A tuple of ``(input_tensor, label_tensor)`` on the target device.
+        """
         real_idx = self.indices[idx]
         # Data is transferred to device only when accessed (saves VRAM)
         x = torch.from_numpy(self.data[real_idx]).float().to(self.device)
@@ -52,7 +85,20 @@ def to_holder(
     bs: int,
     shuffle: bool = False,
 ) -> torch_data.DataLoader | None:
-    """Convert data to torch dataloader using SharedMemoryDataset"""
+    """Convert data arrays into a PyTorch DataLoader using shared memory.
+
+    Args:
+        data: Full data array of shape ``(N, ...)``.
+        labels: Full label array of shape ``(N,)``.
+        indices: Integer array of sample indices for this split.
+        dev: Target PyTorch device string.
+        bs: Batch size.
+        shuffle: Whether to shuffle the data. Defaults to ``False``.
+
+    Returns:
+        A :class:`torch.utils.data.DataLoader` wrapping a
+        :class:`SharedMemoryDataset`, or ``None`` if ``indices`` is empty.
+    """
 
     if len(indices) == 0:
         return None
@@ -66,7 +112,15 @@ def to_holder(
 
 
 class Status(Enum):
-    """Utility class for training status"""
+    """Enumeration of training plan execution states.
+
+    Attributes:
+        DONE: Training has completed.
+        PENDING: Training has not started yet.
+        INIT: Initializing a specific training repeat.
+        EVAL: Evaluating a specific training repeat.
+        TRAIN: Training a specific repeat.
+    """
 
     DONE = "Finished"
     PENDING = "Pending"
@@ -106,6 +160,22 @@ class TrainingPlanHolder:
         option: TrainingOption,
         saliency_params: dict | None,
     ):
+        """Initialize the training plan holder.
+
+        Creates :class:`TrainRecord` instances for each repetition, each with
+        a fresh model and random seed.
+
+        Args:
+            model_holder: Holder containing the model class and parameters.
+            dataset: Dataset providing training, validation, and test splits.
+            option: Training configuration options.
+            saliency_params: Parameters for saliency computation methods.
+                If ``None`` or empty, default parameters are used.
+
+        Raises:
+            ValueError: If the dataset, option, or model holder is invalid,
+                or if model creation fails due to incompatible parameters.
+        """
         self.model_holder = model_holder
         self.dataset = dataset
         self.option = option
@@ -154,7 +224,12 @@ class TrainingPlanHolder:
             )
 
     def check_data(self) -> None:
-        """Check whether the training plan is valid"""
+        """Validate that the training plan has valid dataset, option, and model.
+
+        Raises:
+            ValueError: If any required component is ``None`` or invalid.
+            TypeError: If components are not of the expected types.
+        """
         if self.dataset is None:
             raise ValueError("dataset cannot be None")
         if not self.dataset.get_epoch_data():
@@ -171,7 +246,12 @@ class TrainingPlanHolder:
 
     # interact
     def train(self) -> None:
-        """Train the model"""
+        """Execute the full training process for all repetitions.
+
+        Iterates through each :class:`TrainRecord` and trains it. On completion,
+        updates the status to ``DONE`` or ``PENDING``. On exception, stores the
+        error message.
+        """
         try:
             for i in range(self.option.repeat_num):
                 self.status = Status.INIT.value.format(
@@ -197,7 +277,12 @@ class TrainingPlanHolder:
         torch_data.DataLoader | None,
         torch_data.DataLoader | None,
     ]:
-        """Return the data loader for training, validation and testing"""
+        """Create data loaders for training, validation, and testing splits.
+
+        Returns:
+            A tuple of ``(train_loader, val_loader, test_loader)``. Any loader
+            may be ``None`` if the corresponding split has no samples.
+        """
         bs = self.option.bs
         dev = self.option.get_device()
 
@@ -227,7 +312,23 @@ class TrainingPlanHolder:
         val_loader: torch_data.DataLoader | None,
         test_loader: torch_data.DataLoader | None,
     ) -> tuple[torch.nn.Module | None, torch_data.DataLoader | None]:
-        """Return the model and data loader for evaluation based on given option"""
+        """Select the best model and data loader for final evaluation.
+
+        The model selection depends on the configured
+        :attr:`option.evaluation_option` strategy.
+
+        Args:
+            train_record: The training record containing best model state dicts.
+            val_loader: Validation data loader, or ``None``.
+            test_loader: Test data loader, or ``None``.
+
+        Returns:
+            A tuple of ``(model, data_loader)`` for evaluation. Either may be
+            ``None`` if no suitable model or data is available.
+
+        Raises:
+            NotImplementedError: If the evaluation option is not recognized.
+        """
         target_model = target_loader = None
         target_model = self.model_holder.get_model(
             self.dataset.get_epoch_data().get_model_args()
@@ -419,7 +520,16 @@ class TrainingPlanHolder:
         return running_loss, correct, total_count, y_true, y_pred
 
     def _update_train_records(self, train_record, loss, acc, auc, lr, duration):
-        """Update training statistics."""
+        """Update training record with loss, accuracy, AUC, learning rate, and time.
+
+        Args:
+            train_record: The :class:`TrainRecord` to update.
+            loss: Training loss for the current epoch.
+            acc: Training accuracy for the current epoch.
+            auc: Training AUC for the current epoch.
+            lr: Current learning rate.
+            duration: Time elapsed for the current epoch in seconds.
+        """
         train_record.update_train(
             {
                 RecordKey.LOSS: loss,
@@ -435,34 +545,54 @@ class TrainingPlanHolder:
         )
 
     def set_interrupt(self) -> None:
-        """Set the interrupt flag"""
+        """Set the interrupt flag to stop training after the current batch."""
         self.interrupt = True
 
     def clear_interrupt(self) -> None:
-        """Clear the interrupt flag and error status"""
+        """Clear the interrupt flag and reset the error status."""
         self.error = None
         self.interrupt = False
 
     # getter
     def get_name(self) -> str:
-        """Return the name of the training plan"""
+        """Return the name of the training plan (derived from the dataset).
+
+        Returns:
+            The dataset name string.
+        """
         return self.dataset.get_name()
 
     def get_dataset(self) -> Dataset:
-        """Get the dataset of the training plan"""
+        """Return the dataset associated with this training plan.
+
+        Returns:
+            The :class:`Dataset` instance.
+        """
         return self.dataset
 
     def get_plans(self) -> list[TrainRecord]:
-        """Get the training records of the training plan"""
+        """Return all training records (one per repetition).
+
+        Returns:
+            List of :class:`TrainRecord` instances.
+        """
         return self.train_record_list
 
     def get_saliency_params(self) -> dict:
-        """Return the saliency computation parameters"""
+        """Return the saliency computation parameters.
+
+        Returns:
+            Dictionary of saliency method parameters.
+        """
         return self.saliency_params
 
     # setter
     def set_saliency_params(self, saliency_params: dict) -> None:
-        """Set the saliency computation parameters"""
+        """Set new saliency parameters and re-evaluate all finished repeats.
+
+        Args:
+            saliency_params: New dictionary of saliency method parameters.
+        """
         self.saliency_params = saliency_params
         for i in range(self.option.repeat_num):
             train_record = self.train_record_list[i]
@@ -478,27 +608,40 @@ class TrainingPlanHolder:
 
     # status
     def get_training_status(self) -> str:
-        """Return the training status"""
+        """Return the current training status or error message.
+
+        Returns:
+            The error message if an error occurred, otherwise the status string.
+        """
         if self.error:
             return self.error
         return self.status
 
     def get_training_repeat(self) -> int:
-        """Return the index of the current training repetition"""
+        """Return the index of the current (or next unfinished) training repetition.
+
+        Returns:
+            Zero-based index of the current training repetition.
+        """
         for i in range(self.option.repeat_num):
             if not self.train_record_list[i].is_finished():
-                break
-        return i
+                return i
+        return max(self.option.repeat_num - 1, 0)
 
     def get_training_epoch(self) -> int:
-        """Return the current epoch of the training plan"""
+        """Return the current epoch of the active training repetition.
+
+        Returns:
+            The epoch count for the current repetition.
+        """
         return self.train_record_list[self.get_training_repeat()].get_epoch()
 
     def get_training_evaluation(self) -> tuple:
-        """Return the evaluation result of the training plan
+        """Return current evaluation metrics for the active training repetition.
 
-        Return:
-            Tuple of lr, train_loss, train_acc, train_auc, val_loss, val_acc
+        Returns:
+            A tuple of ``(lr, train_loss, train_acc, train_auc, val_loss,
+            val_acc, val_auc)``. Values default to ``'-'`` if unavailable.
         """
         record = self.train_record_list[self.get_training_repeat()]
 
@@ -526,18 +669,33 @@ class TrainingPlanHolder:
         return lr, train_loss, train_acc, train_auc, val_loss, val_acc, val_auc
 
     def is_finished(self) -> bool:
-        """Return whether the training plan is finished"""
+        """Check whether all training repetitions have completed.
+
+        Returns:
+            ``True`` if the last repetition's training record is finished.
+        """
         return self.train_record_list[-1].is_finished()
 
     def get_epoch_progress_text(self) -> str:
-        """Return the progress text of the training plan"""
+        """Return a progress string showing completed vs. total epochs.
+
+        Returns:
+            A string formatted as ``'completed / total'``.
+        """
         total = 0
         for train_record in self.train_record_list:
             total += train_record.get_epoch()
         return f"{total} / {self.option.epoch * self.option.repeat_num}"
 
     def get_best_performance(self) -> float:
-        """Return the best accuracy achieved during training"""
+        """Return the best accuracy achieved during training.
+
+        Checks validation accuracy first, then test accuracy, then the most
+        recent validation accuracy. Falls back to ``0.0``.
+
+        Returns:
+            The best accuracy value as a float.
+        """
         record = self.train_record_list[self.get_training_repeat()]
         # Check validation accuracy first
         best_val_acc = record.best_record.get(f"best_val_{RecordKey.ACC}", -1)

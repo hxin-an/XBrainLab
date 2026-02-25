@@ -1,3 +1,5 @@
+"""Preprocessing panel for signal filtering, resampling, and epoching."""
+
 from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
@@ -22,6 +24,15 @@ class PreprocessPanel(BasePanel):
     """
 
     def __init__(self, controller=None, dataset_controller=None, parent=None):
+        """Initialize the preprocessing panel.
+
+        Args:
+            controller: Optional ``PreprocessController``. Resolved from
+                the parent study if not provided.
+            dataset_controller: Optional ``DatasetController`` for
+                data-change event subscription.
+            parent: Parent widget (typically the main window).
+        """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("preprocess")
@@ -49,6 +60,7 @@ class PreprocessPanel(BasePanel):
         self.init_ui()
 
     def _setup_bridges(self):
+        """Register Qt observer bridges for preprocess and dataset events."""
         if self.controller:
             self.bridge = QtObserverBridge(self.controller, "preprocess_changed", self)
             self.bridge.connect_to(self.update_panel)
@@ -65,6 +77,7 @@ class PreprocessPanel(BasePanel):
                 self.import_bridge.connect_to(self.update_panel)
 
     def init_ui(self):
+        """Build the panel layout with preview, history, and sidebar widgets."""
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -83,6 +96,7 @@ class PreprocessPanel(BasePanel):
         main_layout.addWidget(self.sidebar, stretch=0)
 
     def update_panel(self, *args):
+        """Refresh the sidebar, history, and preview plots from controller state."""
         # Update Sidebar
         if hasattr(self, "sidebar"):
             self.sidebar.update_sidebar()
@@ -135,4 +149,5 @@ class PreprocessPanel(BasePanel):
             self.preview_widget.reset_view()
 
     def update_plot_only(self):
+        """Trigger a plot refresh without updating the sidebar or history."""
         self.plotter.plot_sample_data()

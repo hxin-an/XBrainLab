@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 from XBrainLab.backend.utils.logger import logger
@@ -51,6 +52,8 @@ class SaliencyMapWidget(BaseSaliencyView):
                 # Replace Figure
                 self.main_layout.removeWidget(self.canvas)
                 self.canvas.close()
+                if self.fig is not None:
+                    plt.close(self.fig)
 
                 self.fig = new_fig
                 Theme.apply_matplotlib_dark_theme(self.fig)

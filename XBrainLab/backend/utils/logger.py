@@ -1,3 +1,5 @@
+"""Logging configuration with rotating file and console handlers."""
+
 import logging
 import os
 import sys
@@ -39,9 +41,10 @@ def setup_logger(name="XBrainLab", log_file="logs/app.log", level=logging.INFO):
     )
 
     class SafeRotatingFileHandler(RotatingFileHandler):
-        """
-        RotatingFileHandler that catches PermissionError/OSError during rotation.
-        Common on Windows when the log file is open by another process (or zombie).
+        """RotatingFileHandler that suppresses PermissionError during log rotation.
+
+        On Windows, rotation may fail if the log file is held by another process.
+        This subclass catches the error and continues appending to the current file.
         """
 
         def doRollover(self):  # noqa: N802

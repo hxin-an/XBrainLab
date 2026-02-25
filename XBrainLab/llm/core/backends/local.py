@@ -1,3 +1,9 @@
+"""HuggingFace Transformers local inference backend.
+
+Implements the ``BaseBackend`` interface for on-device inference using
+HuggingFace ``transformers`` with optional 4-bit quantization.
+"""
+
 import logging
 from threading import Thread
 from typing import TYPE_CHECKING, Any
@@ -13,15 +19,41 @@ logger = logging.getLogger("XBrainLab.LLM.Local")
 
 
 class LocalBackend(BaseBackend):
-    """HuggingFace Transformers backend for local inference."""
+    """HuggingFace Transformers backend for local inference.
+
+    Loads a causal language model with optional 4-bit quantization and
+    streams generated text using ``TextIteratorStreamer``.
+
+    Attributes:
+        config: The ``LLMConfig`` instance with model name and generation
+            parameters.
+        model: The loaded ``AutoModelForCausalLM`` instance (``None``
+            until ``load`` is called).
+        tokenizer: The loaded ``AutoTokenizer`` instance.
+        is_loaded: Whether the model has been successfully loaded.
+    """
 
     def __init__(self, config: LLMConfig):
+        """Initializes the LocalBackend.
+
+        Args:
+            config: LLM configuration containing model name, device,
+                quantization, and generation settings.
+        """
         self.config = config
         self.model: Any = None
         self.tokenizer: Any = None
         self.is_loaded = False
 
     def load(self):
+        """Downloads (if necessary) and loads the model and tokenizer.
+
+        Uses 4-bit quantization when ``config.load_in_4bit`` is enabled,
+        otherwise falls back to float16 on CUDA or full precision on CPU.
+
+        Raises:
+            Exception: If model loading fails for any reason.
+        """
         if self.is_loaded:
             return
 
@@ -64,11 +96,21 @@ class LocalBackend(BaseBackend):
             raise
 
     def _process_messages_for_template(self, messages: list) -> list:
-        """Process messages for models with strict chat template requirements.
+        """Processes messages for models with strict chat template rules.
 
-        Handles two issues for models like Gemma:
-        1. No 'system' role support - merges into first user message
-        2. Strict user/assistant alternation - merges consecutive same-role messages
+        Handles two common issues:
+
+        1. **No system role support** — merges system messages into the
+           first user message.
+        2. **Strict user/assistant alternation** — merges consecutive
+           same-role messages.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content``.
+
+        Returns:
+            A new message list with system content merged and strict
+            alternation enforced.
         """
         if not messages:
             return messages
@@ -122,6 +164,20 @@ class LocalBackend(BaseBackend):
         return result
 
     def generate_stream(self, messages: list):
+        """Streams generated text from the local model.
+
+        Applies the tokenizer's chat template, spawns a generation
+        thread, and yields text chunks via ``TextIteratorStreamer``.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content``.
+
+        Yields:
+            Text chunks produced by the model.
+
+        Raises:
+            RuntimeError: If the model or tokenizer is not loaded.
+        """
         if not self.is_loaded:
             self.load()
         if self.tokenizer is None or self.model is None:

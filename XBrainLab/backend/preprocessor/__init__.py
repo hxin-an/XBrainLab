@@ -1,3 +1,5 @@
+"""EEG data preprocessing modules."""
+
 from .base import PreprocessBase
 from .channel_selection import ChannelSelection
 from .edit_event import EditEventId, EditEventName

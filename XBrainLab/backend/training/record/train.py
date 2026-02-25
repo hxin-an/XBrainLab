@@ -1,3 +1,5 @@
+"""Training record module for per-epoch statistics, checkpoints, and figures."""
+
 from __future__ import annotations
 
 import os
@@ -76,6 +78,20 @@ class TrainRecord:
         seed: int,
         plan_id: str | None = None,
     ):
+        """Initialize a training record.
+
+        Sets up the model, optimizer, criterion, record dictionaries, and
+        output directory. Loads any existing data from disk if available.
+
+        Args:
+            repeat: Zero-based index of the training repetition.
+            dataset: The dataset used for training.
+            model: The PyTorch model to train.
+            option: Training configuration options.
+            seed: Random seed for reproducibility.
+            plan_id: Optional unique identifier (timestamp) for the training plan,
+                used to construct the output path.
+        """
         self.repeat = repeat
         self.dataset = dataset
         self.option = option
@@ -109,7 +125,11 @@ class TrainRecord:
         self.load()
 
     def init_dir(self) -> None:
-        """Initialize the directory to save the record"""
+        """Initialize the output directory for saving checkpoints and records.
+
+        Creates the directory tree:
+        ``output_dir / dataset_name / model_planid / repeat``.
+        """
         record_name = self.dataset.get_name()
         repeat_name = self.get_name()
 
@@ -126,30 +146,53 @@ class TrainRecord:
         self.target_path = target_path
 
     def resume(self) -> None:
-        """Resume training from the last training state"""
+        """Resume training by restoring the saved random state.
+
+        Also sets the start timestamp if this is the first resume.
+        """
         set_random_state(self.random_state)
         if self.start_timestamp is None:
             self.start_timestamp = time.time()
 
     def pause(self) -> None:
-        """Pause training and save the current training state"""
+        """Pause training by saving the current random state and timestamp."""
         self.random_state = get_random_state()
         self.end_timestamp = time.time()
 
     def get_name(self) -> str:
-        """Return the name of the record"""
+        """Return the display name of this record.
+
+        Returns:
+            A string formatted as ``'Repeat-{index}'``.
+        """
         return f"Repeat-{self.repeat}"
 
     def get_epoch(self) -> int:
-        """Get the current epoch"""
+        """Return the current epoch number.
+
+        Returns:
+            The number of epochs completed so far.
+        """
         return self.epoch
 
     def get_training_model(self, device: str) -> torch.nn.Module:
-        """Get the model for training and move it to the device"""
+        """Return the model moved to the specified device for training.
+
+        Args:
+            device: PyTorch device string (e.g., ``'cpu'`` or ``'cuda:0'``).
+
+        Returns:
+            The model on the target device.
+        """
         return self.model.to(device)
 
     def is_finished(self) -> bool:
-        """Check if the training is finished"""
+        """Check whether training and evaluation are both complete.
+
+        Returns:
+            ``True`` if the current epoch meets or exceeds the target and
+            an evaluation record exists.
+        """
         return self.get_epoch() >= self.option.epoch and self.eval_record is not None
 
     def append_record(self, val: Any, arr: list) -> None:
@@ -169,7 +212,17 @@ class TrainRecord:
             arr.append(val)
 
     def update(self, update_type: str, test_result: dict[str, float]) -> None:
-        """Append the statistics of given type the current epoch"""
+        """Append metrics for the current epoch and update best-model tracking.
+
+        For each metric key in ``test_result``, appends the value to the
+        corresponding record list and updates the best model state dict if
+        the new value surpasses the previous best.
+
+        Args:
+            update_type: Record type to update (``'val'`` or ``'test'``).
+            test_result: Dictionary mapping :class:`RecordKey` values to
+                metric values for the current epoch.
+        """
         for key, value in test_result.items():
             self.append_record(value, getattr(self, update_type)[key])
             should_update = False
@@ -190,34 +243,57 @@ class TrainRecord:
                 )
 
     def update_eval(self, test_result: dict[str, float]) -> None:
-        """Append the validation statistics of the current epoch and
-        update the best model"""
+        """Append validation statistics and update the best validation model.
+
+        Args:
+            test_result: Dictionary of validation metrics for the current epoch.
+        """
         self.update("val", test_result)
 
     def update_test(self, test_result: dict[str, float]) -> None:
-        """Append the test statistics of the current epoch and update the best model"""
+        """Append test statistics and update the best test model.
+
+        Args:
+            test_result: Dictionary of test metrics for the current epoch.
+        """
         self.update("test", test_result)
 
     def update_train(self, test_result: dict[str, float]) -> None:
-        """Append the training statistics of the current epoch"""
+        """Append training statistics for the current epoch.
+
+        Args:
+            test_result: Dictionary of training metrics (loss, accuracy, AUC).
+        """
         for key, value in test_result.items():
             self.append_record(value, self.train[key])
 
     def update_statistic(self, statistic: dict[str, float]) -> None:
-        """Append the statistics of the current epoch"""
+        """Append extra statistics (e.g., learning rate) for the current epoch.
+
+        Args:
+            statistic: Dictionary of statistic values to record.
+        """
         for key, value in statistic.items():
             self.append_record(value, self.train[key])
 
     def step(self) -> None:
-        """Move to the next epoch"""
+        """Advance the epoch counter by one."""
         self.epoch += 1
 
     def set_eval_record(self, eval_record: EvalRecord) -> None:
-        """Set the evaluation record when training is finished"""
+        """Set the evaluation record after training completes.
+
+        Args:
+            eval_record: The :class:`EvalRecord` containing final evaluation results.
+        """
         self.eval_record = eval_record
 
     def export_checkpoint(self) -> None:
-        """Export the checkpoint of the training record"""
+        """Save the current training state, best models, and evaluation record to disk.
+
+        Exports the model state dict, record statistics, best model state dicts,
+        and the evaluation record (if available) to :attr:`target_path`.
+        """
         epoch = len(self.train[RecordKey.LOSS])
 
         if not self.target_path:
@@ -247,7 +323,11 @@ class TrainRecord:
         torch.save(record, os.path.join(self.target_path, "record"))
 
     def load(self) -> None:
-        """Load training record from disk if exists"""
+        """Load a previously saved training record from disk.
+
+        Restores training statistics, best records, seed, and evaluation record
+        from :attr:`target_path` if files exist.
+        """
         if not self.target_path or not os.path.exists(self.target_path):
             return
 
@@ -270,7 +350,12 @@ class TrainRecord:
         self.eval_record = EvalRecord.load(self.target_path)
 
     def get_model_output(self) -> str:
-        """Return a formatted string summary of the training history."""
+        """Return a formatted string summary of the training history.
+
+        Returns:
+            A multi-line string containing epoch count, best performance
+            metrics, and last-epoch statistics.
+        """
         lines = []
         lines.append(f"=== Training Summary for {self.get_name()} ===")
         lines.append(f"Total Epochs: {self.epoch}")
@@ -310,12 +395,16 @@ class TrainRecord:
     def get_loss_figure(
         self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure | None:
-        """Return the line chart of loss during training
+        """Generate a line chart of training, validation, and test loss over epochs.
 
         Args:
-            fig: Figure to be plotted on. If None, a new figure will be created
-            figsize: Figure size
-            dpi: Figure dpi
+            fig: Existing figure to plot on. If ``None``, a new figure is created.
+            figsize: Width and height of the figure in inches.
+            dpi: Dots per inch for the figure.
+
+        Returns:
+            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
+            if no loss data is available.
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -347,12 +436,16 @@ class TrainRecord:
     def get_acc_figure(
         self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure | None:
-        """Return the line chart of accuracy during training
+        """Generate a line chart of training, validation, and test accuracy over epochs.
 
         Args:
-            fig: Figure to be plotted on. If None, a new figure will be created
-            figsize: Figure size
-            dpi: Figure dpi
+            fig: Existing figure to plot on. If ``None``, a new figure is created.
+            figsize: Width and height of the figure in inches.
+            dpi: Dots per inch for the figure.
+
+        Returns:
+            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
+            if no accuracy data is available.
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -384,14 +477,16 @@ class TrainRecord:
     def get_auc_figure(
         self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure | None:
-        """Return the line chart of auc during training
-
-        TODO:
+        """Generate a line chart of training, validation, and test AUC over epochs.
 
         Args:
-            fig: Figure to be plotted on. If None, a new figure will be created
-            figsize: Figure size
-            dpi: Figure dpi
+            fig: Existing figure to plot on. If ``None``, a new figure is created.
+            figsize: Width and height of the figure in inches.
+            dpi: Dots per inch for the figure.
+
+        Returns:
+            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
+            if no AUC data is available.
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -423,12 +518,16 @@ class TrainRecord:
     def get_lr_figure(
         self, fig: Figure | None = None, figsize: tuple = (6.4, 4.8), dpi: int = 100
     ) -> Figure | None:
-        """Return the line chart of learning rate during training
+        """Generate a line chart of learning rate over epochs.
 
         Args:
-            fig: Figure to be plotted on. If None, a new figure will be created
-            figsize: Figure size
-            dpi: Figure dpi
+            fig: Existing figure to plot on. If ``None``, a new figure is created.
+            figsize: Width and height of the figure in inches.
+            dpi: Dots per inch for the figure.
+
+        Returns:
+            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
+            if no learning rate data is available.
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -451,13 +550,18 @@ class TrainRecord:
         dpi: int = 100,
         show_percentage: bool = False,
     ) -> Figure | None:
-        """Return the confusion matrix of the evaluation record
+        """Generate a confusion matrix heatmap from the evaluation record.
 
         Args:
-            fig: Figure to be plotted on. If None, a new figure will be created
-            figsize: Figure size
-            dpi: Figure dpi
-            show_percentage: Whether to show percentage instead of count
+            fig: Existing figure to plot on. If ``None``, a new figure is created.
+            figsize: Width and height of the figure in inches.
+            dpi: Dots per inch for the figure.
+            show_percentage: If ``True``, show row-normalized percentages
+                instead of raw counts.
+
+        Returns:
+            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
+            if no evaluation record is available.
         """
         if fig is None:
             fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -529,24 +633,39 @@ class TrainRecord:
 
     # get evaluate
     def get_acc(self) -> float | None:
-        """Get the accuracy of the evaluation record,
-        None if training is not finished"""
+        """Return the evaluation accuracy, or ``None`` if not yet evaluated.
+
+        Returns:
+            Accuracy as a float, or ``None``.
+        """
         if not self.eval_record:
             return None
         return self.eval_record.get_acc()
 
     def get_auc(self) -> float | None:
-        """Get the auc of the evaluation record, None if training is not finished"""
+        """Return the evaluation AUC, or ``None`` if not yet evaluated.
+
+        Returns:
+            AUC score as a float, or ``None``.
+        """
         if not self.eval_record:
             return None
         return self.eval_record.get_auc()
 
     def get_kappa(self) -> float | None:
-        """Get the kappa of the evaluation record, None if training is not finished"""
+        """Return the evaluation Cohen's Kappa, or ``None`` if not yet evaluated.
+
+        Returns:
+            Kappa coefficient as a float, or ``None``.
+        """
         if not self.eval_record:
             return None
         return self.eval_record.get_kappa()
 
     def get_eval_record(self) -> EvalRecord | None:
-        """Get the evaluation record, None if training is not finished"""
+        """Return the evaluation record, or ``None`` if training is not complete.
+
+        Returns:
+            The :class:`EvalRecord` instance, or ``None``.
+        """
         return self.eval_record

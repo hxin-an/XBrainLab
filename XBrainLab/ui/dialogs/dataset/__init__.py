@@ -1,3 +1,9 @@
+"""Dataset dialog components for EEG data management.
+
+Provides dialogs for channel selection, data splitting, event filtering,
+label import/mapping, and metadata parsing.
+"""
+
 from .channel_selection_dialog import ChannelSelectionDialog
 from .data_splitting_dialog import DataSplittingDialog
 from .event_filter_dialog import EventFilterDialog

@@ -1,9 +1,17 @@
+"""Custom exception classes for the XBrainLab backend."""
+
+
 class XBrainLabError(Exception):
     """Base class for exceptions in XBrainLab."""
 
 
 class FileCorruptedError(XBrainLabError):
-    """Exception raised when a file is corrupted or cannot be read."""
+    """Exception raised when a file is corrupted or cannot be read.
+
+    Attributes:
+        filepath: Path to the corrupted file.
+        message: Human-readable error message.
+    """
 
     def __init__(self, filepath, message="File is corrupted or unreadable"):
         self.filepath = filepath
@@ -12,7 +20,12 @@ class FileCorruptedError(XBrainLabError):
 
 
 class UnsupportedFormatError(XBrainLabError):
-    """Exception raised when a file format is not supported."""
+    """Exception raised when a file format is not supported.
+
+    Attributes:
+        file_extension: The unsupported file extension.
+        message: Human-readable error message.
+    """
 
     def __init__(self, file_extension, message="Unsupported file format"):
         self.file_extension = file_extension
@@ -21,7 +34,11 @@ class UnsupportedFormatError(XBrainLabError):
 
 
 class DataMismatchError(XBrainLabError):
-    """Exception raised when data parameters (e.g., sfreq) do not match."""
+    """Exception raised when data parameters (e.g., sfreq) do not match.
+
+    Attributes:
+        message: Human-readable error message.
+    """
 
     def __init__(self, message="Data parameters mismatch"):
         self.message = message

@@ -1,3 +1,5 @@
+"""ShallowConvNet model implementation for EEG decoding."""
+
 import math
 
 import torch
@@ -5,19 +7,48 @@ from torch import nn
 
 
 class ShallowConvNet(nn.Module):
-    """Implementation of ShallowConvNet
-    https://onlinelibrary.wiley.com/doi/full/10.1002/hbm.23730
+    """Shallow convolutional neural network for EEG decoding.
 
-    Parameters:
-        n_classes: Number of classes.
-        channels: Number of channels.
-        samples: Number of samples.
-        sfreq: Sampling frequency.
+    ShallowConvNet is inspired by the filter bank common spatial pattern
+    (FBCSP) algorithm. It uses a temporal convolution followed by a spatial
+    convolution, then applies squaring nonlinearity, average pooling, and
+    log transformation to extract band-power features for classification.
+
+    Reference:
+        Schirrmeister, R. T., et al. (2017). "Deep learning with convolutional
+        neural networks for EEG decoding and visualization."
+        *Human Brain Mapping*, 38(11), 5391-5420.
+        https://onlinelibrary.wiley.com/doi/full/10.1002/hbm.23730
+
+    Attributes:
+        temporal_filter: Number of temporal convolution filters.
+        spatial_filter: Number of spatial convolution filters.
+        kernel: Temporal convolution kernel size (ceil of 0.1 * sfreq).
+        conv1: Temporal convolutional layer.
+        conv2: Spatial convolutional layer.
+        Bn1: Batch normalization layer.
+        AvgPool1: Average pooling layer.
+        Drop1: Dropout layer.
+        classifier: Fully connected classification layer.
     """
 
     def __init__(
         self, n_classes, channels, samples, sfreq, pool_len=75, pool_stride=15
     ):
+        """Initializes ShallowConvNet.
+
+        Args:
+            n_classes: Number of output classes for classification.
+            channels: Number of EEG channels.
+            samples: Number of time samples per trial.
+            sfreq: Sampling frequency in Hz.
+            pool_len: Average pooling kernel length. Defaults to 75.
+            pool_stride: Average pooling stride. Defaults to 15.
+
+        Raises:
+            ValueError: If the epoch duration (samples) is too short for the
+                network architecture.
+        """
         super().__init__()
         self.temporal_filter = 40
         self.spatial_filter = 40
@@ -50,6 +81,15 @@ class ShallowConvNet(nn.Module):
         # self.softmax = nn.Softmax()
 
     def forward(self, x):
+        """Performs the forward pass of ShallowConvNet.
+
+        Args:
+            x: Input EEG tensor of shape ``(batch, channels, samples)`` or
+                ``(batch, 1, channels, samples)``.
+
+        Returns:
+            Output logits tensor of shape ``(batch, n_classes)``.
+        """
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
         x = self.conv1(x)
@@ -66,6 +106,15 @@ class ShallowConvNet(nn.Module):
         return x
 
     def _get_size(self, ch, tsamp):
+        """Computes the flattened feature size after convolutional layers.
+
+        Args:
+            ch: Number of EEG channels.
+            tsamp: Number of time samples.
+
+        Returns:
+            Tensor size after flattening, as a ``torch.Size`` object.
+        """
         data = torch.ones((1, 1, ch, tsamp))
         x = self.conv1(data)
         x = self.conv2(x)

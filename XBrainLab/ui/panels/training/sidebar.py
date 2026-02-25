@@ -1,3 +1,5 @@
+"""Sidebar widget for the training panel with configuration and execution controls."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -20,11 +22,30 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class TrainingSidebar(QWidget):
-    """
-    Sidebar for Training Panel logic (Configuration & Execution).
+    """Sidebar for ``TrainingPanel`` providing configuration and execution controls.
+
+    Hosts data-splitting, model-selection, training-setting dialogs,
+    and start/stop/clear buttons.  Validates readiness before enabling
+    the start button.
+
+    Attributes:
+        panel: The parent ``TrainingPanel`` reference.
+        info_panel: ``AggregateInfoPanel`` displaying summary statistics.
+        btn_split: Button for dataset splitting configuration.
+        btn_model: Button for model selection.
+        btn_setting: Button for training hyperparameter settings.
+        btn_start: Button to start training (enabled when ready).
+        btn_stop: Button to stop an in-progress training run.
+        btn_clear: Button to clear training history.
     """
 
     def __init__(self, panel, parent=None):
+        """Initialize the training sidebar.
+
+        Args:
+            panel: The parent ``TrainingPanel``.
+            parent: Optional parent widget.
+        """
         super().__init__()
         self.panel = panel
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -32,17 +53,21 @@ class TrainingSidebar(QWidget):
 
     @property
     def controller(self):
+        """TrainingController: The training controller from the parent panel."""
         return self.panel.controller
 
     @property
     def dataset_controller(self):
+        """DatasetController: The dataset controller from the parent panel."""
         return self.panel.dataset_controller
 
     @property
     def main_window(self):
+        """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
     def init_ui(self):
+        """Build the sidebar layout with info, configuration, and execution groups."""
         self.setFixedWidth(260)
         self.setObjectName("RightPanel")
         self.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
@@ -141,6 +166,7 @@ class TrainingSidebar(QWidget):
             self.btn_start.setToolTip("Start Training")
 
     def update_info(self):
+        """Refresh the aggregate info panel (delegated to InfoPanelService)."""
         if not self.info_panel:
             return
 
@@ -149,6 +175,11 @@ class TrainingSidebar(QWidget):
     # --- Actions ---
 
     def split_data(self):
+        """Open the data-splitting dialog and apply the configuration.
+
+        Validates that epoched data exists and training is not running.
+        Warns if existing datasets/history will be cleared.
+        """
         if not self.controller.get_loaded_data_list():
             QMessageBox.warning(
                 self, "No Data", "Please load and preprocess data first."
@@ -195,6 +226,10 @@ class TrainingSidebar(QWidget):
             self.check_ready_to_train()
 
     def select_model(self):
+        """Open the model-selection dialog and store the chosen model.
+
+        Blocked while training is running.
+        """
         if self.controller.is_training():
             QMessageBox.warning(
                 self,
@@ -212,6 +247,10 @@ class TrainingSidebar(QWidget):
             self.check_ready_to_train()
 
     def training_setting(self):
+        """Open the training-settings dialog and store the configuration.
+
+        Blocked while training is running.
+        """
         if self.controller.is_training():
             QMessageBox.warning(
                 self,
@@ -227,6 +266,12 @@ class TrainingSidebar(QWidget):
             self.check_ready_to_train()
 
     def start_training_ui_action(self):
+        """Start training via the controller and enable the stop button.
+
+        Raises:
+            Exception: Propagated from the controller on failure, shown
+                in a critical message box.
+        """
         try:
             if not self.controller.is_training():
                 self.controller.start_training()
@@ -238,12 +283,17 @@ class TrainingSidebar(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
 
     def stop_training(self):
+        """Request the controller to stop the current training run."""
         if self.controller.is_training():
             self.controller.stop_training()
             self.btn_stop.setEnabled(False)
             # Controller will emit stopped event which panel handles
 
     def clear_history(self):
+        """Clear all training history records.
+
+        Blocked while training is running.
+        """
         try:
             if self.controller.is_training():
                 QMessageBox.warning(
@@ -274,9 +324,11 @@ class TrainingSidebar(QWidget):
             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
 
     def on_training_started(self):
+        """Update button states when training begins."""
         self.btn_stop.setEnabled(True)
         self.check_ready_to_train()
 
     def on_training_stopped(self):
+        """Update button states when training ends."""
         self.btn_stop.setEnabled(False)
         self.check_ready_to_train()

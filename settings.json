@@ -5,7 +5,7 @@
   },
   "gemini": {
     "model_name": "gemini-1.5-flash",
-    "verified": false
+    "enabled": false
   },
   "active_mode": "local"
 }

@@ -1,3 +1,5 @@
+"""Sidebar widget for the preprocessing panel with operations and execution controls."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -21,11 +23,30 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class PreprocessSidebar(QWidget):
-    """
-    Sidebar for PreprocessPanel containing Operations, Execution controls, and History.
+    """Sidebar for ``PreprocessPanel`` with operation and execution controls.
+
+    Hosts buttons for filtering, resampling, re-referencing, normalization,
+    epoching, and reset.  Gate-checks lock state and data availability
+    before delegating to the controller.
+
+    Attributes:
+        panel: The parent ``PreprocessPanel`` reference.
+        info_panel: ``AggregateInfoPanel`` displaying summary statistics.
+        btn_filter: Button to open the filtering dialog.
+        btn_resample: Button to open the resample dialog.
+        btn_rereference: Button to open the re-reference dialog.
+        btn_normalize: Button to open the normalize dialog.
+        btn_epoch: Button to open the epoching dialog.
+        btn_reset: Button to reset all preprocessing.
     """
 
     def __init__(self, panel, parent=None):
+        """Initialize the preprocessing sidebar.
+
+        Args:
+            panel: The parent ``PreprocessPanel``.
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.panel = panel
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -34,17 +55,21 @@ class PreprocessSidebar(QWidget):
 
     @property
     def controller(self):
+        """PreprocessController: The preprocessing controller from the parent panel."""
         return self.panel.controller
 
     @property
     def dataset_controller(self):
+        """DatasetController: The dataset controller from the parent panel."""
         return self.panel.dataset_controller
 
     @property
     def main_window(self):
+        """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
     def init_ui(self):
+        """Build the sidebar layout with info, operation, and execution groups."""
         self.setFixedWidth(260)
         self.setObjectName("RightPanel")
         self.setStyleSheet(Stylesheets.SIDEBAR_CONTAINER)
@@ -138,6 +163,12 @@ class PreprocessSidebar(QWidget):
         self._update_button_states(is_epoched)
 
     def _update_button_states(self, is_epoched):
+        """Update button tooltips based on the epoched state.
+
+        Args:
+            is_epoched: ``True`` if the data has been epoched and
+                preprocessing is locked.
+        """
         # Filter
         if is_epoched:
             self.btn_filter.setToolTip(
@@ -183,6 +214,13 @@ class PreprocessSidebar(QWidget):
     # --- Action Logic ---
 
     def check_lock(self):
+        """Check if preprocessing is locked due to epoched data.
+
+        Shows a warning dialog if locked.
+
+        Returns:
+            bool: ``True`` if the action is blocked, ``False`` otherwise.
+        """
         if not self.controller:
             return False
         if self.controller.is_epoched():
@@ -196,6 +234,13 @@ class PreprocessSidebar(QWidget):
         return False
 
     def check_data_loaded(self):
+        """Verify that data is loaded before proceeding.
+
+        Shows a warning dialog if no data is available.
+
+        Returns:
+            bool: ``True`` if data is loaded, ``False`` otherwise.
+        """
         if not self.controller or not self.controller.has_data():
             QMessageBox.warning(
                 self, "Warning", "No data loaded. Please import data first."
@@ -209,6 +254,7 @@ class PreprocessSidebar(QWidget):
             self.panel.update_panel()
 
     def open_filtering(self):
+        """Open the filtering dialog and apply bandpass/notch filters."""
         if self.check_lock() or not self.check_data_loaded():
             return
 
@@ -225,6 +271,7 @@ class PreprocessSidebar(QWidget):
                     QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
 
     def open_resample(self):
+        """Open the resample dialog and change the sampling rate."""
         if self.check_lock() or not self.check_data_loaded():
             return
 
@@ -240,6 +287,7 @@ class PreprocessSidebar(QWidget):
                     QMessageBox.critical(self, "Error", f"Resample failed: {e}")
 
     def open_rereference(self):
+        """Open the re-reference dialog and apply the new reference."""
         if self.check_lock() or not self.check_data_loaded():
             return
 
@@ -256,6 +304,7 @@ class PreprocessSidebar(QWidget):
                     QMessageBox.critical(self, "Error", f"Re-reference failed: {e}")
 
     def open_normalize(self):
+        """Open the normalization dialog and apply the selected method."""
         if self.check_lock() or not self.check_data_loaded():
             return
 
@@ -271,6 +320,7 @@ class PreprocessSidebar(QWidget):
                     QMessageBox.critical(self, "Error", f"Normalization failed: {e}")
 
     def open_epoching(self):
+        """Open the epoching dialog and segment the continuous data into epochs."""
         if self.check_lock() or not self.check_data_loaded():
             return
 
@@ -300,6 +350,7 @@ class PreprocessSidebar(QWidget):
                     QMessageBox.critical(self, "Error", f"Epoching failed: {e}")
 
     def reset_preprocess(self):
+        """Prompt the user and reset all preprocessing steps to the original data."""
         if not self.check_data_loaded():
             return
 

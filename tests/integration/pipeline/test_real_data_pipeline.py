@@ -37,8 +37,6 @@ def test_real_data_pipeline():
     3. Dataset generation works with real epochs.
     4. Training loop runs successfully with real data shapes.
     """
-    print(f"Testing with real data: {GDF_FILE}")
-
     # 1. Load Data
     study = Study()
     # loader = study.get_raw_data_loader() # Not needed if we load directly
@@ -59,7 +57,6 @@ def test_real_data_pipeline():
 
     # Get available events
     events, event_id = processed_raw.get_event_list()
-    print(f"Original events shape: {events.shape}")
 
     # Deduplicate events based on time sample (column 0)
     # Keep the first occurrence
@@ -67,21 +64,17 @@ def test_real_data_pipeline():
     # Sort indices to preserve order
     unique_indices = np.sort(unique_indices)
     events = events[unique_indices]
-    print(f"Deduplicated events shape: {events.shape}")
 
     # Verify no duplicates
-    if len(np.unique(events[:, 0])) != len(events):
-        print("WARNING: Duplicates still exist!")
+    assert len(np.unique(events[:, 0])) == len(events), "Duplicates still exist!"
 
     event_names = list(event_id.keys())
-    print(f"Events found: {event_names}")
 
     # Filter event_names to only include those present in the deduplicated events
     present_event_ids = np.unique(events[:, -1])
     filtered_event_names = [
         name for name, eid in event_id.items() if eid in present_event_ids
     ]
-    print(f"Filtered events: {filtered_event_names}")
 
     # Patch get_raw_event_list on the processed object
     with patch.object(
@@ -126,10 +119,6 @@ def test_real_data_pipeline():
     n_channels = len(study.epoch_data.get_channel_names())
     n_samples = study.epoch_data.get_data().shape[-1]
     n_classes = len(study.epoch_data.event_id)
-
-    print(
-        f"Data Shape: Channels={n_channels}, Samples={n_samples}, Classes={n_classes}"
-    )
 
     # Model params are provided by dataset automatically via ModelHolder.get_model(args)
     # args include n_classes, channels, samples, sfreq
@@ -187,9 +176,5 @@ def test_real_data_pipeline():
     record = plan.train_record_list[0]
 
     # Check metrics exist
-    # Check metrics exist
-
     assert RecordKey.LOSS in record.train
     assert RecordKey.ACC in record.train
-
-    print("Real data pipeline test passed!")

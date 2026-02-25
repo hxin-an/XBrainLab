@@ -1,3 +1,9 @@
+"""Event filter dialog for selecting GDF events to retain.
+
+Provides a checkable list of event names with persistent selection memory,
+context menu, and toggle functionality for efficient event filtering.
+"""
+
 from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
@@ -14,6 +20,21 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class EventFilterDialog(BaseDialog):
+    """Dialog for filtering GDF events by selecting which events to keep.
+
+    Provides a checkable list with Select All/Deselect All, toggle, and
+    context menu support. Persists the last selection using QSettings.
+
+    Attributes:
+        event_names: Sorted list of available event name strings.
+        selected_names: List of event names selected by the user.
+        settings: QSettings instance for persisting selection state.
+        list_widget: QListWidget displaying checkable event names.
+        btn_all: Button to select all events.
+        btn_none: Button to deselect all events.
+        btn_toggle: Button to toggle selected items.
+    """
+
     def __init__(self, parent, event_names):
         self.event_names = event_names  # Already sorted list of strings
         self.selected_names = []
@@ -29,6 +50,7 @@ class EventFilterDialog(BaseDialog):
         self.resize(300, 400)
 
     def init_ui(self):
+        """Initialize the dialog UI with event list and control buttons."""
         layout = QVBoxLayout(self)
 
         layout.addWidget(QLabel("Select events to KEEP for synchronization:"))
@@ -81,6 +103,11 @@ class EventFilterDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def set_all_checked(self, checked):
+        """Set the check state for all event items.
+
+        Args:
+            checked: If True, check all items; otherwise uncheck all.
+        """
         if not self.list_widget:
             return
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
@@ -90,6 +117,7 @@ class EventFilterDialog(BaseDialog):
                 item.setCheckState(state)
 
     def toggle_selected(self):
+        """Toggle the check state of all currently selected items."""
         if not self.list_widget:
             return
         selected_items = self.list_widget.selectedItems()
@@ -108,6 +136,11 @@ class EventFilterDialog(BaseDialog):
             item.setCheckState(new_state)
 
     def show_context_menu(self, pos):
+        """Display a context menu with check/uncheck/toggle actions.
+
+        Args:
+            pos: Position where the context menu was requested.
+        """
         if not self.list_widget:
             return
         menu = QMenu(self)
@@ -131,12 +164,18 @@ class EventFilterDialog(BaseDialog):
             self.toggle_selected()
 
     def keyPressEvent(self, event):  # noqa: N802
+        """Handle key press events, mapping Space to toggle.
+
+        Args:
+            event: The key press event.
+        """
         if event.key() == Qt.Key.Key_Space:
             self.toggle_selected()
         else:
             super().keyPressEvent(event)
 
     def accept(self):
+        """Collect checked events, persist selection, and accept dialog."""
         if self.list_widget:
             self.selected_names = []
             for i in range(self.list_widget.count()):
@@ -150,13 +189,30 @@ class EventFilterDialog(BaseDialog):
         super().accept()
 
     def get_selected_ids(self):
+        """Return the list of selected event names.
+
+        Returns:
+            List of checked event name strings.
+        """
         return self.selected_names
 
     def get_result(self):
+        """Return the list of selected event names.
+
+        Returns:
+            List of checked event name strings.
+        """
         return self.get_selected_ids()
 
     def set_selection(self, names):
-        """Programmatically set the selection."""
+        """Programmatically set the checked events.
+
+        Unchecks all items first, then checks only those matching the
+        provided names.
+
+        Args:
+            names: List of event name strings to check.
+        """
         # Uncheck all first? Or just check the ones in names?
         # Smart filter implies "These are the ones you want".
         # So let's uncheck all, then check names.

@@ -1,3 +1,5 @@
+"""Background worker utilities for offloading tasks to QThreadPool."""
+
 import sys
 import traceback
 
@@ -5,17 +7,14 @@ from PyQt6.QtCore import QObject, QRunnable, pyqtSignal
 
 
 class WorkerSignals(QObject):
-    """
-    Defines the signals available from a running worker thread.
-    Supported signals are:
-    finished
-        No data
-    error
-        tuple (exctype, value, traceback.format_exc())
-    result
-        object data returned from processing, anything
-    progress
-        int indicating % progress
+    """Signals available from a running ``Worker`` thread.
+
+    Attributes:
+        finished: Emitted when the task completes (no data).
+        error: Emitted with ``(exctype, value, formatted_traceback)``
+            on failure.
+        result: Emitted with the return value of the callback function.
+        progress: Emitted with an ``int`` indicating percentage progress.
     """
 
     finished = pyqtSignal()
@@ -25,18 +24,26 @@ class WorkerSignals(QObject):
 
 
 class Worker(QRunnable):
-    """
-    Worker thread for offloading heavy tasks.
-    Inherits from QRunnable to handle worker thread setup, signals and wrap-up.
+    """Worker thread for offloading heavy tasks via QThreadPool.
 
-    :param callback: The function callback to run on this worker thread. Supplied
-                     args and kwargs will be passed through to the runner.
-    :type callback: function
-    :param args: Arguments to pass to the callback function
-    :param kwargs: Keywords to pass to the callback function
+    Wraps a callable with arguments and emits signals for completion,
+    errors, and results.
+
+    Attributes:
+        fn: The callback function to execute.
+        args: Positional arguments for the callback.
+        kwargs: Keyword arguments for the callback.
+        signals: ``WorkerSignals`` instance for communicating results.
     """
 
     def __init__(self, fn, *args, **kwargs):
+        """Initialize the worker.
+
+        Args:
+            fn: The callable to run in the worker thread.
+            *args: Positional arguments passed to ``fn``.
+            **kwargs: Keyword arguments passed to ``fn``.
+        """
         super().__init__()
 
         # Store constructor arguments (re-used for processing)
@@ -46,9 +53,7 @@ class Worker(QRunnable):
         self.signals = WorkerSignals()
 
     def run(self):
-        """
-        Initialise the runner function with passed args, kwargs.
-        """
+        """Execute the callback and emit result or error signals."""
         try:
             result = self.fn(*self.args, **self.kwargs)
         except Exception:

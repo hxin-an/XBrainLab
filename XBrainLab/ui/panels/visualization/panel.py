@@ -1,3 +1,5 @@
+"""Visualization panel: saliency maps, topomaps, spectrograms, and 3-D views."""
+
 import re
 
 from PyQt6.QtWidgets import (
@@ -32,6 +34,15 @@ class VisualizationPanel(BasePanel):
     """
 
     def __init__(self, controller=None, training_controller=None, parent=None):
+        """Initialize the visualization panel.
+
+        Args:
+            controller: Optional ``VisualizationController``. Resolved from
+                the parent study if not provided.
+            training_controller: Optional ``TrainingController`` for
+                subscribing to training-stopped events.
+            parent: Parent widget (typically the main window).
+        """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("visualization")
@@ -62,6 +73,7 @@ class VisualizationPanel(BasePanel):
             self.training_bridge.connect_to(self.update_panel)
 
     def init_ui(self):
+        """Build the panel layout with control bar, tabbed plots, and sidebar."""
         # Main Layout: Horizontal (Left: Content, Right: Controls)
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -164,6 +176,11 @@ class VisualizationPanel(BasePanel):
         self.refresh_combos()
 
     def get_trainers(self):
+        """Return the list of available trainers from the controller.
+
+        Returns:
+            list: Trainer instances available for visualization.
+        """
         return self.controller.get_trainers()
 
     def refresh_combos(self):

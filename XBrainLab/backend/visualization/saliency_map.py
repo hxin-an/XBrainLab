@@ -1,3 +1,5 @@
+"""Channel-by-time saliency map visualiser."""
+
 from typing import Any
 
 import numpy as np
@@ -7,13 +9,24 @@ from .base import Visualizer
 
 
 class SaliencyMapViz(Visualizer):
-    """Visualizer that generate channel by time saliency map from evaluation record"""
+    """Visualizer that generates a channel-by-time saliency heatmap.
+
+    One subplot is created per class label.  Saliency values are averaged
+    across trials and displayed as an image with channels on the y-axis and
+    time on the x-axis.
+    """
 
     def _get_plt(self, method, absolute: bool) -> Any:
-        """Return saliency map plot
+        """Render the saliency map figure.
 
         Args:
-            absolute: whether to plot absolute value of saliency
+            method: Name of the saliency method (e.g. ``"Gradient"``).
+            absolute: If ``True``, use absolute saliency values with a
+                ``"Reds"`` colour map; otherwise use signed values with
+                ``"coolwarm"``.
+
+        Returns:
+            matplotlib.figure.Figure: The rendered saliency map figure.
         """
         label_number = self.epoch_data.get_label_number()
         # row and col of subplot

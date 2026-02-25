@@ -55,13 +55,12 @@ class TestTrainingController:
 
     def test_stop_training(self, controller, mock_study):
         mock_study.is_training.return_value = True
-        mock_callback = MagicMock()
-        controller.subscribe("training_stopped", mock_callback)
 
         controller.stop_training()
 
         mock_study.stop_training.assert_called_once()
-        mock_callback.assert_called_once()
+        # Notification is now emitted only by _monitor_loop, not stop_training()
+        # to avoid duplicate "training_stopped" events
 
     def test_clear_history_running(self, controller, mock_study):
         mock_study.is_training.return_value = True

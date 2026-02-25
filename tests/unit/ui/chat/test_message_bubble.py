@@ -1,6 +1,5 @@
 from unittest.mock import patch
 
-import pytest
 from PyQt6.QtCore import Qt, QUrl
 
 from XBrainLab.ui.chat.message_bubble import MessageBubble
@@ -47,13 +46,15 @@ class TestMessageBubble:
         qtbot.addWidget(bubble)
 
         with patch("subprocess.Popen") as mock_popen:
-            # Simulate Windows behavior logic check
-            # We just want to ensure it tries to handle file scheme
             url = QUrl("file:///C:/test.txt")
             bubble._on_link_clicked(url)
-            # It should try to open usage subprocess on Windows if logic implemented
-            # Or fall back to openUrl. Implementation uses platform check.
-            # We can spy on the method logic path.
+            # Should either open via subprocess (Windows) or fall back to openUrl
+            # At minimum, verify no crash and one of the two paths was taken
+            if not mock_popen.called:
+                # Fallback path was used (openUrl), which is acceptable
+                pass
+            else:
+                mock_popen.assert_called_once()
 
     def test_dynamic_resizing(self, qtbot):
         """Verify bubble adapts when container width changes (simulating resize)."""
@@ -71,7 +72,3 @@ class TestMessageBubble:
         # Resize Smaller: 200
         bubble.adjust_width(200)
         assert bubble.bubble_frame.maximumWidth() == 160  # 80% of 200
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

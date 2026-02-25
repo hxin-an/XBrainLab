@@ -61,7 +61,3 @@ def test_sidebar_set_montage(mock_panel, qtbot):
 
         mock_panel.controller.set_montage.assert_called()
         mock_info.assert_called_once()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

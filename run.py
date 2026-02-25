@@ -1,9 +1,20 @@
+"""Entry point for the XBrainLab desktop application.
+
+Launches the PyQt6-based GUI, optionally accepting a ``--tool-debug``
+argument that feeds a JSON script into the tool-debug subsystem.
+
+Usage::
+
+    python run.py
+    python run.py --tool-debug path/to/script.json
+"""
+
 import argparse
 import os
 import sys
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+# Ensure the project root is importable when running the script directly.
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from PyQt6.QtWidgets import QApplication
 
@@ -12,8 +23,13 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.main_window import MainWindow
 
 
-def main():
-    # Parse CLI Arguments
+def main() -> None:
+    """Parse CLI arguments, create the application, and show the main window.
+
+    The function initialises a :class:`~XBrainLab.backend.study.Study`,
+    builds the :class:`~XBrainLab.ui.main_window.MainWindow`, and enters
+    the Qt event loop.  It calls ``sys.exit`` when the window is closed.
+    """
     parser = argparse.ArgumentParser(description="XBrainLab Application")
     parser.add_argument(
         "--tool-debug", type=str, help="Path to tool debug script (JSON)"
@@ -27,11 +43,7 @@ def main():
         logger.info(f"Tool Debug Mode enabled. Script: {args.tool_debug}")
         app.setProperty("tool_debug_script", args.tool_debug)
 
-    # Apply global style (optional)
     app.setStyle("Fusion")
-
-    # Initialize Study
-    # from XBrainLab.backend.study import Study
 
     study = Study()
 

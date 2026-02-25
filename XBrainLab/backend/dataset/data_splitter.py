@@ -1,3 +1,5 @@
+"""Data splitter module defining splitting configuration for dataset partitioning."""
+
 from __future__ import annotations
 
 from ..utils import validate_list_type, validate_type
@@ -5,19 +7,17 @@ from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
 
 
 class DataSplitter:
-    """Class for data splitting configuration.
+    """Configuration for a single data splitting action.
+
+    Encapsulates the split type, value, and unit for one splitting step
+    (e.g. "split 20% of trials by session").
 
     Attributes:
-        split_type: :class:`SplitByType`
-            Type of splitting action
-        value_var: str | None
-            String representation of splitting value.
-        split_unit: :class:`SplitUnit` | None
-            Unit of splitting value
-        is_option: bool
-            Whether this splitter is real option or just a label
-        text: str
-            String representation of :attr:`split_type`
+        split_type: Type of splitting action (e.g. by session, trial, subject).
+        value_var: String representation of the splitting value.
+        split_unit: Unit of the splitting value (ratio, number, kfold, manual).
+        is_option: Whether this splitter is a real option or just a label.
+        text: Human-readable string representation of the split type.
     """
 
     def __init__(
@@ -27,6 +27,14 @@ class DataSplitter:
         split_unit: SplitUnit | None = None,
         is_option: bool = True,
     ):
+        """Initialize a DataSplitter.
+
+        Args:
+            split_type: Type of splitting action.
+            value_var: String representation of the splitting value.
+            split_unit: Unit of the splitting value.
+            is_option: Whether this splitter is a real option or just a label.
+        """
         validate_type(split_type, (SplitByType, ValSplitByType), "split_type")
         if split_unit:
             validate_type(split_unit, SplitUnit, "split_unit")
@@ -37,7 +45,11 @@ class DataSplitter:
         self.split_unit = split_unit
 
     def is_valid(self) -> bool:
-        """Check whether the value matches the unit and all constraints."""
+        """Check whether the splitter's value matches its unit and constraints.
+
+        Returns:
+            True if the value is valid for the configured split unit.
+        """
 
         # check if all required fields are filled
         if self.value_var is None:
@@ -72,11 +84,14 @@ class DataSplitter:
         return False
 
     def get_value(self) -> float | list[int]:
-        """Get option value based on split unit.
+        """Get the parsed option value based on split unit.
 
         Returns:
-            List[int]: if :attr:`split_unit` is :attr:`SplitUnit.MANUAL`
-            float: otherwise
+            Parsed value: a list of ints for manual selection, or a float
+            for ratio/number/kfold.
+
+        Raises:
+            ValueError: If the splitter is invalid or value_var is None.
         """
         if not self.is_valid():
             raise ValueError("Splitter is not valid")
@@ -90,7 +105,14 @@ class DataSplitter:
             return float(self.value_var)
 
     def get_raw_value(self) -> str:
-        """Get :attr:`value_var`."""
+        """Get the raw string value.
+
+        Returns:
+            The raw string value of this splitter.
+
+        Raises:
+            ValueError: If the splitter is invalid or value_var is None.
+        """
         if not self.is_valid():
             raise ValueError("Splitter is not valid")
         if self.value_var is None:
@@ -98,32 +120,43 @@ class DataSplitter:
         return self.value_var
 
     def get_split_unit(self) -> SplitUnit | None:
-        """Get :attr:`split_unit`."""
+        """Get the split unit.
+
+        Returns:
+            The split unit, or None if not set.
+        """
         return self.split_unit
 
     def get_split_unit_repr(self) -> str:
-        """Get string representation of :attr:`split_unit`."""
+        """Get a string representation of the split unit.
+
+        Returns:
+            String in the form ``"SplitUnit.NAME"`` or ``"None"``.
+        """
         if self.split_unit is None:
             return "None"
         return f"{self.split_unit.__class__.__name__}.{self.split_unit.name}"
 
     def get_split_type_repr(self) -> str:
-        """Get string representation of :attr:`split_type`."""
+        """Get a string representation of the split type.
+
+        Returns:
+            String in the form ``"SplitByType.NAME"``.
+        """
         return f"{self.split_type.__class__.__name__}.{self.split_type.name}"
 
 
 class DataSplittingConfig:
-    """Utility class for storing data splitting configuration for a training scheme.
+    """Configuration container for a complete data splitting scheme.
+
+    Stores the training type, cross-validation flag, and lists of splitters
+    for both validation and test sets.
 
     Attributes:
-        train_type: :class:`TrainingType`
-            TrainingType
-        is_cross_validation: bool
-            Whether to use cross validation
-        val_splitter_list: List[:class:`DataSplitter`]
-            list of DataSplitter for validation set
-        test_splitter_list: List[:class:`DataSplitter`]
-            list of DataSplitter for test set
+        train_type: Training scheme type (full-data or individual).
+        is_cross_validation: Whether cross-validation is enabled.
+        val_splitter_list: List of splitters for the validation set.
+        test_splitter_list: List of splitters for the test set.
     """
 
     def __init__(
@@ -133,6 +166,14 @@ class DataSplittingConfig:
         val_splitter_list: list[DataSplitter],
         test_splitter_list: list[DataSplitter],
     ):
+        """Initialize a DataSplittingConfig.
+
+        Args:
+            train_type: Training scheme type.
+            is_cross_validation: Whether to use cross-validation.
+            val_splitter_list: List of splitters for the validation set.
+            test_splitter_list: List of splitters for the test set.
+        """
         validate_type(train_type, TrainingType, "train_type")
         validate_type(is_cross_validation, bool, "is_cross_validation")
         validate_list_type(val_splitter_list, DataSplitter, "val_splitter_list")
@@ -144,9 +185,17 @@ class DataSplittingConfig:
         self.test_splitter_list = test_splitter_list
 
     def get_splitter_option(self) -> tuple[list[DataSplitter], list[DataSplitter]]:
-        """Get list of DataSplitter for validation set and test set."""
+        """Get the validation and test splitter lists.
+
+        Returns:
+            Tuple of (val_splitter_list, test_splitter_list).
+        """
         return self.val_splitter_list, self.test_splitter_list
 
     def get_train_type_repr(self) -> str:
-        """Get string representation of :attr:`train_type`."""
+        """Get a string representation of the training type.
+
+        Returns:
+            String in the form ``"TrainingType.NAME"``.
+        """
         return f"{self.train_type.__class__.__name__}.{self.train_type.name}"

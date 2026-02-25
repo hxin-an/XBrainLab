@@ -1,3 +1,9 @@
+"""Real implementations of dataset tools.
+
+These tools interact with the ``BackendFacade`` to perform actual
+dataset operations (file listing, loading, label attachment, etc.).
+"""
+
 import os
 from typing import Any
 
@@ -14,6 +20,12 @@ from ..definitions.dataset_def import (
 
 
 class RealListFilesTool(BaseListFilesTool):
+    """Real implementation of :class:`BaseListFilesTool`.
+
+    Lists files in a directory using ``os.listdir`` with optional
+    extension-based filtering.
+    """
+
     def execute(
         self,
         study: Any,
@@ -21,6 +33,18 @@ class RealListFilesTool(BaseListFilesTool):
         pattern: str | None = None,
         **kwargs,
     ) -> str:
+        """List files in the specified directory.
+
+        Args:
+            study: The global ``Study`` instance (unused directly).
+            directory: Absolute path to the target directory.
+            pattern: Glob-style pattern for filtering (e.g., ``'*.gdf'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A string representation of the matched file list, or an
+            error message on failure.
+        """
         if not directory:
             return "Error: directory is required"
         if not os.path.exists(directory):
@@ -39,8 +63,26 @@ class RealListFilesTool(BaseListFilesTool):
 
 
 class RealLoadDataTool(BaseLoadDataTool):
-    # No is_valid needed, always valid to load data (merges into existing)
+    """Real implementation of :class:`BaseLoadDataTool`.
+
+    Loads EEG data files via :class:`BackendFacade`, automatically
+    expanding directory paths to individual files.
+    """
+
     def execute(self, study: Any, paths: list[str] | None = None, **kwargs) -> str:
+        """Load EEG data from the given file or directory paths.
+
+        Directories are auto-expanded to include all contained files.
+
+        Args:
+            study: The global ``Study`` instance.
+            paths: List of absolute file or directory paths.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A success message with the count of loaded files, or an
+            error message on failure.
+        """
         if not paths:
             return "Error: paths list cannot be empty."
 
@@ -77,8 +119,20 @@ class RealLoadDataTool(BaseLoadDataTool):
 
 
 class RealAttachLabelsTool(BaseAttachLabelsTool):
+    """Real implementation of :class:`BaseAttachLabelsTool`.
+
+    Attaches label files to loaded data via :class:`BackendFacade`.
+    """
+
     def is_valid(self, study: Any) -> bool:
-        # Requires at least one loaded file
+        """Require at least one loaded file.
+
+        Args:
+            study: The global ``Study`` instance.
+
+        Returns:
+            ``True`` if data has been loaded.
+        """
         return bool(study.loaded_data_list)
 
     def execute(
@@ -88,6 +142,17 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
         label_format: str | None = None,
         **kwargs,
     ) -> str:
+        """Attach label files to loaded data files.
+
+        Args:
+            study: The global ``Study`` instance.
+            mapping: Dictionary mapping data filenames to label file paths.
+            label_format: Optional label file format hint.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A message indicating how many files received labels.
+        """
         if mapping is None:
             return "Error: mapping is required"
 
@@ -101,20 +166,58 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 
 
 class RealClearDatasetTool(BaseClearDatasetTool):
+    """Real implementation of :class:`BaseClearDatasetTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require at least one loaded file.
+
+        Args:
+            study: The global ``Study`` instance.
+
+        Returns:
+            ``True`` if data has been loaded.
+        """
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, **kwargs) -> str:
+        """Clear all loaded data and reset Study state.
+
+        Args:
+            study: The global ``Study`` instance.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A confirmation message.
+        """
         facade = BackendFacade(study)
         facade.clear_data()
         return "Dataset cleared."
 
 
 class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
+    """Real implementation of :class:`BaseGetDatasetInfoTool`."""
+
     def is_valid(self, study: Any) -> bool:
+        """Require at least one loaded file.
+
+        Args:
+            study: The global ``Study`` instance.
+
+        Returns:
+            ``True`` if data has been loaded.
+        """
         return bool(study.loaded_data_list)
 
     def execute(self, study: Any, **kwargs) -> str:
+        """Retrieve summary information about the loaded dataset.
+
+        Args:
+            study: The global ``Study`` instance.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A newline-separated summary string.
+        """
         facade = BackendFacade(study)
         summary = facade.get_data_summary()
 
@@ -143,7 +246,20 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
 
 class RealGenerateDatasetTool(BaseGenerateDatasetTool):
+    """Real implementation of :class:`BaseGenerateDatasetTool`.
+
+    Generates train/validation/test splits from epoched EEG data.
+    """
+
     def is_valid(self, study: Any) -> bool:
+        """Require epoched data before dataset generation.
+
+        Args:
+            study: The global ``Study`` instance.
+
+        Returns:
+            ``True`` if ``study.epoch_data`` is available.
+        """
         # Requires epoch_data to generate dataset
         return study.epoch_data is not None
 
@@ -156,6 +272,21 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
         training_mode: str = "individual",
         **kwargs,
     ) -> str:
+        """Generate a training dataset from epoched data.
+
+        Args:
+            study: The global ``Study`` instance.
+            test_ratio: Fraction of data reserved for testing.
+            val_ratio: Fraction of data reserved for validation.
+            split_strategy: How to split data (``'trial'``, ``'session'``,
+                or ``'subject'``).
+            training_mode: Training paradigm (``'individual'`` or
+                ``'group'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A success message with dataset count or an error message.
+        """
         facade = BackendFacade(study)
 
         try:

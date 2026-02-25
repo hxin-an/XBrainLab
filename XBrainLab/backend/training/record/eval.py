@@ -1,3 +1,5 @@
+"""Evaluation record module for storing and exporting model evaluation results."""
+
 import os
 
 import numpy as np
@@ -8,11 +10,16 @@ from XBrainLab.backend.utils.logger import logger
 
 
 def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
-    """Calculate confusion matrix.
+    """Calculate the confusion matrix from model outputs and ground truth labels.
 
     Args:
-        output: Output of model.
-        label: Ground truth label.
+        output: Model output array of shape ``(n, num_classes)``.
+        label: Ground truth label array of shape ``(n,)``.
+
+    Returns:
+        A confusion matrix of shape ``(num_classes, num_classes)`` where
+        entry ``[i][j]`` is the count of samples with true label ``i``
+        predicted as label ``j``.
     """
     class_num = len(np.unique(label))
     confusion = np.zeros((class_num, class_num), dtype=np.uint32)
@@ -26,16 +33,19 @@ def calculate_confusion(output: np.ndarray, label: np.ndarray) -> np.ndarray:
 
 
 class EvalRecord:
-    """Class for recording evaluation result.
+    """Record class for storing and exporting model evaluation results.
+
+    Stores ground truth labels, model outputs, and saliency maps from
+    multiple attribution methods, organized by class index.
 
     Attributes:
-        label: :class:`numpy.ndarray` of shape (n,).
-            Ground truth label.
-        output: :class:`numpy.ndarray` of shape (n, classNum).
-            Output of model.
-        gradient: dict of :class:`numpy.ndarray` of shape (n, classNum, ...) with
-                  class index as key.
-            Gradient of model by class index.
+        label: Ground truth label array of shape ``(n,)``.
+        output: Model output array of shape ``(n, num_classes)``.
+        gradient: Dictionary mapping class indices to gradient arrays.
+        gradient_input: Dictionary mapping class indices to gradient*input arrays.
+        smoothgrad: Dictionary mapping class indices to SmoothGrad arrays.
+        smoothgrad_sq: Dictionary mapping class indices to SmoothGrad² arrays.
+        vargrad: Dictionary mapping class indices to VarGrad arrays.
     """
 
     def __init__(
@@ -48,6 +58,17 @@ class EvalRecord:
         smoothgrad_sq: dict,
         vargrad: dict,
     ) -> None:
+        """Initialize the evaluation record.
+
+        Args:
+            label: Ground truth label array of shape ``(n,)``.
+            output: Model output array of shape ``(n, num_classes)``.
+            gradient: Per-class gradient saliency maps.
+            gradient_input: Per-class gradient*input saliency maps.
+            smoothgrad: Per-class SmoothGrad saliency maps.
+            smoothgrad_sq: Per-class SmoothGrad² saliency maps.
+            vargrad: Per-class VarGrad saliency maps.
+        """
         self.label = label
         self.output = output
         self.gradient = gradient
@@ -57,10 +78,10 @@ class EvalRecord:
         self.vargrad = vargrad
 
     def export(self, target_path: str) -> None:
-        """Export evaluation result as torch file.
+        """Export the evaluation record as a torch file.
 
         Args:
-            target_path: Path to save evaluation result.
+            target_path: Directory path where the ``'eval'`` file will be saved.
         """
         record = {
             "label": self.label,
@@ -75,10 +96,14 @@ class EvalRecord:
 
     @classmethod
     def load(cls, target_path: str) -> "EvalRecord | None":
-        """Load evaluation result from torch file.
+        """Load an evaluation record from a torch file.
 
         Args:
-            target_path: Path to load evaluation result.
+            target_path: Directory path containing the ``'eval'`` file.
+
+        Returns:
+            An :class:`EvalRecord` instance, or ``None`` if the file does not
+            exist or cannot be loaded.
         """
         path = os.path.join(target_path, "eval")
         if not os.path.exists(path):
@@ -100,10 +125,12 @@ class EvalRecord:
             return None
 
     def export_csv(self, target_path: str) -> None:
-        """Export evaluation result as csv file.
+        """Export evaluation results as a CSV file.
+
+        The CSV contains model outputs, ground truth labels, and predicted labels.
 
         Args:
-            target_path: Path to save evaluation result.
+            target_path: Full file path for the CSV output.
         """
         data = np.c_[self.output, self.label, self.output.argmax(axis=1)]
         index_header_str = ",".join([str(i) for i in range(self.output.shape[1])])
@@ -113,10 +140,13 @@ class EvalRecord:
         )
 
     def export_saliency(self, method: str, target_path: str) -> None:
-        """Export saliency map as torch file.
+        """Export a specific saliency map as a torch file.
+
         Args:
-            method: saliency type to be exported.
-            target_path: Path to save saliency map.
+            method: Saliency method name. One of ``'Gradient'``,
+                ``'Gradient * Input'``, ``'SmoothGrad'``,
+                ``'SmoothGrad_Squared'``, or ``'VarGrad'``.
+            target_path: Full file path for the output.
         """
         if method == "Gradient":
             saliency = self.gradient
@@ -128,14 +158,26 @@ class EvalRecord:
             saliency = self.smoothgrad_sq
         elif method == "VarGrad":
             saliency = self.vargrad
+        else:
+            raise ValueError(f"Unknown saliency method: {method}")
         torch.save(saliency, target_path)
 
     def get_acc(self) -> float:
-        """Get accuracy of the model."""
+        """Compute the classification accuracy.
+
+        Returns:
+            Accuracy as a float between 0 and 1.
+        """
         return sum(self.output.argmax(axis=1) == self.label) / len(self.label)
 
     def get_auc(self) -> float:
-        """Get auc of the model."""
+        """Compute the AUC (Area Under the ROC Curve) score.
+
+        Handles both binary and multi-class scenarios using one-vs-rest.
+
+        Returns:
+            AUC score as a float.
+        """
         if (
             torch.nn.functional.softmax(torch.Tensor(self.output), dim=1)
             .numpy()
@@ -156,7 +198,11 @@ class EvalRecord:
             )
 
     def get_kappa(self) -> float:
-        """Get kappa of the model."""
+        """Compute Cohen's Kappa coefficient.
+
+        Returns:
+            The Kappa statistic as a float.
+        """
         confusion = calculate_confusion(self.output, self.label)
         class_num = len(confusion)
         p0 = np.diagonal(confusion).sum() / confusion.sum()
@@ -201,21 +247,56 @@ class EvalRecord:
         return metrics
 
     def get_gradient(self, label_index: int) -> np.ndarray:
-        """Return gradient of model by class index."""
+        """Return gradient saliency maps for the specified class.
+
+        Args:
+            label_index: Class index to retrieve saliency maps for.
+
+        Returns:
+            Numpy array of gradient saliency maps for the given class.
+        """
         return self.gradient[label_index]
 
     def get_gradient_input(self, label_index: int) -> np.ndarray:
-        """Return gradient times input of model by class index."""
+        """Return gradient*input saliency maps for the specified class.
+
+        Args:
+            label_index: Class index to retrieve saliency maps for.
+
+        Returns:
+            Numpy array of gradient*input saliency maps for the given class.
+        """
         return self.gradient_input[label_index]
 
     def get_smoothgrad(self, label_index: int) -> np.ndarray:
-        """Return smoothgrad of model by class index."""
+        """Return SmoothGrad saliency maps for the specified class.
+
+        Args:
+            label_index: Class index to retrieve saliency maps for.
+
+        Returns:
+            Numpy array of SmoothGrad saliency maps for the given class.
+        """
         return self.smoothgrad[label_index]
 
     def get_smoothgrad_sq(self, label_index: int) -> np.ndarray:
-        """Return smoothgrad squared of model by class index."""
+        """Return SmoothGrad² saliency maps for the specified class.
+
+        Args:
+            label_index: Class index to retrieve saliency maps for.
+
+        Returns:
+            Numpy array of SmoothGrad² saliency maps for the given class.
+        """
         return self.smoothgrad_sq[label_index]
 
     def get_vargrad(self, label_index: int) -> np.ndarray:
-        """Return vargrad of model by class index."""
+        """Return VarGrad saliency maps for the specified class.
+
+        Args:
+            label_index: Class index to retrieve saliency maps for.
+
+        Returns:
+            Numpy array of VarGrad saliency maps for the given class.
+        """
         return self.vargrad[label_index]

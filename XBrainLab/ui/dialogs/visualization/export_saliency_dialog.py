@@ -1,3 +1,9 @@
+"""Saliency map export dialog for saving computed saliency data to pickle files.
+
+Provides cascading selectors for plan, repeat, and saliency method,
+followed by a file location picker for the output.
+"""
+
 import os
 import pickle
 
@@ -16,9 +22,18 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ExportSaliencyDialog(BaseDialog):
-    """
-    Dialog for exporting saliency maps to pickle files.
-    Allows selection of plan, repeat, and method.
+    """Dialog for exporting saliency maps to pickle files.
+
+    Allows cascading selection of training plan, repeat, and saliency
+    method before choosing an export directory.
+
+    Attributes:
+        trainers: List of available trainer instances.
+        trainer_map: Dictionary mapping trainer names to trainer objects.
+        real_plan_opt: Dictionary mapping plan names to plan objects.
+        plan_combo: QComboBox for selecting a training plan.
+        repeat_combo: QComboBox for selecting a repeat.
+        method_combo: QComboBox for selecting the saliency method.
     """
 
     def __init__(self, parent, trainers):
@@ -35,6 +50,7 @@ class ExportSaliencyDialog(BaseDialog):
         self.resize(400, 200)
 
     def init_ui(self):
+        """Initialize the dialog UI with cascading selectors and export button."""
         layout = QGridLayout(self)
 
         # Plan Selection
@@ -85,6 +101,11 @@ class ExportSaliencyDialog(BaseDialog):
         layout.addWidget(self.button_box, 3, 0, 1, 2)
 
     def on_plan_change(self, plan_name):
+        """Update repeat options when the selected plan changes.
+
+        Args:
+            plan_name: Name of the selected training plan.
+        """
         if not self.repeat_combo:
             return
         self.repeat_combo.clear()
@@ -98,6 +119,11 @@ class ExportSaliencyDialog(BaseDialog):
             self.real_plan_opt = {}
 
     def on_repeat_change(self, repeat_name):
+        """Update method options when the selected repeat changes.
+
+        Args:
+            repeat_name: Name of the selected repeat.
+        """
         if not self.method_combo:
             return
         self.method_combo.clear()
@@ -109,6 +135,7 @@ class ExportSaliencyDialog(BaseDialog):
             )
 
     def on_export_clicked(self):
+        """Validate selections, compute saliency, and export to pickle file."""
         if not self.plan_combo or not self.repeat_combo or not self.method_combo:
             return
         plan_name = self.plan_combo.currentText()

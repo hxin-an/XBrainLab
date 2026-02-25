@@ -1,3 +1,9 @@
+"""Real implementations of model training tools.
+
+These tools interact with the ``BackendFacade`` to configure and
+launch actual deep-learning training runs.
+"""
+
 from typing import Any
 
 from XBrainLab.backend.facade import BackendFacade
@@ -10,7 +16,20 @@ from ..definitions.training_def import (
 
 
 class RealSetModelTool(BaseSetModelTool):
+    """Real implementation of :class:`BaseSetModelTool`."""
+
     def execute(self, study: Any, model_name: str | None = None, **kwargs) -> str:
+        """Set the deep learning model architecture.
+
+        Args:
+            study: The global ``Study`` instance.
+            model_name: Name of the model architecture (e.g.,
+                ``'EEGNet'``, ``'SCCNet'``).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A success message or an error description.
+        """
         if not model_name:
             return "Error: model_name must be provided."
 
@@ -24,6 +43,8 @@ class RealSetModelTool(BaseSetModelTool):
 
 
 class RealConfigureTrainingTool(BaseConfigureTrainingTool):
+    """Real implementation of :class:`BaseConfigureTrainingTool`."""
+
     def execute(
         self,
         study: Any,
@@ -36,6 +57,22 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
         save_checkpoints_every: int = 0,
         **kwargs,
     ) -> str:
+        """Configure training hyperparameters via the backend.
+
+        Args:
+            study: The global ``Study`` instance.
+            epoch: Number of training epochs.
+            batch_size: Mini-batch size.
+            learning_rate: Optimiser learning rate.
+            repeat: Number of experiment repetitions.
+            device: Compute device (``'cpu'`` or ``'cuda'``).
+            optimizer: Optimiser name (``'adam'``, ``'sgd'``, ``'adamw'``).
+            save_checkpoints_every: Checkpoint save interval (0 = disabled).
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A summary of the configured parameters, or an error message.
+        """
         facade = BackendFacade(study)
 
         try:
@@ -60,7 +97,24 @@ class RealConfigureTrainingTool(BaseConfigureTrainingTool):
 
 
 class RealStartTrainingTool(BaseStartTrainingTool):
+    """Real implementation of :class:`BaseStartTrainingTool`.
+
+    Launches the training process in a background thread via
+    :class:`BackendFacade`.
+    """
+
     def is_valid(self, study: Any) -> bool:
+        """Check whether training can be started.
+
+        Requires either an existing trainer or sufficient configuration
+        (datasets, model, and training options) to create one.
+
+        Args:
+            study: The global ``Study`` instance.
+
+        Returns:
+            ``True`` if training can proceed.
+        """
         # Valid if we have a trainer (ready to run) OR we have all headers to create one
         has_trainer = study.trainer is not None
         can_create_plan = (
@@ -72,6 +126,15 @@ class RealStartTrainingTool(BaseStartTrainingTool):
         return has_trainer or can_create_plan
 
     def execute(self, study: Any, **kwargs) -> str:
+        """Start the training process in a background thread.
+
+        Args:
+            study: The global ``Study`` instance.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            A success message or an error description.
+        """
         facade = BackendFacade(study)
 
         try:

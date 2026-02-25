@@ -1,3 +1,9 @@
+"""Command parser for extracting tool-call JSON from LLM output.
+
+Parses raw LLM response text to identify and extract structured JSON
+tool commands embedded within free-form text or code blocks.
+"""
+
 import json
 from typing import Any
 
@@ -5,22 +11,30 @@ from XBrainLab.backend.utils.logger import logger
 
 
 class CommandParser:
-    """Parses LLM output to extract commands."""
+    """Parses LLM output to extract structured tool commands.
+
+    Scans response text for JSON objects containing ``tool_name`` (or
+    ``command``) and ``parameters`` keys, handling both raw JSON and
+    fenced code blocks.
+    """
 
     @staticmethod
     def parse(
         text: str,
     ) -> list[tuple[str, dict[str, Any]]] | tuple[str, dict[str, Any]] | None:
-        """
-        Extracts a JSON command block from the text.
-        Expected format:
-        ```json
-        {
-            "command": "tool_name",
-            "parameters": { ... }
-        }
-        ```
-        or just the JSON object.
+        """Extracts JSON command blocks from LLM output text.
+
+        Scans ``text`` for JSON objects containing a ``tool_name`` (or
+        ``command``) key and a ``parameters`` key.  Multiple commands may
+        be present in a single response.
+
+        Args:
+            text: Raw LLM response text, potentially containing fenced
+                code blocks or inline JSON.
+
+        Returns:
+            A list of ``(tool_name, parameters)`` tuples if commands are
+            found, or ``None`` if no valid commands are detected.
         """
         # Clean up the text: remove code blocks if present
         # We want to scan the "inner" text of the code block if it exists

@@ -1,15 +1,22 @@
+"""Lightweight Observer pattern implementation for backend event notification."""
+
 from collections.abc import Callable
 
 from XBrainLab.backend.utils.logger import logger
 
 
 class Observable:
-    """
-    A lightweight, pure Python implementation of the Observer pattern.
-    Replaces PyQt specific signals for backend components.
+    """A pure Python implementation of the Observer pattern.
+
+    Manages event subscriptions and notifications, decoupling publishers
+    from subscribers without depending on UI frameworks.
+
+    Attributes:
+        _observers: Mapping of event names to lists of callback functions.
     """
 
     def __init__(self):
+        """Initialize the observable with an empty subscriber registry."""
         self._observers: dict[str, list[Callable]] = {}
 
     def subscribe(self, event_name: str, callback: Callable) -> None:
@@ -37,12 +44,26 @@ class Observable:
             self._observers[event_name].remove(callback)
 
     def notify(self, event_name: str, *args, **kwargs):
-        """Notify all subscribers of an event."""
+        """Notify all subscribers of an event, passing along any arguments.
+
+        Args:
+            event_name: The name of the event to notify.
+            *args: Positional arguments to pass to each callback.
+            **kwargs: Keyword arguments to pass to each callback.
+        """
         if event_name in self._observers:
             for callback in self._observers[event_name]:
                 self._safe_call(event_name, callback, *args, **kwargs)
 
     def _safe_call(self, event_name: str, callback: Callable, *args, **kwargs):
+        """Invoke a callback safely, logging errors without propagating them.
+
+        Args:
+            event_name: The event name (for error logging context).
+            callback: The subscriber function to call.
+            *args: Positional arguments to pass to the callback.
+            **kwargs: Keyword arguments to pass to the callback.
+        """
         try:
             callback(*args, **kwargs)
         except Exception as e:

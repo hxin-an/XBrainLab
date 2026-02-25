@@ -1,14 +1,9 @@
 import os
 import shutil
 import sys
-import unittest
-from unittest.mock import MagicMock
-
-sys.modules["captum"] = MagicMock()
-sys.modules["captum.attr"] = MagicMock()
-
-
 import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
 
 import torch
 
@@ -18,6 +13,21 @@ from XBrainLab.backend.training.training_plan import TrainingPlanHolder
 
 
 class TestTrainingFix(unittest.TestCase):
+    _captum_patcher = None
+    _captum_attr_patcher = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls._captum_patcher = patch.dict(
+            sys.modules, {"captum": MagicMock(), "captum.attr": MagicMock()}
+        )
+        cls._captum_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._captum_patcher:
+            cls._captum_patcher.stop()
+
     def setUp(self):
         # Create a temporary directory
         self.test_dir = tempfile.mkdtemp()
@@ -64,7 +74,6 @@ class TestTrainingFix(unittest.TestCase):
 
         record1 = plan1.get_plans()[0]
         path1 = record1.target_path
-        print(f"Path 1: {path1}")
 
         self.assertIn("TestModel", path1)
         # Check for timestamp format roughly (YYYYMMDD-HHMMSS)
@@ -83,7 +92,3 @@ class TestTrainingFix(unittest.TestCase):
     def tearDown(self):
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
-
-
-if __name__ == "__main__":
-    unittest.main()

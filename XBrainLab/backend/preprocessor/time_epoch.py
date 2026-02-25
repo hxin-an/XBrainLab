@@ -1,3 +1,5 @@
+"""Preprocessor for segmenting continuous EEG into time-locked epochs."""
+
 import mne
 import numpy as np
 
@@ -6,16 +8,19 @@ from .base import PreprocessBase
 
 
 class TimeEpoch(PreprocessBase):
-    """Class for epoching data by event markers
+    """Segments continuous (raw) EEG data into time-locked epochs.
 
-    Input:
-        baseline: Baseline removal time interval
-        selected_event_names: List of event names to be kept
-        tmin: Start time before event marker
-        tmax: End time after event marker
+    Extracts fixed-length time windows around event markers. Supports
+    baseline correction and event selection. Only applicable to raw
+    (non-epoched) data that contains event markers.
     """
 
     def check_data(self):
+        """Validates that data is raw and contains event markers.
+
+        Raises:
+            ValueError: If data is already epoched or has no event markers.
+        """
         super().check_data()
         for preprocessed_data in self.preprocessed_data_list:
             if not preprocessed_data.is_raw():
@@ -29,6 +34,18 @@ class TimeEpoch(PreprocessBase):
     def get_preprocess_desc(
         self, baseline: list, selected_event_names: list, tmin: float, tmax: float
     ):
+        """Returns a description of the time-epoch step.
+
+        Args:
+            baseline: Baseline correction window as ``(start, end)`` in
+                seconds, or ``None`` for no baseline correction.
+            selected_event_names: List of event names to include.
+            tmin: Epoch start time relative to event onset, in seconds.
+            tmax: Epoch end time relative to event onset, in seconds.
+
+        Returns:
+            A string describing the epoching parameters.
+        """
         return f"Epoching {tmin} ~ {tmax} by event ({baseline} baseline)"
 
     def _data_preprocess(
@@ -39,6 +56,20 @@ class TimeEpoch(PreprocessBase):
         tmin: float,
         tmax: float,
     ):
+        """Segments a single raw data instance into time-locked epochs.
+
+        Args:
+            preprocessed_data: The raw data instance to epoch.
+            baseline: Baseline correction window, or ``None``.
+            selected_event_names: Event names to include, or ``None``
+                to include all.
+            tmin: Epoch start time relative to event onset, in seconds.
+            tmax: Epoch end time relative to event onset, in seconds.
+
+        Raises:
+            ValueError: If no matching events are found or the data is
+                already epoched.
+        """
         raw_events, raw_event_id = preprocessed_data.get_event_list()
 
         selected_event_id = {}

@@ -1,3 +1,9 @@
+"""Re-referencing dialog for changing the EEG reference scheme.
+
+Provides options for average reference (CAR) or selecting specific
+reference channels from the dataset.
+"""
+
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -11,9 +17,18 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class RereferenceDialog(BaseDialog):
-    """
-    Dialog for re-referencing EEG data.
-    Supports Average Reference (CAR) or specific channel selection.
+    """Dialog for re-referencing EEG data.
+
+    Supports average reference (CAR) or selection of specific channels
+    as the new reference.
+
+    Attributes:
+        data_list: List of loaded EEG data objects.
+        reref_params: Reference parameter: ``'average'`` or a list of
+            channel names.
+        avg_check: QCheckBox for enabling average reference.
+        chan_group: QGroupBox containing the channel selection list.
+        chan_list: QListWidget displaying available channels.
     """
 
     def __init__(self, parent, data_list: list):
@@ -27,6 +42,7 @@ class RereferenceDialog(BaseDialog):
         self.resize(400, 300)
 
     def init_ui(self):
+        """Initialize the dialog UI with reference mode controls."""
         layout = QVBoxLayout(self)
 
         self.avg_check = QCheckBox("Use Average Reference")
@@ -56,10 +72,20 @@ class RereferenceDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def toggle_avg(self, checked):
+        """Toggle channel selection group based on average reference state.
+
+        Args:
+            checked: Whether average reference is enabled.
+        """
         if self.chan_group:
             self.chan_group.setEnabled(not checked)
 
     def accept(self):
+        """Validate channel selection and accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if no reference channel is selected.
+        """
         if not self.avg_check or not self.chan_list:
             return
 
@@ -81,7 +107,17 @@ class RereferenceDialog(BaseDialog):
         super().accept()
 
     def get_params(self):
+        """Return the configured reference parameters.
+
+        Returns:
+            String ``'average'`` or list of channel name strings, or None.
+        """
         return self.reref_params
 
     def get_result(self):
+        """Return the configured reference parameters.
+
+        Returns:
+            String ``'average'`` or list of channel name strings, or None.
+        """
         return self.get_params()

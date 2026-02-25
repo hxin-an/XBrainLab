@@ -1,3 +1,10 @@
+"""Raw data loader implementations for various EEG file formats.
+
+Registers loader functions with :class:`RawDataLoaderFactory` for supported
+formats including EEGLAB (.set), BIOSIG (.gdf), MNE (.fif), EDF (.edf),
+BioSemi (.bdf), Neuroscan (.cnt), and BrainVision (.vhdr).
+"""
+
 import mne
 
 from XBrainLab.backend.exceptions import FileCorruptedError
@@ -8,9 +15,19 @@ from .raw import Raw
 
 
 def load_set_file(filepath):
-    """
-    Load .set file (EEGLAB) and return a XBrainLab Raw object.
-    Mimics logic from XBrainLab.ui.load_data.set.LoadSet._load
+    """Load an EEGLAB ``.set`` file and return a Raw wrapper.
+
+    Attempts to load as continuous raw data first, falling back to epochs
+    if the raw loader fails.
+
+    Args:
+        filepath: Path to the ``.set`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If the file cannot be loaded as raw or epochs.
     """
     selected_data = None
 
@@ -45,8 +62,16 @@ def load_set_file(filepath):
 
 
 def load_gdf_file(filepath):
-    """
-    Load .gdf file (BIOSIG) and return a XBrainLab Raw object.
+    """Load a BIOSIG ``.gdf`` file and return a Raw wrapper.
+
+    Args:
+        filepath: Path to the ``.gdf`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If loading fails.
     """
     try:
         # GDF is typically loaded as Raw
@@ -65,8 +90,16 @@ def load_gdf_file(filepath):
 
 
 def load_fif_file(filepath):
-    """
-    Load .fif file (MNE-Python native) and return a XBrainLab Raw object.
+    """Load an MNE-Python native ``.fif`` file and return a Raw wrapper.
+
+    Args:
+        filepath: Path to the ``.fif`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If loading fails.
     """
     try:
         selected_data = mne.io.read_raw_fif(filepath, preload=False)
@@ -79,8 +112,16 @@ def load_fif_file(filepath):
 
 
 def load_edf_file(filepath):
-    """
-    Load .edf file (European Data Format) and return a XBrainLab Raw object.
+    """Load a European Data Format ``.edf`` file and return a Raw wrapper.
+
+    Args:
+        filepath: Path to the ``.edf`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If loading fails.
     """
     try:
         selected_data = mne.io.read_raw_edf(filepath, preload=False)
@@ -93,8 +134,16 @@ def load_edf_file(filepath):
 
 
 def load_bdf_file(filepath):
-    """
-    Load .bdf file (BioSemi) and return a XBrainLab Raw object.
+    """Load a BioSemi ``.bdf`` file and return a Raw wrapper.
+
+    Args:
+        filepath: Path to the ``.bdf`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If loading fails.
     """
     try:
         selected_data = mne.io.read_raw_bdf(filepath, preload=False)
@@ -107,8 +156,16 @@ def load_bdf_file(filepath):
 
 
 def load_cnt_file(filepath):
-    """
-    Load .cnt file (Neuroscan) and return a XBrainLab Raw object.
+    """Load a Neuroscan ``.cnt`` file and return a Raw wrapper.
+
+    Args:
+        filepath: Path to the ``.cnt`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If loading fails.
     """
     try:
         selected_data = mne.io.read_raw_cnt(filepath, preload=False)
@@ -121,8 +178,16 @@ def load_cnt_file(filepath):
 
 
 def load_brainvision_file(filepath):
-    """
-    Load .vhdr file (BrainVision) and return a XBrainLab Raw object.
+    """Load a BrainVision ``.vhdr`` file and return a Raw wrapper.
+
+    Args:
+        filepath: Path to the ``.vhdr`` file.
+
+    Returns:
+        Raw object wrapping the loaded data, or None on failure.
+
+    Raises:
+        FileCorruptedError: If loading fails.
     """
     try:
         selected_data = mne.io.read_raw_brainvision(filepath, preload=False)
@@ -145,8 +210,18 @@ RawDataLoaderFactory.register_loader(".vhdr", load_brainvision_file)
 
 
 def load_raw_data(filepath: str) -> Raw:
-    """
-    Load raw data from file using the factory.
+    """Load raw EEG data from file using the registered factory.
+
+    Args:
+        filepath: Path to the data file.
+
+    Returns:
+        Raw wrapper containing the loaded data.
+
+    Raises:
+        ValueError: If loading returns None.
+        UnsupportedFormatError: If the file format is not registered.
+        FileCorruptedError: If the file is corrupted or unreadable.
     """
     raw = RawDataLoaderFactory.load(filepath)
     if raw is None:

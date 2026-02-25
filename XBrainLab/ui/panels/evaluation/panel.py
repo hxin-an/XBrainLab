@@ -1,3 +1,5 @@
+"""Evaluation panel for viewing confusion matrices, metrics, and model summaries."""
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -24,7 +26,36 @@ from XBrainLab.ui.styles.theme import Theme
 
 
 class EvaluationPanel(BasePanel):
+    """Panel for analysing trained-model performance.
+
+    Displays confusion matrices, per-class metric tables and bar charts,
+    and textual model summaries.  Supports plan/run selection and
+    percentage-toggle options.
+
+    Attributes:
+        training_controller: Injected ``TrainingController`` for event
+            subscription.
+        model_combo: ``QComboBox`` for selecting a training fold/plan.
+        run_combo: ``QComboBox`` for selecting an individual run or
+            average.
+        chk_percentage: ``QCheckBox`` toggling percentage display.
+        matrix_widget: ``ConfusionMatrixWidget`` for the matrix plot.
+        bar_chart: ``MetricsBarChartWidget`` for per-class bar chart.
+        metrics_table: ``MetricsTableWidget`` for the metrics table.
+        summary_text: ``QTextEdit`` displaying the model summary string.
+        info_panel: ``AggregateInfoPanel`` in the sidebar.
+    """
+
     def __init__(self, controller=None, training_controller=None, parent=None):
+        """Initialize the evaluation panel.
+
+        Args:
+            controller: Optional ``EvaluationController``. Resolved from
+                the parent study if not provided.
+            training_controller: Optional ``TrainingController`` for
+                subscribing to training-stopped events.
+            parent: Parent widget (typically the main window).
+        """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("evaluation")
@@ -192,6 +223,7 @@ class EvaluationPanel(BasePanel):
         # Handled by InfoPanelService
 
     def init_ui(self):
+        """Build the evaluation panel layout with plots, toolbar, tabs, and sidebar."""
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)

@@ -1,7 +1,13 @@
+"""AI model settings dialog for configuring local and Gemini API backends.
+
+Provides a unified dialog for managing local model downloads and Gemini API
+key verification, allowing users to switch between inference backends.
+"""
+
 import os
 
 try:
-    import google.generativeai as genai
+    from google import genai
 except ImportError:
     genai = None  # type: ignore[assignment]
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
@@ -23,8 +29,18 @@ from XBrainLab.llm.core.downloader import ModelDownloader
 
 
 class ModelSettingsDialog(QDialog):
-    """
-    Dialog for configuring AI Model Settings (Local vs Gemini).
+    """Dialog for configuring AI model settings (Local vs Gemini).
+
+    Provides UI for selecting and downloading local models, entering and
+    verifying Gemini API keys, and activating the chosen backend.
+
+    Attributes:
+        agent_manager: Reference to AgentManager for safe backend switching.
+        config: The current LLM configuration.
+        gemini_enabled: Whether the Gemini backend is enabled and verified.
+        local_downloaded: Whether the selected local model is downloaded.
+        downloader: ModelDownloader instance for managing model downloads.
+        is_downloading: Whether a download is currently in progress.
     """
 
     def __init__(
@@ -41,7 +57,7 @@ class ModelSettingsDialog(QDialog):
         saved_config = LLMConfig.load_from_file()
         self.config = saved_config if saved_config else (config or LLMConfig())
 
-        self.gemini_verified = self.config.gemini_verified
+        self.gemini_enabled = self.config.gemini_enabled
         self.local_downloaded = False
 
         # Downloader
@@ -55,6 +71,7 @@ class ModelSettingsDialog(QDialog):
         self.load_state()
 
     def init_ui(self):
+        """Initialize the dialog UI with local model and Gemini API sections."""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
@@ -181,7 +198,7 @@ class ModelSettingsDialog(QDialog):
         if self.config.gemini_api_key:
             self.api_key_input.setText(self.config.gemini_api_key)
 
-        if self.config.gemini_verified:
+        if self.config.gemini_enabled:
             self.gemini_status_label.setText("Verified")
             self.gemini_status_label.setStyleSheet("color: #4caf50;")
 
@@ -222,12 +239,18 @@ class ModelSettingsDialog(QDialog):
         self.update_validation_state()
 
     def on_local_action_clicked(self):
+        """Handle local model install/delete/cancel button click."""
         if self.is_downloading:
             # Action is Cancel
             self.downloader.cancel_download()
             self.is_downloading = False
             self.check_local_model_status()
             return
+
+        if self.local_downloaded:
+            self._delete_model()
+        else:
+            self._start_download()
 
     def _on_local_enable_toggled(self, checked):
         """Enable/Disable local model controls."""
@@ -236,6 +259,7 @@ class ModelSettingsDialog(QDialog):
         self.check_local_model_status()
 
     def _start_download(self):
+        """Begin downloading the selected local model."""
         model_name = self.local_model_combo.currentText()
 
         self.is_downloading = True
@@ -246,6 +270,7 @@ class ModelSettingsDialog(QDialog):
         self.update_validation_state()
 
     def _delete_model(self):
+        """Delete the selected local model from cache after confirmation."""
         repo_id = self.local_model_combo.currentText()
         reply = QMessageBox.warning(
             self,
@@ -269,14 +294,30 @@ class ModelSettingsDialog(QDialog):
                 QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
 
     def on_download_progress(self, percent, msg):
+        """Handle download progress updates.
+
+        Args:
+            percent: Download completion percentage.
+            msg: Progress message to display.
+        """
         self.local_status_label.setText(msg)
 
     def on_download_finished(self, path):
+        """Handle successful download completion.
+
+        Args:
+            path: Path where the model was downloaded.
+        """
         self.is_downloading = False
         self.check_local_model_status()
         QMessageBox.information(self, "Success", "Model downloaded successfully!")
 
     def on_download_failed(self, error):
+        """Handle download failure.
+
+        Args:
+            error: Error message describing the failure.
+        """
         self.is_downloading = False
         self.local_status_label.setText("[x] Failed")
         self.local_status_label.setStyleSheet("color: #f44336;")
@@ -309,6 +350,7 @@ class ModelSettingsDialog(QDialog):
             )
 
     def on_test_connection_clicked(self):
+        """Validate and test the entered Gemini API key."""
         api_key = self.api_key_input.text().strip()
 
         # 1. Format Validation
@@ -317,14 +359,13 @@ class ModelSettingsDialog(QDialog):
             return
 
         if genai is None:
-            self.gemini_verified = False
+            self.gemini_enabled = False
             self.gemini_status_label.setText("[x] Missing Lib")
             self.gemini_status_label.setStyleSheet("color: #f44336;")
             QMessageBox.critical(
                 self,
                 "Dependency Error",
-                "Please install google-generativeai library:\n"
-                "poetry add google-generativeai",
+                "Please install google-genai library:\npoetry add google-genai",
             )
             return
 
@@ -350,7 +391,12 @@ class ModelSettingsDialog(QDialog):
         self.conn_thread.start()
 
     def _on_conn_test_success(self, api_key):
-        self.gemini_verified = True
+        """Handle successful Gemini API connection test.
+
+        Args:
+            api_key: The verified API key.
+        """
+        self.gemini_enabled = True
         self.gemini_status_label.setText("Status: Verified")
         self.gemini_status_label.setStyleSheet("color: #4caf50;")
 
@@ -362,7 +408,12 @@ class ModelSettingsDialog(QDialog):
         self.update_validation_state()
 
     def _on_conn_test_error(self, error_msg):
-        self.gemini_verified = False
+        """Handle failed Gemini API connection test.
+
+        Args:
+            error_msg: Error message from the connection attempt.
+        """
+        self.gemini_enabled = False
         self.gemini_status_label.setText("Status: Failed")
         self.gemini_status_label.setStyleSheet("color: #f44336;")
 
@@ -375,7 +426,7 @@ class ModelSettingsDialog(QDialog):
         # Core Condition: Local Downloaded OR Gemini Verified
         # Also disable if currently downloading
         is_ready = (
-            self.local_downloaded or self.gemini_verified
+            self.local_downloaded or self.gemini_enabled
         ) and not self.is_downloading
 
         self.btn_activate.setEnabled(is_ready)
@@ -386,17 +437,17 @@ class ModelSettingsDialog(QDialog):
             pass
 
     def on_activate_clicked(self):
-        """Save settings and accept."""
+        """Save settings, persist configuration, and accept the dialog."""
         # Save to config object
         self.config.local_model_enabled = self.local_enable_chk.isChecked()
         self.config.model_name = self.local_model_combo.currentText()
         self.config.gemini_model_name = self.gemini_model_combo.currentText()
-        self.config.gemini_verified = self.gemini_verified
+        self.config.gemini_enabled = self.gemini_enabled
 
         # Determine active mode
-        if self.gemini_verified and not self.local_downloaded:
+        if self.gemini_enabled and not self.local_downloaded:
             self.config.active_mode = "gemini"
-        elif self.local_downloaded and not self.gemini_verified:
+        elif self.local_downloaded and not self.gemini_enabled:
             self.config.active_mode = "local"
         else:
             # Both available, default to what was last active or gemini preference?
@@ -451,7 +502,7 @@ class ModelSettingsDialog(QDialog):
             QMessageBox.warning(self, "Config Error", f"Failed to save .env: {e}")
 
     def reject(self):
-        """Cancel download on close/cancel."""
+        """Cancel any active download and reject the dialog."""
         if self.is_downloading:
             self.downloader.cancel_download()
         super().reject()
@@ -463,29 +514,44 @@ class ModelSettingsDialog(QDialog):
         super().closeEvent(event)
 
     def get_config(self):
+        """Return the current LLM configuration.
+
+        Returns:
+            The LLMConfig instance with the current settings.
+        """
         return self.config
 
 
 class ConnectionTestWorker(QObject):
+    """Background worker for testing Gemini API connectivity.
+
+    Attributes:
+        finished: Signal emitted with the API key on successful connection.
+        error: Signal emitted with an error message on failure.
+    """
+
     finished = pyqtSignal(str)  # api_key
     error = pyqtSignal(str)
 
     def __init__(self, api_key):
+        """Initialize the connection test worker.
+
+        Args:
+            api_key: Gemini API key to test.
+        """
         super().__init__()
         self.api_key = api_key
 
     def run(self):
-        try:
-            # Support both new client and old global configure
-            if hasattr(genai, "Client"):
-                client = genai.Client(api_key=self.api_key)
-                response = client.models.list()
-                _ = next(response)
-            else:
-                genai.configure(api_key=self.api_key)
-                response = genai.list_models()
-                _ = next(response)  # type: ignore[call-overload]
+        """Execute the API connection test.
 
+        Emits ``finished`` with the API key on success, or ``error``
+        with an error message on failure.
+        """
+        try:
+            client = genai.Client(api_key=self.api_key)
+            models = client.models.list()
+            _ = next(iter(models))
             self.finished.emit(self.api_key)
         except Exception as e:
             self.error.emit(str(e))

@@ -1,6 +1,7 @@
-"""
-Message Bubble Widget for Chat Panel.
-Single chat message widget with dynamic width adjustment.
+"""Message Bubble Widget for Chat Panel.
+
+Provides the ``MessageBubble`` widget that renders a single chat message
+with dynamic width adjustment, link handling, and sender-based styling.
 """
 
 import platform
@@ -28,13 +29,27 @@ from .styles import (
 
 
 class MessageBubble(QWidget):
-    """
-    A chat message bubble widget.
-    Contains a QFrame (bubble container) with a QTextEdit (text).
-    Supports dynamic width adjustment on window resize.
+    """A chat message bubble widget.
+
+    Contains a ``QFrame`` bubble container with a ``QTextBrowser`` for
+    rich text display. Supports dynamic width adjustment on window resize,
+    Markdown rendering, and clickable links (including local ``file://`` URLs).
+
+    Attributes:
+        is_user: Whether this bubble represents a user message.
+        bubble_frame: The styled QFrame container for the bubble.
+        text_edit: The QTextBrowser displaying the message content.
     """
 
     def __init__(self, text: str, is_user: bool, parent=None):
+        """Initialize the message bubble.
+
+        Args:
+            text: The message text content (Markdown supported).
+            is_user: Whether this is a user message (affects alignment
+                and styling).
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.is_user = is_user
         self.bubble_frame: QFrame | None = None
@@ -44,6 +59,11 @@ class MessageBubble(QWidget):
         self._init_ui(text)
 
     def _init_ui(self, text: str):
+        """Build the bubble layout and apply sender-based styling.
+
+        Args:
+            text: The initial text content to display.
+        """
         # Main horizontal layout for this row
         row_layout = QHBoxLayout(self)
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -111,7 +131,14 @@ class MessageBubble(QWidget):
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignLeft)
 
     def _on_link_clicked(self, url: QUrl):
-        """Handle link clicks, supporting local files."""
+        """Handle link clicks, supporting local file URLs.
+
+        On Windows, opens Explorer with the file selected for ``file://``
+        URLs. For other schemes, delegates to ``QDesktopServices``.
+
+        Args:
+            url: The clicked URL.
+        """
         scheme = url.scheme()
         if scheme == "file":
             local_path = url.toLocalFile()
@@ -129,9 +156,14 @@ class MessageBubble(QWidget):
             QDesktopServices.openUrl(url)
 
     def adjust_width(self, container_width: int):
-        """
-        Adjust bubble width based on content size.
-        Calculates optimal width/height dynamically.
+        """Adjust bubble width based on container and content size.
+
+        Calculates optimal width and height dynamically, capping at
+        80% of the container width.
+
+        Args:
+            container_width: The available width in pixels from the
+                parent scroll area viewport.
         """
         if container_width <= 0:
             return
@@ -180,7 +212,11 @@ class MessageBubble(QWidget):
         self.setFixedHeight(final_height)
 
     def set_text(self, text: str):
-        """Update the text content."""
+        """Update the displayed text content.
+
+        Args:
+            text: New Markdown text to render in the bubble.
+        """
         self._raw_text = text
         if self.text_edit:
             self.text_edit.setMarkdown(text)
@@ -191,16 +227,28 @@ class MessageBubble(QWidget):
                 pass
 
     def get_text(self) -> str:
-        """Get original raw text content."""
+        """Get the original raw text content.
+
+        Returns:
+            The unmodified text string stored in this bubble.
+        """
         return self._raw_text
 
     def showEvent(self, event):  # noqa: N802
-        """Ensure correct layout when first shown."""
+        """Ensure correct layout when the widget is first shown.
+
+        Args:
+            event: The QShowEvent.
+        """
         super().showEvent(event)
         parent = self.parent()
         if parent and hasattr(parent, "width"):
             self.adjust_width(parent.width())
 
     def setText(self, text):  # noqa: N802
-        """Compatibility alias."""
+        """Compatibility alias for ``set_text``.
+
+        Args:
+            text: The text to set.
+        """
         self.set_text(text)

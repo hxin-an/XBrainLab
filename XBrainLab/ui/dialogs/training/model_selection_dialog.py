@@ -1,3 +1,9 @@
+"""Model selection dialog for choosing deep learning architectures.
+
+Dynamically generates parameter inputs based on the selected model class
+signature and supports loading pretrained weights.
+"""
+
 import inspect
 import os
 from typing import Any
@@ -26,9 +32,19 @@ ARG_DICT_SKIP_SET = {"self", "n_classes", "channels", "samples", "sfreq"}
 
 
 class ModelSelectionDialog(BaseDialog):
-    """
-    Dialog for selecting a deep learning model architecture.
-    Dynamically generates parameter inputs based on model class signature.
+    """Dialog for selecting a deep learning model architecture.
+
+    Dynamically generates parameter inputs based on the model class
+    constructor signature, with support for loading pretrained weights.
+
+    Attributes:
+        controller: Application controller for data access.
+        pretrained_weight_path: Path to pretrained weight file, or None.
+        model_holder: Configured ModelHolder after acceptance.
+        model_combo: QComboBox for selecting the model architecture.
+        params_table: QTableWidget displaying model-specific parameters.
+        model_map: Dictionary mapping model names to model classes.
+        model_list: List of available model class names.
     """
 
     def __init__(self, parent, controller):
@@ -58,6 +74,7 @@ class ModelSelectionDialog(BaseDialog):
             self.on_model_select(self.model_list[0])
 
     def init_ui(self):
+        """Initialize the dialog UI with model combo, parameter table, and buttons."""
         layout = QVBoxLayout(self)
 
         # Model Selection
@@ -100,6 +117,11 @@ class ModelSelectionDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def on_model_select(self, model_name):
+        """Populate the parameter table based on the selected model.
+
+        Args:
+            model_name: Name of the selected model class.
+        """
         if not self.params_table or not self.params_group:
             return
 
@@ -131,6 +153,7 @@ class ModelSelectionDialog(BaseDialog):
             self.params_group.setVisible(len(rows) > 0)
 
     def load_pretrained_weight(self):
+        """Open a file dialog to load or clear pretrained model weights."""
         if not self.weight_label or not self.weight_btn:
             return
 
@@ -149,6 +172,11 @@ class ModelSelectionDialog(BaseDialog):
             self.weight_btn.setText("clear")
 
     def accept(self):
+        """Build the ModelHolder from current selections and accept.
+
+        Raises:
+            QMessageBox: Warning if parameter parsing fails.
+        """
         if not self.model_combo or not self.params_table:
             return
 
@@ -188,4 +216,9 @@ class ModelSelectionDialog(BaseDialog):
             QMessageBox.warning(self, "Error", str(e))
 
     def get_result(self):
+        """Return the configured ModelHolder.
+
+        Returns:
+            ModelHolder instance with selected model and parameters, or None.
+        """
         return self.model_holder

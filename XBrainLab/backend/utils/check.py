@@ -1,8 +1,17 @@
+"""Type validation utilities for runtime instance and subclass checking."""
+
 from __future__ import annotations
 
 
 def _get_type_name(type_class: type) -> str:
-    """Return the formatted name of a type."""
+    """Return the fully qualified name of a type.
+
+    Args:
+        type_class: The type to get the name for.
+
+    Returns:
+        A string in the format ``'module.ClassName'``.
+    """
     return f"{type_class.__module__}.{type_class.__name__}"
 
 
@@ -78,6 +87,6 @@ def validate_issubclass(
             type_name = " or ".join(type_name_list)
 
         raise TypeError(
-            f"{message_name} must be an instance of {type_name}, "
+            f"{message_name} must be a subclass of {type_name}, "
             f"got {_get_type_name(class_name)} instead."
         )

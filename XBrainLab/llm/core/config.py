@@ -1,3 +1,9 @@
+"""LLM configuration management.
+
+Defines the ``LLMConfig`` dataclass holding all settings for local,
+API, and Gemini inference backends, with JSON persistence support.
+"""
+
 import json
 import os
 from dataclasses import asdict, dataclass, field
@@ -7,13 +13,45 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _cuda_available() -> bool:
+    """Check CUDA availability cross-platform via PyTorch."""
+    try:
+        import torch  # conditional import
+
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+
 @dataclass
 class LLMConfig:
-    """Configuration for the LLM Engine."""
+    """Configuration for the LLM engine.
+
+    Attributes:
+        model_name: HuggingFace model identifier for local inference.
+        device: Compute device (``'cuda'`` or ``'cpu'``).
+        max_new_tokens: Maximum number of tokens to generate.
+        timeout: Generation timeout in seconds.
+        temperature: Sampling temperature.
+        top_p: Nucleus sampling probability.
+        do_sample: Whether to use sampling (vs. greedy decoding).
+        load_in_4bit: Enable 4-bit quantization for local models.
+        cache_dir: Directory for caching downloaded model files.
+        inference_mode: Active backend mode (``'local'``, ``'api'``, or
+            ``'gemini'``).
+        api_key: OpenAI-compatible API key (loaded from environment).
+        base_url: Base URL for the OpenAI-compatible API.
+        api_model_name: Model name for the API backend.
+        gemini_api_key: Google Gemini API key (loaded from environment).
+        gemini_model_name: Model name for the Gemini backend.
+        gemini_enabled: Whether the Gemini backend is enabled and verified.
+        active_mode: Currently active UI mode (``'local'`` or ``'gemini'``).
+        local_model_enabled: Whether local model features are enabled.
+    """
 
     model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     # Powerful model for instruction following
-    device: str = "cuda" if os.path.exists("/dev/nvidia0") else "cpu"
+    device: str = field(default_factory=lambda: "cuda" if _cuda_available() else "cpu")
     max_new_tokens: int = 512
     timeout: int = 60  # Default timeout in seconds for generation
     temperature: float = 0.7
@@ -46,17 +84,30 @@ class LLMConfig:
         default_factory=lambda: os.getenv("GEMINI_API_KEY", ""), repr=False
     )
     gemini_model_name: str = "gemini-2.0-flash"
-    gemini_verified: bool = False
+    gemini_enabled: bool = False
 
     # Active Mode
     active_mode: str = "local"  # 'local' or 'gemini'
     local_model_enabled: bool = True  # Whether local model features are enabled
 
     def to_dict(self):
+        """Converts the configuration to a plain dictionary.
+
+        Returns:
+            A dict representation of all configuration fields.
+        """
         return asdict(self)
 
     def save_to_file(self, filepath: str = "settings.json"):
-        """Save non-sensitive config to JSON file."""
+        """Saves non-sensitive configuration to a JSON file.
+
+        Only persists model names, enabled flags, and the active mode.
+        API keys are intentionally excluded for security.
+
+        Args:
+            filepath: Path to the output JSON file.  Defaults to
+                ``'settings.json'``.
+        """
         data = {
             "local": {
                 "model_name": self.model_name,
@@ -64,7 +115,7 @@ class LLMConfig:
             },
             "gemini": {
                 "model_name": self.gemini_model_name,
-                "verified": self.gemini_verified,
+                "enabled": self.gemini_enabled,
             },
             "active_mode": self.active_mode,
         }
@@ -76,7 +127,20 @@ class LLMConfig:
 
     @classmethod
     def load_from_file(cls, filepath: str = "settings.json"):
-        """Load config from JSON file, returning a new instance or None."""
+        """Loads configuration from a JSON file.
+
+        Creates a new ``LLMConfig`` instance populated with values from
+        the file.  API keys are always loaded from environment variables
+        for security.
+
+        Args:
+            filepath: Path to the JSON settings file.  Defaults to
+                ``'settings.json'``.
+
+        Returns:
+            A new ``LLMConfig`` instance, or ``None`` if the file does
+            not exist or cannot be parsed.
+        """
         if not os.path.exists(filepath):
             return None
 
@@ -92,7 +156,9 @@ class LLMConfig:
                 config.gemini_model_name = data["gemini"].get(
                     "model_name", config.gemini_model_name
                 )
-                config.gemini_verified = data["gemini"].get("verified", False)
+                config.gemini_enabled = data["gemini"].get(
+                    "enabled", data["gemini"].get("verified", False)
+                )
 
             config.active_mode = data.get("active_mode", "local")
 

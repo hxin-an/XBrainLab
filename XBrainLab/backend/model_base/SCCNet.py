@@ -1,3 +1,5 @@
+"""SCCNet model implementation for EEG-based motor imagery classification."""
+
 import math
 
 import numpy as np
@@ -6,18 +8,49 @@ from torch import nn
 
 
 class SCCNet(nn.Module):
-    """Implementation of SCCNet
-    https://ieeexplore.ieee.org/document/8716937
+    """Spatio-spectral feature learning network for EEG classification.
 
-    Parameters:
-        n_classes: Number of classes.
-        channels: Number of channels.
-        samples: Number of samples.
-        sfreq: Sampling frequency.
-        Ns: Number of spatial filters.
+    SCCNet (Spatial Component-wise Convolutional Network) learns spatial
+    filters and temporal/spectral features from EEG signals using a
+    two-stage convolution architecture followed by squaring nonlinearity,
+    average pooling, and log transformation.
+
+    Reference:
+        Wei, C.-S., et al. (2019). "Spatial component-wise convolutional
+        network (SCCNet) for motor-imagery EEG classification."
+        *2019 9th International IEEE/EMBS Conference on Neural Engineering
+        (NER)*, pp. 328-331.
+        https://ieeexplore.ieee.org/document/8716937
+
+    Attributes:
+        tp: Number of time samples.
+        ch: Number of EEG channels.
+        sf: Sampling frequency in Hz.
+        n_class: Number of output classes.
+        octsf: One-tenth of the sampling frequency (temporal kernel size).
+        conv1: Spatial convolutional layer.
+        Bn1: Batch normalization after spatial convolution.
+        conv2: Temporal convolutional layer.
+        Bn2: Batch normalization after temporal convolution.
+        Drop1: Dropout layer.
+        AvgPool1: Average pooling layer.
+        classifier: Fully connected classification layer.
     """
 
     def __init__(self, n_classes, channels, samples, sfreq, ns=22):
+        """Initializes SCCNet.
+
+        Args:
+            n_classes: Number of output classes for classification.
+            channels: Number of EEG channels.
+            samples: Number of time samples per trial.
+            sfreq: Sampling frequency in Hz.
+            ns: Number of spatial filters. Defaults to 22.
+
+        Raises:
+            ValueError: If the epoch duration (samples) is too short for the
+                network architecture.
+        """
         super().__init__()  # input:bs, 1, channel, sample
 
         self.tp = samples
@@ -71,6 +104,15 @@ class SCCNet(nn.Module):
         )
 
     def forward(self, x):
+        """Performs the forward pass of SCCNet.
+
+        Args:
+            x: Input EEG tensor of shape ``(batch, channels, samples)`` or
+                ``(batch, 1, channels, samples)``.
+
+        Returns:
+            Output logits tensor of shape ``(batch, n_classes)``.
+        """
         if len(x.shape) != 4:
             x = x.unsqueeze(1)
         sp_x = self.conv1(x)  # (128,22,1,562)

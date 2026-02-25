@@ -1,3 +1,5 @@
+"""Label import service for applying external labels to loaded EEG data files."""
+
 from typing import Any
 
 import numpy as np
@@ -7,12 +9,11 @@ from XBrainLab.backend.utils.logger import logger
 
 
 class LabelImportService:
-    """
-    Service for handling label import operations.
-    Encapsulates logic for:
-    - Mapping label files to data files
-    - Filtering and synchronizing events
-    - Applying labels to Raw objects
+    """Service for handling label import operations.
+
+    Encapsulates logic for mapping label files to data files, filtering
+    and synchronizing events, and applying labels to ``Raw`` objects.
+    Supports batch mapping, sequential legacy mode, and force-import mode.
     """
 
     def apply_labels_batch(
@@ -23,18 +24,17 @@ class LabelImportService:
         mapping: dict[int, str],
         selected_event_names: set[str] | None = None,
     ) -> int:
-        """
-        Apply labels to multiple files based on a file mapping.
+        """Apply labels to multiple files based on a file-to-label mapping.
 
         Args:
-            target_files: List of Raw data objects.
-            label_map: Dictionary {label_filename: [labels]}.
-            file_mapping: Dictionary {data_filepath: label_filename}.
-            mapping: Dictionary {label_code: label_name}.
-            selected_event_names: Set of event names to filter by (optional).
+            target_files: List of Raw data objects to label.
+            label_map: Mapping from label filename to its label array.
+            file_mapping: Mapping from data filepath to label filename.
+            mapping: Mapping from numeric label code to human-readable name.
+            selected_event_names: Optional set of event names to filter by.
 
         Returns:
-            int: Number of files successfully updated.
+            Number of files successfully updated.
         """
         matched_count = 0
 
@@ -65,18 +65,22 @@ class LabelImportService:
         selected_event_names: set[str] | None = None,
         force_import: bool = False,
     ) -> int:
-        """
-        Apply a single list of labels sequentially to multiple files (Legacy Mode).
+        """Apply a flat label list sequentially across multiple files.
+
+        Distributes labels based on each file's epoch count. Falls back
+        to force-import mode if a count mismatch occurs and ``force_import``
+        is True.
 
         Args:
             target_files: List of Raw data objects.
             labels: Flat list of labels to distribute.
-            mapping: Dictionary {label_code: label_name}.
-            selected_event_names: Set of event names to filter by.
-            force_import: If True, ignores mismatch and forces application (dangerous).
+            mapping: Mapping from numeric label code to human-readable name.
+            selected_event_names: Optional set of event names to filter by.
+            force_import: If True, ignore mismatches and force application.
 
         Returns:
-            int: Number of files successfully updated.
+            Number of files successfully updated, or 0 on mismatch
+            without force.
         """
         label_count = len(labels)
         total_epochs = sum(
@@ -129,8 +133,17 @@ class LabelImportService:
         mapping: dict[int, str],
         selected_event_names: set[str] | None = None,
     ):
-        """
-        Apply labels to a single data object.
+        """Apply labels to a single data object.
+
+        Detects whether labels are in Timestamp Mode (list of dicts) or
+        Sequence Mode (list of ints) and delegates accordingly.
+
+        Args:
+            data: Raw data object to apply labels to.
+            labels: Labels to apply (ints for Sequence, dicts for Timestamp).
+            mapping: Mapping from numeric label code to human-readable name.
+            selected_event_names: Optional set of event names to filter by
+                when creating events in Sequence Mode.
         """
         logger.info(
             f"Applying labels to {data.get_filename()}. Label count: {len(labels)}"
@@ -176,7 +189,14 @@ class LabelImportService:
         mapping: dict[int, str],
         selected_event_names: set[str] | None = None,
     ):
-        """Helper for force application."""
+        """Force-apply labels to a single data object without validation.
+
+        Args:
+            data: Raw data object to apply labels to.
+            labels: Integer labels to force-apply.
+            mapping: Mapping from numeric label code to human-readable name.
+            selected_event_names: Optional set of event names to filter by.
+        """
         loader = EventLoader(data)
         loader.label_list = list(labels)  # type: ignore[assignment]
 
@@ -203,7 +223,16 @@ class LabelImportService:
     def get_epoch_count_for_file(
         self, data: Any, selected_event_names: set[str] | None
     ) -> int:
-        """Calculate number of epochs/events in a file matching the filter."""
+        """Calculate the number of epochs or events in a file matching a filter.
+
+        Args:
+            data: Raw data object to inspect.
+            selected_event_names: Optional set of event names to count.
+                If None, all events are counted.
+
+        Returns:
+            Number of matching epochs or events.
+        """
         if data.is_raw():
             events, event_id_map = data.get_event_list()
             if selected_event_names is not None and event_id_map:

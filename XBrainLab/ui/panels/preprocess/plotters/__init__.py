@@ -1,1 +1,1 @@
-# Preprocess plotters submodule
+"""Plotter utilities for preprocessing signal visualization."""

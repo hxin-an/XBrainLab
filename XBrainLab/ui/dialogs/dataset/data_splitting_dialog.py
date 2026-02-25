@@ -1,3 +1,10 @@
+"""Data splitting configuration dialog for train/validation/test partitioning.
+
+Provides a visual preview canvas and configuration controls for splitting
+EEG datasets into training, validation, and testing sets using various
+strategies such as subject-wise, session-wise, or trial-wise splits.
+"""
+
 from enum import Enum
 
 import numpy as np
@@ -29,15 +36,34 @@ from .data_splitting_preview_dialog import (
 
 
 class DrawColor(Enum):
+    """Color definitions for data split preview regions.
+
+    Attributes:
+        TRAIN: Color used for training data regions.
+        VAL: Color used for validation data regions.
+        TEST: Color used for testing data regions.
+    """
+
     TRAIN = QColor("DodgerBlue")
     VAL = QColor("LightBlue")
     TEST = QColor("green")
 
 
 class DrawRegion:
-    """
-    Helper class for managing 2D drawing regions in the DataSplittingPreview.
-    Handles coordinate mapping for Training, Validation, and Test splits.
+    """Helper class for managing 2D drawing regions in the split preview.
+
+    Handles coordinate mapping and canvas operations for rendering
+    training, validation, and test split regions.
+
+    Attributes:
+        w: Width of the canvas grid.
+        h: Height of the canvas grid.
+        from_canvas: Numpy array tracking region start boundaries.
+        to_canvas: Numpy array tracking region end boundaries.
+        from_x: Starting X coordinate of the active region.
+        from_y: Starting Y coordinate of the active region.
+        to_x: Ending X coordinate of the active region.
+        to_y: Ending Y coordinate of the active region.
     """
 
     def __init__(self, w: int, h: int):
@@ -56,11 +82,24 @@ class DrawRegion:
         self.to_canvas *= 0
 
     def set_from(self, x, y):
+        """Set the starting coordinates for the active region.
+
+        Args:
+            x: Starting X coordinate.
+            y: Starting Y coordinate.
+        """
         self.reset()
         self.from_x = x
         self.from_y = y
 
     def set_to_ref(self, x, y, ref):
+        """Set ending coordinates using values from a reference region.
+
+        Args:
+            x: Ending X coordinate.
+            y: Ending Y coordinate.
+            ref: Reference DrawRegion to copy canvas values from.
+        """
         self.to_x = x
         self.to_y = y
         self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
@@ -71,16 +110,35 @@ class DrawRegion:
         )
 
     def set_to(self, x, y, from_w, to_w):
+        """Set ending coordinates and fill the canvas with given values.
+
+        Args:
+            x: Ending X coordinate.
+            y: Ending Y coordinate.
+            from_w: Value to fill in from_canvas.
+            to_w: Value to fill in to_canvas.
+        """
         self.to_x = x
         self.to_y = y
         self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = from_w
         self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = to_w
 
     def change_to(self, x, y):
+        """Update only the ending coordinates without modifying canvas data.
+
+        Args:
+            x: New ending X coordinate.
+            y: New ending Y coordinate.
+        """
         self.to_x = x
         self.to_y = y
 
     def mask(self, rhs):
+        """Apply a mask from another region, adjusting canvas boundaries.
+
+        Args:
+            rhs: DrawRegion whose boundaries define the mask.
+        """
         idx = (
             rhs.from_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
             != rhs.to_canvas[rhs.from_x : rhs.to_x, rhs.from_y : rhs.to_y]
@@ -123,18 +181,33 @@ class DrawRegion:
             self.to_y -= 1
 
     def decrease_w_tail(self, w):
+        """Shrink the region from the tail end by a proportional factor.
+
+        Args:
+            w: Proportion (0.0 to 1.0) to retain from the tail.
+        """
         self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
             self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
             - self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
         ) * w + self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
 
     def decrease_w_head(self, w):
+        """Shrink the region from the head end by a proportional factor.
+
+        Args:
+            w: Proportion (0.0 to 1.0) to retain from the head.
+        """
         self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y] = (
             self.to_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
             - self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
         ) * w + self.from_canvas[self.from_x : self.to_x, self.from_y : self.to_y]
 
     def copy(self, rhs):
+        """Deep copy all attributes from another DrawRegion.
+
+        Args:
+            rhs: Source DrawRegion to copy from.
+        """
         self.from_x = rhs.from_x
         self.from_y = rhs.from_y
         self.to_x = rhs.to_x
@@ -144,6 +217,17 @@ class DrawRegion:
 
 
 class PreviewCanvas(QWidget):
+    """Custom widget for rendering a visual preview of data split regions.
+
+    Draws a grid representing subjects (rows) and sessions (columns),
+    with colored regions indicating training, validation, and test splits.
+
+    Attributes:
+        regions: List of (DrawRegion, DrawColor) tuples to render.
+        subject_num: Number of subjects (rows) in the grid.
+        session_num: Number of sessions (columns) in the grid.
+    """
+
     def __init__(self, parent):
         super().__init__(parent)
         self.setMinimumSize(400, 200)
@@ -152,10 +236,20 @@ class PreviewCanvas(QWidget):
         self.session_num = 5
 
     def set_regions(self, regions):
+        """Set the regions to draw and trigger a repaint.
+
+        Args:
+            regions: List of (DrawRegion, DrawColor) tuples.
+        """
         self.regions = regions
         self.update()
 
     def paintEvent(self, event):  # noqa: N802
+        """Render the split preview with colored regions and grid lines.
+
+        Args:
+            event: The paint event.
+        """
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -218,6 +312,25 @@ class PreviewCanvas(QWidget):
 
 
 class DataSplittingDialog(BaseDialog):
+    """Dialog for configuring train/validation/test data splitting.
+
+    Provides a visual preview of how data will be partitioned along with
+    controls for selecting training type, testing strategy, validation
+    strategy, and cross-validation options.
+
+    Attributes:
+        controller: Application controller for accessing epoch data.
+        epoch_data: The loaded epoch data from the controller.
+        dataset_generator: Generator for creating split datasets.
+        subject_num: Number of subjects for preview grid.
+        session_num: Number of sessions for preview grid.
+        train_region: DrawRegion for training data visualization.
+        val_region: DrawRegion for validation data visualization.
+        test_region: DrawRegion for testing data visualization.
+        step2_window: Reference to the preview dialog (step 2).
+        split_result: The finalized split result after confirmation.
+    """
+
     def __init__(self, parent, controller, dataset_generator=None):
         self.controller = controller
 
@@ -256,6 +369,7 @@ class DataSplittingDialog(BaseDialog):
         self.update_preview()
 
     def init_ui(self):
+        """Initialize the dialog UI with preview canvas and split controls."""
         layout = QHBoxLayout(self)
 
         # Left: Preview
@@ -313,6 +427,7 @@ class DataSplittingDialog(BaseDialog):
         layout.addLayout(right_layout)
 
     def update_preview(self, *args):
+        """Recalculate and redraw the split preview based on current settings."""
         if not self.canvas or not self.train_type_combo:
             return
 
@@ -343,6 +458,7 @@ class DataSplittingDialog(BaseDialog):
         )
 
     def handle_testing(self):
+        """Calculate the testing region based on the selected split type."""
         if not self.test_combo:
             return
         test_type = self.test_combo.currentText()
@@ -383,6 +499,7 @@ class DataSplittingDialog(BaseDialog):
                 self.train_region.mask(tmp)
 
     def handle_validation(self):
+        """Calculate the validation region based on the selected split type."""
         if not self.val_combo:
             return
         val_type = self.val_combo.currentText()
@@ -407,6 +524,7 @@ class DataSplittingDialog(BaseDialog):
             )
 
     def confirm(self):
+        """Build the splitting config and open the preview dialog (step 2)."""
         if (
             not self.train_type_combo
             or not self.val_combo
@@ -460,11 +578,14 @@ class DataSplittingDialog(BaseDialog):
         )
         if self.step2_window.exec():
             self.split_result = self.step2_window.get_result()
-            self.split_result = self.step2_window.get_result()
-            super().accept()  # Call BaseDialog.accept equivalent? No, mimic Original
-
+            super().accept()
         else:
-            self.reject()
+            return  # Allow user to retry instead of rejecting
 
     def get_result(self):
+        """Return the split result from the preview dialog.
+
+        Returns:
+            The finalized DatasetGenerator or None if not confirmed.
+        """
         return self.split_result

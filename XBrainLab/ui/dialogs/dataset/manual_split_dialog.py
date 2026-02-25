@@ -1,3 +1,9 @@
+"""Manual split chooser dialog for selecting specific items for data splitting.
+
+Provides a multi-selection list for manually choosing subjects, sessions,
+or trials to include in a particular data split.
+"""
+
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialogButtonBox,
@@ -9,6 +15,18 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
 class ManualSplitDialog(BaseDialog):
+    """Dialog for manually selecting items for data splitting.
+
+    Displays a multi-selection list of choices (subjects, sessions, or
+    trials) and returns the selected indices or identifiers.
+
+    Attributes:
+        choices: List of items to choose from. Each item can be a value
+            or a ``(id, name)`` tuple.
+        selected_indices: List of selected item identifiers after acceptance.
+        list_widget: QListWidget displaying the choices.
+    """
+
     def __init__(self, parent, choices):
         self.choices = choices
         self.selected_indices = []
@@ -20,6 +38,7 @@ class ManualSplitDialog(BaseDialog):
         self.resize(300, 400)
 
     def init_ui(self):
+        """Initialize the dialog UI with a multi-selection list and buttons."""
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
@@ -44,6 +63,7 @@ class ManualSplitDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def accept(self):
+        """Collect selected items and accept the dialog."""
         if not self.list_widget:
             super().accept()
             return
@@ -63,4 +83,10 @@ class ManualSplitDialog(BaseDialog):
         super().accept()
 
     def get_result(self):
+        """Return the list of selected item identifiers.
+
+        Returns:
+            List of selected identifiers. For tuple choices, returns the
+            first element (id); otherwise returns the raw value.
+        """
         return self.selected_indices

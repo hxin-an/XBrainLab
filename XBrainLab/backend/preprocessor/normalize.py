@@ -1,20 +1,39 @@
+"""Preprocessor for EEG data normalization."""
+
 import numpy as np
 
 from .base import PreprocessBase
 
 
 class Normalize(PreprocessBase):
-    """Preprocessing class for normalizing data.
+    """Normalizes EEG data channel-wise.
 
-    Input:
-        norm: Normalization method. Can be "z score" or "minmax".
+    Supports two normalization methods:
 
+    * **z score** — subtracts the channel mean and divides by the channel
+      standard deviation. For epoched data this is computed per trial.
+    * **minmax** — scales each channel to the [0, 1] range. For epoched
+      data this is computed per trial.
     """
 
     def get_preprocess_desc(self, norm: str):
+        """Returns a description of the normalization step.
+
+        Args:
+            norm: Normalization method (``"z score"`` or ``"minmax"``).
+
+        Returns:
+            A string describing the normalization applied.
+        """
         return f"{norm} normalization"
 
     def _data_preprocess(self, preprocessed_data, norm: str):
+        """Applies normalization to a single data instance.
+
+        Args:
+            preprocessed_data: The data instance to preprocess.
+            norm: Normalization method (``"z score"`` or ``"minmax"``).
+        """
         preprocessed_data.get_mne().load_data()
         if norm == "z score":
             if preprocessed_data.is_raw():
@@ -22,7 +41,10 @@ class Normalize(PreprocessBase):
                 preprocessed_data.get_mne()._data = (
                     arrdata
                     - np.multiply(arrdata.mean(axis=-1)[:, None], np.ones_like(arrdata))
-                ) / np.multiply(arrdata.std(axis=-1)[:, None], np.ones_like(arrdata))
+                ) / np.multiply(
+                    arrdata.std(axis=-1)[:, None] + 1e-12,
+                    np.ones_like(arrdata),
+                )
             else:
                 arrdata = preprocessed_data.get_mne()._data.copy()
                 for ep in range(preprocessed_data.get_epochs_length()):
@@ -35,7 +57,10 @@ class Normalize(PreprocessBase):
                         - np.multiply(
                             trial_mean[:, None], np.ones_like(arrdata[ep, :, :])
                         )
-                    ) / np.multiply(trial_std[:, None], np.ones_like(arrdata[ep, :, :]))
+                    ) / np.multiply(
+                        trial_std[:, None] + 1e-12,
+                        np.ones_like(arrdata[ep, :, :]),
+                    )
                 preprocessed_data.get_mne()._data = arrdata
         elif norm == "minmax":
             if preprocessed_data.is_raw():

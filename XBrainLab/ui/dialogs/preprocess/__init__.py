@@ -1,3 +1,9 @@
+"""Preprocessing dialog components for EEG signal processing.
+
+Provides dialogs for epoching, filtering, normalization, re-referencing,
+and resampling operations.
+"""
+
 from .epoching_dialog import EpochingDialog
 from .filtering_dialog import FilteringDialog
 from .normalize_dialog import NormalizeDialog

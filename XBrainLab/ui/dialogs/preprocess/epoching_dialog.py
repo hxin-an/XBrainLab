@@ -1,3 +1,9 @@
+"""Epoching dialog for configuring time-locked EEG epoch extraction.
+
+Provides controls for selecting events, specifying the time window
+(tmin/tmax), and optionally applying baseline correction.
+"""
+
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
@@ -16,9 +22,22 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class EpochingDialog(BaseDialog):
-    """
-    Dialog for configuring epoching parameters (Time-lock).
-    Allows selection of events, time window (tmin, tmax), and baseline correction.
+    """Dialog for configuring epoching parameters (time-lock).
+
+    Allows selection of events, time window (tmin, tmax), and baseline
+    correction. Displays duration info and warnings for short epochs.
+
+    Attributes:
+        data_list: List of loaded EEG data objects.
+        params: Tuple of (baseline, selected_events, tmin, tmax) after acceptance.
+        event_list: QListWidget displaying available event types.
+        tmin_spin: QDoubleSpinBox for epoch start time.
+        tmax_spin: QDoubleSpinBox for epoch end time.
+        duration_label: QLabel showing computed epoch duration.
+        warning_label: QLabel showing duration warnings.
+        baseline_check: QCheckBox to enable/disable baseline correction.
+        b_min_spin: QDoubleSpinBox for baseline start time.
+        b_max_spin: QDoubleSpinBox for baseline end time.
     """
 
     def __init__(self, parent, data_list: list):
@@ -40,6 +59,7 @@ class EpochingDialog(BaseDialog):
         self.resize(400, 500)
 
     def init_ui(self):
+        """Initialize the dialog UI with event list, parameter controls, and buttons."""
         layout = QVBoxLayout(self)
 
         # 1. Event Selection
@@ -122,6 +142,11 @@ class EpochingDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def toggle_baseline(self, checked):
+        """Enable or disable baseline correction spin boxes.
+
+        Args:
+            checked: Whether baseline correction is enabled.
+        """
         if self.b_min_spin:
             self.b_min_spin.setEnabled(checked)
         if self.b_max_spin:
@@ -163,6 +188,12 @@ class EpochingDialog(BaseDialog):
             self.warning_label.hide()
 
     def accept(self):
+        """Validate parameters and accept the dialog.
+
+        Raises:
+            QMessageBox: Warning if no events are selected or time range
+                is invalid.
+        """
         if (
             not self.event_list
             or not self.tmin_spin
@@ -202,12 +233,28 @@ class EpochingDialog(BaseDialog):
         super().accept()
 
     def get_params(self):
+        """Return the configured epoching parameters.
+
+        Returns:
+            Tuple of (baseline, selected_events, tmin, tmax) or None.
+        """
         return self.params
 
     def get_result(self):
+        """Return the configured epoching parameters.
+
+        Returns:
+            Tuple of (baseline, selected_events, tmin, tmax) or None.
+        """
         return self.get_params()
 
     def _extract_events_safely(self, data, events):
+        """Safely extract event names from a data object.
+
+        Args:
+            data: EEG data object to extract events from.
+            events: Set to add event name strings to.
+        """
         try:
             # Use get_event_list which prioritizes imported/resampled events
             _, ev_ids = data.get_event_list()

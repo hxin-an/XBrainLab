@@ -1,3 +1,9 @@
+"""Context assembler for constructing LLM prompts.
+
+Assembles system prompts with dynamic tool definitions, RAG context,
+and conversation history for the AI agent.
+"""
+
 import json
 from typing import Any
 
@@ -5,12 +11,17 @@ from ..tools.tool_registry import ToolRegistry
 
 
 class ContextAssembler:
-    """
-    Assembles the context for the AI Agent, including:
-    1. System Prompt (ReAct instructions)
-    2. Tool Definitions (Filtered by State)
-    3. RAG Context (Knowledge Retrieval)
-    4. Conversation History
+    """Assembles the full context for the AI agent.
+
+    Constructs the system prompt by combining ReAct-style instructions,
+    dynamically filtered tool definitions, optional RAG context, and
+    conversation history into a message list suitable for LLM inference.
+
+    Attributes:
+        registry: Tool registry containing all available tools.
+        study_state: Current application state used for tool filtering.
+        context_notes: Temporary context strings (e.g. from RAG) appended
+            to the system prompt.
     """
 
     SYSTEM_TEMPLATE = """You are XBrainLab Assistant.
@@ -38,18 +49,23 @@ Rules:
 """
 
     def __init__(self, tool_registry: ToolRegistry, study_state: Any):
-        """
+        """Initializes the ContextAssembler.
+
         Args:
             tool_registry: Registry containing all available tools.
-            study_state: The current state of the application (Study object).
+            study_state: The current application state (Study object) used
+                to determine which tools are active.
         """
         self.registry = tool_registry
         self.study_state = study_state
         self.context_notes: list[str] = []
 
     def _format_tools(self) -> str:
-        """
-        Retrieves active tools from registry and formats them into JSON descriptions.
+        """Retrieves active tools and formats them as JSON descriptions.
+
+        Returns:
+            A newline-joined string of JSON-formatted tool definitions,
+            or a fallback message if no tools are currently available.
         """
         active_tools = self.registry.get_active_tools(self.study_state)
 
@@ -68,7 +84,12 @@ Rules:
         return "\n".join(tool_descs)
 
     def build_system_prompt(self) -> str:
-        """Constructs the full system prompt with filtered tools and context."""
+        """Constructs the full system prompt with filtered tools and context.
+
+        Returns:
+            The assembled system prompt string including tool definitions
+            and any additional RAG context notes.
+        """
         tools_str = self._format_tools()
         prompt = self.SYSTEM_TEMPLATE.format(tools_str=tools_str)
 
@@ -78,7 +99,11 @@ Rules:
         return prompt
 
     def add_context(self, text: str):
-        """Adds temporary context (e.g. from RAG) to the system prompt."""
+        """Adds temporary context to the system prompt.
+
+        Args:
+            text: Context string (e.g. RAG-retrieved examples) to append.
+        """
         self.context_notes.append(text)
 
     def clear_context(self):
@@ -86,9 +111,17 @@ Rules:
         self.context_notes = []
 
     def get_messages(self, history: list) -> list:
-        """
-        Combines system prompt and history into the final message list.
-        Applies sliding window to history if needed.
+        """Combines the system prompt and history into a message list.
+
+        The sliding window over history is managed externally by the
+        controller; this method simply concatenates system and history.
+
+        Args:
+            history: List of message dicts with ``role`` and ``content`` keys.
+
+        Returns:
+            Complete message list starting with the system prompt followed
+            by the conversation history.
         """
         messages = [{"role": "system", "content": self.build_system_prompt()}]
 

@@ -1,16 +1,46 @@
+"""Static architecture compliance checker for the XBrainLab UI layer.
+
+Scans all Python source files under ``XBrainLab/ui`` and reports
+violations of the following rules:
+
+1. UI panels must not import from other panels (cross-panel imports).
+2. UI panels must inherit from ``BasePanel``.
+3. UI panels must not access ``self.main_window.study`` directly;
+   interactions with the backend should go through the Controller.
+4. Dialogs must inherit from ``BaseDialog``.
+
+Run as a standalone script::
+
+    python tests/architecture_compliance.py
+"""
+
 import ast
 import os
 import sys
 from pathlib import Path
 
 
-def check_architecture(root_dir: str):
-    """
-    Verify architecture compliance rules:
-    1. UI Panels should not import from each other (except sidebars/dialogs within same module).
-    2. UI Panels should inherit from BasePanel.
-    3. UI Panels should not access self.main_window.study directly (use Controller).
-    4. Dialogs should inherit from BaseDialog.
+def check_architecture(root_dir: str) -> int:
+    """Verify architecture compliance rules for the UI layer.
+
+    Scans every ``*.py`` file under ``<root_dir>/XBrainLab/ui`` and
+    checks the following rules:
+
+    1. UI panels should not import from other panels (cross-panel
+       imports), except sidebars/dialogs within the same module.
+    2. UI panels (``panels/*/panel.py``) should inherit from
+       ``BasePanel``.
+    3. UI panels should not access ``self.main_window.study`` directly
+       — the Controller should be used instead.
+    4. Dialogs should inherit from ``BaseDialog``.
+
+    Args:
+        root_dir: Absolute path to the project root directory that
+            contains the ``XBrainLab/`` package.
+
+    Returns:
+        ``0`` if all checks pass, ``1`` if any violation is detected or
+        the UI directory is missing.
     """
     print(f"Checking architecture compliance in {root_dir}...")
 

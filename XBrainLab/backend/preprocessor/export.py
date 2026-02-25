@@ -1,3 +1,5 @@
+"""Preprocessor for exporting EEG data to MATLAB .mat files."""
+
 import os
 
 import scipy.io
@@ -6,13 +8,24 @@ from .base import PreprocessBase
 
 
 class Export(PreprocessBase):
-    """Preprocessing class for exporting data.
+    """Exports preprocessed EEG data to MATLAB ``.mat`` files.
 
-    Input:
-        filepath: Path to save the data.
+    Each data instance is saved as a separate ``.mat`` file named by
+    subject and session. The file contains the EEG data matrix (``x``),
+    event labels (``y``) if available, and the preprocessing history.
     """
 
     def data_preprocess(self, filepath: str):
+        """Exports all data instances to ``.mat`` files.
+
+        Args:
+            filepath: Directory path where the exported files will be saved.
+
+        Returns:
+            The list of preprocessed
+            :class:`~XBrainLab.backend.load_data.Raw` instances
+            (unchanged).
+        """
         for preprocessed_data in self.preprocessed_data_list:
             # get X and y
             x = preprocessed_data.get_mne().get_data()

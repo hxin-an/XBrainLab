@@ -1,8 +1,5 @@
-import traceback
-
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.pyplot import close as plt_close
-from matplotlib.pyplot import figure as plt_figure
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import VisualizerType
@@ -61,10 +58,9 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
                 )
                 return
 
-            # Clear global pyplot figures as Topomap visualizer might use
-            # plt.gca() or similar internally
-            plt_close("all")
-            plt_figure()
+            # Close only our own figure, not all figures in the application
+            if self.fig is not None:
+                plt.close(self.fig)
 
             visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epoch_data)
             new_fig = visualizer.get_plt(method=method, absolute=absolute)
@@ -83,6 +79,5 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
                 self.show_error("No Data Available")
 
         except Exception as e:
-            traceback.print_exc()
             logger.error(f"Error plotting topomap: {e}", exc_info=True)
             self.show_error(str(e))

@@ -1,18 +1,32 @@
+"""Qt-compatible observer bridge for thread-safe backend-to-UI signalling."""
+
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from XBrainLab.backend.utils.observer import Observable
 
 
 class QtObserverBridge(QObject):
-    """
-    Bridges backend Observer notifications to Qt Signals.
-    Ensures thread-safety when backend runs on a background thread
-    and UI needs to update on the main thread.
+    """Bridge between backend Observer notifications and Qt Signals.
+
+    Ensures thread-safety when backend events fire on background threads
+    and UI slots must run on the main thread.
+
+    Attributes:
+        triggered: Signal emitted as ``(args_tuple, kwargs_dict)``.
+        observable: The backend ``Observable`` being subscribed to.
+        event_name: The event name subscribed on the observable.
     """
 
     triggered = pyqtSignal(tuple, dict)  # (args), {kwargs}
 
     def __init__(self, observable: Observable, event_name: str, parent=None):
+        """Initialize the bridge and subscribe to the backend event.
+
+        Args:
+            observable: The backend ``Observable`` instance.
+            event_name: Name of the event to subscribe to.
+            parent: Optional parent QObject.
+        """
         super().__init__(parent)
         self.observable = observable
         self.event_name = event_name
@@ -21,15 +35,30 @@ class QtObserverBridge(QObject):
         self.observable.subscribe(self.event_name, self._on_event)
 
     def _on_event(self, *args, **kwargs):
-        """Called by backend (any thread). Emits proper Qt signal."""
+        """Callback invoked by the backend on any thread.
+
+        Wraps arguments and emits the ``triggered`` Qt signal for
+        thread-safe delivery to the main thread.
+
+        Args:
+            *args: Positional arguments from the backend event.
+            **kwargs: Keyword arguments from the backend event.
+        """
         # Wrap args/kwargs to send via signal
         # Note: Qt signals need pickle-able types usually, but tuple/dict are fine.
         self.triggered.emit(args, kwargs)
 
     def connect_to(self, slot):
-        """Helper to connect the key signal to a UI slot."""
+        """Connect the bridge's triggered signal to a UI slot.
+
+        The slot receives unpacked ``(*args, **kwargs)`` from the
+        backend event.
+
+        Args:
+            slot: A callable to invoke when the event fires.
+        """
         self.triggered.connect(lambda args, kwargs: slot(*args, **kwargs))
 
     def cleanup(self):
-        """Unsubscribe when destroyed."""
+        """Unsubscribe from the backend observable event."""
         self.observable.unsubscribe(self.event_name, self._on_event)

@@ -1,3 +1,9 @@
+"""Google Gemini API backend.
+
+Implements the ``BaseBackend`` interface using the ``google-genai`` SDK
+for streaming chat generation via Google's Gemini models.
+"""
+
 import logging
 import os
 from typing import Any
@@ -15,13 +21,34 @@ logger = logging.getLogger("XBrainLab.LLM.Gemini")
 
 
 class GeminiBackend(BaseBackend):
-    """Google Gemini API backend using google-genai SDK."""
+    """Google Gemini API backend using the ``google-genai`` SDK.
+
+    Attributes:
+        config: The ``LLMConfig`` instance providing Gemini API key and
+            model settings.
+        client: The ``genai.Client`` instance (``None`` until ``load``
+            is called).
+    """
 
     def __init__(self, config: LLMConfig):
+        """Initializes the GeminiBackend.
+
+        Args:
+            config: LLM configuration containing Gemini API key and
+                model name.
+        """
         self.config = config
         self.client: Any = None
 
     def load(self):
+        """Initializes the Gemini client.
+
+        Reads the API key from config or falls back to the
+        ``GEMINI_API_KEY`` environment variable.
+
+        Raises:
+            ImportError: If the ``google-genai`` package is not installed.
+        """
         if not genai:
             raise ImportError(
                 "google-genai package is missing. Run `poetry add google-genai`."
@@ -42,21 +69,43 @@ class GeminiBackend(BaseBackend):
         )
 
     def generate_stream(self, messages: list):
+        """Streams chat responses from the Gemini API.
+
+        Converts the standard message list into Gemini SDK format,
+        creates a chat session with history, and streams the response.
+
+        Args:
+            messages: List of message dicts with ``role`` and ``content``.
+
+        Yields:
+            Text chunks from the streaming Gemini response.
+        """
         if not self.client:
             self.load()
 
         # Convert messages to Gemini SDK format
+        # Extract system messages and merge into system_instruction
+        system_parts = []
         history = []
         for msg in messages[:-1]:
-            role = "user" if msg["role"] == "user" else "model"
-            history.append({"role": role, "parts": [{"text": msg["content"]}]})
+            if msg["role"] == "system":
+                system_parts.append(msg["content"])
+            else:
+                role = "user" if msg["role"] == "user" else "model"
+                history.append({"role": role, "parts": [{"text": msg["content"]}]})
 
-        last_user_msg = messages[-1]["content"]
+        last_user_msg = messages[-1]["content"] if messages else ""
+
+        # Build config with system instruction if present
+        chat_kwargs = {
+            "model": str(self.config.gemini_model_name),
+            "history": history,
+        }
+        if system_parts:
+            chat_kwargs["config"] = {"system_instruction": "\n".join(system_parts)}
 
         # Create a fresh chat session with history
-        chat = self.client.chats.create(
-            model=str(self.config.gemini_model_name), history=history
-        )
+        chat = self.client.chats.create(**chat_kwargs)
 
         # Streaming send
         response_stream = chat.send_message_stream(last_user_msg)

@@ -1,3 +1,5 @@
+"""Training history table widget showing per-run status and live metrics."""
+
 import time
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -8,18 +10,32 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 class TrainingHistoryTable(QTableWidget):
-    """
-    Widget to display training history.
+    """Table widget displaying real-time training history.
+
+    Shows group, run, model, status, progress, and live metrics
+    (loss, accuracy, learning rate, elapsed time) for every training
+    record.
+
+    Attributes:
+        selection_changed_record: Signal emitted with the selected
+            ``TrainRecord`` when the user clicks a row.
+        row_map: Mapping of row index to ``(plan, record)`` tuples.
     """
 
     selection_changed_record = pyqtSignal(object)  # Emits record object
 
     def __init__(self, parent=None):
+        """Initialize the training history table.
+
+        Args:
+            parent: Optional parent widget.
+        """
         super().__init__(parent)
         self.row_map = {}  # Map row -> (plan, record)
         self._init_ui()
 
     def _init_ui(self):
+        """Configure columns, headers, widths, and styling for the table."""
         self.setColumnCount(11)
         self.setHorizontalHeaderLabels(
             [
@@ -67,6 +83,7 @@ class TrainingHistoryTable(QTableWidget):
         self.itemSelectionChanged.connect(self._on_selection_changed)
 
     def _on_selection_changed(self):
+        """Emit the selected record when the table selection changes."""
         selected_items = self.selectedItems()
         if not selected_items:
             self.selection_changed_record.emit(None)
@@ -78,16 +95,27 @@ class TrainingHistoryTable(QTableWidget):
             self.selection_changed_record.emit(record)
 
     def clear_history(self):
+        """Remove all rows and reset the internal row mapping."""
         self.setRowCount(0)
         self.row_map.clear()
 
     def update_table(self, target_rows):
-        """Alias for update_history to satisfy interface."""
+        """Alias for ``update_history`` to satisfy the panel interface.
+
+        Args:
+            target_rows: List of formatted row dictionaries.
+        """
         self.update_history(target_rows)
 
     def update_history(self, target_rows):
-        """
-        Update table content with formatted history from controller.
+        """Update the table with formatted training history rows.
+
+        Each entry in *target_rows* is a dictionary with keys
+        ``plan``, ``record``, ``group_name``, ``run_name``,
+        ``model_name``, and optionally ``is_current_run``.
+
+        Args:
+            target_rows: List of dictionaries describing each row.
         """
         if self.rowCount() != len(target_rows):
             self.setRowCount(len(target_rows))

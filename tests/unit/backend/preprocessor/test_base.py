@@ -38,10 +38,10 @@ def test_base(raw):
 
 def test_inherit(raw):
     class InheritedPreprocessor(PreprocessBase):
-        def get_preprocess_desc(self, *args, **kargs):
+        def get_preprocess_desc(self, *args, **kwargs):
             return "test desc " + str(args[0])
 
-        def _data_preprocess(self, preprocessed_data, *args, **kargs):
+        def _data_preprocess(self, preprocessed_data, *args, **kwargs):
             preprocessed_data.set_subject_name("test_inherit")
 
     preprocessor = InheritedPreprocessor([raw])

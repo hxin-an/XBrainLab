@@ -43,9 +43,3 @@ def test_dataset_controller_headless():
     # 7. Verify method calls don't crash
     assert controller.has_data() is False
     assert controller.is_locked() is False
-
-    print("\nHeadless DatasetController verified successfully!")
-
-
-if __name__ == "__main__":
-    test_dataset_controller_headless()

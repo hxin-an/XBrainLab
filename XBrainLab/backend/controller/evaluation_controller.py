@@ -1,3 +1,9 @@
+"""Evaluation controller for model performance analysis.
+
+Provides methods for pooling evaluation results across training runs
+and generating model architecture summaries.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -14,28 +20,51 @@ if TYPE_CHECKING:
 
 
 class EvaluationController(Observable):
-    """
-    Controller for handling evaluation data retrieval and processing.
-    Decouples UI from direct Study/Backend manipulation.
+    """Controller for evaluation data retrieval and processing.
+
+    Decouples the UI from direct Study/Backend manipulation by
+    providing a clean interface for querying evaluation metrics,
+    pooling results across runs, and generating model summaries.
 
     Events:
-        - evaluation_updated: Emitted when evaluation data changes
+        evaluation_updated: Emitted when evaluation data changes.
+
+    Attributes:
+        _study: Reference to the :class:`Study` backend instance.
     """
 
     def __init__(self, study: Study):
+        """Initialise the evaluation controller.
+
+        Args:
+            study: The :class:`Study` backend instance to query.
+        """
         Observable.__init__(self)
         self._study = study
 
     def get_loaded_data_list(self):
-        """Get loaded data list from study."""
+        """Return the loaded raw data list from the study.
+
+        Returns:
+            The list of raw data objects held by the study.
+        """
         return self._study.loaded_data_list
 
     def get_preprocessed_data_list(self):
-        """Get preprocessed data list from study."""
+        """Return the preprocessed data list from the study.
+
+        Returns:
+            The list of preprocessed data objects held by the study.
+        """
         return self._study.preprocessed_data_list
 
     def get_plans(self) -> list[TrainingPlanHolder]:
-        """Get list of training plan holders (groups)."""
+        """Return the list of training plan holders (groups).
+
+        Returns:
+            A list of :class:`TrainingPlanHolder` instances, or an
+            empty list if no trainer exists.
+        """
         if self._study.trainer:
             return self._study.trainer.get_training_plan_holders()
         return []
@@ -43,9 +72,25 @@ class EvaluationController(Observable):
     def get_pooled_eval_result(
         self, plan: TrainingPlanHolder
     ) -> tuple[np.ndarray | None, np.ndarray | None, dict]:
-        """
-        Pool labels and outputs from all finished runs in a plan.
-        Returns (pooled_labels, pooled_outputs, pooled_metrics).
+        """Pool evaluation labels and outputs from all finished runs.
+
+        Concatenates ground-truth labels and model outputs across
+        every completed run in the given plan and computes per-class
+        metrics on the pooled data.
+
+        Args:
+            plan: The :class:`TrainingPlanHolder` whose finished runs
+                are to be pooled.
+
+        Returns:
+            A 3-tuple ``(pooled_labels, pooled_outputs, metrics)``:
+
+            - *pooled_labels*: Concatenated label array, or ``None``
+              if no finished runs exist.
+            - *pooled_outputs*: Concatenated output array, or ``None``
+              if no finished runs exist.
+            - *metrics*: Per-class metrics dictionary, or an empty
+              dictionary if no data is available.
         """
         records = [r for r in plan.get_plans() if r.is_finished()]
         if not records:
@@ -78,7 +123,24 @@ class EvaluationController(Observable):
     def get_model_summary_str(
         self, plan: TrainingPlanHolder, record: TrainRecord | None = None
     ) -> str:
-        """Generate model summary string."""
+        """Generate a human-readable model architecture summary.
+
+        If a *record* with a trained model is provided, its model
+        is used; otherwise a fresh model instance is created from
+        the plan's model holder.
+
+        Args:
+            plan: The :class:`TrainingPlanHolder` containing model and
+                dataset information.
+            record: Optional :class:`TrainRecord` whose trained model
+                should be summarised. When ``None``, a new model is
+                instantiated from the plan.
+
+        Returns:
+            A string representation of the model summary produced by
+            ``torchinfo.summary``, or an error message if summary
+            generation fails.
+        """
         try:
             # Get model instance
             # If record is provided, use its trained model

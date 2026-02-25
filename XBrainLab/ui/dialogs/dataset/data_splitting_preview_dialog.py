@@ -1,3 +1,9 @@
+"""Data splitting preview dialog for fine-tuning and confirming split parameters.
+
+Provides a detailed tree view of generated datasets with configurable
+validation and testing split units, amounts, and manual selection support.
+"""
+
 import threading
 
 from PyQt6.QtCore import QTimer
@@ -30,12 +36,27 @@ DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
 
 
 class DataSplitterHolder(DataSplitter):
+    """Extended DataSplitter with mutable split parameters for UI binding.
+
+    Wraps a DataSplitter to allow dynamic updates from combo boxes and
+    text entries in the preview dialog.
+
+    Attributes:
+        is_option: Whether this splitter represents a user-configurable option.
+        split_type: The type of split (e.g., by session, trial, subject).
+    """
+
     def __init__(self, is_option, split_type):
         super().__init__(
             split_type, value_var=None, split_unit=None, is_option=is_option
         )
 
     def set_split_unit_var(self, val):
+        """Set the split unit from a combo box string value.
+
+        Args:
+            val: String representation of the SplitUnit enum value.
+        """
         # val is the string representation from the ComboBox
         self.split_unit = None
         for unit in SplitUnit:
@@ -44,15 +65,37 @@ class DataSplitterHolder(DataSplitter):
                 break
 
     def set_entry_var(self, val):
+        """Set the split value from a text entry.
+
+        Args:
+            val: String value representing the split amount.
+        """
         self.value_var = val
 
     def to_thread(self):
+        """Prepare the splitter state for background thread usage."""
         # State is already updated via setters.
         # No need to "commit" state or cache validation.
-        pass
 
 
 class DataSplittingPreviewDialog(BaseDialog):
+    """Dialog for previewing and confirming data splitting results.
+
+    Displays a tree view of generated datasets with train/val/test counts,
+    and allows fine-tuning split parameters (unit, amount) for validation
+    and testing sets.
+
+    Attributes:
+        epoch_data: The loaded epoch data to split.
+        config: DataSplittingConfig defining the split strategy.
+        datasets: List of generated Dataset objects.
+        dataset_generator: DatasetGenerator managing the split process.
+        preview_worker: Background thread for dataset generation.
+        tree: QTreeWidget displaying dataset split information.
+        val_splitter_list: List of DataSplitterHolder for validation splits.
+        test_splitter_list: List of DataSplitterHolder for testing splits.
+    """
+
     def __init__(self, parent, title, epoch_data, config):
         self.epoch_data = epoch_data
         self.config = config
@@ -83,6 +126,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.preview()
 
     def init_ui(self):
+        """Initialize the dialog UI with tree view and split controls."""
         layout = QHBoxLayout(self)
 
         # Left: Tree
@@ -241,6 +285,12 @@ class DataSplittingPreviewDialog(BaseDialog):
         layout.addLayout(right_layout)
 
     def on_split_type_change(self, splitter, text):
+        """Handle changes to the split unit combo box.
+
+        Args:
+            splitter: The DataSplitterHolder being modified.
+            text: The newly selected split unit text.
+        """
         if hasattr(splitter, "set_split_unit_var"):
             splitter.set_split_unit_var(text)
         if text == SplitUnit.MANUAL.value:
@@ -248,11 +298,22 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.preview()
 
     def on_entry_change(self, splitter, text):
+        """Handle changes to the split value text entry.
+
+        Args:
+            splitter: The DataSplitterHolder being modified.
+            text: The new split value text.
+        """
         if hasattr(splitter, "set_entry_var"):
             splitter.set_entry_var(text)
         self.preview()
 
     def handle_manual_split(self, splitter):
+        """Open a manual split dialog for the given splitter.
+
+        Args:
+            splitter: The DataSplitterHolder requiring manual selection.
+        """
         choices = []
         if splitter.split_type in [
             SplitByType.SESSION,
@@ -290,6 +351,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                 self.test_widgets[idx][1].setText(value)
 
     def preview(self):
+        """Start background dataset generation and update the tree view."""
         self.datasets = []
         if self.tree:
             self.tree.clear()
@@ -316,6 +378,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.preview_worker.start()
 
     def update_table(self):
+        """Poll the dataset generator and update the tree view with results."""
         if not self.tree:
             return
 
@@ -338,6 +401,7 @@ class DataSplittingPreviewDialog(BaseDialog):
                         item.setText(col, str(val))
 
     def show_info(self):
+        """Display detailed information about the selected dataset."""
         if not self.tree:
             return
         item = self.tree.currentItem()
@@ -358,6 +422,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         )
 
     def confirm(self):
+        """Finalize dataset generation and accept the dialog."""
         if self.preview_worker and self.preview_worker.is_alive():
             QMessageBox.warning(self, "Warning", "Generating dataset, please wait.")
             return
@@ -370,4 +435,9 @@ class DataSplittingPreviewDialog(BaseDialog):
             QMessageBox.critical(self, "Error", str(e))
 
     def get_result(self):
+        """Return the finalized DatasetGenerator.
+
+        Returns:
+            The DatasetGenerator with prepared split results, or None.
+        """
         return self.dataset_generator

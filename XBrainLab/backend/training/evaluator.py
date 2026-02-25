@@ -1,3 +1,5 @@
+"""Model evaluation utilities for testing, metric computation, and saliency analysis."""
+
 from __future__ import annotations
 
 import logging
@@ -16,7 +18,17 @@ class Evaluator:
 
     @staticmethod
     def compute_auc(y_true, y_pred, multi_class="ovr") -> float:
-        """Compute AUC score safely."""
+        """Compute AUC score safely, handling tensor conversion and edge cases.
+
+        Args:
+            y_true: Ground truth labels as a tensor or numpy array.
+            y_pred: Predicted logits or probabilities as a tensor or numpy array.
+            multi_class: Multi-class strategy for AUC computation.
+                Defaults to ``'ovr'`` (one-vs-rest).
+
+        Returns:
+            The computed AUC score, or ``0.0`` if computation fails.
+        """
         try:
             if y_true is None or y_pred is None:
                 logging.getLogger(__name__).warning("No data to compute AUC")
@@ -66,6 +78,9 @@ class Evaluator:
             logger.warning(f"Failed to calculate AUC: {e}")
             return 0.0
         else:
+            # roc_auc_score may return nan for undefined cases (e.g. single class)
+            if np.isnan(auc):
+                return 0.0
             return auc
 
     @staticmethod
@@ -74,7 +89,17 @@ class Evaluator:
         data_loader: torch_data.DataLoader,
         criterion: torch.nn.Module,
     ) -> dict[str, float]:
-        """Test model on given data loader."""
+        """Test a model on the given data loader and compute metrics.
+
+        Args:
+            model: The PyTorch model to evaluate.
+            data_loader: DataLoader providing input-label pairs.
+            criterion: Loss function used to compute evaluation loss.
+
+        Returns:
+            A dictionary containing accuracy (``RecordKey.ACC``),
+            AUC (``RecordKey.AUC``), and loss (``RecordKey.LOSS``).
+        """
         model.eval()
 
         running_loss = 0.0
@@ -115,7 +140,22 @@ class Evaluator:
         data_loader: torch_data.DataLoader,
         saliency_params: dict,
     ) -> EvalRecord:
-        """Evaluate model and compute saliency maps."""
+        """Evaluate model and compute saliency maps using multiple attribution methods.
+
+        Computes Gradient, Gradient*Input, SmoothGrad, SmoothGrad Squared,
+        and VarGrad saliency maps for each batch in the data loader.
+
+        Args:
+            model: The PyTorch model to evaluate (should be in eval mode).
+            data_loader: DataLoader providing input-label pairs.
+            saliency_params: Dictionary of parameters for each saliency method,
+                keyed by method name (e.g., ``'SmoothGrad'``,
+                ``'SmoothGrad_Squared'``, ``'VarGrad'``).
+
+        Returns:
+            An :class:`EvalRecord` containing labels, outputs, and per-class
+            saliency maps for all attribution methods.
+        """
         model.eval()
 
         output_list = []

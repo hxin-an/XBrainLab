@@ -1,13 +1,9 @@
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
-
-# Ensure QApplication exists
-app = QApplication.instance() or QApplication(sys.argv)
 
 
 @pytest.fixture
@@ -181,7 +177,3 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
         # mock_info_panel.update_info.assert_called_once()  # Handled by Service now
 
     real_window.close()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

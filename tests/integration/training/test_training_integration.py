@@ -416,7 +416,3 @@ class TestMetricTabHistoryManagement:
         assert tab.epochs == [1, 2, 3]
         assert len(tab.train_vals) == 3
         assert len(tab.val_vals) == 3
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

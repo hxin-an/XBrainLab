@@ -1,10 +1,7 @@
-import sys
 from unittest.mock import MagicMock
 
-import pytest
 from matplotlib.figure import Figure
 from PyQt6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QComboBox,
     QGroupBox,
@@ -111,8 +108,6 @@ class MockMainWindow(QWidget):
 
 def test_evaluation_panel_layout(qtbot):
     """Test the layout of the redesigned EvaluationPanel."""
-    QApplication.instance() or QApplication(sys.argv)
-
     main_window = MockMainWindow()
     controller = main_window.study.get_controller("evaluation")
     panel = EvaluationPanel(controller=controller, parent=main_window)
@@ -154,8 +149,6 @@ def test_evaluation_panel_layout(qtbot):
 
 def test_evaluation_panel_logic(qtbot):
     """Test the logic of the EvaluationPanel."""
-    QApplication.instance() or QApplication(sys.argv)
-
     main_window = MockMainWindow()
     controller = main_window.study.get_controller("evaluation")
     panel = EvaluationPanel(controller=controller, parent=main_window)
@@ -178,10 +171,7 @@ def test_evaluation_panel_logic(qtbot):
     assert "Repeat 2" in panel.run_combo.itemText(1)  # Not finished
 
     rc = panel.metrics_table.rowCount()
-    print(f"DEBUG: Row Count Actual: {rc}")
-    if rc != 3:
-        pytest.fail(f"Row count mismatch. Expected 3, got {rc}")
-    assert rc == 3
+    assert rc == 3, f"Row count mismatch. Expected 3, got {rc}"
 
     # Mock update_plot for bar chart to verify call
     panel.bar_chart.update_plot = MagicMock()
@@ -200,7 +190,3 @@ def test_evaluation_panel_logic(qtbot):
     # Test Show Percentage Toggle
     panel.chk_percentage.setChecked(True)
     panel.chk_percentage.setChecked(False)
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])

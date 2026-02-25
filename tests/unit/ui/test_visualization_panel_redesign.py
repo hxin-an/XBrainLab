@@ -258,7 +258,3 @@ class TestVisualizationPanelRedesign(unittest.TestCase):
             MockSaliency3D.assert_called_once()
             _, kwargs = MockSaliency3D.call_args
             self.assertIn("plotter", kwargs)
-
-
-if __name__ == "__main__":
-    unittest.main()

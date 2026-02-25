@@ -1,3 +1,5 @@
+"""Data loader module for validating and applying loaded raw EEG data to a study."""
+
 from typing import TYPE_CHECKING
 
 from XBrainLab.backend.exceptions import DataMismatchError
@@ -10,12 +12,17 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 class RawDataLoader(list):
-    """Helper class for loading raw data.
+    """Container and validator for a collection of loaded raw data files.
 
-    Validate the loaded raw data consistency and apply to the study.
+    Extends ``list`` to store ``Raw`` objects while enforcing consistency
+    checks (channel count, sample frequency, data type, epoch duration)
+    across all loaded files.
 
-    Parameters:
-        raw_data_list: List of loaded raw data.
+    Args:
+        raw_data_list: Initial list of loaded raw data objects.
+
+    Raises:
+        ValueError: If the initial data list is inconsistent.
     """
 
     def __init__(self, raw_data_list: list[Raw] | None = None):
