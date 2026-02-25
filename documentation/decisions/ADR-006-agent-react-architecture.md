@@ -1,8 +1,10 @@
 # ADR-006：Agent ReAct 架構與驗證策略
 
-- **狀態**: 提議中 (Proposed)
-- **日期**: 2026-02-02
+- **狀態**: 部分實作 (Partially Implemented)
+- **日期**: 2026-02-02（更新: 2026-02-25）
 - **作者**: XBrainLab 團隊
+
+> **實作狀況**: ContextAssembler + VerificationLayer 已實作，但信心度檢查尚未完全啟用（見 KNOWN_ISSUES.md）。
 
 ---
 

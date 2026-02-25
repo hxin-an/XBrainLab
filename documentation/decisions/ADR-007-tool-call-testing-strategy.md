@@ -1,8 +1,10 @@
 # ADR-007：Real Tool Call 測試策略
 
-- **狀態**: 提議中 (Proposed)
-- **日期**: 2026-02-02
+- **狀態**: 已實作 (Implemented)
+- **日期**: 2026-02-02（更新: 2026-02-25）
 - **作者**: XBrainLab 團隊
+
+> **實作狀況**: `--tool-debug` CLI 旗標已實作，Debug JSON 腳本已建立（`scripts/agent/debug/`），Headless 驗證工具已完成。
 
 ---
 

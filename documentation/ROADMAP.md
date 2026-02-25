@@ -21,7 +21,7 @@
     - [x] 修復所有 mypy 類型錯誤 (139 files, 0 errors)。
     - [x] 添加 None 安全檢查、LSP 合規性、類型聯合註解。
 
-### 第二階段：代碼品質與短期解耦 (Code Quality & Quick Decoupling) - **[🚧 In Progress]**
+### 第二階段：代碼品質與短期解耦 (Code Quality & Quick Decoupling) - **[✅ Completed]**
 *目標：償還技術債，阻止耦合擴散，建立開發規範*
 
 #### P0 - 緊急修復 (本週)
@@ -117,7 +117,7 @@
     - [x] 實作 `eval_agent.py`，支援分類準確率報告與詳細失敗分析。
     - [x] 達成 88.0% 通過率。
 - [x] **架構重構**
-    - [x] 實作 `PromptManager` 以支援動態 System Prompt 與 Context。
+    - [x] 實作 `ContextAssembler` 以支援動態 System Prompt 與 Context。
 
 ### 第四階段：RAG 整合與工具實作 (RAG Integration & Real Tools) - **[🚧 In Progress]**
 **目標**：讓 Agent 具備操作真實軟體的能力 (Coordinator Persona)。
@@ -132,9 +132,9 @@
 
 #### 4.2 Agent 架構增強 (Agent Enhancement)
 **已識別的架構缺口**：
-- [ ] **錯誤處理與恢復機制 (P0 - Critical)**
-    - [ ] 實作 `max_iterations` 限制（防止 ReAct Loop 無限迴圈）
-    - [ ] 實作 Tool 失敗重試機制 (`tool_retry_limit`)
+- [x] **錯誤處理與恢復機制 (P0 - Critical)**
+    - [x] 實作 `_max_loop_breaks = 3` 限制（防止 ReAct Loop 無限迴圈）
+    - [x] 實作 Tool 失敗重試機制 (`_max_tool_failures = 3`)
     - [ ] 實作對話 Timeout 機制（Benchmark 有 300s，正常對話需要）
     - [ ] 實作 Graceful Degradation（LLM 無回應時降級策略）
 - [ ] **Observability & Logging (P1 - High)**
@@ -173,47 +173,35 @@
     - [ ] 建立 `conversation_test_set.json` (測試指代消解、記憶能力)
     - [ ] 實作多輪對話評測邏輯
 
-#### 4.4 向量資料庫 (Vector Store)
-- [ ] **選型**: 採用 **Qdrant** (Local Mode) + `langchain-qdrant`。
-- [ ] **資料策略**:
+#### 4.4 向量資料庫 (Vector Store) - **[✅ Completed]**
+- [x] **選型**: 採用 **Qdrant** (Local Mode)。
+- [x] **資料策略**:
     - [x] **測試集準備**: 建立 `external_validation_set.json` (175 題)。
-    - [ ] **RAG 索引**: 索引 `gold_set.json` (50 題) 作為 Few-Shot 範例。
-    - [ ] **文件索引**: 索引 `documentation/agent/*.md` (Tool Definitions, API Docs)。
-- [ ] **索引實作**
-    - [ ] 建立 RAG 模組結構：
-      ```
-      XBrainLab/llm/rag/
-      ├── __init__.py
-      ├── indexer.py          # 文件索引邏輯
-      ├── retriever.py        # 檢索器實作
-      ├── config.py           # Qdrant 配置
-      └── storage/            # Qdrant 本地儲存
-          ├── gold_set/       # Few-Shot 範例索引
-          └── docs/           # 文件索引
-      ```
-    - [ ] 實作 `indexer.py`：
-      - `index_gold_set()` - 將 `scripts/benchmark/data/gold_set.json` 轉為 RAG Documents
-      - `index_documentation()` - 索引 `documentation/agent/*.md`
-    - [ ] 實作 Metadata Filter (by `tool_name`, `category`)
+    - [x] **RAG 索引**: 索引 `gold_set.json` (50 題) 作為 Few-Shot 範例。
+    - [x] **文件索引**: 索引 `documentation/agent/*.md` (Tool Definitions, API Docs)。
+- [x] **索引實作**
+    - [x] 建立 RAG 模組結構 (`XBrainLab/llm/rag/`)
+    - [x] 實作 `indexer.py` (`index_gold_set`, `index_documentation`)
+    - [x] 實作 Metadata Filter (by `tool_name`, `category`)
 
-#### 4.5 RAG 引擎 (Retrieval-Augmented Generation)
-- [ ] **檢索器實作** (`XBrainLab/llm/rag/retriever.py`)
-    - [ ] 實作 Semantic Search Retriever（基於 Qdrant）
-    - [ ] 實作 Metadata Filtering (根據 Tool Category)
+#### 4.5 RAG 引擎 (Retrieval-Augmented Generation) - **[✅ Completed]**
+- [x] **檢索器實作** (`XBrainLab/llm/rag/retriever.py`)
+    - [x] 實作 Semantic Search Retriever（基於 Qdrant）
+    - [x] 實作 Metadata Filtering (根據 Tool Category)
     - [ ] 實作 Hybrid Retrieval (Semantic + Keyword)
-    - [ ] 實作 `get_similar_examples(query, top_k=3)` 方法
-- [ ] **Prompt 整合**
-    - [ ] 在 `PromptManager.add_context()` 整合 RAG 檢索結果
-    - [ ] 實作 Few-Shot Context 格式化（將檢索案例注入 Prompt）
+    - [x] 實作 `get_similar_examples(query, top_k=3)` 方法
+- [x] **Prompt 整合**
+    - [x] 在 `ContextAssembler` 整合 RAG 檢索結果
+    - [x] 實作 Few-Shot Context 格式化（將檢索案例注入 Prompt）
     - [ ] 實作 Retrieval Confidence Threshold（低信心時跳過檢索）
-- [ ] **Controller 整合**
-    - [ ] 在 `LLMController` 初始化時載入 RAG Retriever
-    - [ ] 在 `handle_user_input()` 時觸發檢索並注入 Context
+- [x] **Controller 整合**
+    - [x] 在 `LLMController` 初始化時載入 RAG Retriever
+    - [x] 在 `handle_user_input()` 時觸發檢索並注入 Context
 
-#### 4.6 RAG 評估與觀測 (Evaluation & Observability)
-- [ ] **檢索指標 (Retrieval Metrics)** (`XBrainLab/llm/rag/evaluation.py`)
-    - [ ] 測量 Hit Rate（正確工具是否在 Top-K）
-    - [ ] 測量 MRR (Mean Reciprocal Rank)
+#### 4.6 RAG 評估與觀測 (Evaluation & Observability) - **[🔄 Partial]**
+- [x] **檢索指標 (Retrieval Metrics)** (`XBrainLab/llm/rag/evaluation.py`)
+    - [x] 測量 Hit Rate（正確工具是否在 Top-K）
+    - [x] 測量 MRR (Mean Reciprocal Rank)
     - [ ] 建立 Retrieval Quality Dashboard（記錄到 `logs/rag_metrics.json`）
 - [ ] **生成指標 (Generation Metrics)**
     - [ ] 測量 Faithfulness（Agent 是否遵守檢索到的參數）
@@ -232,8 +220,8 @@
     - [ ] 建立自動化評分 Pipeline（擴充 `scripts/benchmark/eval_agent.py`）
     - [ ] 支援指定模型進行 Benchmark：`--model qwen2.5-3b`
 
-#### 4.7 混合推論引擎 (Hybrid Inference Engine)
-**目標**：重構 LLM Backend 架構，支援多種推論後端的動態切換（依賴 4.2 的配置管理）。
+#### 4.7 混合推論引擎 (Hybrid Inference Engine) - **[✅ Mostly Done]**
+**目標**：重構 LLM Backend 架構，支援多種推論後端的動態切換。
 
 **模型選擇考量** (重要：Agent 不接觸 EEG 原始資料，只處理文字指令):
 
@@ -250,14 +238,13 @@
 *Pass Rate 為預估值，需透過 4.6 的多模型 Benchmark 實際測量。*
 *Gemini API 免費層約提供 9000 RPD (Requests Per Day) 配額。*
 
-- [ ] **Backend 抽象層**
-    - [ ] 重構 `BaseBackend` 抽象類別（統一介面）
-    - [ ] 確保 `LocalBackend`, `OpenAIBackend`, `GeminiBackend` 實作相同介面
-    - [ ] 統一 `generate_stream(messages)` 方法簽名
-- [ ] **Engine Factory Pattern**
-    - [ ] 實作 `LLMEngineFactory.create(config: LLMConfig)` 工廠方法
-    - [ ] 根據 `config.inference_mode` 動態建立對應 Backend
-    - [ ] 支援 Lazy Loading（延遲載入模型）
+- [x] **Backend 抽象層**
+    - [x] 重構 `BaseBackend` 抽象類別（統一介面 `core/backends/base.py`）
+    - [x] 確保 `LocalBackend`, `OpenAIBackend`, `GeminiBackend` 實作相同介面
+    - [x] 統一 `generate_stream(messages)` 方法簽名
+- [x] **Engine Factory Pattern**
+    - [x] 根據 `config.inference_mode` 動態建立對應 Backend
+    - [x] 支援 Lazy Loading（延遲載入模型）
 - [ ] **Hot-Swap 機制**
     - [ ] 在 `LLMController` 實作 `switch_engine(new_mode: str)` 方法
     - [ ] 安全關閉舊 Backend（釋放 VRAM/連線）
@@ -266,9 +253,9 @@
     - [ ] 實作 `try_with_fallback()` 裝飾器
     - [ ] API 失敗時自動切換 Local Backend
     - [ ] 記錄降級事件到 Structured Log
-- [ ] **API Client 增強**
-    - [ ] 完善 `OpenAIBackend`（支援 GPT-4o, DeepSeek）
-    - [ ] 完善 `GeminiBackend`（支援 Gemini 2.0）
+- [x] **API Client 增強**
+    - [x] 完善 `OpenAIBackend`（支援 GPT-4o, DeepSeek）
+    - [x] 完善 `GeminiBackend`（支援 Gemini 2.0 Flash）
     - [ ] 實作 Retry 機制（指數退避）
 
 **與 4.2 關係**：

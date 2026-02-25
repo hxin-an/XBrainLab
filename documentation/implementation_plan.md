@@ -1,7 +1,7 @@
 # Agent 架構與評測系統實作計畫
 
-- **狀態**: 規劃中
-- **日期**: 2026-02-03
+- **狀態**: 持續更新
+- **日期**: 2026-02-03（最後更新: 2026-02-25）
 - **相關 ADR**: 005, 006, 007, 008
 
 ---
@@ -10,16 +10,14 @@
 
 本計畫整合 ROADMAP 願景與 ADR 架構決策，建立可執行的開發里程碑。
 
-**最新調整 (2026-02-04)**：基於測試優先策略，M3 提前執行。
-
-| 里程碑 | 主題 | 優先級 | 預估 | 狀態 |
-|--------|------|--------|------|------|
-| **M0** | **UI 穩定性與重構** | **Done** | **Completed** | **✅** |
-| **M3** | **測試基礎建設 + 多模型** | **P1** | **3-5 天** | **▶️ In Progress** |
-| M1 | ReAct 核心架構 | P2 | 3-5 天 | Pending M3 |
-| M2 | 統一狀態管理 | P2 | 3-5 天 | Pending M1 |
-| M4 | 評測框架 (MLflow) | P3 | 3-5 天 | |
-| M5 | 消融實驗 | P3 | 5-7 天 | |
+| 里程碑 | 主題 | 狀態 |
+|--------|------|------|
+| **M0** | UI 穩定性與重構 | **✅ Done** |
+| **M3** | 測試基礎建設 + 多模型 | **✅ Done** |
+| **M1** | ReAct 核心架構 | **✅ Mostly Done** |
+| M2 | 統一狀態管理 | ❌ Not Started |
+| M4 | 評測框架 (MLflow) | 🔄 Partial |
+| M5 | 消融實驗 | ❌ Not Started |
 
 ---
 
@@ -28,43 +26,38 @@
 **來源**：ROADMAP Track A
 
 ### 0.1 ChatPanel 重構
-- [ ] 將 `MessageBubble` 邏輯抽離
-- [ ] Logic Decoupling：UI 僅負責渲染
-- **檔案**: `XBrainLab/ui/panels/chat/`
+- [x] 將 `MessageBubble` 邏輯抽離
+- [x] Logic Decoupling：UI 僅負責渲染
 
 ### 0.2 程式碼規範
-- [ ] 全面補齊 Type Hints（可分批處理）
-- [ ] 統一 Exception 處理
+- [x] 全面補齊 Type Hints
+- [x] 統一 Exception 處理
 
 ### 0.3 New Conversation 功能
 - [x] 一鍵清除 Context Window
 - [x] 重置 Agent 狀態
 
-> **完成確認**：UI Refinements (Bubble, Buttons, Float) 已於 2026-02-04 驗收。
-
 ---
 
-## M1：ReAct 核心架構
+## ✅ M1：ReAct 核心架構 (Mostly Done)
 
 **來源**：ADR-006
 
 ### 1.1 工具結果回傳
-- [ ] Tool Result 加入 messages
-- [ ] 定義標準格式（success, data, error）
-- **檔案**: `XBrainLab/backend/agent/react_agent.py`
+- [x] Tool Result 加入 messages
+- [x] 定義標準格式（success, data, error）
 
 ### 1.2 UI 輸入鎖定
-- [ ] 執行中禁止輸入
-- [ ] 顯示狀態指示器
-- **檔案**: `XBrainLab/ui/panels/chat/chat_panel.py`
+- [x] 執行中禁止輸入
+- [x] 顯示狀態指示器
 
 ### 1.3 執行模式選擇器
 - [ ] Single/Multi Action 下拉選單
 - [ ] MAX_SUCCESSFUL_TOOLS（1 或 5）
 
 ### 1.4 迴圈控制
-- [ ] MAX_ITERATIONS = 10 硬上限
-- [ ] 成功次數計數器
+- [x] MAX_ITERATIONS 硬上限 (`_max_loop_breaks = 3`)
+- [x] 失敗次數計數器 (`_max_tool_failures = 3`)
 
 ---
 
@@ -87,60 +80,51 @@
 
 ---
 
-## M3：測試基礎建設 + 多模型支援
+## ✅ M3：測試基礎建設 + 多模型支援 (Done)
 
 **來源**：ADR-007 + 混合架構需求
 
 ### 3.1 Interactive Debug Mode
-- [ ] CLI `--tool-debug script.json`
-- [ ] Enter 執行下一個動作
-- **檔案**: `run.py`, `XBrainLab/ui/panels/chat/chat_panel.py`
+- [x] CLI `--tool-debug script.json`
+- [x] Enter 執行下一個動作
 
 ### 3.2 Debug 腳本
-- [ ] JSON Schema 定義
-- [ ] 範例腳本 `scripts/debug_filter.json`
+- [x] JSON Schema 定義
+- [x] 範例腳本 `scripts/agent/debug/` (all_tools, debug_filter, debug_ui_switch)
 
 ### 3.3 Headless UI Testing
-- [ ] pytest + QtTest 設定
-- [ ] `create_test_app()` fixture
-- **檔案**: `tests/conftest.py`, `tests/test_ui_integration.py`
+- [x] pytest + QtTest 設定
+- [x] `create_test_app()` fixture
 
 ### 3.4 多模型架構
-- [ ] 定義 `LLMProvider` 抽象介面
-- [ ] 實作 GPT-4, Claude, Gemini 適配器
-- [ ] CLI `--model gpt-4` / `--model claude-3`
-- [ ] 評測時可指定模型
-- **檔案**: `XBrainLab/backend/agent/providers/`（新建）
+- [x] 定義 `BaseBackend` 抽象介面
+- [x] 實作 LocalBackend, OpenAIBackend, GeminiBackend
+- [ ] CLI `--model` 參數選擇
 
-### 3.5 真實工具鏈修復（依賴 3.1-3.3）
-- [ ] 使用 Interactive Debug 逐步驗證工具
-- [ ] Saliency Tool 可呼叫執行
-- [ ] 複雜參數正確傳遞
-- [ ] 撰寫 Headless Test 防止回歸
+### 3.5 真實工具鏈
+- [x] 19/19 Real Tools 已完成
+- [x] `verify_real_tools.py` 整合驗證
+- [x] `verify_all_tools_headless.py` Headless 驗證
 
 ---
 
-## M4：評測框架
+## 🔄 M4：評測框架 (Partial)
 
 **來源**：ADR-008
 
 ### 4.1 Benchmark Dataset
-- [ ] 測試案例 JSON Schema
-- [ ] 初始測試集 50+ cases
-- **檔案**: `benchmarks/tool_call_v1.json`
+- [x] 測試案例 JSON Schema
+- [x] OOD 測試集 175 cases (`external_validation_set.json`)
 
-### 4.2 ToolCallEvaluator
-- [ ] `evaluate()` 方法
-- [ ] fuzzy_compare 數值容忍度
-- **檔案**: `XBrainLab/eval/evaluator.py`
+### 4.2 Benchmark 腳本
+- [x] `simple_bench.py` 自動評分
+- [x] `audit_dataset.py` 品質審計
 
 ### 4.3 MLflow 整合
 - [ ] Parameters / Metrics / Artifacts 追蹤
-- **檔案**: `XBrainLab/eval/mlflow_tracker.py`
 
 ### 4.4 CLI 介面
-- [ ] `python -m xbrainlab.eval --model gpt-4`
-- **檔案**: `XBrainLab/eval/__main__.py`
+- [ ] 統一 CLI entry point
 
 ---
 
@@ -167,23 +151,19 @@
 
 ## 依賴關係
 
-## 依賴關係
-
 ```
-M0 (UI 穩定) ✅ ─┐
-                 ├──→ M3 (測試 + 多模型) ▶️ ──→ M1 (ReAct) ──→ M2 (狀態) ──→ M4 (評測)
-                 │
-                 └──→ (Headless Testing 保障 M1/M2 品質)
+M0 (UI 穩定) ✅ ──→ M3 (測試 + 多模型) ✅ ──→ M1 (ReAct) ✅
+                                                    │
+                                               M2 (狀態) ❌ ──→ M4 (評測) 🔄 ──→ M5 (消融) ❌
 ```
 
 ---
 
-## 時程總計
+## 剩餘工作
 
-| 階段 | 里程碑 | 預估 |
-|------|--------|------|
-| Phase 1 | M0 + M1 + M2 | 2 週 |
-| Phase 2 | M3 + M4 | 2 週 |
-| Phase 3 | M5 | 1 週 |
-
-**總計 Stage 1 完成**：約 5 週
+| 里程碑 | 待完成項目 |
+|--------|-----------|
+| M1 | Single/Multi Action 模式選擇器 |
+| M2 | StateManager 單例（ADR-005 尚未實作） |
+| M4 | MLflow 整合、統一 CLI |
+| M5 | RAG / Memory 消融實驗設計 |

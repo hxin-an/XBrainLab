@@ -1,8 +1,10 @@
 # ADR-008：Tool Call 準確率評測框架
 
-- **狀態**: 提議中 (Proposed)
-- **日期**: 2026-02-02
+- **狀態**: 部分實作 (Partially Implemented)
+- **日期**: 2026-02-02（更新: 2026-02-25）
 - **作者**: XBrainLab 團隊
+
+> **實作狀況**: `simple_bench.py` Benchmark 腳本已實作，`external_validation_set.json` (175 題) 已建立，但 MLflow 尚未整合。
 
 ---
 

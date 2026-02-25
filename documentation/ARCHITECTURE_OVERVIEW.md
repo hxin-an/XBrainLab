@@ -213,6 +213,15 @@ XBrainLab 的核心創新在於 Backend、UI 與 Agent 三個系統的協同運�
 - **可測試性**：Headless Backend 支持全面自動化測試。
 - **用戶體驗**：雙核心允許同時操作，提升效率。
 
+## 擴充規範 (Extension Guide)
+
+若要新增新的分析功能（如新的濾波器或模型）：
+1. 在 Service 層實作底層算法（如 `DataService`）。
+2. 在對應 Controller 中暴露調用介面（如 `PreprocessController`）。
+3. 在 `BackendFacade` 中新增統一入口方法。
+4. 更新 Agent 的 Tool Definition（`llm/tools/definitions/`）以支援新指令。
+5. 新增 Real Tool 實作（`llm/tools/real/`），連接 Facade 方法。
+
 ## 潛在挑戰
 
 - **複雜性**：Observer 模式需仔細管理事件依賴。
