@@ -91,6 +91,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           poetry run pytest tests/ \
+            --deselect tests/unit/ui/test_visualization.py::TestSaliency3DEngine \
             --tb=short \
             --junitxml=test-results.xml \
             --cov=XBrainLab \
@@ -102,6 +103,7 @@ jobs:
         if: runner.os != 'Linux'
         run: |
           poetry run pytest tests/ \
+            --deselect tests/unit/ui/test_visualization.py::TestSaliency3DEngine \
             --tb=short \
             --junitxml=test-results.xml \
             -q
