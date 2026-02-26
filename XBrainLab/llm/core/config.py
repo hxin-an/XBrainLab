@@ -102,6 +102,7 @@ class LLMConfig:
         """
         return asdict(self)
 
+    @staticmethod
     def _default_settings_path() -> str:
         """Return the default path for settings.json relative to the project root."""
         # Import here to avoid circular dependency at module level

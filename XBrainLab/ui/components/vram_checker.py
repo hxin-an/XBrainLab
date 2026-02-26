@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtWidgets import QMessageBox
 
 if TYPE_CHECKING:
-    from PyQt6.QtWidgets import QMainWindow
+    from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ class VRAMConflictChecker:
 
     def __init__(
         self,
-        main_window: QMainWindow,
-        agent_controller_ref,
+        main_window: Any,
+        agent_controller_ref: Any,
     ) -> None:
         self.main_window = main_window
         self._get_controller = agent_controller_ref

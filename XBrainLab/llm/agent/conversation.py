@@ -60,12 +60,12 @@ class ConversationHistory:
     def __len__(self) -> int:
         return len(self.messages)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> dict[str, Any]:
         return self.messages[index]
 
-    __hash__ = None  # mutable container — unhashable
+    __hash__: None = None  # type: ignore[assignment]  # mutable container
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, list):
             return self.messages == other
         if isinstance(other, ConversationHistory):

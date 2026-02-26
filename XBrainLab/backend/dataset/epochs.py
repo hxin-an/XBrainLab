@@ -659,7 +659,7 @@ class Epochs:
         # get number of epochs to be selected
         target = sum(mask) if clean_mask is None else sum(clean_mask)
         if split_unit == SplitUnit.KFOLD:
-            value = int(value)
+            value = int(value)  # type: ignore[arg-type]
             inc = target % value
             num = target // value
             if inc > group_idx:

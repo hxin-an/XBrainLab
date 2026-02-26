@@ -106,7 +106,7 @@ class GeminiBackend(BaseBackend):
             "history": history,
         }
         if system_parts:
-            chat_kwargs["config"] = {"system_instruction": "\n".join(system_parts)}
+            chat_kwargs["config"] = {"system_instruction": "\n".join(system_parts)}  # type: ignore[assignment]
 
         # Create a fresh chat session with history
         chat = self.client.chats.create(**chat_kwargs)

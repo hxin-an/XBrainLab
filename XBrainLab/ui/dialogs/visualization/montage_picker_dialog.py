@@ -55,7 +55,7 @@ class PickMontageDialog(BaseDialog):
         self.chs = None
         self.positions = None
         self.montage_channels = []
-        self.montage_list = []
+        self.montage_list: list = []
 
         # Track which rows are explicitly set (Anchors)
         # Set of row indices
