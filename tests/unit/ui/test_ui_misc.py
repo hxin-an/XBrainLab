@@ -694,7 +694,7 @@ class TestAgentManagerDeep:
         mgr.check_vram_conflict(switching_to_local=False)
         # no warning when not local
 
-    @patch("XBrainLab.ui.components.agent_manager.QMessageBox")
+    @patch("XBrainLab.ui.components.vram_checker.QMessageBox")
     def test_check_vram_local_and_3d(self, mock_mb, mgr):
         mgr.main_window.visualization_panel = MagicMock()
         mgr.check_vram_conflict(switching_to_local=True, switching_to_3d=True)
@@ -706,9 +706,9 @@ class TestAgentManagerDeep:
         mgr.check_vram_conflict.assert_not_called()
 
     def test_on_viz_tab_changed_3d(self, mgr):
-        mgr.check_vram_conflict = MagicMock()
+        mgr.vram_checker = MagicMock()
         mgr.on_viz_tab_changed(3)
-        mgr.check_vram_conflict.assert_called_with(switching_to_3d=True)
+        mgr.vram_checker.on_viz_tab_changed.assert_called_with(3)
 
     @patch("XBrainLab.ui.components.agent_manager.PickMontageDialog")
     def test_open_montage_no_epoch(self, mock_dlg, mgr):

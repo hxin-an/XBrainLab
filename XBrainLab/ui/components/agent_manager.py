@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QWidget,
 )
@@ -18,6 +17,7 @@ from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.ui.chat.panel import ChatPanel
+from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -79,11 +79,14 @@ class AgentManager(QObject):
 
         self.agent_initialized = False
 
-        # M3.4 VRAM Monitoring
-        # Connect to Visualization Panel signals if available
+        # M3.4 VRAM Monitoring — delegated to VRAMConflictChecker
+        self.vram_checker = VRAMConflictChecker(
+            self.main_window,
+            lambda: self.agent_controller,
+        )
         if hasattr(self.main_window, "visualization_panel"):
             self.main_window.visualization_panel.tabs.currentChanged.connect(
-                self.on_viz_tab_changed,
+                self.vram_checker.on_viz_tab_changed,
             )
 
     def init_ui(self):
@@ -340,7 +343,7 @@ class AgentManager(QObject):
 
         # VRAM Check on Mode Switch
         if "local" in model_name.lower():
-            self.check_vram_conflict(switching_to_local=True)
+            self.vram_checker.check(switching_to_local=True)
 
     def on_viz_tab_changed(self, index):
         """Monitor visualization tab changes for VRAM conflict.
@@ -349,15 +352,12 @@ class AgentManager(QObject):
             index: The newly selected tab index.
 
         """
-        # 3D Plot tab triggers VRAM check
-        if index == VIZ_TAB_3D_PLOT:
-            self.check_vram_conflict(switching_to_3d=True)
+        self.vram_checker.on_viz_tab_changed(index)
 
     def check_vram_conflict(self, switching_to_local=False, switching_to_3d=False):
         """Check for VRAM conflict between local LLM and 3D visualization.
 
-        Warns the user if both the local model and 3D visualization are
-        active simultaneously, which may cause memory exhaustion.
+        Delegates to :class:`VRAMConflictChecker`.
 
         Args:
             switching_to_local: Whether the user is switching to local
@@ -366,51 +366,10 @@ class AgentManager(QObject):
                 visualization tab.
 
         """
-        # 1. Check Agent Mode
-        # If we are switching TO local, we assume local.
-        # Otherwise check current config.
-        is_local = False
-        if switching_to_local:
-            is_local = True
-        elif self.agent_controller and self.agent_controller.worker:
-            # Use cached config from running agent if available
-            # This avoids blocking IO from LLMConfig.load_from_file()
-            try:
-                # Check active_backend or config directly
-                # Accessing worker.engine.config is safe as it's an object reference
-                if self.agent_controller.worker.engine:
-                    mode = self.agent_controller.worker.engine.config.active_mode
-                    if mode == "local":
-                        is_local = True
-            except Exception:
-                logger.debug(
-                    "Engine not yet initialized, skipping local mode check",
-                    exc_info=True,
-                )
-
-        if not is_local:
-            return
-
-        # 2. Check Visualization State
-        # If we are switching TO 3D, assume 3D.
-        # Otherwise check current tab.
-        is_3d_active = False
-        viz_panel = self.main_window.visualization_panel
-        if switching_to_3d or (
-            viz_panel.tabs.currentIndex() == VIZ_TAB_3D_PLOT
-            and not viz_panel.isHidden()
-            and self.main_window.stack.currentIndex() == PANEL_VISUALIZATION
-        ):
-            is_3d_active = True
-
-        if is_local and is_3d_active:
-            QMessageBox.warning(
-                self.main_window,
-                "VRAM Warning",
-                "This requires significant VRAM (Video Memory). "
-                "If you experience crashes or lag, please close the 3D view "
-                "or switch to Gemini mode.",
-            )
+        self.vram_checker.check(
+            switching_to_local=switching_to_local,
+            switching_to_3d=switching_to_3d,
+        )
 
     def on_processing_state_changed(self, is_processing):
         """Forward processing state changes to the ChatPanel.

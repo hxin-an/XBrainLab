@@ -19,6 +19,7 @@ from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 from .assembler import ContextAssembler
+from .conversation import ConversationHistory
 from .parser import CommandParser
 from .verifier import VerificationLayer
 from .worker import AgentWorker
@@ -93,7 +94,7 @@ class LLMController(QObject):
         self.worker = AgentWorker()
         self.worker.moveToThread(self.worker_thread)
 
-        self.history = []  # List of {"role": str, "content": str}
+        self._conversation = ConversationHistory(max_size=self.MAX_HISTORY)
 
         # Connect worker signals
         self.worker.chunk_received.connect(self._on_chunk_received)
@@ -137,6 +138,15 @@ class LLMController(QObject):
         # This will run in parallel with the LLM loading (which is in worker thread)
         threading.Thread(target=self.rag_retriever.initialize, daemon=True).start()
 
+    @property
+    def history(self):
+        """list: Backward-compatible accessor for conversation messages."""
+        return self._conversation.messages
+
+    @history.setter
+    def history(self, value):
+        self._conversation.messages = value
+
     def _append_history(self, role: str, content: str):
         """Appends a message to history and prunes to the sliding window.
 
@@ -145,11 +155,7 @@ class LLMController(QObject):
             content: The message text.
 
         """
-        self.history.append({"role": role, "content": content})
-
-        # Sliding Window: Keep last N turns (N=20 ≈ 10 user-assistant pairs)
-        if len(self.history) > self.MAX_HISTORY:
-            self.history = self.history[-self.MAX_HISTORY :]
+        self._conversation.append(role, content)
 
     def handle_user_input(self, text: str):
         """Entry point for user input from the UI.
@@ -637,7 +643,7 @@ class LLMController(QObject):
 
     def reset_conversation(self):
         """Resets conversation history and all internal state counters."""
-        self.history.clear()
+        self._conversation.clear()
         self.current_response = ""
         self._retry_count = 0
         self._tool_failure_count = 0

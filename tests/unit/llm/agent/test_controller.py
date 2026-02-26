@@ -75,6 +75,7 @@ class TestAppendHistory:
 
     def test_sliding_window(self, ctrl):
         ctrl.MAX_HISTORY = 5
+        ctrl._conversation.max_size = 5
         for i in range(10):
             ctrl._append_history("user", str(i))
         assert len(ctrl.history) == 5
