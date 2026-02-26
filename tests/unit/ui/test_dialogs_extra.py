@@ -6,7 +6,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QComboBox
+from PyQt6.QtWidgets import QComboBox, QDialog, QWidget
 
 # ============ EventFilterDialog ============
 
@@ -22,7 +22,7 @@ class TestEventFilterDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_set_all_checked(self, dlg):
         dlg.set_all_checked(True)
@@ -68,7 +68,7 @@ class TestManualSplitDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_accept(self, dlg):
         # Select first 2 items
@@ -85,7 +85,7 @@ class TestManualSplitDialog:
         choices = [(0, "SubjectA"), (1, "SubjectB")]
         d = ManualSplitDialog(None, choices)
         qtbot.addWidget(d)
-        assert d is not None
+        assert isinstance(d, ManualSplitDialog)
 
 
 # ============ ChannelSelectionDialog ============
@@ -114,7 +114,7 @@ class TestChannelSelectionDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_set_all_checked(self, dlg):
         dlg.set_all_checked(True)
@@ -150,7 +150,7 @@ class TestOptimizerSettingDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_has_algo_combo(self, dlg):
         assert isinstance(dlg.algo_combo, QComboBox)
@@ -186,7 +186,7 @@ class TestEpochingDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_toggle_baseline(self, dlg):
         dlg.toggle_baseline(True)
@@ -214,7 +214,7 @@ class TestSmartParserDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_toggle_mode(self, dlg):
         dlg.toggle_mode()
@@ -242,7 +242,7 @@ class TestTrainingSettingDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_set_optimizer(self, dlg):
         with patch(
@@ -283,7 +283,7 @@ class TestControlSidebar:
         return sb
 
     def test_creates(self, sidebar):
-        assert sidebar is not None
+        assert isinstance(sidebar, QWidget)
 
     def test_update_info(self, sidebar):
         sidebar.update_info()

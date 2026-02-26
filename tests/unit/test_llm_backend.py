@@ -17,7 +17,7 @@ class TestLocalBackend:
         config.cache_dir = "/tmp"
         config.load_in_4bit = False
         backend = LocalBackend(config)
-        assert backend is not None
+        assert isinstance(backend, LocalBackend)
         assert backend.is_loaded is False
 
     def test_process_messages_empty(self):
@@ -49,13 +49,13 @@ class TestDownloader:
         from XBrainLab.llm.core.downloader import ModelDownloader
 
         dm = ModelDownloader()
-        assert dm is not None
+        assert isinstance(dm, ModelDownloader)
 
     def test_download_worker_creates(self):
         from XBrainLab.llm.core.downloader import DownloadWorker
 
         worker = DownloadWorker(repo_id="test/model", cache_dir="/tmp")
-        assert worker is not None
+        assert isinstance(worker, DownloadWorker)
 
 
 # ============ RAG Retriever ============
@@ -66,7 +66,7 @@ class TestRetriever:
         from XBrainLab.llm.rag.retriever import RAGRetriever
 
         r = RAGRetriever()
-        assert r is not None
+        assert isinstance(r, RAGRetriever)
 
 
 # ============ Gemini Backend ============
@@ -79,7 +79,7 @@ class TestGeminiBackend:
         config = MagicMock()
         config.api_key = "fake-key"  # pragma: allowlist secret
         backend = GeminiBackend(config)
-        assert backend is not None
+        assert isinstance(backend, GeminiBackend)
 
 
 # ============ LLM Engine ============
@@ -90,14 +90,14 @@ class TestLLMEngine:
         from XBrainLab.llm.core.engine import LLMEngine
 
         e = LLMEngine()
-        assert e is not None
+        assert isinstance(e, LLMEngine)
 
     def test_creates_with_config(self):
         from XBrainLab.llm.core.engine import LLMEngine
 
         config = MagicMock()
         e = LLMEngine(config)
-        assert e is not None
+        assert isinstance(e, LLMEngine)
 
 
 # ============ Agent Parser ============

@@ -61,7 +61,7 @@ class TestSaliencyMapWidget:
 
         w = SaliencyMapWidget()
         qtbot.addWidget(w)
-        assert w is not None
+        assert isinstance(w, SaliencyMapWidget)
 
     def test_update_plot_no_eval(self, qtbot):
         from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
@@ -115,7 +115,7 @@ class TestSaliencySpectrogramWidget:
 
         w = SaliencySpectrogramWidget()
         qtbot.addWidget(w)
-        assert w is not None
+        assert isinstance(w, SaliencySpectrogramWidget)
 
     def test_update_plot_no_eval(self, qtbot):
         from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
@@ -140,7 +140,7 @@ class TestSaliencyTopographicMapWidget:
 
         w = SaliencyTopographicMapWidget()
         qtbot.addWidget(w)
-        assert w is not None
+        assert isinstance(w, SaliencyTopographicMapWidget)
 
     def test_update_plot_no_eval(self, qtbot):
         from XBrainLab.ui.panels.visualization.saliency_views.topomap_view import (
@@ -168,7 +168,7 @@ class TestSaliency3DPlotWidget:
 
             w = Saliency3DPlotWidget(parent=None)
             qtbot.addWidget(w)
-            assert w is not None
+            assert isinstance(w, Saliency3DPlotWidget)
 
     def test_show_error(self, qtbot):
         with patch(

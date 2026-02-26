@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QMainWindow
+from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
 
 # ====================================================================
 # DataSplitterHolder (pure logic - no Qt needed)
@@ -252,7 +252,7 @@ class TestImportLabelDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
         assert dlg.label_data_map == {}
 
     def test_remove_files_empty(self, dlg):
@@ -539,7 +539,7 @@ class TestTopoMapView:
         return w
 
     def test_creates(self, widget):
-        assert widget is not None
+        assert isinstance(widget, QWidget)
 
     def test_show_warning(self, widget):
         widget.show_warning("test warning")
@@ -612,7 +612,7 @@ class TestSpectrogramView:
         return w
 
     def test_creates(self, widget):
-        assert widget is not None
+        assert isinstance(widget, QWidget)
 
     def test_update_plot_no_eval(self, widget):
         plan = MagicMock()

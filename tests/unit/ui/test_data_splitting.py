@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from PyQt6.QtWidgets import QComboBox, QDialog, QWidget
 
 # ============ DrawRegion (pure logic, no Qt) ============
 
@@ -97,7 +98,7 @@ class TestPreviewCanvas:
 
         c = PreviewCanvas(None)
         qtbot.addWidget(c)
-        assert c is not None
+        assert isinstance(c, PreviewCanvas)
 
     def test_set_regions(self, qtbot):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
@@ -157,15 +158,15 @@ class TestDataSplittingDialog:
         return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_has_canvas(self, dlg):
-        assert dlg.canvas is not None
+        assert isinstance(dlg.canvas, QWidget)
 
     def test_has_combos(self, dlg):
-        assert dlg.train_type_combo is not None
-        assert dlg.test_combo is not None
-        assert dlg.val_combo is not None
+        assert isinstance(dlg.train_type_combo, QComboBox)
+        assert isinstance(dlg.test_combo, QComboBox)
+        assert isinstance(dlg.val_combo, QComboBox)
 
     def test_update_preview_full(self, dlg):
         dlg.train_type_combo.setCurrentText("Full Data")
@@ -280,7 +281,7 @@ class TestDataSplittingPreviewDialogDeep:
             return d
 
     def test_creates(self, dlg):
-        assert dlg is not None
+        assert isinstance(dlg, QDialog)
 
     def test_get_result(self, dlg):
         result = dlg.get_result()

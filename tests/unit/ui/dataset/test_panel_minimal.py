@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QPushButton, QTableWidget, QWidget
 
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
@@ -28,12 +28,12 @@ def test_dataset_panel_init(app, mock_main_window):
     panel = DatasetPanel(parent=mock_main_window)
 
     # Check key components exist
-    assert panel.table is not None
+    assert isinstance(panel.table, QTableWidget)
     assert panel.sidebar is not None
-    assert panel.sidebar.info_panel is not None
-    assert panel.sidebar.import_btn is not None
-    assert panel.sidebar.chan_select_btn is not None
-    assert panel.sidebar.clear_btn is not None
+    assert isinstance(panel.sidebar.info_panel, QWidget)
+    assert isinstance(panel.sidebar.import_btn, QPushButton)
+    assert isinstance(panel.sidebar.chan_select_btn, QPushButton)
+    assert isinstance(panel.sidebar.clear_btn, QPushButton)
 
     # Check Theme application (check if styleSheet is not empty)
     assert "background-color" in panel.sidebar.info_panel.styleSheet()
@@ -44,4 +44,4 @@ def test_dataset_panel_no_parent(app):
     """Verify DatasetPanel can init without parent (headless/test mode)."""
     # Should not crash even if controller is missing
     panel = DatasetPanel(parent=None)
-    assert panel.table is not None
+    assert isinstance(panel.table, QTableWidget)

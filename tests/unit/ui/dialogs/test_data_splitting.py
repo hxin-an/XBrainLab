@@ -104,7 +104,7 @@ class TestPreviewCanvas:
 
         canvas = PreviewCanvas(None)
         qtbot.addWidget(canvas)
-        assert canvas is not None
+        assert isinstance(canvas, PreviewCanvas)
 
     def test_set_regions(self, qtbot):
         from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (

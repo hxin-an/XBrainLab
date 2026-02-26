@@ -78,7 +78,7 @@ class TestResumePause:
     def test_resume_sets_start_timestamp(self, train_record):
         assert train_record.start_timestamp is None
         train_record.resume()
-        assert train_record.start_timestamp is not None
+        assert isinstance(train_record.start_timestamp, float)
 
     def test_resume_does_not_overwrite_timestamp(self, train_record):
         train_record.resume()
@@ -90,7 +90,7 @@ class TestResumePause:
     def test_pause_saves_state(self, train_record):
         train_record.resume()
         train_record.pause()
-        assert train_record.end_timestamp is not None
+        assert isinstance(train_record.end_timestamp, float)
 
 
 # ---------------------------------------------------------------------------

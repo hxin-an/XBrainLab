@@ -212,7 +212,7 @@ class TestVisualizationPanelIntegration:
         panel = VisualizationPanel(parent=parent)
         qtbot.addWidget(panel)
 
-        assert panel is not None
+        assert isinstance(panel, VisualizationPanel)
 
 
 class TestTrainingWorkflowWithUI:

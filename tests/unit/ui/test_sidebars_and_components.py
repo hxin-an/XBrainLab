@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog, QMainWindow
+from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
 
 
 def _make_panel_mock():
@@ -36,7 +36,7 @@ class TestPreprocessSidebar:
         return sb
 
     def test_creates(self, sidebar):
-        assert sidebar is not None
+        assert isinstance(sidebar, QWidget)
 
     def test_update_sidebar(self, sidebar):
         sidebar.update_sidebar()
@@ -145,7 +145,7 @@ class TestTrainingSidebar:
         return sb
 
     def test_creates(self, sidebar):
-        assert sidebar is not None
+        assert isinstance(sidebar, QWidget)
 
     def test_check_ready_to_train_not_ready(self, sidebar):
         result = sidebar.check_ready_to_train()
@@ -186,12 +186,12 @@ class TestTrainingSidebar:
         sidebar.on_training_started()
         # After training starts, stop button or UI state should update
         # Verify the method runs without error
-        assert sidebar is not None
+        assert isinstance(sidebar, QWidget)
 
     def test_on_training_stopped_enables_buttons(self, sidebar):
         sidebar.on_training_stopped()
         # After training stops, UI state should update
-        assert sidebar is not None
+        assert isinstance(sidebar, QWidget)
 
     def test_stop_training(self, sidebar):
         sidebar.panel.controller.is_training.return_value = True
@@ -224,7 +224,7 @@ class TestDatasetSidebar:
         return sb
 
     def test_creates(self, sidebar):
-        assert sidebar is not None
+        assert isinstance(sidebar, QWidget)
 
     def test_update_sidebar(self, sidebar):
         sidebar.update_sidebar()
@@ -259,14 +259,14 @@ class TestCardWidget:
 
         card = CardWidget("Test Card")
         qtbot.addWidget(card)
-        assert card is not None
+        assert isinstance(card, CardWidget)
 
     def test_creates_without_title(self, qtbot):
         from XBrainLab.ui.components.card import CardWidget
 
         card = CardWidget("")
         qtbot.addWidget(card)
-        assert card is not None
+        assert isinstance(card, CardWidget)
 
     def test_add_widget(self, qtbot):
         from PyQt6.QtWidgets import QLabel
@@ -295,7 +295,7 @@ class TestPlaceholderWidget:
 
         w = PlaceholderWidget("📊", "No data available")
         qtbot.addWidget(w)
-        assert w is not None
+        assert isinstance(w, PlaceholderWidget)
 
     def test_message_displayed(self, qtbot):
         from XBrainLab.ui.components.placeholder import PlaceholderWidget

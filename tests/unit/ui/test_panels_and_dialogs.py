@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QTableWidget
+from PyQt6.QtWidgets import QTableWidget, QWidget
 
 # ============ DataSplittingPreviewDialog ============
 
@@ -104,7 +104,7 @@ class TestTrainingManagerWindow:
         w.close()
 
     def test_creates(self, window):
-        assert window is not None
+        assert isinstance(window, QWidget)
 
     def test_has_table(self, window):
         assert isinstance(window.plan_table, QTableWidget)
@@ -184,7 +184,7 @@ class TestVisualizationPanel:
             yield p
 
     def test_creates(self, panel):
-        assert panel is not None
+        assert isinstance(panel, QWidget)
 
     def test_get_trainers(self, panel):
         result = panel.get_trainers()
@@ -244,7 +244,7 @@ class TestEvaluationPanel:
             yield p
 
     def test_creates(self, panel):
-        assert panel is not None
+        assert isinstance(panel, QWidget)
 
     def test_update_panel(self, panel):
         panel.update_panel()

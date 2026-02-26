@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from PyQt6.QtWidgets import QComboBox
+from PyQt6.QtWidgets import QComboBox, QWidget
 
 
 @pytest.fixture
@@ -17,16 +17,16 @@ def preview(qtbot):
 
 class TestPreviewWidgetInit:
     def test_creates_widget(self, preview):
-        assert preview is not None
+        assert isinstance(preview, QWidget)
 
     def test_has_chan_combo(self, preview):
         assert isinstance(preview.chan_combo, QComboBox)
 
     def test_has_plot_time(self, preview):
-        assert preview.plot_time is not None
+        assert isinstance(preview.plot_time, QWidget)
 
     def test_has_plot_freq(self, preview):
-        assert preview.plot_freq is not None
+        assert isinstance(preview.plot_freq, QWidget)
 
 
 class TestPreviewWidgetMethods:

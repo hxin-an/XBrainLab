@@ -75,7 +75,7 @@ class TestMontageSelection:
     def test_on_montage_select(self, dialog):
         dialog.on_montage_select("standard_1020")
         # Should populate montage channels
-        assert dialog.montage_channels is not None
+        assert isinstance(dialog.montage_channels, list)
 
     def test_initial_sequential_fill(self, dialog):
         dialog.initial_sequential_fill()

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 import torch
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget
 
 # Ensure XBrainLab is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -118,8 +119,8 @@ def test_evaluation_panel_init(qtbot, mock_study):
 
     # Check widgets exist (Matrix and Metrics Table are now separate/in
     # different layout)
-    assert eval_panel.matrix_widget is not None
-    assert eval_panel.metrics_table is not None
+    assert isinstance(eval_panel.matrix_widget, QWidget)
+    assert isinstance(eval_panel.metrics_table, QWidget)
 
     # Check bottom tabs (Metrics Summary, Model Summary)
     assert eval_panel.bottom_tabs.count() >= 2
@@ -145,7 +146,7 @@ def test_visualization_panel_init(qtbot, mock_study):
     assert viz_panel.tabs.tabText(2) == "Topographic Map"
 
     # Check if widgets inside tabs are initialized
-    assert viz_panel.tab_map is not None
-    assert viz_panel.tab_topo is not None
+    assert isinstance(viz_panel.tab_map, QWidget)
+    assert isinstance(viz_panel.tab_topo, QWidget)
 
     window.close()

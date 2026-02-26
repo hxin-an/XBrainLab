@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QLineEdit, QScrollArea, QToolButton
+from PyQt6.QtWidgets import QLineEdit, QScrollArea, QToolButton, QWidget
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def chat_panel(qtbot):
 
 class TestChatPanelInit:
     def test_creates_panel(self, chat_panel):
-        assert chat_panel is not None
+        assert isinstance(chat_panel, QWidget)
 
     def test_has_input_area(self, chat_panel):
         assert isinstance(chat_panel.input_field, QLineEdit)
@@ -64,7 +64,7 @@ class TestChatPanelCallbacks:
     def test_on_chunk_received_no_bubble(self, chat_panel):
         chat_panel.current_agent_bubble = None
         chat_panel.on_chunk_received("hello")
-        assert chat_panel.current_agent_bubble is not None
+        assert isinstance(chat_panel.current_agent_bubble, QWidget)
 
     def test_on_chunk_received_with_bubble(self, chat_panel):
         chat_panel.on_chunk_received("part1")
@@ -79,7 +79,7 @@ class TestChatPanelCallbacks:
 
     def test_append_message_agent(self, chat_panel):
         chat_panel.append_message("assistant", "response")
-        assert chat_panel.current_agent_bubble is not None
+        assert isinstance(chat_panel.current_agent_bubble, QWidget)
 
     def test_set_processing_state(self, chat_panel):
         chat_panel.set_processing_state(True)

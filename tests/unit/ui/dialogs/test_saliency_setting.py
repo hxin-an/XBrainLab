@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from PyQt6.QtWidgets import QDialog
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ class TestSaliencySettingInit:
         assert isinstance(dialog.params_tables, dict)
 
     def test_creates_with_params(self, dialog_with_params):
-        assert dialog_with_params is not None
+        assert isinstance(dialog_with_params, QDialog)
 
 
 class TestSaliencySettingMethods:

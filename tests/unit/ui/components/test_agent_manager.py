@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtCore import QObject
+from PyQt6.QtWidgets import QMainWindow
 
 
 @pytest.fixture
@@ -16,8 +18,6 @@ def agent_mgr(qtbot):
         patch("XBrainLab.ui.components.agent_manager.ModelSettingsDialog"),
         patch("XBrainLab.ui.components.agent_manager.PickMontageDialog"),
     ):
-        from PyQt6.QtWidgets import QMainWindow
-
         from XBrainLab.ui.components.agent_manager import AgentManager
 
         # main_window must be a real QWidget (parent in super().__init__)
@@ -34,7 +34,7 @@ def agent_mgr(qtbot):
 
 class TestAgentManagerInit:
     def test_creates_instance(self, agent_mgr):
-        assert agent_mgr is not None
+        assert isinstance(agent_mgr, QObject)
         assert agent_mgr.study is not None
 
     def test_not_initialized_by_default(self, agent_mgr):

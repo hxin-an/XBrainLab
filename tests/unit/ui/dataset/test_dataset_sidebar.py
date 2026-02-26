@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
 
@@ -21,11 +22,11 @@ def sidebar(qtbot):
 
 
 def test_init_ui(sidebar):
-    assert sidebar.import_btn is not None
-    assert sidebar.import_label_btn is not None
-    assert sidebar.smart_parse_btn is not None
-    assert sidebar.chan_select_btn is not None
-    assert sidebar.clear_btn is not None
+    assert isinstance(sidebar.import_btn, QPushButton)
+    assert isinstance(sidebar.import_label_btn, QPushButton)
+    assert isinstance(sidebar.smart_parse_btn, QPushButton)
+    assert isinstance(sidebar.chan_select_btn, QPushButton)
+    assert isinstance(sidebar.clear_btn, QPushButton)
 
 
 def test_update_sidebar_locked(sidebar):

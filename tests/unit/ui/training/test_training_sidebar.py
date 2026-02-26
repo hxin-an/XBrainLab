@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 
@@ -18,10 +19,10 @@ def sidebar(qtbot):
 
 
 def test_init_ui(sidebar):
-    assert sidebar.btn_split is not None
-    assert sidebar.btn_model is not None
-    assert sidebar.btn_setting is not None
-    assert sidebar.btn_start is not None
+    assert isinstance(sidebar.btn_split, QPushButton)
+    assert isinstance(sidebar.btn_model, QPushButton)
+    assert isinstance(sidebar.btn_setting, QPushButton)
+    assert isinstance(sidebar.btn_start, QPushButton)
 
 
 def test_on_start_clicked(sidebar):
