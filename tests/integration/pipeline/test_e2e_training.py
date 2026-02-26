@@ -60,7 +60,7 @@ class TestTrainingPanelRealUsage:
         qtbot.addWidget(panel)
 
         # Verify flag is initialized
-        assert hasattr(panel, "training_completed_shown")
+        assert isinstance(panel.training_completed_shown, bool)
         assert panel.training_completed_shown is False
 
         # Simulate starting training

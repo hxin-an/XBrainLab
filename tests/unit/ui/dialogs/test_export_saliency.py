@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtWidgets import QComboBox
 
 
 def _make_trainer(name="Plan_0"):
@@ -36,7 +37,7 @@ class TestExportSaliencyInit:
         )
 
     def test_has_plan_combo(self, dialog):
-        assert hasattr(dialog, "plan_combo")
+        assert isinstance(dialog.plan_combo, QComboBox)
 
 
 class TestExportSaliencyMethods:

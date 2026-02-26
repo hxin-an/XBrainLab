@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from PyQt6.QtWidgets import QComboBox
 
 
 @pytest.fixture
@@ -19,13 +20,13 @@ class TestPreviewWidgetInit:
         assert preview is not None
 
     def test_has_chan_combo(self, preview):
-        assert hasattr(preview, "chan_combo")
+        assert isinstance(preview.chan_combo, QComboBox)
 
     def test_has_plot_time(self, preview):
-        assert hasattr(preview, "plot_time")
+        assert preview.plot_time is not None
 
     def test_has_plot_freq(self, preview):
-        assert hasattr(preview, "plot_freq")
+        assert preview.plot_freq is not None
 
 
 class TestPreviewWidgetMethods:

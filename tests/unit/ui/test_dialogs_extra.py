@@ -6,6 +6,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtWidgets import QComboBox
 
 # ============ EventFilterDialog ============
 
@@ -152,7 +153,7 @@ class TestOptimizerSettingDialog:
         assert dlg is not None
 
     def test_has_algo_combo(self, dlg):
-        assert hasattr(dlg, "algo_combo")
+        assert isinstance(dlg.algo_combo, QComboBox)
 
     def test_on_algo_select(self, dlg):
         dlg.on_algo_select("Adam")

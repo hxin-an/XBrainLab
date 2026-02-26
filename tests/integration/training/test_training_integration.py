@@ -86,7 +86,6 @@ class TestModelHolderBugFix:
         holder = ModelHolder(EEGNet, {})
 
         # Bug fix: ModelHolder has target_model (class), not model_name (string)
-        assert hasattr(holder, "target_model")
         assert holder.target_model == EEGNet
         assert holder.target_model.__name__ == "EEGNet"
 
@@ -124,7 +123,6 @@ class TestStudyAttributeConsistency:
         study = Study()
 
         # Bug fix: Should be training_option
-        assert hasattr(study, "training_option")
         assert study.training_option is None
 
         # Should NOT have training_setting
@@ -171,7 +169,7 @@ class TestUITrainingPanelIntegration:
         study = Study()
 
         # This is what the UI code expects
-        assert hasattr(study, "training_option")
+        assert study.training_option is None
         assert not hasattr(study, "training_setting")
 
         # Set a real option

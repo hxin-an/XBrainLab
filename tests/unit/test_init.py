@@ -13,7 +13,7 @@ class TestPackageInit:
         assert len(XBrainLab.__version__) > 0
 
     def test_study_exported(self):
-        assert hasattr(XBrainLab, "Study")
+        assert callable(XBrainLab.Study)
 
     def test_all_contains_expected(self):
         assert "Study" in XBrainLab.__all__

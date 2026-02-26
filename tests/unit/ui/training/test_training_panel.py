@@ -44,7 +44,7 @@ def test_training_panel_init_controller(mock_main_window, mock_controller, qtbot
         dataset_controller=mock_controller,
     )
     qtbot.addWidget(panel)
-    assert hasattr(panel, "controller")
+    assert panel.controller is not None
     assert panel.controller == mock_controller
     panel.close()
 
@@ -92,8 +92,8 @@ def test_metric_tab_methods_exist():
     Verify MetricTab now has the required methods.
     """
     tab = MetricTab("Test")
-    assert hasattr(tab, "update_plot")
-    assert hasattr(tab, "clear")
+    assert callable(tab.update_plot)
+    assert callable(tab.clear)
 
 
 def test_training_panel_split_data_success(mock_main_window, mock_controller, qtbot):

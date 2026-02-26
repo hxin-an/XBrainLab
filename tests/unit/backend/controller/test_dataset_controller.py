@@ -4,6 +4,7 @@ import pytest
 
 from XBrainLab.backend.controller.dataset_controller import DatasetController
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
+from XBrainLab.backend.services.label_import_service import LabelImportService
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def controller(mock_study):
 
 def test_init(controller, mock_study):
     assert controller.study == mock_study
-    assert hasattr(controller, "label_service")
+    assert isinstance(controller.label_service, LabelImportService)
 
 
 def test_get_loaded_data_list(controller, mock_study):

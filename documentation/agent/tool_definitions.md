@@ -3,25 +3,33 @@
 本文檔定義了 XBrainLab Agent 可使用的所有工具 (Tools)。
 這些工具是 Agent 與後端邏輯 (`Study`) 互動的唯一介面。
 
+工具採用三層架構：
+- **定義層** (`definitions/`): `BaseTool` 抽象子類別，定義工具名稱、描述與參數
+- **實作層** (`real/`): 連接真實後端邏輯的實作
+- **測試替身** (`mock/`): 離線測試用的模擬實作
+
 ## 1. Dataset Tools (數據集管理)
 
 ### `list_files`
 *   **功能描述**: 列出指定目錄下的所有檔案名稱。Agent 應先使用此工具來探索資料夾結構，並自行判斷哪些是數據檔、哪些是標籤檔，以及它們的對應關係。
-*   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.ListFilesTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.dataset_def.BaseListFilesTool`
+*   **實作**: `XBrainLab.llm.tools.real.dataset_real.RealListFilesTool`
 *   **參數**:
     *   `directory` (字串, 必填): 目錄的絕對路徑。
     *   `pattern` (字串, 選填): 篩選模式 (例如 "*.gdf", "*.mat")。
 
 ### `load_data`
 *   **功能描述**: 將原始 EEG/GDF 數據載入到 Study 中。支援單個檔案、多個檔案或整個資料夾。
-*   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.LoadDataTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.dataset_def.BaseLoadDataTool`
+*   **實作**: `XBrainLab.llm.tools.real.dataset_real.RealLoadDataTool`
 *   **後端方法**: `study.load_raw_data_list(path_list)`
 *   **參數**:
     *   `paths` (字串陣列, 必填): 數據檔案的絕對路徑或資料夾路徑列表。
 
 ### `attach_labels`
 *   **功能描述**: 將標籤檔案關聯到已載入的數據檔案。
-*   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.AttachLabelsTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.dataset_def.BaseAttachLabelsTool`
+*   **實作**: `XBrainLab.llm.tools.real.dataset_real.RealAttachLabelsTool`
 *   **設計思路**: 由 Agent 事先透過 `list_files` 分析檔名，決定哪個數據檔對應哪個標籤檔，再呼叫此工具進行綁定。
 *   **參數**:
     *   `mapping` (字典, 必填): 數據檔案名稱(Filename)與標籤檔案路徑(Filepath)的對應表。
@@ -42,13 +50,15 @@
 
 ### `clear_dataset`
 *   **功能描述**: 清除所有已載入的數據並重置 Study 狀態。若需要重新開始或因狀態鎖定導致載入失敗時使用。
-*   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.ClearDatasetTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.dataset_def.BaseClearDatasetTool`
+*   **實作**: `XBrainLab.llm.tools.real.dataset_real.RealClearDatasetTool`
 *   **後端方法**: `study.clean_raw_data(force_update=True)`
 *   **參數**: 無
 
 ### `get_dataset_info`
 *   **功能描述**: 獲取當前已載入數據集的摘要資訊（檔案列表、採樣率、通道數、事件表、是否已載入標籤）。
-*   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.GetDatasetInfoTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.dataset_def.BaseGetDatasetInfoTool`
+*   **實作**: `XBrainLab.llm.tools.real.dataset_real.RealGetDatasetInfoTool`
 *   **後端方法**: 檢視 `study.loaded_data_list` 的屬性。
 *   **參數**: 無
 
@@ -58,7 +68,8 @@
 
 ### `apply_standard_preprocess`
 *   **功能描述**: 應用標準的 EEG 預處理流程，包含帶通濾波、陷波濾波 (去除電源線雜訊)、重參考 (Re-referencing) 以及正規化。這是一個「懶人包」工具，適合快速建立 Baseline。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.StandardPreprocessTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseStandardPreprocessTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealStandardPreprocessTool`
 *   **參數**:
     *   `l_freq` (數值, 選填): 帶通濾波低頻截止 (預設 4)。
     *   `h_freq` (數值, 選填): 帶通濾波高頻截止 (預設 40)。
@@ -69,7 +80,8 @@
 
 ### `apply_bandpass_filter`
 *   **功能描述**: 對 EEG 數據應用帶通濾波器 (Bandpass Filter)。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.BandPassFilterTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseBandPassFilterTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealBandPassFilterTool`
 *   **後端方法**: `study.add_preprocess_step(BandPassFilter(low, high))`
 *   **參數**:
     *   `low_freq` (數值, 必填): 低頻截止頻率 (Hz)。
@@ -77,40 +89,46 @@
 
 ### `apply_notch_filter`
 *   **功能描述**: 應用凹口濾波器 (Notch Filter)，通常用於去除電源線雜訊。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.NotchFilterTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseNotchFilterTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealNotchFilterTool`
 *   **後端方法**: `study.add_preprocess_step(NotchFilter(freq))`
 *   **參數**:
     *   `freq` (數值, 必填): 要去除的中心頻率 (例如 50 或 60)。
 
 ### `resample_data`
 *   **功能描述**: 將數據重採樣到新的採樣率。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.ResampleTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseResampleTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealResampleTool`
 *   **後端方法**: `study.add_preprocess_step(Resample(rate))`
 *   **參數**:
     *   `rate` (整數, 必填): 新的採樣率 (Hz)。
 
 ### `normalize_data`
 *   **功能描述**: 對數據進行正規化。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.NormalizeTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseNormalizeTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealNormalizeTool`
 *   **後端方法**: `study.add_preprocess_step(Normalize(method))`
 *   **參數**:
     *   `method` (字串, 必填): 選擇 `"z-score"` 或 `"min-max"`。
 
 ### `set_reference`
-*   **功能描述**: 對訊號進行重參考 (例如 CAR - Common Average Reference)，加上可 channel
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.RereferenceTool`
+*   **功能描述**: 對訊號進行重參考 (例如 CAR - Common Average Reference)。
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseRereferenceTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealRereferenceTool`
 *   **參數**:
     *   `method` (字串): "average" 或特定的通道名稱。
 
 ### `select_channels`
 *   **功能描述**: 選擇特定通道並保留（例如只使用 'C3', 'C4', 'Cz'）。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.ChannelSelectionTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseChannelSelectionTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealChannelSelectionTool`
 *   **參數**:
     *   `channels` (字串陣列): 要保留的通道名稱列表。
 
 ### `set_montage`
 *   **功能描述**: 設定 EEG 通道的空間位置 (Montage)，這對於繪製拓樸圖 (Topomap) 是必須的。
-*   **Python 對應**: `XBrainLab.llm.tools.real.preprocess_real.RealSetMontageTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseSetMontageTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealSetMontageTool`
 *   **後端方法**: `study.set_channels(mapped_chs, mapped_positions)`
 *   **參數**:
     *   `montage_name` (字串, 必填): 標準 Montage 名稱，例如 `"standard_1020"`, `"standard_1005"`。
@@ -122,7 +140,8 @@
 ## 2.1 Epoching Tools (預處理 - 切段)
 ### `epoch_data`
 *   **功能描述**: 根據事件標記將連續的 EEG 數據切分為片段 (Epochs)。
-*   **Python 對應**: `XBrainLab.llm.tools.preprocess_tools.EpochDataTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.preprocess_def.BaseEpochDataTool`
+*   **實作**: `XBrainLab.llm.tools.real.preprocess_real.RealEpochDataTool`
 *   **參數**:
     *   `t_min` (浮點數): 相對於事件的開始時間 (例如 -0.1)。
     *   `t_max` (浮點數): 相對於事件的結束時間 (例如 1.0)。
@@ -138,14 +157,16 @@
 
 ### `set_model`
 *   **功能描述**: 選擇要使用的深度學習模型架構。
-*   **Python 對應**: `XBrainLab.llm.tools.training_tools.SetModelTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.training_def.BaseSetModelTool`
+*   **實作**: `XBrainLab.llm.tools.real.training_real.RealSetModelTool`
 *   **後端方法**: `study.set_model_holder(ModelHolder(model_name))`
 *   **參數**:
-    *   `model_name` (字串, 必填): 模型名稱 (例如 `"EEGNet"`, `"ShallowConvNet"`, `"DeepConvNet"`)。
+    *   `model_name` (字串, 必填): 模型名稱 (例如 `"EEGNet"`, `"SCCNet"`)。
 
 ### `configure_training`
 *   **功能描述**: 設定訓練超參數。
-*   **Python 對應**: `XBrainLab.llm.tools.training_tools.ConfigureTrainingTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.training_def.BaseConfigureTrainingTool`
+*   **實作**: `XBrainLab.llm.tools.real.training_real.RealConfigureTrainingTool`
 *   **後端方法**: `study.set_training_option(TrainingOption(...))`
 *   **參數**:
     *   `epoch` (整數, 必填): 訓練輪數。
@@ -158,7 +179,8 @@
 
 ### `start_training`
 *   **功能描述**: 根據配置好的數據與模型開始訓練流程。
-*   **Python 對應**: `XBrainLab.llm.tools.training_tools.StartTrainingTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.training_def.BaseStartTrainingTool`
+*   **實作**: `XBrainLab.llm.tools.real.training_real.RealStartTrainingTool`
 *   **後端方法**: `study.start_training()`
 *   **參數**: 無
     *   *注意：這可能是一個長時間運行的過程。*
@@ -169,7 +191,8 @@
 
 ### `generate_dataset`
 *   **功能描述**: 從已切段的 epochs 生成訓練數據集。定義如何劃分數據 (訓練/測試) 以及是否進行個體或群體訓練。
-*   **Python 對應**: `XBrainLab.llm.tools.dataset_tools.GenerateDatasetTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.dataset_def.BaseGenerateDatasetTool`
+*   **實作**: `XBrainLab.llm.tools.real.dataset_real.RealGenerateDatasetTool`
 *   **參數**:
     *   `test_ratio` (浮點數): 用於測試的數據比例 (例如 0.2)。
     *   `val_ratio` (浮點數): 訓練數據中用於驗證的比例 (例如 0.2)。
@@ -182,7 +205,8 @@
 
 ### `switch_panel`
 *   **功能描述**: 切換主視窗的顯示面板。當使用者想查看特定資訊（如訓練進度、分析結果）時，使用此工具跳轉到對應頁面。
-*   **Python 對應**: `XBrainLab.llm.tools.ui_control_tools.SwitchPanelTool`
+*   **定義**: `XBrainLab.llm.tools.definitions.ui_control_def.BaseSwitchPanelTool`
+*   **實作**: `XBrainLab.llm.tools.real.ui_control_real.RealSwitchPanelTool`
 *   **參數**:
     *   `panel_name` (字串, 必填): 目標面板名稱。
         *   `"dashboard"`: 首頁/儀表板。

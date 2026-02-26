@@ -149,74 +149,56 @@ class TestToolDebugMode:
 
 # --- visualization/base.py ---
 class TestVisualizer:
-    def test_get_saliency_gradient(self):
+    """Tests for Visualizer — constructed via normal __init__ (not __new__)."""
+
+    @staticmethod
+    def _make_visualizer(**overrides):
         from XBrainLab.backend.visualization.base import Visualizer
 
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        defaults = {"eval_record": MagicMock(), "epoch_data": MagicMock()}
+        defaults.update(overrides)
+        return Visualizer(**defaults)
+
+    def test_get_saliency_gradient(self):
+        v = self._make_visualizer()
         v.eval_record.get_gradient.return_value = "g"
         assert v.get_saliency("Gradient", 0) == "g"
 
     def test_get_saliency_gradient_input(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        v = self._make_visualizer()
         v.eval_record.get_gradient_input.return_value = "gi"
         assert v.get_saliency("Gradient * Input", 0) == "gi"
 
     def test_get_saliency_smoothgrad(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        v = self._make_visualizer()
         v.eval_record.get_smoothgrad.return_value = "sg"
         assert v.get_saliency("SmoothGrad", 0) == "sg"
 
     def test_get_saliency_smoothgrad_sq(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        v = self._make_visualizer()
         v.eval_record.get_smoothgrad_sq.return_value = "sgs"
         assert v.get_saliency("SmoothGrad_Squared", 0) == "sgs"
 
     def test_get_saliency_vargrad(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        v = self._make_visualizer()
         v.eval_record.get_vargrad.return_value = "vg"
         assert v.get_saliency("VarGrad", 0) == "vg"
 
     def test_get_saliency_unknown(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        v = self._make_visualizer()
         with pytest.raises(NotImplementedError):
             v.get_saliency("Unknown", 0)
 
     def test_get_saliency_none(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
+        v = self._make_visualizer()
         with pytest.raises(ValueError):
             v.get_saliency(None, 0)
 
     def test_get_plt_creates_figure(self):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        v = Visualizer.__new__(Visualizer)
-        v.eval_record = MagicMock()
-        v.epoch_data = MagicMock()
-        v.figsize = (6.4, 4.8)
-        v.dpi = 100
-        v.fig = None
+        v = self._make_visualizer()
         with pytest.raises(NotImplementedError):
             v.get_plt()
-        assert v.fig is not None
+        assert isinstance(v.fig, object) and v.fig is not None
         import matplotlib.pyplot as plt
 
         plt.close("all")

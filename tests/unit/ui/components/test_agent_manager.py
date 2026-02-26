@@ -35,7 +35,7 @@ def agent_mgr(qtbot):
 class TestAgentManagerInit:
     def test_creates_instance(self, agent_mgr):
         assert agent_mgr is not None
-        assert hasattr(agent_mgr, "study")
+        assert agent_mgr.study is not None
 
     def test_not_initialized_by_default(self, agent_mgr):
         assert not agent_mgr.agent_initialized

@@ -23,7 +23,7 @@ class TestSinglePlotWindow:
 
         w = SinglePlotWindow(None, title="Test")
         qtbot.addWidget(w)
-        assert hasattr(w, "figure_canvas")
+        assert w.figure_canvas is not None
 
 
 # ============ MessageBubble ============

@@ -8,19 +8,19 @@ class TestWorkerSignals:
 
     def test_has_finished_signal(self):
         ws = WorkerSignals()
-        assert hasattr(ws, "finished")
+        assert callable(ws.finished.connect)
 
     def test_has_error_signal(self):
         ws = WorkerSignals()
-        assert hasattr(ws, "error")
+        assert callable(ws.error.connect)
 
     def test_has_result_signal(self):
         ws = WorkerSignals()
-        assert hasattr(ws, "result")
+        assert callable(ws.result.connect)
 
     def test_has_progress_signal(self):
         ws = WorkerSignals()
-        assert hasattr(ws, "progress")
+        assert callable(ws.progress.connect)
 
 
 class TestWorker:

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 import matplotlib
 import pytest
+from PyQt6.QtWidgets import QComboBox
 
 matplotlib.use("Agg")
 
@@ -48,11 +49,11 @@ class TestPlotFigureWindow:
         assert plot_window.windowTitle() == "Test Plot"
 
     def test_has_plan_combo(self, plot_window):
-        assert hasattr(plot_window, "plan_combo")
+        assert isinstance(plot_window.plan_combo, QComboBox)
         assert plot_window.plan_combo.count() >= 2  # "Select a plan" + trainer
 
     def test_has_saliency_combo(self, plot_window):
-        assert hasattr(plot_window, "saliency_combo")
+        assert isinstance(plot_window.saliency_combo, QComboBox)
         assert plot_window.saliency_combo.count() >= 2
 
     def test_on_plan_select_valid(self, plot_window):

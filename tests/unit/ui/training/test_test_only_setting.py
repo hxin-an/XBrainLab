@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from PyQt6.QtWidgets import QDialog
+from PyQt6.QtWidgets import QDialog, QLabel, QLineEdit, QPushButton
 
 from XBrainLab.ui.panels.training.test_only_setting import TestOnlySettingWindow
 
@@ -23,15 +23,15 @@ class TestTestOnlySettingInit:
         assert dialog.training_option is None
 
     def test_has_batch_size_entry(self, dialog):
-        assert hasattr(dialog, "bs_entry")
+        assert isinstance(dialog.bs_entry, QLineEdit)
 
     def test_has_device_controls(self, dialog):
-        assert hasattr(dialog, "dev_btn")
-        assert hasattr(dialog, "dev_label")
+        assert isinstance(dialog.dev_btn, QPushButton)
+        assert isinstance(dialog.dev_label, QLabel)
 
     def test_has_output_controls(self, dialog):
-        assert hasattr(dialog, "out_btn")
-        assert hasattr(dialog, "output_dir_label")
+        assert isinstance(dialog.out_btn, QPushButton)
+        assert isinstance(dialog.output_dir_label, QLabel)
 
 
 class TestSetDevice:

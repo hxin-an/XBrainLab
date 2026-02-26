@@ -50,7 +50,7 @@ def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot)
     qtbot.addWidget(panel)
 
     # Check if controller was instantiated and is our mock
-    assert hasattr(panel, "controller")
+    assert panel.controller is not None
     assert panel.controller == mock_controller
 
     # Clean up

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,53 +22,48 @@ def _mock_qt():
 
 @pytest.fixture
 def ctrl():
-    """Build an LLMController with all heavy deps mocked."""
+    """Build an LLMController with all heavy deps mocked.
+
+    Instead of ``__new__`` + manual attribute assignment, we pre-mock
+    the Qt signals on the raw instance and then let ``__init__`` run
+    (with ``QObject.__init__`` patched to a no-op).  This ensures all
+    attributes are set through the real constructor so the fixture
+    stays in sync with production code automatically.
+    """
+    from PyQt6.QtCore import QObject
+
     with (
         patch("XBrainLab.llm.agent.controller.ToolRegistry"),
-        patch("XBrainLab.llm.agent.controller.ContextAssembler") as MockAsm,
-        patch("XBrainLab.llm.agent.controller.VerificationLayer") as MockVer,
+        patch("XBrainLab.llm.agent.controller.ContextAssembler"),
+        patch("XBrainLab.llm.agent.controller.VerificationLayer"),
         patch("XBrainLab.llm.agent.controller.RAGRetriever"),
         patch("XBrainLab.llm.agent.controller.QThread"),
         patch("XBrainLab.llm.agent.controller.AgentWorker"),
         patch("XBrainLab.llm.agent.controller.AVAILABLE_TOOLS", []),
+        patch.object(QObject, "__init__", lambda self: None),
     ):
         from XBrainLab.llm.agent.controller import LLMController
 
         study = MagicMock()
+
+        # Pre-set signal mocks on the class so __init__ can .connect() them
+        signal_names = [
+            "response_ready",
+            "chunk_received",
+            "generation_started",
+            "processing_finished",
+            "status_update",
+            "error_occurred",
+            "request_user_interaction",
+            "remove_content",
+            "sig_initialize",
+            "sig_generate",
+            "sig_reinit",
+        ]
         c = LLMController.__new__(LLMController)
-        # Manually replicate __init__ state without super().__init__
-        c.study = study
-        c.registry = MagicMock()
-        c.assembler = MockAsm.return_value
-        c.verifier = MockVer.return_value
-        c.rag_retriever = MagicMock()
-        c.worker_thread = MagicMock()
-        c.worker = MagicMock()
-        c.history = []
-        c.current_response = ""
-        c.is_processing = False
-        c._recent_tool_calls = deque(maxlen=10)
-        c._retry_count = 0
-        c._max_retries = 2
-        c._tool_failure_count = 0
-        c._max_tool_failures = 3
-        c._loop_break_count = 0
-        c._max_loop_breaks = 3
-        c._emitted_len = 0
-        c._is_buffering = False
-        # Mock signal methods (pyqtSignal emits)
-        c.response_ready = MagicMock()
-        c.chunk_received = MagicMock()
-        c.generation_started = MagicMock()
-        c.processing_finished = MagicMock()
-        c.status_update = MagicMock()
-        c.error_occurred = MagicMock()
-        c.request_user_interaction = MagicMock()
-        c.remove_content = MagicMock()
-        c.sig_initialize = MagicMock()
-        c.sig_generate = MagicMock()
-        c.sig_reinit = MagicMock()
-        c.MAX_HISTORY = 20
+        for name in signal_names:
+            setattr(c, name, MagicMock())
+        LLMController.__init__(c, study)
         yield c
 
 

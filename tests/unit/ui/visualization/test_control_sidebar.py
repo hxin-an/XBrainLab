@@ -36,9 +36,9 @@ def test_sidebar_init(mock_panel, qtbot):
     qtbot.addWidget(sidebar)
 
     assert sidebar.findChild(QPushButton, "").text() == "Set Montage"
-    assert hasattr(sidebar, "btn_montage")
-    assert hasattr(sidebar, "btn_saliency")
-    assert hasattr(sidebar, "btn_export")
+    assert isinstance(sidebar.btn_montage, QPushButton)
+    assert isinstance(sidebar.btn_saliency, QPushButton)
+    assert isinstance(sidebar.btn_export, QPushButton)
 
 
 def test_sidebar_set_montage(mock_panel, qtbot):

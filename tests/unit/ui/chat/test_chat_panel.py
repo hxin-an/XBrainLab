@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtWidgets import QLineEdit, QScrollArea, QToolButton
 
 
 @pytest.fixture
@@ -22,13 +23,13 @@ class TestChatPanelInit:
         assert chat_panel is not None
 
     def test_has_input_area(self, chat_panel):
-        assert hasattr(chat_panel, "input_field")
+        assert isinstance(chat_panel.input_field, QLineEdit)
 
     def test_has_send_button(self, chat_panel):
-        assert hasattr(chat_panel, "send_btn")
+        assert isinstance(chat_panel.send_btn, QToolButton)
 
     def test_has_scroll_area(self, chat_panel):
-        assert hasattr(chat_panel, "scroll_area")
+        assert isinstance(chat_panel.scroll_area, QScrollArea)
 
     def test_not_processing_initially(self, chat_panel):
         assert chat_panel.is_processing is False

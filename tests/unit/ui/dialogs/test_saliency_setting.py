@@ -35,7 +35,7 @@ class TestSaliencySettingInit:
         assert dialog.windowTitle() == "Saliency Setting"
 
     def test_has_params_tables(self, dialog):
-        assert hasattr(dialog, "params_tables")
+        assert isinstance(dialog.params_tables, dict)
 
     def test_creates_with_params(self, dialog_with_params):
         assert dialog_with_params is not None

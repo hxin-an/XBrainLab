@@ -44,7 +44,7 @@ def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtb
 
     panel = PreprocessPanel(parent=real_window)
     qtbot.addWidget(panel)
-    assert hasattr(panel, "controller")
+    assert panel.controller is not None
     assert panel.controller == mock_controller
 
     panel.close()

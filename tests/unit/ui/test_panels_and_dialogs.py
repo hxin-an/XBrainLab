@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtWidgets import QTableWidget
 
 # ============ DataSplittingPreviewDialog ============
 
@@ -106,7 +107,7 @@ class TestTrainingManagerWindow:
         assert window is not None
 
     def test_has_table(self, window):
-        assert hasattr(window, "plan_table")
+        assert isinstance(window.plan_table, QTableWidget)
 
     def test_update_table(self, window):
         window.update_table()

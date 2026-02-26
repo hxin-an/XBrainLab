@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QLabel
 
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog, SmartParserDialog
@@ -87,9 +88,9 @@ def test_epoching_dialog_init(qtbot):
         assert dialog.event_list.item(0).text() == "Event1"
 
         # Verify new UI elements exist (added for epoch duration validation)
-        assert hasattr(dialog, "duration_label")
-        assert hasattr(dialog, "warning_label")
-        assert hasattr(dialog, "update_duration_info")
+        assert isinstance(dialog.duration_label, QLabel)
+        assert isinstance(dialog.warning_label, QLabel)
+        assert callable(dialog.update_duration_info)
 
         # Select event
         dialog.event_list.item(0).setSelected(True)

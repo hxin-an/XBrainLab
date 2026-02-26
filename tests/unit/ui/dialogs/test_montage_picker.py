@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from PyQt6.QtWidgets import QComboBox, QTableWidget
 
 
 @pytest.fixture
@@ -62,11 +63,11 @@ class TestPickMontageInit:
         assert dialog.windowTitle() == "Set Montage"
 
     def test_has_montage_combo(self, dialog):
-        assert hasattr(dialog, "montage_combo")
+        assert isinstance(dialog.montage_combo, QComboBox)
         assert dialog.montage_combo.count() >= 3
 
     def test_has_table(self, dialog):
-        assert hasattr(dialog, "table")
+        assert isinstance(dialog.table, QTableWidget)
         assert dialog.table.rowCount() == 10
 
 
