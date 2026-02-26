@@ -148,7 +148,12 @@ class TestSetOptimizer:
         assert window.algo_combo.currentText() == "Adam"
 
     def test_confirm(self, window):
-        pass
+        window.accept()
+        result = window.get_result()
+        assert result is not None
+        optim_class, optim_params = result
+        assert optim_class is not None
+        assert isinstance(optim_params, dict)
 
 
 class TestSetDevice:

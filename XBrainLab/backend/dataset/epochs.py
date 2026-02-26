@@ -19,13 +19,13 @@ class TrialSelectionSequence(Enum):
     Attributes:
         SESSION: Select by session attribute.
         SUBJECT: Select by subject attribute.
-        Label: Select by label attribute.
+        LABEL: Select by label attribute.
 
     """
 
     SESSION = "session"
     SUBJECT = "subject"
-    Label = "label"
+    LABEL = "label"
 
 
 class Epochs:
@@ -364,13 +364,13 @@ class Epochs:
         sequence = [
             TrialSelectionSequence.SESSION,
             TrialSelectionSequence.SUBJECT,
-            TrialSelectionSequence.Label,
+            TrialSelectionSequence.LABEL,
         ]
         for a in np.unique(getattr(self, f"get_{sequence[0].value}_list")()):
             for b in np.unique(getattr(self, f"get_{sequence[1].value}_list")()):
                 for c in np.unique(getattr(self, f"get_{sequence[2].value}_list")()):
                     args = [a, b, c]
-                    label_idx = args[sequence.index(TrialSelectionSequence.Label)]
+                    label_idx = args[sequence.index(TrialSelectionSequence.LABEL)]
                     subject_idx = args[sequence.index(TrialSelectionSequence.SUBJECT)]
                     session_idx = args[sequence.index(TrialSelectionSequence.SESSION)]
                     target = filter_preview_mask[label_idx][subject_idx][session_idx]
@@ -746,9 +746,7 @@ class Epochs:
             List of channel positions as (x, y, z) tuples, or None if not set.
 
         """
-        if hasattr(self, "channel_position"):
-            return self.channel_position
-        return None
+        return self.channel_position
 
     def get_mne(self):
         """Reconstruct an MNE ``EpochsArray`` from stored data.
@@ -777,15 +775,5 @@ class Epochs:
             tmin=0.0,
             verbose=False,
         )
-
-        # Set montage if positions available
-        if self.channel_position is not None:
-            # Manually setting montage on EpochsArray is tricky if not via set_montage
-            # But here we just return the object.
-            # If caller calls get_mne().info, they get info.
-            # Positions are in info['chs'][i]['loc'].
-            # We could try to set them, but Epochs stores them as list.
-            # For set_montage usage, we mostly read info to match names.
-            pass
 
         return epochs

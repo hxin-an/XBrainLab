@@ -25,6 +25,13 @@ from XBrainLab.ui.styles.stylesheets import Stylesheets
 VIZ_TAB_3D_PLOT = 3
 """Index of the 3D Plot tab in the visualization panel."""
 
+# Panel indices in the main window stack
+PANEL_DATASET = 0
+PANEL_PREPROCESS = 1
+PANEL_TRAINING = 2
+PANEL_EVALUATION = 3
+PANEL_VISUALIZATION = 4
+
 
 class AgentManager(QObject):
     """Manages the lifecycle and UI integration of the AI Agent System.
@@ -392,7 +399,7 @@ class AgentManager(QObject):
         if switching_to_3d or (
             viz_panel.tabs.currentIndex() == VIZ_TAB_3D_PLOT
             and not viz_panel.isHidden()
-            and self.main_window.stack.currentIndex() == 4
+            and self.main_window.stack.currentIndex() == PANEL_VISUALIZATION
         ):
             is_3d_active = True
 
@@ -423,15 +430,9 @@ class AgentManager(QObject):
         self.chat_controller.clear_conversation()
 
         # 2. Reset Agent State
-        if self.agent_controller and hasattr(
-            self.agent_controller,
-            "reset_conversation",
-        ):
+        if self.agent_controller:
             self.agent_controller.reset_conversation()
             logger.info("Agent conversation state reset successfully")
-        elif self.agent_controller:
-            # Fallback if method missing (though we plan to add it)
-            logger.warning("reset_conversation method not found on agent_controller")
 
         # 3. Do not add greeting, keep it empty as requested
         # self.chat_controller.add_agent_message("Conversation cleared.")
@@ -511,15 +512,15 @@ class AgentManager(QObject):
         target_index = -1
 
         if "dataset" in panel_name:
-            target_index = 0
+            target_index = PANEL_DATASET
         elif "preprocess" in panel_name:
-            target_index = 1
+            target_index = PANEL_PREPROCESS
         elif "training" in panel_name:
-            target_index = 2
+            target_index = PANEL_TRAINING
         elif "eval" in panel_name:
-            target_index = 3
+            target_index = PANEL_EVALUATION
         elif "visual" in panel_name:
-            target_index = 4
+            target_index = PANEL_VISUALIZATION
 
         if target_index >= 0:
             self.main_window.stack.setCurrentIndex(target_index)

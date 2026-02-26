@@ -1,7 +1,5 @@
 """Legacy standalone training manager window with real-time status table."""
 
-import contextlib
-
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -16,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.training import Trainer
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import PlotType
 from XBrainLab.ui.components import PlotFigureWindow
 from XBrainLab.ui.core.base_dialog import BaseDialog
@@ -165,8 +164,10 @@ class TrainingManagerWindow(BaseDialog):
         if not self.trainer.is_running():
             QMessageBox.warning(self, "Warning", "No training is in progress")
             return
-        with contextlib.suppress(Exception):
+        try:
             self.trainer.set_interrupt()
+        except RuntimeError:
+            logger.debug("Failed to set interrupt", exc_info=True)
 
     def finish_training(self):
         """Re-enable the start button and show a completion dialog."""

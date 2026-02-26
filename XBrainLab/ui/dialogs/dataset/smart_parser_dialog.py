@@ -4,7 +4,6 @@ Provides multiple parsing strategies (split, regex, folder structure, fixed
 position) with a live preview table showing extracted metadata for each file.
 """
 
-import contextlib
 import os
 import re
 
@@ -29,6 +28,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.utils.filename_parser import FilenameParser
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
@@ -314,8 +314,10 @@ class SmartParserDialog(BaseDialog):
         sep = sep_map.get(self.split_sep_combo.currentIndex(), "_")
 
         if self.radio_regex and self.radio_regex.isChecked() and self.regex_input:
-            with contextlib.suppress(Exception):
+            try:
                 re.compile(self.regex_input.text())
+            except re.error:
+                logger.debug("Invalid regex pattern: %s", self.regex_input.text())
 
         for row, filepath in enumerate(self.filenames):
             filename = os.path.basename(filepath)

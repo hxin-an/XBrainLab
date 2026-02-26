@@ -134,8 +134,9 @@ graph TD
 **模組**:
 - `indexer.py`: 文件索引邏輯（Qdrant Local Mode）
 - `retriever.py`: 語義相似度檢索器
-- `evaluation.py`: Hit Rate、MRR 評估
+- `config.py`: Qdrant 配置
 - `storage/`: Qdrant 本地儲存
+- `data/`: 索引資料（`gold_set.json`）
 
 **索引資料**:
 | 資料來源 | 用途 | 優先級 |
@@ -156,7 +157,7 @@ tools/
 │   │                     # Rereference, ChannelSelection, SetMontage, EpochData,
 │   │                     # StandardPreprocess
 │   ├── training_def.py   # SetModel, ConfigureTraining, StartTraining
-│   └── ui_def.py         # SwitchPanel
+│   └── ui_control_def.py  # SwitchPanel
 ├── mock/                 # Mock 實作 (用於 Benchmark 評測)
 ├── real/                 # Real 實作 ✅ 已完成 (19/19)
 │   ├── dataset_real.py   # → BackendFacade
@@ -242,8 +243,8 @@ XBrainLab/llm/
 └── rag/                      # RAG 檢索模組
     ├── indexer.py            # 文件索引 (Qdrant Local Mode)
     ├── retriever.py          # 語義檢索器
-    ├── evaluation.py         # Hit Rate, MRR 評估
     ├── config.py             # Qdrant 配置
+    ├── data/                 # 索引資料 (gold_set.json)
     └── storage/              # Qdrant 本地儲存
 
 相關資料:

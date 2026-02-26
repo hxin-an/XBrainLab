@@ -11,8 +11,6 @@ from dataclasses import asdict, dataclass, field
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 
 def _cuda_available() -> bool:
     """Check CUDA availability cross-platform via PyTorch."""
@@ -104,7 +102,17 @@ class LLMConfig:
         """
         return asdict(self)
 
-    def save_to_file(self, filepath: str = "settings.json"):
+    def _default_settings_path() -> str:
+        """Return the default path for settings.json relative to the project root."""
+        # Import here to avoid circular dependency at module level
+        try:
+            from XBrainLab.config import AppConfig
+
+            return str(AppConfig.BASE_DIR / "settings.json")
+        except ImportError:
+            return "settings.json"
+
+    def save_to_file(self, filepath: str | None = None):
         """Saves non-sensitive configuration to a JSON file.
 
         Only persists model names, enabled flags, and the active mode.
@@ -112,9 +120,11 @@ class LLMConfig:
 
         Args:
             filepath: Path to the output JSON file.  Defaults to
-                ``'settings.json'``.
+                ``settings.json`` in the project root.
 
         """
+        if filepath is None:
+            filepath = self._default_settings_path()
         data = {
             "local": {
                 "model_name": self.model_name,
@@ -133,7 +143,7 @@ class LLMConfig:
             logging.getLogger(__name__).error("Error saving settings: %s", e)
 
     @classmethod
-    def load_from_file(cls, filepath: str = "settings.json"):
+    def load_from_file(cls, filepath: str | None = None):
         """Loads configuration from a JSON file.
 
         Creates a new ``LLMConfig`` instance populated with values from
@@ -142,13 +152,15 @@ class LLMConfig:
 
         Args:
             filepath: Path to the JSON settings file.  Defaults to
-                ``'settings.json'``.
+                ``settings.json`` in the project root.
 
         Returns:
             A new ``LLMConfig`` instance, or ``None`` if the file does
             not exist or cannot be parsed.
 
         """
+        if filepath is None:
+            filepath = cls._default_settings_path()
         if not os.path.exists(filepath):
             return None
 
@@ -174,7 +186,7 @@ class LLMConfig:
             # Sync inference_mode with active_mode from saved settings
             config.inference_mode = config.active_mode
 
-            # Load API key from env still (security)
+            # Load API key from env (security — keys should never be in JSON)
             load_dotenv()
             config.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 

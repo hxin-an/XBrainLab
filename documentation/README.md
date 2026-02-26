@@ -36,18 +36,14 @@ XBrainLab 是一個專為腦波 (EEG) 研究設計的智慧分析平台。本專
 # 安裝 Poetry (如果尚未安裝)
 curl -sSL https://install.python-poetry.org | python3 -
 
-# [選項 1] 完整安裝 (包含 GUI 和 LLM 工具)
-# 注意：GUI 和 LLM 為選用群組，需加上 --with 參數
-poetry install --with gui,llm
+# [選項 1] 完整安裝 (包含 LLM 工具與開發依賴)
+poetry install --with llm,dev,test
 
-# [選項 2] 僅安裝 GUI 環境
-poetry install --with gui
-
-# [選項 3] 僅 LLM 開發環境 (不含 GUI)
-poetry install --with llm
-
-# [選項 4] 僅核心後端 (最精簡安裝)
+# [選項 2] 標準安裝 (GUI + 核心後端)
 poetry install
+
+# [選項 3] 加上 LLM 功能
+poetry install --with llm
 ```
 
 ### 2. 啟動程式
@@ -83,10 +79,7 @@ inference_mode = "gemini"  # 或 "api", "local"
 
 **步驟 4: 驗證連線**
 ```bash
-# 驗證 OpenAI/DeepSeek
-poe verify-api
-
-# 驗證 Gemini
+# 驗證 Gemini 連線
 poe verify-gemini
 
 # [工具] 列出可用模型 (包含 Preview 版)

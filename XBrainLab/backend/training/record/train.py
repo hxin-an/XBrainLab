@@ -350,6 +350,9 @@ class TrainRecord:
         record_path = os.path.join(self.target_path, "record")
         if os.path.exists(record_path):
             try:
+                # SECURITY: weights_only=False required because record
+                # contains non-tensor objects (dicts, lists).  Only load
+                # files from trusted sources.
                 data = torch.load(record_path, weights_only=False)
                 self.train = data["train"]
                 self.val = data["val"]

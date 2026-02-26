@@ -14,14 +14,14 @@ class Status(Enum):
     Attributes:
         PENDING: No active training job.
         INIT: Trainer is initializing.
-        INTING: An interrupt has been requested.
+        INTERRUPTING: An interrupt has been requested.
         TRAIN: Training is in progress (formatted with plan name).
 
     """
 
     PENDING = "Pending"
     INIT = "Initializing"
-    INTING = "Interrupting"
+    INTERRUPTING = "Interrupting"
     TRAIN = "Now training: {}"
 
 
@@ -195,7 +195,7 @@ class Trainer:
     def set_interrupt(self) -> None:
         """Set the interrupt flag and propagate to all plan holders."""
         self._interrupt.set()
-        self.progress_text = Status.INTING
+        self.progress_text = Status.INTERRUPTING
         for holder in self.training_plan_holders:
             holder.set_interrupt()
 

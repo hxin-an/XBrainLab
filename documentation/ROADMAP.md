@@ -199,9 +199,9 @@
     - [x] 在 `handle_user_input()` 時觸發檢索並注入 Context
 
 #### 4.6 RAG 評估與觀測 (Evaluation & Observability) - **[🔄 Partial]**
-- [x] **檢索指標 (Retrieval Metrics)** (`XBrainLab/llm/rag/evaluation.py`)
-    - [x] 測量 Hit Rate（正確工具是否在 Top-K）
-    - [x] 測量 MRR (Mean Reciprocal Rank)
+- [ ] **檢索指標 (Retrieval Metrics)**
+    - [ ] 實作 Hit Rate（正確工具是否在 Top-K）
+    - [ ] 實作 MRR (Mean Reciprocal Rank)
     - [ ] 建立 Retrieval Quality Dashboard（記錄到 `logs/rag_metrics.json`）
 - [ ] **生成指標 (Generation Metrics)**
     - [ ] 測量 Faithfulness（Agent 是否遵守檢索到的參數）

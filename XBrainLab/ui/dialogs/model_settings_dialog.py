@@ -442,11 +442,6 @@ class ModelSettingsDialog(QDialog):
 
         self.btn_activate.setEnabled(is_ready)
 
-        if is_ready:
-            pass
-        else:
-            pass
-
     def on_activate_clicked(self):
         """Save settings, persist configuration, and accept the dialog."""
         # Save to config object
@@ -461,12 +456,9 @@ class ModelSettingsDialog(QDialog):
         elif self.local_downloaded and not self.gemini_enabled:
             self.config.active_mode = "local"
         else:
-            # Both available, default to what was last active or gemini preference?
-            # Let's keep logic simple: gemini if user just verified it?
-            # Or respect previous config.
-            # Plan says: "If both, default to Local?" Let user choose via mode.
-            # Here we just save what is available.
-            pass
+            # Both available — preserve whatever mode was previously active
+            # (active_mode was loaded from settings.json or set by user)
+            pass  # config.active_mode already holds the correct value
 
         # Persist to JSON
         self.config.save_to_file()
@@ -482,11 +474,9 @@ class ModelSettingsDialog(QDialog):
         if not key or not key.startswith("AIza"):
             return
 
-        # Resolve to project root (4 levels up from ui/dialogs/)
-        package_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        )
-        env_path = os.path.join(os.path.dirname(package_root), ".env")
+        from XBrainLab.config import AppConfig
+
+        env_path = str(AppConfig.BASE_DIR / ".env")
         try:
             # Read existing
             lines = []

@@ -111,6 +111,8 @@ class LLMController(QObject):
 
         self.current_response = ""
         self.is_processing = False
+        self._emitted_len = 0
+        self._is_buffering = False
 
         # Robustness State
         self._recent_tool_calls: deque = deque(maxlen=10)

@@ -28,7 +28,7 @@
     - **NEW**: `ContextAssembler` 已整合，動態工具過濾 (`is_valid(state)`) 運作正常。
     - **NEW**: `VerificationLayer` 已整合，結構驗證運作正常。
     - **NEW**: Agent Timeout 機制已加入 (60 秒超時)。
-    - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 2375+ 測試通過。
+    - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 3540+ 測試通過。
 - **執行緒安全 & 資源管理 (v0.5.3)**:
     - **NEW**: `Trainer` / `TrainingPlanHolder` 中斷旗標從裸 `bool` 升級為 `threading.Event`，解決跨執行緒競爭條件。
     - **NEW**: `get_eval_pair()` 重構——延遲 GPU 模型建立至 state_dict 確認有效後，避免孤立 GPU 記憶體分配。
@@ -120,7 +120,7 @@
 | --- | --- | --- |
 | **Linting (Ruff)** | ✅ 0 錯誤 | 全部通過 |
 | **Type Check (Mypy)** | ✅ 0 錯誤 | 全部通過 |
-| **Unit Tests** | ✅ 2913 通過 | 0 失敗, 22 skipped |
+| **Unit Tests** | ✅ 3540+ 通過 | 0 失敗, 22 skipped |
 | **Pre-commit** | ✅ 全部通過 | 包含 secrets 掃描 |
 | **架構遷移** | ✅ 完成 | Assembler + Verifier 已整合 |
 | **CI/CD** | ✅ 運作中 | Linux + Windows + macOS |

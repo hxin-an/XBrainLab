@@ -27,7 +27,7 @@
 3.  **安裝依賴 (Install Dependencies)**:
     此指令將讀取 `pyproject.toml` 並安裝所有必要的開發與執行套件。
     ```bash
-    poetry install --with gui,llm,dev,test
+    poetry install --with llm,dev,test
     ```
 
 4.  **啟動虛擬環境 (Activate Shell)**:

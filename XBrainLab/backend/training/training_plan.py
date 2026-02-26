@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import datetime
 import threading
 import time
@@ -285,10 +284,17 @@ class TrainingPlanHolder:
         finally:
             # Ensure GPU models are moved back to CPU to prevent VRAM leaks
             for tr in self.train_record_list:
-                with contextlib.suppress(Exception):
-                    tr.model.cpu()
+                self._safe_move_to_cpu(tr)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+    @staticmethod
+    def _safe_move_to_cpu(train_record):
+        """Move a training record's model to CPU, logging failures."""
+        try:
+            train_record.model.cpu()
+        except RuntimeError:
+            logger.debug("Failed to move model to CPU", exc_info=True)
 
     def get_loader(
         self,
