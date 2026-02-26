@@ -129,7 +129,7 @@ class ImportLabelDialog(BaseDialog):
 
             try:
                 self.load_file(path)
-                if self.file_list:
+                if self.file_list is not None:
                     self.file_list.addItem(filename)
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to load {filename}: {e}")
@@ -138,7 +138,7 @@ class ImportLabelDialog(BaseDialog):
 
     def remove_files(self):
         """Remove selected files from the loaded list."""
-        if not self.file_list:
+        if self.file_list is None:
             return
 
         selected_items = self.file_list.selectedItems()
@@ -173,7 +173,7 @@ class ImportLabelDialog(BaseDialog):
         """Aggregates labels from all loaded files, finds unique codes,
         and updates the mapping table.
         """
-        if not self.info_label or not self.map_table:
+        if self.info_label is None or self.map_table is None:
             return
 
         all_labels: list[Any] = []

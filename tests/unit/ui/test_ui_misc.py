@@ -236,6 +236,216 @@ class TestDatasetActionHandler:
             handler.import_label()
             # No warning called since user just cancelled target selection
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_dialog_cancelled(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
+        mock_dlg.return_value.exec.return_value = False
+        handler.import_label()
+        handler.panel.controller.apply_labels_legacy.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_null_label_map(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (None, None)
+        handler.import_label()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_single_same_length(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"file1.txt": [0, 1, 0, 1]},
+            "mapping",
+        )
+        handler.panel.controller.apply_labels_legacy.return_value = 1
+        handler.import_label()
+        handler.panel.controller.apply_labels_legacy.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_batch(self, mock_dlg, mock_mb, mock_map_dlg, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1], "label2.txt": [1, 0]},
+            "mapping",
+        )
+        mock_map_dlg.return_value.exec.return_value = True
+        mock_map_dlg.return_value.get_mapping.return_value = {
+            "/file1.set": "label1.txt"
+        }
+        handler.panel.controller.apply_labels_batch.return_value = 1
+        handler.import_label()
+        handler.panel.controller.apply_labels_batch.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_timestamp(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [{"onset": 0.0, "duration": 1.0, "label": "A"}]},
+            "mapping",
+        )
+        handler.panel.controller.apply_labels_batch.return_value = 1
+        handler.import_label()
+        handler.panel.controller.apply_labels_batch.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_exception(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"f.txt": [0, 1]},
+            "mapping",
+        )
+        handler.panel.controller.apply_labels_legacy.side_effect = RuntimeError("fail")
+        handler.import_label()
+        mock_mb.critical.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_no_raw_files(self, mock_efd, handler):
+        handler.panel.controller = MagicMock()
+        data = MagicMock()
+        data.is_raw.return_value = False
+        data.has_event.return_value = False
+        result = handler._filter_events_for_import([data], 4)
+        assert result is None
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_with_suggestions(self, mock_efd, handler):
+        handler.panel.controller = MagicMock()
+        data = MagicMock()
+        data.is_raw.return_value = True
+        data.has_event.return_value = True
+        data.get_raw_event_list.return_value = ([], {"left": 1, "right": 2})
+        handler.panel.controller.get_smart_filter_suggestions.return_value = [1, 2]
+        mock_efd.return_value.exec.return_value = True
+        mock_efd.return_value.get_selected_ids.return_value = ["left", "right"]
+        result = handler._filter_events_for_import([data], 2)
+        assert result == {"left", "right"}
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_cancelled(self, mock_efd, handler):
+        data = MagicMock()
+        data.is_raw.return_value = True
+        data.has_event.return_value = True
+        data.get_raw_event_list.return_value = ([], {"ev1": 1})
+        handler.panel.controller = MagicMock()
+        mock_efd.return_value.exec.return_value = False
+        result = handler._filter_events_for_import([data], 2)
+        assert result is False
+
+    def test_on_import_finished_many_errors(self, handler):
+        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+            handler.on_import_finished(0, [f"err{i}" for i in range(15)])
+            mock_mb.warning.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
+    def test_context_menu_remove(self, mock_menu_cls, mock_input, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        menu = MagicMock()
+        mock_menu_cls.return_value = menu
+        a_subj = MagicMock()
+        a_sess = MagicMock()
+        a_rem = MagicMock()
+        menu.addAction.side_effect = [a_subj, a_sess, a_rem]
+        menu.exec.return_value = a_rem
+        handler.panel.controller = MagicMock()
+        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+            mock_mb.StandardButton.Yes = 1
+            mock_mb.StandardButton.No = 2
+            mock_mb.question.return_value = 1
+            handler.show_context_menu(MagicMock())
+        handler.panel.controller.remove_files.assert_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QInputDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMenu")
+    def test_context_menu_session(self, mock_menu_cls, mock_input, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        menu = MagicMock()
+        mock_menu_cls.return_value = menu
+        a_subj = MagicMock()
+        a_sess = MagicMock()
+        a_rem = MagicMock()
+        menu.addAction.side_effect = [a_subj, a_sess, a_rem]
+        menu.exec.return_value = a_sess
+        mock_input.getText.return_value = ("sess1", True)
+        handler.panel.controller = MagicMock()
+        handler.show_context_menu(MagicMock())
+        handler.panel.controller.update_metadata.assert_called_with(0, session="sess1")
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_with_event_filter(self, mock_dlg, mock_mb, handler):
+        """Tests import_label where target has raw events requiring filtering."""
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = True
+        data_obj.has_event.return_value = True
+        data_obj.get_raw_event_list.return_value = ([], {"left": 1, "right": 2})
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        handler.panel.controller.get_smart_filter_suggestions.return_value = [1]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"file1.txt": [0, 1, 0, 1]},
+            "mapping",
+        )
+        handler.panel.controller.apply_labels_legacy.return_value = 1
+        with patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog") as mock_efd:
+            mock_efd.return_value.exec.return_value = True
+            mock_efd.return_value.get_selected_ids.return_value = ["left"]
+            handler.import_label()
+        handler.panel.controller.apply_labels_legacy.assert_called_once()
+
 
 # ====================================================================
 # ImportLabelDialog

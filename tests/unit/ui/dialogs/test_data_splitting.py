@@ -165,3 +165,120 @@ class TestDataSplittingDialog:
         dlg = DataSplittingDialog(None, controller)
         qtbot.addWidget(dlg)
         assert dlg.get_result() is None
+
+
+class TestDataSplittingDialogSplitTypes:
+    """Tests for each split type combo value in update_preview."""
+
+    def _make_dialog(self, qtbot, controller):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dlg = DataSplittingDialog(None, controller)
+        qtbot.addWidget(dlg)
+        return dlg
+
+    def test_ind_training_type(self, qtbot, controller):
+        from XBrainLab.backend.dataset import TrainingType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.train_type_combo.setCurrentText(TrainingType.IND.value)
+        dlg.update_preview()
+
+    def test_test_session_ind(self, qtbot, controller):
+        from XBrainLab.backend.dataset import SplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.test_combo.setCurrentText(SplitByType.SESSION_IND.value)
+        dlg.update_preview()
+
+    def test_test_trial(self, qtbot, controller):
+        from XBrainLab.backend.dataset import SplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.test_combo.setCurrentText(SplitByType.TRIAL.value)
+        dlg.update_preview()
+
+    def test_test_trial_ind(self, qtbot, controller):
+        from XBrainLab.backend.dataset import SplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.test_combo.setCurrentText(SplitByType.TRIAL_IND.value)
+        dlg.update_preview()
+
+    def test_test_subject(self, qtbot, controller):
+        from XBrainLab.backend.dataset import SplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.test_combo.setCurrentText(SplitByType.SUBJECT.value)
+        dlg.update_preview()
+
+    def test_test_subject_ind(self, qtbot, controller):
+        from XBrainLab.backend.dataset import SplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.test_combo.setCurrentText(SplitByType.SUBJECT_IND.value)
+        dlg.update_preview()
+
+    def test_val_session(self, qtbot, controller):
+        from XBrainLab.backend.dataset import ValSplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.val_combo.setCurrentText(ValSplitByType.SESSION.value)
+        dlg.update_preview()
+
+    def test_val_trial(self, qtbot, controller):
+        from XBrainLab.backend.dataset import ValSplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.val_combo.setCurrentText(ValSplitByType.TRIAL.value)
+        dlg.update_preview()
+
+    def test_val_subject(self, qtbot, controller):
+        from XBrainLab.backend.dataset import ValSplitByType
+
+        dlg = self._make_dialog(qtbot, controller)
+        dlg.val_combo.setCurrentText(ValSplitByType.SUBJECT.value)
+        dlg.update_preview()
+
+    def test_confirm_opens_step2(self, qtbot, controller):
+        from unittest.mock import patch
+
+        dlg = self._make_dialog(qtbot, controller)
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
+        ) as MockPreview:
+            MockPreview.return_value.exec.return_value = False
+            dlg.confirm()
+            MockPreview.assert_called_once()
+
+    def test_confirm_accepts_on_step2_ok(self, qtbot, controller):
+        from unittest.mock import MagicMock, patch
+
+        dlg = self._make_dialog(qtbot, controller)
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_dialog.DataSplittingPreviewDialog"
+        ) as MockPreview:
+            MockPreview.return_value.exec.return_value = True
+            MockPreview.return_value.get_result.return_value = MagicMock()
+            dlg.confirm()
+            assert dlg.split_result is not None
+
+
+class TestPreviewCanvasPaintEvent:
+    def test_paint_event(self, qtbot):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DrawColor,
+            DrawRegion,
+            PreviewCanvas,
+        )
+
+        canvas = PreviewCanvas(None)
+        qtbot.addWidget(canvas)
+
+        r = DrawRegion(5, 5)
+        r.set_from(0, 0)
+        r.set_to(5, 5, 0, 1)
+        canvas.set_regions([(r, DrawColor.TRAIN)])
+        canvas.repaint()  # triggers paintEvent

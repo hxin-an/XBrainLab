@@ -207,6 +207,58 @@ class TestTrainingSidebar:
             sidebar.clear_history()
             sidebar.panel.controller.clear_history.assert_called()
 
+    def test_training_setting_while_training(self, sidebar):
+        sidebar.panel.controller.is_training.return_value = True
+        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+            sidebar.training_setting()
+
+    def test_training_setting_accepted(self, sidebar):
+        sidebar.panel.controller.is_training.return_value = False
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as MockDlg,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_result.return_value = MagicMock()
+            sidebar.training_setting()
+            sidebar.panel.controller.set_training_option.assert_called_once()
+
+    def test_start_training_ui_action(self, sidebar):
+        sidebar.panel.controller.is_training.return_value = False
+        sidebar.start_training_ui_action()
+        sidebar.panel.controller.start_training.assert_called_once()
+
+    def test_start_training_error(self, sidebar):
+        sidebar.panel.controller.is_training.return_value = False
+        sidebar.panel.controller.start_training.side_effect = RuntimeError("fail")
+        with patch("PyQt6.QtWidgets.QMessageBox.critical"):
+            sidebar.start_training_ui_action()
+
+    def test_split_data_no_data(self, sidebar):
+        sidebar.panel.controller.get_loaded_data_list.return_value = []
+        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+            sidebar.split_data()
+
+    def test_split_data_no_epoch(self, sidebar):
+        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
+        sidebar.panel.controller.get_epoch_data.return_value = None
+        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+            sidebar.split_data()
+
+    def test_split_data_while_training(self, sidebar):
+        sidebar.panel.controller.get_loaded_data_list.return_value = [MagicMock()]
+        sidebar.panel.controller.get_epoch_data.return_value = MagicMock()
+        sidebar.panel.controller.is_training.return_value = True
+        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+            sidebar.split_data()
+
+    def test_clear_history_while_training(self, sidebar):
+        sidebar.panel.controller.is_training.return_value = True
+        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
+            sidebar.clear_history()
+
 
 # ============ DatasetSidebar ============
 

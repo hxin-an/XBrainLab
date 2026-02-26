@@ -107,3 +107,145 @@ def test_label_mapping_dialog(qtbot):
     mapping = dialog.get_mapping()
     assert mapping["/path/sub01.set"] == "/path/sub01_labels.txt"
     assert mapping["/path/sub02.set"] == "/path/sub02_labels.txt"
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage tests for ImportLabelDialog methods
+# ---------------------------------------------------------------------------
+
+
+class TestImportLabelDialogBrowse:
+    """Tests for browse_files / remove_files / update_unique_labels / accept."""
+
+    def test_browse_files_no_selection(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
+        ) as mock_fd:
+            mock_fd.getOpenFileNames.return_value = ([], "")
+            dialog.browse_files()
+        assert dialog.file_list.count() == 0
+
+    def test_browse_files_loads_file(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
+            ) as mock_fd,
+            patch.object(dialog, "load_file"),
+        ):
+            mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
+            dialog.browse_files()
+        assert dialog.file_list.count() == 1
+
+    def test_browse_files_skips_duplicate(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.label_data_map["labels.txt"] = [1]
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
+        ) as mock_fd:
+            mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
+            dialog.browse_files()
+        # Should not add a second entry
+        assert dialog.file_list.count() == 0
+
+    def test_browse_files_handles_error(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
+            ) as mock_fd,
+            patch.object(
+                dialog,
+                "load_file",
+                side_effect=ValueError("corrupt"),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox"
+            ) as mock_mb,
+        ):
+            mock_fd.getOpenFileNames.return_value = (["/tmp/bad.txt"], "")
+            dialog.browse_files()
+        mock_mb.warning.assert_called_once()
+
+    def test_remove_files(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.label_data_map["a.txt"] = [1]
+        dialog.file_list.addItem("a.txt")
+        dialog.file_list.item(0).setSelected(True)
+        dialog.remove_files()
+        assert dialog.file_list.count() == 0
+        assert "a.txt" not in dialog.label_data_map
+
+    def test_remove_files_no_selection(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.file_list.addItem("a.txt")
+        # nothing selected
+        dialog.remove_files()
+        assert dialog.file_list.count() == 1
+
+    def test_update_unique_labels_timestamp_mode(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.label_data_map["ts.txt"] = [
+            {"label": 10, "onset": 0.0},
+            {"label": 20, "onset": 1.0},
+            {"label": 10, "onset": 2.0},
+        ]
+        dialog.update_unique_labels()
+        assert dialog.unique_labels == [10, 20]
+        assert dialog.map_table.rowCount() == 2
+
+    def test_update_unique_labels_empty(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.label_data_map.clear()
+        dialog.update_unique_labels()
+        assert dialog.unique_labels == []
+        assert "No labels" in dialog.info_label.text()
+
+    def test_update_unique_labels_preserves_mapping(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.label_data_map["a.txt"] = [1, 2]
+        dialog.update_unique_labels()
+        # Set custom name
+        dialog.map_table.item(0, 1).setText("MyEvent")
+        # Re-update — should preserve "MyEvent" for code 1
+        dialog.label_data_map["b.txt"] = [1, 3]
+        dialog.update_unique_labels()
+        assert dialog.map_table.item(0, 1).text() == "MyEvent"
+
+    def test_get_results_empty(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        result = dialog.get_results()
+        assert result == (None, None)
+
+    def test_accept_no_labels(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.warning"
+        ):
+            dialog.accept()
+        assert dialog.result() != QDialog.DialogCode.Accepted
+
+    def test_accept_no_mapping(self, qtbot):
+        dialog = ImportLabelDialog()
+        qtbot.addWidget(dialog)
+        dialog.label_data_map["f.txt"] = [1]
+        dialog.update_unique_labels()
+        # Clear the event name so mapping is empty
+        dialog.map_table.item(0, 1).setText("")
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.import_label_dialog.QMessageBox.warning"
+        ):
+            dialog.accept()
+        assert dialog.result() != QDialog.DialogCode.Accepted

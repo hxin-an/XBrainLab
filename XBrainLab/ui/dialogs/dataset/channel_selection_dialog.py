@@ -79,7 +79,7 @@ class ChannelSelectionDialog(BaseDialog):
             text: Search string to filter channels by (case-insensitive).
 
         """
-        if not self.list_widget:
+        if self.list_widget is None:
             return
 
         for i in range(self.list_widget.count()):
@@ -119,7 +119,7 @@ class ChannelSelectionDialog(BaseDialog):
             checked: If True, check all items; otherwise uncheck all.
 
         """
-        if not self.list_widget:
+        if self.list_widget is None:
             return
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         for i in range(self.list_widget.count()):
@@ -134,7 +134,7 @@ class ChannelSelectionDialog(BaseDialog):
             QMessageBox: Warning displayed if no channels are selected.
 
         """
-        if not self.list_widget:
+        if self.list_widget is None:
             super().accept()
             return
 

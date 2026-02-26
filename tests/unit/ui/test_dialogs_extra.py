@@ -53,6 +53,68 @@ class TestEventFilterDialog:
         dlg.set_all_checked(True)
         dlg.toggle_selected()
 
+    def test_toggle_selected_with_items(self, dlg):
+        # Select first two items, then toggle
+        dlg.set_all_checked(True)
+        for i in range(2):
+            item = dlg.list_widget.item(i)
+            item.setSelected(True)
+        dlg.toggle_selected()
+
+    def test_show_context_menu_check(self, dlg):
+        from PyQt6.QtCore import QPoint
+
+        dlg.list_widget.item(0).setSelected(True)
+        with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMenu") as M:
+            a_check = MagicMock()
+            a_uncheck = MagicMock()
+            a_toggle = MagicMock()
+            M.return_value.addAction.side_effect = [a_check, a_uncheck, a_toggle]
+            M.return_value.exec.return_value = a_check
+            dlg.show_context_menu(QPoint(0, 0))
+
+    def test_show_context_menu_uncheck(self, dlg):
+        from PyQt6.QtCore import QPoint
+
+        dlg.set_all_checked(True)
+        dlg.list_widget.item(0).setSelected(True)
+        with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMenu") as M:
+            a_check = MagicMock()
+            a_uncheck = MagicMock()
+            a_toggle = MagicMock()
+            M.return_value.addAction.side_effect = [a_check, a_uncheck, a_toggle]
+            M.return_value.exec.return_value = a_uncheck
+            dlg.show_context_menu(QPoint(0, 0))
+
+    def test_show_context_menu_toggle(self, dlg):
+        from PyQt6.QtCore import QPoint
+
+        dlg.set_all_checked(True)
+        dlg.list_widget.item(0).setSelected(True)
+        with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMenu") as M:
+            a_check = MagicMock()
+            a_uncheck = MagicMock()
+            a_toggle = MagicMock()
+            M.return_value.addAction.side_effect = [a_check, a_uncheck, a_toggle]
+            M.return_value.exec.return_value = a_toggle
+            dlg.show_context_menu(QPoint(0, 0))
+
+    def test_key_press_space_toggles(self, dlg):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtGui import QKeyEvent
+
+        dlg.set_all_checked(True)
+        dlg.list_widget.item(0).setSelected(True)
+        event = QKeyEvent(
+            QKeyEvent.Type.KeyPress, Qt.Key.Key_Space, Qt.KeyboardModifier(0)
+        )
+        dlg.keyPressEvent(event)
+
+    def test_accept_persists_selection(self, dlg):
+        dlg.set_all_checked(True)
+        dlg.accept()
+        assert len(dlg.get_selected_ids()) == 4
+
 
 # ============ ManualSplitDialog ============
 

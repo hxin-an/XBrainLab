@@ -110,7 +110,7 @@ class EventFilterDialog(BaseDialog):
             checked: If True, check all items; otherwise uncheck all.
 
         """
-        if not self.list_widget:
+        if self.list_widget is None:
             return
         state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         for i in range(self.list_widget.count()):
@@ -120,7 +120,7 @@ class EventFilterDialog(BaseDialog):
 
     def toggle_selected(self):
         """Toggle the check state of all currently selected items."""
-        if not self.list_widget:
+        if self.list_widget is None:
             return
         selected_items = self.list_widget.selectedItems()
         if not selected_items:
@@ -144,7 +144,7 @@ class EventFilterDialog(BaseDialog):
             pos: Position where the context menu was requested.
 
         """
-        if not self.list_widget:
+        if self.list_widget is None:
             return
         menu = QMenu(self)
         action_check = menu.addAction("Check Selected")
@@ -180,7 +180,7 @@ class EventFilterDialog(BaseDialog):
 
     def accept(self):
         """Collect checked events, persist selection, and accept dialog."""
-        if self.list_widget:
+        if self.list_widget is not None:
             self.selected_names = []
             for i in range(self.list_widget.count()):
                 item = self.list_widget.item(i)
@@ -225,7 +225,7 @@ class EventFilterDialog(BaseDialog):
         # So let's uncheck all, then check names.
         self.set_all_checked(False)
 
-        if not self.list_widget:
+        if self.list_widget is None:
             return
 
         for i in range(self.list_widget.count()):

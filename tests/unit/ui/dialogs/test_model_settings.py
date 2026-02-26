@@ -259,3 +259,89 @@ class TestLoadState:
         ):
             dialog.load_state()
         assert dialog.local_model_combo.currentText() is not None
+
+
+class TestModelSettingsMoreCoverage:
+    """Extra coverage for connection test threading and env file handling."""
+
+    def test_on_test_connection_valid_key_starts_thread(self, dialog):
+        """Test that valid API key starts connection test thread."""
+        dialog.api_key_input.setText("AIzaValidKey123")
+        mock_genai = MagicMock()
+        with (
+            patch("XBrainLab.ui.dialogs.model_settings_dialog.genai", mock_genai),
+            patch("XBrainLab.ui.dialogs.model_settings_dialog.QThread") as MockThread,
+            patch(
+                "XBrainLab.ui.dialogs.model_settings_dialog.ConnectionTestWorker"
+            ) as MockWorker,
+        ):
+            mock_worker = MockWorker.return_value
+            mock_worker.finished = MagicMock()
+            mock_worker.error = MagicMock()
+            mock_thread = MockThread.return_value
+            mock_thread.started = MagicMock()
+            mock_thread.finished = MagicMock()
+            dialog.on_test_connection_clicked()
+            mock_thread.start.assert_called_once()
+
+    def test_load_state_with_gemini_enabled(self, dialog, config):
+        config.gemini_enabled = True
+        config.gemini_api_key = "AIzaKey"  # pragma: allowlist secret
+        with (
+            patch("os.path.exists", return_value=False),
+            patch("os.listdir", return_value=[]),
+        ):
+            dialog.load_state()
+        assert "Verified" in dialog.gemini_status_label.text()
+
+    def test_save_api_key_to_env_update_existing(self, dialog):
+        dialog.api_key_input.setText("AIzaNewKey")  # pragma: allowlist secret
+        existing_content = (
+            "OTHER=value\nGEMINI_API_KEY=old\nFOO=bar\n"  # pragma: allowlist secret
+        )
+        from io import StringIO
+        from unittest.mock import mock_open
+
+        mock_read = mock_open(read_data=existing_content)
+        written_lines = []
+
+        def fake_open(path, *args, **kwargs):
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if "w" in mode:
+                m = MagicMock()
+                m.__enter__ = MagicMock(return_value=m)
+                m.__exit__ = MagicMock(return_value=False)
+                m.writelines = lambda lines: written_lines.extend(lines)
+                return m
+            return StringIO(existing_content)
+
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", side_effect=fake_open),
+        ):
+            dialog._save_api_key_to_env()
+        assert any("AIzaNewKey" in line for line in written_lines)
+
+    def test_save_api_key_to_env_append_new(self, dialog):
+        dialog.api_key_input.setText("AIzaNewKey")
+        existing_content = "OTHER=value\n"
+        from io import StringIO
+
+        written_lines = []
+
+        def fake_open(path, *args, **kwargs):
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if "w" in mode:
+                m = MagicMock()
+                m.__enter__ = MagicMock(return_value=m)
+                m.__exit__ = MagicMock(return_value=False)
+                m.writelines = lambda lines: written_lines.extend(lines)
+                return m
+            return StringIO(existing_content)
+
+        with (
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", side_effect=fake_open),
+        ):
+            dialog._save_api_key_to_env()
+        assert any("GEMINI_API_KEY=AIzaNewKey" in line for line in written_lines)

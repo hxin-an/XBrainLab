@@ -65,7 +65,7 @@ class ManualSplitDialog(BaseDialog):
 
     def accept(self):
         """Collect selected items and accept the dialog."""
-        if not self.list_widget:
+        if self.list_widget is None:
             super().accept()
             return
 

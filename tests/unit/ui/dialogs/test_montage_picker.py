@@ -113,3 +113,89 @@ class TestAcceptReject:
 
     def test_reset_saved_settings(self, dialog):
         dialog.reset_saved_settings()
+
+
+class TestMontagePickerEdgeCases:
+    """Additional edge-case tests for PickMontageDialog methods."""
+
+    def test_on_channel_changed_clears_anchor(self, dialog):
+        # Row 0 is an anchor — selecting index 0 (empty) removes it
+        dialog.anchors.add(0)
+        dialog.on_channel_changed(0, 0)
+        assert 0 not in dialog.anchors
+
+    def test_on_channel_changed_cascades(self, dialog):
+        # Set row 0 to a valid channel and check cascade fill
+        combo0 = dialog.table.cellWidget(0, 1)
+        if isinstance(combo0, QComboBox) and combo0.count() > 2:
+            combo0.setCurrentIndex(1)
+            dialog.on_channel_changed(0, 1)
+            assert 0 in dialog.anchors
+
+    def test_accept_no_mapped_channels(self, dialog):
+        dialog.clear_selections()
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox.warning"
+        ):
+            dialog.accept()
+        # Should not accept
+        assert dialog.chs is None
+
+    def test_accept_error_processing(self, dialog):
+        for row in range(dialog.table.rowCount()):
+            combo = dialog.table.cellWidget(row, 1)
+            if isinstance(combo, QComboBox) and combo.count() > 1:
+                combo.setCurrentIndex(1)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_channel_positions",
+                side_effect=RuntimeError("bad montage"),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox.critical"
+            ),
+        ):
+            dialog.accept()
+        assert dialog.chs is None
+
+    def test_empty_channel_names(self, qtbot):
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_builtin_montages",
+                return_value=["standard_1020"],
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox"
+            ) as mock_mb,
+        ):
+            from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+                PickMontageDialog,
+            )
+
+            dlg = PickMontageDialog(parent=None, channel_names=[])
+            qtbot.addWidget(dlg)
+            mock_mb.critical.assert_called_once()
+
+    def test_on_montage_select_error(self, dialog):
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.get_montage_positions",
+                side_effect=RuntimeError("fail"),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.montage_picker_dialog.QMessageBox.warning"
+            ),
+        ):
+            dialog.on_montage_select("standard_1020")
+
+    def test_smart_match_case_insensitive(self, dialog):
+        combo = dialog.table.cellWidget(0, 1)
+        if isinstance(combo, QComboBox):
+            result = dialog.smart_match(combo, "fp1")
+            assert result is True
+
+    def test_smart_match_no_match(self, dialog):
+        combo = dialog.table.cellWidget(0, 1)
+        if isinstance(combo, QComboBox):
+            result = dialog.smart_match(combo, "NONEXISTENT_XYZ")
+            assert result is False
