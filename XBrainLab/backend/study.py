@@ -1,5 +1,7 @@
 """Study module providing the central state container for an XBrainLab experiment."""
 
+from __future__ import annotations
+
 from .controller.dataset_controller import DatasetController
 from .controller.evaluation_controller import EvaluationController
 from .controller.preprocess_controller import PreprocessController
@@ -134,6 +136,22 @@ class Study:
     @saliency_params.setter
     def saliency_params(self, value: dict | None) -> None:
         self.training_manager.saliency_params = value
+
+    # --- Pipeline Stage ---
+
+    @property
+    def pipeline_stage(self):
+        """Compute the current pipeline stage from live state.
+
+        Returns:
+            The :class:`~XBrainLab.llm.pipeline_state.PipelineStage`
+            derived from the current Study attributes.  This is always
+            recomputed — never cached — so it cannot drift from reality.
+
+        """
+        from XBrainLab.llm.pipeline_state import compute_pipeline_stage  # noqa: PLC0415
+
+        return compute_pipeline_stage(self)
 
     # --- Controller Access ---
     def get_controller(self, controller_type: str):

@@ -179,32 +179,40 @@ class TestHandleLoopDetected:
 # --- _execute_tool_no_loop ---
 class TestExecuteToolNoLoop:
     def test_unknown_tool(self, ctrl):
-        with patch(
-            "XBrainLab.llm.agent.controller.get_tool_by_name", return_value=None
-        ):
-            success, result = ctrl._execute_tool_no_loop("bogus", {})
+        ctrl.registry.get_tool.return_value = None
+        success, result = ctrl._execute_tool_no_loop("bogus", {})
         assert not success
         assert "Unknown" in result
 
     def test_success(self, ctrl):
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "ok"
+        ctrl.registry.get_tool.return_value = mock_tool
         with patch(
-            "XBrainLab.llm.agent.controller.get_tool_by_name",
-            return_value=mock_tool,
-        ):
-            success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
+            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+        ) as mock_stage:
+            mock_stage.return_value = MagicMock(value="empty")
+            with patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {mock_stage.return_value: {"tools": ["test"]}},
+            ):
+                success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
         assert success
         assert result == "ok"
 
     def test_exception(self, ctrl):
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = RuntimeError("fail")
+        ctrl.registry.get_tool.return_value = mock_tool
         with patch(
-            "XBrainLab.llm.agent.controller.get_tool_by_name",
-            return_value=mock_tool,
-        ):
-            success, result = ctrl._execute_tool_no_loop("test", {})
+            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+        ) as mock_stage:
+            mock_stage.return_value = MagicMock(value="empty")
+            with patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {mock_stage.return_value: {"tools": ["test"]}},
+            ):
+                success, result = ctrl._execute_tool_no_loop("test", {})
         assert not success
         assert "fail" in result
 
@@ -238,6 +246,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls([("cmd", {"a": 1})], '{"cmd": "cmd"}')
         ctrl._finalize_turn_after_tool.assert_called_once()
@@ -248,6 +257,7 @@ class TestProcessToolCalls:
         ctrl._generate_response = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls([("cmd", {})], "json")
         ctrl._generate_response.assert_called_once()
@@ -259,6 +269,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls([("cmd", {})], "json")
         ctrl._finalize_turn_after_tool.assert_called_once()
@@ -386,16 +397,11 @@ class TestProcessToolCallsConfirmation:
         mock_tool = MagicMock()
         mock_tool.requires_confirmation = True
         mock_tool.description = "Clear data"
+        ctrl.registry.get_tool.return_value = mock_tool
 
-        with (
-            patch(
-                "XBrainLab.llm.agent.controller.get_tool_by_name",
-                return_value=mock_tool,
-            ),
-            patch(
-                "XBrainLab.llm.agent.controller.estimate_confidence",
-                return_value=0.9,
-            ),
+        with patch(
+            "XBrainLab.llm.agent.controller.estimate_confidence",
+            return_value=0.9,
         ):
             ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
             ctrl._process_tool_calls(
@@ -414,16 +420,11 @@ class TestProcessToolCallsConfirmation:
         """Tool without requires_confirmation should execute normally."""
         mock_tool = MagicMock()
         mock_tool.requires_confirmation = False
+        ctrl.registry.get_tool.return_value = mock_tool
 
-        with (
-            patch(
-                "XBrainLab.llm.agent.controller.get_tool_by_name",
-                return_value=mock_tool,
-            ),
-            patch(
-                "XBrainLab.llm.agent.controller.estimate_confidence",
-                return_value=0.9,
-            ),
+        with patch(
+            "XBrainLab.llm.agent.controller.estimate_confidence",
+            return_value=0.9,
         ):
             mock_tool.execute.return_value = "done"
             ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
@@ -437,3 +438,50 @@ class TestProcessToolCallsConfirmation:
 
         assert ctrl._pending_confirmation is None
         ctrl._execute_tool_no_loop.assert_called_once()
+
+
+# --- Pipeline stage gate in _execute_tool_no_loop ---
+class TestPipelineGate:
+    def test_blocked_tool_returns_error(self, ctrl):
+        """Tool not in current stage config is rejected at execution time."""
+        mock_tool = MagicMock()
+        ctrl.registry.get_tool.return_value = mock_tool
+
+        with patch(
+            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+        ) as mock_stage:
+            mock_stage.return_value = MagicMock(value="empty")
+            with patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {mock_stage.return_value: {"tools": ["list_files", "load_data"]}},
+            ):
+                success, result = ctrl._execute_tool_no_loop(
+                    "apply_bandpass_filter",
+                    {},
+                )
+
+        assert not success
+        assert "not available" in result
+        assert "empty" in result
+
+    def test_allowed_tool_executes(self, ctrl):
+        """Tool present in current stage config is allowed."""
+        mock_tool = MagicMock()
+        mock_tool.execute.return_value = "ok"
+        ctrl.registry.get_tool.return_value = mock_tool
+
+        with patch(
+            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+        ) as mock_stage:
+            mock_stage.return_value = MagicMock(value="data_loaded")
+            with patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {mock_stage.return_value: {"tools": ["apply_bandpass_filter"]}},
+            ):
+                success, result = ctrl._execute_tool_no_loop(
+                    "apply_bandpass_filter",
+                    {},
+                )
+
+        assert success
+        assert result == "ok"

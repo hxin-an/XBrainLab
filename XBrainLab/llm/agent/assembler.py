@@ -1,12 +1,14 @@
 """Context assembler for constructing LLM prompts.
 
 Assembles system prompts with dynamic tool definitions, RAG context,
-and conversation history for the AI agent.
+and conversation history for the AI agent.  Tools and guidance text
+are selected based on the current :class:`PipelineStage`.
 """
 
 import json
 from typing import Any
 
+from ..pipeline_state import STAGE_CONFIG, PipelineStage, compute_pipeline_stage
 from ..tools.tool_registry import ToolRegistry
 
 
@@ -14,8 +16,9 @@ class ContextAssembler:
     """Assembles the full context for the AI agent.
 
     Constructs the system prompt by combining ReAct-style instructions,
-    dynamically filtered tool definitions, optional RAG context, and
-    conversation history into a message list suitable for LLM inference.
+    **stage-filtered** tool definitions, pipeline guidance, optional RAG
+    context, and conversation history into a message list suitable for
+    LLM inference.
 
     Attributes:
         registry: Tool registry containing all available tools.
@@ -27,6 +30,9 @@ class ContextAssembler:
 
     SYSTEM_TEMPLATE = """You are XBrainLab Assistant.
 You have access to the XBrainLab software and can control it to perform tasks.
+
+Current Pipeline Stage: {stage_name}
+{stage_guidance}
 
 Available Tools:
 {tools_str}
@@ -47,6 +53,7 @@ Rules:
 3. Do NOT output the JSON block if you are not using a tool.
 4. Do NOT use the 'json' language identifier, just the code block delimiters.
 5. If no tool is needed, just reply normally.
+6. You can ONLY use the tools listed above. Do NOT attempt to call unlisted tools.
 """
 
     def __init__(self, tool_registry: ToolRegistry, study_state: Any):
@@ -62,15 +69,34 @@ Rules:
         self.study_state = study_state
         self.context_notes: list[str] = []
 
-    def _format_tools(self) -> str:
-        """Retrieves active tools and formats them as JSON descriptions.
+    def _get_stage_config(self) -> tuple[PipelineStage, dict[str, Any]]:
+        """Return the current pipeline stage and its configuration.
+
+        Returns:
+            A ``(stage, config)`` tuple where *config* contains
+            ``"tools"`` and ``"guidance"`` keys.
+
+        """
+        stage = compute_pipeline_stage(self.study_state)
+        config = STAGE_CONFIG.get(stage, STAGE_CONFIG[PipelineStage.EMPTY])
+        return stage, config
+
+    def _format_tools(self, allowed_names: list[str]) -> str:
+        """Format only the tools whose names are in *allowed_names*.
+
+        Args:
+            allowed_names: Tool name strings permitted by the current
+                pipeline stage.
 
         Returns:
             A newline-joined string of JSON-formatted tool definitions,
             or a fallback message if no tools are currently available.
 
         """
-        active_tools = self.registry.get_active_tools(self.study_state)
+        allowed_set = set(allowed_names)
+        active_tools = [
+            t for t in self.registry.get_all_tools() if t.name in allowed_set
+        ]
 
         tool_descs = []
         for tool in active_tools:
@@ -87,15 +113,21 @@ Rules:
         return "\n".join(tool_descs)
 
     def build_system_prompt(self) -> str:
-        """Constructs the full system prompt with filtered tools and context.
+        """Constructs the full system prompt with stage-filtered tools.
 
         Returns:
-            The assembled system prompt string including tool definitions
-            and any additional RAG context notes.
+            The assembled system prompt string including pipeline stage,
+            guidance, tool definitions, and any additional RAG context.
 
         """
-        tools_str = self._format_tools()
-        prompt = self.SYSTEM_TEMPLATE.format(tools_str=tools_str)
+        stage, config = self._get_stage_config()
+        tools_str = self._format_tools(config["tools"])
+
+        prompt = self.SYSTEM_TEMPLATE.format(
+            stage_name=stage.value,
+            stage_guidance=config["guidance"],
+            tools_str=tools_str,
+        )
 
         if self.context_notes:
             prompt += "\n\nAdditional Context:\n" + "\n".join(self.context_notes)

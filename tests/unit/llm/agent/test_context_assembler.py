@@ -1,7 +1,8 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import ContextAssembler
+from XBrainLab.llm.pipeline_state import PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -48,7 +49,7 @@ class InvalidTool(BaseTool):
 
 
 def test_assembler_filtering():
-    """Test that Assembler includes only valid tools in the prompt."""
+    """Test that Assembler includes only tools allowed by the stage config."""
 
     # 1. Setup Registry
     registry = ToolRegistry()
@@ -58,13 +59,26 @@ def test_assembler_filtering():
     # 2. Setup Mock Study
     mock_study = MagicMock(spec=Study)
 
-    # 3. Initialize Assembler
-    assembler = ContextAssembler(registry, mock_study)
+    # 3. Patch pipeline stage to a config that allows only valid_tool
+    with (
+        patch(
+            "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
+            return_value=PipelineStage.EMPTY,
+        ),
+        patch(
+            "XBrainLab.llm.agent.assembler.STAGE_CONFIG",
+            {
+                PipelineStage.EMPTY: {
+                    "tools": ["valid_tool"],
+                    "guidance": "test guidance",
+                }
+            },
+        ),
+    ):
+        assembler = ContextAssembler(registry, mock_study)
+        system_prompt = assembler.build_system_prompt()
 
-    # 4. Build Prompt
-    system_prompt = assembler.build_system_prompt()
-
-    # 5. Verify Content
+    # 4. Verify Content
     assert "valid_tool" in system_prompt
     assert "Valid description" in system_prompt
     assert "invalid_tool" not in system_prompt
@@ -75,14 +89,19 @@ def test_assembler_context_and_history():
     """Test standard features: RAG context and History assembly."""
     registry = ToolRegistry()
     mock_study = MagicMock(spec=Study)
-    assembler = ContextAssembler(registry, mock_study)
 
-    # Add RAG context
-    assembler.add_context("Important RAG Info")
+    with patch(
+        "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
+        return_value=PipelineStage.EMPTY,
+    ):
+        assembler = ContextAssembler(registry, mock_study)
 
-    # Get Messages with History
-    history = [{"role": "user", "content": "Hello"}]
-    messages = assembler.get_messages(history)
+        # Add RAG context
+        assembler.add_context("Important RAG Info")
+
+        # Get Messages with History
+        history = [{"role": "user", "content": "Hello"}]
+        messages = assembler.get_messages(history)
 
     # Verify System Message index 0
     sys_msg = messages[0]["content"]

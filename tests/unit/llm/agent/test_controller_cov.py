@@ -179,32 +179,40 @@ class TestHandleLoopDetected:
 # --- _execute_tool_no_loop ---
 class TestExecuteToolNoLoop:
     def test_unknown_tool(self, ctrl):
-        with patch(
-            "XBrainLab.llm.agent.controller.get_tool_by_name", return_value=None
-        ):
-            success, result = ctrl._execute_tool_no_loop("bogus", {})
+        ctrl.registry.get_tool.return_value = None
+        success, result = ctrl._execute_tool_no_loop("bogus", {})
         assert not success
         assert "Unknown" in result
 
     def test_success(self, ctrl):
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "ok"
+        ctrl.registry.get_tool.return_value = mock_tool
         with patch(
-            "XBrainLab.llm.agent.controller.get_tool_by_name",
-            return_value=mock_tool,
-        ):
-            success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
+            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+        ) as mock_stage:
+            mock_stage.return_value = MagicMock(value="empty")
+            with patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {mock_stage.return_value: {"tools": ["test"]}},
+            ):
+                success, result = ctrl._execute_tool_no_loop("test", {"a": 1})
         assert success
         assert result == "ok"
 
     def test_exception(self, ctrl):
         mock_tool = MagicMock()
         mock_tool.execute.side_effect = RuntimeError("fail")
+        ctrl.registry.get_tool.return_value = mock_tool
         with patch(
-            "XBrainLab.llm.agent.controller.get_tool_by_name",
-            return_value=mock_tool,
-        ):
-            success, result = ctrl._execute_tool_no_loop("test", {})
+            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+        ) as mock_stage:
+            mock_stage.return_value = MagicMock(value="empty")
+            with patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {mock_stage.return_value: {"tools": ["test"]}},
+            ):
+                success, result = ctrl._execute_tool_no_loop("test", {})
         assert not success
         assert "fail" in result
 
@@ -238,6 +246,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls([("cmd", {"a": 1})], '{"cmd": "cmd"}')
         ctrl._finalize_turn_after_tool.assert_called_once()
@@ -248,6 +257,7 @@ class TestProcessToolCalls:
         ctrl._generate_response = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls([("cmd", {})], "json")
         ctrl._generate_response.assert_called_once()
@@ -259,6 +269,7 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl._detect_loop = MagicMock(return_value=False)
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
         ctrl._process_tool_calls([("cmd", {})], "json")
         ctrl._finalize_turn_after_tool.assert_called_once()

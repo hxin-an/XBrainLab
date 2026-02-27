@@ -15,8 +15,9 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
+from XBrainLab.llm.pipeline_state import STAGE_CONFIG, compute_pipeline_stage
 from XBrainLab.llm.rag import RAGRetriever
-from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
+from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 from .assembler import ContextAssembler
@@ -435,7 +436,7 @@ class LLMController(QObject):
             self.status_update.emit(f"Executing: {cmd}...")
 
             # --- HITL: Dangerous Action Confirmation ---
-            tool = get_tool_by_name(cmd)
+            tool = self.registry.get_tool(cmd)
             if tool and tool.requires_confirmation:
                 # Store remaining commands for resumption after confirmation
                 remaining = [
@@ -600,6 +601,9 @@ class LLMController(QObject):
     def _execute_tool_no_loop(self, command_name, params):
         """Executes a single tool call without triggering generation.
 
+        Performs a pipeline-stage gate check before execution to reject
+        tool calls that are not allowed in the current stage.
+
         Args:
             command_name: Name of the tool to execute.
             params: Dictionary of parameters to pass to the tool.
@@ -609,8 +613,28 @@ class LLMController(QObject):
             and *result_str* is the tool's output or an error message.
 
         """
-        tool = get_tool_by_name(command_name)
+        tool = self.registry.get_tool(command_name)
         if tool:
+            # --- Execution-time pipeline gate ---
+            stage = compute_pipeline_stage(self.study)
+            config = STAGE_CONFIG.get(stage)
+            if config and command_name not in config["tools"]:
+                gate_msg = (
+                    f"Tool '{command_name}' is not available in the current "
+                    f"pipeline stage '{stage.value}'. "
+                    f"Allowed tools: {config['tools']}"
+                )
+                logger.warning(gate_msg)
+                if self.metrics.current_turn:
+                    self.metrics.current_turn.record_tool(
+                        command_name,
+                        False,
+                        0,
+                        gate_msg,
+                    )
+                self.status_update.emit(f"Blocked: {gate_msg}")
+                return False, f"Error: {gate_msg}"
+
             t0 = _time.monotonic()
             try:
                 result = tool.execute(self.study, **params)
