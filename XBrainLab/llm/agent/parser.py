@@ -21,7 +21,7 @@ class CommandParser:
     @staticmethod
     def parse(
         text: str,
-    ) -> list[tuple[str, dict[str, Any]]] | tuple[str, dict[str, Any]] | None:
+    ) -> list[tuple[str, dict[str, Any]]] | None:
         """Extracts JSON command blocks from LLM output text.
 
         Scans ``text`` for JSON objects containing a ``tool_name`` (or
@@ -68,17 +68,6 @@ class CommandParser:
 
                         if cmd and params is not None:
                             found_commands.append((cmd, params))
-
-                    elif isinstance(data, list):
-                        # Handle JSON list of objects
-                        # (if finding '[' logic was used, but here we find '{')
-                        # If we parse a list, append its contents
-                        for item in data:
-                            if isinstance(item, dict):
-                                cmd = item.get("tool_name") or item.get("command")
-                                params = item.get("parameters")
-                                if cmd and params is not None:
-                                    found_commands.append((cmd, params))
 
                     # Move cursor past this object
                     cursor = start_idx + end_idx

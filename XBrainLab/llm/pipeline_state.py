@@ -110,11 +110,6 @@ _TRAINING_TOOLS: list[str] = [
     "start_training",
 ]
 
-_COMMON_READONLY: list[str] = [
-    "get_dataset_info",
-    "switch_panel",
-]
-
 
 # ---------------------------------------------------------------------------
 # Stage configuration — tools + system prompt

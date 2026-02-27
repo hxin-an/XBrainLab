@@ -218,6 +218,7 @@ class LLMController(QObject):
             self._generate_response()
         except Exception as e:
             logger.error("Error in handle_user_input: %s", e)
+            self.metrics.finish_turn()
             self.error_occurred.emit(str(e))
             self.is_processing = False
             self.processing_finished.emit()
@@ -573,6 +574,7 @@ class LLMController(QObject):
                 "Aborting to prevent infinite recursion."
             )
             self._append_history("user", msg)
+            self.metrics.finish_turn()
             self.status_update.emit("Loop detected, aborting.")
             self.is_processing = False
             self.processing_finished.emit()
@@ -694,7 +696,7 @@ class LLMController(QObject):
                 count += 1
         return count >= 3
 
-    def _handle_tool_result_logic(self, result: str, success: bool = True):
+    def _handle_tool_result_logic(self, result: str, success: bool = True) -> bool:
         """Processes tool output for UI side effects.
 
         Detects special ``Request:`` prefixed results (e.g. panel switches,
@@ -718,7 +720,6 @@ class LLMController(QObject):
 
             if cmd_part.lower().startswith("switch ui to"):
                 # Use regex to robustly capture panel name and optional view mode
-                # Matches: Switch UI to 'panel' OR Switch UI to 'panel' (View: view)
                 # Matches: Switch UI to 'panel' OR Switch UI to 'panel' (View: view)
                 pattern = r"Switch UI to ['\"](\w+)['\"](?:\s+\(View:\s+(\w+)\))?"
                 match = re.match(pattern, cmd_part, re.IGNORECASE)
@@ -753,6 +754,15 @@ class LLMController(QObject):
         return False
 
     def _on_worker_error(self, error_msg):
+        """Handle a fatal worker error by notifying the UI.
+
+        Finishes the current metrics turn and resets processing state.
+
+        Args:
+            error_msg: Human-readable error description from the worker.
+
+        """
+        self.metrics.finish_turn()
         self.error_occurred.emit(error_msg)
         self.status_update.emit("Error")
         self.is_processing = False
@@ -773,6 +783,7 @@ class LLMController(QObject):
         """Stops the current generation process and resets processing state."""
         if self.is_processing:
             self.status_update.emit("Stopping...")
+            self.metrics.finish_turn()
             self.is_processing = False
             # Signal the generation thread (not worker thread) to stop
             if (
@@ -850,3 +861,4 @@ class LLMController(QObject):
 
         self.status_update.emit("Ready")
         self.is_processing = False
+        self.processing_finished.emit()

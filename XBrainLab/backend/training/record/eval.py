@@ -187,6 +187,8 @@ class EvalRecord:
             Accuracy as a float between 0 and 1.
 
         """
+        if len(self.label) == 0:
+            return 0.0
         return sum(self.output.argmax(axis=1) == self.label) / len(self.label)
 
     def get_auc(self) -> float:
@@ -198,6 +200,8 @@ class EvalRecord:
             AUC score as a float.
 
         """
+        if len(self.label) == 0 or len(self.output) == 0:
+            return 0.0
         if (
             torch.nn.functional.softmax(torch.Tensor(self.output), dim=1)
             .numpy()

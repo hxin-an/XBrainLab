@@ -14,7 +14,7 @@ class BaseSetModelTool(BaseTool):
     """Set the deep learning model architecture for training.
 
     Supported architectures include EEGNet, ShallowConvNet,
-    DeepConvNet, and SCCNet.
+    and SCCNet.
     """
 
     @property

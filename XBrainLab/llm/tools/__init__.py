@@ -59,25 +59,6 @@ from .real.training_real import (
 )
 from .real.ui_control_real import RealSwitchPanelTool
 
-# ... (Previous imports)
-
-
-def get_tool_by_name(name: str) -> BaseTool | None:
-    """Look up a registered tool by its canonical name.
-
-    Args:
-        name: The canonical name of the tool (e.g., ``'load_data'``).
-
-    Returns:
-        The matching ``BaseTool`` instance, or ``None`` if no tool
-        with the given name exists in ``AVAILABLE_TOOLS``.
-
-    """
-    for tool in AVAILABLE_TOOLS:
-        if tool.name == name:
-            return tool
-    return None
-
 
 def get_all_tools(mode: str = "mock") -> list[BaseTool]:
     """Create and return all tool instances for the given execution mode.
@@ -149,6 +130,4 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
     raise ValueError(f"Unknown tool mode: {mode}")
 
 
-# Default to mock for now, or read from env
-# In the future, this can be dynamic.
 AVAILABLE_TOOLS = get_all_tools(mode="real")

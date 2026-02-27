@@ -81,6 +81,9 @@ class EpochRunner:
         if self._interrupt.is_set():
             return
 
+        if total_count == 0:
+            return
+
         # 2. Metrics
         train_auc = Evaluator.compute_auc(y_true, y_pred)
         running_loss /= len(train_loader)

@@ -57,10 +57,10 @@ class SaliencySpectrogramMapViz(Visualizer):
                 vmin=saliency.min(),
                 vmax=saliency.max(),
             )
-            tick_inteval = 0.5
-            tick_label = np.round(np.arange(0, timestamps[-1], tick_inteval), 1)
+            tick_interval = 0.5
+            tick_label = np.round(np.arange(0, timestamps[-1], tick_interval), 1)
             ticks = np.linspace(0, saliency.shape[1], len(tick_label))
-            ticks = ticks - tick_inteval
+            ticks = ticks - tick_interval
             plt.xlabel("time")
             plt.ylabel("frequency")
             plt.xticks(

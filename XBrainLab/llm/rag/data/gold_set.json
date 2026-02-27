@@ -397,12 +397,12 @@
     {
         "id": "training_05",
         "category": "training",
-        "input": "Set DeepConvNet as the model.",
+        "input": "Set SCCNet as the model.",
         "expected_tool_calls": [
             {
                 "tool_name": "set_model",
                 "parameters": {
-                    "model_name": "DeepConvNet"
+                    "model_name": "SCCNet"
                 }
             }
         ]
@@ -682,7 +682,7 @@
     {
         "id": "complex_08",
         "category": "complex",
-        "input": "Switch to training panel and set model DeepConvNet.",
+        "input": "Switch to training panel and set model SCCNet.",
         "expected_tool_calls": [
             {
                 "tool_name": "switch_panel",
@@ -693,7 +693,7 @@
             {
                 "tool_name": "set_model",
                 "parameters": {
-                    "model_name": "DeepConvNet"
+                    "model_name": "SCCNet"
                 }
             }
         ]

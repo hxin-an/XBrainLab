@@ -8,20 +8,6 @@ import pytest
 
 
 # --- llm/tools/__init__.py ---
-class TestGetToolByName:
-    def test_finds_tool(self):
-        from XBrainLab.llm.tools import get_tool_by_name
-
-        tool = get_tool_by_name("load_data")
-        assert tool is not None
-        assert tool.name == "load_data"
-
-    def test_returns_none(self):
-        from XBrainLab.llm.tools import get_tool_by_name
-
-        assert get_tool_by_name("nonexistent_tool") is None
-
-
 class TestGetAllTools:
     def test_mock_mode(self):
         from XBrainLab.llm.tools import get_all_tools

@@ -24,8 +24,8 @@ class BaseStandardPreprocessTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Apply standard EEG preprocessing pipeline (Bandpass, Notch, Rereference, "
-            "Normalize)."
+            "Apply standard EEG preprocessing pipeline (Bandpass, Notch, Resample, "
+            "Rereference, Normalize)."
         )
 
     @property

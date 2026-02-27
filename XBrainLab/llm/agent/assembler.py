@@ -1,7 +1,7 @@
 """Context assembler for constructing LLM prompts.
 
 Assembles system prompts with dynamic tool definitions, RAG context,
-and conversation history for the AI agent.  Tools and guidance text
+and conversation history for the AI agent.  Tools and system-prompt text
 are selected based on the current :class:`PipelineStage`.
 """
 
@@ -16,7 +16,7 @@ class ContextAssembler:
     """Assembles the full context for the AI agent.
 
     Constructs the system prompt by combining ReAct-style instructions,
-    **stage-filtered** tool definitions, pipeline guidance, optional RAG
+    **stage-filtered** tool definitions, pipeline system prompt, optional RAG
     context, and conversation history into a message list suitable for
     LLM inference.
 
@@ -69,7 +69,7 @@ Rules:
 
         Returns:
             A ``(stage, config)`` tuple where *config* contains
-            ``"tools"`` and ``"guidance"`` keys.
+            ``"tools"`` and ``"system_prompt"`` keys.
 
         """
         stage = compute_pipeline_stage(self.study_state)

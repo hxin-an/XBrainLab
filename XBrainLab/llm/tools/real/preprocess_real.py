@@ -112,7 +112,10 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
             return "Error: low_freq and high_freq are required."
 
         facade = BackendFacade(study)
-        facade.apply_filter(low_freq, high_freq)
+        try:
+            facade.apply_filter(low_freq, high_freq)
+        except Exception as e:
+            return f"Bandpass filter failed: {e!s}"
         return f"Applied Bandpass Filter ({low_freq}-{high_freq} Hz)"
 
 
@@ -135,7 +138,10 @@ class RealNotchFilterTool(BaseNotchFilterTool):
             return "Error: freq is required."
 
         facade = BackendFacade(study)
-        facade.apply_notch_filter(freq)
+        try:
+            facade.apply_notch_filter(freq)
+        except Exception as e:
+            return f"Notch filter failed: {e!s}"
         return f"Applied Notch Filter ({freq} Hz)"
 
 
@@ -158,7 +164,10 @@ class RealResampleTool(BaseResampleTool):
             return "Error: rate is required."
 
         facade = BackendFacade(study)
-        facade.resample_data(rate)
+        try:
+            facade.resample_data(rate)
+        except Exception as e:
+            return f"Resample failed: {e!s}"
         return f"Resampled data to {rate} Hz"
 
 
@@ -181,7 +190,10 @@ class RealNormalizeTool(BaseNormalizeTool):
             return "Error: method is required."
 
         facade = BackendFacade(study)
-        facade.normalize_data(method)
+        try:
+            facade.normalize_data(method)
+        except Exception as e:
+            return f"Normalization failed: {e!s}"
         return f"Normalized data using {method}"
 
 
@@ -204,7 +216,10 @@ class RealRereferenceTool(BaseRereferenceTool):
             return "Error: method is required."
 
         facade = BackendFacade(study)
-        facade.set_reference(method)
+        try:
+            facade.set_reference(method)
+        except Exception as e:
+            return f"Re-reference failed: {e!s}"
         return f"Applied reference: {method}"
 
 
@@ -227,7 +242,10 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
             return "Error: channels list is required."
 
         facade = BackendFacade(study)
-        facade.select_channels(channels)
+        try:
+            facade.select_channels(channels)
+        except Exception as e:
+            return f"Channel selection failed: {e!s}"
         return f"Selected {len(channels)} channels."
 
 

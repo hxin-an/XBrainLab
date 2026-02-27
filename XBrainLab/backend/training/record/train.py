@@ -324,8 +324,6 @@ class TrainRecord:
                 if model:
                     torch.save(model, os.path.join(self.target_path, full_key))
 
-        if not self.target_path:
-            return
         fname = f"Epoch-{epoch}-model"
         torch.save(self.model.state_dict(), os.path.join(self.target_path, fname))
         record = {

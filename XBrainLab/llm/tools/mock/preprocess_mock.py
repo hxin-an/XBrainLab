@@ -210,7 +210,7 @@ class MockEpochDataTool(BaseEpochDataTool):
         study: Any,
         t_min: float | None = None,
         t_max: float | None = None,
-        event_id: dict[str, int] | None = None,
+        event_id: list[str] | None = None,
         baseline: list[float] | None = None,
         **kwargs,
     ) -> str:
