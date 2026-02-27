@@ -161,7 +161,7 @@ graph TD
 XBrainLab 的核心創新在於 Backend、UI 與 Agent 三個系統的協同運作，實現人類與 AI 的無縫整合。
 
 ### 1. Backend 作為中央樞紐
-- **狀態管理**：Study 持有所有數據與模型，是唯一真理來源。
+- **狀態管理**：Study 持有所有數據與模型，是唯一真理來源。內部委派至 `DataManager`（資料生命週期）與 `TrainingManager`（訓練生命週期）。
 - **邏輯執行**：Controllers 處理具體業務，Services 提供通用功能。
 - **事件驅動**：Observable 廣播狀態變化，觸發 UI 更新與 Agent 響應。
 

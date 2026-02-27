@@ -68,13 +68,16 @@ graph TD
 透過 **Qdrant Vector Database** 檢索特定領域知識，為 Agent 提供科學依據與最佳實踐。
 
 ### 3. Verification Layer (`verifier.py`)
-每個 Tool Call 在執行前經過驗證：
-- **Script Validation**: 腳本驗證呼叫的語法與邏輯正確性（如參數範圍）
+每個 Tool Call 在執行前經過驗證，採用 **Pluggable Validator 策略模式**：
+- **參數驗證 (ValidatorStrategy)**: 根據 Tool 名稱匹配對應 Validator：
+  - `FrequencyRangeValidator` — 驗證帶通頻率 (`low_freq < high_freq`，皆為正數)
+  - `TrainingParamValidator` — 驗證訓練超參數 (`epoch`、`batch_size` 為正整數)
+  - `PathExistsValidator` — 驗證檔案路徑存在性
 - **Confidence Check**: 評估 LLM 信心度
-  - **Low Confidence / Script Fail** → 觸發 **Self-Correction** (Reflection)
+  - **Low Confidence / Validation Fail** → 觸發 **Self-Correction** (Reflection)
   - **High Confidence & Valid** → 執行 Tool Call
 
-> **目前狀態**: 基本腳本驗證已啟用，信心度檢查尚未完全啟用（見 KNOWN_ISSUES.md）。
+> **目前狀態**: 三個 Validator 已完整實作 (28 測試)，信心度檢查尚未完全啟用（見 KNOWN_ISSUES.md）。
 
 ### 4. The Assembler (`assembler.py`)
 作為認知整合層，融合 User Intent、System Prompt、Tool Logic、RAG Knowledge、Memory 與 Verification Feedback 為單一 Coherent Prompt。

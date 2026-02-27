@@ -196,6 +196,13 @@ class BasePanel(QWidget):
     def _setup_bridges(self):        # 子類別覆寫以綁定 Controller 事件
         pass
 
+    def _create_bridge(self, controller, event, handler):
+        # 便利 helper — 建立 QtObserverBridge 並自動管理生命週期
+        bridge = QtObserverBridge(controller, event, self)
+        bridge.connect_to(handler)
+        self._bridges.append(bridge)
+        return bridge
+
     def set_busy(self, busy: bool):  # 設定忙碌狀態
         ...
 

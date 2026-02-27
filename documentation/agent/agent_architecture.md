@@ -69,7 +69,8 @@ graph TD
 **主要屬性**:
 - `history`: 對話歷史（Sliding Window, `MAX_HISTORY = 20`）
 - `assembler`: `ContextAssembler` — 動態組裝 System Prompt + Tool Definitions + RAG Context
-- `verifier`: `VerificationLayer` — 驗證 Tool Call 的合法性
+- `verifier`: `VerificationLayer` — 驗證 Tool Call 的合法性（含 Pluggable Validator 策略）
+- `metrics`: `AgentMetricsTracker` — 結構化日誌、Token 計數、工具執行追蹤
 - `worker` / `worker_thread`: 背景推論執行緒
 - `rag_retriever`: RAG 語義檢索器
 
@@ -93,8 +94,15 @@ graph TD
 4. **Memory** — 對話歷史（Sliding Window）
 
 ### 2.3 Verification Layer (`verifier.py`)
-**職責**: 在執行 Tool Call 前的安全檢查：
-- **腳本驗證**: 檢查 Tool Call 是否符合語法與邏輯（如參數範圍）
+**職責**: 在執行 Tool Call 前的安全檢查，採用 Pluggable Validator 策略模式：
+
+**內建 Validator**:
+- `FrequencyRangeValidator`：驗證帶通濾波參數 (`low_freq < high_freq`，皆為正數)
+- `TrainingParamValidator`：驗證訓練參數 (`epoch`、`batch_size` 為正整數)
+- `PathExistsValidator`：驗證檔案路徑存在性
+
+**驗證流程**:
+- **參數驗證**: 根據 Tool 名稱匹配對應 Validator，檢查參數合法性
 - **信心度檢查**: 評估 LLM 的信心度
 - **低信心 / 無效** → 觸發自我修正（Reflection），將錯誤回饋給 Assembler 重試
 - **高信心 & 有效** → 執行工具
@@ -218,7 +226,8 @@ XBrainLab/llm/
 ├── agent/                    # 控制層
 │   ├── controller.py         # 協調者 (Main Thread, ReAct Loop)
 │   ├── assembler.py          # Prompt 組裝器 (System+Tools+RAG+History)
-│   ├── verifier.py           # 驗證層 (Safety Check)
+│   ├── verifier.py           # 驗證層 (Pluggable Validator 策略)
+│   ├── metrics.py            # 結構化日誌 / Token 追蹤 (AgentMetricsTracker)
 │   ├── worker.py             # 執行者 (Worker Thread, LLM Inference)
 │   └── parser.py             # 輸出解析 (JSON Tool Call Parser)
 │

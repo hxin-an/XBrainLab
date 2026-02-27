@@ -2,6 +2,33 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [0.5.4] - 2026-02-XX
+### Added
+- **TrainingManager 抽取**: 從 `Study` 抽取訓練生命週期至 `XBrainLab/backend/training_manager.py`，管理模型設定、計畫生成與訓練執行。`Study` 透過 Property Delegation 委派 `model_holder`、`training_option`、`trainer`、`saliency_params`。(27 單元測試)
+- **AgentMetricsTracker**: 新增 `XBrainLab/llm/agent/metrics.py`，提供結構化日誌、Token 計數、Latency 追蹤與工具執行記錄。Controller 整合 7 處 metrics 節點。(12 單元測試)
+- **VerificationLayer Validator 策略**: 實作 Pluggable `ValidatorStrategy` 模式，內建三個 Validator：
+    - `FrequencyRangeValidator` — 驗證帶通頻率 `low_freq < high_freq` 且皆為正數
+    - `TrainingParamValidator` — 驗證 epoch 與 batch_size 為正整數
+    - `PathExistsValidator` — 驗證檔案路徑存在性
+    - (28 單元測試)
+- **E2E Pipeline 測試**: `tests/integration/pipeline/test_study_training_e2e.py` — 26 個測試覆蓋 Study + TrainingManager 完整管線。
+- **MkDocs 文檔系統**: 初始化 `mkdocs.yml` (Material Theme) 與 `docs/` 目錄，包含首頁、安裝、快速開始與架構概覽。
+
+### Refactored
+- **BasePanel Bridge 統一**: 新增 `_create_bridge()` helper 至 `BasePanel`，將 `QtObserverBridge` 建立與管理集中化。5 個面板（Dataset, Preprocess, Training, Evaluation, Visualization）全數遷移至新模式。(+2 單元測試)
+
+### Fixed
+- **mypy 型別修正**: `_create_bridge` controller 參數型別 `object` → `Observable`。
+- **Ruff 29 項 lint 修正**: E501 (行過長)、RUF012 (ClassVar 標註)、PLC0415 (top-level import)、SIM102/SIM117 (合併巢狀)、F401 (未使用匯入)、I001 (匯入排序) 等。
+
+### Quality Metrics
+| 指標 | 狀態 |
+| --- | --- |
+| Ruff | ✅ 0 錯誤 |
+| Mypy | ✅ 0 錯誤 |
+| Unit Tests | ✅ 3879 通過, 17 skipped, 1 xfailed |
+| Coverage | ~92% |
+
 ## [0.5.3] - 2026-02-25
 ### Fixed
 - **Comprehensive Code Review — Tier 0-2 修復（25 項）**:

@@ -39,6 +39,7 @@ graph TD
     subgraph ServiceLayer ["Service Layer"]
         LIS["LabelImportService"]
         DM["DataManager<br/>(Data Lifecycle)"]
+        TM["TrainingManager<br/>(Training Lifecycle)"]
     end
 
     subgraph DataLayer ["Data Layer"]
@@ -64,11 +65,12 @@ graph TD
     DC --> DM
     DC --> LIS
     PC --> DM
-    TC --> Study
+    TC --> TM
     EC --> Study
     VC --> Study
 
     DM --> Study
+    TM --> Study
     Study --> Dataset & Raw & ModelH & Trainer
 
     DC -.->|"inherits"| Observable
@@ -85,6 +87,7 @@ XBrainLab/backend/
 ├── study.py                    # 中央狀態容器 (Single Source of Truth)
 ├── facade.py                   # 統一 API (供 Agent / Headless 使用)
 ├── data_manager.py             # 資料生命週期管理
+├── training_manager.py         # 訓練生命週期管理 (model/option/plan/execution)
 ├── exceptions.py               # 自定義 Exception 類別
 ├── __init__.py
 │
@@ -176,16 +179,17 @@ XBrainLab/backend/
 
 **主要屬性**:
 - `data_manager: DataManager` — 管理資料生命週期
+- `training_manager: TrainingManager` — 管理訓練生命週期
 - `loaded_data_list: list[Raw]` — 委派至 DataManager
 - `preprocessed_data_list: list[Raw]` — 委派至 DataManager
 - `epoch_data: Epochs | None` — 委派至 DataManager
 - `datasets: list[Dataset]` — 委派至 DataManager
 - `dataset_generator: DatasetGenerator | None` — 委派至 DataManager
 - `dataset_locked: bool` — 委派至 DataManager
-- `model_holder: ModelHolder | None` — 模型 + 優化器
-- `training_option: TrainingOption | None` — 訓練超參數
-- `trainer: Trainer | None` — 訓練執行器
-- `saliency_params: dict | None` — 視覺化參數
+- `model_holder: ModelHolder | None` — 委派至 TrainingManager
+- `training_option: TrainingOption | None` — 委派至 TrainingManager
+- `trainer: Trainer | None` — 委派至 TrainingManager
+- `saliency_params: dict | None` — 委派至 TrainingManager
 
 **Controller 快取機制**:
 ```python
@@ -201,6 +205,18 @@ study.get_controller("training")   # → TrainingController
 - 載入 → 預處理 → Epoching → Dataset 生成 的完整生命週期
 - 資料備份與恢復（undo 支援）
 - 鎖定機制（下游操作存在時防止修改上游資料）
+
+### 4.2.1 TrainingManager（訓練生命週期）
+
+從 `Study` 抽取出的訓練管理模組，負責：
+- 模型設定 (`set_model_holder`, `set_training_option`)
+- 訓練計畫生成 (`generate_plan`)：根據 datasets 與 output_dir 建立 `TrainingPlanHolder`
+- 訓練執行 (`train`, `stop_training`, `is_training`)
+- 訓練結果匯出 (`export_output_csv`)
+- Saliency 參數管理 (`get_saliency_params`, `set_saliency_params`)
+- 訓練器清理 (`clean_trainer`, `has_trainer`)
+
+`Study` 透過 Property Delegation 將 `model_holder`、`training_option`、`trainer`、`saliency_params` 委派至 `TrainingManager`。
 
 ### 4.3 Controllers（業務邏輯核心）
 

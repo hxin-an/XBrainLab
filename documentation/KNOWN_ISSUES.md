@@ -29,6 +29,12 @@
     - **NEW**: `VerificationLayer` 已整合，結構驗證運作正常。
     - **NEW**: Agent Timeout 機制已加入 (60 秒超時)。
     - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 3540+ 測試通過。
+- **架構重構 (v0.5.4)**:
+    - **NEW**: `TrainingManager` 從 `Study` 抽取至 `training_manager.py`，管理模型設定、計畫生成與訓練執行生命週期。
+    - **NEW**: `AgentMetricsTracker` (`metrics.py`)：結構化日誌、Token 計數、工具執行追蹤，整合至 Controller 7 處。
+    - **NEW**: `VerificationLayer` 新增 Pluggable Validator 策略（`FrequencyRangeValidator`、`TrainingParamValidator`、`PathExistsValidator`）。
+    - **NEW**: `BasePanel._create_bridge()` 統一 Bridge 建立模式，5 個面板全數遷移。
+    - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 3879 測試通過。
 - **執行緒安全 & 資源管理 (v0.5.3)**:
     - **NEW**: `Trainer` / `TrainingPlanHolder` 中斷旗標從裸 `bool` 升級為 `threading.Event`，解決跨執行緒競爭條件。
     - **NEW**: `get_eval_pair()` 重構——延遲 GPU 模型建立至 state_dict 確認有效後，避免孤立 GPU 記憶體分配。
@@ -50,12 +56,14 @@
 - **建議**: 整合 LLM logprobs 或實作 confidence 估算機制。
 - **狀態**: <span style="color:orange">待修復</span>
 
-### 2. VerificationLayer 腳本驗證未實作
-- **位置**: [`verifier.py:84`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/verifier.py#L84)
-- **問題**: 程式碼註解標記為 "Future"，但 `ScriptValidator` 策略模式未實作。
-- **影響**: 無法驗證工具參數的邏輯正確性 (如 `high_freq < low_freq` 檢測)。
-- **建議**: 實作 Validator 策略模式。
-- **狀態**: <span style="color:orange">待實作</span>
+### 2. ~~VerificationLayer 腳本驗證未實作~~ ✅ 已解決 (v0.5.4)
+- **位置**: [`verifier.py`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/verifier.py)
+- **解決方案**: 實作 Pluggable `ValidatorStrategy` 模式，包含三個內建 Validator：
+    - `FrequencyRangeValidator`：驗證帶通頻率 `low_freq < high_freq` 且皆為正數
+    - `TrainingParamValidator`：驗證 epoch 與 batch_size 為正整數
+    - `PathExistsValidator`：驗證檔案路徑存在性
+- **測試**: 28 個單元測試覆蓋所有 Validator。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
 ### 3. 程式啟動速度過慢
 - **問題**: 啟動時需載入 PyTorch、LLM 模型、RAG 等重型依賴，導致 5-15 秒啟動延遲。
@@ -69,11 +77,11 @@
 
 ## 🚧 中優先級 (Medium Priority)
 
-### 1. `Study` 仍持有 Training 狀態 (God Object 殘留)
-- **位置**: [`study.py`](file:///c:/lab/XBrainLab/XBrainLab/backend/study.py)
-- **問題**: 雖已抽取 `DataManager`，但 `training_option`, `model_holder`, `trainer` 仍內嵌於 `Study`。
-- **建議**: 考慮抽取 `TrainingManager` 類別。
-- **狀態**: <span style="color:blue">技術債 (可選)</span>
+### 1. ~~`Study` 仍持有 Training 狀態 (God Object 殘留)~~ ✅ 已解決 (v0.5.4)
+- **位置**: [`training_manager.py`](file:///c:/lab/XBrainLab/XBrainLab/backend/training_manager.py)
+- **解決方案**: `TrainingManager` 已從 `Study` 完整抽取。`Study` 透過 `self.training_manager = TrainingManager()` 委派所有訓練相關屬性（`model_holder`、`training_option`、`trainer`、`saliency_params`）至 `TrainingManager`。
+- **測試**: 27 個單元測試 + 26 個 E2E 管線測試。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
 ### 2. `TrainingPlanHolder.train_one_epoch` 過於複雜
 - **位置**: [`training_plan.py:425-492`](file:///c:/lab/XBrainLab/XBrainLab/backend/training/training_plan.py#L425)
@@ -120,7 +128,7 @@
 | --- | --- | --- |
 | **Linting (Ruff)** | ✅ 0 錯誤 | 全部通過 |
 | **Type Check (Mypy)** | ✅ 0 錯誤 | 全部通過 |
-| **Unit Tests** | ✅ 3540+ 通過 | 0 失敗, 22 skipped |
+| **Unit Tests** | ✅ 3879 通過 | 0 失敗, 17 skipped |
 | **Pre-commit** | ✅ 全部通過 | 包含 secrets 掃描 |
 | **架構遷移** | ✅ 完成 | Assembler + Verifier 已整合 |
 | **CI/CD** | ✅ 運作中 | Linux + Windows + macOS |

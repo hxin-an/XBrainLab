@@ -67,8 +67,8 @@
     - [x] **PreprocessPanel**: 監聽預處理完成事件
     - [x] **VisualizationPanel**: 監聽 Montage/Data 變更事件
     - [x] **EvaluationPanel**: 監聽評估結果事件
-- [ ] **基礎建設完善**
-    - [ ] 實作 `BasePanel` 統一集成 Bridge 邏輯
+- [x] **基礎建設完善**
+    - [x] 實作 `BasePanel` 統一集成 Bridge 邏輯 (`_create_bridge()` helper)
     - [ ] 更新 `Observable` 支援更豐富的 Payload
 - [ ] **完全解耦 (Complete Decoupling)**
     - [x] **服務層遷移**: `LabelImportService` 已移至 Backend (v0.5.0)
@@ -80,14 +80,14 @@
 
 - [x] **UI/Integration Testing**
     - [x] 引入 `pytest-qt`
-    - [ ] 建立 E2E 測試 (Import -> Train -> Result)
+    - [x] 建立 E2E 測試 (Import -> Train -> Result) — `test_study_training_e2e.py` 26 個測試
 - [ ] **Backend Independence Verification**
     - [ ] 驗證 Backend 可在無 Qt 環境執行 (Headless Test)
     - [ ] 建立 CLI 工具原型以驗證解耦成果
 
 ### 第五階段：部署與維護 (Deployment & Maintenance) - **[Planned]**
 - [ ] **容器化**: 建立支援 GPU 的 `Dockerfile`
-- [ ] **文檔體系**: 建立 API 文檔自動生成 (Sphinx/MkDocs)
+- [x] **文檔體系**: 建立 API 文檔自動生成 (MkDocs Material) — 初始化完成
 - [ ] **系統清理**: 移除 Dead Code 與冗餘文件
 
 ---
@@ -137,11 +137,11 @@
     - [x] 實作 Tool 失敗重試機制 (`_max_tool_failures = 3`)
     - [ ] 實作對話 Timeout 機制（Benchmark 有 300s，正常對話需要）
     - [ ] 實作 Graceful Degradation（LLM 無回應時降級策略）
-- [ ] **Observability & Logging (P1 - High)**
-    - [ ] 實作 Structured Logging（追蹤完整 ReAct Loop 鏈路）
-    - [ ] 實作 Token 計數與 Latency 追蹤
-    - [ ] 實作 Conversation ID 關聯多輪對話
-    - [ ] 記錄 Tool 執行時間與成功率
+- [x] **Observability & Logging (P1 - High)**
+    - [x] 實作 Structured Logging（追蹤完整 ReAct Loop 鏈路）— `AgentMetricsTracker`
+    - [x] 實作 Token 計數與 Latency 追蹤 — `TurnMetrics`
+    - [x] 實作 Conversation ID 關聯多輪對話 — `metrics.conversation_id`
+    - [x] 記錄 Tool 執行時間與成功率 — `ToolExecution` dataclass
 - [ ] **Configuration Management (P2 - Medium)**
     - [ ] **配置持久化 (Config Persistence)**
         - [ ] 實作 `ConfigManager` 類別（讀取/儲存 settings.json）

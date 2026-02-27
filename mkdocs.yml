@@ -1,0 +1,74 @@
+site_name: XBrainLab
+site_description: "EEG Analysis Platform with AI Agent"
+site_url: https://xbrainlab.readthedocs.io/
+
+repo_name: XBrainLab
+repo_url: https://github.com/your-org/XBrainLab
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Backend: architecture/backend.md
+      - UI: architecture/ui.md
+      - Agent: architecture/agent.md
+  - API Reference:
+      - Backend:
+          - Study: api/backend/study.md
+          - DataManager: api/backend/data_manager.md
+          - TrainingManager: api/backend/training_manager.md
+      - Agent:
+          - Controller: api/agent/controller.md
+          - Metrics: api/agent/metrics.md
+          - Verifier: api/agent/verifier.md
+      - UI:
+          - BasePanel: api/ui/base_panel.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            docstring_style: google
+            members_order: source
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - toc:
+      permalink: true
