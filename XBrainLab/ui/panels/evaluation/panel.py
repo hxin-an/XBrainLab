@@ -182,7 +182,11 @@ class EvaluationPanel(BasePanel):
             # But simpler to keep widget interface same and pass a proxy here.
 
             # Use the first finished record in the plan as a template/host
-            template_record = next(r for r in plan.get_plans() if r.is_finished())
+            template_record = next(
+                (r for r in plan.get_plans() if r.is_finished()), None
+            )
+            if template_record is None:
+                return
 
             proxy_record = PooledRecordWrapper(
                 template_record,

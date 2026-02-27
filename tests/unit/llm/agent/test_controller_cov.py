@@ -141,6 +141,7 @@ class TestOnGenerationFinished:
         ctrl.current_response = '```json\n{"broken'
         ctrl._emitted_len = 0
         ctrl._retry_count = 0
+        ctrl.is_processing = True
         ctrl._generate_response = MagicMock()
         with patch("XBrainLab.llm.agent.controller.CommandParser") as MockParser:
             MockParser.parse.return_value = None

@@ -77,17 +77,12 @@ def main() -> None:
     logger.info("Starting XBrainLab (PyQt6)...")
 
     if args.tool_debug:
-        logger.info(f"Tool Debug Mode enabled. Script: {args.tool_debug}")
+        logger.info("Tool Debug Mode enabled. Script: %s", args.tool_debug)
         app.setProperty("tool_debug_script", args.tool_debug)
 
-    # Apply --model override before any LLM initialization
+    # Apply --model override for this session only (not persisted)
     if args.model:
-        from XBrainLab.llm.core.config import LLMConfig
-
-        config = LLMConfig.load_from_file() or LLMConfig()
-        config.active_mode = args.model
-        config.inference_mode = args.model
-        config.save_to_file()
+        app.setProperty("model_override", args.model)
         logger.info("CLI override: inference mode set to '%s'", args.model)
 
     app.setStyle("Fusion")

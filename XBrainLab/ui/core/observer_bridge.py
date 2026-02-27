@@ -34,6 +34,7 @@ class QtObserverBridge(QObject):
         super().__init__(parent)
         self.observable = observable
         self.event_name = event_name
+        self._wrapper = None
 
         # Subscribe to the backend event
         self.observable.subscribe(self.event_name, self._on_event)
@@ -63,6 +64,10 @@ class QtObserverBridge(QObject):
             slot: A callable to invoke when the event fires.
 
         """
+        # Disconnect previous wrapper to avoid leak on repeated connect_to calls
+        if self._wrapper is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                self.triggered.disconnect(self._wrapper)
         self._wrapper = lambda args, kwargs: slot(*args, **kwargs)
         self.triggered.connect(self._wrapper)
 

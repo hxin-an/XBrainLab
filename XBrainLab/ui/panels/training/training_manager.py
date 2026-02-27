@@ -37,9 +37,9 @@ class TrainingManagerWindow(BaseDialog):
         self.trainer = trainer
         self.training_plan_holders = trainer.get_training_plan_holders()
 
-        self.check_data()
-
         super().__init__(parent, title="Training Manager", height=400)
+
+        self.check_data()
 
         # Start update loop
         self.timer = QTimer(self)

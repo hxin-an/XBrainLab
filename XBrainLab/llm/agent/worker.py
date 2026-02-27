@@ -6,6 +6,7 @@ switching.
 """
 
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
+from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
@@ -145,6 +146,14 @@ class AgentWorker(QObject):
         try:
             fresh_config = LLMConfig.load_from_file()
             if fresh_config:
+                # Apply CLI --model override (transient, not persisted)
+                app = QApplication.instance()
+                if app:
+                    override = app.property("model_override")
+                    if override:
+                        fresh_config.active_mode = override
+                        fresh_config.inference_mode = override
+
                 old_mode = self.engine.config.inference_mode
                 self.engine.config = fresh_config
 

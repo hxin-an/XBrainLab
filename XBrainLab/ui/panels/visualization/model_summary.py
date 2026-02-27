@@ -37,9 +37,10 @@ class ModelSummaryWindow(BaseDialog):
         self.trainers = trainers
         self.trainer_map = {t.get_name(): t for t in trainers}
 
-        self.check_data()
         # super().__init__ calls init_ui via BaseDialog
         super().__init__(parent, title="Model Summary")
+
+        self.check_data()
 
     def check_data(self):
         """Validate that at least one trainer is available."""

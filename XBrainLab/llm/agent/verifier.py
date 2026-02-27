@@ -241,18 +241,20 @@ class VerificationLayer:
         Returns:
             A ``VerificationResult`` indicating whether the call is valid.
 
-        Raises:
-            ValueError: If ``tool_call`` is not a two-element tuple of
-                ``(str, dict)``.
-
         """
         # 1. Structure Check
         if not isinstance(tool_call, tuple) or len(tool_call) != 2:
-            raise ValueError("Tool call must be a tuple of (name, params)")
+            return VerificationResult(
+                is_valid=False,
+                error_message="Tool call must be a tuple of (name, params)",
+            )
 
         name, params = tool_call
         if not isinstance(name, str) or not isinstance(params, dict):
-            raise ValueError("Tool call elements must be (str, dict)")
+            return VerificationResult(
+                is_valid=False,
+                error_message="Tool call elements must be (str, dict)",
+            )
 
         # 2. Confidence Gating
         if confidence is not None and confidence < self.confidence_threshold:

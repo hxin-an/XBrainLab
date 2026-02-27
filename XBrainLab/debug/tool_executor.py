@@ -117,6 +117,6 @@ class ToolExecutor:
         except Exception as e:
             msg = f"Error executing {tool_name}: {e}"
             logger.error(msg)
-            return f"Error: {msg}"
+            return msg
         else:
             return result

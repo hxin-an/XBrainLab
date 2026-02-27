@@ -38,6 +38,11 @@ class RAGIndexer:
 
     def __init__(self):
         """Initializes the RAGIndexer with embedding model and Qdrant client."""
+        if HuggingFaceEmbeddings is None or QdrantClient is None:
+            raise ImportError(
+                "RAG dependencies not installed. "
+                "Install with: pip install langchain-community qdrant-client"
+            )
         self.embeddings = HuggingFaceEmbeddings(model_name=RAGConfig.EMBEDDING_MODEL)
         self.storage_path = RAGConfig.get_storage_path()
 

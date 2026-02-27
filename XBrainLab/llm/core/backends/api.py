@@ -102,6 +102,8 @@ class APIBackend(BaseBackend):
         )
 
         for chunk in stream:
+            if not chunk.choices:
+                continue
             content = chunk.choices[0].delta.content
             if content:
                 yield content

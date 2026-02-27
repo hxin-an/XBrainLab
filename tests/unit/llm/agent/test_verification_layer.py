@@ -1,5 +1,3 @@
-import pytest
-
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
     PathExistsValidator,
@@ -46,11 +44,9 @@ def test_script_validation_logic():
     verifier = VerificationLayer()
 
     # Malformed tool call (not a tuple of (name, dict))
-    # This might be caught by type hinting but let's see if verifier checks it.
-    with pytest.raises(ValueError):  # Or return invalid
-        verifier.verify_tool_call(
-            ("not a tuple",), 0.9
-        )  # Fix tool call arg to be tuple but wrong length or structure
+    # Should return invalid VerificationResult (not raise)
+    result = verifier.verify_tool_call(("not a tuple",), 0.9)
+    assert not result.is_valid
 
     # Valid structure
     res = verifier.verify_tool_call(("tool", {}), 0.9)

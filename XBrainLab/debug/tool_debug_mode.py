@@ -94,6 +94,14 @@ class ToolDebugMode:
         call_data = self.calls[self.index]
         self.index += 1
 
+        if not isinstance(call_data, dict) or "tool" not in call_data:
+            logger.error(
+                "Invalid call entry at index %d: %s",
+                self.index - 1,
+                call_data,
+            )
+            return None
+
         return DebugToolCall(tool=call_data["tool"], params=call_data.get("params", {}))
 
     @property

@@ -279,7 +279,7 @@ class MainWindow(QMainWindow):
         # M3.1 FIX: Handle Switch Panel in Debug Mode
         # In normal agent flow, LLMController parses the "Request:" string.
         # In Debug Mode, we must handle it explicitly here.
-        if tool_name == "switch_panel" and "Request: Switch UI" in result:
+        if tool_name == "switch_panel" and result and "Request: Switch UI" in result:
             # Map 'panel_name' (Tool param) to 'panel' (AgentManager param)
             panel = params.get("panel_name")
             view = params.get("view_mode")

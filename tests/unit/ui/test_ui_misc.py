@@ -626,46 +626,41 @@ class TestAgentManagerDeep:
         mgr.agent_controller.close.assert_called_once()
 
     def test_handle_user_interaction_switch_panel(self, mgr):
-        mgr.main_window.stack = MagicMock()
-        mgr.main_window.nav_btns = [MagicMock() for _ in range(5)]
+        mgr.main_window.switch_page = MagicMock()
         mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
         mgr.handle_user_interaction("switch_panel", {"panel": "dataset"})
-        mgr.main_window.stack.setCurrentIndex.assert_called_with(0)
+        mgr.main_window.switch_page.assert_called_with(0)
 
     def test_switch_panel_preprocess(self, mgr):
-        mgr.main_window.stack = MagicMock()
-        mgr.main_window.nav_btns = [MagicMock() for _ in range(5)]
+        mgr.main_window.switch_page = MagicMock()
         mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
         mgr.switch_panel({"panel": "preprocess"})
-        mgr.main_window.stack.setCurrentIndex.assert_called_with(1)
+        mgr.main_window.switch_page.assert_called_with(1)
 
     def test_switch_panel_training(self, mgr):
-        mgr.main_window.stack = MagicMock()
-        mgr.main_window.nav_btns = [MagicMock() for _ in range(5)]
+        mgr.main_window.switch_page = MagicMock()
         mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
         mgr.switch_panel({"panel": "training"})
-        mgr.main_window.stack.setCurrentIndex.assert_called_with(2)
+        mgr.main_window.switch_page.assert_called_with(2)
 
     def test_switch_panel_eval(self, mgr):
-        mgr.main_window.stack = MagicMock()
-        mgr.main_window.nav_btns = [MagicMock() for _ in range(5)]
+        mgr.main_window.switch_page = MagicMock()
         mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
         mgr.switch_panel({"panel": "evaluation"})
-        mgr.main_window.stack.setCurrentIndex.assert_called_with(3)
+        mgr.main_window.switch_page.assert_called_with(3)
 
     def test_switch_panel_visual_with_view(self, mgr):
-        mgr.main_window.stack = MagicMock()
+        mgr.main_window.switch_page = MagicMock()
         target = MagicMock()
+        mgr.main_window.stack = MagicMock()
         mgr.main_window.stack.widget.return_value = target
-        mgr.main_window.nav_btns = [MagicMock() for _ in range(5)]
         mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
         mgr.switch_panel({"panel": "visualization", "view_mode": "saliency_map"})
-        mgr.main_window.stack.setCurrentIndex.assert_called_with(4)
+        mgr.main_window.switch_page.assert_called_with(4)
         target.tabs.setCurrentIndex.assert_called_with(0)
 
     def test_switch_panel_unknown(self, mgr):
-        mgr.main_window.stack = MagicMock()
-        mgr.main_window.nav_btns = [MagicMock() for _ in range(5)]
+        mgr.main_window.switch_page = MagicMock()
         mgr.main_window.statusBar = MagicMock(return_value=MagicMock())
         mgr.switch_panel({"panel": "unknown_panel"})
         # Should not crash; statusBar shows error

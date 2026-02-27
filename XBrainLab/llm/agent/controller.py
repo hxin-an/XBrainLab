@@ -330,6 +330,10 @@ class LLMController(QObject):
         Parses the accumulated response for tool commands, retries on
         broken JSON, or finalizes the turn if no commands are found.
         """
+        if not self.is_processing:
+            # Generation completed after stop_generation was called; discard.
+            return
+
         response_text = self.current_response.strip()
 
         # Flush buffer if we detained text thinking it was a tool, but it's not
@@ -595,7 +599,11 @@ class LLMController(QObject):
                     self._generate_response()
             else:
                 self._tool_failure_count = 0
-                self._finalize_turn_after_tool()
+                # Resume remaining commands if any
+                if _remaining:
+                    self._process_tool_calls(_remaining, "")
+                else:
+                    self._finalize_turn_after_tool()
         else:
             logger.info("User rejected dangerous action: %s", cmd)
             self._append_history(
@@ -760,6 +768,8 @@ class LLMController(QObject):
             ``False`` otherwise.
 
         """
+        if not isinstance(result, str):
+            result = str(result) if result is not None else ""
         if result.startswith("Request:"):
             # Format: "Request: CMD params... (View: view_mode)"
             # Example: "Request: Switch UI to 'visualization' (View: 3d_plot)"

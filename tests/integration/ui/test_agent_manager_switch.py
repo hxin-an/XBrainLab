@@ -28,6 +28,12 @@ class MockMainWindow(QWidget):
                 panel.tabs.addTab(QWidget(), "3D Plot")
             self.stack.addWidget(panel)
 
+    def switch_page(self, index):
+        """Mimic MainWindow.switch_page for testing."""
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.nav_btns):
+            btn.setChecked(i == index)
+
     def statusBar(self):
         return MagicMock()
 

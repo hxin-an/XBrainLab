@@ -464,7 +464,7 @@ class AgentManager(QObject):
 
         """
         self.chat_controller.set_processing(False)
-        self.chat_controller.add_agent_message(f"?? **Error**: {error_msg}")
+        self.chat_controller.add_agent_message(f"**Error**: {error_msg}")
         logger.error("Agent Error: %s", error_msg)
 
     def close(self):
@@ -512,9 +512,7 @@ class AgentManager(QObject):
             target_index = PANEL_VISUALIZATION
 
         if target_index >= 0:
-            self.main_window.stack.setCurrentIndex(target_index)
-            if target_index < len(self.main_window.nav_btns):
-                self.main_window.nav_btns[target_index].setChecked(True)
+            self.main_window.switch_page(target_index)
 
             # Handle sub-view switching
             if view_mode:

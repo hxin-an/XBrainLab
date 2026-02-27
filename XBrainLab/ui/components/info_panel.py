@@ -229,8 +229,8 @@ class AggregateInfoPanel(QGroupBox):
         self.set_val("Sample rate", str(first_data.get_sfreq()))
         self.set_val("tmin (sec)", tmin)
         self.set_val("duration (sec)", duration)
-        self.set_val("Highpass", f"{highpass:.2f}")
-        self.set_val("Lowpass", f"{lowpass:.2f}")
+        self.set_val("Highpass", f"{highpass:.2f}" if highpass is not None else "N/A")
+        self.set_val("Lowpass", f"{lowpass:.2f}" if lowpass is not None else "N/A")
         self.set_val("Classes", str(len(classes_set)))
 
     def set_val(self, key, value):
