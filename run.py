@@ -16,11 +16,25 @@ import sys
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QPainter
+from PyQt6.QtWidgets import QApplication, QSplashScreen
 
-from XBrainLab.backend.study import Study
-from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.main_window import MainWindow
+
+class _Splash(QSplashScreen):
+    """Minimal branded splash screen shown during startup."""
+
+    def drawContents(self, painter: QPainter) -> None:  # noqa: N802
+        painter.setPen(QColor("#cccccc"))
+        painter.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "XBrainLab")
+        painter.setPen(QColor("#888888"))
+        painter.setFont(QFont("Segoe UI", 11))
+        painter.drawText(
+            self.rect().adjusted(0, 50, 0, 0),
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            "Loading…",
+        )
 
 
 def main() -> None:
@@ -36,8 +50,24 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    logger.info("Starting XBrainLab (PyQt6)...")
     app = QApplication(sys.argv)
+
+    # --- Splash Screen (shown while heavy imports load) ---
+    from PyQt6.QtCore import QSize
+    from PyQt6.QtGui import QPixmap
+
+    pixmap = QPixmap(QSize(420, 200))
+    pixmap.fill(QColor("#1e1e1e"))
+    splash = _Splash(pixmap)
+    splash.show()
+    app.processEvents()
+
+    # --- Heavy imports deferred until after splash is visible ---
+    from XBrainLab.backend.study import Study
+    from XBrainLab.backend.utils.logger import logger
+    from XBrainLab.ui.main_window import MainWindow
+
+    logger.info("Starting XBrainLab (PyQt6)...")
 
     if args.tool_debug:
         logger.info(f"Tool Debug Mode enabled. Script: {args.tool_debug}")
@@ -49,6 +79,7 @@ def main() -> None:
 
     window = MainWindow(study)
     window.show()
+    splash.finish(window)
 
     sys.exit(app.exec())
 

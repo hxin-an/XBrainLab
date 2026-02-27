@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime
 import threading
-import time
 from enum import Enum
 
 import numpy as np
@@ -466,6 +465,10 @@ class TrainingPlanHolder:
     ) -> None:
         """Train one epoch of the training plan.
 
+        Delegates to :class:`~.epoch_runner.EpochRunner` which
+        encapsulates the batch-loop → metrics → eval → checkpoint
+        sequence.
+
         Args:
             model (torch.nn.Module): The model to train.
             train_loader (torch_data.DataLoader): Data loader for training set.
@@ -476,118 +479,20 @@ class TrainingPlanHolder:
             train_record (TrainRecord): Record to store training statistics.
 
         """
-        start_time = time.time()
-        model.train()
+        from .epoch_runner import EpochRunner
 
-        # 1. Train Batch Loop
-        running_loss, correct, total_count, y_true, y_pred = self._train_batch_loop(
+        runner = EpochRunner(
+            interrupt=self._interrupt,
+            checkpoint_epoch=self.option.checkpoint_epoch,
+        )
+        runner.run(
             model,
             train_loader,
+            val_loader,
+            test_loader,
             optimizer,
             criterion,
-        )
-        if self._interrupt.is_set():
-            return
-
-        # 2. Compute Metrics (AUC) using Evaluator
-        train_auc = Evaluator.compute_auc(y_true, y_pred)
-
-        # 3. Update Records
-        running_loss /= len(train_loader)
-        train_acc = correct / total_count * 100
-
-        self._update_train_records(
             train_record,
-            running_loss,
-            train_acc,
-            train_auc,
-            optimizer.param_groups[0]["lr"],
-            time.time() - start_time,
-        )
-
-        # 4. Validation & Test
-        if val_loader:
-            test_result = Evaluator.test_model(model, val_loader, criterion)
-            train_record.update_eval(test_result)
-
-        if test_loader:
-            test_result = Evaluator.test_model(model, test_loader, criterion)
-            train_record.update_test(test_result)
-
-        train_record.step()
-
-        if (
-            self.option.checkpoint_epoch
-            and train_record.get_epoch() % self.option.checkpoint_epoch == 0
-        ):
-            train_record.export_checkpoint()
-
-        # CLEAR VRAM to prevent linear memory growth
-        torch.cuda.empty_cache()
-
-    def _train_batch_loop(self, model, train_loader, optimizer, criterion):
-        """Execute the inner training loop for one epoch.
-
-        Args:
-            model: The model to train.
-            train_loader: DataLoader for training data.
-            optimizer: Optimizer instance.
-            criterion: Loss function.
-
-        Returns:
-            tuple: (running_loss, correct_count, total_count, y_true, y_pred)
-
-        """
-        running_loss = 0.0
-        correct = 0.0
-        total_count = 0
-        y_true_parts: list[torch.Tensor] = []
-        y_pred_parts: list[torch.Tensor] = []
-
-        for inputs, labels in train_loader:
-            if self.interrupt:
-                break
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            correct += (outputs.argmax(axis=1) == labels).float().sum().item()
-            y_true_parts.append(labels.detach().cpu())
-            y_pred_parts.append(outputs.detach().cpu())
-            total_count += len(labels)
-            running_loss += loss.item()
-
-        y_true = torch.cat(y_true_parts) if y_true_parts else None
-        y_pred = torch.cat(y_pred_parts) if y_pred_parts else None
-
-        return running_loss, correct, total_count, y_true, y_pred
-
-    def _update_train_records(self, train_record, loss, acc, auc, lr, duration):
-        """Update training record with loss, accuracy, AUC, learning rate, and time.
-
-        Args:
-            train_record: The :class:`TrainRecord` to update.
-            loss: Training loss for the current epoch.
-            acc: Training accuracy for the current epoch.
-            auc: Training AUC for the current epoch.
-            lr: Current learning rate.
-            duration: Time elapsed for the current epoch in seconds.
-
-        """
-        train_record.update_train(
-            {
-                RecordKey.LOSS: loss,
-                RecordKey.ACC: acc,
-                RecordKey.AUC: auc,
-            },
-        )
-        train_record.update_statistic(
-            {
-                TrainRecordKey.LR: lr,
-                TrainRecordKey.TIME: duration,
-            },
         )
 
     @property

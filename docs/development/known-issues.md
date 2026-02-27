@@ -2,7 +2,7 @@
 
 本文件記錄目前專案中已確認存在的 Bug、限制與待解決的問題。
 
-**最後更新**: 2026-02-25 (v0.5.4)
+**最後更新**: 2026-02-25 (v0.5.5)
 
 ---
 
@@ -35,6 +35,13 @@
     - **NEW**: `VerificationLayer` 新增 Pluggable Validator 策略（`FrequencyRangeValidator`、`TrainingParamValidator`、`PathExistsValidator`）。
     - **NEW**: `BasePanel._create_bridge()` 統一 Bridge 建立模式，5 個面板全數遷移。
     - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 3879 測試通過。
+- **v0.5.5 — 啟動速度 / 架構 / 信心度 / E2E 測試**:
+    - **NEW**: Splash Screen + Lazy Import — `run.py` 新增 `_Splash`，重型匯入延遲至啟動畫面顯示後。
+    - **NEW**: `EpochRunner` — 從 `train_one_epoch` 抽取為獨立類別，單元可測。
+    - **NEW**: RAG `embed_query()` 移至 `ThreadPoolExecutor`，不再阻塞 Qt 主執行緒。
+    - **NEW**: `estimate_confidence()` 啟發式信心度評估器 — 結構化評分 (JSON fence / 已知工具 / 無猶豫語句等)，整合至 `LLMController`。
+    - **NEW**: pytest-qt E2E 測試 — `test_e2e_qtbot.py` 涵蓋導覽、面板、AI toggle、Widget 結構。
+    - **NEW**: Ruff 0 錯誤, Mypy 0 錯誤, 3913 測試通過。
 - **執行緒安全 & 資源管理 (v0.5.3)**:
     - **NEW**: `Trainer` / `TrainingPlanHolder` 中斷旗標從裸 `bool` 升級為 `threading.Event`，解決跨執行緒競爭條件。
     - **NEW**: `get_eval_pair()` 重構——延遲 GPU 模型建立至 state_dict 確認有效後，避免孤立 GPU 記憶體分配。
@@ -49,12 +56,11 @@
 
 ## ⚠️ 高優先級 (High Priority)
 
-### 1. VerificationLayer 信心度檢查未啟用
-- **位置**: `XBrainLab/llm/agent/controller.py:374`
-- **問題**: `confidence=None` 永遠被傳入 `verify_tool_call()`，導致信心度閾值檢查永遠被跳過。
-- **影響**: Agent 無法根據 LLM 信心度拒絕低信心度的工具呼叫。
-- **建議**: 整合 LLM logprobs 或實作 confidence 估算機制。
-- **狀態**: <span style="color:orange">待修復</span>
+### 1. ~~VerificationLayer 信心度檢查未啟用~~ ✅ 已解決 (v0.5.5)
+- **位置**: `XBrainLab/llm/agent/controller.py` + `XBrainLab/llm/agent/confidence.py`
+- **解決方案**: 新增 `estimate_confidence()` 啟發式評分器 (JSON fence +0.25, 單一指令 +0.15, 已知工具 +0.20, 非空參數 +0.15, 純 JSON +0.15, 無猶豫語句 +0.10)，分數傳入 `VerificationLayer.verify_tool_call(confidence=score)`。
+- **測試**: 9 個單元測試 (`test_confidence.py`) 覆蓋所有啟發式。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
 ### 2. ~~VerificationLayer 腳本驗證未實作~~ ✅ 已解決 (v0.5.4)
 - **位置**: `XBrainLab/llm/agent/verifier.py`
@@ -65,13 +71,10 @@
 - **測試**: 28 個單元測試覆蓋所有 Validator。
 - **狀態**: <span style="color:green">✅ 已修復</span>
 
-### 3. 程式啟動速度過慢
-- **問題**: 啟動時需載入 PyTorch、LLM 模型、RAG 等重型依賴，導致 5-15 秒啟動延遲。
-- **影響**: 使用者體驗不佳，看不到任何回饋。
-- **建議**:
-    1. 新增 Splash Screen (低成本高效益)
-    2. 延遲載入 (Lazy Import) 重型模組
-- **狀態**: <span style="color:orange">待優化</span>
+### 3. ~~程式啟動速度過慢~~ ✅ 已解決 (v0.5.5)
+- **位置**: `run.py`
+- **解決方案**: 新增 `_Splash(QSplashScreen)` 類別，在重型匯入 (PyTorch, Study, MainWindow) 之前顯示啟動畫面；匯入完成後 `splash.finish(window)` 自動關閉。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
 ---
 
@@ -83,22 +86,21 @@
 - **測試**: 27 個單元測試 + 26 個 E2E 管線測試。
 - **狀態**: <span style="color:green">✅ 已修復</span>
 
-### 2. `TrainingPlanHolder.train_one_epoch` 過於複雜
-- **位置**: `XBrainLab/backend/training/training_plan.py:425-492`
-- **問題**: 65 行大方法，包含訓練迴圈、評估、記錄更新等多重職責。
-- **建議**: 抽取 `EpochRunner` 類別 (已標記為 Optional，未實作)。
-- **狀態**: <span style="color:blue">技術債 (可選)</span>
+### 2. ~~`TrainingPlanHolder.train_one_epoch` 過於複雜~~ ✅ 已解決 (v0.5.5)
+- **位置**: `XBrainLab/backend/training/epoch_runner.py`
+- **解決方案**: 抽取 `EpochRunner` 類別，封裝 batch-loop → metrics → record → eval → checkpoint 序列。`train_one_epoch()` 委派至 `EpochRunner.run()`。
+- **測試**: 5 個單元測試 (`test_epoch_runner.py`) 覆蓋完整迴圈、中斷、驗證、檢查點。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
-### 3. RAG Embedding 同步執行
-- **位置**: `XBrainLab/llm/rag/retriever.py:156`
-- **問題**: `embed_query()` 在主執行緒執行，可能阻塞 UI。
-- **影響**: 首次 RAG 查詢可能造成短暫卡頓。
-- **建議**: 移至背景執行緒執行。
-- **狀態**: <span style="color:blue">技術債 (低優先)</span>
+### 3. ~~RAG Embedding 同步執行~~ ✅ 已解決 (v0.5.5)
+- **位置**: `XBrainLab/llm/rag/retriever.py`
+- **解決方案**: 新增 `ThreadPoolExecutor(max_workers=1)` 至 `RAGRetriever`，`embed_query()` 透過 `executor.submit()` 在背景執行緒執行，`future.result(timeout=30)` 取回結果。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
-### 4. 測試覆蓋缺口
-- **UI 互動**: 缺乏真實 Widget 點擊與互動的 E2E 測試 (`pytest-qt`)。
+### 4. ~~測試覆蓋缺口~~ ✅ 已解決 (v0.5.5)
+- **UI 互動**: 新增 `test_e2e_qtbot.py`——透過 `qtbot` 驅動真實 Widget 點擊 (導覽切換、AI Dock toggle、面板結構驗證)。
 - ~~**環境相依**: 缺乏 CI/CD 流水線驗證 Windows/Linux 差異。~~ ✔️ 已解決：CI 跨平台矩陣已建立。
+- **狀態**: <span style="color:green">✅ 已修復</span>
 
 ---
 
@@ -128,7 +130,7 @@
 | --- | --- | --- |
 | **Linting (Ruff)** | ✅ 0 錯誤 | 全部通過 |
 | **Type Check (Mypy)** | ✅ 0 錯誤 | 全部通過 |
-| **Unit Tests** | ✅ 3879 通過 | 0 失敗, 17 skipped, 1 xfailed |
+| **Unit Tests** | ✅ 3913 通過 | 0 失敗, 17 skipped, 1 xfailed |
 | **Pre-commit** | ✅ 全部通過 | 包含 secrets 掃描 |
 | **架構遷移** | ✅ 完成 | Assembler + Verifier 已整合 |
 | **CI/CD** | ✅ 運作中 | Linux + Windows + macOS |

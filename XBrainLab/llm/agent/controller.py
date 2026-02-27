@@ -20,6 +20,7 @@ from XBrainLab.llm.tools import AVAILABLE_TOOLS, get_tool_by_name
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 from .assembler import ContextAssembler
+from .confidence import estimate_confidence
 from .conversation import ConversationHistory
 from .metrics import AgentMetricsTracker
 from .parser import CommandParser
@@ -385,6 +386,10 @@ class LLMController(QObject):
         # Track if any tool failed during this batch
         has_failure = False
 
+        # Heuristic confidence for the whole batch
+        confidence = estimate_confidence(response_text, commands)
+        logger.debug("Heuristic confidence: %.2f", confidence)
+
         for cmd, params in commands:
             # --- Loop Detection ---
 
@@ -403,7 +408,10 @@ class LLMController(QObject):
                 return
 
             # --- Verification Layer ---
-            validation = self.verifier.verify_tool_call((cmd, params), confidence=None)
+            validation = self.verifier.verify_tool_call(
+                (cmd, params),
+                confidence=confidence,
+            )
 
             if not validation.is_valid:
                 logger.warning(

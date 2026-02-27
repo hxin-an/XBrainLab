@@ -2,9 +2,12 @@
 
 Provides lazy initialization, auto-indexing from bundled gold-set data,
 and semantic similarity search against a Qdrant vector store.
+Embedding queries are executed in a background thread to avoid blocking
+the Qt event loop.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -38,6 +41,7 @@ class RAGRetriever:
         self.vectorstore: Qdrant | None = None
         self.embeddings: HuggingFaceEmbeddings | None = None
         self.is_initialized = False
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag")
 
     def initialize(self):
         """Lazily initializes RAG components.
@@ -135,11 +139,13 @@ class RAGRetriever:
         """Closes the Qdrant client connection and releases resources."""
         if self.client:
             self.client.close()
+        self._executor.shutdown(wait=False)
 
     def get_similar_examples(self, query: str, k: int = 3) -> str:
         """Retrieves similar gold-set examples formatted as a prompt string.
 
-        Embeds the query, searches the Qdrant collection, and formats
+        Embeds the query in a background thread to avoid blocking the Qt
+        main thread, then searches the Qdrant collection and formats
         matching examples as numbered conversation snippets.
 
         Args:
@@ -156,8 +162,9 @@ class RAGRetriever:
             return ""
 
         try:
-            # 1. Embed the query
-            query_vector = self.embeddings.embed_query(query)
+            # Offload embedding to a worker thread (non-blocking for Qt)
+            future = self._executor.submit(self.embeddings.embed_query, query)
+            query_vector = future.result(timeout=30)
 
             # 2. Search using native client (bypassing LangChain issue)
             # Use query_points which supports local mode

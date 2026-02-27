@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "xbrainlab"
-version = "0.5.3"
+version = "0.5.5"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
-readme = "documentation/README.md"
+readme = "docs/index.md"
 packages = [{include = "XBrainLab"}]
 
 [tool.poetry.dependencies]
@@ -114,11 +114,12 @@ select = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"run.py" = ["E402"]
+"run.py" = ["E402", "PLC0415"]
 "scripts/**/*.py" = ["E402", "E501", "SIM102", "N806", "C414", "PERF", "PLR5501", "E722"]
 "tests/**/*.py" = ["E402", "S101", "N", "E501", "F841", "PLC0415", "S108"]
 "XBrainLab/backend/dataset/dataset_generator.py" = ["PLC0415"]
 "XBrainLab/backend/load_data/data_loader.py" = ["PLC0415"]
+"XBrainLab/backend/training/training_plan.py" = ["PLC0415"]
 "XBrainLab/llm/rag/retriever.py" = ["PLC0415"]
 "XBrainLab/llm/core/backends/local.py" = ["PLC0415"]
 "XBrainLab/llm/core/engine.py" = ["PLC0415"]
