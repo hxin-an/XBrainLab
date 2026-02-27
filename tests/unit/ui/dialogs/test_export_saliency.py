@@ -73,3 +73,114 @@ class TestExportSaliencyMethods:
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             dialog.on_export_clicked()
+
+
+class TestExportSaliencyCascade:
+    """Full cascade flows: plan -> repeat -> method -> export."""
+
+    def test_on_plan_change_clears_repeat(self, dialog):
+        dialog.on_plan_change("Plan_0")
+        count_before = dialog.repeat_combo.count()
+        dialog.on_plan_change("---")
+        assert dialog.repeat_combo.count() < count_before
+
+    def test_on_repeat_change_no_combo(self, dialog):
+        """When method_combo is None (shouldn't happen but guard exists)."""
+        dialog.method_combo = None
+        dialog.on_repeat_change("anything")  # no crash
+
+    def test_on_repeat_change_placeholder(self, dialog):
+        dialog.on_repeat_change("---")
+        # method_combo should only have "---"
+        assert dialog.method_combo.count() == 1
+
+    def test_on_plan_change_no_repeat_combo(self, dialog):
+        dialog.repeat_combo = None
+        dialog.on_plan_change("Plan_0")  # no crash
+
+    def test_export_no_eval_record(self, dialog):
+        """Export when plan has no eval record."""
+        # Use combo selection so currentText() returns correct values
+        dialog.plan_combo.setCurrentText("Plan_0")
+        dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
+        dialog.method_combo.setCurrentIndex(1)
+        plan_mock = dialog.real_plan_opt["Plan_0_repeat_0"]
+        plan_mock.get_eval_record.return_value = None
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+        ) as mock_mb:
+            dialog.on_export_clicked()
+            mock_mb.warning.assert_called_once()
+
+    def test_export_eval_record_exception(self, dialog):
+        """Export when get_eval_record raises."""
+        dialog.plan_combo.setCurrentText("Plan_0")
+        dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
+        plan_mock = dialog.real_plan_opt["Plan_0_repeat_0"]
+        plan_mock.get_eval_record.side_effect = RuntimeError("boom")
+        dialog.method_combo.setCurrentIndex(1)
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+        ) as mock_mb:
+            dialog.on_export_clicked()
+            mock_mb.warning.assert_called_once()
+
+    def test_export_cancelled_file_dialog(self, dialog):
+        """User cancels the directory picker."""
+        dialog.plan_combo.setCurrentText("Plan_0")
+        dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
+        dialog.method_combo.setCurrentIndex(1)
+        with patch(
+            "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QFileDialog.getExistingDirectory",
+            return_value="",
+        ):
+            dialog.on_export_clicked()  # should return early, no crash
+
+    def test_export_write_failure(self, dialog):
+        """Export when pickle.dump raises."""
+        dialog.plan_combo.setCurrentText("Plan_0")
+        dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
+        dialog.method_combo.setCurrentIndex(1)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QFileDialog.getExistingDirectory",
+                return_value="/tmp/export",
+            ),
+            patch("builtins.open", MagicMock()),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.pickle.dump",
+                side_effect=OSError("disk full"),
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+            ) as mock_mb,
+        ):
+            dialog.on_export_clicked()
+            mock_mb.critical.assert_called_once()
+
+    def test_export_success_full(self, dialog):
+        """Full success path with proper selections."""
+        dialog.plan_combo.setCurrentText("Plan_0")
+        dialog.repeat_combo.setCurrentText("Plan_0_repeat_0")
+        dialog.method_combo.setCurrentIndex(1)
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QFileDialog.getExistingDirectory",
+                return_value="/tmp/out",
+            ),
+            patch("builtins.open", MagicMock()),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.pickle.dump",
+            ),
+            patch(
+                "XBrainLab.ui.dialogs.visualization.export_saliency_dialog.QMessageBox"
+            ) as mock_mb,
+            patch.object(dialog, "accept"),
+        ):
+            dialog.on_export_clicked()
+            mock_mb.information.assert_called_once()
+
+    def test_on_export_no_plan_combo(self, dialog):
+        """Guard: plan_combo is None."""
+        dialog.plan_combo = None
+        dialog.on_export_clicked()  # early return, no crash
