@@ -125,6 +125,7 @@ select = [
 "XBrainLab/llm/core/engine.py" = ["PLC0415"]
 "XBrainLab/ui/dialogs/model_settings_dialog.py" = ["PLC0415"]
 "XBrainLab/llm/core/config.py" = ["PLC0415"]
+"XBrainLab/llm/tools/__init__.py" = ["PLC0415", "PLW0603"]
 
 
 [tool.ruff.lint.pep8-naming]

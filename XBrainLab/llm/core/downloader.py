@@ -127,8 +127,12 @@ class DownloadWorker(QObject):
                 # Process finished, but we should have received a message.
                 # Check queue one last time
                 if not self._check_queue():
-                    # If queue empty and process dead -> crashed/finished
-                    pass
+                    # Queue empty and process dead -> crashed
+                    exit_code = self._process.exitcode
+                    self.download_failed.emit(
+                        f"Download process terminated unexpectedly "
+                        f"(exit code: {exit_code})"
+                    )
                 break
 
             # Check queue (non-blocking)

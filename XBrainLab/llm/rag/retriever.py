@@ -119,7 +119,10 @@ class RAGRetriever:
 
         try:
             logger.info("Delegating auto-initialization to RAGIndexer...")
-            indexer = RAGIndexer()
+            indexer = RAGIndexer(
+                client=self.client,
+                embeddings=self.embeddings,
+            )
             try:
                 docs = indexer.load_gold_set(str(gold_set_path))
                 if docs:

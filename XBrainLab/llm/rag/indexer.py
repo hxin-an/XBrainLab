@@ -36,18 +36,29 @@ class RAGIndexer:
 
     """
 
-    def __init__(self):
-        """Initializes the RAGIndexer with embedding model and Qdrant client."""
+    def __init__(self, client=None, embeddings=None):
+        """Initializes the RAGIndexer with embedding model and Qdrant client.
+
+        Args:
+            client: Optional existing ``QdrantClient``. If ``None``, a new
+                one is created from ``RAGConfig``.
+            embeddings: Optional existing ``HuggingFaceEmbeddings``. If
+                ``None``, a new one is created from ``RAGConfig``.
+
+        """
         if HuggingFaceEmbeddings is None or QdrantClient is None:
             raise ImportError(
                 "RAG dependencies not installed. "
                 "Install with: pip install langchain-community qdrant-client"
             )
-        self.embeddings = HuggingFaceEmbeddings(model_name=RAGConfig.EMBEDDING_MODEL)
+        self._owns_client = client is None
+        self.embeddings = embeddings or HuggingFaceEmbeddings(
+            model_name=RAGConfig.EMBEDDING_MODEL,
+        )
         self.storage_path = RAGConfig.get_storage_path()
 
         # Initialize Client
-        self.client = QdrantClient(path=self.storage_path)
+        self.client = client or QdrantClient(path=self.storage_path)
         logger.info("Initialized Qdrant at %s", self.storage_path)
 
     def load_gold_set(self, json_path: str) -> list[Document]:
@@ -147,6 +158,9 @@ class RAGIndexer:
             raise
 
     def close(self):
-        """Closes the Qdrant client connection and releases resources."""
-        if self.client:
+        """Closes the Qdrant client connection and releases resources.
+
+        Only closes the client if it was created internally (not passed in).
+        """
+        if self.client and self._owns_client:
             self.client.close()

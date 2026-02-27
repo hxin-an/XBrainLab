@@ -39,6 +39,13 @@ class Epochs:
         preprocessed_data_list: List of preprocessed ``Raw`` objects. Each must
             be of epoch type (not unsegmented raw).
 
+    .. note::
+
+        The constructor unifies event IDs across all input files by calling
+        ``set_event`` on each ``Raw`` object **in place**.  Callers should
+        be aware that the original ``preprocessed_data_list`` items are
+        mutated.
+
     Attributes:
         sfreq: Sampling frequency of the data in Hz.
         subject_map: Mapping from subject index to subject name.
@@ -79,6 +86,7 @@ class Epochs:
         self.event_id: dict[str, int] = {}  # {'event_name': int(event_id)}
         self.ch_names = []
         self.channel_position: list | None = None
+        self.tmin: float = 0.0  # epoch start time relative to event (seconds)
 
         # 1D np array
         self.subject: np.ndarray = np.array([])
@@ -149,6 +157,7 @@ class Epochs:
             idx_parts.append(np.arange(epoch_len))
             data_parts.append(data.get_data())
             self.sfreq = data.info["sfreq"]
+            self.tmin = getattr(data, "tmin", 0.0)
             self.ch_names = data.info.ch_names.copy()
 
         if subject_parts:
@@ -772,7 +781,7 @@ class Epochs:
             info=info,
             events=events,
             event_id=self.event_id,
-            tmin=0.0,
+            tmin=self.tmin,
             verbose=False,
         )
 

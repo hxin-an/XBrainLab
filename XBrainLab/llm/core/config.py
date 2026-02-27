@@ -169,6 +169,11 @@ class LLMConfig:
             with open(filepath, encoding="utf-8") as f:
                 data = json.load(f)
 
+            # Load .env BEFORE creating config so field defaults
+            # (api_key, base_url, gemini_api_key, inference_mode)
+            # can read environment variables correctly.
+            load_dotenv()
+
             config = cls()
             if "local" in data:
                 config.model_name = data["local"].get("model_name", config.model_name)
@@ -186,10 +191,6 @@ class LLMConfig:
             config.active_mode = data.get("active_mode", "local")
             # Sync inference_mode with active_mode from saved settings
             config.inference_mode = config.active_mode
-
-            # Load API key from env (security — keys should never be in JSON)
-            load_dotenv()
-            config.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
 
         except Exception as e:
             logging.getLogger(__name__).error("Error loading settings: %s", e)

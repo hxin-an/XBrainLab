@@ -3,11 +3,14 @@
 Provides mock and real tool implementations for dataset management,
 preprocessing, training, and UI control. Use ``get_all_tools`` to
 obtain the appropriate tool set based on the execution mode.
+
+Real-tool imports are deferred to ``get_all_tools(mode="real")`` to
+avoid pulling in heavy backend dependencies at package import time.
 """
 
 from .base import BaseTool
 
-# Import Mock Tools
+# Mock tools are lightweight — import eagerly for type checking
 from .mock.dataset_mock import (
     MockAttachLabelsTool,
     MockClearDatasetTool,
@@ -33,31 +36,61 @@ from .mock.training_mock import (
     MockStartTrainingTool,
 )
 from .mock.ui_control_mock import MockSwitchPanelTool
-from .real.dataset_real import (
-    RealAttachLabelsTool,
-    RealClearDatasetTool,
-    RealGenerateDatasetTool,
-    RealGetDatasetInfoTool,
-    RealListFilesTool,
-    RealLoadDataTool,
-)
-from .real.preprocess_real import (
-    RealBandPassFilterTool,
-    RealChannelSelectionTool,
-    RealEpochDataTool,
-    RealNormalizeTool,
-    RealNotchFilterTool,
-    RealRereferenceTool,
-    RealResampleTool,
-    RealSetMontageTool,
-    RealStandardPreprocessTool,
-)
-from .real.training_real import (
-    RealConfigureTrainingTool,
-    RealSetModelTool,
-    RealStartTrainingTool,
-)
-from .real.ui_control_real import RealSwitchPanelTool
+
+
+def _build_real_tools() -> list[BaseTool]:
+    """Lazily import and instantiate real tool classes."""
+    from .real.dataset_real import (
+        RealAttachLabelsTool,
+        RealClearDatasetTool,
+        RealGenerateDatasetTool,
+        RealGetDatasetInfoTool,
+        RealListFilesTool,
+        RealLoadDataTool,
+    )
+    from .real.preprocess_real import (
+        RealBandPassFilterTool,
+        RealChannelSelectionTool,
+        RealEpochDataTool,
+        RealNormalizeTool,
+        RealNotchFilterTool,
+        RealRereferenceTool,
+        RealResampleTool,
+        RealSetMontageTool,
+        RealStandardPreprocessTool,
+    )
+    from .real.training_real import (
+        RealConfigureTrainingTool,
+        RealSetModelTool,
+        RealStartTrainingTool,
+    )
+    from .real.ui_control_real import RealSwitchPanelTool
+
+    return [
+        # Dataset
+        RealListFilesTool(),
+        RealLoadDataTool(),
+        RealAttachLabelsTool(),
+        RealClearDatasetTool(),
+        RealGetDatasetInfoTool(),
+        RealGenerateDatasetTool(),
+        # Preprocess
+        RealStandardPreprocessTool(),
+        RealBandPassFilterTool(),
+        RealNotchFilterTool(),
+        RealResampleTool(),
+        RealNormalizeTool(),
+        RealRereferenceTool(),
+        RealChannelSelectionTool(),
+        RealSetMontageTool(),
+        RealEpochDataTool(),
+        # Training
+        RealSetModelTool(),
+        RealConfigureTrainingTool(),
+        RealStartTrainingTool(),
+        # UI Control
+        RealSwitchPanelTool(),
+    ]
 
 
 def get_all_tools(mode: str = "mock") -> list[BaseTool]:
@@ -102,32 +135,19 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             MockSwitchPanelTool(),
         ]
     if mode == "real":
-        return [
-            # Dataset
-            RealListFilesTool(),
-            RealLoadDataTool(),
-            RealAttachLabelsTool(),
-            RealClearDatasetTool(),
-            RealGetDatasetInfoTool(),
-            RealGenerateDatasetTool(),
-            # Preprocess
-            RealStandardPreprocessTool(),
-            RealBandPassFilterTool(),
-            RealNotchFilterTool(),
-            RealResampleTool(),
-            RealNormalizeTool(),
-            RealRereferenceTool(),
-            RealChannelSelectionTool(),
-            RealSetMontageTool(),
-            RealEpochDataTool(),
-            # Training - REAL
-            RealSetModelTool(),
-            RealConfigureTrainingTool(),
-            RealStartTrainingTool(),
-            # UI Control
-            RealSwitchPanelTool(),
-        ]
+        return _build_real_tools()
     raise ValueError(f"Unknown tool mode: {mode}")
 
 
-AVAILABLE_TOOLS = get_all_tools(mode="real")
+# Lazy module-level attribute — real tools are only imported on first access.
+_AVAILABLE_TOOLS: list[BaseTool] | None = None
+
+
+def __getattr__(name: str):
+    """Module-level __getattr__ for lazy AVAILABLE_TOOLS."""
+    if name == "AVAILABLE_TOOLS":
+        global _AVAILABLE_TOOLS
+        if _AVAILABLE_TOOLS is None:
+            _AVAILABLE_TOOLS = get_all_tools(mode="real")
+        return _AVAILABLE_TOOLS
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

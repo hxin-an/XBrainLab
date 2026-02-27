@@ -38,15 +38,27 @@ class LLMEngine:
         """
         self.config = config or LLMConfig()
         self.backends: dict[str, Any] = {}  # Cache for backends
+        self._backend_model_ids: dict[str, str] = {}  # snapshot at cache time
         self.active_backend: Any | None = None
 
         logger.info(
-            f"Initializing LLMEngine with default mode: {self.config.inference_mode}",
+            "Initializing LLMEngine with default mode: %s",
+            self.config.inference_mode,
         )
 
     def load_model(self):
         """Loads the model for the backend specified by ``config.inference_mode``."""
         self.switch_backend(self.config.inference_mode)
+
+    def _get_current_model_id(self, mode: str) -> str:
+        """Return the model identifier for the given backend mode."""
+        if mode == "local":
+            return self.config.model_name
+        if mode == "api":
+            return self.config.api_model_name
+        if mode == "gemini":
+            return self.config.gemini_model_name
+        return ""
 
     def switch_backend(self, mode: str):
         """Switches the active backend, creating it if necessary.
@@ -61,31 +73,21 @@ class LLMEngine:
         """
         logger.info("Switching backend to: %s", mode)
 
-        # 1. Check Cache and Validity
+        # 1. Check Cache and Validity (compare snapshots, not shared refs)
         if mode in self.backends:
-            backend = self.backends[mode]
+            cached_id = self._backend_model_ids.get(mode, "")
+            current_id = self._get_current_model_id(mode)
+            is_stale = cached_id != current_id
 
-            # Check for Stale Model (Is the loaded model same as requested?)
-            is_stale = False
-            if mode == "local":
-                # LocalBackend has .config.model_name.
-                # We compare it with the *current* self.config.model_name
-                if backend.config.model_name != self.config.model_name:
-                    logger.info(
-                        f"Stale local model ({backend.config.model_name} != "
-                        f"{self.config.model_name}). Reloading.",
-                    )
-                    is_stale = True
-
-            elif (
-                mode == "gemini"
-                and backend.config.gemini_model_name != self.config.gemini_model_name
-            ):
-                logger.info("Stale Gemini model detected. Reloading.")
-                is_stale = True
-
-            if not is_stale:
-                self.active_backend = backend
+            if is_stale:
+                logger.info(
+                    "Stale %s model (%s != %s). Reloading.",
+                    mode,
+                    cached_id,
+                    current_id,
+                )
+            else:
+                self.active_backend = self.backends[mode]
                 logger.info("Switched to cached backend: %s", mode)
                 return
             # Remove stale backend
@@ -111,6 +113,7 @@ class LLMEngine:
             new_backend.load()
 
         self.backends[mode] = new_backend
+        self._backend_model_ids[mode] = self._get_current_model_id(mode)
         self.active_backend = new_backend
         logger.info("Created and switched to backend: %s", mode)
 

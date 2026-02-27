@@ -94,7 +94,11 @@ class BackendFacade:
                 # Columns: onset (sample), 0, event_id
                 n_labels = len(labels)
                 events = np.zeros((n_labels, 3), dtype=int)
-                events[:, 0] = np.arange(n_labels)  # placeholder onset
+                # Use sfreq-spaced onsets as placeholders (1 event/second).
+                # Real sample positions are unavailable from external label
+                # files, but 1-second spacing is safe for downstream code.
+                sfreq = int(raw.get_mne().info.get("sfreq", 256))
+                events[:, 0] = np.arange(n_labels) * sfreq
                 events[:, 2] = labels
 
                 # Build event_id dict from unique labels
@@ -108,7 +112,9 @@ class BackendFacade:
 
             except Exception as e:
                 logger.error(
-                    f"Failed to attach label for {base_name}: {e}",
+                    "Failed to attach label for %s: %s",
+                    base_name,
+                    e,
                     exc_info=True,
                 )
 
