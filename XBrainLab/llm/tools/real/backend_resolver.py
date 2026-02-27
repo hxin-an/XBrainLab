@@ -18,7 +18,7 @@ from XBrainLab.backend.preprocessor.resample import Resample
 from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
 
 
-class ToolRegistry:
+class BackendClassRegistry:
     """Registry for mapping string identifiers to backend classes.
 
     Used by real tool implementations to resolve user/agent inputs
@@ -96,3 +96,7 @@ class ToolRegistry:
 
         """
         return cls._OPTIMIZERS.get(name.lower(), torch.optim.Adam)
+
+
+# Backward-compatible alias (deprecated — use BackendClassRegistry)
+ToolRegistry = BackendClassRegistry

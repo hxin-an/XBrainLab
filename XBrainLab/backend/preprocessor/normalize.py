@@ -14,6 +14,12 @@ class Normalize(PreprocessBase):
       standard deviation. For epoched data this is computed per trial.
     * **minmax** — scales each channel to the [0, 1] range. For epoched
       data this is computed per trial.
+
+    Note:
+        This class writes to ``mne.io.BaseRaw._data`` directly.  MNE does
+        not expose a public setter for the underlying data array, and
+        ``get_data()`` returns a *copy*, so in-place normalization requires
+        ``._data`` access.  This is standard practice in the MNE ecosystem.
     """
 
     def get_preprocess_desc(self, norm: str):

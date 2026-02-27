@@ -124,6 +124,8 @@ class AgentWorker(QObject):
         if not self.engine:
             self.initialize_agent()
             if not self.engine:
+                self.error.emit("Failed to initialize LLM engine.")
+                self.finished.emit([])
                 return
 
         last_msg = messages[-1]

@@ -342,7 +342,7 @@ class TestExecuteDebugTool:
 class TestOnUserConfirmed:
     def test_approved_executes_and_finalises(self, ctrl):
         """When user approves, the pending tool should execute."""
-        ctrl._pending_confirmation = ("clear_dataset", {}, [], "", 0.9)
+        ctrl._pending_confirmation = ("clear_dataset", {}, [])
         ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "Dataset cleared."))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl.metrics.finish_turn = MagicMock()
@@ -355,7 +355,7 @@ class TestOnUserConfirmed:
 
     def test_rejected_appends_rejection(self, ctrl):
         """When user rejects, no execution should happen."""
-        ctrl._pending_confirmation = ("clear_dataset", {}, [], "", 0.9)
+        ctrl._pending_confirmation = ("clear_dataset", {}, [])
         ctrl._execute_tool_no_loop = MagicMock()
         ctrl.metrics.finish_turn = MagicMock()
 
@@ -372,7 +372,7 @@ class TestOnUserConfirmed:
 
     def test_approved_failure_triggers_retry(self, ctrl):
         """If confirmed tool fails, it should trigger retry."""
-        ctrl._pending_confirmation = ("start_training", {}, [], "", 0.8)
+        ctrl._pending_confirmation = ("start_training", {}, [])
         ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "error"))
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
@@ -385,7 +385,7 @@ class TestOnUserConfirmed:
 
     def test_reset_conversation_clears_pending(self, ctrl):
         """reset_conversation should also clear any pending confirmation."""
-        ctrl._pending_confirmation = ("clear_dataset", {}, [], "", 0.9)
+        ctrl._pending_confirmation = ("clear_dataset", {}, [])
         ctrl.reset_conversation()
         assert ctrl._pending_confirmation is None
 

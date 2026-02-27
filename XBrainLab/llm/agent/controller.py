@@ -401,7 +401,7 @@ class LLMController(QObject):
         confidence = estimate_confidence(response_text, commands)
         logger.debug("Heuristic confidence: %.2f", confidence)
 
-        for cmd, params in commands:
+        for cmd_idx, (cmd, params) in enumerate(commands):
             # --- Loop Detection ---
 
             # Use sort_keys=True for stable string representation of params
@@ -443,17 +443,11 @@ class LLMController(QObject):
             # --- HITL: Dangerous Action Confirmation ---
             tool = self.registry.get_tool(cmd)
             if tool and tool.requires_confirmation:
-                # Store remaining commands for resumption after confirmation
-                remaining = [
-                    (c, p) for c, p in commands[commands.index((cmd, params)) + 1 :]
-                ]
-                self._pending_confirmation = (
-                    cmd,
-                    params,
-                    remaining,
-                    response_text,
-                    confidence,
-                )
+                # Store remaining commands for resumption after confirmation.
+                # Use enumerate index to correctly slice remaining commands,
+                # avoiding the first-match bug of list.index() on duplicates.
+                remaining = commands[cmd_idx + 1 :]
+                self._pending_confirmation = (cmd, params, remaining)
                 self.status_update.emit(f"Waiting for confirmation: {cmd}")
                 self.request_user_interaction.emit(
                     "confirm_action",
@@ -525,7 +519,7 @@ class LLMController(QObject):
             logger.warning("on_user_confirmed called with no pending action")
             return
 
-        cmd, params, _remaining, _resp_text, _confidence = self._pending_confirmation
+        cmd, params, _remaining = self._pending_confirmation
         self._pending_confirmation = None
 
         if approved:

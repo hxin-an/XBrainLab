@@ -63,7 +63,7 @@ def test_parse_optim_name():
         ({"use_cpu": True, "gpu_idx": 1}, False),
         ({"epoch": 10.5}, False),
         ({"epoch": 10}, False),
-        ({"epoch": -5}, False),
+        ({"epoch": -5}, True),
         ({"epoch": "error"}, True),
         ({"epoch": None}, True),
         ({"bs": None}, True),

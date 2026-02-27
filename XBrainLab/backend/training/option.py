@@ -161,12 +161,12 @@ class TrainingOption:
 
         if self.gpu_idx is not None and check_num(self.gpu_idx):
             errors.append("Invalid gpu_idx")
-        if check_num(self.epoch):
-            errors.append("Invalid epoch")
-        if check_num(self.bs):
-            errors.append("Invalid batch size")
-        if check_num(self.lr):
-            errors.append("Invalid learning rate")
+        if check_num(self.epoch) or int(self.epoch) <= 0:
+            errors.append("Invalid epoch (must be a positive integer)")
+        if check_num(self.bs) or int(self.bs) <= 0:
+            errors.append("Invalid batch size (must be a positive integer)")
+        if check_num(self.lr) or float(self.lr) <= 0:
+            errors.append("Invalid learning rate (must be positive)")
         if check_num(self.checkpoint_epoch):
             errors.append("Invalid checkpoint epoch")
         if check_num(self.repeat_num) or int(self.repeat_num) <= 0:
