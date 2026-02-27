@@ -106,6 +106,7 @@ class AgentManager(QObject):
         self.chat_panel.send_message.connect(self.handle_user_input)
         self.chat_panel.stop_generation.connect(self.stop_generation)
         self.chat_panel.model_changed.connect(self.set_model)
+        self.chat_panel.execution_mode_changed.connect(self._on_execution_mode_changed)
         self.chat_panel.new_conversation_requested.connect(self.start_new_conversation)
 
         self.chat_dock = QDockWidget("AI Assistant", self.main_window)
@@ -305,6 +306,11 @@ class AgentManager(QObject):
         # 8. Finished Signal (Robust)
         self.agent_controller.processing_finished.connect(self.on_processing_finished)
 
+        # 9. Execution Mode Sync
+        self.agent_controller.execution_mode_changed.connect(
+            self._sync_execution_mode_ui,
+        )
+
         self.agent_controller.initialize()
         self.agent_initialized = True
 
@@ -381,6 +387,27 @@ class AgentManager(QObject):
         """
         if self.chat_panel:
             self.chat_panel.set_processing_state(is_processing)
+
+    def _on_execution_mode_changed(self, mode: str):
+        """Forward execution mode change from ChatPanel to controller.
+
+        Args:
+            mode: ``'single'`` or ``'multi'``.
+
+        """
+        if self.agent_controller:
+            self.agent_controller.set_execution_mode(mode)
+
+    def _sync_execution_mode_ui(self, mode: str):
+        """Sync execution mode button text from controller to ChatPanel.
+
+        Args:
+            mode: ``'single'`` or ``'multi'``.
+
+        """
+        if self.chat_panel:
+            label = "Single" if mode == "single" else "Multi"
+            self.chat_panel.mode_btn.setText(f"{label} ▼")
 
     def start_new_conversation(self):
         """Clear the chat UI and reset the agent conversation state."""

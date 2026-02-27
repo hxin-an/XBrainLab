@@ -64,6 +64,7 @@ class ChatPanel(QWidget):
     send_message = pyqtSignal(str)
     stop_generation = pyqtSignal()
     model_changed = pyqtSignal(str)
+    execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
     new_conversation_requested = pyqtSignal()  # M0.3 New Conversation
     debug_tool_requested = pyqtSignal(str, dict)  # M3.1 Debug Mode
 
@@ -149,6 +150,27 @@ class ChatPanel(QWidget):
         self.update_model_menu()
 
         toolbar_layout.addWidget(self.model_btn)
+
+        # Execution Mode Selector
+        self.mode_btn = QPushButton("Single ▼")
+        self.mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.mode_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+        self.mode_btn.setToolTip(
+            "Single: stop after each tool success\n"
+            "Multi: auto-continue until done or limit reached"
+        )
+        self.mode_menu = QMenu(self)
+        self.mode_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
+        for mode_label, mode_key in [("Single", "single"), ("Multi", "multi")]:
+            action = QAction(mode_label, self)
+            action.triggered.connect(
+                lambda checked, m=mode_key, lbl=mode_label: self._set_execution_mode(
+                    m, lbl
+                )
+            )
+            self.mode_menu.addAction(action)
+        self.mode_btn.setMenu(self.mode_menu)
+        toolbar_layout.addWidget(self.mode_btn)
 
         toolbar_layout.addStretch()  # Push buttons to left
         control_layout.addWidget(toolbar_widget)
@@ -241,6 +263,17 @@ class ChatPanel(QWidget):
         """
         self.model_btn.setText(f"{model_name} ▼")
         self.model_changed.emit(model_name)
+
+    def _set_execution_mode(self, mode_key: str, label: str):
+        """Update the execution mode selector and emit mode change signal.
+
+        Args:
+            mode_key: The mode identifier (``'single'`` or ``'multi'``).
+            label: Human-friendly label for the button text.
+
+        """
+        self.mode_btn.setText(f"{label} ▼")
+        self.execution_mode_changed.emit(mode_key)
 
     def _on_new_conversation(self):
         """Emit the new conversation requested signal."""

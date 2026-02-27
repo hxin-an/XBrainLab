@@ -56,6 +56,10 @@ class LLMController(QObject):
 
     """
 
+    # Execution mode constants
+    MODE_SINGLE = "single"
+    MODE_MULTI = "multi"
+
     # Signals to UI
     response_ready = pyqtSignal(str, str)  # sender, text
     chunk_received = pyqtSignal(str)  # New signal for streaming
@@ -65,6 +69,7 @@ class LLMController(QObject):
     error_occurred = pyqtSignal(str)  # error message
     request_user_interaction = pyqtSignal(str, dict)  # command, params
     remove_content = pyqtSignal(str)  # New signal to hide JSON
+    execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
 
     # Internal signals to Worker
     sig_initialize = pyqtSignal()  # Simple signal, no args
@@ -137,10 +142,35 @@ class LLMController(QObject):
         self._loop_break_count = 0
         self._max_loop_breaks = 3
 
+        # Execution mode: 'single' stops after success, 'multi' auto-continues
+        self._execution_mode: str = self.MODE_SINGLE
+        self._successful_tool_count = 0
+        self._max_successful_tools = 5  # Safety cap for multi mode
+
         # HITL: Pending confirmation state
-        self._pending_confirmation: (
-            tuple[str, dict, list[tuple[str, dict]], str, float] | None
-        ) = None
+        self._pending_confirmation: tuple[str, dict, list[tuple[str, dict]]] | None = (
+            None
+        )
+
+    @property
+    def execution_mode(self) -> str:
+        """The current execution mode ('single' or 'multi')."""
+        return self._execution_mode
+
+    def set_execution_mode(self, mode: str) -> None:
+        """Set the execution mode.
+
+        Args:
+            mode: Either ``'single'`` (stop after success) or
+                ``'multi'`` (auto-continue up to ``_max_successful_tools``).
+
+        """
+        if mode not in (self.MODE_SINGLE, self.MODE_MULTI):
+            logger.warning("Invalid execution mode: %s", mode)
+            return
+        self._execution_mode = mode
+        self.execution_mode_changed.emit(mode)
+        logger.info("Execution mode changed to: %s", mode)
 
     def initialize(self):
         """Initializes the underlying worker engine and RAG retriever.
@@ -207,6 +237,7 @@ class LLMController(QObject):
             self._retry_count = 0
             self._tool_failure_count = 0
             self._loop_break_count = 0
+            self._successful_tool_count = 0
 
             # 2. Retrieve RAG Context (Examples)
             features = self.rag_retriever.get_similar_examples(text)
@@ -491,14 +522,37 @@ class LLMController(QObject):
                 self._generate_response()
         else:
             self._tool_failure_count = 0  # Reset on success
-            self._finalize_turn_after_tool()
+            self._successful_tool_count += 1
+
+            # Multi mode: auto-continue if under the safety cap
+            if (
+                self._execution_mode == self.MODE_MULTI
+                and self._successful_tool_count < self._max_successful_tools
+            ):
+                logger.info(
+                    "Multi mode: auto-continuing (%d/%d)",
+                    self._successful_tool_count,
+                    self._max_successful_tools,
+                )
+                self._generate_response()
+            else:
+                if (
+                    self._execution_mode == self.MODE_MULTI
+                    and self._successful_tool_count >= self._max_successful_tools
+                ):
+                    logger.info(
+                        "Multi mode: reached max successful tools (%d), stopping.",
+                        self._max_successful_tools,
+                    )
+                self._finalize_turn_after_tool()
 
     def _finalize_turn_after_tool(self):
         """Finalizes the turn after tool execution.
 
         Stops generation and signals the UI that the agent is ready for
-        new input (Safe Mode — does not auto-generate follow-up text).
+        new input.  Resets the successful-tool counter.
         """
+        self._successful_tool_count = 0
         self.metrics.finish_turn()
         self.status_update.emit("Ready")
         self.is_processing = False

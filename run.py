@@ -1,12 +1,13 @@
 """Entry point for the XBrainLab desktop application.
 
-Launches the PyQt6-based GUI, optionally accepting a ``--tool-debug``
-argument that feeds a JSON script into the tool-debug subsystem.
+Launches the PyQt6-based GUI, optionally accepting CLI arguments for
+tool debugging and model selection.
 
 Usage::
 
     python run.py
     python run.py --tool-debug path/to/script.json
+    python run.py --model gemini
 """
 
 import argparse
@@ -48,6 +49,12 @@ def main() -> None:
     parser.add_argument(
         "--tool-debug", type=str, help="Path to tool debug script (JSON)"
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["local", "gemini", "api"],
+        help="Override the active inference mode (local, gemini, api)",
+    )
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
@@ -72,6 +79,16 @@ def main() -> None:
     if args.tool_debug:
         logger.info(f"Tool Debug Mode enabled. Script: {args.tool_debug}")
         app.setProperty("tool_debug_script", args.tool_debug)
+
+    # Apply --model override before any LLM initialization
+    if args.model:
+        from XBrainLab.llm.core.config import LLMConfig
+
+        config = LLMConfig.load_from_file() or LLMConfig()
+        config.active_mode = args.model
+        config.inference_mode = args.model
+        config.save_to_file()
+        logger.info("CLI override: inference mode set to '%s'", args.model)
 
     app.setStyle("Fusion")
 

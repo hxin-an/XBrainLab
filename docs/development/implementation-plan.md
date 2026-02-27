@@ -1,7 +1,7 @@
 # Agent 架構與評測系統實作計畫
 
 - **狀態**: 持續更新
-- **日期**: 2026-02-03（最後更新: 2026-02-27）
+- **日期**: 2026-02-03（最後更新: 2026-02-28）
 - **相關 ADR**: 005, 006, 007, 008
 
 ---
@@ -54,10 +54,12 @@
 - [x] 顯示狀態指示器（`status_update` signal → StatusBar）
 
 ### 1.3 執行模式
-- [x] 目前採用 **Safe Mode**：每批 tool call 成功後停止，等待用戶輸入
+- [x] **Single Mode**（預設）：每批 tool call 成功後停止，等待用戶輸入
+- [x] **Multi Mode**：成功後自動繼續生成，最多連續 `_max_successful_tools = 5` 次成功後強制停止
 - [x] 失敗時自動重試（`_max_tool_failures = 3`）
-- ~~[ ] Single/Multi Action 下拉選單~~ → **已取消**：Safe Mode 在實務中已足夠，
-  Multi-Action 模式（agent 自動連續執行多步）風險過高，不符合 HITL 設計原則。
+- [x] ChatPanel 下拉選單切換（Single ▼ / Multi ▼）
+- [x] `LLMController.set_execution_mode()` + `execution_mode_changed` signal
+- [x] 8 個單元測試覆蓋模式行為
 
 ### 1.4 迴圈控制
 - [x] MAX_ITERATIONS 硬上限（`_max_loop_breaks = 3`）
@@ -166,7 +168,7 @@
   可考慮輕量替代（JSON log + 簡易比較腳本）
 
 ### 4.5 CLI 介面
-- [ ] `--model` 參數允許指定推論模型
+- [x] `--model` 參數允許指定推論模型（`run.py --model local|gemini|api`）
 - [ ] `--benchmark` 一鍵啟動評測
 
 ---
@@ -212,10 +214,10 @@ M3 (測試 + 多模型) ✅ ─────────────→ M4 (評�
 | 優先級 | 項目 | 里程碑 | 估算 |
 |--------|------|--------|------|
 | **高** | 多模型 Benchmark（各模型 Pass Rate 實測） | M4.3 | 1-2 天 |
-| **高** | CLI `--model` 參數 | M4.5 | 半天 |
+| ~~高~~ | ~~CLI `--model` 參數~~ | ~~M4.5~~ | ✅ Done |
 | 中 | MLflow 或輕量追蹤整合 | M4.4 | 1 天 |
 | 中 | RAG 消融實驗 | M5.1 | 1 天 |
 | 中 | Stage Gate / Verification 消融 | M5.2-5.3 | 1 天 |
 | 低 | Memory 消融實驗 | M5.4 | 1 天 |
 
-**品質基線**（2026-02-27）：Ruff 0 | 3978 tests | ~90% coverage | Pre-commit ✅
+**品質基線**（2026-02-28）：Ruff 0 | 3986 tests | ~90% coverage | Pre-commit ✅

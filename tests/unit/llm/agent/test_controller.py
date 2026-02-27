@@ -59,6 +59,7 @@ def ctrl():
             "sig_initialize",
             "sig_generate",
             "sig_reinit",
+            "execution_mode_changed",
         ]
         c = LLMController.__new__(LLMController)
         for name in signal_names:
@@ -512,3 +513,88 @@ class TestPipelineGate:
 
         assert not success
         assert "not available" in result
+
+
+# --- Execution Mode (Single / Multi) ---
+class TestExecutionMode:
+    def test_default_mode_is_single(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+
+        assert ctrl.execution_mode == LLMController.MODE_SINGLE
+
+    def test_set_mode_to_multi(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+
+        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        assert ctrl.execution_mode == LLMController.MODE_MULTI
+        ctrl.execution_mode_changed.emit.assert_called_with(LLMController.MODE_MULTI)
+
+    def test_set_mode_back_to_single(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+
+        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        ctrl.set_execution_mode(LLMController.MODE_SINGLE)
+        assert ctrl.execution_mode == LLMController.MODE_SINGLE
+
+    def test_invalid_mode_ignored(self, ctrl):
+        from XBrainLab.llm.agent.controller import LLMController
+
+        ctrl.set_execution_mode("turbo")
+        assert ctrl.execution_mode == LLMController.MODE_SINGLE
+
+    def test_single_mode_finalizes_on_success(self, ctrl):
+        """In single mode, a successful tool call finalizes immediately."""
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+
+        ctrl._process_tool_calls([("cmd", {})], "json")
+        ctrl._finalize_turn_after_tool.assert_called_once()
+        ctrl._generate_response.assert_not_called()
+
+    def test_multi_mode_auto_continues(self, ctrl):
+        """In multi mode, a successful tool call triggers another generation."""
+        from XBrainLab.llm.agent.controller import LLMController
+
+        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+
+        ctrl._process_tool_calls([("cmd", {})], "json")
+        ctrl._generate_response.assert_called_once()
+        ctrl._finalize_turn_after_tool.assert_not_called()
+
+    def test_multi_mode_stops_at_cap(self, ctrl):
+        """Multi mode stops after reaching the max successful tool count."""
+        from XBrainLab.llm.agent.controller import LLMController
+
+        ctrl.set_execution_mode(LLMController.MODE_MULTI)
+        ctrl._successful_tool_count = ctrl._max_successful_tools - 1
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "ok"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._finalize_turn_after_tool = MagicMock()
+        ctrl._generate_response = MagicMock()
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl.registry.get_tool.return_value.requires_confirmation = False
+
+        ctrl._process_tool_calls([("cmd", {})], "json")
+        ctrl._finalize_turn_after_tool.assert_called_once()
+        ctrl._generate_response.assert_not_called()
+
+    def test_handle_user_input_resets_counter(self, ctrl):
+        """Starting a new user turn resets the successful tool counter."""
+        ctrl._successful_tool_count = 3
+        ctrl.rag_retriever.get_similar_examples.return_value = []
+        ctrl._generate_response = MagicMock()
+        ctrl.handle_user_input("hello")
+        assert ctrl._successful_tool_count == 0
