@@ -72,24 +72,25 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
         facade = BackendFacade(study)
 
         try:
-            # 1. Bandpass
-            facade.apply_filter(l_freq, h_freq)
+            with facade.preprocess.batch_notifications():
+                # 1. Bandpass
+                facade.apply_filter(l_freq, h_freq)
 
-            # 2. Notch
-            if notch_freq:
-                facade.apply_notch_filter(notch_freq)
+                # 2. Notch
+                if notch_freq:
+                    facade.apply_notch_filter(notch_freq)
 
-            # 3. Resample
-            if resample_rate:
-                facade.resample_data(resample_rate)
+                # 3. Resample
+                if resample_rate:
+                    facade.resample_data(resample_rate)
 
-            # 4. Rereference
-            if rereference:
-                facade.set_reference(rereference)
+                # 4. Rereference
+                if rereference:
+                    facade.set_reference(rereference)
 
-            # 5. Normalize
-            if normalize_method:
-                facade.normalize_data(normalize_method)
+                # 5. Normalize
+                if normalize_method:
+                    facade.normalize_data(normalize_method)
 
         except Exception as e:
             return f"Preprocessing failed: {e!s}"

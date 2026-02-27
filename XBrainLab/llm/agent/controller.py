@@ -132,6 +132,11 @@ class LLMController(QObject):
         self._loop_break_count = 0
         self._max_loop_breaks = 3
 
+        # HITL: Pending confirmation state
+        self._pending_confirmation: (
+            tuple[str, dict, list[tuple[str, dict]], str, float] | None
+        ) = None
+
     def initialize(self):
         """Initializes the underlying worker engine and RAG retriever.
 
@@ -429,6 +434,31 @@ class LLMController(QObject):
 
             self.status_update.emit(f"Executing: {cmd}...")
 
+            # --- HITL: Dangerous Action Confirmation ---
+            tool = get_tool_by_name(cmd)
+            if tool and tool.requires_confirmation:
+                # Store remaining commands for resumption after confirmation
+                remaining = [
+                    (c, p) for c, p in commands[commands.index((cmd, params)) + 1 :]
+                ]
+                self._pending_confirmation = (
+                    cmd,
+                    params,
+                    remaining,
+                    response_text,
+                    confidence,
+                )
+                self.status_update.emit(f"Waiting for confirmation: {cmd}")
+                self.request_user_interaction.emit(
+                    "confirm_action",
+                    {
+                        "tool_name": cmd,
+                        "params": params,
+                        "description": tool.description,
+                    },
+                )
+                return  # Pause — wait for user response
+
             # Execute Tool
             _success, result = self._execute_tool_no_loop(cmd, params)
 
@@ -473,6 +503,53 @@ class LLMController(QObject):
         self.status_update.emit("Ready")
         self.is_processing = False
         self.processing_finished.emit()
+
+    def on_user_confirmed(self, approved: bool):
+        """Resume tool execution after a HITL confirmation dialog.
+
+        Called by the UI when the user accepts or rejects a dangerous
+        action that was gated by ``requires_confirmation``.
+
+        Args:
+            approved: ``True`` if the user confirmed the action,
+                ``False`` if they cancelled.
+
+        """
+        if not self._pending_confirmation:
+            logger.warning("on_user_confirmed called with no pending action")
+            return
+
+        cmd, params, _remaining, _resp_text, _confidence = self._pending_confirmation
+        self._pending_confirmation = None
+
+        if approved:
+            logger.info("User confirmed dangerous action: %s", cmd)
+            self.status_update.emit(f"Executing confirmed: {cmd}...")
+
+            _success, result = self._execute_tool_no_loop(cmd, params)
+            self._handle_tool_result_logic(result, _success)
+            self._append_history("user", f"Tool Output: {result}")
+
+            if not _success:
+                self._tool_failure_count += 1
+                if self._tool_failure_count >= self._max_tool_failures:
+                    msg = "System: Max tool execution retries exceeded. Stopping."
+                    self._append_history("user", msg)
+                    self.status_update.emit("Max retries exceeded, stopping.")
+                    self._finalize_turn_after_tool()
+                else:
+                    self._generate_response()
+            else:
+                self._tool_failure_count = 0
+                self._finalize_turn_after_tool()
+        else:
+            logger.info("User rejected dangerous action: %s", cmd)
+            self._append_history(
+                "user",
+                f"System: User rejected '{cmd}'. Action was NOT executed.",
+            )
+            self.status_update.emit("Action cancelled by user.")
+            self._finalize_turn_after_tool()
 
     def _handle_loop_detected(self, cmd: str):
         """Handles detection of a repeated tool-call loop.
@@ -699,6 +776,7 @@ class LLMController(QObject):
         self._tool_failure_count = 0
         self._loop_break_count = 0
         self._recent_tool_calls.clear()
+        self._pending_confirmation = None
 
         # Reset metrics for new conversation
         self.metrics.reset()

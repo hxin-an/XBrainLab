@@ -118,3 +118,37 @@ class TestTrainingController:
         mock_study.model_holder = "model"
         mock_study.training_option = "option"
         assert controller.validate_ready() is False
+
+    def test_set_model_holder_notifies_config_changed(self, controller, mock_study):
+        cb = MagicMock()
+        controller.subscribe("config_changed", cb)
+        holder = MagicMock()
+
+        controller.set_model_holder(holder)
+
+        mock_study.set_model_holder.assert_called_once_with(holder)
+        cb.assert_called_once()
+
+    def test_set_training_option_notifies_config_changed(self, controller, mock_study):
+        cb = MagicMock()
+        controller.subscribe("config_changed", cb)
+        option = MagicMock()
+
+        controller.set_training_option(option)
+
+        mock_study.set_training_option.assert_called_once_with(option)
+        cb.assert_called_once()
+
+    def test_apply_data_splitting_notifies_config_changed(
+        self,
+        controller,
+        mock_study,
+    ):
+        cb = MagicMock()
+        controller.subscribe("config_changed", cb)
+        generator = MagicMock()
+
+        controller.apply_data_splitting(generator)
+
+        generator.apply.assert_called_once_with(mock_study)
+        cb.assert_called_once()

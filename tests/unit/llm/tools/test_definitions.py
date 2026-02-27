@@ -118,3 +118,43 @@ class TestGenerateDatasetEnums:
         params = BaseGenerateDatasetTool.parameters.fget(None)
         assert "split_strategy" in params["required"]
         assert "training_mode" in params["required"]
+
+
+class TestRequiresConfirmation:
+    """Verify that dangerous tools require user confirmation."""
+
+    def test_clear_dataset_requires_confirmation(self):
+        val = BaseClearDatasetTool.requires_confirmation.fget(None)
+        assert val is True
+
+    def test_start_training_requires_confirmation(self):
+        val = BaseStartTrainingTool.requires_confirmation.fget(None)
+        assert val is True
+
+    @pytest.mark.parametrize(
+        "tool_cls",
+        [
+            BaseListFilesTool,
+            BaseLoadDataTool,
+            BaseAttachLabelsTool,
+            BaseGetDatasetInfoTool,
+            BaseGenerateDatasetTool,
+            BaseStandardPreprocessTool,
+            BaseBandPassFilterTool,
+            BaseNotchFilterTool,
+            BaseResampleTool,
+            BaseNormalizeTool,
+            BaseRereferenceTool,
+            BaseChannelSelectionTool,
+            BaseSetMontageTool,
+            BaseEpochDataTool,
+            BaseSetModelTool,
+            BaseConfigureTrainingTool,
+            BaseSwitchPanelTool,
+        ],
+    )
+    def test_normal_tools_do_not_require_confirmation(self, tool_cls):
+        # requires_confirmation is inherited from BaseTool → False
+        from XBrainLab.llm.tools.base import BaseTool
+
+        assert BaseTool.requires_confirmation.fget(None) is False

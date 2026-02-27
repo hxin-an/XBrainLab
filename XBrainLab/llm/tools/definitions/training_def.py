@@ -99,5 +99,10 @@ class BaseStartTrainingTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}
 
+    @property
+    def requires_confirmation(self) -> bool:
+        """Training is a long-running GPU operation and requires confirmation."""
+        return True
+
     def execute(self, study: Any, **kwargs) -> str:
         raise NotImplementedError

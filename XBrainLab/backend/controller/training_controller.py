@@ -322,6 +322,7 @@ class TrainingController(Observable):
 
         """
         generator.apply(self._study)
+        self.notify("config_changed")
 
     def set_model_holder(self, holder: Any) -> None:
         """Set the model holder in the study.
@@ -331,6 +332,7 @@ class TrainingController(Observable):
 
         """
         self._study.set_model_holder(holder)
+        self.notify("config_changed")
 
     def set_training_option(self, option: Any) -> None:
         """Set the training option (hyper-parameters) in the study.
@@ -340,6 +342,7 @@ class TrainingController(Observable):
 
         """
         self._study.set_training_option(option)
+        self.notify("config_changed")
 
     # --- Data Accessors (for UI decoupling) ---
     def get_training_option(self) -> Any:

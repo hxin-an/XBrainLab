@@ -325,3 +325,115 @@ class TestExecuteDebugTool:
         assert not ctrl.is_processing
         assert len(ctrl.history) == 2
         ctrl.response_ready.emit.assert_called()
+
+
+# --- HITL: on_user_confirmed ---
+class TestOnUserConfirmed:
+    def test_approved_executes_and_finalises(self, ctrl):
+        """When user approves, the pending tool should execute."""
+        ctrl._pending_confirmation = ("clear_dataset", {}, [], "", 0.9)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "Dataset cleared."))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl.metrics.finish_turn = MagicMock()
+
+        ctrl.on_user_confirmed(True)
+
+        ctrl._execute_tool_no_loop.assert_called_once_with("clear_dataset", {})
+        assert ctrl._pending_confirmation is None
+        assert ctrl._tool_failure_count == 0
+
+    def test_rejected_appends_rejection(self, ctrl):
+        """When user rejects, no execution should happen."""
+        ctrl._pending_confirmation = ("clear_dataset", {}, [], "", 0.9)
+        ctrl._execute_tool_no_loop = MagicMock()
+        ctrl.metrics.finish_turn = MagicMock()
+
+        ctrl.on_user_confirmed(False)
+
+        ctrl._execute_tool_no_loop.assert_not_called()
+        assert ctrl._pending_confirmation is None
+        assert any("rejected" in m["content"] for m in ctrl.history)
+
+    def test_no_pending_is_noop(self, ctrl):
+        """If no pending confirmation, calling on_user_confirmed does nothing."""
+        ctrl._pending_confirmation = None
+        ctrl.on_user_confirmed(True)  # Should not raise
+
+    def test_approved_failure_triggers_retry(self, ctrl):
+        """If confirmed tool fails, it should trigger retry."""
+        ctrl._pending_confirmation = ("start_training", {}, [], "", 0.8)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(False, "error"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl._generate_response = MagicMock()
+        ctrl._tool_failure_count = 0
+
+        ctrl.on_user_confirmed(True)
+
+        assert ctrl._tool_failure_count == 1
+        ctrl._generate_response.assert_called_once()
+
+    def test_reset_conversation_clears_pending(self, ctrl):
+        """reset_conversation should also clear any pending confirmation."""
+        ctrl._pending_confirmation = ("clear_dataset", {}, [], "", 0.9)
+        ctrl.reset_conversation()
+        assert ctrl._pending_confirmation is None
+
+
+# --- HITL: _process_tool_calls confirmation gate ---
+class TestProcessToolCallsConfirmation:
+    def test_confirmation_required_pauses_execution(self, ctrl):
+        """Tool with requires_confirmation should emit signal and pause."""
+        mock_tool = MagicMock()
+        mock_tool.requires_confirmation = True
+        mock_tool.description = "Clear data"
+
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.get_tool_by_name",
+                return_value=mock_tool,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.estimate_confidence",
+                return_value=0.9,
+            ),
+        ):
+            ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+            ctrl._process_tool_calls(
+                [("clear_dataset", {})],
+                '{"tool_name": "clear_dataset"}',
+            )
+
+        # Should have stored pending and emitted signal
+        assert ctrl._pending_confirmation is not None
+        assert ctrl._pending_confirmation[0] == "clear_dataset"
+        ctrl.request_user_interaction.emit.assert_called_once()
+        call_args = ctrl.request_user_interaction.emit.call_args[0]
+        assert call_args[0] == "confirm_action"
+
+    def test_no_confirmation_executes_directly(self, ctrl):
+        """Tool without requires_confirmation should execute normally."""
+        mock_tool = MagicMock()
+        mock_tool.requires_confirmation = False
+
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.get_tool_by_name",
+                return_value=mock_tool,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.estimate_confidence",
+                return_value=0.9,
+            ),
+        ):
+            mock_tool.execute.return_value = "done"
+            ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+            ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "done"))
+            ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+            ctrl.metrics.finish_turn = MagicMock()
+            ctrl._process_tool_calls(
+                [("load_data", {"paths": ["/tmp/a.gdf"]})],
+                '{"tool_name": "load_data"}',
+            )
+
+        assert ctrl._pending_confirmation is None
+        ctrl._execute_tool_no_loop.assert_called_once()

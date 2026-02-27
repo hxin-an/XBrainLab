@@ -97,3 +97,47 @@ class TestBaseTool:
 
         with pytest.raises(TypeError):
             PartialTool()
+
+    def test_requires_confirmation_default_false(self):
+        class SimpleTool(BaseTool):
+            @property
+            def name(self):
+                return "simple"
+
+            @property
+            def description(self):
+                return "d"
+
+            @property
+            def parameters(self):
+                return {}
+
+            def execute(self, study, **kwargs):
+                return ""
+
+        tool = SimpleTool()
+        assert tool.requires_confirmation is False
+
+    def test_requires_confirmation_override(self):
+        class DangerTool(BaseTool):
+            @property
+            def name(self):
+                return "danger"
+
+            @property
+            def description(self):
+                return "dangerous"
+
+            @property
+            def parameters(self):
+                return {}
+
+            @property
+            def requires_confirmation(self):
+                return True
+
+            def execute(self, study, **kwargs):
+                return ""
+
+        tool = DangerTool()
+        assert tool.requires_confirmation is True

@@ -32,6 +32,21 @@ class BaseTool(ABC):
     def parameters(self) -> dict[str, Any]:
         """JSON schema describing the parameters."""
 
+    @property
+    def requires_confirmation(self) -> bool:
+        """Whether this tool requires explicit user confirmation before execution.
+
+        Dangerous or irreversible actions (e.g., clearing data, starting
+        long-running training) should return ``True`` so the controller
+        can present a confirmation dialog to the user.
+
+        Returns:
+            ``False`` by default.  Override in subclasses to mark
+            dangerous operations.
+
+        """
+        return False
+
     def is_valid(self, study: Any) -> bool:
         """Check whether the tool is valid in the current application state.
 

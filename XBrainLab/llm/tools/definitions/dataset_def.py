@@ -130,6 +130,11 @@ class BaseClearDatasetTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}
 
+    @property
+    def requires_confirmation(self) -> bool:
+        """Clearing data is destructive and requires user confirmation."""
+        return True
+
     def execute(self, study: Any, **kwargs) -> str:
         raise NotImplementedError
 

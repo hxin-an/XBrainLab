@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QDockWidget,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QWidget,
 )
@@ -449,7 +450,7 @@ class AgentManager(QObject):
 
         Args:
             command: The interaction command (e.g., ``"confirm_montage"``,
-                ``"switch_panel"``).
+                ``"switch_panel"``, ``"confirm_action"``).
             params: Dictionary of parameters for the command.
 
         """
@@ -457,6 +458,8 @@ class AgentManager(QObject):
             self.open_montage_picker_dialog(params)
         elif command == "switch_panel":
             self.switch_panel(params)
+        elif command == "confirm_action":
+            self._show_action_confirmation(params)
 
     def switch_panel(self, params):
         """Switch the main window to a specified panel and optional sub-view.
@@ -504,6 +507,56 @@ class AgentManager(QObject):
             self.chat_controller.add_agent_message(
                 f"Error: Could not switch to {panel_name}",
             )
+
+    def _show_action_confirmation(self, params):
+        """Show a confirmation dialog for dangerous tool actions.
+
+        Presents a ``QMessageBox`` asking the user to approve or reject
+        an irreversible operation such as clearing data or starting
+        training.
+
+        Args:
+            params: Dictionary with ``"tool_name"``, ``"params"``, and
+                ``"description"`` keys from the controller.
+
+        """
+        tool_name = params.get("tool_name", "unknown")
+        description = params.get("description", "")
+        tool_params = params.get("params", {})
+
+        detail = ""
+        if tool_params:
+            detail = "\n".join(f"  {k}: {v}" for k, v in tool_params.items())
+
+        msg = QMessageBox(self.main_window)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle("Confirm Action")
+        msg.setText(
+            f"The AI assistant wants to execute a potentially dangerous action:\n\n"
+            f"  Tool: {tool_name}\n"
+            f"  Description: {description}"
+        )
+        if detail:
+            msg.setDetailedText(detail)
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        msg.setDefaultButton(QMessageBox.StandardButton.No)
+
+        result = msg.exec()
+        approved = result == QMessageBox.StandardButton.Yes
+
+        if approved:
+            self.chat_controller.add_agent_message(
+                f"User confirmed: {tool_name}",
+            )
+        else:
+            self.chat_controller.add_agent_message(
+                f"User rejected: {tool_name}",
+            )
+
+        if self.agent_controller:
+            self.agent_controller.on_user_confirmed(approved)
 
     def _switch_sub_view(self, panel_index, view_mode):
         """Switch to a specific tab or view within a panel.
