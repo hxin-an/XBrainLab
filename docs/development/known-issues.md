@@ -50,14 +50,14 @@
 ## ⚠️ 高優先級 (High Priority)
 
 ### 1. VerificationLayer 信心度檢查未啟用
-- **位置**: [`controller.py:374`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L374)
+- **位置**: `XBrainLab/llm/agent/controller.py:374`
 - **問題**: `confidence=None` 永遠被傳入 `verify_tool_call()`，導致信心度閾值檢查永遠被跳過。
 - **影響**: Agent 無法根據 LLM 信心度拒絕低信心度的工具呼叫。
 - **建議**: 整合 LLM logprobs 或實作 confidence 估算機制。
 - **狀態**: <span style="color:orange">待修復</span>
 
 ### 2. ~~VerificationLayer 腳本驗證未實作~~ ✅ 已解決 (v0.5.4)
-- **位置**: [`verifier.py`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/verifier.py)
+- **位置**: `XBrainLab/llm/agent/verifier.py`
 - **解決方案**: 實作 Pluggable `ValidatorStrategy` 模式，包含三個內建 Validator：
     - `FrequencyRangeValidator`：驗證帶通頻率 `low_freq < high_freq` 且皆為正數
     - `TrainingParamValidator`：驗證 epoch 與 batch_size 為正整數
@@ -78,19 +78,19 @@
 ## 🚧 中優先級 (Medium Priority)
 
 ### 1. ~~`Study` 仍持有 Training 狀態 (God Object 殘留)~~ ✅ 已解決 (v0.5.4)
-- **位置**: [`training_manager.py`](file:///c:/lab/XBrainLab/XBrainLab/backend/training_manager.py)
+- **位置**: `XBrainLab/backend/training_manager.py`
 - **解決方案**: `TrainingManager` 已從 `Study` 完整抽取。`Study` 透過 `self.training_manager = TrainingManager()` 委派所有訓練相關屬性（`model_holder`、`training_option`、`trainer`、`saliency_params`）至 `TrainingManager`。
 - **測試**: 27 個單元測試 + 26 個 E2E 管線測試。
 - **狀態**: <span style="color:green">✅ 已修復</span>
 
 ### 2. `TrainingPlanHolder.train_one_epoch` 過於複雜
-- **位置**: [`training_plan.py:425-492`](file:///c:/lab/XBrainLab/XBrainLab/backend/training/training_plan.py#L425)
+- **位置**: `XBrainLab/backend/training/training_plan.py:425-492`
 - **問題**: 65 行大方法，包含訓練迴圈、評估、記錄更新等多重職責。
 - **建議**: 抽取 `EpochRunner` 類別 (已標記為 Optional，未實作)。
 - **狀態**: <span style="color:blue">技術債 (可選)</span>
 
 ### 3. RAG Embedding 同步執行
-- **位置**: [`retriever.py:156`](file:///c:/lab/XBrainLab/XBrainLab/llm/rag/retriever.py#L156)
+- **位置**: `XBrainLab/llm/rag/retriever.py:156`
 - **問題**: `embed_query()` 在主執行緒執行，可能阻塞 UI。
 - **影響**: 首次 RAG 查詢可能造成短暫卡頓。
 - **建議**: 移至背景執行緒執行。
@@ -105,7 +105,7 @@
 ## ℹ️ 低優先級 / 設計限制 (Design Limitations)
 
 ### 1. JSON 偵測邏輯脆弱
-- **位置**: [`controller.py:238`](file:///c:/lab/XBrainLab/XBrainLab/llm/agent/controller.py#L238)
+- **位置**: `XBrainLab/llm/agent/controller.py:238`
 - **問題**: 使用簡單字串匹配偵測 JSON，可能誤判非 JSON 輸出。
 - **現狀**: 目前運作良好，僅在極端情況可能觸發不必要的重試。
 

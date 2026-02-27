@@ -36,6 +36,10 @@ nav:
       - Backend: architecture/backend.md
       - UI: architecture/ui.md
       - Agent: architecture/agent.md
+  - Agent:
+      - Benchmark: agent/benchmark.md
+      - Context Assembler: agent/context-assembler.md
+      - Tool Definitions: agent/tool-definitions.md
   - API Reference:
       - Backend:
           - Study: api/backend/study.md
@@ -47,6 +51,26 @@ nav:
           - Verifier: api/agent/verifier.md
       - UI:
           - BasePanel: api/ui/base_panel.md
+  - Development:
+      - Roadmap: development/roadmap.md
+      - Implementation Plan: development/implementation-plan.md
+      - Known Issues: development/known-issues.md
+      - Scripts: development/scripts.md
+      - Testing:
+          - Overview: development/testing.md
+          - LLM Test Cases: development/testing/llm-test-cases.md
+          - UI Testing Strategy: development/testing/ui-testing-strategy.md
+  - Decisions:
+      - ADR-001 LangChain: decisions/ADR-001-langchain-adoption.md
+      - ADR-002 Multi-Agent: decisions/ADR-002-multi-agent-vision.md
+      - ADR-003 Qdrant: decisions/ADR-003-vector-store-qdrant.md
+      - ADR-004 UI Refresh: decisions/ADR-004-ui-refresh-mechanism.md
+      - ADR-005 State Lock: decisions/ADR-005-unified-state-lock-system.md
+      - ADR-006 ReAct: decisions/ADR-006-agent-react-architecture.md
+      - ADR-007 Testing: decisions/ADR-007-tool-call-testing-strategy.md
+      - ADR-008 Evaluation: decisions/ADR-008-tool-call-evaluation-framework.md
+  - Reference:
+      - Glossary: reference/glossary.md
   - Contributing: contributing.md
   - Changelog: changelog.md
 

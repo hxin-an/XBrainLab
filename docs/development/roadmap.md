@@ -178,7 +178,7 @@
 - [x] **資料策略**:
     - [x] **測試集準備**: 建立 `external_validation_set.json` (175 題)。
     - [x] **RAG 索引**: 索引 `gold_set.json` (50 題) 作為 Few-Shot 範例。
-    - [x] **文件索引**: 索引 `documentation/agent/*.md` (Tool Definitions, API Docs)。
+    - [x] **文件索引**: 索引 `docs/agent/*.md` (Tool Definitions, API Docs)。
 - [x] **索引實作**
     - [x] 建立 RAG 模組結構 (`XBrainLab/llm/rag/`)
     - [x] 實作 `indexer.py` (`index_gold_set`, `index_documentation`)
