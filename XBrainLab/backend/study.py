@@ -9,7 +9,8 @@ from .data_manager import DataManager
 from .dataset import Dataset, DatasetGenerator, DataSplittingConfig, Epochs
 from .load_data import Raw, RawDataLoader
 from .preprocessor import PreprocessBase
-from .training import ModelHolder, Trainer, TrainingOption, TrainingPlanHolder
+from .training import ModelHolder, Trainer, TrainingOption
+from .training_manager import TrainingManager
 from .utils import validate_type
 from .utils.logger import logger
 
@@ -42,18 +43,12 @@ class Study:
 
     def __init__(self) -> None:
         self.data_manager = DataManager()
-
-        # training
-        self.model_holder: ModelHolder | None = None
-        self.training_option: TrainingOption | None = None
-        self.trainer: Trainer | None = None
-        # visualization
-        self.saliency_params: dict | None = None
+        self.training_manager = TrainingManager()
 
         # Controller cache for singleton-like access
         self._controllers: dict = {}
 
-        logger.info("Study initialized (with DataManager)")
+        logger.info("Study initialized (with DataManager + TrainingManager)")
 
     # --- DataManager Delegation Properties ---
     # NOTE: Setters write directly to DataManager attributes for backward
@@ -103,6 +98,42 @@ class Study:
     @property
     def dataset_locked(self) -> bool:
         return self.data_manager.dataset_locked
+
+    # --- TrainingManager Delegation Properties ---
+    # Same backward-compat pattern as DataManager: direct attribute access
+    # delegated to TrainingManager so controllers/tests continue to work.
+
+    @property
+    def model_holder(self) -> ModelHolder | None:
+        return self.training_manager.model_holder
+
+    @model_holder.setter
+    def model_holder(self, value: ModelHolder | None) -> None:
+        self.training_manager.model_holder = value
+
+    @property
+    def training_option(self) -> TrainingOption | None:
+        return self.training_manager.training_option
+
+    @training_option.setter
+    def training_option(self, value: TrainingOption | None) -> None:
+        self.training_manager.training_option = value
+
+    @property
+    def trainer(self) -> Trainer | None:
+        return self.training_manager.trainer
+
+    @trainer.setter
+    def trainer(self, value: Trainer | None) -> None:
+        self.training_manager.trainer = value
+
+    @property
+    def saliency_params(self) -> dict | None:
+        return self.training_manager.saliency_params
+
+    @saliency_params.setter
+    def saliency_params(self, value: dict | None) -> None:
+        self.training_manager.saliency_params = value
 
     # --- Controller Access ---
     def get_controller(self, controller_type: str):
@@ -212,111 +243,48 @@ class Study:
         training_option: TrainingOption,
         force_update: bool = False,
     ) -> None:
-        """Set training option.
-
-        Args:
-            training_option: The training option to set.
-            force_update: Whether to force update.
-
-        """
-        validate_type(training_option, TrainingOption, "training_option")
-        # Do not clean trainer here to allow multi-experiment history
-        self.training_option = training_option
+        """Set training option via TrainingManager."""
+        self.training_manager.set_training_option(training_option, force_update)
 
     def set_model_holder(
         self,
         model_holder: ModelHolder,
         force_update: bool = False,
     ) -> None:
-        """Set model holder.
-
-        Args:
-            model_holder: The model holder to set.
-            force_update: Whether to force update.
-
-        """
-        validate_type(model_holder, ModelHolder, "model_holder")
-        # Do not clean trainer here to allow multi-experiment history
-        self.model_holder = model_holder
+        """Set model holder via TrainingManager."""
+        self.training_manager.set_model_holder(model_holder, force_update)
 
     def generate_plan(self, force_update: bool = False, append: bool = False) -> None:
-        """Generate training plan based on current configuration.
+        """Generate training plan via TrainingManager.
 
         Args:
             force_update: Whether to clear existing plan.
             append: Whether to append to existing plan.
 
         """
-        if not append:
-            self.clean_trainer(force_update=force_update)
-
-        if not self.datasets:
-            raise ValueError("No valid dataset is generated")
-        if not self.training_option:
-            raise ValueError("No valid training option is generated")
-        if not self.model_holder:
-            raise ValueError("No valid model holder is generated")
-
-        training_plan_holders = []
-        option = self.training_option
-        model_holder = self.model_holder
-        datasets = self.datasets
-        training_plan_holders = [
-            TrainingPlanHolder(model_holder, dataset, option, self.saliency_params)
-            for dataset in datasets
-        ]
-
-        if append and self.trainer:
-            self.trainer.add_training_plan_holders(training_plan_holders)
-            logger.info("Appended %s training plans", len(training_plan_holders))
-        else:
-            self.trainer = Trainer(training_plan_holders)
-            logger.info("Generated training plan")
+        self.training_manager.generate_plan(
+            self.datasets,
+            force_update=force_update,
+            append=append,
+        )
 
     # step 5 - training
     def train(self, interact: bool = False) -> None:
-        """Start training process.
-
-        Args:
-            interact: Whether to run interactively.
-
-        """
-        if not self.trainer:
-            raise ValueError("No valid trainer is generated")
-
-        self.trainer.run(interact=interact)
-        logger.info("Started training (interact=%s)", interact)
+        """Start training process via TrainingManager."""
+        self.training_manager.train(interact=interact)
 
     def stop_training(self) -> None:
-        """Stop training execution."""
-        if not self.trainer:
-            raise ValueError("No valid trainer is generated")
-        self.trainer.set_interrupt()
-        logger.info("Stopped training")
+        """Stop training execution via TrainingManager."""
+        self.training_manager.stop_training()
 
     def is_training(self) -> bool:
         """Return whether training is currently running."""
-        if self.trainer:
-            return self.trainer.is_running()
-        return False
+        return self.training_manager.is_training()
 
     # step 6 - evaluation
     def export_output_csv(self, filepath: str, plan_name: str, real_plan_name: str):
-        """Export model inference output to csv file.
-
-        Args:
-            filepath: Path to save the CSV.
-            plan_name: Name of the plan.
-            real_plan_name: Real name of the plan.
-
-        """
-        if not self.trainer:
-            raise ValueError("No valid training plan is generated")
-        plan = self.trainer.get_real_training_plan(plan_name, real_plan_name)
-        record = plan.get_eval_record()
-        if not record:
-            raise ValueError("No evaluation record for this training plan")
-        record.export_csv(filepath)
+        """Export model inference output to csv file via TrainingManager."""
+        self.training_manager.export_output_csv(filepath, plan_name, real_plan_name)
 
     # step 7 - visualization
     def set_channels(self, chs: list[str], positions: list[tuple]) -> None:
@@ -326,15 +294,12 @@ class Study:
         self.epoch_data.set_channels(chs, positions)
 
     def get_saliency_params(self) -> dict | None:
-        """Return parameters for saliency computation."""
-        return self.saliency_params
+        """Return parameters for saliency computation via TrainingManager."""
+        return self.training_manager.get_saliency_params()
 
     def set_saliency_params(self, saliency_params) -> None:
-        """Set saliency parameters for saliency computation."""
-        self.saliency_params = saliency_params
-        if self.trainer:
-            for training_plan_holder in self.trainer.get_training_plan_holders():
-                training_plan_holder.set_saliency_params(saliency_params)
+        """Set saliency parameters via TrainingManager."""
+        self.training_manager.set_saliency_params(saliency_params)
 
     # --- Clean Workflow ---
     # Study extends DataManager's cleaning by adding trainer awareness.
@@ -361,7 +326,7 @@ class Study:
 
     def has_trainer(self) -> bool:
         """Return whether a trainer is configured (pure query)."""
-        return self.trainer is not None
+        return self.training_manager.has_trainer()
 
     def clean_raw_data(self, force_update: bool = True) -> None:
         """Clean raw data and all downstream state including trainer."""
@@ -374,18 +339,5 @@ class Study:
         self.data_manager.clean_datasets(force_update)
 
     def clean_trainer(self, force_update: bool = True) -> None:
-        """Clean the trainer.
-
-        Args:
-            force_update: If ``False``, raises when a trainer exists.
-
-        """
-        if not force_update and self.has_trainer():
-            raise ValueError(
-                "This step has already been done, "
-                "all following data will be removed if you reset this step.\n"
-                "Please clean_trainer first.",
-            )
-        if self.trainer:
-            self.trainer.clean(force_update=force_update)
-        self.trainer = None
+        """Clean the trainer via TrainingManager."""
+        self.training_manager.clean_trainer(force_update=force_update)
