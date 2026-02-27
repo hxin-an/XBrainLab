@@ -143,7 +143,7 @@ class TestFilteringDialog:
 class TestDatasetPanel:
     @pytest.fixture
     def panel(self, qtbot):
-        with patch("XBrainLab.ui.panels.dataset.panel.QtObserverBridge"):
+        with patch("XBrainLab.ui.core.base_panel.QtObserverBridge"):
             from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 
             ctrl = MagicMock()
@@ -165,7 +165,7 @@ class TestDatasetPanel:
 class TestTrainingPanel:
     @pytest.fixture
     def panel(self, qtbot):
-        with patch("XBrainLab.ui.panels.training.panel.QtObserverBridge"):
+        with patch("XBrainLab.ui.core.base_panel.QtObserverBridge"):
             from XBrainLab.ui.panels.training.panel import TrainingPanel
 
             ctrl = MagicMock()

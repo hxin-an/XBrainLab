@@ -3,7 +3,6 @@
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
@@ -57,23 +56,23 @@ class PreprocessPanel(BasePanel):
     def _setup_bridges(self):
         """Register Qt observer bridges for preprocess and dataset events."""
         if self.controller:
-            self.bridge = QtObserverBridge(self.controller, "preprocess_changed", self)
-            self.bridge.connect_to(self.update_panel)
+            self._create_bridge(
+                self.controller,
+                "preprocess_changed",
+                self.update_panel,
+            )
 
             if self.dataset_controller:
-                self.data_bridge = QtObserverBridge(
+                self._create_bridge(
                     self.dataset_controller,
                     "data_changed",
-                    self,
+                    self.update_panel,
                 )
-                self.data_bridge.connect_to(self.update_panel)
-
-                self.import_bridge = QtObserverBridge(
+                self._create_bridge(
                     self.dataset_controller,
                     "import_finished",
-                    self,
+                    self.update_panel,
                 )
-                self.import_bridge.connect_to(self.update_panel)
 
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""

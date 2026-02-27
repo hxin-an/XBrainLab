@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 from .control_sidebar import ControlSidebar
@@ -65,13 +64,11 @@ class VisualizationPanel(BasePanel):
             training_ctrl = self.controller.study.get_controller("training")
 
         if training_ctrl:
-            # When training stops, update the plan lists
-            self.training_bridge = QtObserverBridge(
+            self._create_bridge(
                 training_ctrl,
                 "training_stopped",
-                self,
+                self.update_panel,
             )
-            self.training_bridge.connect_to(self.update_panel)
 
     def init_ui(self):
         """Build the panel layout with control bar, tabbed plots, and sidebar."""

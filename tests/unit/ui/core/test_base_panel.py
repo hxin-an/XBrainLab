@@ -73,3 +73,25 @@ def test_methods_exist(panel):
     panel.update_panel()
     panel._setup_bridges()
     panel.cleanup()
+
+
+class TestCreateBridge:
+    def test_creates_and_registers(self, qtbot):
+        mock_ctrl = MagicMock()
+        panel = ConcretePanel(controller=mock_ctrl)
+        qtbot.addWidget(panel)
+
+        handler = MagicMock()
+        bridge = panel._create_bridge(mock_ctrl, "some_event", handler)
+
+        assert bridge in panel._bridges
+        assert len(panel._bridges) == 1
+
+    def test_multiple_bridges(self, qtbot):
+        mock_ctrl = MagicMock()
+        panel = ConcretePanel(controller=mock_ctrl)
+        qtbot.addWidget(panel)
+
+        panel._create_bridge(mock_ctrl, "event_a", MagicMock())
+        panel._create_bridge(mock_ctrl, "event_b", MagicMock())
+        assert len(panel._bridges) == 2

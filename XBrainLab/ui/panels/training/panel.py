@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -81,53 +80,44 @@ class TrainingPanel(BasePanel):
             return
 
         # Connect to controller events for automatic UI updates
-        self.bridge_started = QtObserverBridge(
+        self._create_bridge(
             self.controller,
             "training_started",
-            self,
+            self._on_training_started,
         )
-        self.bridge_started.connect_to(self._on_training_started)
-
-        self.bridge_stopped = QtObserverBridge(
+        self._create_bridge(
             self.controller,
             "training_stopped",
-            self,
+            self._on_training_stopped,
         )
-        self.bridge_stopped.connect_to(self._on_training_stopped)
-
-        self.bridge_config = QtObserverBridge(self.controller, "config_changed", self)
-        # Config changes update toolbar state
-        self.bridge_config.connect_to(self._on_config_changed)
-
-        # Connect to training updates
-        self.bridge_updated = QtObserverBridge(
+        self._create_bridge(
+            self.controller,
+            "config_changed",
+            self._on_config_changed,
+        )
+        self._create_bridge(
             self.controller,
             "training_updated",
-            self,
+            lambda *args, **kwargs: self.update_loop(),
         )
-        # We wrap update_loop to accept *args, **kwargs safely
-        self.bridge_updated.connect_to(lambda *args, **kwargs: self.update_loop())
-
-        self.bridge_cleared = QtObserverBridge(self.controller, "history_cleared", self)
-        self.bridge_cleared.connect_to(self._on_history_cleared)
+        self._create_bridge(
+            self.controller,
+            "history_cleared",
+            self._on_history_cleared,
+        )
 
         # Connect to Dataset events (Updates info panel and check readiness)
         if self.dataset_controller:
-            self.data_bridge = QtObserverBridge(
+            self._create_bridge(
                 self.dataset_controller,
                 "data_changed",
-                self,
+                self.update_panel,
             )
-            self.data_bridge.connect_to(self.update_panel)
-
-            self.import_bridge = QtObserverBridge(
+            self._create_bridge(
                 self.dataset_controller,
                 "import_finished",
-                self,
-            )
-            self.import_bridge.connect_to(
                 self.update_panel,
-            )  # Or specific handler if needed
+            )
 
         # Event-driven update: 'training_updated' signal triggers update_loop
         self.training_completed_shown = False

@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
@@ -80,12 +79,11 @@ class EvaluationPanel(BasePanel):
             training_ctrl = self.controller.study.get_controller("training")
 
         if training_ctrl:
-            self.training_bridge = QtObserverBridge(
+            self._create_bridge(
                 training_ctrl,
                 "training_stopped",
-                self,
+                self.update_panel,
             )
-            self.training_bridge.connect_to(self.update_panel)
 
     def update_panel(self):
         """Update panel content when switched to."""

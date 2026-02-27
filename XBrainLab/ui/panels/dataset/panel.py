@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_panel import BasePanel
-from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 from XBrainLab.ui.styles.theme import Theme
 
 from .actions import DatasetActionHandler
@@ -62,15 +61,12 @@ class DatasetPanel(BasePanel):
     def _setup_bridges(self):
         """Register Qt observer bridges for controller events."""
         if self.controller:
-            self.bridge = QtObserverBridge(self.controller, "data_changed", self)
-            self.bridge.connect_to(self.update_panel)
-
-            self.bridge_import = QtObserverBridge(
+            self._create_bridge(self.controller, "data_changed", self.update_panel)
+            self._create_bridge(
                 self.controller,
                 "import_finished",
-                self,
+                self.action_handler.on_import_finished,
             )
-            self.bridge_import.connect_to(self.action_handler.on_import_finished)
 
     def init_ui(self):
         """Build the panel layout with a file table and sidebar."""

@@ -1,7 +1,17 @@
 """Base panel class providing a standardized interface for all application panels."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QWidget
+
+from XBrainLab.backend.utils.observer import Observable
+from XBrainLab.ui.core.observer_bridge import QtObserverBridge
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 class BasePanel(QWidget):
@@ -29,6 +39,9 @@ class BasePanel(QWidget):
         self.controller = controller
         # Attempt to resolve main_window from parent
         self.main_window = parent if getattr(parent, "study", None) else None
+
+        # Registry for bridges created via _create_bridge
+        self._bridges: list[QtObserverBridge] = []
 
         # Note: We do NOT call _setup_bridges() or init_ui() here to allow
         # subclasses to perform necessary setup (like creating actions/helpers)
@@ -62,6 +75,33 @@ class BasePanel(QWidget):
 
         Optional override for subclasses that need reactive updates.
         """
+
+    def _create_bridge(
+        self,
+        controller: Observable,
+        event: str,
+        handler: Callable,
+    ) -> QtObserverBridge:
+        """Create and register a ``QtObserverBridge``.
+
+        Convenience helper that reduces boilerplate in
+        ``_setup_bridges`` overrides.  All created bridges are stored in
+        ``self._bridges`` so they remain referenced for the lifetime of
+        the panel.
+
+        Args:
+            controller: The backend controller to observe.
+            event: The event name to subscribe to.
+            handler: Callback invoked when the event fires.
+
+        Returns:
+            The created ``QtObserverBridge`` instance.
+
+        """
+        bridge = QtObserverBridge(controller, event, self)
+        bridge.connect_to(handler)
+        self._bridges.append(bridge)
+        return bridge
 
     def set_busy(self, busy: bool):
         """Set the panel's busy state, updating cursor and interactivity.

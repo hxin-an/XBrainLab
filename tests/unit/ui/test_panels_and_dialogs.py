@@ -172,7 +172,7 @@ class TestVisualizationPanel:
                 "XBrainLab.ui.panels.visualization.panel.Saliency3DPlotWidget",
                 side_effect=make_widget_factory(),
             ),
-            patch("XBrainLab.ui.panels.visualization.panel.QtObserverBridge"),
+            patch("XBrainLab.ui.core.base_panel.QtObserverBridge"),
         ):
             from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
@@ -232,7 +232,7 @@ class TestEvaluationPanel:
                 "XBrainLab.ui.panels.evaluation.panel.MetricsBarChartWidget",
                 side_effect=make_widget_factory(),
             ),
-            patch("XBrainLab.ui.panels.evaluation.panel.QtObserverBridge"),
+            patch("XBrainLab.ui.core.base_panel.QtObserverBridge"),
         ):
             from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 
