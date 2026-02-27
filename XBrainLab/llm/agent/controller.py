@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import threading
+import time as _time
 from collections import deque
 from typing import Any
 
@@ -20,6 +21,7 @@ from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 from .assembler import ContextAssembler
 from .conversation import ConversationHistory
+from .metrics import AgentMetricsTracker
 from .parser import CommandParser
 from .verifier import VerificationLayer
 from .worker import AgentWorker
@@ -115,6 +117,9 @@ class LLMController(QObject):
         self._emitted_len = 0
         self._is_buffering = False
 
+        # Metrics tracker
+        self.metrics = AgentMetricsTracker()
+
         # Robustness State
         self._recent_tool_calls: deque = deque(maxlen=10)
         self._retry_count = 0
@@ -179,6 +184,10 @@ class LLMController(QObject):
         self.is_processing = True
         self.status_update.emit("Thinking...")
 
+        # Start metrics for this turn
+        turn = self.metrics.start_turn()
+        turn.input_chars += len(text)
+
         try:
             # 1. Update History
             self._append_history("user", text)
@@ -214,6 +223,13 @@ class LLMController(QObject):
         self._emitted_len = 0  # Track what we sent to UI
         self._is_buffering = False
 
+        # Track LLM call metrics
+        if self.metrics.current_turn:
+            self.metrics.current_turn.llm_calls += 1
+            self.metrics.current_turn.input_chars += sum(
+                len(m.get("content", "")) for m in messages
+            )
+
         # Update status and Start Bubble
         self.status_update.emit("Generating response...")
         self.generation_started.emit()
@@ -233,6 +249,10 @@ class LLMController(QObject):
 
         """
         self.current_response += chunk
+
+        # Track output chars
+        if self.metrics.current_turn:
+            self.metrics.current_turn.output_chars += len(chunk)
 
         # Heuristic: Determine if we should buffer (hide) this output
         # 1. Start of message: Wait a bit to check for '{' or 'Request:'
@@ -444,6 +464,7 @@ class LLMController(QObject):
         Stops generation and signals the UI that the agent is ready for
         new input (Safe Mode — does not auto-generate follow-up text).
         """
+        self.metrics.finish_turn()
         self.status_update.emit("Ready")
         self.is_processing = False
         self.processing_finished.emit()
@@ -489,6 +510,7 @@ class LLMController(QObject):
 
         """
         self._append_history("assistant", response_text)
+        self.metrics.finish_turn()
         self.status_update.emit("Ready")
         self.is_processing = False
         self.processing_finished.emit()
@@ -507,15 +529,38 @@ class LLMController(QObject):
         """
         tool = get_tool_by_name(command_name)
         if tool:
+            t0 = _time.monotonic()
             try:
                 result = tool.execute(self.study, **params)
             except Exception as e:
+                elapsed = (_time.monotonic() - t0) * 1000
                 error_msg = f"Tool execution failed: {e}"
+                if self.metrics.current_turn:
+                    self.metrics.current_turn.record_tool(
+                        command_name,
+                        False,
+                        elapsed,
+                        str(e),
+                    )
                 self.status_update.emit(error_msg)
                 return False, error_msg
             else:
+                elapsed = (_time.monotonic() - t0) * 1000
+                if self.metrics.current_turn:
+                    self.metrics.current_turn.record_tool(
+                        command_name,
+                        True,
+                        elapsed,
+                    )
                 return True, result
         else:
+            if self.metrics.current_turn:
+                self.metrics.current_turn.record_tool(
+                    command_name,
+                    False,
+                    0,
+                    "unknown tool",
+                )
             self.status_update.emit(f"Unknown tool: {command_name}")
             return False, f"Error: Unknown tool '{command_name}'"
 
@@ -649,6 +694,9 @@ class LLMController(QObject):
         self._tool_failure_count = 0
         self._loop_break_count = 0
         self._recent_tool_calls.clear()
+
+        # Reset metrics for new conversation
+        self.metrics.reset()
 
         # Clear Assembler context as well
         self.assembler.clear_context()
