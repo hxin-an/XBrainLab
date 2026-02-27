@@ -206,8 +206,10 @@ class BasePanel(QWidget):
     def set_busy(self, busy: bool):  # 設定忙碌狀態
         ...
 
-    def cleanup(self):               # 清理資源（含 Bridge 清理）
-        ...
+    def cleanup(self):               # 清理資源（解除所有 Bridge 訂閱）
+        for bridge in self._bridges:
+            bridge.cleanup()
+        self._bridges.clear()
 ```
 
 > **注意**: BasePanel 不使用 `ABC` / `@abstractmethod`，而是透過 `NotImplementedError` 強制子類別實作 `init_ui`。

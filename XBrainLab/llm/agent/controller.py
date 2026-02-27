@@ -416,11 +416,8 @@ class LLMController(QObject):
                     f"System: Tool call REJECTED: {validation.error_message}",
                 )
                 has_failure = True  # Treat as failure to trigger retry loop
-                # Do not execute. Continue to next command or break?
-                # Usually break to let LLM fix.
-                # But let's verify if there are other commands.
-                # Safest is to treat as failure logic.
-                continue
+                # Do not execute remaining commands — let LLM fix.
+                break
 
             self.status_update.emit(f"Executing: {cmd}...")
 

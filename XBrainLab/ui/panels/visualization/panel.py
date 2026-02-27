@@ -274,7 +274,9 @@ class VisualizationPanel(BasePanel):
                         eval_record = target_plan.get_eval_record()
                     else:
                         logger.warning(
-                            f"Run index {run_idx} out of range (0-{len(plans) - 1})",
+                            "Run index %d out of range (0-%d)",
+                            run_idx,
+                            len(plans) - 1,
                         )
                 else:
                     logger.warning("Could not parse run number from: %s", run_name)

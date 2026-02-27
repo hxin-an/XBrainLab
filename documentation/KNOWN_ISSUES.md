@@ -2,7 +2,7 @@
 
 本文件記錄目前專案中已確認存在的 Bug、限制與待解決的問題。
 
-**最後更新**: 2026-02-25 (v0.5.3)
+**最後更新**: 2026-02-25 (v0.5.4)
 
 ---
 
@@ -128,7 +128,7 @@
 | --- | --- | --- |
 | **Linting (Ruff)** | ✅ 0 錯誤 | 全部通過 |
 | **Type Check (Mypy)** | ✅ 0 錯誤 | 全部通過 |
-| **Unit Tests** | ✅ 3879 通過 | 0 失敗, 17 skipped |
+| **Unit Tests** | ✅ 3879 通過 | 0 失敗, 17 skipped, 1 xfailed |
 | **Pre-commit** | ✅ 全部通過 | 包含 secrets 掃描 |
 | **架構遷移** | ✅ 完成 | Assembler + Verifier 已整合 |
 | **CI/CD** | ✅ 運作中 | Linux + Windows + macOS |

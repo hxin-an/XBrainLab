@@ -2,7 +2,7 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
-## [0.5.4] - 2026-02-XX
+## [0.5.4] - 2026-02-25
 ### Added
 - **TrainingManager 抽取**: 從 `Study` 抽取訓練生命週期至 `XBrainLab/backend/training_manager.py`，管理模型設定、計畫生成與訓練執行。`Study` 透過 Property Delegation 委派 `model_holder`、`training_option`、`trainer`、`saliency_params`。(27 單元測試)
 - **AgentMetricsTracker**: 新增 `XBrainLab/llm/agent/metrics.py`，提供結構化日誌、Token 計數、Latency 追蹤與工具執行記錄。Controller 整合 7 處 metrics 節點。(12 單元測試)

@@ -30,6 +30,11 @@ graph TD
         direction TB
         Study[Study<br/>狀態容器]
 
+        subgraph Managers ["Managers (資料管理)"]
+            DataMgr[DataManager<br/>資料生命週期]
+            TrainMgr[TrainingManager<br/>訓練生命週期]
+        end
+
         subgraph Controllers ["Controllers (邏輯)"]
             DatasetCtrl[DatasetController<br/>數據管理]
             PreprocessCtrl[PreprocessController<br/>預處理]
@@ -119,6 +124,9 @@ graph TD
     TrainingCtrl --> Study
     EvalCtrl --> Study
     VisCtrl --> Study
+
+    Study --> DataMgr
+    Study --> TrainMgr
 
     DatasetCtrl --> LabelSvc
 

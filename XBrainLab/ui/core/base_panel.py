@@ -120,5 +120,9 @@ class BasePanel(QWidget):
     def cleanup(self) -> None:
         """Clean up resources, bridges, or threads on close.
 
-        Optional override for subclasses with disposable resources.
+        Unsubscribes all observer bridges created via ``_create_bridge``.
+        Subclasses should call ``super().cleanup()`` when overriding.
         """
+        for bridge in self._bridges:
+            bridge.cleanup()
+        self._bridges.clear()

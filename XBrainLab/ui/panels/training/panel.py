@@ -65,6 +65,7 @@ class TrainingPanel(BasePanel):
         self.dataset_controller = dataset_controller
 
         self.current_plotting_record = None
+        self._last_epoch_count: int = -1
         self.plan_items = {}
         self.run_items = {}
 
@@ -278,8 +279,7 @@ class TrainingPanel(BasePanel):
 
     def update_info(self):
         """Delegate info-panel updates to the sidebar."""
-        self.info_panel = None  # Handled by Sidebar
-        # But the Controller logic might call update_info on Panel
+        # Info display is handled entirely by the Sidebar component.
         if hasattr(self, "sidebar"):
             self.sidebar.update_info()
 
@@ -328,12 +328,10 @@ class TrainingPanel(BasePanel):
     # check_ready_to_train moved to Sidebar
 
     def closeEvent(self, event):  # noqa: N802
-        """Stop the update timer on close.
+        """Handle panel close, delegating to base cleanup.
 
         Args:
             event: The ``QCloseEvent``.
 
         """
-        if hasattr(self, "timer") and self.timer.isActive():
-            self.timer.stop()
         super().closeEvent(event)

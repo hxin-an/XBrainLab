@@ -211,9 +211,7 @@ class DatasetPanel(BasePanel):
         col = item.column()
 
         name_item = self.table.item(row, 0)
-        if name_item and name_item.data(Qt.ItemDataRole.UserRole):
-            pass  # We have data
-        else:
+        if not (name_item and name_item.data(Qt.ItemDataRole.UserRole)):
             return
 
         new_value = item.text()

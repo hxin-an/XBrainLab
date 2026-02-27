@@ -18,7 +18,7 @@ from XBrainLab.backend.training import (
     TrainingEvaluation,
     TrainingOption,
 )
-from XBrainLab.backend.training.record import RecordKey
+from XBrainLab.backend.training.record import TrainRecordKey
 from XBrainLab.backend.training_manager import TrainingManager
 
 # ---------------------------------------------------------------------------
@@ -190,8 +190,8 @@ class TestStudyTrainCycle:
         plan = study.trainer.get_training_plan_holders()[0]
         assert len(plan.train_record_list) == 1
         record = plan.train_record_list[0]
-        assert RecordKey.LOSS in record.train
-        assert len(record.train[RecordKey.LOSS]) == 2  # 2 epochs
+        assert TrainRecordKey.LOSS in record.train
+        assert len(record.train[TrainRecordKey.LOSS]) == 2  # 2 epochs
 
     def test_full_cycle_sccnet(self):
         study = Study()

@@ -206,7 +206,7 @@ study.get_controller("training")   # → TrainingController
 - 資料備份與恢復（undo 支援）
 - 鎖定機制（下游操作存在時防止修改上游資料）
 
-### 4.2.1 TrainingManager（訓練生命週期）
+### 4.3 TrainingManager（訓練生命週期）
 
 從 `Study` 抽取出的訓練管理模組，負責：
 - 模型設定 (`set_model_holder`, `set_training_option`)
@@ -218,7 +218,7 @@ study.get_controller("training")   # → TrainingController
 
 `Study` 透過 Property Delegation 將 `model_holder`、`training_option`、`trainer`、`saliency_params` 委派至 `TrainingManager`。
 
-### 4.3 Controllers（業務邏輯核心）
+### 4.4 Controllers（業務邏輯核心）
 
 除 `ChatController`（繼承 `QObject`）外，所有 Controller 繼承 `Observable`，透過事件通知訂閱者。
 
@@ -248,7 +248,7 @@ study.get_controller("training")   # → TrainingController
 
 **執行緒安全**: TrainingController 使用 `threading.Thread` 監控訓練進度，透過 `threading.Event` 同步停止信號。
 
-### 4.4 BackendFacade（統一入口）
+### 4.5 BackendFacade（統一入口）
 
 為 LLM Agent 與 Headless Scripts 提供簡化的高階 API：
 
@@ -273,7 +273,7 @@ facade.configure_training(epoch=50, batch_size=64, learning_rate=0.001)
 facade.run_training()                                       # 開始訓練
 ```
 
-### 4.5 Observable（觀察者模式）
+### 4.6 Observable（觀察者模式）
 
 純 Python 實現，不依賴任何 UI 框架：
 
