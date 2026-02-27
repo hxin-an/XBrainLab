@@ -124,7 +124,7 @@ Rules:
         tools_str = self._format_tools(config["tools"])
 
         prompt = self.SYSTEM_TEMPLATE.format(
-            stage_name=stage.value,
+            stage_name=stage.label,
             stage_guidance=config["guidance"],
             tools_str=tools_str,
         )

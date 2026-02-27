@@ -34,6 +34,18 @@ class PipelineStage(Enum):
     TRAINING = "training"
     TRAINED = "trained"
 
+    @property
+    def label(self) -> str:
+        """Human-friendly display name for prompt usage."""
+        return {
+            PipelineStage.EMPTY: "Empty (No Data)",
+            PipelineStage.DATA_LOADED: "Data Loaded",
+            PipelineStage.PREPROCESSED: "Preprocessed",
+            PipelineStage.DATASET_READY: "Dataset Ready",
+            PipelineStage.TRAINING: "Training In Progress",
+            PipelineStage.TRAINED: "Trained",
+        }[self]
+
 
 def compute_pipeline_stage(study: Any) -> PipelineStage:
     """Derive the current pipeline stage from *study* state.
@@ -140,6 +152,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     PipelineStage.PREPROCESSED: {
         "tools": [
             *_PREPROCESS_TOOLS,
+            "attach_labels",
             "generate_dataset",
             "get_dataset_info",
             "clear_dataset",

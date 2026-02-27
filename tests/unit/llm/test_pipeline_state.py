@@ -151,6 +151,7 @@ class TestStageConfig:
     def test_preprocessed_has_generate_dataset(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
         assert "generate_dataset" in tools
+        assert "attach_labels" in tools
         # Can still re-preprocess
         assert "apply_standard_preprocess" in tools
 
@@ -172,6 +173,23 @@ class TestStageConfig:
         trained = set(STAGE_CONFIG[PipelineStage.TRAINED]["tools"])
         ready = set(STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"])
         assert trained == ready
+
+
+# ---------------------------------------------------------------------------
+# PipelineStage.label
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineStageLabel:
+    def test_every_stage_has_label(self):
+        for stage in PipelineStage:
+            assert isinstance(stage.label, str)
+            assert len(stage.label) > 0
+
+    def test_label_is_human_friendly(self):
+        assert PipelineStage.EMPTY.label == "Empty (No Data)"
+        assert PipelineStage.DATA_LOADED.label == "Data Loaded"
+        assert PipelineStage.TRAINING.label == "Training In Progress"
 
 
 # ---------------------------------------------------------------------------

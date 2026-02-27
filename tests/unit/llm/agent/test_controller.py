@@ -485,3 +485,30 @@ class TestPipelineGate:
 
         assert success
         assert result == "ok"
+
+    def test_unknown_stage_falls_back_to_empty(self, ctrl):
+        """Stage not in STAGE_CONFIG falls back to EMPTY (restrictive)."""
+        from XBrainLab.llm.pipeline_state import PipelineStage
+
+        mock_tool = MagicMock()
+        ctrl.registry.get_tool.return_value = mock_tool
+
+        unknown = MagicMock(value="mystery")
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.compute_pipeline_stage",
+                return_value=unknown,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
+                {
+                    PipelineStage.EMPTY: {
+                        "tools": ["list_files", "load_data", "switch_panel"],
+                    },
+                },
+            ),
+        ):
+            success, result = ctrl._execute_tool_no_loop("start_training", {})
+
+        assert not success
+        assert "not available" in result

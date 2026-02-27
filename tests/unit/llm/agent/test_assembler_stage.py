@@ -125,7 +125,7 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        assert "preprocessed" in prompt
+        assert "Preprocessed" in prompt
 
     def test_contains_guidance(self):
         registry = ToolRegistry()

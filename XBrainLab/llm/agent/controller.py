@@ -15,7 +15,11 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-from XBrainLab.llm.pipeline_state import STAGE_CONFIG, compute_pipeline_stage
+from XBrainLab.llm.pipeline_state import (
+    STAGE_CONFIG,
+    PipelineStage,
+    compute_pipeline_stage,
+)
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
@@ -618,7 +622,9 @@ class LLMController(QObject):
             # --- Execution-time pipeline gate ---
             stage = compute_pipeline_stage(self.study)
             config = STAGE_CONFIG.get(stage)
-            if config and command_name not in config["tools"]:
+            if config is None:
+                config = STAGE_CONFIG.get(PipelineStage.EMPTY, {"tools": []})
+            if command_name not in config["tools"]:
                 gate_msg = (
                     f"Tool '{command_name}' is not available in the current "
                     f"pipeline stage '{stage.value}'. "

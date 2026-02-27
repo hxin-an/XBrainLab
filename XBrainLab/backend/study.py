@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .controller.dataset_controller import DatasetController
 from .controller.evaluation_controller import EvaluationController
 from .controller.preprocess_controller import PreprocessController
@@ -15,6 +17,9 @@ from .training import ModelHolder, Trainer, TrainingOption
 from .training_manager import TrainingManager
 from .utils import validate_type
 from .utils.logger import logger
+
+if TYPE_CHECKING:
+    from XBrainLab.llm.pipeline_state import PipelineStage
 
 
 class Study:
@@ -140,7 +145,7 @@ class Study:
     # --- Pipeline Stage ---
 
     @property
-    def pipeline_stage(self):
+    def pipeline_stage(self) -> PipelineStage:
         """Compute the current pipeline stage from live state.
 
         Returns:
