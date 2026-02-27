@@ -29,18 +29,6 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
     re-reference, normalise) via :class:`BackendFacade`.
     """
 
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data before preprocessing.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            ``True`` if data has been loaded.
-
-        """
-        return bool(study.loaded_data_list)
-
     def execute(
         self,
         study: Any,
@@ -101,10 +89,6 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
 class RealBandPassFilterTool(BaseBandPassFilterTool):
     """Real implementation of :class:`BaseBandPassFilterTool`."""
 
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
-
     def execute(
         self,
         study: Any,
@@ -135,10 +119,6 @@ class RealBandPassFilterTool(BaseBandPassFilterTool):
 class RealNotchFilterTool(BaseNotchFilterTool):
     """Real implementation of :class:`BaseNotchFilterTool`."""
 
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
-
     def execute(self, study: Any, freq: float | None = None, **kwargs) -> str:
         """Apply a notch filter to remove power-line noise.
 
@@ -161,10 +141,6 @@ class RealNotchFilterTool(BaseNotchFilterTool):
 
 class RealResampleTool(BaseResampleTool):
     """Real implementation of :class:`BaseResampleTool`."""
-
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
 
     def execute(self, study: Any, rate: int | None = None, **kwargs) -> str:
         """Resample the loaded EEG data to a new sampling rate.
@@ -189,10 +165,6 @@ class RealResampleTool(BaseResampleTool):
 class RealNormalizeTool(BaseNormalizeTool):
     """Real implementation of :class:`BaseNormalizeTool`."""
 
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
-
     def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
         """Normalise the loaded EEG data.
 
@@ -216,10 +188,6 @@ class RealNormalizeTool(BaseNormalizeTool):
 class RealRereferenceTool(BaseRereferenceTool):
     """Real implementation of :class:`BaseRereferenceTool`."""
 
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
-
     def execute(self, study: Any, method: str | None = None, **kwargs) -> str:
         """Set the EEG reference.
 
@@ -242,10 +210,6 @@ class RealRereferenceTool(BaseRereferenceTool):
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
     """Real implementation of :class:`BaseChannelSelectionTool`."""
-
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
 
     def execute(self, study: Any, channels: list[str] | None = None, **kwargs) -> str:
         """Select specific EEG channels to keep.
@@ -274,10 +238,6 @@ class RealSetMontageTool(BaseSetMontageTool):
     user to visually verify the channel-to-electrode mapping.
     """
 
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
-
     def execute(self, study: Any, montage_name: str | None = None, **kwargs) -> str:
         """Request montage application with UI confirmation.
 
@@ -300,10 +260,6 @@ class RealSetMontageTool(BaseSetMontageTool):
 
 class RealEpochDataTool(BaseEpochDataTool):
     """Real implementation of :class:`BaseEpochDataTool`."""
-
-    def is_valid(self, study: Any) -> bool:
-        """Require loaded data."""
-        return bool(study.loaded_data_list)
 
     def execute(
         self,

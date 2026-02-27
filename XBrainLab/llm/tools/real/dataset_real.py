@@ -131,18 +131,6 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
     Attaches label files to loaded data via :class:`BackendFacade`.
     """
 
-    def is_valid(self, study: Any) -> bool:
-        """Require at least one loaded file.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            ``True`` if data has been loaded.
-
-        """
-        return bool(study.loaded_data_list)
-
     def execute(
         self,
         study: Any,
@@ -176,18 +164,6 @@ class RealAttachLabelsTool(BaseAttachLabelsTool):
 class RealClearDatasetTool(BaseClearDatasetTool):
     """Real implementation of :class:`BaseClearDatasetTool`."""
 
-    def is_valid(self, study: Any) -> bool:
-        """Require at least one loaded file.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            ``True`` if data has been loaded.
-
-        """
-        return bool(study.loaded_data_list)
-
     def execute(self, study: Any, **kwargs) -> str:
         """Clear all loaded data and reset Study state.
 
@@ -206,18 +182,6 @@ class RealClearDatasetTool(BaseClearDatasetTool):
 
 class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
     """Real implementation of :class:`BaseGetDatasetInfoTool`."""
-
-    def is_valid(self, study: Any) -> bool:
-        """Require at least one loaded file.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            ``True`` if data has been loaded.
-
-        """
-        return bool(study.loaded_data_list)
 
     def execute(self, study: Any, **kwargs) -> str:
         """Retrieve summary information about the loaded dataset.
@@ -256,19 +220,6 @@ class RealGenerateDatasetTool(BaseGenerateDatasetTool):
 
     Generates train/validation/test splits from epoched EEG data.
     """
-
-    def is_valid(self, study: Any) -> bool:
-        """Require epoched data before dataset generation.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            ``True`` if ``study.epoch_data`` is available.
-
-        """
-        # Requires epoch_data to generate dataset
-        return study.epoch_data is not None
 
     def execute(
         self,

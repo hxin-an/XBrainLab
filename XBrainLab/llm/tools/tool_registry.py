@@ -1,10 +1,11 @@
 """Dynamic tool registry for managing LLM-callable tools.
 
-Provides registration, lookup, and state-aware filtering of
+Provides registration, lookup, and listing of
 :class:`~XBrainLab.llm.tools.base.BaseTool` instances.
-"""
 
-from typing import Any
+Tool *filtering* (which tools are available at each pipeline stage)
+is handled by :data:`~XBrainLab.llm.pipeline_state.STAGE_CONFIG`.
+"""
 
 from XBrainLab.backend.utils.logger import logger
 
@@ -59,19 +60,3 @@ class ToolRegistry:
 
         """
         return list(self._tools.values())
-
-    def get_active_tools(self, study: Any) -> list[BaseTool]:
-        """Return only the tools valid for the current application state.
-
-        Each tool's :meth:`~BaseTool.is_valid` method is evaluated
-        against *study* to determine availability.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            A filtered list of ``BaseTool`` instances whose
-            preconditions are currently satisfied.
-
-        """
-        return [tool for tool in self._tools.values() if tool.is_valid(study)]

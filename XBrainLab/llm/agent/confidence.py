@@ -18,30 +18,23 @@ from __future__ import annotations
 
 import re
 
-#: Tool names that the system supports (kept in sync with ToolRegistry).
-_KNOWN_TOOLS: frozenset[str] = frozenset(
-    {
-        "load_data",
-        "attach_labels",
-        "get_data_summary",
-        "apply_filter",
-        "apply_notch_filter",
-        "resample_data",
-        "set_montage",
-        "epoch_data",
-        "set_model",
-        "configure_training",
-        "run_training",
-        "stop_training",
-        "get_training_status",
-        "export_output_csv",
-        "evaluate",
-        "get_result_summary",
-        "generate_saliency",
-        "get_channel_names",
-        "select_channels",
-    },
-)
+from XBrainLab.llm.pipeline_state import STAGE_CONFIG
+
+
+def _collect_known_tools() -> frozenset[str]:
+    """Derive the set of known tool names from :data:`STAGE_CONFIG`.
+
+    This keeps the confidence heuristic automatically in sync with the
+    pipeline state machine — no manual duplication needed.
+    """
+    names: set[str] = set()
+    for config in STAGE_CONFIG.values():
+        names.update(config["tools"])
+    return frozenset(names)
+
+
+#: Tool names derived from STAGE_CONFIG (always in sync).
+_KNOWN_TOOLS: frozenset[str] = _collect_known_tools()
 
 _HEDGE_PATTERN = re.compile(
     r"\b(i think|maybe|sorry|i'?m not sure|possibly|i believe)\b",

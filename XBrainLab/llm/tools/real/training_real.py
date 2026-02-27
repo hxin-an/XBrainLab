@@ -105,29 +105,6 @@ class RealStartTrainingTool(BaseStartTrainingTool):
     :class:`BackendFacade`.
     """
 
-    def is_valid(self, study: Any) -> bool:
-        """Check whether training can be started.
-
-        Requires either an existing trainer or sufficient configuration
-        (datasets, model, and training options) to create one.
-
-        Args:
-            study: The global ``Study`` instance.
-
-        Returns:
-            ``True`` if training can proceed.
-
-        """
-        # Valid if we have a trainer (ready to run) OR we have all headers to create one
-        has_trainer = study.trainer is not None
-        can_create_plan = (
-            study.datasets is not None
-            and len(study.datasets) > 0
-            and study.model_holder is not None
-            and study.training_option is not None
-        )
-        return has_trainer or can_create_plan
-
     def execute(self, study: Any, **kwargs) -> str:
         """Start the training process in a background thread.
 
