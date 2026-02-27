@@ -70,7 +70,7 @@ def test_assembler_filtering():
             {
                 PipelineStage.EMPTY: {
                     "tools": ["valid_tool"],
-                    "guidance": "test guidance",
+                    "system_prompt": "You are XBrainLab Assistant.\ntest stage prompt",
                 }
             },
         ),

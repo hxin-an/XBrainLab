@@ -137,7 +137,8 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, study)
             prompt = assembler.build_system_prompt()
 
-        assert "No data is loaded yet" in prompt
+        # Per-stage prompt should contain stage-specific guidance
+        assert "no data has been loaded" in prompt.lower()
 
     def test_rag_context_appended(self):
         registry = ToolRegistry()
@@ -152,6 +153,21 @@ class TestPromptContent:
 
         assert "RAG info" in prompt
         assert "Additional Context" in prompt
+
+    def test_each_stage_has_unique_prompt(self):
+        """Every stage should produce a distinct system prompt."""
+        prompts = set()
+        for stage in PipelineStage:
+            registry = ToolRegistry()
+            study = MagicMock()
+            with patch(
+                "XBrainLab.llm.agent.assembler.compute_pipeline_stage",
+                return_value=stage,
+            ):
+                assembler = ContextAssembler(registry, study)
+                prompt = assembler.build_system_prompt()
+            prompts.add(prompt)
+        assert len(prompts) == len(PipelineStage)
 
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""

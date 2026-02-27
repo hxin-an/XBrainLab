@@ -115,13 +115,13 @@ class TestStageConfig:
         for stage in PipelineStage:
             assert stage in STAGE_CONFIG, f"Missing config for {stage}"
 
-    def test_every_config_has_tools_and_guidance(self):
+    def test_every_config_has_tools_and_system_prompt(self):
         for stage, config in STAGE_CONFIG.items():
             assert "tools" in config, f"{stage}: missing 'tools'"
-            assert "guidance" in config, f"{stage}: missing 'guidance'"
+            assert "system_prompt" in config, f"{stage}: missing 'system_prompt'"
             assert isinstance(config["tools"], list)
-            assert isinstance(config["guidance"], str)
-            assert len(config["guidance"]) > 0
+            assert isinstance(config["system_prompt"], str)
+            assert len(config["system_prompt"]) > 0
 
     def test_switch_panel_available_in_all_stages(self):
         for stage, config in STAGE_CONFIG.items():

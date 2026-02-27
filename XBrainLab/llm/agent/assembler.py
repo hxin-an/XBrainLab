@@ -28,12 +28,7 @@ class ContextAssembler:
 
     """
 
-    SYSTEM_TEMPLATE = """You are XBrainLab Assistant.
-You have access to the XBrainLab software and can control it to perform tasks.
-
-Current Pipeline Stage: {stage_name}
-{stage_guidance}
-
+    _TOOL_BLOCK_TEMPLATE = """
 Available Tools:
 {tools_str}
 
@@ -115,22 +110,23 @@ Rules:
     def build_system_prompt(self) -> str:
         """Constructs the full system prompt with stage-filtered tools.
 
+        Each pipeline stage has its own dedicated system prompt that
+        defines the assistant's persona, goals, and constraints.  The
+        tool block and RAG context are appended after the stage prompt.
+
         Returns:
-            The assembled system prompt string including pipeline stage,
-            guidance, tool definitions, and any additional RAG context.
+            The assembled system prompt string including the stage-specific
+            prompt, tool definitions, and any additional RAG context.
 
         """
-        stage, config = self._get_stage_config()
+        _stage, config = self._get_stage_config()
         tools_str = self._format_tools(config["tools"])
 
-        prompt = self.SYSTEM_TEMPLATE.format(
-            stage_name=stage.label,
-            stage_guidance=config["guidance"],
-            tools_str=tools_str,
-        )
+        prompt = config["system_prompt"]
+        prompt += self._TOOL_BLOCK_TEMPLATE.format(tools_str=tools_str)
 
         if self.context_notes:
-            prompt += "\n\nAdditional Context:\n" + "\n".join(self.context_notes)
+            prompt += "\nAdditional Context:\n" + "\n".join(self.context_notes)
 
         return prompt
 
