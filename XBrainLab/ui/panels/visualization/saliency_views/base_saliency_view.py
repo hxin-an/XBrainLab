@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
@@ -63,3 +64,10 @@ class BaseSaliencyView(QWidget):
         Must be implemented by subclasses.
         """
         raise NotImplementedError
+
+    def closeEvent(self, event):  # noqa: N802
+        """Release matplotlib Figure to prevent memory leaks."""
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
+        super().closeEvent(event)

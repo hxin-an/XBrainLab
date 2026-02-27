@@ -5,9 +5,11 @@ dataset operations (file listing, loading, label attachment, etc.).
 """
 
 import os
+from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.utils.logger import logger
 
 from ..definitions.dataset_def import (
     BaseAttachLabelsTool,
@@ -16,6 +18,27 @@ from ..definitions.dataset_def import (
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
+)
+
+# Directories that should NEVER be exposed to the LLM agent.
+_SENSITIVE_DIRS: frozenset[str] = frozenset(
+    {
+        # Windows
+        os.path.realpath(os.environ.get("SYSTEMROOT", r"C:\Windows")),
+        os.path.realpath(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
+        os.path.realpath(
+            os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
+        ),
+        # Unix
+        "/etc",
+        "/var",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/boot",
+        "/proc",
+        "/sys",
+    },
 )
 
 
@@ -51,6 +74,17 @@ class RealListFilesTool(BaseListFilesTool):
 
         # Resolve to absolute path and guard against directory traversal
         directory = os.path.realpath(directory)
+
+        # Security: block access to sensitive system directories
+        dir_path = Path(directory)
+        for sensitive in _SENSITIVE_DIRS:
+            sensitive_path = Path(sensitive)
+            if dir_path == sensitive_path or sensitive_path in dir_path.parents:
+                logger.warning(
+                    "RealListFilesTool blocked access to sensitive path: %s",
+                    directory,
+                )
+                return "Error: Access to system directories is not allowed."
 
         if not os.path.isdir(directory):
             return f"Error: Directory '{directory}' does not exist."

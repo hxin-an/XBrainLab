@@ -33,7 +33,7 @@ Available Tools:
 {tools_str}
 
 To use a tool, you MUST output a JSON object in the following format:
-```
+```json
 {{
     "tool_name": "tool_name",
     "parameters": {{
@@ -46,9 +46,8 @@ Rules:
 1. If you need to use a tool, output ONLY the JSON block.
 2. Do NOT output any introductory text (like 'Sure', 'I will') before the JSON.
 3. Do NOT output the JSON block if you are not using a tool.
-4. Do NOT use the 'json' language identifier, just the code block delimiters.
-5. If no tool is needed, just reply normally.
-6. You can ONLY use the tools listed above. Do NOT attempt to call unlisted tools.
+4. If no tool is needed, just reply normally.
+5. You can ONLY use the tools listed above. Do NOT attempt to call unlisted tools.
 """
 
     def __init__(self, tool_registry: ToolRegistry, study_state: Any):

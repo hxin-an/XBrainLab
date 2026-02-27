@@ -186,10 +186,11 @@ class VisualizationController(Observable):
         avg_vargrad = avg_dict("vargrad")
 
         return EvalRecord(
-            label=base.label,
-            # Output might differ per run, but here we assume consistent
-            # shape/classes
-            output=base.output,
+            label=base.label.copy() if hasattr(base.label, "copy") else base.label,
+            # Copy output to avoid shared mutable reference
+            output={k: v.copy() for k, v in base.output.items()}
+            if isinstance(base.output, dict)
+            else base.output,
             gradient=avg_gradient,
             gradient_input=avg_gradient_input,
             smoothgrad=avg_smoothgrad,

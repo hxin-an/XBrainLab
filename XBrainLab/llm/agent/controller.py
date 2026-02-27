@@ -844,11 +844,9 @@ class LLMController(QObject):
             self.metrics.finish_turn()
             self.is_processing = False
             # Signal the generation thread (not worker thread) to stop
-            if (
-                self.worker.generation_thread
-                and self.worker.generation_thread.isRunning()
-            ):
-                self.worker.generation_thread.requestInterruption()
+            gen_thread = self.worker.generation_thread  # local ref for safety
+            if gen_thread is not None and gen_thread.isRunning():
+                gen_thread.requestInterruption()
             self.processing_finished.emit()
 
     def set_model(self, model_display_name: str):

@@ -81,6 +81,7 @@ class AgentWorker(QObject):
         super().__init__()
         self.engine = None
         self.generation_thread = None
+        self.timeout_timer = None
 
     def initialize_agent(self):
         """Initializes the LLM engine and loads the model.
@@ -109,6 +110,27 @@ class AgentWorker(QObject):
         except Exception as e:
             logger.error("Failed to initialize Agent", exc_info=True)
             self.error.emit(f"Model Load Error: {e!s}")
+
+    def _cleanup_generation_thread(self):
+        """Disconnect and request interruption of any running generation thread.
+
+        Prevents double callbacks and interleaved chunks when a new
+        generation is started before a previous one finishes.
+        """
+        if self.generation_thread is not None:
+            try:
+                self.generation_thread.chunk_received.disconnect(self.chunk_received)
+                self.generation_thread.finished_generation.disconnect(
+                    self._on_generation_finished,
+                )
+                self.generation_thread.error_occurred.disconnect(
+                    self._on_generation_error,
+                )
+            except (TypeError, RuntimeError):
+                pass  # Already disconnected
+            if self.generation_thread.isRunning():
+                self.generation_thread.requestInterruption()
+            self.generation_thread = None
 
     def generate_from_messages(self, messages):
         """Runs LLM generation using a full message history.
@@ -163,18 +185,21 @@ class AgentWorker(QObject):
         except Exception as e:
             logger.error("Failed to sync config: %s", e)
 
-        # Start Generation Thread
+        # Start Generation Thread — clean up any previous thread first
+        self._cleanup_generation_thread()
+
         self.generation_thread = GenerationThread(self.engine, messages)
         self.generation_thread.chunk_received.connect(self.chunk_received)
         self.generation_thread.finished_generation.connect(self._on_generation_finished)
         self.generation_thread.error_occurred.connect(self._on_generation_error)
 
-        # Timeout timer (thread-safe UI timer)
+        # Timeout timer (thread-safe UI timer) — reuse existing or create once
         self._is_timed_out = False
 
-        self.timeout_timer = QTimer(self)
-        self.timeout_timer.setSingleShot(True)
-        self.timeout_timer.timeout.connect(self._on_timeout)
+        if self.timeout_timer is None:
+            self.timeout_timer = QTimer(self)
+            self.timeout_timer.setSingleShot(True)
+            self.timeout_timer.timeout.connect(self._on_timeout)
 
         # Start with config timeout or default 60s
         timeout_ms = getattr(self.engine.config, "timeout", 60) * 1000

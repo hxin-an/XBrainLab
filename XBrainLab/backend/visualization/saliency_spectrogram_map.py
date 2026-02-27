@@ -16,11 +16,13 @@ class SaliencySpectrogramMapViz(Visualizer):
     channels, producing one subplot per class label.
     """
 
-    def _get_plt(self, method) -> Any:
+    def _get_plt(self, method, absolute: bool = False) -> Any:
         """Render the saliency spectrogram figure.
 
         Args:
             method: Name of the saliency method (e.g. ``"Gradient"``).
+            absolute: Accepted for interface consistency with sibling
+                visualisers but currently unused by this implementation.
 
         Returns:
             matplotlib.figure.Figure: The rendered spectrogram figure.

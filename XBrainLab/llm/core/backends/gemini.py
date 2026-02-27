@@ -87,18 +87,25 @@ class GeminiBackend(BaseBackend):
         if not self.client:
             self.load()
 
+        # Find the last user message (may not always be messages[-1])
+        last_user_msg = ""
+        remaining_history_end = len(messages)
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i]["role"] == "user":
+                last_user_msg = messages[i]["content"]
+                remaining_history_end = i
+                break
+
         # Convert messages to Gemini SDK format
         # Extract system messages and merge into system_instruction
         system_parts = []
         history = []
-        for msg in messages[:-1]:
+        for msg in messages[:remaining_history_end]:
             if msg["role"] == "system":
                 system_parts.append(msg["content"])
             else:
                 role = "user" if msg["role"] == "user" else "model"
                 history.append({"role": role, "parts": [{"text": msg["content"]}]})
-
-        last_user_msg = messages[-1]["content"] if messages else ""
 
         # Build config with system instruction if present
         chat_kwargs = {

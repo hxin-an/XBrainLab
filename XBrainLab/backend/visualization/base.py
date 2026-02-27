@@ -69,7 +69,7 @@ class Visualizer:
         """
         if self.fig is None:
             self.fig = plt.figure(figsize=self.figsize, dpi=self.dpi)
-        plt.clf()
+        self.fig.clf()
         return self._get_plt(*args, **kwargs)
 
     def get_saliency(self, saliency_name: str, label_index: int) -> np.ndarray:

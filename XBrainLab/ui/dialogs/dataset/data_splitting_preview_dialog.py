@@ -107,6 +107,7 @@ class DataSplittingPreviewDialog(BaseDialog):
         self.epoch_data = epoch_data
         self.config = config
         self.datasets = []
+        self._datasets_lock = threading.Lock()
         self.dataset_generator: DatasetGenerator | None = None
         self.preview_worker = None
 
@@ -398,19 +399,26 @@ class DataSplittingPreviewDialog(BaseDialog):
             self.tree.clear()
             item = QTreeWidgetItem(self.tree)
             item.setText(1, "Nan")
-        elif len(self.datasets) > 0:
-            item0 = self.tree.topLevelItem(0)
-            if self.tree.topLevelItemCount() == 1 and item0 and item0.text(0) == "...":
-                self.tree.clear()
+        else:
+            with self._datasets_lock:
+                snapshot = list(self.datasets)
+            if len(snapshot) > 0:
+                item0 = self.tree.topLevelItem(0)
+                if (
+                    self.tree.topLevelItemCount() == 1
+                    and item0
+                    and item0.text(0) == "..."
+                ):
+                    self.tree.clear()
 
-            current_count = self.tree.topLevelItemCount()
-            if current_count < len(self.datasets):
-                for i in range(current_count, len(self.datasets)):
-                    dataset = self.datasets[i]
-                    item = QTreeWidgetItem(self.tree)
-                    info = dataset.get_treeview_row_info()
-                    for col, val in enumerate(info):
-                        item.setText(col, str(val))
+                current_count = self.tree.topLevelItemCount()
+                if current_count < len(snapshot):
+                    for i in range(current_count, len(snapshot)):
+                        dataset = snapshot[i]
+                        item = QTreeWidgetItem(self.tree)
+                        info = dataset.get_treeview_row_info()
+                        for col, val in enumerate(info):
+                            item.setText(col, str(val))
 
     def show_info(self):
         """Display detailed information about the selected dataset."""
