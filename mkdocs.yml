@@ -3,7 +3,7 @@ site_description: "EEG Analysis Platform with AI Agent"
 site_url: https://xbrainlab.readthedocs.io/
 
 repo_name: XBrainLab
-repo_url: https://github.com/your-org/XBrainLab
+repo_url: https://github.com/CECNL/XBrainLab
 
 theme:
   name: material
@@ -38,6 +38,8 @@ nav:
       - Agent: architecture/agent.md
   - Agent:
       - Benchmark: agent/benchmark.md
+      - Experiment Guide: agent/experiment-guide.md
+      - Data Management: agent/data-management.md
       - Context Assembler: agent/context-assembler.md
       - Tool Definitions: agent/tool-definitions.md
   - API Reference:

@@ -11,7 +11,7 @@
 | **Poetry** | 依賴管理 | 用於解決套件版本衝突，並自動建立隔離的虛擬環境 (Virtual Environment)，確保實驗環境的一致性。 |
 | **Pre-commit** | 自動化檢查 | 在提交 (Commit) 前自動執行品質檢查腳本，防止格式錯誤或明顯的 Bug 進入版本庫。 |
 | **Ruff** | 靜態分析 | 高效的 Python Linter，用於檢查程式碼風格 (PEP 8) 與潛在錯誤。 |
-| **Result** | 自動化任務 | 專案專用的任務執行器，簡化測試與驗證指令。 |
+| **Poe (poethepoet)** | 自動化任務 | 專案專用的任務執行器，簡化測試與驗證指令。 |
 
 ### 1. 環境安裝 (Installation)
 
@@ -20,7 +20,7 @@
 
 2.  **複製專案 (Clone Repository)**:
     ```bash
-    git clone https://github.com/your-repo/XBrainLab.git
+    git clone https://github.com/CECNL/XBrainLab.git
     cd XBrainLab
     ```
 
@@ -31,9 +31,13 @@
     ```
 
 4.  **啟動虛擬環境 (Activate Shell)**:
-    進入專案專屬的隔離環境 (注意：Poetry 2.0+ 已移除 `shell` 指令，請使用以下方式)：
+    進入專案專屬的隔離環境：
     ```bash
+    # Linux / macOS
     source $(poetry env info --path)/bin/activate
+    # Windows PowerShell
+    & (Join-Path (poetry env info --path) 'Scripts/Activate.ps1')
+    # 或直接使用 poetry run <cmd> 無需啟動 shell
     ```
 
 5.  **設定 Git Hooks**:
@@ -56,7 +60,7 @@
     ```
 *   **執行 Agent 驗證測試**:
     ```bash
-    poe benchmark-llm
+    poetry run benchmark-llm --model gemini --dataset test.json --delay 1 --timeout 60
     ```
 
 ---
@@ -136,10 +140,10 @@ poe test
 pytest tests/unit/
 
 # 執行 UI 整合測試
-pytest tests/ui/
+pytest tests/unit/ui/
 
 # Agent 準確率評測
-poe benchmark-llm
+poetry run benchmark-llm --model gemini --dataset test.json --delay 1 --timeout 60
 
 # Interactive Debug Mode
 python run.py --tool-debug scripts/agent/debug/debug_filter.json
@@ -159,8 +163,10 @@ python run.py --tool-debug scripts/agent/debug/debug_filter.json
 
 1. **更新 Benchmark Dataset**：
    ```bash
-   # 新增測試案例到
-   scripts/agent/benchmarks/data/external_validation_set.json
+   # 新增測試案例到 MASTER 資料集
+   XBrainLab/llm/rag/data/gold_set.json
+   # 然後重新分割
+   poetry run python scripts/agent/benchmarks/split_dataset.py
    ```
 
 2. **使用 Debug Mode 驗證**：
@@ -171,7 +177,7 @@ python run.py --tool-debug scripts/agent/debug/debug_filter.json
 
 3. **撰寫 Headless Test**：
    ```python
-   # tests/ui/test_your_tool.py
+   # tests/unit/ui/test_your_tool.py
    def test_your_tool_updates_ui(test_app):
        result = test_app.controller.execute_tool("your_tool", {...})
        assert result.success
@@ -180,7 +186,7 @@ python run.py --tool-debug scripts/agent/debug/debug_filter.json
 
 4. **執行評測確認準確率**：
    ```bash
-   poe benchmark-llm
+   poetry run benchmark-llm --model gemini --dataset test.json --delay 1 --timeout 60
    # 確認新工具準確率 > 90%
    ```
 

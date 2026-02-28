@@ -55,12 +55,16 @@ def compute_pipeline_stage(study: Any) -> PipelineStage:
     ``TRAINED``).
 
     Args:
-        study: The global ``Study`` instance.
+        study: The global ``Study`` instance.  If ``None``, returns
+            :attr:`PipelineStage.EMPTY`.
 
     Returns:
         The current :class:`PipelineStage`.
 
     """
+    if study is None:
+        return PipelineStage.EMPTY
+
     # Training in progress — highest-priority lock
     if (
         study.trainer is not None

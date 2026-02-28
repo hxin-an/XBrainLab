@@ -1,5 +1,7 @@
 # ADR-001: LangChain 採用評估 (Evaluation of LangChain Adoption)
 
+> **注意**: 本文提及的 `PromptManager` 已在 v0.5.3 重構為 `ContextAssembler`。
+
 ## 背景 (Context)
 目前 XBrainLab Agent 建立在 **自研架構 (Custom Architecture)** 之上：
 - **Controller**: 手動管理 ReAct 迴圈與對話歷史。

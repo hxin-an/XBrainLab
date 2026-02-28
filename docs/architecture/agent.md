@@ -143,13 +143,13 @@ graph TD
 - `indexer.py`: 文件索引邏輯（Qdrant Local Mode）
 - `retriever.py`: 語義相似度檢索器
 - `config.py`: Qdrant 配置
-- `storage/`: Qdrant 本地儲存
-- `data/`: 索引資料（`gold_set.json`）
+- `storage/`: Qdrant 本地儲存（執行時產物，已加入 .gitignore）
+- `data/`: 母集 (`gold_set.json` 210 題)
 
 **索引資料**:
 | 資料來源 | 用途 | 優先級 |
 |---------|------|--------|
-| `gold_set.json`（50 題） | Few-Shot 範例 | P0 |
+| `train.json`（126 題，分割自 gold_set） | RAG Few-Shot 索引（避免 data leakage） | P0 |
 | `tool_definitions.md` | 工具參數規格 | P0 |
 | `GLOSSARY.md` | 領域知識 | P2 |
 
@@ -223,6 +223,7 @@ QtObserverBridge ── Qt Signal ──► UI Panel.update()
 
 ```
 XBrainLab/llm/
+├── pipeline_state.py         # Stage Gate 狀態機 (PipelineStage, STAGE_CONFIG)
 ├── agent/                    # 控制層
 │   ├── controller.py         # 協調者 (Main Thread, ReAct Loop)
 │   ├── assembler.py          # Prompt 組裝器 (System+Tools+RAG+History)
@@ -253,14 +254,20 @@ XBrainLab/llm/
     ├── indexer.py            # 文件索引 (Qdrant Local Mode)
     ├── retriever.py          # 語義檢索器
     ├── config.py             # Qdrant 配置
-    ├── data/                 # 索引資料 (gold_set.json)
-    └── storage/              # Qdrant 本地儲存
+    ├── data/                 # 母集 (gold_set.json → split 為 train/test/val)
+    └── storage/              # Qdrant 本地儲存 (runtime, .gitignore)
 
 相關資料:
 ├── scripts/agent/benchmarks/
-│   ├── simple_bench.py           # Benchmark 評測腳本
+│   ├── simple_bench.py           # Stage-Aware Benchmark 評測腳本
+│   ├── rag_experiment.py         # RAG 檢索品質評測 (CPU only)
+│   ├── validate_architecture.py  # Pipeline 架構靜態驗證
+│   ├── validate_gold_set.py      # 資料集 Schema + 分割完整性驗證
+│   ├── split_dataset.py          # gold_set → train/test/val 分割
 │   └── data/
-│       └── external_validation_set.json  # OOD 測試集 (175 題) ❌ 不索引
+│       ├── train.json            # 60% (126 examples) — RAG 索引用
+│       ├── test.json             # 20% (42 examples) — 評估用
+│       └── val.json              # 20% (42 examples) — 調參用
 │
 └── scripts/agent/debug/
     ├── all_tools.json            # Interactive Debug 全工具腳本
@@ -269,7 +276,7 @@ XBrainLab/llm/
 ```
 
 **核心設計原則**:
-1. **資料分離**: RAG 訓練資料 (gold_set) 與測試資料 (external_validation_set) 嚴格分離，避免 Data Leakage。
+1. **資料分離**: RAG 索引僅使用 train.json (126 題)，test/val 從不索引，避免 Data Leakage。
 2. **模組化**: Agent, Core, Tools, RAG 各司其職，介面清晰。
 3. **可測試性**: Mock/Real 分離，支援單元測試與整合測試。
 4. **可擴展性**: Factory Pattern 支援動態切換 Tool 實作與 LLM Backend。

@@ -147,16 +147,16 @@
 
 ### 4.1 Benchmark Dataset
 - [x] 測試案例 JSON Schema
-- [x] OOD 測試集 175 cases (`external_validation_set.json`)
-- [x] Gold set 50 cases → RAG Few-Shot 範例（不用於評分）
+- [x] Gold set 210 cases (`gold_set.json`) → stratified split: train(126)/test(42)/val(42)
+- [x] RAG 索引使用 train.json (126 題)，test/val 用於評估
 
 ### 4.2 Benchmark 腳本
 - [x] `simple_bench.py` 自動評分
-- [x] `audit_dataset.py` 品質審計
+- [x] `validate_gold_set.py` 品質驗證
 - [x] 分類準確率報告 + 失敗案例分析
 
 ### 4.3 多模型 Benchmark
-- [ ] 在 `external_validation_set.json` (175 題) 測試不同模型：
+- [ ] 在 test.json (42 題) / val.json (42 題) 測試不同模型：
   - Gemma-2B (CPU), Qwen2.5-7B (預設), Phi-3.5-mini, Llama-3.1-8B
   - Gemini-2.0-Flash, Gemini-2.5-Flash (API 免費層)
 - [ ] 記錄 Pass Rate、推論時間、VRAM 使用量

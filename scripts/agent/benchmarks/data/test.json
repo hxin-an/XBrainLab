@@ -1,0 +1,620 @@
+[
+    {
+        "id": "complex_02",
+        "category": "complex",
+        "input": "Load test.gdf and set montage to standard_1020.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "load_data",
+                "parameters": {
+                    "paths": [
+                        "test.gdf"
+                    ]
+                }
+            },
+            {
+                "tool_name": "set_montage",
+                "parameters": {
+                    "montage_name": "standard_1020"
+                }
+            }
+        ]
+    },
+    {
+        "id": "complex_12",
+        "category": "complex",
+        "input": "Use EEGNet with 100 epochs, batch 32, lr 0.001, then train.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_model",
+                "parameters": {
+                    "model_name": "EEGNet"
+                }
+            },
+            {
+                "tool_name": "configure_training",
+                "parameters": {
+                    "epoch": 100,
+                    "batch_size": 32,
+                    "learning_rate": 0.001
+                }
+            },
+            {
+                "tool_name": "start_training",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "complex_03",
+        "category": "complex",
+        "input": "Set model to EEGNet, configure 50 epochs, and start.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_model",
+                "parameters": {
+                    "model_name": "EEGNet"
+                }
+            },
+            {
+                "tool_name": "configure_training",
+                "parameters": {
+                    "epoch": 50
+                }
+            },
+            {
+                "tool_name": "start_training",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "complex_17",
+        "category": "complex",
+        "input": "Apply notch 50Hz, bandpass 0.5-45Hz, average reference, and epoch -1 to 5s.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_notch_filter",
+                "parameters": {
+                    "freq": 50
+                }
+            },
+            {
+                "tool_name": "apply_bandpass_filter",
+                "parameters": {
+                    "low_freq": 0.5,
+                    "high_freq": 45
+                }
+            },
+            {
+                "tool_name": "set_reference",
+                "parameters": {
+                    "method": "average"
+                }
+            },
+            {
+                "tool_name": "epoch_data",
+                "parameters": {
+                    "t_min": -1.0,
+                    "t_max": 5.0
+                }
+            }
+        ]
+    },
+    {
+        "id": "clear_dataset_10",
+        "category": "dataset",
+        "input": "Flush the loaded dataset from memory.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "clear_dataset",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "attach_labels_05",
+        "category": "dataset",
+        "input": "Link the label file annotations.csv to patient_02.edf.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "attach_labels",
+                "parameters": {
+                    "mapping": {
+                        "patient_02.edf": "annotations.csv"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "list_files_06",
+        "category": "dataset",
+        "input": "Show all EDF recordings in C:\\Users\\lab\\recordings.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "list_files",
+                "parameters": {
+                    "directory": "C:\\Users\\lab\\recordings",
+                    "pattern": "*.edf"
+                }
+            }
+        ]
+    },
+    {
+        "id": "list_files_07",
+        "category": "dataset",
+        "input": "Can you browse /data/raw/ and show me what's there?",
+        "expected_tool_calls": [
+            {
+                "tool_name": "list_files",
+                "parameters": {
+                    "directory": "/data/raw/"
+                }
+            }
+        ]
+    },
+    {
+        "id": "get_dataset_info_07",
+        "category": "dataset",
+        "input": "Describe the currently loaded dataset.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "get_dataset_info",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "load_data_04",
+        "category": "dataset",
+        "input": "Open the recording at /data/session_A/rec01.edf",
+        "expected_tool_calls": [
+            {
+                "tool_name": "load_data",
+                "parameters": {
+                    "paths": [
+                        "/data/session_A/rec01.edf"
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "id": "list_files_10",
+        "category": "dataset",
+        "input": "I need to check which files are in /home/alice/bci_comp4/.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "list_files",
+                "parameters": {
+                    "directory": "/home/alice/bci_comp4/"
+                }
+            }
+        ]
+    },
+    {
+        "id": "get_dataset_info_10",
+        "category": "dataset",
+        "input": "Print the event types present in the data.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "get_dataset_info",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "attach_labels_02",
+        "category": "dataset",
+        "input": "Attach events.csv to subject_05.gdf.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "attach_labels",
+                "parameters": {
+                    "mapping": {
+                        "subject_05.gdf": "events.csv"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "attach_labels_08",
+        "category": "dataset",
+        "input": "Use triggers.txt as event markers for experiment.gdf.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "attach_labels",
+                "parameters": {
+                    "mapping": {
+                        "experiment.gdf": "triggers.txt"
+                    }
+                }
+            }
+        ]
+    },
+    {
+        "id": "generate_dataset_06",
+        "category": "dataset",
+        "input": "Create dataset splits for leave-one-subject-out cross-validation.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "generate_dataset",
+                "parameters": {
+                    "split_strategy": "subject",
+                    "training_mode": "individual"
+                }
+            }
+        ]
+    },
+    {
+        "id": "load_data_01",
+        "category": "dataset",
+        "input": "Load the file /data/eeg/subject1.gdf",
+        "expected_tool_calls": [
+            {
+                "tool_name": "load_data",
+                "parameters": {
+                    "paths": [
+                        "/data/eeg/subject1.gdf"
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "id": "standard_preprocess_07",
+        "category": "preprocess",
+        "input": "Apply the full standard pipeline on the data.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_standard_preprocess",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "normalize_08",
+        "category": "preprocess",
+        "input": "Rescale the amplitudes using min-max.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "normalize_data",
+                "parameters": {
+                    "method": "min-max"
+                }
+            }
+        ]
+    },
+    {
+        "id": "set_montage_01",
+        "category": "preprocess",
+        "input": "Set montage to standard_1020.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_montage",
+                "parameters": {
+                    "montage_name": "standard_1020"
+                }
+            }
+        ]
+    },
+    {
+        "id": "notch_07",
+        "category": "preprocess",
+        "input": "Suppress electrical noise at 50 Hz.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_notch_filter",
+                "parameters": {
+                    "freq": 50
+                }
+            }
+        ]
+    },
+    {
+        "id": "epoch_03",
+        "category": "preprocess",
+        "input": "Cut epochs around events with baseline correction [-0.2, 0].",
+        "expected_tool_calls": [
+            {
+                "tool_name": "epoch_data",
+                "parameters": {
+                    "t_min": -0.2,
+                    "t_max": 1.0,
+                    "baseline": [
+                        -0.2,
+                        0
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "id": "normalize_06",
+        "category": "preprocess",
+        "input": "Normalize channels to 0-1 range.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "normalize_data",
+                "parameters": {
+                    "method": "min-max"
+                }
+            }
+        ]
+    },
+    {
+        "id": "reference_08",
+        "category": "preprocess",
+        "input": "I want to use ear reference (A2).",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_reference",
+                "parameters": {
+                    "method": "A2"
+                }
+            }
+        ]
+    },
+    {
+        "id": "notch_06",
+        "category": "preprocess",
+        "input": "Use a 60Hz notch filter for US power grid.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_notch_filter",
+                "parameters": {
+                    "freq": 60
+                }
+            }
+        ]
+    },
+    {
+        "id": "standard_preprocess_01",
+        "category": "preprocess",
+        "input": "Execute standard preprocessing.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_standard_preprocess",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "normalize_04",
+        "category": "preprocess",
+        "input": "Scale the signals using min-max scaling.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "normalize_data",
+                "parameters": {
+                    "method": "min-max"
+                }
+            }
+        ]
+    },
+    {
+        "id": "notch_09",
+        "category": "preprocess",
+        "input": "Clean up the data by removing 50Hz interference.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_notch_filter",
+                "parameters": {
+                    "freq": 50
+                }
+            }
+        ]
+    },
+    {
+        "id": "select_channels_09",
+        "category": "preprocess",
+        "input": "Remove EOG and keep only EEG channels: Cz, C3, C4, Pz.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "select_channels",
+                "parameters": {
+                    "channels": [
+                        "Cz",
+                        "C3",
+                        "C4",
+                        "Pz"
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "id": "select_channels_01",
+        "category": "preprocess",
+        "input": "Keep only channels Cz, C3, and C4.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "select_channels",
+                "parameters": {
+                    "channels": [
+                        "Cz",
+                        "C3",
+                        "C4"
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        "id": "set_montage_04",
+        "category": "preprocess",
+        "input": "Use the standard 10-05 montage system.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_montage",
+                "parameters": {
+                    "montage_name": "standard_1005"
+                }
+            }
+        ]
+    },
+    {
+        "id": "epoch_01",
+        "category": "preprocess",
+        "input": "Epoch the data from -0.2 to 0.8 seconds.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "epoch_data",
+                "parameters": {
+                    "t_min": -0.2,
+                    "t_max": 0.8
+                }
+            }
+        ]
+    },
+    {
+        "id": "epoch_05",
+        "category": "preprocess",
+        "input": "Segment the continuous data from -1.0 to 5.0 seconds around events.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "epoch_data",
+                "parameters": {
+                    "t_min": -1.0,
+                    "t_max": 5.0
+                }
+            }
+        ]
+    },
+    {
+        "id": "resample_08",
+        "category": "preprocess",
+        "input": "Set new sampling rate to 1000Hz.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "resample_data",
+                "parameters": {
+                    "rate": 1000
+                }
+            }
+        ]
+    },
+    {
+        "id": "bandpass_09",
+        "category": "preprocess",
+        "input": "I want to keep alpha band only: 8 to 13Hz.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "apply_bandpass_filter",
+                "parameters": {
+                    "low_freq": 8,
+                    "high_freq": 13
+                }
+            }
+        ]
+    },
+    {
+        "id": "configure_training_10",
+        "category": "training",
+        "input": "Adjust learning rate to 0.002 and batch size to 256.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "configure_training",
+                "parameters": {
+                    "learning_rate": 0.002,
+                    "batch_size": 256
+                }
+            }
+        ]
+    },
+    {
+        "id": "set_model_03",
+        "category": "training",
+        "input": "Set SCCNet as the model.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_model",
+                "parameters": {
+                    "model_name": "SCCNet"
+                }
+            }
+        ]
+    },
+    {
+        "id": "configure_training_09",
+        "category": "training",
+        "input": "Configure: 80 epochs, batch 128, lr 0.01, cuda, repeat 3.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "configure_training",
+                "parameters": {
+                    "epoch": 80,
+                    "batch_size": 128,
+                    "learning_rate": 0.01,
+                    "device": "cuda",
+                    "repeat": 3
+                }
+            }
+        ]
+    },
+    {
+        "id": "start_training_04",
+        "category": "training",
+        "input": "Kick off model training.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "start_training",
+                "parameters": {}
+            }
+        ]
+    },
+    {
+        "id": "set_model_02",
+        "category": "training",
+        "input": "Use ShallowConvNet architecture.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_model",
+                "parameters": {
+                    "model_name": "ShallowConvNet"
+                }
+            }
+        ]
+    },
+    {
+        "id": "set_model_08",
+        "category": "training",
+        "input": "Pick EEGNet as the deep learning model.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "set_model",
+                "parameters": {
+                    "model_name": "EEGNet"
+                }
+            }
+        ]
+    },
+    {
+        "id": "switch_panel_01",
+        "category": "ui",
+        "input": "Switch to the training panel.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "switch_panel",
+                "parameters": {
+                    "panel_name": "training"
+                }
+            }
+        ]
+    },
+    {
+        "id": "switch_panel_10",
+        "category": "ui",
+        "input": "Take me to the evaluation screen.",
+        "expected_tool_calls": [
+            {
+                "tool_name": "switch_panel",
+                "parameters": {
+                    "panel_name": "evaluation"
+                }
+            }
+        ]
+    }
+]

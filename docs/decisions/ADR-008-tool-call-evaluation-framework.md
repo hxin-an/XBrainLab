@@ -4,7 +4,7 @@
 - **日期**: 2026-02-02（更新: 2026-02-25）
 - **作者**: XBrainLab 團隊
 
-> **實作狀況**: `simple_bench.py` Benchmark 腳本已實作，`external_validation_set.json` (175 題) 已建立，但 MLflow 尚未整合。
+> **實作狀況**: `simple_bench.py` Stage-Aware Benchmark 腳本已實作，`gold_set.json` (210 題) 已建立並分割為 train(126)/test(42)/val(42)，但 MLflow 尚未整合。
 
 ---
 

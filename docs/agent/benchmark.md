@@ -39,7 +39,13 @@ from XBrainLab.llm.agent.controller import LLMController
 
 ## 2. 黃金測試集 (Gold Set)
 
-測試集位於 `scripts/agent/benchmarks/data/gold_set.json`，格式如下：
+母集位於 `XBrainLab/llm/rag/data/gold_set.json`（210 題），透過 `split_dataset.py` 分割為：
+
+- `scripts/agent/benchmarks/data/train.json`（126 題）— RAG 索引 + Few-Shot
+- `scripts/agent/benchmarks/data/test.json`（42 題）— 評測集
+- `scripts/agent/benchmarks/data/val.json`（42 題）— 調參集
+
+每筆測試案例格式如下：
 
 ```json
 {

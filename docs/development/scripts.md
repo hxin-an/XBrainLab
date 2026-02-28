@@ -12,11 +12,15 @@
 scripts/
 ├── agent/                           # Agent 相關腳本
 │   ├── benchmarks/                  # 評測腳本與資料
-│   │   ├── simple_bench.py          # Benchmark 主腳本 (自動評分)
-│   │   ├── audit_dataset.py         # 測試集品質審計
-│   │   ├── patch_dataset.py         # 測試集修補工具
+│   │   ├── simple_bench.py          # Stage-Aware Benchmark 主腳本 (自動評分)
+│   │   ├── rag_experiment.py        # RAG 檢索品質評測 (CPU only)
+│   │   ├── validate_gold_set.py     # 資料集 Schema + 分割完整性驗證
+│   │   ├── validate_architecture.py # Pipeline 架構靜態驗證
+│   │   ├── split_dataset.py         # gold_set → train/test/val 分割
 │   │   └── data/
-│   │       └── external_validation_set.json  # OOD 測試集 (175 題)
+│   │       ├── train.json           # 60% (126 examples) — RAG 索引用
+│   │       ├── test.json            # 20% (42 examples) — 評估用
+│   │       └── val.json             # 20% (42 examples) — 調參用
 │   │
 │   └── debug/                       # Interactive Debug 腳本
 │       ├── all_tools.json           # 全工具流程 Debug
@@ -42,14 +46,20 @@ scripts/
 ### Benchmark 評測
 
 ```bash
-# 執行 Benchmark（需指定 LLM 模式）
-python scripts/agent/benchmarks/simple_bench.py
+# Stage-Aware Tool-Call 準確率 (需要 GEMINI_API_KEY)
+poetry run python scripts/agent/benchmarks/simple_bench.py --model gemini --delay 1
 
-# 審計測試集品質
-python scripts/agent/benchmarks/audit_dataset.py
+# RAG 檢索品質 (CPU only, 無需 API Key)
+poetry run python scripts/agent/benchmarks/rag_experiment.py
 
-# 修補測試集
-python scripts/agent/benchmarks/patch_dataset.py
+# 資料集 Schema + 分割完整性驗證
+poetry run python scripts/agent/benchmarks/validate_gold_set.py
+
+# Pipeline 架構靜態驗證
+poetry run python scripts/agent/benchmarks/validate_architecture.py
+
+# 重新分割 gold_set → train/test/val
+poetry run python scripts/agent/benchmarks/split_dataset.py
 ```
 
 ### Interactive Debug
@@ -74,6 +84,12 @@ python scripts/dev/verify_all_tools_headless.py
 
 # 執行完整測試套件
 python scripts/dev/run_tests.py
+
+# Logger f-string 自動轉換
+python scripts/dev/fix_logger_fstrings.py
+
+# 覆蓋率報告生成
+python scripts/dev/cov_report.py
 ```
 
 ---
@@ -83,7 +99,7 @@ python scripts/dev/run_tests.py
 | 類型 | 格式 | 範例 |
 |------|------|------|
 | Debug 腳本 | `debug_<功能>.json` | `debug_filter.json` |
-| Benchmark 資料 | `<名稱>.json` | `external_validation_set.json` |
+| Benchmark 資料 | `<split>.json` | `train.json`, `test.json`, `val.json` |
 | Benchmark 腳本 | `<功能>.py` | `simple_bench.py` |
 | 驗證腳本 | `verify_<功能>.py` | `verify_rag.py` |
 

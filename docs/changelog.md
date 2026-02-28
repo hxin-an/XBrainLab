@@ -2,6 +2,52 @@
 
 所有對本專案的重要變更都將記錄於此文件中。
 
+## [0.5.5] - 2026-02-28
+
+### Added
+- **Pipeline Stage State Machine** (`pipeline_state.py`): 實作 6 階段 EEG Pipeline 狀態機（EMPTY → DATA_LOADED → PREPROCESSED → DATASET_READY → TRAINING → TRAINED），每階段有專屬 System Prompt 和過濾的工具清單。
+- **Per-Stage System Prompts**: 6 個階段各自的助手人設、目標和約束條件，引導 LLM 在正確的 pipeline 階段給出適當的回應。
+- **Stage-Aware Benchmark**: `simple_bench.py` 支援 `--mode stage-aware`（預設）模擬真實 pipeline 工具過濾，與 `--mode all-visible`（舊版）對比。
+- **Benchmark Verification Layer**: 四層驗證機制：
+    - Retry/Nudge — 若 LLM 未產出 JSON，發送提示強制輸出
+    - event_id 正規化 — Dict↔List 互轉 + str→int 統一
+    - 子序列匹配 — 跨階段多步驟案例容許無害的額外工具呼叫
+    - 可接受前綴 — `configure_training` 在 `start_training` 前被接受
+- **Cross-Split Benchmark Reports**: 報告包含 Single-Step/Multi-Step 準確率、Failure Taxonomy、Per-Stage 分析、跨 Split 比較表。
+- **Gold Set 擴展至 210 題**: 19 tools × 10 + 20 complex，stratified split (seed=42): train(126)/test(42)/val(42)。
+- **RAG Experiment Script** (`rag_experiment.py`): 獨立的 RAG 檢索品質評測，支援 `--eval-set test|val` 與 `--k` 參數。
+- **Data Management Workflow**: `split_dataset.py` + `validate_gold_set.py` + `validate_architecture.py` 完整的資料管線。
+
+### Refactored
+- **文件整合**: 刪除 `documentation/` 遺留目錄，所有文件統一至 `docs/`（MkDocs Material）。遷移 `EXPERIMENT_GUIDE.md` 和 `DATA_MANAGEMENT.md` 至 `docs/agent/`。
+- **Dead Code 移除**: 刪除 `is_valid`、`get_active_tools`、`_KNOWN_TOOLS` 等過時程式碼。
+- **版本號同步**: `config.py`、`__init__.py`、`pyproject.toml` (commitizen) 全數更新至 `0.5.5`。
+- **Git 衛生**: `git rm` 已刪除的 `documentation/`、`audit_dataset.py`、`external_validation_set.json`、RAG storage binary 檔案。`.gitignore` 新增 `XBrainLab/llm/rag/storage/` 和 `coverage.json`。
+
+### Fixed
+- **Stale Reference 清除**: 修復 6 個 docs 文件中的過時引用（`external_validation_set.json` → train/test/val 模型、`gold_set.json 50 題` → 210 題）。
+- **Changelog 重複標題**: 移除 v0.5.1 區段中重複的 `### Fixed` 標題。
+- **ADR PromptManager 註記**: ADR-001、ADR-002 加註 `PromptManager` 已重構為 `ContextAssembler`。
+- **Contributing Guide 修正**: 修復 `poe benchmark-llm` → `poetry run benchmark-llm`、`tests/ui/` → `tests/unit/ui/`、工具表格名稱、git clone URL、跨平台虛擬環境啟動指令。
+- **Commitizen 路徑修正**: `changelog_file` 從已刪除的 `documentation/CHANGELOG.md` 改為 `docs/changelog.md`。
+
+### Benchmark Results (gemini-3-flash-preview)
+| Split | Cases | Accuracy (Stage-Aware) | Accuracy (All-Visible) |
+|-------|------:|-----------------------:|-----------------------:|
+| test  | 42    | **95.2%** | 95.2% |
+| val   | 42    | **95.2%** | — |
+| train | 126   | **98.4%** | — |
+
+RAG Retrieval: Tool Recall@3 = 95.2%, MRR = 0.889 (test set)
+
+### Quality Metrics
+| 指標 | 狀態 |
+| --- | --- |
+| Ruff | ✅ 0 錯誤 |
+| Tests | ✅ ~3542 passed |
+| Coverage | ~90% |
+| Benchmark (overall) | 204/210 (97.1%) |
+
 ## [0.5.4] - 2026-02-25
 ### Added
 - **TrainingManager 抽取**: 從 `Study` 抽取訓練生命週期至 `XBrainLab/backend/training_manager.py`，管理模型設定、計畫生成與訓練執行。`Study` 透過 Property Delegation 委派 `model_holder`、`training_option`、`trainer`、`saliency_params`。(27 單元測試)
@@ -125,7 +171,6 @@
         - `PreprocessPanel` 訂閱 `preprocess_changed`
         - `TrainingPanel` 訂閱 training 狀態事件
 
-### Fixed
 ### Fixed
 - **Button Icon Centering**: 修復發送按鈕三角形圖示偏左的問題（QPushButton 不支援 CSS text-align）。
 - **Bubble Alignment**: User 訊息右對齊、Agent 訊息左對齊，使用 `setAlignment` 替代 `addStretch` 機制。

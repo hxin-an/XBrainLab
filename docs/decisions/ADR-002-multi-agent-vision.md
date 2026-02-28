@@ -1,5 +1,7 @@
 # ADR-002: 多 Agent 架構策略 (Multi-Agent Architecture Strategy)
 
+> **注意**: 本文提及的 `PromptManager` 已在 v0.5.3 重構為 `ContextAssembler`。
+
 ## 背景 (Context)
 使用者建議將 Agent 系統擴展為 **多 Agent (Multi-Agent)** 架構，並具備專業分工：
 1.  **協調者 (Coordinator Agent)**: 處理一般請求與工具執行 (目前的實作)。
