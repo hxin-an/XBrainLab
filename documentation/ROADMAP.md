@@ -82,7 +82,7 @@
     - [x] 引入 `pytest-qt`
     - [x] 建立 E2E 測試 (Import -> Train -> Result) — `test_study_training_e2e.py` 26 個測試
 - [x] **Backend Independence Verification**
-    - [x] 驗證 Backend 可在無 Qt 環境執行 (Headless Test) — `validate_headless.py` 33/33 (v0.5.6)
+    - [x] 驗證 Backend 可在無 Qt 環境執行 (Headless Test) — `validate_headless.py` (v0.5.6)
     - [ ] 建立 CLI 工具原型以驗證解耦成果
 
 ### 第五階段：部署與維護 (Deployment & Maintenance) - **[Planned]**
@@ -153,7 +153,7 @@
         - [x] 使用 `ModelSettingsDialog` (QDialog) — 含 Local/Gemini/Generation 三區塊
         - [x] Model Selector Dropdown（Local + Gemini）
         - [x] API Key 輸入欄位（含 EchoMode.Password）
-        - [x] 參數調整控件：Temperature, Top-P, Max Tokens (v0.5.6)
+        - [x] 參數調整控件：Temperature (QDoubleSpinBox), Top-P, Max Tokens (QSpinBox) (v0.5.6)
         - [x] Activate/Cancel 按鈕（觸發 config.save_to_file()）
     - [ ] **與 4.7 整合**：Settings UI 變更後呼叫 `LLMController.switch_engine()`
 - [ ] **Context Management (P2 - Medium)**
@@ -167,8 +167,8 @@
     - [ ] 修改 `simple_bench.py` 為每個測試案例建立獨立 Controller（避免歷史污染）
     - [ ] 優化：重用 AgentWorker 避免重複加載模型
 - [ ] **測試集分工**
-    - [x] ~~將 Benchmark 改為 stratified split~~ — 已完成：gold_set.json (210 題) 分割為 train(126)/test(42)/val(42)
-    - [x] RAG 索引使用 train.json (126 題)，test/val 用於評估
+    - [ ] 將 Benchmark 預設改為 `external_validation_set.json` (175 題 OOD 測試)
+    - [ ] 保留 `gold_set.json` (50 題) 用於 RAG Few-Shot 範例
 - [x] **Multi-Turn 對話測試**
     - [x] 建立 `conversation_test_set.json` — 20 scenarios, 4 categories (v0.5.6)
     - [x] 實作多輪對話評測邏輯 — `multiturn_bench.py` (v0.5.6)
@@ -176,9 +176,9 @@
 #### 4.4 向量資料庫 (Vector Store) - **[✅ Completed]**
 - [x] **選型**: 採用 **Qdrant** (Local Mode)。
 - [x] **資料策略**:
-    - [x] **測試集準備**: gold_set.json (210 題) 完成 stratified split (train/test/val)。
-    - [x] **RAG 索引**: 索引 train.json (126 題) 作為 Few-Shot 範例。
-    - [x] **文件索引**: 索引 `docs/agent/*.md` (Tool Definitions, API Docs)。
+    - [x] **測試集準備**: 建立 `external_validation_set.json` (175 題)。
+    - [x] **RAG 索引**: 索引 `gold_set.json` (50 題) 作為 Few-Shot 範例。
+    - [x] **文件索引**: 索引 `documentation/agent/*.md` (Tool Definitions, API Docs)。
 - [x] **索引實作**
     - [x] 建立 RAG 模組結構 (`XBrainLab/llm/rag/`)
     - [x] 實作 `indexer.py` (`index_gold_set`, `index_documentation`)
@@ -208,7 +208,7 @@
     - [ ] 測量 Parameter Accuracy（參數正確率）
     - [ ] 對比「有 RAG vs 無 RAG」的效果提升
 - [ ] **多模型 Benchmark（不同算力適配）**
-    - [ ] 在 test.json (42 題) / val.json (42 題) 測試不同大小的模型：
+    - [ ] 在 `external_validation_set.json` (175 題) 測試不同大小的模型：
       - **輕量級 (CPU/低階 GPU)**: Gemma-2B *(與前人比較基準)*
       - **中等級 (中階 GPU)**: Qwen2.5-7B *(當前預設)*, Phi-3.5-mini-instruct (3.8B)
       - **重量級 (高階 GPU)**: Llama-3.1-8B-Instruct
@@ -278,10 +278,10 @@
 | 資料類型 | 是否索引 | 用途 | 優先級 | 說明 |
 | :--- | :--- | :--- | :--- | :--- |
 | **Tool Definitions** | ✅ 是 | 工具參數規格查詢 | **P0** | `tool_definitions.md`, API Docs |
-| **gold_set.json** | ✅ 是 (train split) | Few-Shot 相似案例檢索 | **P0** | 210 題精選範例，train.json (126題) 索引 |
+| **gold_set.json** | ✅ 是 | Few-Shot 相似案例檢索 | **P0** | 50 題精選範例，支援 Analogical Reasoning |
 | **User Manuals** | ✅ 是 | 教學問題回答 | P1 | `README.md`, FAQ |
 | **EEG Glossary** | ✅ 是 | 領域知識查詢 | P2 | `GLOSSARY.md` - Tutor Persona 使用 |
-| **test.json / val.json** | ❌ 否 | Benchmark 評估集 | **P0** | **絕對不可索引 - Data Leakage** |
+| **external_validation_set.json** | ❌ 否 | Benchmark 測試集 | **P0** | **絕對不可索引 - Data Leakage** |
 | **歷史對話記錄** | ⚠️ 條件性 | 成功工作流範例 | P3 | 需用戶同意 + 去識別化 |
 
 ### RAG vs Prompt Pool 差異
@@ -292,7 +292,7 @@
 |------|------------|--------------------------|
 | **範例來源** | 手寫固定模板 | 動態檢索 gold_set.json |
 | **選擇依據** | 任務分類（if-else） | 語義相似度 (Semantic Search) |
-| **靈活性** | 低（固定 N 個模板） | 高（210 個案例排列組合） |
+| **靈活性** | 低（固定 N 個模板） | 高（50 個案例排列組合） |
 | **適應性** | 需人工更新模板 | 自動找最相關案例 |
 
 **範例流程**：
@@ -316,19 +316,18 @@ User: "Load two files from /home/data/"
 
 | 資料集 | 用途 | 題數 | 索引到 RAG? | 評分用? |
 |--------|------|------|------------|--------|
-| `train.json` | **RAG 訓練範例** | 126 | ✅ 是 | ❌ 否 |
-| `test.json` | **Held-out 評估** | 42 | ❌ 否 | ✅ 是 |
-| `val.json` | **調參 / 開發** | 42 | ❌ 否 | ✅ 是 |
+| `gold_set.json` | **RAG 訓練範例** | 50 | ✅ 是 | ❌ 否 |
+| `external_validation_set.json` | **OOD 評分測試** | 175 | ❌ 否 | ✅ 是 |
 
 **設計優勢**：
-1. **避免資料浪費**：126 題精心標註的範例用於 Few-Shot Learning
-2. **嚴格 Held-out 測試**：test/val 各 42 題未索引的問題測試泛化能力
-3. **符合 ML 最佳實踐**：Training Set (RAG: train.json) ≠ Test Set (test.json / val.json)
+1. **避免資料浪費**：50 題精心標註的範例用於 Few-Shot Learning
+2. **嚴格 OOD 測試**：175 題未見過的問題測試泛化能力
+3. **符合 ML 最佳實踐**：Training Set (RAG) ≠ Test Set (Benchmark)
 
 ### 知識類別對應
 
 | 知識類別 | 來源 | 使用者 | 優先級 | RAG 策略 |
 | :--- | :--- | :--- | :--- | :--- |
 | **工具與API** | `tool_definitions.md`, API Docs | **Coordinator** | **P0** (Phase 4) | Metadata Filter by `tool_name` |
-| **操作範例** | `train.json` (126題) | **Coordinator** | **P0** (Phase 4) | Semantic Search + Few-Shot |
+| **操作範例** | `gold_set.json` (50題) | **Coordinator** | **P0** (Phase 4) | Semantic Search + Few-Shot |
 | **領域知識** | EEG Concepts, Glossary | **Tutor**, **Analyst** | P2 (Phase 5) | Full-text Search |

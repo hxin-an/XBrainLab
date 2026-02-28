@@ -116,7 +116,8 @@ class LLMConfig:
     def save_to_file(self, filepath: str | None = None):
         """Saves non-sensitive configuration to a JSON file.
 
-        Only persists model names, enabled flags, and the active mode.
+        Persists model names, enabled flags, the active mode, and
+        generation parameters (temperature, top_p, max_new_tokens).
         API keys are intentionally excluded for security.
 
         Args:
@@ -136,6 +137,11 @@ class LLMConfig:
                 "enabled": self.gemini_enabled,
             },
             "active_mode": self.active_mode,
+            "generation": {
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+                "max_new_tokens": self.max_new_tokens,
+            },
         }
         try:
             with open(filepath, "w", encoding="utf-8") as f:
@@ -191,6 +197,15 @@ class LLMConfig:
             config.active_mode = data.get("active_mode", "local")
             # Sync inference_mode with active_mode from saved settings
             config.inference_mode = config.active_mode
+
+            # Restore generation parameters
+            if "generation" in data:
+                gen = data["generation"]
+                config.temperature = float(gen.get("temperature", config.temperature))
+                config.top_p = float(gen.get("top_p", config.top_p))
+                config.max_new_tokens = int(
+                    gen.get("max_new_tokens", config.max_new_tokens)
+                )
 
         except Exception as e:
             logging.getLogger(__name__).error("Error loading settings: %s", e)

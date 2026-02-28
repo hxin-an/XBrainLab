@@ -15,12 +15,14 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -52,7 +54,7 @@ class ModelSettingsDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("AI Assistant Settings")
-        self.setFixedSize(500, 500)
+        self.setFixedSize(500, 600)
 
         # Reference to AgentManager for safe deletion (switching backend)
         self.agent_manager = agent_manager
@@ -160,6 +162,52 @@ class ModelSettingsDialog(QDialog):
             ],
         )
         gemini_layout.addWidget(self.gemini_model_combo)
+
+        # --- Generation Parameters Section ---
+        gen_group = QGroupBox("Generation Parameters")
+        gen_layout = QVBoxLayout()
+
+        # Temperature
+        temp_layout = QHBoxLayout()
+        temp_layout.addWidget(QLabel("Temperature:"))
+        self.temperature_spin = QDoubleSpinBox()
+        self.temperature_spin.setRange(0.0, 2.0)
+        self.temperature_spin.setSingleStep(0.1)
+        self.temperature_spin.setDecimals(2)
+        self.temperature_spin.setValue(self.config.temperature)
+        self.temperature_spin.setToolTip(
+            "Controls randomness. 0 = deterministic, higher = more creative."
+        )
+        temp_layout.addWidget(self.temperature_spin)
+        gen_layout.addLayout(temp_layout)
+
+        # Top-p
+        topp_layout = QHBoxLayout()
+        topp_layout.addWidget(QLabel("Top-p:"))
+        self.top_p_spin = QDoubleSpinBox()
+        self.top_p_spin.setRange(0.0, 1.0)
+        self.top_p_spin.setSingleStep(0.05)
+        self.top_p_spin.setDecimals(2)
+        self.top_p_spin.setValue(self.config.top_p)
+        self.top_p_spin.setToolTip("Nucleus sampling cutoff. 1.0 = no filtering.")
+        topp_layout.addWidget(self.top_p_spin)
+        gen_layout.addLayout(topp_layout)
+
+        # Max New Tokens
+        tokens_layout = QHBoxLayout()
+        tokens_layout.addWidget(QLabel("Max Tokens:"))
+        self.max_tokens_spin = QSpinBox()
+        self.max_tokens_spin.setRange(64, 8192)
+        self.max_tokens_spin.setSingleStep(64)
+        self.max_tokens_spin.setValue(self.config.max_new_tokens)
+        self.max_tokens_spin.setToolTip(
+            "Maximum number of tokens to generate per response."
+        )
+        tokens_layout.addWidget(self.max_tokens_spin)
+        gen_layout.addLayout(tokens_layout)
+
+        gen_group.setLayout(gen_layout)
+        layout.addWidget(gen_group)
 
         layout.addStretch()
 
@@ -449,6 +497,11 @@ class ModelSettingsDialog(QDialog):
         self.config.model_name = self.local_model_combo.currentText()
         self.config.gemini_model_name = self.gemini_model_combo.currentText()
         self.config.gemini_enabled = self.gemini_enabled
+
+        # Generation parameters
+        self.config.temperature = self.temperature_spin.value()
+        self.config.top_p = self.top_p_spin.value()
+        self.config.max_new_tokens = self.max_tokens_spin.value()
 
         # Determine active mode
         if self.gemini_enabled and not self.local_downloaded:

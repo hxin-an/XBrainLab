@@ -26,6 +26,8 @@ def test_get_similar_examples_success(mock_retriever):
     """Test successful retrieval and formatting."""
     # Mock query_points result
     mock_point = MagicMock()
+    mock_point.id = "point_0"
+    mock_point.score = 0.95
     mock_point.payload = {
         "page_content": "User input",
         "metadata": {"tool_calls": '{"command": "test"}'},

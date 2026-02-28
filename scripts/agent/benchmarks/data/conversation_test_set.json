@@ -1,0 +1,495 @@
+[
+  {
+    "id": "mt_01",
+    "category": "coreference",
+    "description": "Pronoun resolution: 'it' refers to previously loaded file",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Load the file test_data.gdf.",
+        "expected_tool_calls": [
+          {"tool_name": "load_data", "parameters": {"paths": ["test_data.gdf"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "What information does it contain?",
+        "expected_tool_calls": [
+          {"tool_name": "get_dataset_info", "parameters": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_02",
+    "category": "coreference",
+    "description": "Pronoun resolution: 'that' refers to previous preprocessing step",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Apply a bandpass filter from 1 to 40 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Actually, change that to 0.5 to 30 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 0.5, "high_freq": 30}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_03",
+    "category": "context_memory",
+    "description": "Remember montage name from earlier and apply to new data",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Load A01T.gdf and set montage to standard_1020.",
+        "expected_tool_calls": [
+          {"tool_name": "load_data", "parameters": {"paths": ["A01T.gdf"]}},
+          {"tool_name": "set_montage", "parameters": {"montage_name": "standard_1020"}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Clear the data and load A02T.gdf instead.",
+        "expected_tool_calls": [
+          {"tool_name": "clear_dataset", "parameters": {}},
+          {"tool_name": "load_data", "parameters": {"paths": ["A02T.gdf"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Apply the same montage as before.",
+        "expected_tool_calls": [
+          {"tool_name": "set_montage", "parameters": {"montage_name": "standard_1020"}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_04",
+    "category": "context_memory",
+    "description": "Remember filter parameters and reuse them",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Apply bandpass 8 to 30 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 8, "high_freq": 30}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Also resample to 128 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "resample_data", "parameters": {"target_freq": 128}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Now normalize the data.",
+        "expected_tool_calls": [
+          {"tool_name": "normalize_data", "parameters": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_05",
+    "category": "coreference",
+    "description": "Ellipsis resolution: omitted subject from prior turn",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Set the model to EEGNet.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "EEGNet"}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Change it to SCCNet.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "SCCNet"}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_06",
+    "category": "pipeline_sequence",
+    "description": "Full pipeline: load → preprocess → train",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Load motor_imagery.gdf.",
+        "expected_tool_calls": [
+          {"tool_name": "load_data", "parameters": {"paths": ["motor_imagery.gdf"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Apply standard preprocessing.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_standard_preprocess", "parameters": {}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Set model to EEGNet and start training with 50 epochs.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "EEGNet"}},
+          {"tool_name": "configure_training", "parameters": {"epochs": 50}},
+          {"tool_name": "start_training", "parameters": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_07",
+    "category": "correction",
+    "description": "User corrects a parameter mid-conversation",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Resample the data to 256 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "resample_data", "parameters": {"target_freq": 256}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Wait, I meant 128 Hz, not 256.",
+        "expected_tool_calls": [
+          {"tool_name": "resample_data", "parameters": {"target_freq": 128}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_08",
+    "category": "correction",
+    "description": "User corrects tool choice via negation",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Select only channels Fz, Cz, Pz.",
+        "expected_tool_calls": [
+          {"tool_name": "select_channels", "parameters": {"channels": ["Fz", "Cz", "Pz"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Actually, don't select channels. Just set reference to average instead.",
+        "expected_tool_calls": [
+          {"tool_name": "set_reference", "parameters": {"ref_type": "average"}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_09",
+    "category": "context_memory",
+    "description": "Remember channel list from earlier turn",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Select channels C3, C4, Cz.",
+        "expected_tool_calls": [
+          {"tool_name": "select_channels", "parameters": {"channels": ["C3", "C4", "Cz"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Now apply bandpass 4 to 40 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 4, "high_freq": 40}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_10",
+    "category": "pipeline_sequence",
+    "description": "Multi-step: load, epoch, then generate dataset",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Load subject01.gdf.",
+        "expected_tool_calls": [
+          {"tool_name": "load_data", "parameters": {"paths": ["subject01.gdf"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Epoch the data from -0.5 to 4 seconds.",
+        "expected_tool_calls": [
+          {"tool_name": "epoch_data", "parameters": {"tmin": -0.5, "tmax": 4}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Generate the dataset now.",
+        "expected_tool_calls": [
+          {"tool_name": "generate_dataset", "parameters": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_11",
+    "category": "coreference",
+    "description": "Demonstrative 'those' refers to prior epoch params",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Epoch from 0 to 3 seconds with event IDs 769 and 770.",
+        "expected_tool_calls": [
+          {"tool_name": "epoch_data", "parameters": {"tmin": 0, "tmax": 3, "event_id": [769, 770]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Add event ID 771 to those.",
+        "expected_tool_calls": [
+          {"tool_name": "epoch_data", "parameters": {"tmin": 0, "tmax": 3, "event_id": [769, 770, 771]}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_12",
+    "category": "pipeline_sequence",
+    "description": "Full preprocessing chain across turns",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Apply notch filter at 60 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Then bandpass 1 to 50 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 50}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Resample to 250 Hz and normalize.",
+        "expected_tool_calls": [
+          {"tool_name": "resample_data", "parameters": {"target_freq": 250}},
+          {"tool_name": "normalize_data", "parameters": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_13",
+    "category": "correction",
+    "description": "User changes model choice after initial selection",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Use SCCNet for training.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "SCCNet"}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Configure training with 100 epochs and batch size 32.",
+        "expected_tool_calls": [
+          {"tool_name": "configure_training", "parameters": {"epochs": 100, "batch_size": 32}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "On second thought, switch to EEGNet instead.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "EEGNet"}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_14",
+    "category": "context_memory",
+    "description": "Implicit reference to current panel state",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Switch to the training panel.",
+        "expected_tool_calls": [
+          {"tool_name": "switch_panel", "parameters": {"panel_name": "training"}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Set model to EEGNet.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "EEGNet"}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_15",
+    "category": "coreference",
+    "description": "Comparative reference: 'higher' modifies previous value",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Apply bandpass from 1 to 30 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 30}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Make the upper cutoff higher, set it to 50 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 50}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_16",
+    "category": "pipeline_sequence",
+    "description": "Navigate UI then configure training",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Go to the dataset panel.",
+        "expected_tool_calls": [
+          {"tool_name": "switch_panel", "parameters": {"panel_name": "dataset"}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Show me the dataset info.",
+        "expected_tool_calls": [
+          {"tool_name": "get_dataset_info", "parameters": {}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Switch to training and configure 30 epochs.",
+        "expected_tool_calls": [
+          {"tool_name": "switch_panel", "parameters": {"panel_name": "training"}},
+          {"tool_name": "configure_training", "parameters": {"epochs": 30}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_17",
+    "category": "correction",
+    "description": "User corrects file path from previous turn",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Load data from subject_01.gdf.",
+        "expected_tool_calls": [
+          {"tool_name": "load_data", "parameters": {"paths": ["subject_01.gdf"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Sorry, wrong file. Clear and load subject_02.gdf.",
+        "expected_tool_calls": [
+          {"tool_name": "clear_dataset", "parameters": {}},
+          {"tool_name": "load_data", "parameters": {"paths": ["subject_02.gdf"]}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_18",
+    "category": "context_memory",
+    "description": "Remember training config across conversation",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Configure training: 200 epochs, batch size 64.",
+        "expected_tool_calls": [
+          {"tool_name": "configure_training", "parameters": {"epochs": 200, "batch_size": 64}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Start training now.",
+        "expected_tool_calls": [
+          {"tool_name": "start_training", "parameters": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_19",
+    "category": "coreference",
+    "description": "Implicit reference: 'the same' refers to prior operation",
+    "turns": [
+      {
+        "role": "user",
+        "content": "Resample to 256 Hz.",
+        "expected_tool_calls": [
+          {"tool_name": "resample_data", "parameters": {"target_freq": 256}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Clear the data, load new_data.gdf, and do the same resampling.",
+        "expected_tool_calls": [
+          {"tool_name": "clear_dataset", "parameters": {}},
+          {"tool_name": "load_data", "parameters": {"paths": ["new_data.gdf"]}},
+          {"tool_name": "resample_data", "parameters": {"target_freq": 256}}
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mt_20",
+    "category": "pipeline_sequence",
+    "description": "End-to-end pipeline across 4 turns",
+    "turns": [
+      {
+        "role": "user",
+        "content": "List available files.",
+        "expected_tool_calls": [
+          {"tool_name": "list_files", "parameters": {}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Load the first file: eeg_recording.gdf.",
+        "expected_tool_calls": [
+          {"tool_name": "load_data", "parameters": {"paths": ["eeg_recording.gdf"]}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Run standard preprocessing on it.",
+        "expected_tool_calls": [
+          {"tool_name": "apply_standard_preprocess", "parameters": {}}
+        ]
+      },
+      {
+        "role": "user",
+        "content": "Set model EEGNet and start training.",
+        "expected_tool_calls": [
+          {"tool_name": "set_model", "parameters": {"model_name": "EEGNet"}},
+          {"tool_name": "start_training", "parameters": {}}
+        ]
+      }
+    ]
+  }
+]

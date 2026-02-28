@@ -11,6 +11,6 @@ from .backend.study import Study
 try:
     __version__ = version("xbrainlab")
 except PackageNotFoundError:
-    __version__ = "0.5.5"  # fallback for editable / non-installed mode
+    __version__ = "0.5.6"  # fallback for editable / non-installed mode
 
 __all__ = ["Study", "__version__"]
