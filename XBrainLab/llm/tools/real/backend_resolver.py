@@ -99,4 +99,4 @@ class BackendClassRegistry:
 
 
 # Backward-compatible alias (deprecated — use BackendClassRegistry)
-ToolRegistry = BackendClassRegistry
+BackendRegistryCompat = BackendClassRegistry

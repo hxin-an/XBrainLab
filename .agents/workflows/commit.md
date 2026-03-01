@@ -23,12 +23,12 @@ description: 自動化提交流程 (包含 Pre-commit, Changelog 更新與 Git C
    - *注意：若出現需要手動修復的靜態型別錯誤 (mypy 等)，請暫停並詢問使用者如何處理。*
 
 ## 步驟 3：更新 CHANGELOG.md
-1. 讀取 `docs/changelog.md` 檔案目前的內容。
+1. 讀取 `CHANGELOG.md` 檔案目前的內容。
 2. 根據「步驟 1」中你總結的變更，按照 CHANGELOG 的格式（例如放在 `[Unreleased]` 或是當天的日期區塊下），新增本次的變更紀錄。
    - 請將變更分類到 `### Added`, `### Fixed`, `### Changed`, 或 `### Refactored` 底下。
 3. 將修改後的內容寫回 `CHANGELOG.md` 檔案中。
 // turbo
-4. 執行 `git add docs/changelog.md` 將更新後的 Changelog 加入暫存區。
+4. 執行 `git add CHANGELOG.md` 將更新後的 Changelog 加入暫存區。
 
 ## 步驟 4：產生描述性 Git Commit
 1. 根據變更內容，決定一個符合 [Conventional Commits](https://www.conventionalcommits.org/) 規範的 Commit 標題 (例如 `fix(core): ...`, `feat(ui): ...`)。

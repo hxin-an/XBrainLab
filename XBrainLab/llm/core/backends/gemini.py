@@ -118,6 +118,11 @@ class GeminiBackend(BaseBackend):
         # Create a fresh chat session with history
         chat = self.client.chats.create(**chat_kwargs)
 
+        # Guard against empty user messages
+        if not last_user_msg:
+            yield "I need a question to respond to."
+            return
+
         # Streaming send
         response_stream = chat.send_message_stream(last_user_msg)
 

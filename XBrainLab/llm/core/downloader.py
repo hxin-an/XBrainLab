@@ -298,4 +298,5 @@ class ModelDownloader(QObject):
             error: Error message describing the failure.
 
         """
+        self._thread = None
         self.failed.emit(error)

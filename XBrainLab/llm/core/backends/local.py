@@ -64,7 +64,9 @@ class LocalBackend(BaseBackend):
         )
 
         logger.info(
-            f"Loading local model: {self.config.model_name} on {self.config.device}",
+            "Loading local model: %s on %s",
+            self.config.model_name,
+            self.config.device,
         )
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(

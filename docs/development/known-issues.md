@@ -122,6 +122,12 @@
 ### 4. Preprocessing Logging
 - **限制**: 預處理步驟缺乏詳細的參數日誌 (如 Filter 具體頻率)，僅有操作記錄。
 
+### 5. Agent 架構與執行模式限制 (Architectural Limitations)
+- **問題 1 (執行模式)**: 目前的 `multi` 模式過度依賴 LLM 的內部決策與一個盲目的 `_max_successful_tools` 上限來控制迴圈，導致執行流程不可靠且難以預測。
+- **後續計畫**: 預計在未來重構中，將 `multi` 廢除並替換為 `complete` (Workflow-Driven) 模式，採用確定性的狀態機或靜態工作流來引導 LLM (參考 `ADR-010`)。
+- **問題 2 (記憶體與上下文)**: `LLMController` 尚未實作嚴格的 Token Budget Management。如果工具輸出極長，目前的 Sliding Window (`MAX_HISTORY=20`) 仍有撐爆模型 Max Tokens 的風險。
+- **後續計畫**: 需要實作 Context 摘要與長文壓縮機制。
+
 ---
 
 ## 📊 品質指標 (Quality Metrics)

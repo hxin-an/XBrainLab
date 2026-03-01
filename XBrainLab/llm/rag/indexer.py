@@ -137,7 +137,8 @@ class RAGIndexer:
                 )
             else:
                 logger.info(
-                    f"Appending to existing collection: {RAGConfig.COLLECTION_NAME}",
+                    "Appending to existing collection: %s",
+                    RAGConfig.COLLECTION_NAME,
                 )
 
             # Use LangChain wrapper with existing client
@@ -149,8 +150,9 @@ class RAGIndexer:
             qdrant.add_documents(docs)
 
             logger.info(
-                f"Successfully indexed {len(docs)} documents to "
-                f"{RAGConfig.COLLECTION_NAME}",
+                "Successfully indexed %d documents to %s",
+                len(docs),
+                RAGConfig.COLLECTION_NAME,
             )
 
         except Exception as e:

@@ -32,14 +32,18 @@ class TestGetAllTools:
 # --- backend_resolver.py ---
 class TestBackendResolver:
     def test_get_model_class(self):
-        from XBrainLab.llm.tools.real.backend_resolver import ToolRegistry
+        from XBrainLab.llm.tools.real.backend_resolver import (
+            BackendRegistryCompat as ToolRegistry,
+        )
 
         assert ToolRegistry.get_model_class("EEGNet") is not None
         assert ToolRegistry.get_model_class("sccnet") is not None
         assert ToolRegistry.get_model_class("unknown") is None
 
     def test_get_preprocessor_class(self):
-        from XBrainLab.llm.tools.real.backend_resolver import ToolRegistry
+        from XBrainLab.llm.tools.real.backend_resolver import (
+            BackendRegistryCompat as ToolRegistry,
+        )
 
         assert ToolRegistry.get_preprocessor_class("bandpass") is not None
         assert ToolRegistry.get_preprocessor_class("unknown") is None
@@ -47,7 +51,9 @@ class TestBackendResolver:
     def test_get_optimizer_class(self):
         import torch
 
-        from XBrainLab.llm.tools.real.backend_resolver import ToolRegistry
+        from XBrainLab.llm.tools.real.backend_resolver import (
+            BackendRegistryCompat as ToolRegistry,
+        )
 
         assert ToolRegistry.get_optimizer_class("adam") is torch.optim.Adam
         assert ToolRegistry.get_optimizer_class("sgd") is torch.optim.SGD
@@ -135,7 +141,7 @@ class TestToolDebugMode:
 
 # --- visualization/base.py ---
 class TestVisualizer:
-    """Tests for Visualizer — constructed via normal __init__ (not __new__)."""
+    """Tests for Visualizer ??constructed via normal __init__ (not __new__)."""
 
     @staticmethod
     def _make_visualizer(**overrides):

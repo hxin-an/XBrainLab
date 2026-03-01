@@ -54,7 +54,7 @@ nav:
       - UI:
           - BasePanel: api/ui/base_panel.md
   - Development:
-      - Roadmap: development/roadmap.md
+      - Roadmap: ROADMAP.md
       - Implementation Plan: development/implementation-plan.md
       - Known Issues: development/known-issues.md
       - Scripts: development/scripts.md
@@ -74,7 +74,7 @@ nav:
   - Reference:
       - Glossary: reference/glossary.md
   - Contributing: contributing.md
-  - Changelog: changelog.md
+  - Changelog: CHANGELOG.md
 
 plugins:
   - search
