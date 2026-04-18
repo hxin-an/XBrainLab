@@ -29,6 +29,7 @@ XBrainLab 是一個專為腦波 (EEG) 研究設計的智慧分析平台。核心
 - [Installation](getting-started/installation.md)
 - [Quick Start](getting-started/quickstart.md)
 - [Stabilization Plan](PLAN.md)
+- [Agent Skills](AGENT_SKILLS.md)
 - [Status Report](STATUS_REPORT.md)
 - [Architecture Overview](architecture/overview.md)
 - [API Reference](api/backend/study.md)

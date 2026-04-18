@@ -1,0 +1,7 @@
+interface:
+  display_name: "Workflow Baseline"
+  short_description: "Verify XBrainLab workflow baselines"
+  default_prompt: "Use $xbrainlab-workflow-baseline to verify XBrainLab workflow and panel baselines."
+
+policy:
+  allow_implicit_invocation: true

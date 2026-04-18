@@ -1,0 +1,7 @@
+interface:
+  display_name: "Real Data Validation"
+  short_description: "Validate XBrainLab on real EEG files"
+  default_prompt: "Use $xbrainlab-real-data-validation to validate XBrainLab against real EEG fixtures."
+
+policy:
+  allow_implicit_invocation: true

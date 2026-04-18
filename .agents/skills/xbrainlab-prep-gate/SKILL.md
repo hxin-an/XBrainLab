@@ -37,12 +37,17 @@ Do not jump into broad repair-loop work unless the queue explicitly says prep is
 ## Working Pattern
 
 1. Choose the top eligible prep-gate item from `.agents/runbooks/active-queue.md`.
-2. Reproduce the issue or gather runtime evidence first.
-3. Add the narrowest useful test when practical.
-4. Make the smallest effective fix or supporting refactor.
-5. Run the smallest relevant validation slice.
-6. If shared UI plumbing changed, re-run `tests/unit/ui -q` with the current workspace workaround.
-7. Update:
+2. If the queue item clearly matches a narrower repo-local skill, use it:
+   - `$xbrainlab-workflow-baseline` for workflow and panel verification
+   - `$xbrainlab-dialog-audit` for modal acceptance paths
+   - `$xbrainlab-real-data-validation` for real-data IO and warning triage
+   - `$xbrainlab-refresh-smoke` for refresh and navigation plumbing
+3. Reproduce the issue or gather runtime evidence first.
+4. Add the narrowest useful test when practical.
+5. Make the smallest effective fix or supporting refactor.
+6. Run the smallest relevant validation slice.
+7. If shared UI plumbing changed, re-run `tests/unit/ui -q` with the current workspace workaround.
+8. Update:
    - `.agents/runbooks/active-queue.md`
    - `docs/STATUS_REPORT.md`
    - `docs/SESSION_LOG.md`

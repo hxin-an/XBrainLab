@@ -1,0 +1,7 @@
+interface:
+  display_name: "Refresh Smoke"
+  short_description: "Check XBrainLab refresh propagation"
+  default_prompt: "Use $xbrainlab-refresh-smoke to verify XBrainLab refresh and navigation behavior."
+
+policy:
+  allow_implicit_invocation: true

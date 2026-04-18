@@ -289,6 +289,21 @@ This log records meaningful progress so repair work can continue smoothly across
   - `.agents/skills/xbrainlab-repair-loop/SKILL.md`
 - updated the canonical reading order so unattended work reads `.agents/` first, then the human-facing plan and progress docs
 
+### Skill stack expansion
+
+- reviewed official and high-signal skill ecosystems more deeply:
+  - OpenAI Codex docs for skills and Docs MCP
+  - Anthropic docs for focused subagents and project-scoped versioned assets
+  - `anthropics/skills`
+  - Awesome GitHub Copilot's public skills directory
+- added narrower repo-local skills so the skill layer is not just `prep` and `repair`:
+  - `.agents/skills/xbrainlab-workflow-baseline/SKILL.md`
+  - `.agents/skills/xbrainlab-dialog-audit/SKILL.md`
+  - `.agents/skills/xbrainlab-real-data-validation/SKILL.md`
+  - `.agents/skills/xbrainlab-refresh-smoke/SKILL.md`
+- added `agents/openai.yaml` metadata to the repo-local skills for a more complete local skill surface
+- documented the selection rationale and reviewed-but-not-chosen ecosystem skills in `docs/AGENT_SKILLS.md`
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell

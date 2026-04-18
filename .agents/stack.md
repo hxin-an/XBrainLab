@@ -40,6 +40,14 @@ These are part of the default standing setup for this repo:
   - repo-local prep-gate workflow skill
 - `.agents/skills/xbrainlab-repair-loop/SKILL.md`
   - repo-local repair-loop workflow skill
+- `.agents/skills/xbrainlab-workflow-baseline/SKILL.md`
+  - runtime workflow and panel baseline skill
+- `.agents/skills/xbrainlab-dialog-audit/SKILL.md`
+  - dialog and modal acceptance audit skill
+- `.agents/skills/xbrainlab-real-data-validation/SKILL.md`
+  - real EEG fixture and cross-format validation skill
+- `.agents/skills/xbrainlab-refresh-smoke/SKILL.md`
+  - shared refresh and navigation smoke skill
 - `.agents/workflows/commit.md`
   - opt-in commit workflow, not part of the default heartbeat loop
 - `.agents/workflows/tdd.md`
@@ -58,6 +66,14 @@ These are part of the default standing setup for this repo:
 
 - `xbrainlab-repair-loop`
   - use after prep is complete, or for clearly confirmed repair-loop items
+- `xbrainlab-workflow-baseline`
+  - use for workflow mapping, panel verification, and baseline refresh
+- `xbrainlab-dialog-audit`
+  - use for dialog and modal acceptance auditing
+- `xbrainlab-real-data-validation`
+  - use for real EEG fixture and cross-format validation
+- `xbrainlab-refresh-smoke`
+  - use for shared refresh and navigation checks
 - `github:github`
   - for repo, PR, and issue orientation
 - `github:gh-fix-ci`
@@ -78,6 +94,17 @@ Rationale:
 
 - OpenAI and GitHub both position skills as reusable, narrowly-scoped workflows.
 - Repo knowledge stays in docs and runbooks, while repeated workflows are now packaged as repo-local skills under `.agents/skills/`.
+- Anthropic's official subagent guidance also favors focused, single-purpose units over one broad do-everything agent.
+
+## Ecosystem Review Notes
+
+The strongest external patterns we found were:
+
+- Anthropic's official docs and public `anthropics/skills` repository favor focused, reusable skills and version-controlled project assets.
+- Awesome GitHub Copilot's large public skill directory highlights codebase-knowledge, eval-driven development, and governance as common reusable patterns.
+- OpenAI's own Codex docs favor explicit trigger descriptions, progressive disclosure, and pairing Docs MCP with a narrow doc skill for current product questions.
+
+For XBrainLab, that translated into a small set of repo-local workflow skills instead of a large bucket of generic installs.
 
 ## Rule Policy
 

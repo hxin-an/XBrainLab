@@ -76,19 +76,24 @@ For each work cycle:
 
 1. read `AGENTS.md`, `.agents/stack.md`, `.agents/runbooks/setup.md`, and `.agents/runbooks/active-queue.md`
 2. use `$xbrainlab-prep-gate` while `Prep Gate` is active
-3. switch to `$xbrainlab-repair-loop` only after prep is complete or the task is a clearly confirmed repair-loop item
-4. reproduce the issue or verify current behavior
-5. add the narrowest useful test when practical, or capture strong manual/runtime evidence
-6. make the smallest effective fix or supporting refactor
-7. run the smallest relevant validation slice
-8. re-run broader shared tests if shared UI or shared backend plumbing changed
-9. update:
+3. inside prep work, prefer narrower repo-local skills when they match:
+   - `$xbrainlab-workflow-baseline`
+   - `$xbrainlab-dialog-audit`
+   - `$xbrainlab-real-data-validation`
+   - `$xbrainlab-refresh-smoke`
+4. switch to `$xbrainlab-repair-loop` only after prep is complete or the task is a clearly confirmed repair-loop item
+5. reproduce the issue or verify current behavior
+6. add the narrowest useful test when practical, or capture strong manual/runtime evidence
+7. make the smallest effective fix or supporting refactor
+8. run the smallest relevant validation slice
+9. re-run broader shared tests if shared UI or shared backend plumbing changed
+10. update:
    - `docs/BUG_TRIAGE.md`
    - `docs/BACKLOG.md`
    - `docs/SESSION_LOG.md`
    - `docs/STATUS_REPORT.md`
    - `.agents/runbooks/active-queue.md`
-10. continue unless a stop condition is hit
+11. continue unless a stop condition is hit
 
 ## Required Evidence
 
