@@ -14,10 +14,10 @@ Use this skill for the repeated pre-bugfix stabilization loop in this repository
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/PLAN.md`
-7. `docs/STATUS_REPORT.md`
-8. `docs/BUG_TRIAGE.md`
-9. `docs/SESSION_LOG.md`
+6. `docs/current/PLAN.md`
+7. `docs/current/STATUS_REPORT.md`
+8. `docs/current/BUG_TRIAGE.md`
+9. `docs/history/SESSION_LOG.md`
 
 Open deeper docs only when the current queue item needs them.
 
@@ -49,10 +49,10 @@ Do not jump into broad repair-loop work unless the queue explicitly says prep is
 7. If shared UI plumbing changed, re-run `tests/unit/ui -q` with the current workspace workaround.
 8. Update:
    - `.agents/runbooks/active-queue.md`
-   - `docs/STATUS_REPORT.md`
-   - `docs/SESSION_LOG.md`
-   - `docs/BUG_TRIAGE.md`
-   - `docs/BACKLOG.md`
+   - `docs/current/STATUS_REPORT.md`
+   - `docs/history/SESSION_LOG.md`
+   - `docs/current/BUG_TRIAGE.md`
+   - `docs/history/BACKLOG.md`
 
 ## Validation Notes
 
@@ -71,7 +71,7 @@ Do not mark progress as done without at least one of:
 
 ## Communication Rule
 
-Keep `docs/STATUS_REPORT.md` aligned to the four-part human plan:
+Keep `docs/current/STATUS_REPORT.md` aligned to the four-part human plan:
 
 1. Baseline And Checkpoint
 2. Codex Harness And Always-On Loop

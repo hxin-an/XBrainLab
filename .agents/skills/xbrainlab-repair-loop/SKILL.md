@@ -14,10 +14,10 @@ Use this skill for steady-state repair work after prep is complete, or for clear
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/PLAN.md`
-7. `docs/STATUS_REPORT.md`
-8. `docs/BUG_TRIAGE.md`
-9. `docs/SESSION_LOG.md`
+6. `docs/current/PLAN.md`
+7. `docs/current/STATUS_REPORT.md`
+8. `docs/current/BUG_TRIAGE.md`
+9. `docs/history/SESSION_LOG.md`
 
 ## Default Order
 
@@ -40,10 +40,10 @@ Unless stronger evidence changes priority, prefer this order:
 6. If shared UI plumbing changed, re-run `tests/unit/ui -q` with the current workspace workaround.
 7. Update:
    - `.agents/runbooks/active-queue.md`
-   - `docs/STATUS_REPORT.md`
-   - `docs/SESSION_LOG.md`
-   - `docs/BUG_TRIAGE.md`
-   - `docs/BACKLOG.md`
+   - `docs/current/STATUS_REPORT.md`
+   - `docs/history/SESSION_LOG.md`
+   - `docs/current/BUG_TRIAGE.md`
+   - `docs/history/BACKLOG.md`
 
 ## Allowed Deep Work
 

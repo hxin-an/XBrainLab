@@ -126,8 +126,10 @@ Rationale:
 ## Human Vs Agent Boundary
 
 - `AGENTS.md`, `.agents/stack.md`, `.agents/runbooks/*.md`, and `.agents/skills/*/SKILL.md` are the operating inputs for the agent.
-- `docs/PLAN.md` and `docs/STATUS_REPORT.md` are the user-facing surfaces.
-- `docs/SESSION_LOG.md` and `docs/BUG_TRIAGE.md` are working records.
+- `docs/current/PLAN.md`, `docs/current/STATUS_REPORT.md`, and `docs/current/BUG_TRIAGE.md` are the main human-facing current-state docs.
+- `docs/workflows/*.md` are supporting workflow and risk references.
+- `docs/history/*.md` are working records and long-running context.
+- `docs/reference/AGENT_SKILLS.md` is human-facing background on skill selection, not part of the default heartbeat read.
 
 ## Heartbeat Reading Order
 
@@ -138,14 +140,14 @@ Before substantial unattended work, read in this order:
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/PLAN.md`
-7. `docs/STATUS_REPORT.md`
-8. `docs/BUG_TRIAGE.md`
-9. `docs/SESSION_LOG.md`
+6. `docs/current/PLAN.md`
+7. `docs/current/STATUS_REPORT.md`
+8. `docs/current/BUG_TRIAGE.md`
+9. `docs/history/SESSION_LOG.md`
 
 After meaningful progress, update:
 
 - `.agents/runbooks/active-queue.md`
-- `docs/STATUS_REPORT.md`
-- `docs/SESSION_LOG.md`
-- `docs/BUG_TRIAGE.md`
+- `docs/current/STATUS_REPORT.md`
+- `docs/history/SESSION_LOG.md`
+- `docs/current/BUG_TRIAGE.md`

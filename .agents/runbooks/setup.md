@@ -25,8 +25,14 @@ The goal is to let Codex keep moving on stabilization work with:
   - canonical agent runtime docs
 - `.agents/skills/*/SKILL.md`
   - repo-local reusable workflows
-- `docs/*.md`
-  - human-facing plan, status, triage, workflow, and testing docs
+- `docs/current/*.md`
+  - the human-facing now/plan/triage surface
+- `docs/workflows/*.md`
+  - workflow maps, testing strategy, and risk references
+- `docs/history/*.md`
+  - session history and backlog
+- `docs/reference/AGENT_SKILLS.md`
+  - human-facing background on skill selection, not a required read for each cycle
 
 ## Source Of Truth
 
@@ -37,16 +43,17 @@ Use this reading order:
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/PLAN.md`
-7. `docs/STATUS_REPORT.md`
-8. `docs/BUG_TRIAGE.md`
-9. `docs/SESSION_LOG.md`
+6. `docs/current/PLAN.md`
+7. `docs/current/STATUS_REPORT.md`
+8. `docs/current/BUG_TRIAGE.md`
+9. `docs/history/SESSION_LOG.md`
 10. deeper workflow or testing docs only when the current task needs them
 
 Interpretation:
 
 - `.agents/` is the canonical operating surface for the agent.
-- `docs/` is the human-facing and project-record surface.
+- `docs/current/` is the human entry point for current status.
+- `docs/workflows/` and `docs/history/` are deeper support docs.
 
 ## Official-First Research Rules
 
@@ -123,7 +130,7 @@ For each unattended or manual Codex work cycle:
 6. make the smallest effective fix or supporting refactor
 7. run the smallest relevant validation slice
 8. re-run broader UI safety tests if shared UI plumbing changed
-9. update `docs/BUG_TRIAGE.md`, `docs/BACKLOG.md`, `docs/SESSION_LOG.md`, `docs/STATUS_REPORT.md`, and `.agents/runbooks/active-queue.md`
+9. update `docs/current/BUG_TRIAGE.md`, `docs/history/BACKLOG.md`, `docs/history/SESSION_LOG.md`, `docs/current/STATUS_REPORT.md`, and `.agents/runbooks/active-queue.md`
 10. continue unless a stop condition is hit
 
 ## Stop Conditions

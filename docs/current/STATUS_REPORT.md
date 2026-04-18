@@ -37,14 +37,16 @@ What has been done:
 - `.agents/stack.md` now explicitly records the selected skills, rule policy, external setup references, and heartbeat reading order
 - canonical agent runtime docs now live under `.agents/runbooks/`
 - repo-local stabilization skills now live under `.agents/skills/`, including prep-gate, repair-loop, workflow-baseline, dialog-audit, real-data-validation, and refresh-smoke
-- `docs/AGENT_SKILLS.md` now records the reviewed official and high-signal ecosystem sources plus the selected skill set
+- `docs/index.md` now acts as the human doc portal instead of a second README-style overview
+- human-facing docs are now separated into `docs/current/`, `docs/workflows/`, `docs/history/`, and `docs/reference/`
+- `docs/reference/AGENT_SKILLS.md` now records the reviewed official and high-signal ecosystem sources plus the selected skill set
 - local Codex config includes the OpenAI Docs MCP endpoint
 - the thread heartbeat automation `XBrainLab Autopilot` is active every 10 minutes
-- this `docs/STATUS_REPORT.md` file is now part of the required work loop
+- this `docs/current/STATUS_REPORT.md` file is now part of the required work loop
 
 Evidence:
 - the canonical agent surface is now under `.agents/`
-- `docs/` now stays focused on human-facing plan, progress, triage, and workflow records
+- `docs/` now separates current-state docs, workflow references, history, and background reference material
 - the agent-facing stack is now anchored in `.agents/stack.md`
 - the thread heartbeat cadence is set to 10 minutes
 

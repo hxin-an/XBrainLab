@@ -315,8 +315,8 @@ The next useful expansion of this document is:
 
 1. list the top dialogs under each workflow
 2. record the most important happy-path sequence for each workflow
-3. attach confirmed bug IDs from `docs/BUG_TRIAGE.md`
+3. attach confirmed bug IDs from `docs/current/BUG_TRIAGE.md`
 
 Related dialog inventory:
 
-- `docs/DIALOG_MATRIX.md`
+- `docs/workflows/DIALOG_MATRIX.md`

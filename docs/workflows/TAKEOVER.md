@@ -128,8 +128,8 @@ This classification will help us avoid mixing architecture work with straightfor
 
 ## Related Documents
 
-- `docs/WORKFLOWS.md`
-- `docs/BUG_TRIAGE.md`
-- `docs/RISK_CLUSTERS.md`
-- `docs/TESTING_STRATEGY.md`
-- `docs/UI_BASELINE.md`
+- `docs/workflows/WORKFLOWS.md`
+- `docs/current/BUG_TRIAGE.md`
+- `docs/workflows/RISK_CLUSTERS.md`
+- `docs/workflows/TESTING_STRATEGY.md`
+- `docs/workflows/UI_BASELINE.md`

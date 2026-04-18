@@ -23,10 +23,10 @@ Read these in order before substantial work:
 2. `.agents/runbooks/setup.md`
 3. `.agents/runbooks/autopilot.md`
 4. `.agents/runbooks/active-queue.md`
-5. `docs/PLAN.md`
-6. `docs/STATUS_REPORT.md`
-7. `docs/BUG_TRIAGE.md`
-8. `docs/SESSION_LOG.md`
+5. `docs/current/PLAN.md`
+6. `docs/current/STATUS_REPORT.md`
+7. `docs/current/BUG_TRIAGE.md`
+8. `docs/history/SESSION_LOG.md`
 
 Open deeper docs only as needed:
 
@@ -34,16 +34,16 @@ Open deeper docs only as needed:
 - `.agents/skills/xbrainlab-repair-loop/SKILL.md`
 - `.agents/workflows/commit.md`
 - `.agents/workflows/tdd.md`
-- `docs/TAKEOVER.md`
-- `docs/TESTING_STRATEGY.md`
-- `docs/UI_BASELINE.md`
-- `docs/WORKFLOWS.md`
-- `docs/RISK_CLUSTERS.md`
-- `docs/DIALOG_MATRIX.md`
-- `docs/COVERAGE_GAPS.md`
-- `docs/BACKLOG.md`
+- `docs/workflows/TAKEOVER.md`
+- `docs/workflows/TESTING_STRATEGY.md`
+- `docs/workflows/UI_BASELINE.md`
+- `docs/workflows/WORKFLOWS.md`
+- `docs/workflows/RISK_CLUSTERS.md`
+- `docs/workflows/DIALOG_MATRIX.md`
+- `docs/workflows/COVERAGE_GAPS.md`
+- `docs/history/BACKLOG.md`
 
-Keep `docs/STATUS_REPORT.md` concise and current so the user can rejoin the work quickly.
+Keep `docs/current/STATUS_REPORT.md` concise and current so the user can rejoin the work quickly.
 
 ## Core Rules
 
@@ -93,5 +93,5 @@ Minimum done criteria:
 - Use official OpenAI/Codex sources first for Codex, MCP, skills, or automation guidance.
 - Treat `.agents/stack.md` as the explicit record of selected skills, rule policy, and heartbeat reading order.
 - Treat `.agents/runbooks/*.md` as the canonical agent operating docs.
-- Keep `docs/PLAN.md` and `docs/STATUS_REPORT.md` readable for humans following progress.
+- Keep `docs/current/PLAN.md` and `docs/current/STATUS_REPORT.md` readable for humans following progress.
 - Follow the prep-first queue in `.agents/runbooks/active-queue.md` until `Prep Complete` is achieved.

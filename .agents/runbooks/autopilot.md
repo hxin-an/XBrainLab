@@ -88,10 +88,10 @@ For each work cycle:
 8. run the smallest relevant validation slice
 9. re-run broader shared tests if shared UI or shared backend plumbing changed
 10. update:
-   - `docs/BUG_TRIAGE.md`
-   - `docs/BACKLOG.md`
-   - `docs/SESSION_LOG.md`
-   - `docs/STATUS_REPORT.md`
+   - `docs/current/BUG_TRIAGE.md`
+   - `docs/history/BACKLOG.md`
+   - `docs/history/SESSION_LOG.md`
+   - `docs/current/STATUS_REPORT.md`
    - `.agents/runbooks/active-queue.md`
 11. continue unless a stop condition is hit
 
@@ -119,10 +119,10 @@ Pause and wait for the user when any of these happen:
 Every meaningful cycle should leave traces in:
 
 - `.agents/runbooks/active-queue.md`
-- `docs/SESSION_LOG.md`
-- `docs/BUG_TRIAGE.md`
-- `docs/BACKLOG.md`
-- `docs/STATUS_REPORT.md`
+- `docs/history/SESSION_LOG.md`
+- `docs/current/BUG_TRIAGE.md`
+- `docs/history/BACKLOG.md`
+- `docs/current/STATUS_REPORT.md`
 
 ## Current Automation Note
 

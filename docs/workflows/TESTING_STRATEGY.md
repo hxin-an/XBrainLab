@@ -102,7 +102,7 @@ For layout-sensitive work, use this manual-plus-artifact flow:
 1. Launch with `xvfb-run`.
 2. Reproduce the screen state.
 3. Capture screenshots with `scrot`.
-4. Compare against the expected layout checklist in `docs/UI_BASELINE.md`.
+4. Compare against the expected layout checklist in `docs/workflows/UI_BASELINE.md`.
 
 Suggested artifact directory:
 

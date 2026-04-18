@@ -14,9 +14,9 @@ Use this skill when shared UI plumbing or cross-panel refresh behavior is involv
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/COVERAGE_GAPS.md`
-7. `docs/BUG_TRIAGE.md`
-8. `docs/SESSION_LOG.md`
+6. `docs/workflows/COVERAGE_GAPS.md`
+7. `docs/current/BUG_TRIAGE.md`
+8. `docs/history/SESSION_LOG.md`
 
 ## Focus Areas
 
@@ -41,8 +41,8 @@ Use this skill when shared UI plumbing or cross-panel refresh behavior is involv
 
 After meaningful progress, update:
 
-- `docs/COVERAGE_GAPS.md`
-- `docs/BUG_TRIAGE.md`
-- `docs/STATUS_REPORT.md`
-- `docs/SESSION_LOG.md`
+- `docs/workflows/COVERAGE_GAPS.md`
+- `docs/current/BUG_TRIAGE.md`
+- `docs/current/STATUS_REPORT.md`
+- `docs/history/SESSION_LOG.md`
 - `.agents/runbooks/active-queue.md`

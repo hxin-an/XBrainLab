@@ -116,7 +116,7 @@ These matter because they mutate or gate important workflow state.
 
 ## Related Docs
 
-- `docs/BACKLOG.md`
-- `docs/BUG_TRIAGE.md`
-- `docs/DIALOG_MATRIX.md`
-- `docs/TESTING_STRATEGY.md`
+- `docs/history/BACKLOG.md`
+- `docs/current/BUG_TRIAGE.md`
+- `docs/workflows/DIALOG_MATRIX.md`
+- `docs/workflows/TESTING_STRATEGY.md`

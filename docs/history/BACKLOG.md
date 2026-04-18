@@ -29,9 +29,9 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Why now:
   We already know the app is dialog-heavy. We need a per-workflow list of the highest-value dialogs before fixing bugs in them.
 - Outputs:
-  - expand `docs/WORKFLOWS.md`
+  - expand `docs/workflows/WORKFLOWS.md`
   - identify the top validation path for each workflow
-  - maintain `docs/DIALOG_MATRIX.md`
+  - maintain `docs/workflows/DIALOG_MATRIX.md`
 
 ### BL-002 Convert known risk clusters into concrete bug candidates
 
@@ -39,7 +39,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Why now:
   Risk clusters are useful, but the next step is turning them into specific repairable items.
 - Outputs:
-  - expand `docs/BUG_TRIAGE.md`
+  - expand `docs/current/BUG_TRIAGE.md`
   - create first batch of confirmed bug IDs
 
 ### BL-003 Create an artifacts path and screenshot capture routine
@@ -85,7 +85,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - `MainWindow.switch_page()`
   - panel `update_panel()` behavior
   - state synchronization after controller events
-  - reference `docs/COVERAGE_GAPS.md`
+  - reference `docs/workflows/COVERAGE_GAPS.md`
 - Status:
   In progress. Main-window refresh/navigation smoke coverage has been expanded in `tests/unit/ui/test_main_window_sync.py`, and existing refresh integration coverage still passes.
 

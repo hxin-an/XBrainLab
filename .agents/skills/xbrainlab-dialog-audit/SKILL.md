@@ -14,11 +14,11 @@ Use this skill for dialog-heavy workflow validation where mocked tests are not e
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/DIALOG_MATRIX.md`
-7. `docs/COVERAGE_GAPS.md`
-8. `docs/WORKFLOWS.md`
-9. `docs/BUG_TRIAGE.md`
-10. `docs/SESSION_LOG.md`
+6. `docs/workflows/DIALOG_MATRIX.md`
+7. `docs/workflows/COVERAGE_GAPS.md`
+8. `docs/workflows/WORKFLOWS.md`
+9. `docs/current/BUG_TRIAGE.md`
+10. `docs/history/SESSION_LOG.md`
 
 ## Priority Dialogs
 
@@ -40,9 +40,9 @@ Use this skill for dialog-heavy workflow validation where mocked tests are not e
 
 After meaningful progress, update:
 
-- `docs/DIALOG_MATRIX.md`
-- `docs/COVERAGE_GAPS.md`
-- `docs/BUG_TRIAGE.md`
-- `docs/STATUS_REPORT.md`
-- `docs/SESSION_LOG.md`
+- `docs/workflows/DIALOG_MATRIX.md`
+- `docs/workflows/COVERAGE_GAPS.md`
+- `docs/current/BUG_TRIAGE.md`
+- `docs/current/STATUS_REPORT.md`
+- `docs/history/SESSION_LOG.md`
 - `.agents/runbooks/active-queue.md`

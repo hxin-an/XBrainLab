@@ -14,11 +14,11 @@ Use this skill when the task is to turn workflow assumptions into observed runti
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/PLAN.md`
-7. `docs/STATUS_REPORT.md`
-8. `docs/WORKFLOWS.md`
-9. `docs/UI_BASELINE.md`
-10. `docs/SESSION_LOG.md`
+6. `docs/current/PLAN.md`
+7. `docs/current/STATUS_REPORT.md`
+8. `docs/workflows/WORKFLOWS.md`
+9. `docs/workflows/UI_BASELINE.md`
+10. `docs/history/SESSION_LOG.md`
 
 ## Scope
 
@@ -48,8 +48,8 @@ Focus on:
 
 After meaningful progress, update:
 
-- `docs/WORKFLOWS.md`
-- `docs/UI_BASELINE.md`
-- `docs/STATUS_REPORT.md`
-- `docs/SESSION_LOG.md`
+- `docs/workflows/WORKFLOWS.md`
+- `docs/workflows/UI_BASELINE.md`
+- `docs/current/STATUS_REPORT.md`
+- `docs/history/SESSION_LOG.md`
 - `.agents/runbooks/active-queue.md`

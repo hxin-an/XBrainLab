@@ -14,9 +14,9 @@ Use this skill when validation must be grounded in real EEG files rather than to
 3. `.agents/runbooks/setup.md`
 4. `.agents/runbooks/autopilot.md`
 5. `.agents/runbooks/active-queue.md`
-6. `docs/BUG_TRIAGE.md`
-7. `docs/STATUS_REPORT.md`
-8. `docs/SESSION_LOG.md`
+6. `docs/current/BUG_TRIAGE.md`
+7. `docs/current/STATUS_REPORT.md`
+8. `docs/history/SESSION_LOG.md`
 
 ## Scope
 
@@ -44,7 +44,7 @@ Focus on:
 
 After meaningful progress, update:
 
-- `docs/BUG_TRIAGE.md`
-- `docs/STATUS_REPORT.md`
-- `docs/SESSION_LOG.md`
+- `docs/current/BUG_TRIAGE.md`
+- `docs/current/STATUS_REPORT.md`
+- `docs/history/SESSION_LOG.md`
 - `.agents/runbooks/active-queue.md`

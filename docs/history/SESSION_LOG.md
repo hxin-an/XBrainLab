@@ -16,15 +16,15 @@ This log records meaningful progress so repair work can continue smoothly across
 
 - created:
   - `AGENTS.md`
-  - `docs/TAKEOVER.md`
-  - `docs/TESTING_STRATEGY.md`
-  - `docs/UI_BASELINE.md`
-  - `docs/WORKFLOWS.md`
-  - `docs/BUG_TRIAGE.md`
-  - `docs/RISK_CLUSTERS.md`
-  - `docs/DIALOG_MATRIX.md`
-  - `docs/COVERAGE_GAPS.md`
-  - `docs/BACKLOG.md`
+  - `docs/workflows/TAKEOVER.md`
+  - `docs/workflows/TESTING_STRATEGY.md`
+  - `docs/workflows/UI_BASELINE.md`
+  - `docs/workflows/WORKFLOWS.md`
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/workflows/RISK_CLUSTERS.md`
+  - `docs/workflows/DIALOG_MATRIX.md`
+  - `docs/workflows/COVERAGE_GAPS.md`
+  - `docs/history/BACKLOG.md`
 
 ### Shared shell safety
 
@@ -248,10 +248,10 @@ This log records meaningful progress so repair work can continue smoothly across
 
 ### User-followable reporting
 
-- added `docs/STATUS_REPORT.md` as the concise user-facing progress snapshot
+- added `docs/current/STATUS_REPORT.md` as the concise user-facing progress snapshot
 - updated the Codex harness docs so future work cycles and heartbeat runs maintain this report
 - updated the heartbeat operating cadence from 30 minutes to 10 minutes
-- reshaped `docs/STATUS_REPORT.md` so it now mirrors the agreed long-running plan section-by-section instead of acting like a flat note dump
+- reshaped `docs/current/STATUS_REPORT.md` so it now mirrors the agreed long-running plan section-by-section instead of acting like a flat note dump
 - re-ran the latest relevant validation after the report restructure:
   - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`
   - result: all six baseline images were regenerated successfully
@@ -266,7 +266,7 @@ This log records meaningful progress so repair work can continue smoothly across
   - conditional-only skills
   - rule policy
   - the heartbeat reading order
-- updated `AGENTS.md`, `docs/CODEX_SETUP.md`, and `docs/AUTOPILOT.md` so unattended work reads `.agents/stack.md` before continuing
+- updated `AGENTS.md`, `.agents/runbooks/setup.md`, and `.agents/runbooks/autopilot.md` so unattended work reads `.agents/stack.md` before continuing
 - expanded the external setup basis to include:
   - OpenAI Codex docs
   - Anthropic Claude Code docs
@@ -279,11 +279,11 @@ This log records meaningful progress so repair work can continue smoothly across
   - `.agents/runbooks/setup.md`
   - `.agents/runbooks/autopilot.md`
   - `.agents/runbooks/active-queue.md`
-- kept `docs/` as the human-facing surface and added `docs/PLAN.md`
+- kept `docs/` as the human-facing surface and added `docs/current/PLAN.md`
 - converted these root-level docs into compatibility stubs:
-  - `docs/CODEX_SETUP.md`
-  - `docs/AUTOPILOT.md`
-  - `docs/ACTIVE_QUEUE.md`
+  - `.agents/runbooks/setup.md`
+  - `.agents/runbooks/autopilot.md`
+  - `.agents/runbooks/active-queue.md`
 - created repo-local skills for repeated workflows:
   - `.agents/skills/xbrainlab-prep-gate/SKILL.md`
   - `.agents/skills/xbrainlab-repair-loop/SKILL.md`
@@ -302,7 +302,20 @@ This log records meaningful progress so repair work can continue smoothly across
   - `.agents/skills/xbrainlab-real-data-validation/SKILL.md`
   - `.agents/skills/xbrainlab-refresh-smoke/SKILL.md`
 - added `agents/openai.yaml` metadata to the repo-local skills for a more complete local skill surface
-- documented the selection rationale and reviewed-but-not-chosen ecosystem skills in `docs/AGENT_SKILLS.md`
+- documented the selection rationale and reviewed-but-not-chosen ecosystem skills in `docs/reference/AGENT_SKILLS.md`
+
+### Human doc cleanup
+
+- removed the compatibility-stub approach for human docs so `docs/` can stay cleaner
+- moved the main user-facing status docs into:
+  - `docs/current/PLAN.md`
+  - `docs/current/STATUS_REPORT.md`
+  - `docs/current/BUG_TRIAGE.md`
+- moved workflow-heavy support docs into `docs/workflows/`
+- moved long-running records into `docs/history/`
+- moved skill-selection background into `docs/reference/AGENT_SKILLS.md`
+- rewrote `docs/index.md` into a human-first docs portal that tells the user which three files to read first
+- updated agent-side references and the `XBrainLab Autopilot` heartbeat prompt so unattended work follows the new doc layout instead of the removed root-level doc paths
 
 ### Updated next recommended moves
 
