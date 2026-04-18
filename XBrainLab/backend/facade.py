@@ -1,6 +1,7 @@
 """Unified facade providing a simplified, high-level API for the XBrainLab backend."""
 
 import os
+from typing import Any
 
 import numpy as np
 import torch
@@ -18,6 +19,7 @@ from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.model_base.EEGNet import EEGNet
 from XBrainLab.backend.model_base.SCCNet import SCCNet
 from XBrainLab.backend.model_base.ShallowConvNet import ShallowConvNet
+from XBrainLab.backend.services.label_import_service import LabelImportService
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.utils.logger import logger
@@ -71,57 +73,81 @@ class BackendFacade:
         """Attach label files to loaded data files.
 
         Args:
-            mapping: Dict mapping ``{data_filename: label_filepath}``.
+            mapping: Dict mapping ``{data_filename_or_path: label_filepath}``.
 
         Returns:
             The number of files that had labels successfully attached.
 
         """
-        success_count = 0
         data_list = self.dataset.get_loaded_data_list()
+        label_service = LabelImportService()
+        label_map: dict[str, Any] = {}
+        file_mapping: dict[str, str] = {}
+        target_files = []
 
         for raw in data_list:
-            base_name = os.path.basename(raw.filepath)
-            label_path = mapping.get(base_name)
+            label_path = self._resolve_label_attachment_path(raw, mapping)
 
             if not label_path:
                 continue
 
             try:
-                labels = load_label_file(label_path)
-
-                # Convert 1D labels to MNE events format (n, 3)
-                # Columns: onset (sample), 0, event_id
-                n_labels = len(labels)
-                events = np.zeros((n_labels, 3), dtype=int)
-                # Use sfreq-spaced onsets as placeholders (1 event/second).
-                # Real sample positions are unavailable from external label
-                # files, but 1-second spacing is safe for downstream code.
-                sfreq = int(raw.get_mne().info.get("sfreq", 256))
-                events[:, 0] = np.arange(n_labels) * sfreq
-                events[:, 2] = labels
-
-                # Build event_id dict from unique labels
-                unique_labels = np.unique(labels)
-                event_id = {str(label): int(label) for label in unique_labels}
-
-                # Use proper setter
-                raw.set_event(events, event_id)
-                raw.set_labels_imported(True)
-                success_count += 1
-
+                if label_path not in label_map:
+                    label_map[label_path] = load_label_file(label_path)
+                target_files.append(raw)
+                file_mapping[raw.get_filepath()] = label_path
             except Exception as e:
                 logger.error(
                     "Failed to attach label for %s: %s",
-                    base_name,
+                    raw.get_filename(),
                     e,
                     exc_info=True,
                 )
+
+        if not target_files:
+            return 0
+
+        event_name_map = self._build_default_label_name_map(label_map)
+        success_count = label_service.apply_labels_batch(
+            target_files,
+            label_map,
+            file_mapping,
+            event_name_map,
+        )
 
         if success_count > 0:
             self.dataset.notify("data_changed")
 
         return success_count
+
+    @staticmethod
+    def _resolve_label_attachment_path(raw, mapping: dict[str, str]) -> str | None:
+        """Resolve a label mapping entry for a raw file using path or basename."""
+        filepath = raw.get_filepath()
+        filename = raw.get_filename()
+
+        return mapping.get(filepath) or mapping.get(filename) or mapping.get(
+            os.path.basename(filepath),
+        )
+
+    @staticmethod
+    def _build_default_label_name_map(label_map: dict[str, Any]) -> dict[Any, str]:
+        """Create a default event-name map from non-timestamp labels."""
+        event_name_map: dict[Any, str] = {}
+
+        for labels in label_map.values():
+            if (
+                isinstance(labels, list)
+                and len(labels) > 0
+                and isinstance(labels[0], dict)
+            ):
+                continue
+
+            for label in np.array(labels).flatten():
+                normalized = label.item() if isinstance(label, np.generic) else label
+                event_name_map.setdefault(normalized, str(normalized))
+
+        return event_name_map
 
     def clear_data(self):
         """Clear all loaded data."""

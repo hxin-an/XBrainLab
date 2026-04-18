@@ -100,6 +100,10 @@ def test_option(kwargs, has_error):
         patch("torch.cuda.is_available", return_value=True),
         patch("torch.cuda.device_count", return_value=2),
         patch("torch.cuda.get_device_name", return_value="test_gpu"),
+        patch(
+            "XBrainLab.backend.training.option.is_cuda_device_usable",
+            return_value=(True, None),
+        ),
     ):
         if has_error:
             with pytest.raises(ValueError):
@@ -141,6 +145,38 @@ def test_option(kwargs, has_error):
             torch.testing.assert_close(p, e)
 
 
+def test_training_option_falls_back_to_cpu_when_cuda_probe_fails():
+    args = {
+        "output_dir": "ok",
+        "optim": FakeOptim,
+        "optim_params": {"a": 1},
+        "use_cpu": False,
+        "gpu_idx": 0,
+        "epoch": 10,
+        "bs": 20,
+        "lr": 0.01,
+        "checkpoint_epoch": 1,
+        "evaluation_option": TrainingEvaluation.VAL_LOSS,
+        "repeat_num": 1,
+    }
+
+    with (
+        patch("torch.cuda.is_available", return_value=True),
+        patch("torch.cuda.device_count", return_value=1),
+        patch("torch.cuda.get_device_name", return_value="test_gpu"),
+        patch(
+            "XBrainLab.backend.training.option.is_cuda_device_usable",
+            return_value=(False, "probe failed"),
+        ),
+    ):
+        option = TrainingOption(**args)
+
+    assert option.use_cpu is True
+    assert option.gpu_idx is None
+    assert option.get_device() == "cpu"
+    assert option.get_device_name() == "cpu"
+
+
 @pytest.mark.parametrize(
     "kwargs, has_error",
     [
@@ -166,6 +202,10 @@ def test_test_only_option(kwargs, has_error):
         patch("torch.cuda.is_available", return_value=True),
         patch("torch.cuda.device_count", return_value=2),
         patch("torch.cuda.get_device_name", return_value="test_gpu"),
+        patch(
+            "XBrainLab.backend.training.option.is_cuda_device_usable",
+            return_value=(True, None),
+        ),
     ):
         if has_error:
             with pytest.raises(ValueError):

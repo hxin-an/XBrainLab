@@ -97,6 +97,9 @@ def load_gdf_file(filepath):
 def load_fif_file(filepath):
     """Load an MNE-Python native ``.fif`` file and return a Raw wrapper.
 
+    Attempts to load as continuous raw data first, falling back to epochs
+    if the raw loader fails.
+
     Args:
         filepath: Path to the ``.fif`` file.
 
@@ -104,16 +107,32 @@ def load_fif_file(filepath):
         Raw object wrapping the loaded data, or None on failure.
 
     Raises:
-        FileCorruptedError: If loading fails.
+        FileCorruptedError: If loading fails as both raw and epochs.
 
     """
+    selected_data = None
+
     try:
         selected_data = mne.io.read_raw_fif(filepath, preload=False)
-        if selected_data:
-            return Raw(filepath, selected_data)
+    except TypeError:
+        try:
+            selected_data = mne.read_epochs(filepath, preload=False)
+        except Exception as e:
+            logger.warning("Failed to load FIF as Epochs: %s", e)
+            raise FileCorruptedError(filepath, f"Failed to load FIF as Epochs: {e}") from e
     except Exception as e:
-        logger.error("Failed to load FIF file %s: %s", filepath, e, exc_info=True)
-        raise FileCorruptedError(filepath, str(e)) from e
+        logger.warning("Failed to load FIF as Raw: %s", e)
+        try:
+            selected_data = mne.read_epochs(filepath, preload=False)
+        except Exception:
+            logger.error("Failed to load FIF file %s: %s", filepath, e, exc_info=True)
+            raise FileCorruptedError(
+                filepath,
+                f"Failed to load FIF as Raw or Epochs: {e}",
+            ) from e
+
+    if selected_data:
+        return Raw(filepath, selected_data)
     return None
 
 
@@ -218,6 +237,7 @@ def load_brainvision_file(filepath):
 RawDataLoaderFactory.register_loader(".set", load_set_file)
 RawDataLoaderFactory.register_loader(".gdf", load_gdf_file)
 RawDataLoaderFactory.register_loader(".fif", load_fif_file)
+RawDataLoaderFactory.register_loader(".fif.gz", load_fif_file)
 RawDataLoaderFactory.register_loader(".edf", load_edf_file)
 RawDataLoaderFactory.register_loader(".bdf", load_bdf_file)
 RawDataLoaderFactory.register_loader(".cnt", load_cnt_file)

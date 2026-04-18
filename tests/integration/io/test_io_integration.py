@@ -2,13 +2,27 @@ import os
 
 import pytest
 
+from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.exceptions import FileCorruptedError
 from XBrainLab.backend.load_data import Raw
-from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
+from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_raw_data
 
-# Path to the small test data provided in the repo
-TEST_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+# Path to the small real-data fixtures stored under tests/data
+TEST_DATA_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "data"),
+)
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
+MULTIFORMAT_DIR = os.path.join(TEST_DATA_DIR, "multiformat")
+REAL_DATA_FIXTURES = [
+    GDF_FILE,
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real_raw.fif"),
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real_raw.fif.gz"),
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real.edf"),
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real.bdf"),
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real.vhdr"),
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real.set"),
+    os.path.join(MULTIFORMAT_DIR, "A01T-mini-real-epo.fif"),
+]
 
 
 class TestIOIntegration:
@@ -45,6 +59,47 @@ class TestIOIntegration:
         # but get_data() returns full array
         assert data.shape[0] == n_channels
         assert data.shape[1] > 0
+
+    @pytest.mark.parametrize("filepath", REAL_DATA_FIXTURES)
+    def test_load_supported_real_formats(self, filepath):
+        """Load compact real-data fixtures across several supported extensions."""
+        if not os.path.exists(filepath):
+            pytest.skip(f"Test data not found at {filepath}")
+
+        raw = load_raw_data(filepath)
+
+        assert raw is not None
+        assert isinstance(raw, Raw)
+        assert raw.get_filepath() == filepath
+        assert raw.get_nchan() > 0
+        assert raw.get_sfreq() > 0
+
+        data = raw.get_mne().get_data()
+        assert data is not None
+        assert data.ndim in (2, 3)
+        if data.ndim == 2:
+            assert data.shape[0] == raw.get_nchan()
+            assert data.shape[1] > 0
+        else:
+            assert data.shape[1] == raw.get_nchan()
+            assert data.shape[0] > 0
+            assert data.shape[2] > 0
+
+    @pytest.mark.parametrize("filepath", REAL_DATA_FIXTURES)
+    def test_facade_import_supported_real_formats(self, filepath):
+        """Exercise the real dataset import entrypoint across multiple formats."""
+        if not os.path.exists(filepath):
+            pytest.skip(f"Test data not found at {filepath}")
+
+        facade = BackendFacade()
+        success_count, errors = facade.load_data([filepath])
+
+        assert success_count == 1
+        assert errors == []
+
+        summary = facade.get_data_summary()
+        assert summary["count"] == 1
+        assert summary["files"] == [os.path.basename(filepath)]
 
     def test_load_non_existent_file(self):
         """Test loading a file that does not exist."""

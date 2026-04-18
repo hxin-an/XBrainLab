@@ -2,12 +2,26 @@
 
 import contextlib
 import os
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import scipy.io
 
 from XBrainLab.backend.utils.logger import logger
+
+_MAT_LABEL_HINTS = (
+    "classlabel",
+    "labels",
+    "label",
+    "target",
+    "targets",
+    "trial",
+    "trials",
+    "event",
+    "events",
+    "y",
+)
 
 
 def load_label_file(filepath: str) -> np.ndarray:
@@ -90,8 +104,8 @@ def _load_mat(path: str) -> np.ndarray:
         if not variables:
             raise ValueError("No variables found in .mat file")  # noqa: TRY301
 
-        # Pick the first valid variable
-        var_name = variables[0]
+        # Pick the most label-like variable rather than blindly taking the first.
+        var_name = _select_mat_variable(mat, variables)
         data = mat[var_name]
 
         # Robust shape handling (migrated from EventLoader)
@@ -119,6 +133,45 @@ def _load_mat(path: str) -> np.ndarray:
     except Exception as e:
         logger.error("Failed to load mat file %s: %s", path, e)
         raise ValueError(f"Invalid .mat file: {e}") from e
+
+
+def _select_mat_variable(mat: dict[str, Any], variables: list[str]) -> str:
+    """Select the most likely label variable from a loaded MATLAB file."""
+
+    def score(name: str, data: Any) -> int:
+        if not isinstance(data, np.ndarray):
+            return -10_000
+
+        # Strongly prefer numeric arrays over structs / cells / object arrays.
+        if data.dtype.names is not None or data.dtype == object:
+            return -5_000
+
+        score_value = 0
+        lower_name = name.lower()
+
+        if any(hint in lower_name for hint in _MAT_LABEL_HINTS):
+            score_value += 1_000
+
+        if np.issubdtype(data.dtype, np.number):
+            score_value += 100
+
+        if data.size > 1:
+            score_value += 20
+
+        # Prefer common label/event layouts.
+        if data.ndim == 1:
+            score_value += 40
+        elif data.ndim == 2:
+            if 1 in data.shape:
+                score_value += 50
+            elif data.shape[1] == 3:
+                score_value += 45
+            else:
+                score_value += 10
+
+        return score_value
+
+    return max(variables, key=lambda name: score(name, mat[name]))
 
 
 def _load_csv_tsv(path: str):

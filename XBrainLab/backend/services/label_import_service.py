@@ -22,9 +22,9 @@ class LabelImportService:
     def apply_labels_batch(
         self,
         target_files: list[Any],
-        label_map: dict[str, list[int]],
+        label_map: dict[str, list[Any]],
         file_mapping: dict[str, str],
-        mapping: dict[int, str],
+        mapping: dict[Any, str],
         selected_event_names: set[str] | None = None,
     ) -> int:
         """Apply labels to multiple files based on a file-to-label mapping.
@@ -68,8 +68,8 @@ class LabelImportService:
     def apply_labels_legacy(
         self,
         target_files: list[Any],
-        labels: list[int],
-        mapping: dict[int, str],
+        labels: list[Any],
+        mapping: dict[Any, str],
         selected_event_names: set[str] | None = None,
         force_import: bool = False,
     ) -> int:
@@ -138,13 +138,21 @@ class LabelImportService:
             return applied_count
 
         # Mismatch and not forced
+        logger.warning(
+            "Legacy label import skipped due to count mismatch: labels=%d, "
+            "expected_epochs=%d, files=%d, filtered_events=%s",
+            label_count,
+            total_epochs,
+            len(target_files),
+            selected_event_names,
+        )
         return 0
 
     def apply_labels_to_single_file(
         self,
         data: Any,
         labels: list[Any],
-        mapping: dict[int, str],
+        mapping: dict[Any, str],
         selected_event_names: set[str] | None = None,
     ):
         """Apply labels to a single data object.
@@ -200,8 +208,8 @@ class LabelImportService:
     def _force_apply_single(
         self,
         data: Any,
-        labels: list[int],
-        mapping: dict[int, str],
+        labels: list[Any],
+        mapping: dict[Any, str],
         selected_event_names: set[str] | None = None,
     ):
         """Force-apply labels to a single data object without validation.

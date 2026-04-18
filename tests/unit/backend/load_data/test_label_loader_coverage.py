@@ -16,6 +16,19 @@ from XBrainLab.backend.load_data.label_loader import load_label_file
 
 
 class TestLoadMat:
+    def test_mat_prefers_label_like_variable_over_first_variable(self, tmp_path):
+        """When multiple variables exist, prefer label-like arrays."""
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "aaa_meta": np.array([[999]]),
+                "classlabel": np.array([[1], [2], [3]]),
+            },
+        )
+        labels = load_label_file(str(p))
+        np.testing.assert_array_equal(labels, [1, 2, 3])
+
     def test_mat_n_by_1(self, tmp_path):
         """(n, 1) shape should flatten to 1D."""
         p = tmp_path / "labels.mat"

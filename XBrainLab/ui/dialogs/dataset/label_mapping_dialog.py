@@ -5,6 +5,7 @@ can be reordered via drag-and-drop to establish correct alignment.
 """
 
 import os
+import re
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -18,6 +19,40 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+
+_LABEL_SUFFIX_RE = re.compile(
+    r"([_-]?(label|labels|event|events|annotation|annotations|target|targets))+$",
+    re.IGNORECASE,
+)
+
+
+def _matching_key(path: str) -> str:
+    """Create a normalized matching key for data/label filename comparison."""
+    stem = os.path.splitext(os.path.basename(path))[0].lower()
+    stem = _LABEL_SUFFIX_RE.sub("", stem)
+    return stem.strip("_- ")
+
+
+def _match_score(data_file: str, label_file: str) -> tuple[int, int]:
+    """Score how likely a label file belongs to a data file."""
+    data_stem = os.path.splitext(os.path.basename(data_file))[0].lower()
+    label_stem = os.path.splitext(os.path.basename(label_file))[0].lower()
+    data_key = _matching_key(data_file)
+    label_key = _matching_key(label_file)
+
+    score = 0
+    if data_key and label_key and data_key == label_key:
+        score += 100
+    if data_stem == label_stem:
+        score += 60
+    if data_key and label_key:
+        if re.search(rf"(^|[^a-z0-9]){re.escape(data_key)}([^a-z0-9]|$)", label_stem):
+            score += 40
+        elif data_key in label_key or label_key in data_key:
+            score += 10
+
+    return score, -abs(len(label_key) - len(data_key))
 
 
 class LabelMappingDialog(BaseDialog):
@@ -76,7 +111,9 @@ class LabelMappingDialog(BaseDialog):
         # Or just visual.
         # Better to keep enabled for scrolling, but disallow drag/drop
         for f in self.data_files:
-            self.data_list.addItem(os.path.basename(f))
+            item = QListWidgetItem(os.path.basename(f))
+            item.setToolTip(f)
+            self.data_list.addItem(item)
         data_layout.addWidget(self.data_list)
         lists_layout.addLayout(data_layout)
 
@@ -95,6 +132,8 @@ class LabelMappingDialog(BaseDialog):
         for f in sorted_labels:
             item = QListWidgetItem(os.path.basename(f) if f else "-- No Label --")
             item.setData(Qt.ItemDataRole.UserRole, f)  # Store full path/key
+            if f:
+                item.setToolTip(f)
             if not f:
                 item.setForeground(Qt.GlobalColor.gray)
             self.label_list.addItem(item)
@@ -138,26 +177,21 @@ class LabelMappingDialog(BaseDialog):
 
         # 1. Try strict matching
         for i, data_file in enumerate(self.data_files):
-            data_name = os.path.basename(data_file)
-            data_stem = os.path.splitext(data_name)[0]
-
             best_match = None
             best_match_idx = -1
+            best_score = (0, float("-inf"))
 
             for j, label_file in enumerate(self.label_files):
                 if j in used_indices:
                     continue
 
-                label_name = os.path.basename(label_file)
-                label_stem = os.path.splitext(label_name)[0]
-
-                # Check for containment
-                if data_stem in label_name or label_stem in data_name:
+                score = _match_score(data_file, label_file)
+                if score > best_score:
                     best_match = label_file
                     best_match_idx = j
-                    break
+                    best_score = score
 
-            if best_match:
+            if best_match and best_score[0] > 0:
                 aligned_labels[i] = best_match
                 used_indices.add(best_match_idx)
 

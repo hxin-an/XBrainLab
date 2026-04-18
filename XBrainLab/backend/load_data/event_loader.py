@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import Counter
+import contextlib
+from typing import Any
 
 import mne
 import numpy as np
@@ -11,6 +13,35 @@ from XBrainLab.backend.utils.logger import logger
 
 from ..utils import validate_type
 from .raw import Raw
+
+
+def _normalize_label_value(value: Any) -> Any:
+    """Convert NumPy scalars to Python scalars for robust dict/set usage."""
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _coerce_event_code(value: Any) -> int | None:
+    """Preserve integer-like labels as event IDs when possible."""
+    value = _normalize_label_value(value)
+
+    if isinstance(value, (int, np.integer)) and not isinstance(value, bool):
+        return int(value)
+
+    if isinstance(value, (float, np.floating)):
+        float_value = float(value)
+        if float_value.is_integer():
+            return int(float_value)
+        return None
+
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            with contextlib.suppress(ValueError):
+                return int(stripped)
+
+    return None
 
 
 class EventLoader:
@@ -178,7 +209,7 @@ class EventLoader:
 
     def create_event(
         self,
-        event_name_map: dict[int, str],
+        event_name_map: dict[Any, str],
         selected_event_ids: list[int] | None = None,
     ) -> tuple[np.ndarray | None, dict[str, int] | None]:
         """Create event array and event ID mapping from loaded labels.
@@ -255,6 +286,8 @@ class EventLoader:
 
         # Pure Sequence of Labels
         labels = labels.flatten()
+        if len(labels) == 0:
+            raise ValueError("Loaded labels are empty.")
 
         # Get EEG Triggers
         if not self.raw.has_event():
@@ -268,6 +301,8 @@ class EventLoader:
             filtered_eeg_events = eeg_events[mask]
         else:
             filtered_eeg_events = eeg_events
+        if len(filtered_eeg_events) == 0:
+            raise ValueError("No EEG events matched the selected event filter.")
 
         # Align
         # We pass indices to align_sequence (dummy for now as we don't use content)
@@ -276,10 +311,12 @@ class EventLoader:
             list(range(len(labels))),
         )
 
-        if len(eeg_indices) != len(labels):
+        if len(eeg_indices) < len(filtered_eeg_events) or len(label_indices) < len(labels):
             logger.warning(
-                f"Alignment truncated: EEG={len(filtered_eeg_events)}, "
-                f"Label={len(labels)} -> {len(eeg_indices)} matches.",
+                "Alignment truncated: EEG=%d, Label=%d -> %d matches.",
+                len(filtered_eeg_events),
+                len(labels),
+                len(eeg_indices),
             )
 
         # Create new events
@@ -294,16 +331,39 @@ class EventLoader:
         # respective arrays
         new_events[:, 0] = filtered_eeg_events[eeg_indices, 0]  # Timestamps
         new_events[:, 1] = filtered_eeg_events[eeg_indices, 1]  # Previous val
-        new_events[:, -1] = labels[label_indices]  # New Labels
+        aligned_labels = [_normalize_label_value(labels[idx]) for idx in label_indices]
 
-        # Create Event ID map
-        unique_labels = np.unique(new_events[:, -1])
-        new_event_id = {}
-        for lbl in unique_labels:
-            name = event_name_map.get(lbl, str(lbl))
-            if not name.strip():
-                raise ValueError("Event name cannot be empty.")
-            new_event_id[name] = int(lbl)
+        label_to_code: dict[Any, int] = {}
+        code_to_name: dict[int, str] = {}
+        used_codes: set[int] = set()
+        next_code = 1
+
+        for row_index, label in enumerate(aligned_labels):
+            if label in label_to_code:
+                code = label_to_code[label]
+            else:
+                preferred_code = _coerce_event_code(label)
+                if preferred_code is not None and preferred_code not in used_codes:
+                    code = preferred_code
+                else:
+                    while next_code in used_codes:
+                        next_code += 1
+                    code = next_code
+                    next_code += 1
+
+                label_to_code[label] = code
+                used_codes.add(code)
+
+                name = event_name_map.get(label, str(label))
+                if not name.strip():
+                    raise ValueError("Event name cannot be empty.")
+                code_to_name[code] = name
+
+            new_events[row_index, -1] = code
+
+        new_event_id = {
+            name: code for code, name in sorted(code_to_name.items(), key=lambda item: item[0])
+        }
 
         self.events = new_events
         self.event_id = new_event_id

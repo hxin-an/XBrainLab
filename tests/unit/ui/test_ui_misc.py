@@ -279,6 +279,32 @@ class TestDatasetActionHandler:
         handler.import_label()
         handler.panel.controller.apply_labels_legacy.assert_called_once()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_warns_when_no_labels_applied(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"file1.txt": [0, 1, 0, 1]},
+            "mapping",
+        )
+        handler.panel.controller.apply_labels_legacy.return_value = 0
+
+        handler.import_label()
+
+        mock_mb.warning.assert_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
@@ -303,6 +329,96 @@ class TestDatasetActionHandler:
         handler.panel.controller.apply_labels_batch.return_value = 1
         handler.import_label()
         handler.panel.controller.apply_labels_batch.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_batch_mapping_cancelled(
+        self,
+        mock_dlg,
+        mock_mb,
+        mock_map_dlg,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1], "label2.txt": [1, 0]},
+            "mapping",
+        )
+        mock_map_dlg.return_value.exec.return_value = False
+
+        handler.import_label()
+
+        handler.panel.controller.apply_labels_batch.assert_not_called()
+        mock_mb.warning.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.LabelMappingDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_batch_inconsistent_sequence_lengths_no_target_hint(
+        self,
+        mock_dlg,
+        mock_mb,
+        mock_map_dlg,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = True
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1], "label2.txt": [1, 0, 1, 0]},
+            "mapping",
+        )
+        mock_map_dlg.return_value.exec.return_value = True
+        mock_map_dlg.return_value.get_mapping.return_value = {
+            "/file1.set": "label1.txt"
+        }
+        handler.panel.controller.apply_labels_batch.return_value = 1
+
+        with patch.object(handler, "_filter_events_for_import", return_value=None) as mock_filter:
+            handler.import_label()
+
+        mock_filter.assert_called_once_with([data_obj], None)
+        handler.panel.controller.apply_labels_batch.assert_called_once()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_mixed_label_modes_rejected(self, mock_dlg, mock_mb, handler):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {
+                "labels.txt": [0, 1],
+                "events.csv": [{"onset": 0.0, "duration": 1.0, "label": "A"}],
+            },
+            "mapping",
+        )
+
+        handler.import_label()
+
+        handler.panel.controller.apply_labels_batch.assert_not_called()
+        handler.panel.controller.apply_labels_legacy.assert_not_called()
+        mock_mb.critical.assert_called_once()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
@@ -364,6 +480,31 @@ class TestDatasetActionHandler:
         mock_efd.return_value.get_selected_ids.return_value = ["left", "right"]
         result = handler._filter_events_for_import([data], 2)
         assert result == {"left", "right"}
+
+    @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
+    def test_filter_events_aggregates_suggestions_from_multiple_files(
+        self, mock_efd, handler
+    ):
+        handler.panel.controller = MagicMock()
+
+        data1 = MagicMock()
+        data1.is_raw.return_value = True
+        data1.has_event.return_value = True
+        data1.get_raw_event_list.return_value = ([], {"left": 1, "right": 2})
+
+        data2 = MagicMock()
+        data2.is_raw.return_value = True
+        data2.has_event.return_value = True
+        data2.get_raw_event_list.return_value = ([], {"foot": 3, "tongue": 4})
+
+        handler.panel.controller.get_smart_filter_suggestions.side_effect = [[1], [4]]
+        mock_efd.return_value.exec.return_value = True
+        mock_efd.return_value.get_selected_ids.return_value = ["left", "tongue"]
+
+        result = handler._filter_events_for_import([data1, data2], 2)
+
+        assert result == {"left", "tongue"}
+        mock_efd.return_value.set_selection.assert_called_once_with(["left", "tongue"])
 
     @patch("XBrainLab.ui.panels.dataset.actions.EventFilterDialog")
     def test_filter_events_cancelled(self, mock_efd, handler):
@@ -446,6 +587,32 @@ class TestDatasetActionHandler:
             handler.import_label()
         handler.panel.controller.apply_labels_legacy.assert_called_once()
 
+    def test_analyze_label_map_single_sequence(self, handler):
+        is_timestamp, target_count = handler._analyze_label_map(
+            {"file1.txt": np.array([0, 1, 0, 1])}
+        )
+        assert is_timestamp is False
+        assert target_count == 4
+
+    def test_analyze_label_map_inconsistent_sequence_lengths(self, handler):
+        is_timestamp, target_count = handler._analyze_label_map(
+            {"file1.txt": np.array([0, 1]), "file2.txt": np.array([0, 1, 0])}
+        )
+        assert is_timestamp is False
+        assert target_count is None
+
+    def test_analyze_label_map_mixed_modes_raises(self, handler):
+        with pytest.raises(
+            ValueError,
+            match="Cannot mix timestamp-style and sequence-style label files",
+        ):
+            handler._analyze_label_map(
+                {
+                    "file1.txt": np.array([0, 1]),
+                    "events.csv": [{"onset": 0.0, "duration": 1.0, "label": "A"}],
+                }
+            )
+
 
 # ====================================================================
 # ImportLabelDialog
@@ -520,7 +687,7 @@ class TestImportLabelDialog:
     def test_load_file(self, mock_load, dlg):
         mock_load.return_value = np.array([1, 2, 3])
         dlg.load_file("/path/labels.txt")
-        assert "labels.txt" in dlg.label_data_map
+        assert "/path/labels.txt" in dlg.label_data_map
 
     def test_browse_files(self, dlg):
         # Manually simulate what browse_files does after file dialog

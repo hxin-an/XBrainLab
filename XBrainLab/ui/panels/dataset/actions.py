@@ -135,17 +135,12 @@ class DatasetActionHandler:
             return
 
         try:
-            # Determine mapping mode
-            first_labels = next(iter(label_map.values()))
-            is_timestamp = (
-                isinstance(first_labels, list)
-                and len(first_labels) > 0
-                and isinstance(first_labels[0], dict)
-            )
+            # Determine mapping mode from the whole import set rather than the
+            # first file only.
+            is_timestamp, target_count = self._analyze_label_map(label_map)
 
             selected_event_names = None
             if not is_timestamp:
-                target_count = len(first_labels)
                 selected_event_names = self._filter_events_for_import(
                     target_files,
                     target_count,
@@ -161,15 +156,16 @@ class DatasetActionHandler:
                     data_paths,
                     list(label_map.keys()),
                 )
-                if map_dlg.exec():
-                    file_map = map_dlg.get_mapping()
-                    count = self.controller.apply_labels_batch(
-                        target_files,
-                        label_map,
-                        file_map,
-                        mapping,
-                        selected_event_names,
-                    )
+                if not map_dlg.exec():
+                    return
+                file_map = map_dlg.get_mapping()
+                count = self.controller.apply_labels_batch(
+                    target_files,
+                    label_map,
+                    file_map,
+                    mapping,
+                    selected_event_names,
+                )
             elif is_timestamp:  # Legacy
                 label_fname = next(iter(label_map.keys()))
                 file_map = {d.get_filepath(): label_fname for d in target_files}
@@ -196,10 +192,57 @@ class DatasetActionHandler:
                     "Success",
                     f"Applied to {count} files.",
                 )
+            else:
+                QMessageBox.warning(
+                    self.panel,
+                    "No Labels Applied",
+                    "No labels were applied. Check whether the label count, "
+                    "event selection, or file mapping matches the selected data.",
+                )
 
         except Exception as e:
             logger.error("Import label error: %s", e, exc_info=True)
             QMessageBox.critical(self.panel, "Error", f"Failed: {e}")
+
+    def _analyze_label_map(self, label_map):
+        """Classify imported labels and infer a safe smart-filter target count."""
+        has_timestamp = False
+        has_sequence = False
+        sequence_lengths = []
+
+        for labels in label_map.values():
+            if self._is_timestamp_labels(labels):
+                has_timestamp = True
+                continue
+
+            has_sequence = True
+            try:
+                sequence_lengths.append(len(labels))
+            except TypeError:
+                logger.warning("Imported labels do not expose length: %r", type(labels))
+
+        if has_timestamp and has_sequence:
+            raise ValueError(
+                "Cannot mix timestamp-style and sequence-style label files in one import.",
+            )
+
+        if has_timestamp:
+            return True, None
+
+        target_count = None
+        if sequence_lengths and len(set(sequence_lengths)) == 1:
+            target_count = sequence_lengths[0]
+
+        return False, target_count
+
+    @staticmethod
+    def _is_timestamp_labels(labels):
+        """Return whether loaded labels are in timestamp-annotation format."""
+        return (
+            isinstance(labels, list)
+            and len(labels) > 0
+            and isinstance(labels[0], dict)
+        )
 
     def _get_target_files_for_import(self):
         """Determine which data files should receive imported labels.
@@ -258,13 +301,16 @@ class DatasetActionHandler:
         # Suggestions?
         suggested = []
         if target_count and raw_files:
-            s_ids = self.controller.get_smart_filter_suggestions(
-                raw_files[0],
-                target_count,
-            )
-            _, ev_ids = raw_files[0].get_raw_event_list()
-            id_map = {v: k for k, v in ev_ids.items()}
-            suggested = [id_map[i] for i in s_ids if i in id_map]
+            suggested_names = set()
+            for raw_file in raw_files:
+                s_ids = self.controller.get_smart_filter_suggestions(
+                    raw_file,
+                    target_count,
+                )
+                _, ev_ids = raw_file.get_raw_event_list()
+                id_map = {v: k for k, v in ev_ids.items()}
+                suggested_names.update(id_map[i] for i in s_ids if i in id_map)
+            suggested = sorted(suggested_names)
 
         dlg = EventFilterDialog(self.panel, sorted_names)
         if suggested:

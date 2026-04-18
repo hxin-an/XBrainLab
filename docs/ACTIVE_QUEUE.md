@@ -1,0 +1,132 @@
+# XBrainLab Active Queue
+
+This is the ordered queue for unattended Codex work.
+
+The topmost eligible item should be worked on first.
+
+## Phase
+
+- Current phase: `Prep Gate`
+- Exit rule: do not begin normal repair queue work until `Prep Complete` criteria in `docs/AUTOPILOT.md` are all satisfied
+
+## Active Prep Gate
+
+### AQ-PREP-002 Verify top-level panel happy paths in headless mode
+
+- Status: Pending
+- Why:
+  The workflow map needs observed runtime evidence, not just code reading.
+- Target screens:
+  - Dataset
+  - Preprocess
+  - Training
+  - Evaluation
+  - Visualization
+  - AI assistant shell
+
+### AQ-PREP-003 Audit high-risk dialog acceptance flows
+
+- Status: Pending
+- Why:
+  Dialog-heavy workflows remain one of the biggest risks because unit tests mock many modal paths.
+- Priority dialogs:
+  - `LabelMappingDialog`
+  - `EventFilterDialog`
+  - `EpochingDialog`
+  - `TrainingSettingDialog`
+
+### AQ-PREP-004 Expand refresh and navigation smoke protection
+
+- Status: In progress
+- Why:
+  Shared refresh coupling is a system-wide risk and must be stronger before deeper UI-adjacent fixes.
+- Current focus:
+  - downstream panel propagation checks after shared events
+  - keep `MainWindow.switch_page()` behavior covered
+  - preserve target-panel-only refresh behavior
+
+### AQ-PREP-005 Triage remaining runtime signals into concrete bug IDs
+
+- Status: In progress
+- Why:
+  The prep gate is not complete until current runtime signals are either fixed or converted into actionable bug records.
+- Current focus:
+  - duplicate EEG channel-name warnings in real GDF workflows
+  - pytest default capture teardown failure in the current `/mnt/d` Codex workspace
+  - visualization headless fragility and skip boundaries
+
+### AQ-PREP-006 Clarify local-only and Codex operating assumptions
+
+- Status: In progress
+- Why:
+  Long-running unattended work needs durable repo docs and reliable local Codex setup.
+- Current focus:
+  - short repo-root `AGENTS.md`
+  - `docs/CODEX_SETUP.md`
+  - two-phase `docs/AUTOPILOT.md`
+  - Docs MCP configuration and heartbeat automation alignment
+
+## Recently Completed
+
+### AQ-PREP-001 Fix black screenshot baseline output
+
+- Status: Done
+- Result:
+  the capture helper now grabs the rendered Qt main window directly instead of relying on a black-prone virtual-display screenshot path
+- Evidence:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`
+  - artifact: `artifacts/ui/main-window-initial.png`
+
+## Repair Queue
+
+Begin these only after `Prep Complete`.
+
+### AQ-001 Strengthen dataset import and label import reliability
+
+- Status: Ready after prep
+- Why:
+  Dataset import remains the highest-value repair surface once the prep gate is cleared.
+
+### AQ-002 Improve preprocess readiness and downstream state propagation
+
+- Status: Ready after prep
+- Why:
+  Preprocess state drives training readiness and downstream workflow coherence.
+
+### AQ-003 Stabilize training state synchronization
+
+- Status: Ready after prep
+- Why:
+  Training events fan out into logs, plots, evaluation, and visualization.
+
+### AQ-004 Tighten evaluation consistency
+
+- Status: Ready after prep
+- Why:
+  Evaluation depends on cross-screen state alignment after training completes.
+
+### AQ-005 Stabilize visualization validation and runtime behavior
+
+- Status: Ready after prep
+- Why:
+  Visualization remains the highest-risk user-facing area once core flows are stable.
+
+### AQ-006 Remove or demote remote API dependencies from user-facing flows
+
+- Status: Ready after prep
+- Why:
+  The longer-term target remains local-model-first operation rather than OpenAI/Gemini dependency.
+
+## Deferred
+
+### DQ-001 Broad UI redesign
+
+- Status: Deferred
+- Reason:
+  The user wants intentional design changes discussed first.
+
+### DQ-002 Large architecture rewrite outside backend/test-infra stabilization
+
+- Status: Deferred
+- Reason:
+  More runtime evidence is needed before choosing broad restructuring.

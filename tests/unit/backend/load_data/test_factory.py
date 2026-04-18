@@ -4,6 +4,7 @@ import pytest
 
 from XBrainLab.backend.exceptions import FileCorruptedError, UnsupportedFormatError
 from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
+from XBrainLab.backend.load_data.raw_data_loader import load_fif_file
 
 
 def test_factory_registration():
@@ -47,3 +48,8 @@ def test_factory_load_corruption():
         pytest.raises(FileCorruptedError),
     ):
         RawDataLoaderFactory.load("test.dummy")
+
+
+def test_factory_supports_double_extension_fif_gz():
+    loader = RawDataLoaderFactory.get_loader("subject01-epo.fif.gz")
+    assert loader == load_fif_file

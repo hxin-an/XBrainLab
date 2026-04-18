@@ -53,13 +53,17 @@ class RawDataLoaderFactory:
             UnsupportedFormatError: If no loader is registered for the file extension.
 
         """
-        _, ext = os.path.splitext(filepath)
-        ext = ext.lower()
+        normalized = filepath.lower()
+        matches = [
+            ext for ext in cls._loaders if normalized.endswith(ext)
+        ]
 
-        if ext not in cls._loaders:
+        if not matches:
+            _, ext = os.path.splitext(filepath)
             raise UnsupportedFormatError(ext)
 
-        return cls._loaders[ext]
+        best_match = max(matches, key=len)
+        return cls._loaders[best_match]
 
     @classmethod
     def load(cls, filepath: str) -> Raw | None:

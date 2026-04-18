@@ -48,14 +48,20 @@ class TestAttachLabels:
         facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
 
         fake_labels = np.array([1, 2, 1, 2])
-        with patch(
-            "XBrainLab.backend.facade.load_label_file", return_value=fake_labels
+        with (
+            patch("XBrainLab.backend.facade.load_label_file", return_value=fake_labels),
+            patch("XBrainLab.backend.facade.LabelImportService") as MockService,
         ):
+            MockService.return_value.apply_labels_batch.return_value = 1
             result = facade.attach_labels({"sub01.set": "/labels/sub01.txt"})
 
         assert result == 1
-        raw.set_event.assert_called_once()
-        raw.set_labels_imported.assert_called_once_with(True)
+        MockService.return_value.apply_labels_batch.assert_called_once_with(
+            [raw],
+            {"/labels/sub01.txt": fake_labels},
+            {"/data/sub01.set": "/labels/sub01.txt"},
+            {1: "1", 2: "2"},
+        )
         facade.dataset.notify.assert_called_once_with("data_changed")
 
     def test_attach_labels_no_match(self):
@@ -73,34 +79,34 @@ class TestAttachLabels:
         raw = _make_raw_mock("/data/sub01.set")
         facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
 
-        with patch(
-            "XBrainLab.backend.facade.load_label_file",
-            side_effect=ValueError("bad file"),
+        with (
+            patch(
+                "XBrainLab.backend.facade.load_label_file",
+                side_effect=ValueError("bad file"),
+            ),
+            patch("XBrainLab.backend.facade.LabelImportService") as MockService,
         ):
             result = facade.attach_labels({"sub01.set": "/labels/sub01.txt"})
 
         assert result == 0
-        raw.set_event.assert_not_called()
+        MockService.return_value.apply_labels_batch.assert_not_called()
 
-    def test_attach_labels_events_format(self):
-        """Verify the events array shape and event_id dict are correct."""
+    def test_attach_labels_builds_default_event_name_map(self):
+        """Numeric sequence labels should produce default string event names."""
         facade, _ = _make_facade()
         raw = _make_raw_mock("/data/sub01.set")
         facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
 
         fake_labels = np.array([0, 1, 2, 1, 0])
-        with patch(
-            "XBrainLab.backend.facade.load_label_file", return_value=fake_labels
+        with (
+            patch("XBrainLab.backend.facade.load_label_file", return_value=fake_labels),
+            patch("XBrainLab.backend.facade.LabelImportService") as MockService,
         ):
+            MockService.return_value.apply_labels_batch.return_value = 1
             facade.attach_labels({"sub01.set": "/labels/sub01.txt"})
 
-        call_args = raw.set_event.call_args[0]
-        events = call_args[0]
-        event_id = call_args[1]
-
-        assert events.shape == (5, 3)
-        assert np.array_equal(events[:, 2], fake_labels)
-        assert event_id == {"0": 0, "1": 1, "2": 2}
+        call_args = MockService.return_value.apply_labels_batch.call_args[0]
+        assert call_args[3] == {0: "0", 1: "1", 2: "2"}
 
     def test_attach_labels_multiple_files(self):
         """Test batch labelling of multiple files."""
@@ -110,9 +116,11 @@ class TestAttachLabels:
         facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw1, raw2])
 
         fake_labels = np.array([1, 2])
-        with patch(
-            "XBrainLab.backend.facade.load_label_file", return_value=fake_labels
+        with (
+            patch("XBrainLab.backend.facade.load_label_file", return_value=fake_labels),
+            patch("XBrainLab.backend.facade.LabelImportService") as MockService,
         ):
+            MockService.return_value.apply_labels_batch.return_value = 2
             result = facade.attach_labels(
                 {
                     "sub01.set": "/labels/sub01.txt",
@@ -121,6 +129,27 @@ class TestAttachLabels:
             )
 
         assert result == 2
+
+    def test_attach_labels_accepts_full_data_path_mapping(self):
+        facade, _ = _make_facade()
+        raw = _make_raw_mock("/data/sub01.set")
+        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+
+        fake_labels = np.array(["left", "right"], dtype=object)
+        with (
+            patch("XBrainLab.backend.facade.load_label_file", return_value=fake_labels),
+            patch("XBrainLab.backend.facade.LabelImportService") as MockService,
+        ):
+            MockService.return_value.apply_labels_batch.return_value = 1
+            result = facade.attach_labels({"/data/sub01.set": "/labels/sub01.csv"})
+
+        assert result == 1
+        MockService.return_value.apply_labels_batch.assert_called_once_with(
+            [raw],
+            {"/labels/sub01.csv": fake_labels},
+            {"/data/sub01.set": "/labels/sub01.csv"},
+            {"left": "left", "right": "right"},
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QListWidgetItem,
     QVBoxLayout,
 )
 
@@ -29,16 +30,44 @@ from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 
+def _normalize_label_value(value: Any) -> Any:
+    """Convert NumPy scalars to native Python scalars for UI/state storage."""
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _label_sort_key(value: Any) -> tuple[int, Any]:
+    """Sort numeric codes numerically and other labels lexically."""
+    value = _normalize_label_value(value)
+
+    if isinstance(value, (int, np.integer)) and not isinstance(value, bool):
+        return (0, int(value))
+
+    if isinstance(value, (float, np.floating)) and float(value).is_integer():
+        return (0, int(value))
+
+    return (1, str(value))
+
+
+def _parse_display_code(text: str) -> Any:
+    """Best-effort parser for legacy table rows that only stored text."""
+    try:
+        return int(text)
+    except ValueError:
+        return text
+
+
 class ImportLabelDialog(BaseDialog):
     """Dialog for importing label files and mapping codes to event names.
 
     Supports loading label files in various formats (txt, mat, csv, tsv),
-    detecting unique label codes, and allowing the user to assign
-    descriptive event names to each code.
+    detecting unique label values, and allowing the user to assign
+    descriptive event names to each value.
 
     Attributes:
-        label_data_map: Mapping of filename to loaded label data arrays.
-        unique_labels: Sorted list of unique label codes across all files.
+        label_data_map: Mapping of label file path to loaded label data arrays.
+        unique_labels: Sorted list of unique label values across all files.
         file_list: QListWidget displaying loaded label files.
         map_table: QTableWidget for code-to-event-name mapping.
         info_label: QLabel showing summary statistics.
@@ -46,8 +75,8 @@ class ImportLabelDialog(BaseDialog):
     """
 
     def __init__(self, parent=None):
-        self.label_data_map: dict[str, Any] = {}  # {filename: label_array}
-        self.unique_labels: list[int] = []
+        self.label_data_map: dict[str, Any] = {}  # {label_path: label_array}
+        self.unique_labels: list[Any] = []
 
         # UI Elements
         self.file_list: QListWidget | None = None
@@ -124,13 +153,16 @@ class ImportLabelDialog(BaseDialog):
         for path in paths:
             filename = os.path.basename(path)
             # Check duplicates
-            if filename in self.label_data_map:
+            if path in self.label_data_map:
                 continue
 
             try:
                 self.load_file(path)
                 if self.file_list is not None:
-                    self.file_list.addItem(filename)
+                    item = QListWidgetItem(filename)
+                    item.setData(Qt.ItemDataRole.UserRole, path)
+                    item.setToolTip(path)
+                    self.file_list.addItem(item)
             except Exception as e:
                 QMessageBox.warning(self, "Error", f"Failed to load {filename}: {e}")
 
@@ -146,9 +178,9 @@ class ImportLabelDialog(BaseDialog):
             return
 
         for item in selected_items:
-            filename = item.text()
-            if filename in self.label_data_map:
-                del self.label_data_map[filename]
+            label_path = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            if label_path in self.label_data_map:
+                del self.label_data_map[label_path]
             self.file_list.takeItem(self.file_list.row(item))
 
         self.update_unique_labels()
@@ -164,13 +196,12 @@ class ImportLabelDialog(BaseDialog):
             path: Absolute path to the label file.
 
         """
-        filename = os.path.basename(path)
         labels = load_label_file(path)
         if labels is not None:
-            self.label_data_map[filename] = labels
+            self.label_data_map[path] = labels
 
     def update_unique_labels(self):
-        """Aggregates labels from all loaded files, finds unique codes,
+        """Aggregates labels from all loaded files, finds unique values,
         and updates the mapping table.
         """
         if self.info_label is None or self.map_table is None:
@@ -184,10 +215,10 @@ class ImportLabelDialog(BaseDialog):
                 and isinstance(labels[0], dict)
             ):
                 # Timestamp Mode: Extract 'label' from dicts
-                all_labels.extend(item["label"] for item in labels)
+                all_labels.extend(_normalize_label_value(item["label"]) for item in labels)
             else:
                 # Sequence Mode: labels is ndarray
-                all_labels.extend(labels)
+                all_labels.extend(_normalize_label_value(label) for label in labels)
 
         if not all_labels:
             self.unique_labels = []
@@ -195,7 +226,8 @@ class ImportLabelDialog(BaseDialog):
             self.map_table.setRowCount(0)
             return
 
-        self.unique_labels = sorted(np.unique(all_labels))
+        unique_labels = {_normalize_label_value(label): None for label in all_labels}
+        self.unique_labels = sorted(unique_labels.keys(), key=_label_sort_key)
         self.info_label.setText(
             f"Loaded {len(all_labels)} labels from {len(self.label_data_map)} files. "
             f"Found {len(self.unique_labels)} unique codes.",
@@ -208,7 +240,9 @@ class ImportLabelDialog(BaseDialog):
             name_item = self.map_table.item(i, 1)
             if code_item and name_item:
                 try:
-                    code = int(code_item.text())
+                    code = code_item.data(Qt.ItemDataRole.UserRole)
+                    if code is None:
+                        code = _parse_display_code(code_item.text())
                     name = name_item.text()
                     current_mapping[code] = name
                 except Exception:
@@ -220,6 +254,7 @@ class ImportLabelDialog(BaseDialog):
             # Code (Read-only)
             item_code = QTableWidgetItem(str(code))
             item_code.setFlags(item_code.flags() ^ Qt.ItemFlag.ItemIsEditable)
+            item_code.setData(Qt.ItemDataRole.UserRole, code)
             self.map_table.setItem(i, 0, item_code)
 
             # Name (Editable)
@@ -233,7 +268,7 @@ class ImportLabelDialog(BaseDialog):
 
         Returns:
             Tuple of (label_data_map, mapping_dict) where label_data_map maps
-            filenames to label arrays and mapping_dict maps integer codes
+            filenames to label arrays and mapping_dict maps raw label values
             to event name strings. Returns (None, None) if no data loaded.
 
         """
@@ -245,10 +280,12 @@ class ImportLabelDialog(BaseDialog):
             code_item = self.map_table.item(i, 0)
             name_item = self.map_table.item(i, 1)
             if code_item and name_item:
-                code_text = code_item.text()
+                code = code_item.data(Qt.ItemDataRole.UserRole)
+                if code is None:
+                    code = _parse_display_code(code_item.text())
                 name = name_item.text().strip()
-                if code_text and name:
-                    mapping[int(code_text)] = name
+                if code is not None and name:
+                    mapping[code] = name
 
         return self.label_data_map, mapping
 

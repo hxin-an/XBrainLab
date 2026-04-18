@@ -5,6 +5,8 @@ from enum import Enum
 import torch
 from torch import nn
 
+from XBrainLab.backend.utils.logger import logger
+
 
 class TrainingEvaluation(Enum):
     """Enumeration of model selection strategies for evaluation.
@@ -43,6 +45,35 @@ def parse_device_name(use_cpu: bool, gpu_idx: int | None) -> str:
     if gpu_idx is not None:
         return f"{gpu_idx} - {torch.cuda.get_device_name(gpu_idx)}"
     raise ValueError("Device not set")
+
+
+def is_cuda_device_usable(gpu_idx: int | None) -> tuple[bool, str | None]:
+    """Check whether a requested CUDA device can actually execute work.
+
+    Args:
+        gpu_idx: Zero-based CUDA device index.
+
+    Returns:
+        A tuple of ``(usable, reason)`` where ``reason`` is populated when
+        the device cannot be used safely.
+
+    """
+    if gpu_idx is None:
+        return False, "CUDA device index not set"
+    if not torch.cuda.is_available():
+        return False, "CUDA is not available"
+
+    device_count = torch.cuda.device_count()
+    if gpu_idx < 0 or gpu_idx >= device_count:
+        return False, f"CUDA device index {gpu_idx} is out of range"
+
+    try:
+        probe = torch.zeros(1, device=f"cuda:{gpu_idx}")
+        del probe
+    except Exception as exc:  # pragma: no cover - hardware/runtime specific
+        return False, str(exc)
+
+    return True, None
 
 
 def parse_optim_name(optim: type, optim_params: dict) -> str:
@@ -128,6 +159,24 @@ class TrainingOption:
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer_name = "adam"  # Default
         self.validate()
+        self._normalize_runtime_device()
+
+    def _normalize_runtime_device(self) -> None:
+        """Fallback to CPU when a requested CUDA device is unusable."""
+        if self.use_cpu:
+            return
+
+        usable, reason = is_cuda_device_usable(self.gpu_idx)
+        if usable:
+            return
+
+        logger.warning(
+            "Requested CUDA device %s is not usable; falling back to CPU: %s",
+            self.gpu_idx,
+            reason,
+        )
+        self.use_cpu = True
+        self.gpu_idx = None
 
     def validate(self) -> None:
         """Validate training options.

@@ -81,25 +81,39 @@ class RawDataLoader(list):
         # valide if the dataset is empty
         if not self:
             return
+        reference = self[idx]
         # check channel number
-        if self[idx].get_nchan() != raw.get_nchan():
+        if reference.get_nchan() != raw.get_nchan():
             raise DataMismatchError(
-                f"Dataset channel numbers inconsistent (got {raw.get_nchan()}).",
+                "Dataset channel numbers inconsistent: "
+                f"expected {reference.get_nchan()} from {reference.get_filename()}, "
+                f"got {raw.get_nchan()} from {raw.get_filename()}.",
             )
         # check sfreq
-        if self[idx].get_sfreq() != raw.get_sfreq():
+        if reference.get_sfreq() != raw.get_sfreq():
             raise DataMismatchError(
-                f"Dataset sample frequency inconsistent (got {raw.get_sfreq()}).",
+                "Dataset sample frequency inconsistent: "
+                f"expected {reference.get_sfreq()} from {reference.get_filename()}, "
+                f"got {raw.get_sfreq()} from {raw.get_filename()}.",
             )
         # check same data type
-        if self[idx].is_raw() != raw.is_raw():
-            raise DataMismatchError("Dataset type inconsistent.")
+        if reference.is_raw() != raw.is_raw():
+            expected_type = "raw" if reference.is_raw() else "epochs"
+            got_type = "raw" if raw.is_raw() else "epochs"
+            raise DataMismatchError(
+                "Dataset type inconsistent: "
+                f"expected {expected_type} from {reference.get_filename()}, "
+                f"got {got_type} from {raw.get_filename()}.",
+            )
         # check epoch trial size
         if not raw.is_raw() and (
-            self[idx].get_epoch_duration() != raw.get_epoch_duration()
+            reference.get_epoch_duration() != raw.get_epoch_duration()
         ):
             raise DataMismatchError(
-                f"Epoch duration inconsistent (got {raw.get_epoch_duration()}).",
+                "Epoch duration inconsistent: "
+                f"expected {reference.get_epoch_duration()} from "
+                f"{reference.get_filename()}, got {raw.get_epoch_duration()} "
+                f"from {raw.get_filename()}.",
             )
 
     def append(self, raw: Raw) -> None:
