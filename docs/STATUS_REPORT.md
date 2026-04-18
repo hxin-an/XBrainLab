@@ -34,6 +34,7 @@ Plan goal:
 
 What has been done:
 - `AGENTS.md` has been shortened into an entry map instead of a long handbook
+- `.agents/stack.md` now explicitly records the selected skills, rule policy, external setup references, and heartbeat reading order
 - `docs/CODEX_SETUP.md` defines Codex operating rules, reading order, validation flow, and stop conditions
 - `docs/AUTOPILOT.md` defines the two-phase `Prep Gate` then `Repair Loop`
 - local Codex config includes the OpenAI Docs MCP endpoint
@@ -42,6 +43,7 @@ What has been done:
 
 Evidence:
 - the active docs now reference `docs/STATUS_REPORT.md` as a required companion
+- the agent-facing stack is now anchored in `.agents/stack.md`
 - the thread heartbeat cadence is set to 10 minutes
 
 What is next:

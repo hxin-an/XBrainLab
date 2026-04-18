@@ -74,7 +74,7 @@ Not allowed without user discussion:
 
 For each work cycle:
 
-1. read `AGENTS.md`, `docs/CODEX_SETUP.md`, and `docs/ACTIVE_QUEUE.md`
+1. read `AGENTS.md`, `.agents/stack.md`, `docs/CODEX_SETUP.md`, and `docs/ACTIVE_QUEUE.md`
 2. pick the top eligible queue item
 3. reproduce the issue or verify current behavior
 4. add the narrowest useful test when practical, or capture strong manual/runtime evidence

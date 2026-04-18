@@ -19,15 +19,16 @@ The goal is to let Codex keep moving on stabilization work with:
 Use this reading order:
 
 1. `AGENTS.md`
-2. `docs/CODEX_SETUP.md`
-3. `docs/AUTOPILOT.md`
-4. `docs/STATUS_REPORT.md`
-5. `docs/ACTIVE_QUEUE.md`
-6. `docs/BUG_TRIAGE.md`
-7. `docs/SESSION_LOG.md`
-7. deeper workflow or testing docs only when the current task needs them
+2. `.agents/stack.md`
+3. `docs/CODEX_SETUP.md`
+4. `docs/AUTOPILOT.md`
+5. `docs/STATUS_REPORT.md`
+6. `docs/ACTIVE_QUEUE.md`
+7. `docs/BUG_TRIAGE.md`
+8. `docs/SESSION_LOG.md`
+9. deeper workflow or testing docs only when the current task needs them
 
-`AGENTS.md` is the short map. `docs/` is the system of record.
+`AGENTS.md` is the short map. `.agents/stack.md` is the agent-side stack record. `docs/` remains the repo system of record for workflow, queue, triage, and reporting.
 
 ## Official-First Research Rules
 
@@ -45,6 +46,7 @@ Required local expectations for this workspace:
 
 - `~/.codex/config.toml` should include the OpenAI Docs MCP server as `openaiDeveloperDocs`
 - the built-in `openai-docs` skill is treated as required local capability for OpenAI-related questions
+- `.agents/stack.md` should be kept current when the selected skill/rule/heartbeat setup changes
 - no repo-specific custom local skill should be created for XBrainLab unless repo docs prove insufficient
 - the current heartbeat automation for this thread should continue the prep-first stabilization loop
 
@@ -91,7 +93,7 @@ Do not switch the queue into normal repair mode until all of the following are t
 
 For each unattended or manual Codex work cycle:
 
-1. read `AGENTS.md`, `docs/CODEX_SETUP.md`, `docs/AUTOPILOT.md`, and `docs/ACTIVE_QUEUE.md`
+1. read `AGENTS.md`, `.agents/stack.md`, `docs/CODEX_SETUP.md`, `docs/AUTOPILOT.md`, and `docs/ACTIVE_QUEUE.md`
 2. pick the top eligible item
 3. reproduce the issue or confirm the current behavior
 4. add the narrowest useful test or capture the best available evidence

@@ -258,6 +258,21 @@ This log records meaningful progress so repair work can continue smoothly across
   - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/scripts/test_capture_ui_baseline.py tests/integration/io/test_io_integration.py -q`
   - result: `27 passed, 7 warnings`
 
+### Agent stack clarification
+
+- clarified that the explicit agent-side stack should live under `.agents/`, not only inside `docs/`
+- added `.agents/stack.md` to record:
+  - selected default skills
+  - conditional-only skills
+  - rule policy
+  - the heartbeat reading order
+- updated `AGENTS.md`, `docs/CODEX_SETUP.md`, and `docs/AUTOPILOT.md` so unattended work reads `.agents/stack.md` before continuing
+- expanded the external setup basis to include:
+  - OpenAI Codex docs
+  - Anthropic Claude Code docs
+  - GitHub agent-skill docs
+  - the vendor-neutral `agentmd` repository
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell

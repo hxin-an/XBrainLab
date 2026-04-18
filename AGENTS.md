@@ -19,15 +19,18 @@ This is a stabilization project, not a feature-expansion or visual-redesign proj
 
 Read these in order before substantial work:
 
-1. `docs/CODEX_SETUP.md`
-2. `docs/AUTOPILOT.md`
-3. `docs/STATUS_REPORT.md`
-4. `docs/ACTIVE_QUEUE.md`
-5. `docs/BUG_TRIAGE.md`
-6. `docs/SESSION_LOG.md`
+1. `.agents/stack.md`
+2. `docs/CODEX_SETUP.md`
+3. `docs/AUTOPILOT.md`
+4. `docs/STATUS_REPORT.md`
+5. `docs/ACTIVE_QUEUE.md`
+6. `docs/BUG_TRIAGE.md`
+7. `docs/SESSION_LOG.md`
 
 Open deeper docs only as needed:
 
+- `.agents/workflows/commit.md`
+- `.agents/workflows/tdd.md`
 - `docs/TAKEOVER.md`
 - `docs/TESTING_STRATEGY.md`
 - `docs/UI_BASELINE.md`
@@ -85,4 +88,5 @@ Minimum done criteria:
 - The active stabilization branch is `codex/stabilization-autopilot`.
 - Preserve any existing dirty worktree changes unless they directly conflict with the current task.
 - Use official OpenAI/Codex sources first for Codex, MCP, skills, or automation guidance.
+- Treat `.agents/stack.md` as the explicit record of selected skills, rule policy, and heartbeat reading order.
 - Follow the prep-first queue in `docs/ACTIVE_QUEUE.md` until `Prep Complete` is achieved.
