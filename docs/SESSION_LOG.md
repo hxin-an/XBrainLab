@@ -273,6 +273,22 @@ This log records meaningful progress so repair work can continue smoothly across
   - GitHub agent-skill docs
   - the vendor-neutral `agentmd` repository
 
+### Full human-versus-agent doc split
+
+- moved the canonical agent runtime surface into:
+  - `.agents/runbooks/setup.md`
+  - `.agents/runbooks/autopilot.md`
+  - `.agents/runbooks/active-queue.md`
+- kept `docs/` as the human-facing surface and added `docs/PLAN.md`
+- converted these root-level docs into compatibility stubs:
+  - `docs/CODEX_SETUP.md`
+  - `docs/AUTOPILOT.md`
+  - `docs/ACTIVE_QUEUE.md`
+- created repo-local skills for repeated workflows:
+  - `.agents/skills/xbrainlab-prep-gate/SKILL.md`
+  - `.agents/skills/xbrainlab-repair-loop/SKILL.md`
+- updated the canonical reading order so unattended work reads `.agents/` first, then the human-facing plan and progress docs
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell

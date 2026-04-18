@@ -20,15 +20,18 @@ This is a stabilization project, not a feature-expansion or visual-redesign proj
 Read these in order before substantial work:
 
 1. `.agents/stack.md`
-2. `docs/CODEX_SETUP.md`
-3. `docs/AUTOPILOT.md`
-4. `docs/STATUS_REPORT.md`
-5. `docs/ACTIVE_QUEUE.md`
-6. `docs/BUG_TRIAGE.md`
-7. `docs/SESSION_LOG.md`
+2. `.agents/runbooks/setup.md`
+3. `.agents/runbooks/autopilot.md`
+4. `.agents/runbooks/active-queue.md`
+5. `docs/PLAN.md`
+6. `docs/STATUS_REPORT.md`
+7. `docs/BUG_TRIAGE.md`
+8. `docs/SESSION_LOG.md`
 
 Open deeper docs only as needed:
 
+- `.agents/skills/xbrainlab-prep-gate/SKILL.md`
+- `.agents/skills/xbrainlab-repair-loop/SKILL.md`
 - `.agents/workflows/commit.md`
 - `.agents/workflows/tdd.md`
 - `docs/TAKEOVER.md`
@@ -89,4 +92,6 @@ Minimum done criteria:
 - Preserve any existing dirty worktree changes unless they directly conflict with the current task.
 - Use official OpenAI/Codex sources first for Codex, MCP, skills, or automation guidance.
 - Treat `.agents/stack.md` as the explicit record of selected skills, rule policy, and heartbeat reading order.
-- Follow the prep-first queue in `docs/ACTIVE_QUEUE.md` until `Prep Complete` is achieved.
+- Treat `.agents/runbooks/*.md` as the canonical agent operating docs.
+- Keep `docs/PLAN.md` and `docs/STATUS_REPORT.md` readable for humans following progress.
+- Follow the prep-first queue in `.agents/runbooks/active-queue.md` until `Prep Complete` is achieved.

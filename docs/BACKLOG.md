@@ -13,8 +13,11 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   Long-running unattended work needs durable repo docs, a stable local Codex setup, and an explicit prep gate before deeper repair loops are safe.
 - Outputs:
   - short `AGENTS.md`
-  - `docs/CODEX_SETUP.md`
-  - two-phase `docs/AUTOPILOT.md`
+  - `.agents/stack.md`
+  - `.agents/runbooks/setup.md`
+  - two-phase `.agents/runbooks/autopilot.md`
+  - `.agents/skills/xbrainlab-prep-gate`
+  - `.agents/skills/xbrainlab-repair-loop`
   - Docs MCP local configuration
   - thread heartbeat automation alignment
 - Status:
