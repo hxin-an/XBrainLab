@@ -226,6 +226,38 @@ This log records meaningful progress so repair work can continue smoothly across
   - `tests/integration/io/test_io_integration.py`
   - result: `71 passed, 5 warnings`
 
+### Five-panel capture and public fixture expansion
+
+- updated the capture helper so it now writes:
+  - `artifacts/ui/main-window-initial.png`
+  - `artifacts/ui/panel-dataset.png`
+  - `artifacts/ui/panel-preprocess.png`
+  - `artifacts/ui/panel-training.png`
+  - `artifacts/ui/panel-evaluation.png`
+  - `artifacts/ui/panel-visualization.png`
+- created `scripts/dev/fetch_public_eeg_fixtures.py` to download a small cross-source EEG fixture set into `tests/data/public/`
+- documented the public fixtures in `tests/data/public/README.md`
+- downloaded and validated three external fixtures locally:
+  - PhysioNet `physionet-eegmmidb-S008R01.edf`
+  - BBCI `bbci-competition-iii-O3VR.gdf`
+  - SCCN `sccn-eeglab_data.set`
+- expanded `tests/integration/io/test_io_integration.py` so the real-data IO slice also covers these public EDF/GDF/SET fixtures when present
+- validation result:
+  - `tests/integration/io/test_io_integration.py`
+  - result: `25 passed, 7 warnings`
+
+### User-followable reporting
+
+- added `docs/STATUS_REPORT.md` as the concise user-facing progress snapshot
+- updated the Codex harness docs so future work cycles and heartbeat runs maintain this report
+- updated the heartbeat operating cadence from 30 minutes to 10 minutes
+- reshaped `docs/STATUS_REPORT.md` so it now mirrors the agreed long-running plan section-by-section instead of acting like a flat note dump
+- re-ran the latest relevant validation after the report restructure:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`
+  - result: all six baseline images were regenerated successfully
+  - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/scripts/test_capture_ui_baseline.py tests/integration/io/test_io_integration.py -q`
+  - result: `27 passed, 7 warnings`
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell

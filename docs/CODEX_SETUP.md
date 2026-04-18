@@ -21,9 +21,10 @@ Use this reading order:
 1. `AGENTS.md`
 2. `docs/CODEX_SETUP.md`
 3. `docs/AUTOPILOT.md`
-4. `docs/ACTIVE_QUEUE.md`
-5. `docs/BUG_TRIAGE.md`
-6. `docs/SESSION_LOG.md`
+4. `docs/STATUS_REPORT.md`
+5. `docs/ACTIVE_QUEUE.md`
+6. `docs/BUG_TRIAGE.md`
+7. `docs/SESSION_LOG.md`
 7. deeper workflow or testing docs only when the current task needs them
 
 `AGENTS.md` is the short map. `docs/` is the system of record.
@@ -98,7 +99,8 @@ For each unattended or manual Codex work cycle:
 6. run the smallest relevant validation slice
 7. re-run broader UI safety tests if shared UI plumbing changed
 8. update `docs/BUG_TRIAGE.md`, `docs/BACKLOG.md`, `docs/SESSION_LOG.md`, and `docs/ACTIVE_QUEUE.md`
-9. continue unless a stop condition is hit
+9. update `docs/STATUS_REPORT.md` with a concise user-facing progress snapshot
+10. continue unless a stop condition is hit
 
 ## Stop Conditions
 

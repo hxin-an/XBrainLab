@@ -13,6 +13,7 @@ TEST_DATA_DIR = os.path.abspath(
 )
 GDF_FILE = os.path.join(TEST_DATA_DIR, "A01T.gdf")
 MULTIFORMAT_DIR = os.path.join(TEST_DATA_DIR, "multiformat")
+PUBLIC_DATA_DIR = os.path.join(TEST_DATA_DIR, "public")
 REAL_DATA_FIXTURES = [
     GDF_FILE,
     os.path.join(MULTIFORMAT_DIR, "A01T-mini-real_raw.fif"),
@@ -22,6 +23,11 @@ REAL_DATA_FIXTURES = [
     os.path.join(MULTIFORMAT_DIR, "A01T-mini-real.vhdr"),
     os.path.join(MULTIFORMAT_DIR, "A01T-mini-real.set"),
     os.path.join(MULTIFORMAT_DIR, "A01T-mini-real-epo.fif"),
+]
+PUBLIC_REAL_DATA_FIXTURES = [
+    os.path.join(PUBLIC_DATA_DIR, "physionet-eegmmidb-S008R01.edf"),
+    os.path.join(PUBLIC_DATA_DIR, "bbci-competition-iii-O3VR.gdf"),
+    os.path.join(PUBLIC_DATA_DIR, "sccn-eeglab_data.set"),
 ]
 
 
@@ -90,6 +96,40 @@ class TestIOIntegration:
         """Exercise the real dataset import entrypoint across multiple formats."""
         if not os.path.exists(filepath):
             pytest.skip(f"Test data not found at {filepath}")
+
+        facade = BackendFacade()
+        success_count, errors = facade.load_data([filepath])
+
+        assert success_count == 1
+        assert errors == []
+
+        summary = facade.get_data_summary()
+        assert summary["count"] == 1
+        assert summary["files"] == [os.path.basename(filepath)]
+
+    @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
+    def test_load_public_real_formats(self, filepath):
+        """Load small public EEG fixtures from different sources and formats."""
+        if not os.path.exists(filepath):
+            pytest.skip(f"Public test data not found at {filepath}")
+
+        raw = load_raw_data(filepath)
+
+        assert raw is not None
+        assert isinstance(raw, Raw)
+        assert raw.get_filepath() == filepath
+        assert raw.get_nchan() > 0
+        assert raw.get_sfreq() > 0
+
+        data = raw.get_mne().get_data()
+        assert data is not None
+        assert data.ndim in (2, 3)
+
+    @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
+    def test_facade_import_public_real_formats(self, filepath):
+        """Exercise the facade import entrypoint across downloaded public EEG fixtures."""
+        if not os.path.exists(filepath):
+            pytest.skip(f"Public test data not found at {filepath}")
 
         facade = BackendFacade()
         success_count, errors = facade.load_data([filepath])

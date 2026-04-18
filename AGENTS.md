@@ -21,9 +21,10 @@ Read these in order before substantial work:
 
 1. `docs/CODEX_SETUP.md`
 2. `docs/AUTOPILOT.md`
-3. `docs/ACTIVE_QUEUE.md`
-4. `docs/BUG_TRIAGE.md`
-5. `docs/SESSION_LOG.md`
+3. `docs/STATUS_REPORT.md`
+4. `docs/ACTIVE_QUEUE.md`
+5. `docs/BUG_TRIAGE.md`
+6. `docs/SESSION_LOG.md`
 
 Open deeper docs only as needed:
 
@@ -35,6 +36,8 @@ Open deeper docs only as needed:
 - `docs/DIALOG_MATRIX.md`
 - `docs/COVERAGE_GAPS.md`
 - `docs/BACKLOG.md`
+
+Keep `docs/STATUS_REPORT.md` concise and current so the user can rejoin the work quickly.
 
 ## Core Rules
 

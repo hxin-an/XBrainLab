@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Capture a minimal UI baseline screenshot for XBrainLab.
+"""Capture a minimal UI baseline screenshot set for XBrainLab.
 
 This helper launches the real application stack, waits for the main window to
-settle, and captures the rendered main-window widget into
-``artifacts/ui/main-window-initial.png``.
+settle, and captures the rendered main-window widget across the shell and the
+five primary panels into ``artifacts/ui/``.
 
 Expected usage in WSL/headless environments:
 
@@ -24,6 +24,14 @@ from PyQt6.QtWidgets import QApplication
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"
+CAPTURE_STEPS = [
+    ("main-window-initial.png", None),
+    ("panel-dataset.png", 0),
+    ("panel-preprocess.png", 1),
+    ("panel-training.png", 2),
+    ("panel-evaluation.png", 3),
+    ("panel-visualization.png", 4),
+]
 
 
 def is_nearly_black(path: Path) -> bool:
@@ -42,8 +50,27 @@ def is_nearly_black(path: Path) -> bool:
     return total_pixels == 0 or bright_pixels < total_pixels * 0.01
 
 
+def _capture_current_window(window, output_path: Path) -> int:
+    """Grab the current rendered window and write it to ``output_path``."""
+    pixmap = window.grab()
+    if pixmap.isNull():
+        print("Failed to grab the main window pixmap.", file=sys.stderr)
+        return 3
+    if not pixmap.save(str(output_path)):
+        print("Failed to save the grabbed main window pixmap.", file=sys.stderr)
+        return 4
+    if is_nearly_black(output_path):
+        print(
+            f"Captured screenshot is nearly all black and unusable: {output_path.name}",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"Saved baseline screenshot to {output_path}")
+    return 0
+
+
 def capture_window(app: QApplication, output_path: Path) -> int:
-    """Launch the main window, grab it after paint, and save a screenshot."""
+    """Launch the main window and capture the shell plus all five panels."""
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
@@ -53,32 +80,33 @@ def capture_window(app: QApplication, output_path: Path) -> int:
     window = MainWindow(study)
     window.show()
 
-    def _save_capture() -> None:
+    def _run_step(step_index: int) -> None:
+        filename, panel_index = CAPTURE_STEPS[step_index]
+        if panel_index is not None:
+            window.switch_page(panel_index)
+
         app.processEvents()
+        current_widget = window.stack.currentWidget()
+        if current_widget is not None:
+            current_widget.repaint()
         window.repaint()
         app.processEvents()
 
-        pixmap = window.grab()
-        if pixmap.isNull():
-            print("Failed to grab the main window pixmap.", file=sys.stderr)
-            result["code"] = 3
-        elif not pixmap.save(str(output_path)):
-            print("Failed to save the grabbed main window pixmap.", file=sys.stderr)
-            result["code"] = 4
-        elif is_nearly_black(output_path):
-            print(
-                "Captured screenshot is nearly all black; visual baseline is not usable yet.",
-                file=sys.stderr,
-            )
-            result["code"] = 2
-        else:
-            print(f"Saved baseline screenshot to {output_path}")
-            result["code"] = 0
+        step_output = output_path.parent / filename
+        result["code"] = _capture_current_window(window, step_output)
+        if result["code"] != 0:
+            window.close()
+            app.quit()
+            return
 
-        window.close()
-        app.quit()
+        if step_index + 1 >= len(CAPTURE_STEPS):
+            window.close()
+            app.quit()
+            return
 
-    QTimer.singleShot(2500, _save_capture)
+        QTimer.singleShot(500, lambda: _run_step(step_index + 1))
+
+    QTimer.singleShot(2500, lambda: _run_step(0))
     app.exec()
     return result["code"]
 

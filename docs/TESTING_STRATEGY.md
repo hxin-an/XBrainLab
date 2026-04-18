@@ -126,6 +126,21 @@ Helper script:
 xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py
 ```
 
+The helper now captures:
+
+- `main-window-initial.png`
+- `panel-dataset.png`
+- `panel-preprocess.png`
+- `panel-training.png`
+- `panel-evaluation.png`
+- `panel-visualization.png`
+
+Optional public-fixture fetch step for broader cross-dataset validation:
+
+```bash
+/home/administrator/.local/bin/poetry run python scripts/dev/fetch_public_eeg_fixtures.py
+```
+
 ## Known Constraints
 
 ### VTK and visualization instability

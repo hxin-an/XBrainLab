@@ -86,6 +86,7 @@ For each work cycle:
    - `docs/BACKLOG.md`
    - `docs/SESSION_LOG.md`
    - `docs/ACTIVE_QUEUE.md`
+   - `docs/STATUS_REPORT.md`
 9. continue unless a stop condition is hit
 
 ## Required Evidence
@@ -118,4 +119,4 @@ Every meaningful cycle should leave traces in:
 
 ## Current Automation Note
 
-The current thread has a heartbeat automation named `XBrainLab Autopilot` scheduled every 30 minutes. It should follow this document and the active queue.
+The current thread has a heartbeat automation named `XBrainLab Autopilot` scheduled every 10 minutes. It should follow this document, the active queue, and the status report.

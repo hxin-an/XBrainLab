@@ -130,6 +130,9 @@ Current helper:
 xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py
 ```
 
+The helper currently captures the shell plus the five primary panels into
+`artifacts/ui/`.
+
 ## Next Step
 
 The first version of this baseline is checklist-based.
