@@ -34,10 +34,10 @@ Run from `/home/administrator/repos/XBrainLab`:
 xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
 
 # Focused UI suite
-/home/administrator/.local/bin/poetry run pytest tests/unit/ui -q
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q
 
 # Integration UI slice
-/home/administrator/.local/bin/poetry run pytest tests/integration/ui -q
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui -q
 
 # Full test suite
 /home/administrator/.local/bin/poetry run pytest
@@ -45,8 +45,9 @@ xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
 
 Current Codex local note for `/mnt/d/repos/XBrainLab`:
 
-- default `pytest` capture is currently unreliable in this workspace and can fail during teardown
-- until that is repaired, prefer `-s` for local validation commands inside this Codex workspace
+- unattended UI pytest runs can currently abort during `pytest-qt` app setup unless Qt is forced into offscreen mode
+- use `scripts/dev/run_ui_pytest.sh` for UI-targeted pytest commands in this Codex workspace
+- the older default-capture teardown failure is no longer a clean always-on reproducer, but `--capture=sys` remains the safer unattended default
 - keep the original commands as the baseline reference for the canonical WSL setup
 
 ## Three Validation Layers
@@ -77,7 +78,7 @@ Use when changing:
 Command:
 
 ```bash
-/home/administrator/.local/bin/poetry run pytest tests/unit/ui -q
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q
 ```
 
 This is our minimum anti-regression net for PyQt work.
@@ -90,7 +91,7 @@ Suggested commands:
 
 ```bash
 xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
-/home/administrator/.local/bin/poetry run pytest tests/integration/ui -q
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui -q
 ```
 
 ## Visual And Layout Validation

@@ -9,6 +9,14 @@ import subprocess
 import sys
 
 
+def configure_headless_ui_env():
+    """Set deterministic env vars for unattended/headless Qt test runs."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ.setdefault("MPLBACKEND", "Agg")
+    os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-codex")
+    os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
+
+
 def run_pytest(args):
     """Run pytest with given arguments."""
     cmd = ["pytest", *args]
@@ -29,7 +37,8 @@ def backend():
 def ui():
     """Run UI unit tests."""
     print("Running UI Tests...")
-    run_pytest(["tests/unit/ui"])
+    configure_headless_ui_env()
+    run_pytest(["--capture=sys", "tests/unit/ui"])
 
 
 def run_llm_tests():

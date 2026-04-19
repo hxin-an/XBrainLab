@@ -15,6 +15,19 @@ The goal is to let Codex keep moving on stabilization work with:
 - explicit validation commands
 - hard stop conditions
 
+## Product Definition Reminder
+
+Keep the assistant roles separate:
+
+- Codex in this repository is the external development assistant.
+- the in-app XBrainLab assistant is a workflow-aware software-operation agent inside the product.
+
+For the in-app assistant:
+
+- humans and the in-app assistant are two control modes over the same software capability surface
+- direct UI control and agent tool control should stay conceptually aligned
+- the current tool taxonomy is redesignable and should be changed if a better workflow-oriented action surface is needed
+
 ## Canonical Layout
 
 - `AGENTS.md`
@@ -69,6 +82,15 @@ When evaluating better agent setup patterns, it is acceptable to additionally co
 - GitHub official docs for agent skills
 - high-signal GitHub repositories that show reusable skill and agent-layout patterns
 
+When evaluating the in-app XBrainLab assistant specifically:
+
+- do not limit research to OpenAI platform patterns
+- also consult Anthropic tool-use guidance, relevant agent papers, and high-signal open-source agent implementations
+- keep the product definition straight:
+  - Codex is the external development assistant
+  - the in-app assistant is a workflow-aware software-operation agent for XBrainLab itself
+  - the human user and the in-app assistant should be treated as two control modes over the same capability surface
+
 ## Local Codex Configuration
 
 Required local expectations for this workspace:
@@ -95,16 +117,16 @@ Run from the current workspace root:
 timeout 25s xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
 xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py
 /home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/training/test_option.py -q
-/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py -q
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_main_window_sync.py -q
 /home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
-/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui -q
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q
 ```
 
 Current local note:
 
-- In the current `/mnt/d/repos/XBrainLab` Codex workspace, default `pytest` capture is not trustworthy yet and can fail at teardown with `FileNotFoundError` inside `_pytest/capture.py`.
-- The failure is currently isolated to `fd` capture; `--capture=sys` and `--capture=tee-sys` succeed on representative backend, unit-UI, and integration-UI slices.
-- Until the root cause is repaired, prefer `--capture=sys` for local validation in this workspace and record the limitation in triage.
+- In the current `/mnt/d/repos/XBrainLab` Codex workspace, unattended UI pytest runs need explicit headless Qt env because `pytest-qt` can otherwise abort during `qapp` setup while trying to load `xcb` or `wayland`.
+- Use `scripts/dev/run_ui_pytest.sh` for unattended or heartbeat-driven UI pytest commands; it applies `QT_QPA_PLATFORM=offscreen`, `MPLBACKEND=Agg`, `MPLCONFIGDIR=/tmp/matplotlib-codex`, and `--capture=sys`.
+- The older `fd`-capture teardown issue has become inconsistent and should stay in triage until it is either re-reproduced reliably or retired.
 
 ## Prep Gate
 

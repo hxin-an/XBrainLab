@@ -64,7 +64,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - document the temporary `--capture=sys` workaround
   - triage or repair the capture teardown issue
 - Status:
-  In progress.
+  In progress. The current blocker is now better narrowed: unattended UI pytest needs explicit offscreen Qt and writable matplotlib-cache env, and `scripts/dev/run_ui_pytest.sh` now captures that workaround. The older `fd`-capture teardown issue remains triage-only until it is either re-confirmed or retired.
 
 ## Soon
 
@@ -117,6 +117,8 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Priority: P2
 - Goal:
   add targeted logs or debug breadcrumbs where current state transitions are hard to inspect
+- Status:
+  In progress. `load_gdf_file()` now emits an explicit repo-level warning when real GDF import depends on MNE auto-renaming duplicate channel names.
 
 ### BL-010 Review AI assistant shell integration quality
 
@@ -134,9 +136,24 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Outputs:
   - a clear `docs/decisions/` entry point
   - one active thesis-direction ADR
+  - one active product-definition ADR for the in-app assistant
   - clearer separation between active docs and historical reference docs
 - Status:
   In progress.
+
+### BL-014 Audit the in-app assistant tool surface against the new product definition
+
+- Priority: P1
+- Why now:
+  The project now has a sharper definition of the in-app assistant as a workflow-aware software-operation agent sharing the same capability surface as the human user.
+  The next design step is to check whether the current tool surface actually matches that definition.
+- Outputs:
+  - map the current tool surface
+  - identify tool boundaries that are implementation-shaped instead of workflow-shaped
+  - decide what should be merged, removed, or redesigned
+  - define confirmation and observability requirements per tool group
+- Status:
+  Ready after the current documentation alignment finishes.
 
 ### BL-012 Redesign repository information architecture and doc system
 
@@ -149,7 +166,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - a migration plan for active, guide, api, and archived docs
   - a root-level entry strategy including `README.md` and updated published-doc navigation
 - Status:
-  Proposed structure captured in `docs/decisions/ADR-012-project-structure-redesign.md`.
+  In progress. The new root `README.md`, `docs/guides/`, `docs/archive/`, and updated navigation have been created; remaining work is secondary cleanup and archive slimming.
 
 ## Deferred Until After Triage
 
