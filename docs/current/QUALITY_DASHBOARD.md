@@ -28,6 +28,54 @@
 - UI unit suite
 - real-data IO integration slice
 
+## 目前 UI 檢查到底在檢查什麼
+
+目前看板對 UI 的判斷，主要是這四層：
+
+- app 和主視窗能不能穩定啟動
+- baseline capture 能不能成功重產
+- `artifacts/ui/` 裡的必要截圖有沒有缺檔或幾乎全黑
+- 高風險 dialog 與共用 UI 測試切片有沒有明顯壞掉
+
+也就是說，它現在回答的是：
+
+- UI 還能不能跑起來
+- 結構有沒有明顯壞掉
+- 高價值互動路徑有沒有回歸
+
+它目前還不能回答：
+
+- 現在的畫面和上一次認可的 layout 是否精確一致
+- 某個 panel 的區塊位置是不是悄悄漂移了
+- 某些元件雖然還存在，但是否已經偏離我們正式認可的基準圖
+
+## 目前什麼叫做「對的基準」
+
+目前 repo 內的 UI baseline 有三層：
+
+- `docs/workflows/UI_BASELINE.md`
+  - 定義人類可讀的「結構上什麼叫做對」
+- `artifacts/ui/`
+  - 放每次驗證時產生的 live screenshot evidence
+- `tests/baselines/ui/`
+  - 預留給未來正式認可的 reference screenshots
+
+目前 quality dashboard 實際用來判斷 UI baseline 的規則仍是：
+
+- capture 指令成功
+- 必要 screenshot 都存在
+- screenshot 不是幾乎全黑
+
+所以現在的 baseline 比較準確的說法是：
+
+- `structural health baseline`
+
+還不是：
+
+- `golden screenshot regression gate`
+
+下一步要補的是把部分核心畫面升級成真正的 reference comparison，而不是只檢查「有圖而且不是黑的」。
+
 ## 手動刷新指令
 
 ```bash

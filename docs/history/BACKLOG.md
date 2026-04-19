@@ -79,6 +79,19 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Status:
   In progress. The dashboard generator and human entry doc are in place; the next step is keeping it refreshed automatically via the existing heartbeat loop.
 
+### BL-016 Turn UI baseline checking into a true regression gate
+
+- Priority: P1
+- Why now:
+  The current dashboard can tell us whether the UI still renders and whether screenshots are usable, but it cannot yet tell us whether accepted layout structure has drifted from a known-good baseline.
+- Outputs:
+  - an explicit separation between checklist baseline, live artifacts, and approved reference screenshots
+  - a stable reference-baseline home under `tests/baselines/ui/`
+  - at least one reference-backed comparison path for the shell and top-level panels
+  - dashboard wording that reflects the true strength of the UI signal
+- Status:
+  In progress. `docs/workflows/UI_BASELINE.md`, `docs/current/QUALITY_DASHBOARD.md`, and `.agents/runbooks/active-queue.md` now distinguish structural baseline from reference baseline; the remaining work is to promote approved screenshots and compare against them automatically.
+
 ## Soon
 
 ### BL-005 Verify top-level panel happy paths manually in headless display

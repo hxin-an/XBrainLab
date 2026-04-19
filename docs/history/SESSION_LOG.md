@@ -101,6 +101,16 @@
 
 ## 2026-04-19
 
+### UI baseline 定義澄清
+
+- 明確把目前的 UI baseline 分成三層：
+  - `docs/workflows/UI_BASELINE.md` 是人類可讀的結構基準
+  - `artifacts/ui/` 是每次驗證時重產的 live evidence
+  - `tests/baselines/ui/` 是未來正式 reference screenshots 的固定位置
+- 明確記錄 quality dashboard 目前對 UI 做的是 structural-health check，不是 golden screenshot diff
+- 把「把 UI baseline 升級成真正 regression gate」加入 prep queue
+- 這讓後續的 UI 監測不會再把「現在能重產 screenshot」和「我們已經有正式對照基準」混為一談
+
 ### 真實資料基線確認
 
 - 確認 repo 已帶有三個 checked-in 的真實 EEG fixture：
@@ -627,3 +637,22 @@
   - EEGLAB `.set`
   - CNT
   - BrainVision `.vhdr`
+
+### Thesis 文件面集中
+
+- 新增 `docs/thesis/`，把原本分散在 `current/`、`decisions/`、`history/`、`workflows/` 的碩論材料整理成 thesis-facing surface
+- 新增以下文件：
+  - `docs/thesis/README.md`
+  - `docs/thesis/problem-statement.md`
+  - `docs/thesis/system-design.md`
+  - `docs/thesis/dataset-baseline.md`
+  - `docs/thesis/validation-plan.md`
+  - `docs/thesis/results-log.md`
+  - `docs/thesis/threats-to-validity.md`
+- 更新 `docs/index.md`，讓人類入口現在能直接導向 thesis surface
+- 更新 `mkdocs.yml`，讓文件站導覽正式包含 Thesis 區
+- 這次整理後的分工變成：
+  - `current/` = 現在狀態
+  - `decisions/` = 正式決策
+  - `history/` = 工作過程
+  - `thesis/` = 論文材料整理面

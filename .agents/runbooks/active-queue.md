@@ -97,6 +97,7 @@ The topmost eligible item should be worked on first.
   - `.agents/runbooks/setup.md`
   - `.agents/runbooks/autopilot.md`
   - concise human doc entry points under `docs/index.md` and `docs/current/`
+  - a thesis-facing report surface under `docs/thesis/`
   - clear thesis-facing direction for future tool-call agent redesign under `docs/decisions/`
   - explicit shared-control-surface definition for the in-app assistant
   - make the next tool-redesign step an audit of the current tool surface against workflow intent and human/agent alignment
@@ -119,6 +120,19 @@ The topmost eligible item should be worked on first.
   - the dashboard currently monitors startup smoke, UI baseline capture, dialog acceptance, UI unit suite, and real-data IO integration
   - the first live run already exposed a real red signal: default-capture IO integration is still not trustworthy in this workspace
   - the generated artifacts stay out of normal git noise via `artifacts/quality/.gitignore`
+
+### AQ-PREP-008 Turn UI baseline checking into a true regression gate
+
+- Status: In progress
+- Why:
+  The dashboard can currently prove that the UI renders and that baseline artifacts are not black, but it still cannot tell us whether accepted layout or visibility structure has drifted.
+- Current focus:
+  - make the current "correct baseline" explicit:
+    - structural acceptance criteria live in `docs/workflows/UI_BASELINE.md`
+    - live observed screenshots live in `artifacts/ui/`
+  - reserve a stable home for future approved reference screenshots under `tests/baselines/ui/`
+  - keep `docs/current/QUALITY_DASHBOARD.md` honest about the current check strength
+  - upgrade at least the shell and top-level panel checks from `exists + not black` into comparison against an approved baseline
 
 ## Recently Completed
 

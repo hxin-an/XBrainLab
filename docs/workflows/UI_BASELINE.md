@@ -24,6 +24,33 @@ We need a shared answer to this question:
 
 This file provides that answer at a simple, screen-by-screen level.
 
+## Current Source Of Truth
+
+The current UI baseline has three layers, and each layer serves a different purpose:
+
+1. `docs/workflows/UI_BASELINE.md`
+   - the human-readable definition of what "structurally correct" means
+2. `artifacts/ui/`
+   - the latest live screenshots captured during validation runs
+3. `tests/baselines/ui/`
+   - the reserved location for future approved reference screenshots
+
+Right now, the authoritative definition of "correct" is still this document's checklist plus the latest live captures.
+
+That means the current baseline proves things like:
+
+- the shell and primary panels render
+- controls remain visible
+- navigation state matches the visible panel
+- the AI assistant open state is still structurally sane
+
+It does not yet prove:
+
+- exact screenshot-level equivalence against a frozen golden image set
+- pixel-perfect stability of spacing, alignment, or rendering details
+
+So the current baseline is a stabilization baseline, not yet a full visual-regression baseline.
+
 ## Core Screens
 
 These screens form the minimum baseline:
@@ -133,6 +160,10 @@ xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture
 The helper currently captures the shell plus the five primary panels into
 `artifacts/ui/`, plus `ai-assistant-open.png` for the dock-open shell state.
 
+Approved reference screenshots should not overwrite those live artifacts.
+When we start promoting accepted screenshots into durable regression references,
+store them under `tests/baselines/ui/`.
+
 ## Next Step
 
 The first version of this baseline is checklist-based.
@@ -140,6 +171,7 @@ The first version of this baseline is checklist-based.
 The next upgrade should be:
 
 1. capture real screenshots for the core screens
-2. store them under `artifacts/ui/`
-3. annotate known acceptable skips for visualization-heavy screens
-4. use them during bug-fix review
+2. promote approved screenshots into `tests/baselines/ui/`
+3. keep fresh live validation evidence under `artifacts/ui/`
+4. annotate known acceptable skips for visualization-heavy screens
+5. use them during bug-fix review and dashboard refreshes
