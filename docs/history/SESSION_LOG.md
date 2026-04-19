@@ -369,8 +369,92 @@ This log records meaningful progress so repair work can continue smoothly across
   - the current failure is not just "missing dependency in source control"
   - it is more specifically an environment/readiness mismatch plus missing UI-side preflight behavior before local backend startup
 
+### Pytest capture triage refinement
+
+- reproduced `BUG-ENV-003` again with:
+  - `/home/administrator/.local/bin/poetry run pytest tests/unit/backend/training/test_option.py -q`
+  - result: teardown failure in `_pytest/capture.py` after `no tests ran`
+- split the failure by capture backend:
+  - `--capture=fd` still fails
+  - `--capture=sys` passes
+  - `--capture=tee-sys` passes
+  - `-s` also passes
+- verified the `--capture=sys` workaround on representative slices:
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/training/test_option.py -q`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py -q`
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/ui/test_dialog_acceptance.py -q`
+- conclusion:
+  - the current workspace issue is specifically an `fd` capture problem, not a general pytest collection or execution failure
+  - `--capture=sys` is now the preferred local workaround because it preserves capture behavior without the teardown crash
+
+### AI assistant local-startup hardening
+
+- refined `BUG-AGENT-001` from a single missing-`accelerate` symptom into two distinct problems:
+  - the first-start worker path was ignoring persisted settings and constructing a fresh default `LLMConfig()`
+  - the local backend path was discovering missing runtime packages too late, after startup had already entered backend initialization
+- updated `AgentWorker.initialize_agent()` so first initialization now loads persisted settings before selecting a backend
+- added local-runtime readiness helpers to `LLMConfig` and used them in:
+  - `AgentWorker`
+  - `ChatPanel.update_model_menu()`
+  - `ModelSettingsDialog`
+- changed the current assistant direction to local-only startup rather than solving bootstrap failures through Gemini fallback
+- validated the hardening patch with:
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/core/test_config.py tests/unit/llm/agent/test_worker.py -q`
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py -q`
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/ui/test_e2e_qtbot.py -q`
+- remaining local-only blockers in this workspace:
+  - no local model cache is present
+  - the end-to-end local startup path still needs a clean run against a real downloaded model
+
+### Local-only environment refinement
+
+- installed the optional local-LLM dependencies in the current Poetry environment with:
+  - `/home/administrator/.local/bin/poetry install --with llm --no-interaction`
+- verified afterward that `LLMConfig.missing_local_runtime_packages()` now returns `[]`
+- confirmed the next local-only blocker is not missing packages but host CUDA mismatch:
+  - `torch.cuda.is_available()` still returns `True`
+  - a direct CUDA allocation probe fails with `RuntimeError: CUDA error: no kernel image is available for execution on the device`
+- updated `LocalBackend` so it now probes the configured CUDA device before model load and falls back to CPU while disabling 4-bit loading if the GPU is unusable
+- validated the CUDA-fallback hardening with:
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_config.py tests/unit/llm/agent/test_worker.py -q`
+  - result: `50 passed`
+- confirmed the expected cache directory for the configured local model still does not exist:
+  - `/mnt/d/repos/XBrainLab/XBrainLab/llm/core/models/Qwen_Qwen2.5-7B-Instruct`
+- attempted a standalone rerun of `tests/integration/ui/test_e2e_qtbot.py` after the environment change, but interrupted it after a hang past the AI-dock block, so that rerun is not being treated as accepted evidence in this cycle
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell
 2. triage or repair the default pytest capture teardown failure in the current workspace
 3. continue prep-gate work on high-risk dialog acceptance flows and downstream refresh propagation
+
+### Thesis-direction doc consolidation
+
+- clarified in `AGENTS.md` that this repository is the implementation workspace for the user's master's thesis
+- recorded the current thesis order of work as:
+  - stabilization first
+  - tool-call agent redesign second
+  - rigorous validation throughout
+- simplified `docs/index.md` so the human entry point now emphasizes only the current status, plan, triage, and decision-record docs
+- added `docs/decisions/README.md` as the decision-record entry point
+- added `docs/decisions/ADR-011-thesis-direction.md` so future tool-call agent redesign work has one active design anchor instead of scattered notes
+- updated `docs/current/PLAN.md` and `docs/current/STATUS_REPORT.md` so they now reflect the thesis framing rather than only the stabilization loop
+
+### Repository-structure audit and redesign proposal
+
+- completed a repository-wide structure audit across:
+  - top-level folders
+  - `docs/`
+  - `XBrainLab/`
+  - `tests/`
+  - `scripts/`
+  - root-level entry files such as `ROADMAP.md`, `CHANGELOG.md`, and `mkdocs.yml`
+- identified the main structure problem as information sprawl rather than any single bad folder:
+  - active docs
+  - historical notes
+  - API/reference material
+  - thesis decisions
+  - published-doc navigation
+  were all competing at similar visibility
+- added `docs/decisions/ADR-012-project-structure-redesign.md` as the proposed target repository and documentation information architecture
+- updated `docs/decisions/README.md` and `docs/current/STATUS_REPORT.md` so the new structure proposal is discoverable from the active docs surface

@@ -212,9 +212,13 @@ class ChatPanel(QWidget):
         try:
             config = LLMConfig.load_from_file() or LLMConfig()
             local_enabled = config.local_model_enabled
+            local_runtime_ready = config.local_backend_ready()
+            local_runtime_message = config.local_backend_status_message()
         except Exception:
             logger.debug("Failed to load LLM config for model menu", exc_info=True)
             local_enabled = True
+            local_runtime_ready = True
+            local_runtime_message = "Local runtime unavailable."
 
         modes = ["Gemini", "Local"]
         for mode in modes:
@@ -225,6 +229,10 @@ class ChatPanel(QWidget):
                 action.setEnabled(False)
                 action.setText("Local (Disabled)")
                 action.setToolTip("Enable Local Model in Settings (⚙) to use.")
+            elif mode == "Local" and not local_runtime_ready:
+                action.setEnabled(False)
+                action.setText("Local (Unavailable)")
+                action.setToolTip(local_runtime_message)
             else:
                 action.triggered.connect(lambda checked, m=mode: self._set_model(m))
 

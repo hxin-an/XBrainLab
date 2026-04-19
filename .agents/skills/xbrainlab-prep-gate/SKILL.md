@@ -56,9 +56,9 @@ Do not jump into broad repair-loop work unless the queue explicitly says prep is
 
 ## Validation Notes
 
-- In this workspace, local pytest runs should currently use `-s` until the capture teardown issue is resolved.
+- In this workspace, local pytest runs should currently prefer `--capture=sys` because default `fd` capture can fail during teardown.
 - For UI baseline capture, use `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`.
-- For real-data IO coverage, use `/home/administrator/.local/bin/poetry run pytest -s tests/integration/io/test_io_integration.py -q`.
+- For real-data IO coverage, use `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`.
 
 ## Evidence Standard
 

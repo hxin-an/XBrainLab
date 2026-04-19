@@ -4,6 +4,7 @@ Defines the ``LLMConfig`` dataclass holding all settings for local,
 API, and Gemini inference backends, with JSON persistence support.
 """
 
+import importlib.util
 import json
 import logging
 import os
@@ -101,6 +102,38 @@ class LLMConfig:
 
         """
         return asdict(self)
+
+    def missing_local_runtime_packages(self) -> list[str]:
+        """Return optional local-backend packages missing in this environment.
+
+        The local backend always needs ``transformers``. When 4-bit loading
+        is enabled, ``accelerate`` and ``bitsandbytes`` are also required.
+        """
+        required = ["transformers"]
+        if self.load_in_4bit:
+            required.extend(["accelerate", "bitsandbytes"])
+
+        return [
+            package
+            for package in required
+            if importlib.util.find_spec(package) is None
+        ]
+
+    def local_backend_ready(self) -> bool:
+        """Return ``True`` when the configured local backend can start."""
+        return not self.missing_local_runtime_packages()
+
+    def local_backend_status_message(self) -> str:
+        """Describe local-backend readiness in user-facing terms."""
+        missing = self.missing_local_runtime_packages()
+        if not missing:
+            return "Local runtime ready."
+
+        packages = ", ".join(missing)
+        return (
+            "Local runtime unavailable. Missing optional packages: "
+            f"{packages}. Install the Poetry llm group to enable local startup."
+        )
 
     @staticmethod
     def _default_settings_path() -> str:

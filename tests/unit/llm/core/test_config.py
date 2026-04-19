@@ -2,6 +2,7 @@
 
 import json
 import os
+from unittest.mock import patch
 
 from XBrainLab.llm.core.config import LLMConfig
 
@@ -106,3 +107,37 @@ class TestSaveAndLoad:
 
         result = LLMConfig.load_from_file(filepath)
         assert result is None
+
+
+class TestLocalRuntimeReadiness:
+    def test_missing_local_runtime_packages(self):
+        cfg = LLMConfig()
+        cfg.load_in_4bit = True
+
+        with patch(
+            "XBrainLab.llm.core.config.importlib.util.find_spec",
+            side_effect=lambda name: None if name in {"accelerate", "bitsandbytes"} else object(),
+        ):
+            assert cfg.missing_local_runtime_packages() == ["accelerate", "bitsandbytes"]
+
+    def test_local_backend_status_message_ready(self):
+        cfg = LLMConfig()
+        with patch(
+            "XBrainLab.llm.core.config.importlib.util.find_spec",
+            return_value=object(),
+        ):
+            assert cfg.local_backend_ready() is True
+            assert cfg.local_backend_status_message() == "Local runtime ready."
+
+    def test_local_backend_status_message_missing_packages(self):
+        cfg = LLMConfig()
+        cfg.load_in_4bit = True
+
+        with patch(
+            "XBrainLab.llm.core.config.importlib.util.find_spec",
+            side_effect=lambda name: None if name in {"accelerate", "bitsandbytes"} else object(),
+        ):
+            message = cfg.local_backend_status_message()
+
+        assert "accelerate, bitsandbytes" in message
+        assert "enable local startup" in message

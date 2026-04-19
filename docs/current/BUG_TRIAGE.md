@@ -257,7 +257,7 @@ Pytest reports `no tests ran` and then fails while unconfiguring global capture:
 FileNotFoundError: [Errno 2] No such file or directory
 ```
 
-The same targeted slices succeed when re-run with `-s`.
+The same targeted slices succeed when re-run with `--capture=sys`, `--capture=tee-sys`, or `-s`.
 
 ### Impact
 
@@ -275,7 +275,11 @@ Observed locally on `2026-04-19`:
 
 - failing command:
   `/home/administrator/.local/bin/poetry run pytest tests/unit/backend/training/test_option.py -q`
-- passing workaround:
+- passing `sys` capture workaround:
+  `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/training/test_option.py -q`
+- passing `tee-sys` confirmation:
+  `/home/administrator/.local/bin/poetry run pytest --capture=tee-sys tests/unit/backend/training/test_option.py -q`
+- passing fallback:
   `/home/administrator/.local/bin/poetry run pytest -s tests/unit/backend/training/test_option.py -q`
 
 ### Test coverage
@@ -284,19 +288,28 @@ Coverage exists for the targeted slices themselves, but the default capture-base
 
 ### Notes
 
-Treat `-s` as the temporary local validation workaround until this is repaired or explained.
+The failure is currently narrowed to `fd` capture, not to pytest collection in general.
 
-#### [BUG-AGENT-001] AI assistant local initialization fails when `accelerate` is unavailable
+Representative confirmation on `2026-04-19`:
+
+- `--capture=sys` passed for:
+  - `tests/unit/backend/training/test_option.py`
+  - `tests/unit/ui/test_main_window_sync.py`
+  - `tests/integration/ui/test_dialog_acceptance.py`
+
+For now, prefer `--capture=sys` as the local validation workaround in this workspace. Keep `-s` only as a fallback.
+
+#### [BUG-AGENT-001] AI assistant local startup ignored saved settings and deferred local-runtime failure until initialization
 
 - Priority: P1
 - Area: Agent
 - Type: Broken interaction
-- Status: Confirmed
+- Status: In progress
 - Source: Runtime log
 
 ### Symptom
 
-Opening the AI assistant can expose the dock, but the backend initialization fails with a local-model load error when `accelerate` is not installed in the current environment.
+Opening the AI assistant could expose the dock and then fail during backend startup because the first initialization path defaulted to local mode and only discovered missing local-runtime packages after backend load had already started.
 
 ### Reproduction
 
@@ -306,32 +319,35 @@ Run:
 xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q
 ```
 
-The `TestAIAssistantDock.test_toggle_ai_dock` path triggers first-open initialization and emits the failure.
+The `TestAIAssistantDock.test_toggle_ai_dock` path triggers first-open initialization and emits the failure signal when local startup is not ready.
 
 ### Expected
 
-Opening the AI assistant should either initialize successfully or fail gracefully with a clear, front-loaded dependency check before the dock presents itself as usable.
+Opening the AI assistant should honor the saved startup mode and, for the current local-only direction, fail fast with a clear preflight message before attempting local backend load.
 
 ### Actual
 
-The dock toggle path reaches local-model startup and logs:
+The dock toggle path previously reached local-model startup and logged:
 
 ```text
 Model Load Error: ... requires `accelerate`
 ```
 
-while the overall UI integration slice still passes.
+while the overall UI integration slice still passed.
 
 ### Impact
 
-The AI assistant can look available in the shell while the underlying agent backend is unusable, which makes the panel misleading and fragile for both manual use and automated baseline checks.
+The AI assistant could look available in the shell while the underlying agent backend was unusable, which made the panel misleading and fragile for both manual use and automated baseline checks.
 
 ### Suspected scope
 
 - `XBrainLab/ui/components/agent_manager.py`
+- `XBrainLab/ui/chat/panel.py`
 - `XBrainLab/ui/dialogs/model_settings_dialog.py`
+- `XBrainLab/llm/agent/worker.py`
+- `XBrainLab/llm/core/config.py`
 - `XBrainLab/llm/core/backends/local.py`
-- local dependency/readiness checks for the AI assistant stack
+- local dependency/readiness checks and saved-config sync for the AI assistant stack
 
 ### Evidence
 
@@ -345,19 +361,45 @@ The slice finished with `20 passed`, but the log also included:
 ValueError: ... requires `accelerate`
 ```
 
+Improved on `2026-04-19` with:
+
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/core/test_config.py tests/unit/llm/agent/test_worker.py -q`
+- `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py -q`
+- `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/ui/test_e2e_qtbot.py -q`
+
 ### Test coverage
 
 - `tests/integration/ui/test_e2e_qtbot.py`
+- `tests/unit/llm/core/test_config.py`
+- `tests/unit/llm/agent/test_worker.py`
+- `tests/unit/ui/chat/test_chat_panel.py`
+- `tests/unit/ui/dialogs/test_model_settings.py`
 
 ### Notes
 
-This is now a confirmed AI-shell/runtime issue. The user has also explicitly approved intentional redesign of the AI assistant panel, so the eventual fix is allowed to include product-level UI changes instead of being limited to a narrow patch.
+This is now a confirmed AI-shell/runtime issue. The user has also explicitly approved intentional redesign of the AI assistant panel, and the current direction is local-only startup rather than Gemini fallback.
 
 Additional triage finding on `2026-04-19`:
 
 - `pyproject.toml` already declares `accelerate`, but only inside the optional Poetry `llm` group
 - that means the current failure is likely a mismatch between the active local environment and the UI's assumption that local-model startup is ready
-- the likely fix surface is therefore not just dependency installation; it also includes preflight checks and clearer fallback behavior before the AI dock presents local inference as usable
+- the first-start bug also included a config-sync problem: `AgentWorker.initialize_agent()` was ignoring saved settings and constructing a fresh default `LLMConfig()`
+- the current fix surface therefore includes persisted-config sync plus preflight checks before the AI dock presents local inference as usable
+
+Current state after the latest patch:
+
+- the worker now loads persisted settings before first initialization
+- the local startup path now fails fast with a clearer preflight message when optional `llm` packages are missing
+- the chat menu and settings dialog now surface local-runtime unavailability earlier instead of deferring it to worker startup
+- the local backend now probes CUDA usability and falls back to CPU while disabling 4-bit loading if the host GPU cannot actually execute PyTorch work
+- the optional Poetry `llm` packages are now installed in this workspace, so the next concrete blockers are the missing local model cache and end-to-end local bootstrap validation
+
+Additional environment refinement on `2026-04-19`:
+
+- `/home/administrator/.local/bin/poetry install --with llm --no-interaction` now succeeds in the current workspace
+- `LLMConfig.missing_local_runtime_packages()` now returns `[]`
+- the host still reports `torch.cuda.is_available() == True`, but a direct CUDA probe fails with `RuntimeError: CUDA error: no kernel image is available for execution on the device`
+- the expected local model cache path for `Qwen/Qwen2.5-7B-Instruct` still does not exist in this workspace
 
 #### [BUG-DATASET-001] Sequence label import assumed numeric-only label codes
 
@@ -699,7 +741,7 @@ Confirmed locally on `2026-04-19` by a failing `tests/integration/pipeline/test_
 
 `TrainingOption` now probes the requested CUDA device and falls back to CPU with a warning when the device is present but unusable.
 
-#### [BUG-ENV-003] Two real-data integration tests pointed at a non-existent fixture directory
+#### [BUG-ENV-004] Two real-data integration tests pointed at a non-existent fixture directory
 
 - Priority: P2
 - Area: Test infrastructure

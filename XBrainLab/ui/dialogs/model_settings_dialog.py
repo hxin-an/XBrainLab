@@ -111,6 +111,10 @@ class ModelSettingsDialog(QDialog):
         status_layout.addWidget(self.local_action_btn)
         local_layout.addLayout(status_layout)
 
+        self.local_runtime_label = QLabel("Runtime: Checking...")
+        self.local_runtime_label.setWordWrap(True)
+        local_layout.addWidget(self.local_runtime_label)
+
         # Enable Checkbox (Moved to bottom)
         self.local_enable_chk = QCheckBox("ACTIVATE LOCAL MODEL")
         self.local_enable_chk.toggled.connect(self._on_local_enable_toggled)
@@ -265,6 +269,16 @@ class ModelSettingsDialog(QDialog):
         self.check_local_model_status()
         self.update_validation_state()
 
+    def _refresh_local_runtime_status(self):
+        """Reflect local-runtime readiness without trying to load the model."""
+        missing = self.config.missing_local_runtime_packages()
+        if missing:
+            self.local_runtime_label.setText(f"Runtime: Missing {', '.join(missing)}")
+            self.local_runtime_label.setStyleSheet("color: #f44336;")
+        else:
+            self.local_runtime_label.setText("Runtime: Ready")
+            self.local_runtime_label.setStyleSheet("color: #4caf50;")
+
     def check_local_model_status(self):
         """Check if selected model exists in cache."""
         model_name = self.local_model_combo.currentText()
@@ -309,6 +323,7 @@ class ModelSettingsDialog(QDialog):
         self.local_model_combo.setEnabled(checked)
         self.local_action_btn.setEnabled(checked)
         self.check_local_model_status()
+        self._refresh_local_runtime_status()
 
     def _start_download(self):
         """Begin downloading the selected local model."""
@@ -484,9 +499,12 @@ class ModelSettingsDialog(QDialog):
         """Enable Activate button if conditions met."""
         # Core Condition: Local Downloaded OR Gemini Verified
         # Also disable if currently downloading
-        is_ready = (
-            self.local_downloaded or self.gemini_enabled
-        ) and not self.is_downloading
+        local_ready = (
+            self.local_enable_chk.isChecked()
+            and self.local_downloaded
+            and self.config.local_backend_ready()
+        )
+        is_ready = (local_ready or self.gemini_enabled) and not self.is_downloading
 
         self.btn_activate.setEnabled(is_ready)
 
@@ -503,10 +521,28 @@ class ModelSettingsDialog(QDialog):
         self.config.top_p = self.top_p_spin.value()
         self.config.max_new_tokens = self.max_tokens_spin.value()
 
+        local_ready = (
+            self.config.local_model_enabled
+            and self.local_downloaded
+            and self.config.local_backend_ready()
+        )
+
+        if (
+            self.config.local_model_enabled
+            and self.local_downloaded
+            and not self.config.local_backend_ready()
+        ):
+            QMessageBox.critical(
+                self,
+                "Local Runtime Unavailable",
+                self.config.local_backend_status_message(),
+            )
+            return
+
         # Determine active mode
-        if self.gemini_enabled and not self.local_downloaded:
+        if self.gemini_enabled and not local_ready:
             self.config.active_mode = "gemini"
-        elif self.local_downloaded and not self.gemini_enabled:
+        elif local_ready and not self.gemini_enabled:
             self.config.active_mode = "local"
         else:
             # Both available — preserve whatever mode was previously active

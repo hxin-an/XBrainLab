@@ -42,7 +42,7 @@ Focus on:
 
 - `timeout 25s xvfb-run -a /home/administrator/.local/bin/poetry run python run.py`
 - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`
-- `/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui/test_main_window_sync.py -q`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py -q`
 
 ## Recordkeeping
 

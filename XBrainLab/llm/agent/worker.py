@@ -83,6 +83,20 @@ class AgentWorker(QObject):
         self.generation_thread = None
         self.timeout_timer = None
 
+    @staticmethod
+    def _load_runtime_config():
+        """Load the current persisted config and apply transient CLI overrides."""
+        config = LLMConfig.load_from_file() or LLMConfig()
+
+        app = QApplication.instance()
+        if app:
+            override = app.property("model_override")
+            if override:
+                config.active_mode = override
+                config.inference_mode = override
+
+        return config
+
     def initialize_agent(self):
         """Initializes the LLM engine and loads the model.
 
@@ -101,7 +115,10 @@ class AgentWorker(QObject):
             logger.info("Initializing LLM Engine...")
             self.log.emit("Loading AI Model...")
 
-            config = LLMConfig()
+            config = self._load_runtime_config()
+            if config.inference_mode == "local" and not config.local_backend_ready():
+                raise RuntimeError(config.local_backend_status_message())
+
             self.engine = LLMEngine(config)
             self.engine.load_model()
 
@@ -166,16 +183,8 @@ class AgentWorker(QObject):
         # SYNC CONFIG: Reload from file to avoid "Split Brain" with UI Settings
         # This ensures change in Temperature/API Key are picked up immediately.
         try:
-            fresh_config = LLMConfig.load_from_file()
+            fresh_config = self._load_runtime_config()
             if fresh_config:
-                # Apply CLI --model override (transient, not persisted)
-                app = QApplication.instance()
-                if app:
-                    override = app.property("model_override")
-                    if override:
-                        fresh_config.active_mode = override
-                        fresh_config.inference_mode = override
-
                 old_mode = self.engine.config.inference_mode
                 self.engine.config = fresh_config
 

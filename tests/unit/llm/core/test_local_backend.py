@@ -137,6 +137,39 @@ class TestLocalBackendLoad:
 
         assert backend.is_loaded is False
 
+    @patch("XBrainLab.llm.core.backends.local.torch", create=True)
+    def test_load_falls_back_to_cpu_when_cuda_probe_fails(self, mock_torch):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        cfg = _make_config(device="cuda", load_in_4bit=True)
+        backend = LocalBackend(cfg)
+
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.zeros.side_effect = RuntimeError("no kernel image")
+
+        mock_tokenizer = MagicMock()
+        mock_model_loader = MagicMock(return_value=MagicMock())
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "torch": mock_torch,
+                "transformers": MagicMock(
+                    AutoTokenizer=MagicMock(
+                        from_pretrained=MagicMock(return_value=mock_tokenizer)
+                    ),
+                    AutoModelForCausalLM=MagicMock(from_pretrained=mock_model_loader),
+                ),
+            },
+        ):
+            backend.load()
+
+        assert cfg.device == "cpu"
+        assert cfg.load_in_4bit is False
+        call_kwargs = mock_model_loader.call_args.kwargs
+        assert call_kwargs["device_map"] == "cpu"
+        assert "load_in_4bit" not in call_kwargs
+
 
 class TestProcessMessages:
     def _get_backend(self):

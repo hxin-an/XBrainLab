@@ -31,7 +31,7 @@ The goal is to let Codex keep moving on stabilization work with:
   - workflow maps, testing strategy, and risk references
 - `docs/history/*.md`
   - session history and backlog
-- `docs/reference/AGENT_SKILLS.md`
+- `docs/archive/reference/AGENT_SKILLS.md`
   - human-facing background on skill selection, not a required read for each cycle
 
 ## Source Of Truth
@@ -94,16 +94,17 @@ Run from the current workspace root:
 /home/administrator/.local/bin/poetry run python run.py
 timeout 25s xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
 xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py
-/home/administrator/.local/bin/poetry run pytest -s tests/unit/backend/training/test_option.py -q
-/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui/test_main_window_sync.py -q
-/home/administrator/.local/bin/poetry run pytest -s tests/integration/io/test_io_integration.py -q
-/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui -q
+/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/training/test_option.py -q
+/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py -q
+/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
+/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui -q
 ```
 
 Current local note:
 
 - In the current `/mnt/d/repos/XBrainLab` Codex workspace, default `pytest` capture is not trustworthy yet and can fail at teardown with `FileNotFoundError` inside `_pytest/capture.py`.
-- Until that is repaired, use `-s` for local validation in this workspace and record the limitation in triage.
+- The failure is currently isolated to `fd` capture; `--capture=sys` and `--capture=tee-sys` succeed on representative backend, unit-UI, and integration-UI slices.
+- Until the root cause is repaired, prefer `--capture=sys` for local validation in this workspace and record the limitation in triage.
 
 ## Prep Gate
 

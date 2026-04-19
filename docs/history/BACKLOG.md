@@ -61,7 +61,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   In the current `/mnt/d/repos/XBrainLab` workspace, default `pytest` capture is not yet reliable enough for unattended validation.
 - Outputs:
   - confirm the failure mode
-  - document the temporary `-s` workaround
+  - document the temporary `--capture=sys` workaround
   - triage or repair the capture teardown issue
 - Status:
   In progress.
@@ -124,11 +124,36 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Goal:
   verify initialization, dock state, and model-switch behavior after core workflows are stabilized
 - Status:
-  Moved up by new runtime evidence. The shell now has a confirmed local-initialization failure in the current environment, and the user has approved redesign of the AI assistant panel if needed.
+  Moved up by new runtime evidence. The shell now has a confirmed local-startup issue in the current environment, the first-start config sync, dependency preflight, and CUDA-device fallback path have been hardened, and the user has approved redesign of the AI assistant panel if needed. The current product direction is local-only startup rather than Gemini fallback.
+
+### BL-011 Consolidate thesis-facing design docs for the agent redesign
+
+- Priority: P1
+- Why now:
+  The repository has many design notes, but the master's-thesis direction needs a smaller and more explicit decision path before the agent redesign starts in earnest.
+- Outputs:
+  - a clear `docs/decisions/` entry point
+  - one active thesis-direction ADR
+  - clearer separation between active docs and historical reference docs
+- Status:
+  In progress.
+
+### BL-012 Redesign repository information architecture and doc system
+
+- Priority: P1
+- Why now:
+  The current repository has reached the point where active docs, historical notes, and reference material compete for attention, which will slow both stabilization work and the thesis-era agent redesign.
+- Outputs:
+  - one approved target repository structure
+  - one approved target `docs/` structure
+  - a migration plan for active, guide, api, and archived docs
+  - a root-level entry strategy including `README.md` and updated published-doc navigation
+- Status:
+  Proposed structure captured in `docs/decisions/ADR-012-project-structure-redesign.md`.
 
 ## Deferred Until After Triage
 
-### BL-011 Large architectural refactors
+### BL-013 Large architectural refactors
 
 - Priority: P3
 - Examples:

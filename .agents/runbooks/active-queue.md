@@ -73,8 +73,8 @@ The topmost eligible item should be worked on first.
   The prep gate is not complete until current runtime signals are either fixed or converted into actionable bug records.
 - Current focus:
   - duplicate EEG channel-name warnings in real GDF workflows
-  - pytest default capture teardown failure in the current `/mnt/d` Codex workspace
-  - AI assistant local-model initialization failing because `accelerate` is missing in the current environment
+  - pytest `fd` capture teardown failure in the current `/mnt/d` Codex workspace, with `--capture=sys` now validated as the preferred workaround
+  - AI assistant local startup now respects saved settings, preflights local runtime, and falls back from unusable CUDA to CPU, but the local-only path still needs a local model cache and final bootstrap validation
   - visualization headless fragility and skip boundaries
 
 ### AQ-PREP-006 Clarify local-only and Codex operating assumptions
@@ -87,6 +87,8 @@ The topmost eligible item should be worked on first.
   - `.agents/stack.md`
   - `.agents/runbooks/setup.md`
   - `.agents/runbooks/autopilot.md`
+  - concise human doc entry points under `docs/index.md` and `docs/current/`
+  - clear thesis-facing direction for future tool-call agent redesign under `docs/decisions/`
   - repo-local skills under `.agents/skills/`
   - Docs MCP configuration and heartbeat automation alignment
 

@@ -4,16 +4,24 @@ This file is the short map for any AI coding agent working in this repository.
 
 ## Mission
 
-Stabilize the existing PyQt application without making it harder to reason about.
+This repository is the implementation workspace for the user's master's thesis.
 
-Immediate goals:
+The thesis has three linked goals:
 
-- keep the app runnable in a repeatable way
+1. stabilize the existing PyQt application without making it harder to reason about
+2. redesign the tool-call agent architecture so it becomes dependable enough to use
+3. validate the resulting system rigorously enough to support thesis claims
+
+Immediate operating priority:
+
+- first make the app runnable and repeatable
 - understand workflows, failure modes, and risk boundaries
 - add enough safety rails that bug fixes do not create fresh regressions
 - then repair high-value bugs and structural issues incrementally
+- only redesign the tool-call agent on top of a sufficiently stable base
+- treat validation design as thesis-critical work, not as an afterthought
 
-This is a stabilization project, not a feature-expansion or visual-redesign project.
+This is still a stabilization-first project, not a feature-expansion or visual-redesign project.
 
 ## Start Here
 
@@ -41,6 +49,7 @@ Open deeper docs only as needed:
 - `docs/workflows/RISK_CLUSTERS.md`
 - `docs/workflows/DIALOG_MATRIX.md`
 - `docs/workflows/COVERAGE_GAPS.md`
+- `docs/decisions/README.md`
 - `docs/history/BACKLOG.md`
 
 Keep `docs/current/STATUS_REPORT.md` concise and current so the user can rejoin the work quickly.
@@ -98,4 +107,7 @@ Minimum done criteria:
 - Treat `.agents/stack.md` as the explicit record of selected skills, rule policy, and heartbeat reading order.
 - Treat `.agents/runbooks/*.md` as the canonical agent operating docs.
 - Keep `docs/current/PLAN.md` and `docs/current/STATUS_REPORT.md` readable for humans following progress.
+- Treat `docs/decisions/` as the canonical home for tool-call agent redesign decisions.
+- Prefer updating the current human-facing entry docs instead of adding many new top-level planning files.
+- The current AI assistant direction is local-only startup; do not treat Gemini fallback as the solution for local assistant bootstrap failures.
 - Follow the prep-first queue in `.agents/runbooks/active-queue.md` until `Prep Complete` is achieved.

@@ -196,14 +196,27 @@ class TestActivateAndSave:
         dialog.local_downloaded = True
         dialog.gemini_enabled = False
         dialog.is_downloading = False
-        dialog.update_validation_state()
+        with patch.object(dialog.config, "local_backend_ready", return_value=True):
+            dialog.update_validation_state()
         assert dialog.btn_activate.isEnabled()
+
+    def test_update_validation_state_blocks_missing_local_runtime(self, dialog):
+        dialog.local_downloaded = True
+        dialog.gemini_enabled = False
+        dialog.is_downloading = False
+        dialog.local_enable_chk.setChecked(True)
+        with patch.object(dialog.config, "local_backend_ready", return_value=False):
+            dialog.update_validation_state()
+        assert not dialog.btn_activate.isEnabled()
 
     def test_on_activate_clicked(self, dialog):
         dialog.local_downloaded = True
         dialog.gemini_enabled = False
         dialog.api_key_input.setText("")
-        with patch.object(LLMConfig, "save_to_file"):
+        with (
+            patch.object(dialog.config, "local_backend_ready", return_value=True),
+            patch.object(LLMConfig, "save_to_file"),
+        ):
             dialog.on_activate_clicked()
 
     def test_on_activate_clicked_gemini_only(self, dialog):
@@ -217,6 +230,45 @@ class TestActivateAndSave:
         ):
             dialog.on_activate_clicked()
         assert dialog.config.active_mode == "gemini"
+
+    def test_on_activate_clicked_blocks_local_runtime_gap(self, dialog):
+        dialog.local_downloaded = True
+        dialog.gemini_enabled = False
+        dialog.local_enable_chk.setChecked(True)
+        with (
+            patch.object(dialog.config, "local_backend_ready", return_value=False),
+            patch.object(
+                dialog.config,
+                "local_backend_status_message",
+                return_value="Missing accelerate",
+            ),
+            patch.object(LLMConfig, "save_to_file") as mock_save,
+            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+        ):
+            dialog.on_activate_clicked()
+
+        mock_critical.assert_called_once()
+        mock_save.assert_not_called()
+
+    def test_on_activate_clicked_blocks_even_with_gemini_if_local_unready(self, dialog):
+        dialog.local_downloaded = True
+        dialog.gemini_enabled = True
+        dialog.local_enable_chk.setChecked(True)
+        dialog.config.active_mode = "local"
+        dialog.api_key_input.setText("AIzaKey123")
+        with (
+            patch.object(dialog.config, "local_backend_ready", return_value=False),
+            patch.object(
+                dialog.config,
+                "local_backend_status_message",
+                return_value="Missing accelerate",
+            ),
+            patch.object(LLMConfig, "save_to_file") as mock_save,
+            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+        ):
+            dialog.on_activate_clicked()
+        mock_critical.assert_called_once()
+        mock_save.assert_not_called()
 
     def test_save_api_key_to_env_no_key(self, dialog):
         dialog.api_key_input.setText("")

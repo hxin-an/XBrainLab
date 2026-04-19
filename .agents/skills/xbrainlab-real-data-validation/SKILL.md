@@ -38,7 +38,7 @@ Focus on:
 ## Validation Commands
 
 - `/home/administrator/.local/bin/poetry run python scripts/dev/fetch_public_eeg_fixtures.py`
-- `/home/administrator/.local/bin/poetry run pytest -s tests/integration/io/test_io_integration.py -q`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
 
 ## Recordkeeping
 

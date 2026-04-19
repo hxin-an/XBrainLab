@@ -44,6 +44,35 @@ class LocalBackend(BaseBackend):
         self.tokenizer: Any = None
         self.is_loaded = False
 
+    def _normalize_runtime_device(self, torch_module) -> None:
+        """Fallback from unusable CUDA setups to CPU before model load."""
+        device = str(getattr(self.config, "device", "cpu"))
+        if not device.startswith("cuda"):
+            return
+
+        reason = None
+        if not torch_module.cuda.is_available():
+            reason = "CUDA is not available"
+        else:
+            try:
+                probe = torch_module.zeros(1, device=device)
+                del probe
+                return
+            except Exception as exc:  # pragma: no cover - hardware/runtime specific
+                reason = str(exc)
+
+        logger.warning(
+            "Configured local LLM device %s is not usable; falling back to CPU: %s",
+            device,
+            reason,
+        )
+        self.config.device = "cpu"
+        if getattr(self.config, "load_in_4bit", False):
+            logger.warning(
+                "Disabling 4-bit loading because local LLM is falling back to CPU.",
+            )
+            self.config.load_in_4bit = False
+
     def load(self):
         """Downloads (if necessary) and loads the model and tokenizer.
 
@@ -62,6 +91,8 @@ class LocalBackend(BaseBackend):
             AutoModelForCausalLM,
             AutoTokenizer,
         )
+
+        self._normalize_runtime_device(torch)
 
         logger.info(
             "Loading local model: %s on %s",

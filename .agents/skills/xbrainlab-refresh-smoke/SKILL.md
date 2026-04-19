@@ -34,8 +34,8 @@ Use this skill when shared UI plumbing or cross-panel refresh behavior is involv
 
 ## Validation Commands
 
-- `/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui/test_main_window_sync.py -q`
-- `/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui -q`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py -q`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui -q`
 
 ## Recordkeeping
 

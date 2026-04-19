@@ -121,3 +121,27 @@ class TestChatPanelCallbacks:
     def test_set_feature(self, chat_panel):
         chat_panel._set_feature("EEG Analyst")
         assert "EEG Analyst" in chat_panel.feature_btn.text()
+
+    def test_update_model_menu_disables_unready_local_mode(self, qtbot):
+        config = MagicMock()
+        config.local_model_enabled = True
+        config.local_backend_ready.return_value = False
+        config.local_backend_status_message.return_value = "Missing accelerate"
+
+        with (
+            patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
+            patch(
+                "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
+                return_value=config,
+            ),
+        ):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+
+        local_action = next(
+            action for action in panel.model_menu.actions() if "Local" in action.text()
+        )
+        assert local_action.isEnabled() is False
+        assert "Unavailable" in local_action.text()

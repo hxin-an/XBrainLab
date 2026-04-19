@@ -40,12 +40,39 @@ class TestInitializeAgent:
             patch("XBrainLab.llm.agent.worker.LLMConfig") as MockCfg,
             patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng,
         ):
-            cfg = MockCfg.return_value
+            cfg = MockCfg.load_from_file.return_value
             cfg.model_name = "test-model"
+            cfg.inference_mode = "gemini"
             engine = MockEng.return_value
             worker.initialize_agent()
             engine.load_model.assert_called_once()
             assert worker.engine is engine
+
+    def test_initialize_agent_uses_saved_config(self, worker):
+        with (
+            patch("XBrainLab.llm.agent.worker.LLMConfig") as MockCfg,
+            patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng,
+        ):
+            saved = MockCfg.load_from_file.return_value
+            saved.inference_mode = "gemini"
+            saved.model_name = "gemini-2.0-flash"
+            worker.initialize_agent()
+            MockEng.assert_called_once_with(saved)
+
+    def test_initialize_agent_blocks_unready_local_runtime(self, worker):
+        with (
+            patch("XBrainLab.llm.agent.worker.LLMConfig") as MockCfg,
+            patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng,
+        ):
+            cfg = MockCfg.load_from_file.return_value
+            cfg.inference_mode = "local"
+            cfg.local_backend_ready.return_value = False
+            cfg.local_backend_status_message.return_value = "Missing accelerate"
+
+            worker.initialize_agent()
+
+            MockEng.assert_not_called()
+            worker.error.emit.assert_called_once()
 
     def test_error_on_failure(self, worker):
         with (
@@ -78,6 +105,8 @@ class TestGenerateFromMessages:
             patch("XBrainLab.llm.agent.worker.LLMConfig") as MockCfg,
         ):
             MockCfg.load_from_file.return_value = None
+            MockCfg.return_value.timeout = 30
+            MockCfg.return_value.inference_mode = "local"
             gt = MockGT.return_value
             timer = MockTimer.return_value
             msgs = [{"role": "user", "content": "test"}]
