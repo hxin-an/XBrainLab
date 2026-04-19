@@ -143,10 +143,11 @@ The topmost eligible item should be worked on first.
 - Why:
   Now that static quality checks are part of the dashboard, prep work needs to decide which red gates are immediate blockers and which belong to later cleanup.
 - Current focus:
-  - repo-wide `ruff check .` currently fails with `21 errors`, `10` auto-fixable
-  - repo-wide `mypy XBrainLab/` currently fails with `7 errors in 5 files`
-  - decide whether these should be prep-exit blockers or repair-loop backlog items
-  - keep the dashboard honest without silently weakening the gates
+  - repo-wide `ruff check .` currently fails with `19 errors`, `9` auto-fixable
+  - the default dashboard now uses baseline-backed `basedpyright` as the fast regression gate, while `mypy XBrainLab/` remains the slower full debt gate
+  - the committed `.basedpyright/baseline.json` must not become a hiding place; new typing regressions should fail the fast gate, while old baseline entries should be burned down deliberately
+  - decide whether repo-wide `ruff` green status is required for prep exit and how often the slower `mypy` full gate must run before prep can be called complete
+  - keep the dashboard honest without silently weakening the gates or letting baseline debt go stale
 
 ## Recently Completed
 

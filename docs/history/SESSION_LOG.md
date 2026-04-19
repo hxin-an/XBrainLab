@@ -2,6 +2,40 @@
 
 這份日誌記錄重要進展，讓修復與穩定化工作可以在不同 session 之間順利接續。
 
+## 2026-04-19
+
+### 品質看板改成快慢雙軌型別 gate
+
+- 將 `basedpyright` 加入 Poetry dev 依賴，並在 `pyproject.toml` 補上 repo-local 設定
+- 建立 `.basedpyright/baseline.json`，把目前既有的 repo-wide 型別債記成 baseline，而不是假裝它們不存在
+- `scripts/dev/update_quality_dashboard.py` 現在預設跑 fast dashboard：
+  - `ruff`
+  - `basedpyright`
+  - `architecture compliance`
+  - startup / UI / real-data runtime slices
+- 新增 `--include-slow-checks`，讓 full dashboard 可以額外把 `mypy` 一起跑進來
+- 在 `pyproject.toml` 補上：
+  - `poe quality-dashboard-full`
+  - `poe typecheck-fast`
+  - `poe mypy-daemon`
+  - `poe check-full`
+- 這次的策略不是把舊 `mypy` 問題藏起來，而是把：
+  - 「高頻抓新退化」
+  - 「較慢持續還舊債」
+  拆成兩條明確流程
+- 途中也修正了一個新的 dashboard 自己的環境問題：
+  - `update_quality_dashboard.py` 一度把 matplotlib cache 放到 repo 內 `.codex/matplotlib-codex`
+  - 但這個 workspace 已經存在一個 `.codex` 檔案，因此會直接觸發 `NotADirectoryError`
+  - 現在已改回 `/tmp/matplotlib-codex`
+- 另外補上 live report 的 `profile` 欄位，讓 `artifacts/quality/latest.md` 能明確標出本次是 `fast` 還是 `full`
+- 這一輪驗證結果：
+  - `tests/unit/scripts/test_update_quality_dashboard.py` -> `7 passed`
+  - `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `python scripts/dev/update_quality_dashboard.py` -> `FAIL`
+    - fast profile 的紅燈是 `ruff check .` 與 real-data IO integration 的 default-capture teardown
+  - `python scripts/dev/update_quality_dashboard.py --include-slow-checks` -> `FAIL`
+    - full profile 另外還會顯示 `mypy XBrainLab/` 的 `7 errors in 5 files`
+
 ## 2026-04-18
 
 ### 環境與接手基線

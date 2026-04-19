@@ -117,6 +117,8 @@ Run from the current workspace root:
 timeout 25s xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
 xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py
 /home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py
+/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py --include-slow-checks
+/home/administrator/.local/bin/poetry run basedpyright
 /home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/training/test_option.py -q
 /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_main_window_sync.py -q
 /home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
@@ -128,6 +130,9 @@ Current local note:
 - In the current `/mnt/d/repos/XBrainLab` Codex workspace, unattended UI pytest runs need explicit headless Qt env because `pytest-qt` can otherwise abort during `qapp` setup while trying to load `xcb` or `wayland`.
 - Use `scripts/dev/run_ui_pytest.sh` for unattended or heartbeat-driven UI pytest commands; it applies `QT_QPA_PLATFORM=offscreen`, `MPLBACKEND=Agg`, `MPLCONFIGDIR=/tmp/matplotlib-codex`, and `--capture=sys`.
 - Use `scripts/dev/update_quality_dashboard.py` when you want one current health snapshot instead of reading multiple test logs manually.
+- The default dashboard is now the fast regression view: `ruff`, baseline-backed `basedpyright`, architecture compliance, startup, UI baseline, UI slices, and real-data IO.
+- Use `scripts/dev/update_quality_dashboard.py --include-slow-checks` or `poe quality-dashboard-full` when you also want the slower debt sweep that includes `mypy`.
+- The committed `.basedpyright/baseline.json` is intentional; it keeps old repo-wide typing debt visible for scheduled cleanup while making the fast gate useful for catching new regressions.
 - The older `fd`-capture teardown issue has become inconsistent and should stay in triage until it is either re-reproduced reliably or retired.
 
 ## Prep Gate

@@ -24,41 +24,53 @@ Last updated: `2026-04-19`
 
 以下依照「最新且有意義」的變化往下排：
 
-1. thesis 文件面已正式集中到 `docs/thesis/`：
+1. static quality gate 現在正式拆成 fast path 和 full path：
+   - repo 內已加入 baseline-backed `basedpyright`
+   - 預設 dashboard 改成先跑 `ruff + basedpyright + architecture + runtime slices`
+   - `mypy` 保留成 slower full gate，不再佔滿每一輪高頻監測
+   - `.basedpyright/baseline.json` 已正式納入 repo，目的不是掩蓋舊錯誤，而是把「抓新退化」和「還舊債」拆成兩條可操作的流程
+   - 目前實測：
+     - `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+     - fast dashboard -> `FAIL`，紅燈是 `ruff check .` 與 real-data IO 的 default-capture teardown
+     - full dashboard -> `FAIL`，在上述紅燈之外還會額外顯示 `mypy XBrainLab/` 的 `7 errors in 5 files`
+2. thesis 文件面已正式集中到 `docs/thesis/`：
    - 新增 problem statement、system design、dataset baseline、validation plan、results log、threats to validity
    - 論文整理面現在和 `current/`、`decisions/`、`history/` 分工更清楚
    - `docs/index.md` 與 `mkdocs.yml` 已接上這個新入口
-2. public EEG fixture baseline 已擴充到更像論文驗證會需要的樣子：
+3. public EEG fixture baseline 已擴充到更像論文驗證會需要的樣子：
    - local-only public fixture set 現在不只覆蓋 `EDF / GDF / EEGLAB .set`
    - 新增 `CNT` 與 public `BrainVision .vhdr + .eeg + .vmrk` coverage
    - 來源現在橫跨 PhysioNet、BBCI、SCCN、MNE testing-data
    - `tests/integration/io/test_io_integration.py` 現在會一起驗這些 public formats 的 loader 與 facade import 路徑
    - 目前驗證結果：`29 passed, 11 warnings`
-3. real GDF duplicate-channel signal 已補上更誠實的 import-level observability：
+4. real GDF duplicate-channel signal 已補上更誠實的 import-level observability：
    - `A01T.gdf` 仍會出現 MNE duplicate-name warning
    - `load_gdf_file()` 現在也會額外記錄 XBrainLab 自己的 warning，明確指出匯入依賴了 MNE auto-rename
    - 相關驗證目前是：
      - `tests/unit/backend/load_data/test_raw_data_loader.py` -> `5 passed`
      - `tests/integration/io/test_io_integration.py` -> `29 passed, 11 warnings`
-4. 品質看板已建立，現在可以用一份 live report 看目前程式健康度：
+5. 品質看板已建立，現在可以用一份 live report 看目前程式健康度：
    - 新增 `scripts/dev/update_quality_dashboard.py`
    - live output 會寫到 `artifacts/quality/latest.md` 和 `artifacts/quality/latest.json`
    - 人看的固定入口是 `docs/current/QUALITY_DASHBOARD.md`
-   - 目前看板會監測 `ruff`、`mypy`、architecture compliance、startup、UI baseline、dialog acceptance、UI unit suite、real-data IO integration
+   - 預設看板會監測 `ruff`、`basedpyright`、architecture compliance、startup、UI baseline、dialog acceptance、UI unit suite、real-data IO integration
+   - full mode 會額外把 `mypy` 一起跑進來
+   - `latest.md` / `latest.json` 現在也會標出本次是 `fast` 或 `full` profile
    - 核心 UI baseline 現在已升級成 reference-backed compare，不再只是「有圖且不是黑的」
    - 目前最新 live refresh 的結果仍是：`overall FAIL`
    - 目前明確的紅燈是：
-     - `ruff check .`
-     - `mypy XBrainLab/`
+     - `ruff check .`：`19 errors`，其中 `9` 個可自動修復
      - `pytest tests/integration/io/test_io_integration.py -q` 的預設 capture teardown
-5. unattended UI 驗證現在有 repo 內可重用的 heartbeat-safe 路徑：
+   - slower full gate 另外會繼續顯示：
+     - `mypy XBrainLab/`：`7 errors in 5 files`
+6. unattended UI 驗證現在有 repo 內可重用的 heartbeat-safe 路徑：
    - heartbeat-style UI pytest 失敗點已縮小到 Qt platform plugin / matplotlib cache 環境，而不是單純 repo 測試壞掉
    - 新增 `scripts/dev/run_ui_pytest.sh`
    - `scripts/dev/run_tests.py` 的 `ui` 路徑現在也會自動套 `offscreen + --capture=sys`
    - 代表性驗證：
      - `scripts/dev/run_ui_pytest.sh tests/integration/ui/test_dialog_acceptance.py -q` -> `4 passed`
      - `python scripts/dev/run_tests.py ui` -> `742 passed, 15 skipped, 1 warning`
-6. Repo 與文件結構已重整成較清楚的主工作面：
+7. Repo 與文件結構已重整成較清楚的主工作面：
    - root `README.md`
    - `docs/current/`
    - `docs/decisions/`
@@ -67,20 +79,20 @@ Last updated: `2026-04-19`
    - `docs/guides/`
    - `docs/api/`
    - `docs/archive/`
-7. 文件工具鏈已補齊並一致化：
+8. 文件工具鏈已補齊並一致化：
    - markdown 本地連結掃描通過，`BROKEN=0`
    - MkDocs nav 目標檢查通過，`MISSING=0`
    - `poetry install --with docs` 已可正常使用
    - `poetry run mkdocs build` 已可在目前 workspace 成功執行
-8. 內建 assistant 的產品定位已更明確：
+9. 內建 assistant 的產品定位已更明確：
    - Codex 是這個 repo 的外部開發助手
    - app 內 assistant 是 workflow-aware 的軟體操作 agent
    - tool calls 是 app 內 assistant 的執行骨幹
-9. AI assistant 的啟動路徑變得更誠實也更穩定：
+10. AI assistant 的啟動路徑變得更誠實也更穩定：
    - 更早套用已儲存設定
    - backend 載入前就先做 local runtime readiness 檢查
    - 更早偵測 CUDA 不可用，讓 local backend 能更乾淨地 fallback
-10. Prep gate 的 UI 驗證已明顯補強：
+11. Prep gate 的 UI 驗證已明顯補強：
    - headless panel baseline capture 可用
    - 四個高優先 dialog 已有 acceptance coverage
    - shared refresh propagation 已有直接 bridge-level smoke coverage
@@ -192,7 +204,7 @@ Last updated: `2026-04-19`
 
 - unattended UI pytest 在目前 Codex workspace 仍需要顯式 headless Qt 環境；目前推薦直接走 `scripts/dev/run_ui_pytest.sh`
 - 先前的 `pytest fd capture` teardown 問題目前變成間歇性 / 未穩定重現狀態，因此還留在 triage，但已不是最清楚的當前 blocker
-- 新增進 dashboard 後，repo-wide `ruff` 與 `mypy` 也正式成為可見紅燈；目前看板會把這些既有品質債如實顯示出來，而不是只回報 runtime slice
+- 預設 dashboard 的 static gates 現在改成 `ruff + basedpyright + architecture`；這讓高頻監測比較適合抓新退化，但 repo-wide `mypy` 舊債仍必須透過 full gate 持續追蹤
 - real GDF fixtures 仍會出現 duplicate channel name warnings；目前只是 observability 更清楚，underlying channel identity ambiguity 仍未解
 - public BBCI `O3VR.gdf` 仍會出現 MNE annotation-range warning，但 import 本身是成功的
 - AI assistant 現在已朝 local-first 方向前進，但這個 workspace 仍缺真正可用的 cached local model，因此還不能做完整 local end-to-end startup
@@ -204,14 +216,14 @@ Last updated: `2026-04-19`
 
 如果你只想記最重要的最新變化，就是這四件事：
 
-1. 品質看板已建立，且已升級成包含 static quality gates 與 reference-backed UI baseline
+1. 品質看板已建立，且已升級成包含 two-speed static gates 與 reference-backed UI baseline
 2. unattended UI 驗證路徑已收斂
 3. in-app assistant 的產品定位已釐清
 4. prep-gate coverage 與 local-AI startup honesty 都有進步
 
 ## 立刻下一步
 
-1. triage 現在 dashboard 已明確暴露的三條紅燈：`ruff`、`mypy`、default-capture IO integration。
+1. 先把新的 fast/full gate 分工穩定下來，並持續 triage 預設 dashboard 還在暴露的紅燈：`ruff`、default-capture IO integration。
 2. 繼續完成 prep-gate runtime-signal triage，尤其是 real GDF channel identity、unattended UI validation、visualization headless fragility 這幾條。
 3. 繼續補 local-only AI bootstrap，直到這個 workspace 能用真實 local model 啟動 assistant。
 4. audit 目前的 tool surface，判斷哪些邊界該合併、刪除或重設，讓它更符合 shared human/agent control。

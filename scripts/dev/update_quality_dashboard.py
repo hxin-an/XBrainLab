@@ -10,6 +10,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -26,7 +27,7 @@ LATEST_MD = QUALITY_DIR / "latest.md"
 HISTORY_JSONL = QUALITY_DIR / "history.jsonl"
 EXPECTED_UI_ARTIFACTS = [filename for filename, _ in CAPTURE_STEPS]
 REFERENCE_UI_DIR = ROOT / "tests" / "baselines" / "ui"
-HEADLESS_CACHE_DIR = ROOT / ".codex" / "matplotlib-codex"
+HEADLESS_CACHE_DIR = Path(tempfile.gettempdir()) / "matplotlib-codex"
 POETRY = "/home/administrator/.local/bin/poetry"
 UI_WRAPPER = str(ROOT / "scripts" / "dev" / "run_ui_pytest.sh")
 DEFAULT_FRESH_MINUTES = 60
@@ -309,10 +310,12 @@ def render_markdown(report: dict) -> str:
     """Render a human-readable dashboard markdown file."""
     status_icons = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
     checks = report["checks"]
+    profile = report.get("profile", "fast")
     lines = [
         "# XBrainLab Quality Dashboard",
         "",
         f"- Generated at: `{report['generated_at']}`",
+        f"- Profile: `{profile}`",
         f"- Overall status: `{report['overall_status'].upper()}`",
         f"- Workspace: `{report['workspace']}`",
         "",
@@ -386,7 +389,12 @@ def write_report(report: dict) -> None:
 
 def build_checks() -> list[CheckResult]:
     """Run the current dashboard check set."""
-    return [
+    return build_checks_for_mode(include_slow_checks=False)
+
+
+def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
+    """Run the dashboard checks for the requested speed profile."""
+    checks = [
         run_check(
             key="ruff_lint",
             label="Ruff Lint",
@@ -400,15 +408,15 @@ def build_checks() -> list[CheckResult]:
             ),
         ),
         run_check(
-            key="mypy_type_check",
-            label="Mypy Type Check",
+            key="basedpyright_type_check",
+            label="Basedpyright Type Check",
             category="quality",
-            command=f"{POETRY} run mypy XBrainLab/",
+            command=f"{POETRY} run basedpyright",
             ui=False,
             validator=lambda code, output: validate_text_command(
                 code,
                 output,
-                success_fallback="mypy passed.",
+                success_fallback="basedpyright passed.",
             ),
         ),
         run_check(
@@ -462,6 +470,23 @@ def build_checks() -> list[CheckResult]:
             ui=False,
         ),
     ]
+    if include_slow_checks:
+        checks.insert(
+            2,
+            run_check(
+                key="mypy_type_check",
+                label="Mypy Type Check",
+                category="quality",
+                command=f"{POETRY} run mypy XBrainLab/",
+                ui=False,
+                validator=lambda code, output: validate_text_command(
+                    code,
+                    output,
+                    success_fallback="mypy passed.",
+                ),
+            ),
+        )
+    return checks
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -475,6 +500,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0,
         help="Skip execution when the latest dashboard is newer than this age.",
     )
+    parser.add_argument(
+        "--include-slow-checks",
+        action="store_true",
+        help="Include slower full-repo checks such as mypy in addition to the default fast dashboard checks.",
+    )
     return parser.parse_args(argv)
 
 
@@ -487,10 +517,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    checks = build_checks()
+    checks = build_checks_for_mode(include_slow_checks=args.include_slow_checks)
     generated_at = datetime.now(UTC).isoformat()
     report = {
         "generated_at": generated_at,
+        "profile": "full" if args.include_slow_checks else "fast",
         "workspace": str(ROOT),
         "overall_status": compute_overall_status(checks),
         "checks": [asdict(check) for check in checks],

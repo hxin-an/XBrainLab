@@ -96,13 +96,15 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 
 - Priority: P1
 - Why now:
-  `ruff` and `mypy` are no longer hidden side checks; they are now first-class dashboard signals and need an explicit cleanup/triage plan.
+  `ruff`, fast `basedpyright`, and slower `mypy` gates are now explicit parts of the quality story and need an explicit cleanup/triage plan.
 - Outputs:
-  - decide whether repo-wide `ruff` and `mypy` green status is required for prep exit
+  - decide whether repo-wide `ruff` green status is required for prep exit
+  - keep `basedpyright` useful as a fast regression gate without letting the baseline go stale
+  - decide how the slower `mypy` full gate should be scheduled before prep exit
   - break the current failures into scoped cleanup items
   - avoid weakening the gates just to make the dashboard green
 - Status:
-  In progress. The dashboard now exposes the failures clearly; the next step is to turn them into scoped fix items instead of leaving them as one undifferentiated red block.
+  In progress. The dashboard now uses baseline-backed `basedpyright` as the fast gate and keeps `mypy` as the slower full debt sweep; the next step is to turn the remaining `ruff` and `mypy` failures into scoped fix items instead of leaving them as one undifferentiated red block.
 
 ## Soon
 

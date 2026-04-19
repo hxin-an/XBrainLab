@@ -385,7 +385,11 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 ### 症狀
 
-在把 `ruff`、`mypy`、`architecture compliance` 納入品質看板後，dashboard 現在不只回報 runtime signal，也開始如實顯示 repo 既有的 static quality debt。
+在把 static quality gates 納入品質看板後，dashboard 現在不只回報 runtime signal，也開始如實顯示 repo 既有的靜態品質債。
+目前策略已改成 two-speed：
+
+- 預設 dashboard 跑 `ruff`、baseline-backed `basedpyright`、`architecture compliance`
+- `mypy` 保留在 slower full gate，專門持續暴露舊債而不是淹沒每輪高頻回饋
 
 ### 重現方式
 
@@ -399,23 +403,31 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 ```bash
 /home/administrator/.local/bin/poetry run ruff check .
+/home/administrator/.local/bin/poetry run basedpyright
 /home/administrator/.local/bin/poetry run mypy XBrainLab/
 /home/administrator/.local/bin/poetry run python tests/architecture_compliance.py
 ```
 
 ### 預期
 
-品質看板的 static quality gates 應該為綠燈，至少不該被一批已知但未記錄的靜態品質問題長期卡住。
+品質看板應該同時做到兩件事：
+
+- 高頻模式能清楚抓出新的靜態回歸
+- 較慢的 full mode 仍能持續提醒我們清掉既有靜態品質債
 
 ### 實際情況
 
-- `ruff check .` 目前回報 `21 errors`，其中 `10` 個可自動修復
-- `mypy XBrainLab/` 目前回報 `7 errors in 5 files`
+- `ruff check .` 目前回報 `19 errors`，其中 `9` 個可自動修復
+- `basedpyright` 已透過 `.basedpyright/baseline.json` 轉成 fast regression gate；目前可通過，但其 baseline 仍代表有待清理的舊型別債
+- `mypy XBrainLab/` 目前仍回報 `7 errors in 5 files`
 - `python tests/architecture_compliance.py` 通過
 
 ### 影響
 
-這代表 quality dashboard 現在雖然比較完整，但整體狀態會持續被 static quality debt 拉成紅燈，也代表 pre-commit hook 一旦真的開始攔提交，這些問題會更明顯地影響日常工作流。
+這代表 quality dashboard 雖然比較完整，但靜態品質債現在需要用兩種節奏處理：
+
+- fast gate 保護日常開發不再引進新的型別回歸
+- full gate 仍會持續把舊的 `mypy` 問題留在視野內，直到它們被拆解和修掉
 
 ### 可能範圍
 
@@ -429,10 +441,11 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 ### 證據
 
-於 `2026-04-19` 本地 dashboard refresh 觀察到：
+於 `2026-04-19` 本地觀察到：
 
-- `ruff check .` -> `FAIL`
-- `mypy XBrainLab/` -> `FAIL`
+- `ruff check .` -> `FAIL` (`19 errors`, `9` fixable)
+- `basedpyright` -> `PASS`（baseline-backed fast gate）
+- `mypy XBrainLab/` -> `FAIL`（slower full gate）
 - `architecture compliance` -> `PASS`
 - live report: `artifacts/quality/latest.md`
 
@@ -442,7 +455,8 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 ### 備註
 
-這不是這次 dashboard 改動額外製造的新 regression，比較接近是原本就存在的品質債終於被正式納入可見 gate。
+這不是 dashboard 額外製造的新 regression，比較接近是原本就存在的品質債終於被正式納入可見 gate。
+需要注意的是：`.basedpyright/baseline.json` 不是豁免清單，而是讓高頻 gate 有可操作價值的暫時 debt ledger。
 
 #### [BUG-AGENT-001] AI assistant 的 local startup 忽略已儲存設定，並把 local runtime failure 延後到初始化時才暴露
 

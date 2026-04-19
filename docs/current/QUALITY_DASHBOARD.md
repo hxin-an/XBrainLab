@@ -20,16 +20,31 @@
 
 這兩份是自動生成檔，不會作為正式文件長期維護。
 
+現在 `latest.md` / `latest.json` 也會標出這次 refresh 是 `fast` 還是 `full` profile，避免你看到同一個檔名時不知道它是不是包含 `mypy`。
+
 ## 目前監測的內容
 
 - ruff lint
-- mypy type check
+- basedpyright type check
 - architecture compliance
 - startup smoke
 - UI baseline capture
 - dialog acceptance UI slice
 - UI unit suite
 - real-data IO integration slice
+
+另外還有一個較慢的 full mode：
+
+- mypy type check
+
+也就是說，這份看板現在有兩種讀法：
+
+- 預設 refresh：
+  - 看「現在有沒有新退化」
+- full refresh：
+  - 額外把較慢的 `mypy` 舊債掃描一起跑出來
+
+這不是把舊問題藏起來，而是把「高頻回饋」和「舊債清理」拆開，避免每次快速檢查都被同一批歷史錯誤淹沒。
 
 ## 目前 UI 檢查到底在檢查什麼
 
@@ -87,6 +102,18 @@
 /home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py
 ```
 
+如果你也想把較慢的 full static gate 一起跑出來，用：
+
+```bash
+/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py --include-slow-checks
+```
+
+或：
+
+```bash
+/home/administrator/.local/bin/poetry run poe quality-dashboard-full
+```
+
 如果只是想在自動化流程中「過一段時間再更新一次」，可以用：
 
 ```bash
@@ -97,6 +124,9 @@
 
 - UI 驗證預設走 headless-safe 路徑
 - 產出的 baseline screenshot 會檢查是否缺檔、幾乎全黑，並和 approved references 比較
+- 預設 dashboard 走 fast gate：`ruff`、`basedpyright`、architecture compliance、startup、UI、real-data IO
+- `mypy` 改成 slower full gate，不再阻塞每一輪高頻 dashboard refresh
+- `.basedpyright/baseline.json` 是刻意保留的 debt baseline；它的目的是讓 fast gate 專注抓新問題，不是宣告舊問題已經解決
 - 這份看板偏向「現在是否健康」，不是 release changelog
 
 ## 解讀方式

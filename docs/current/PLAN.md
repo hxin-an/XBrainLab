@@ -2,7 +2,19 @@
 
 Last updated: `2026-04-19`
 
-This is the human-facing version of the long-running stabilization plan.
+This is the human-facing version of the long-running thesis plan.
+
+The thesis currently has three connected workstreams:
+
+1. stabilize the existing application
+2. redesign the tool-call agent architecture
+3. validate the system rigorously enough for thesis claims
+
+Current execution order:
+
+- stabilization first
+- agent redesign second
+- rigorous validation throughout, with deeper evaluation becoming a first-class track before final thesis claims
 
 ## 1. Baseline And Checkpoint
 
@@ -59,3 +71,44 @@ Scope rules:
 
 - backend/test-infra/shared non-visual plumbing can be deeply improved
 - intentional layout or visual redesign still needs user discussion first
+
+## 5. Tool-Call Agent Redesign
+
+Goal:
+- redesign the tool-call agent architecture only after the stabilization floor is strong enough to support trustworthy iteration
+
+Working rules:
+
+- use `docs/decisions/` as the canonical design home
+- prefer a small number of active ADRs over many scattered planning notes
+- explicitly document tradeoffs, rejected alternatives, and evaluation assumptions
+- do not treat old design notes as automatically current without checking the code and validation evidence
+
+Expected outputs:
+
+- clear problem statement
+- explicit product definition for the in-app assistant
+- candidate architectures
+- selected execution model
+- redesigned tool surface around workflow intent rather than legacy tool boundaries
+- safety and verification boundaries
+- evaluation plan inputs for thesis experiments
+
+## 6. Rigorous Validation
+
+Goal:
+- build repeatable evidence that can support thesis arguments, not just engineering confidence
+
+Validation work should cover:
+
+- workflow-level reliability checks for the application itself
+- tool-call accuracy or task-success evaluation for the agent redesign
+- baseline comparisons and failure-case documentation
+- reproducible commands, datasets, and reporting structure
+
+Near-term rule:
+
+- every major design claim should eventually map to a test, runtime observation, benchmark, or documented experiment plan
+- quality monitoring should stay two-speed:
+  - fast, high-frequency gates catch new regressions quickly
+  - slower full gates continue surfacing existing debt until it is deliberately paid down
