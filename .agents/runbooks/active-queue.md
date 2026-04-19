@@ -13,7 +13,7 @@ The topmost eligible item should be worked on first.
 
 ### AQ-PREP-002 Verify top-level panel happy paths in headless mode
 
-- Status: Pending
+- Status: Done
 - Why:
   The workflow map needs observed runtime evidence, not just code reading.
 - Target screens:
@@ -23,6 +23,14 @@ The topmost eligible item should be worked on first.
   - Evaluation
   - Visualization
   - AI assistant shell
+- Evidence:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`
+  - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/scripts/test_capture_ui_baseline.py -q`
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q`
+- Result:
+  - shell, all five primary panels, and `ai-assistant-open.png` now have headless baseline artifacts
+  - the nav and AI-dock integration slice passed with `20 passed`
+  - the same integration run also exposed a new AI-shell runtime signal for local model initialization, which now belongs in triage
 
 ### AQ-PREP-003 Audit high-risk dialog acceptance flows
 
@@ -53,6 +61,7 @@ The topmost eligible item should be worked on first.
 - Current focus:
   - duplicate EEG channel-name warnings in real GDF workflows
   - pytest default capture teardown failure in the current `/mnt/d` Codex workspace
+  - AI assistant local-model initialization failing because `accelerate` is missing in the current environment
   - visualization headless fragility and skip boundaries
 
 ### AQ-PREP-006 Clarify local-only and Codex operating assumptions

@@ -52,7 +52,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - document the capture commands
   - capture baseline shell and panel screenshots
 - Status:
-  In progress. The main-window capture path now produces a usable artifact, but broader panel and dialog baseline captures still need to be collected.
+  Done. The helper now captures the main shell, all five primary panels, and the AI assistant open state into `artifacts/ui/`.
 
 ### BL-004 Stabilize local validation commands in the current Codex workspace
 
@@ -75,6 +75,8 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   Dataset, Preprocess, Training, Evaluation, Visualization, AI shell
 - Goal:
   turn workflow map assumptions into observed runtime facts
+- Status:
+  Done. Headless integration evidence now covers panel navigation plus AI dock toggling, and the baseline helper captures matching shell artifacts.
 
 ### BL-006 Add smoke tests for refresh and navigation behavior
 
@@ -121,6 +123,8 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Priority: P2
 - Goal:
   verify initialization, dock state, and model-switch behavior after core workflows are stabilized
+- Status:
+  Moved up by new runtime evidence. The shell now has a confirmed local-initialization failure in the current environment, and the user has approved redesign of the AI assistant panel if needed.
 
 ## Deferred Until After Triage
 

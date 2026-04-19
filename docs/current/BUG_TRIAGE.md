@@ -286,6 +286,73 @@ Coverage exists for the targeted slices themselves, but the default capture-base
 
 Treat `-s` as the temporary local validation workaround until this is repaired or explained.
 
+#### [BUG-AGENT-001] AI assistant local initialization fails when `accelerate` is unavailable
+
+- Priority: P1
+- Area: Agent
+- Type: Broken interaction
+- Status: Confirmed
+- Source: Runtime log
+
+### Symptom
+
+Opening the AI assistant can expose the dock, but the backend initialization fails with a local-model load error when `accelerate` is not installed in the current environment.
+
+### Reproduction
+
+Run:
+
+```bash
+xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q
+```
+
+The `TestAIAssistantDock.test_toggle_ai_dock` path triggers first-open initialization and emits the failure.
+
+### Expected
+
+Opening the AI assistant should either initialize successfully or fail gracefully with a clear, front-loaded dependency check before the dock presents itself as usable.
+
+### Actual
+
+The dock toggle path reaches local-model startup and logs:
+
+```text
+Model Load Error: ... requires `accelerate`
+```
+
+while the overall UI integration slice still passes.
+
+### Impact
+
+The AI assistant can look available in the shell while the underlying agent backend is unusable, which makes the panel misleading and fragile for both manual use and automated baseline checks.
+
+### Suspected scope
+
+- `XBrainLab/ui/components/agent_manager.py`
+- `XBrainLab/ui/dialogs/model_settings_dialog.py`
+- `XBrainLab/llm/core/backends/local.py`
+- local dependency/readiness checks for the AI assistant stack
+
+### Evidence
+
+Observed locally on `2026-04-19` during:
+
+- `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q`
+
+The slice finished with `20 passed`, but the log also included:
+
+```text
+ValueError: ... requires `accelerate`
+```
+
+### Test coverage
+
+- `tests/integration/ui/test_e2e_qtbot.py`
+
+### Notes
+
+This is now a confirmed AI-shell/runtime issue. The user has also explicitly approved intentional redesign of the AI assistant panel, so the eventual fix is allowed to include product-level UI changes instead of being limited to a narrow patch.
+
 #### [BUG-DATASET-001] Sequence label import assumed numeric-only label codes
 
 - Priority: P1

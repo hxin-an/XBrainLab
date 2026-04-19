@@ -317,6 +317,25 @@ This log records meaningful progress so repair work can continue smoothly across
 - rewrote `docs/index.md` into a human-first docs portal that tells the user which three files to read first
 - updated agent-side references and the `XBrainLab Autopilot` heartbeat prompt so unattended work follows the new doc layout instead of the removed root-level doc paths
 
+### Top-level panel baseline and AI shell signal
+
+- extended `scripts/dev/capture_ui_baseline.py` so the helper also captures `artifacts/ui/ai-assistant-open.png`
+- added targeted unit coverage for the new capture-step behavior in `tests/unit/scripts/test_capture_ui_baseline.py`
+- refreshed the headless baseline artifacts with:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py`
+  - result: shell, five primary panels, and AI assistant open state were all captured successfully
+- re-ran targeted validation for the helper:
+  - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/scripts/test_capture_ui_baseline.py -q`
+  - result: `4 passed`
+- re-ran the Qt integration slice for shell-level workflow evidence:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q`
+  - result: `20 passed`
+- the same integration slice also exposed a confirmed AI assistant runtime issue:
+  - first-open local model initialization fails with a missing-`accelerate` error in the current environment
+- recorded that runtime signal as `BUG-AGENT-001`
+- recorded a new durable design-boundary exception:
+  - the user explicitly approved intentional redesign of the AI assistant panel
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell

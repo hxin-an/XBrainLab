@@ -60,6 +60,10 @@ Do not proactively redesign layouts the user is already satisfied with.
 
 Functional fixes are allowed. Layout breakage fixes are allowed. Intentional visual or layout redesign requires user discussion first.
 
+Exception:
+
+- the AI assistant panel is explicitly approved for intentional redesign if that is the clearest path to a stable experience
+
 Be especially careful in:
 
 - `XBrainLab/ui/main_window.py`

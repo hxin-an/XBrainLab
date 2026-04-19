@@ -131,7 +131,7 @@ xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture
 ```
 
 The helper currently captures the shell plus the five primary panels into
-`artifacts/ui/`.
+`artifacts/ui/`, plus `ai-assistant-open.png` for the dock-open shell state.
 
 ## Next Step
 

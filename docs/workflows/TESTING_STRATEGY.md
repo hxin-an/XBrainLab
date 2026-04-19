@@ -134,6 +134,7 @@ The helper now captures:
 - `panel-training.png`
 - `panel-evaluation.png`
 - `panel-visualization.png`
+- `ai-assistant-open.png`
 
 Optional public-fixture fetch step for broader cross-dataset validation:
 

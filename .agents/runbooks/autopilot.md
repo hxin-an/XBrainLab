@@ -70,6 +70,10 @@ Not allowed without user discussion:
 - dialog visual redesign
 - other intentional layout changes
 
+Approved exception:
+
+- the AI assistant panel may be intentionally redesigned, because the user has explicitly allowed that surface to be reworked
+
 ## Loop
 
 For each work cycle:

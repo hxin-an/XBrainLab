@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import QApplication
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"
+AI_DOCK_STEP = "ai-dock"
 CAPTURE_STEPS = [
     ("main-window-initial.png", None),
     ("panel-dataset.png", 0),
@@ -31,6 +32,7 @@ CAPTURE_STEPS = [
     ("panel-training.png", 2),
     ("panel-evaluation.png", 3),
     ("panel-visualization.png", 4),
+    ("ai-assistant-open.png", AI_DOCK_STEP),
 ]
 
 
@@ -69,6 +71,25 @@ def _capture_current_window(window, output_path: Path) -> int:
     return 0
 
 
+def _prepare_capture_step(window, step_target) -> None:
+    """Move the UI into the state needed for the requested capture step."""
+    if step_target is None:
+        return
+
+    if step_target == AI_DOCK_STEP:
+        window.switch_page(0)
+        window.agent_manager.agent_initialized = True
+        if window.agent_manager.chat_dock is not None:
+            window.agent_manager.chat_dock.show()
+        if hasattr(window.agent_manager, "update_ai_btn_state"):
+            window.agent_manager.update_ai_btn_state(True)
+        elif hasattr(window, "ai_btn"):
+            window.ai_btn.setChecked(True)
+        return
+
+    window.switch_page(step_target)
+
+
 def capture_window(app: QApplication, output_path: Path) -> int:
     """Launch the main window and capture the shell plus all five panels."""
     from XBrainLab.backend.study import Study
@@ -81,9 +102,8 @@ def capture_window(app: QApplication, output_path: Path) -> int:
     window.show()
 
     def _run_step(step_index: int) -> None:
-        filename, panel_index = CAPTURE_STEPS[step_index]
-        if panel_index is not None:
-            window.switch_page(panel_index)
+        filename, step_target = CAPTURE_STEPS[step_index]
+        _prepare_capture_step(window, step_target)
 
         app.processEvents()
         current_widget = window.stack.currentWidget()

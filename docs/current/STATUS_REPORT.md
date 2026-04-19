@@ -60,27 +60,33 @@ Plan goal:
 
 What has been done:
 - the black screenshot problem was fixed by switching the capture helper to Qt-based grabs
-- the UI baseline now captures the shell plus all five main panels:
+- the UI baseline now captures the shell, all five main panels, and the AI assistant open state:
   - `artifacts/ui/main-window-initial.png`
   - `artifacts/ui/panel-dataset.png`
   - `artifacts/ui/panel-preprocess.png`
   - `artifacts/ui/panel-training.png`
   - `artifacts/ui/panel-evaluation.png`
   - `artifacts/ui/panel-visualization.png`
+  - `artifacts/ui/ai-assistant-open.png`
 - public cross-format EEG fixtures were added as local-only downloads under `tests/data/public/`:
   - PhysioNet EDF
   - BBCI GDF
   - SCCN EEGLAB `.set`
 - IO integration coverage now exercises both the existing repo fixtures and the downloaded public fixtures
 - local-only operating assumptions were documented, including the current `pytest -s` workaround for capture teardown failures
+- top-level shell and panel happy paths now have runtime evidence from the Qt integration slice, not only from screenshots
+- the user has explicitly approved intentional redesign of the AI assistant panel, which removes the previous design-freeze constraint for that surface only
 
 Evidence:
 - five-panel baseline capture succeeds in `xvfb-run`
+- AI assistant baseline capture now also succeeds in `xvfb-run`
+- `tests/unit/scripts/test_capture_ui_baseline.py` currently passes with `4 passed`
+- `tests/integration/ui/test_e2e_qtbot.py` currently passes with `20 passed`
 - `tests/unit/scripts/test_capture_ui_baseline.py tests/integration/io/test_io_integration.py` currently passes with `27 passed, 7 warnings`
 - the downloaded public fixtures load through the direct IO path and the facade import path
 
 Open prep items:
-- runtime-verify all six major workflows, not just the main shell and IO-heavy paths
+- deepen runtime workflow evidence beyond top-level panel navigation and dock toggling
 - run and record live/modal checks for the highest-risk dialogs
 - widen refresh/navigation and cross-panel propagation protection
 - convert the remaining runtime warnings/signals into confirmed bugs or confirmed non-blockers
@@ -103,9 +109,10 @@ What will unlock this phase:
 - default `pytest` capture still fails in this workspace unless tests are run with `-s`
 - real GDF fixtures still emit duplicate-channel-name warnings
 - the public BBCI `O3VR.gdf` fixture emits an MNE annotation-range warning even though import succeeds
+- AI assistant local initialization currently fails if the environment is missing `accelerate`, even though the dock can still be opened
 
 ## Immediate Next Moves
 
 1. keep this report synced to the plan after each meaningful cycle
-2. continue prep-gate work on workflow baselines and high-risk dialogs
-3. triage or repair the default `pytest` capture teardown failure
+2. continue prep-gate work on high-risk dialogs and deeper workflow sequences beyond shell-level navigation
+3. triage or repair the AI assistant initialization failure and the default `pytest` capture teardown failure

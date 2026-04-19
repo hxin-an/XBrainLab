@@ -277,10 +277,12 @@ Observed shell behavior:
 
 - AI assistant is initialized from `MainWindow`
 - status messages are routed back into the shell
+- in the current local Codex workspace, the dock can open while local model initialization still fails underneath if the required inference dependency stack is incomplete
 
 Likely bug surfaces:
 
 - initialization timing
+- dependency and backend-readiness checks before local model startup
 - dock visibility/state mismatches
 - agent actions changing backend state without the expected panel refresh
 
