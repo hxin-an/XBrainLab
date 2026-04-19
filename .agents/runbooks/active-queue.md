@@ -75,10 +75,14 @@ The topmost eligible item should be worked on first.
   - duplicate EEG channel-name warnings in real GDF workflows
     - now narrowed further: `A01T.gdf` imports with generated names like `EEG-0`, `EEG-1`, ... and `load_gdf_file()` now emits an explicit repo warning about the MNE auto-rename dependency
     - remaining decision: normalize these channel names more intentionally, or expose the ambiguity more formally to downstream workflows
+  - the public real-data baseline is now broader in source and format coverage:
+    - public local-only fixtures now span PhysioNet, BBCI, SCCN, and MNE testing-data
+    - the IO integration slice now targets EDF, GDF, EEGLAB `.set`, CNT, and BrainVision `.vhdr`
+    - remaining dataset-validation gap is no longer basic format diversity, but label-attached dataset generation and downstream training smoke on those baselines
   - unattended UI pytest in the current `/mnt/d` Codex workspace now has a clearer blocker than the older capture note:
     - heartbeat-style runs can abort in `pytest-qt` `qapp` setup unless Qt is forced into offscreen mode and matplotlib gets a writable temp cache
     - `scripts/dev/run_ui_pytest.sh` now captures that workaround for repo-local reuse
-    - the older `fd`-capture teardown failure is no longer a stable reproducer on the latest backend and IO rechecks, so it remains triage-only until it is either reconfirmed or retired
+    - the older `fd`-capture teardown failure is still real; the new quality dashboard re-hit it on `tests/integration/io/test_io_integration.py`, so it remains an active triage item rather than retired history
   - AI assistant local startup now respects saved settings, preflights local runtime, and falls back from unusable CUDA to CPU, but the local-only path still needs a local model cache and final bootstrap validation
   - visualization headless fragility and skip boundaries
 
@@ -99,6 +103,22 @@ The topmost eligible item should be worked on first.
   - repo-local skills under `.agents/skills/`
   - Docs MCP configuration and heartbeat automation alignment
   - explicit unattended UI test commands for heartbeat-safe validation
+
+### AQ-PREP-007 Add a reusable quality dashboard and monitoring entrypoint
+
+- Status: Done
+- Why:
+  Stabilization work now needs one place that answers "is the app still healthy?" without rereading multiple scattered logs.
+- Evidence:
+  - `/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui/test_dialog_acceptance.py -q`
+  - `/home/administrator/.local/bin/poetry run python scripts/dev/run_tests.py ui`
+- Result:
+  - repo-local dashboard generator now writes live reports under `artifacts/quality/`
+  - `docs/current/QUALITY_DASHBOARD.md` is the stable human entry point for the live quality report
+  - the dashboard currently monitors startup smoke, UI baseline capture, dialog acceptance, UI unit suite, and real-data IO integration
+  - the first live run already exposed a real red signal: default-capture IO integration is still not trustworthy in this workspace
+  - the generated artifacts stay out of normal git noise via `artifacts/quality/.gitignore`
 
 ## Recently Completed
 

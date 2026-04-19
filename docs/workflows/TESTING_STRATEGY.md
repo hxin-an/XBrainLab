@@ -41,6 +41,9 @@ xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
 
 # Full test suite
 /home/administrator/.local/bin/poetry run pytest
+
+# Quality dashboard snapshot
+/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py
 ```
 
 Current Codex local note for `/mnt/d/repos/XBrainLab`:
@@ -48,6 +51,7 @@ Current Codex local note for `/mnt/d/repos/XBrainLab`:
 - unattended UI pytest runs can currently abort during `pytest-qt` app setup unless Qt is forced into offscreen mode
 - use `scripts/dev/run_ui_pytest.sh` for UI-targeted pytest commands in this Codex workspace
 - the older default-capture teardown failure is no longer a clean always-on reproducer, but `--capture=sys` remains the safer unattended default
+- use `scripts/dev/update_quality_dashboard.py` when you want a single current quality snapshot for startup, UI, and IO health
 - keep the original commands as the baseline reference for the canonical WSL setup
 
 ## Three Validation Layers

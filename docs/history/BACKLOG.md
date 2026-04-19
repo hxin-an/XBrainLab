@@ -66,6 +66,19 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
 - Status:
   In progress. The current blocker is now better narrowed: unattended UI pytest needs explicit offscreen Qt and writable matplotlib-cache env, and `scripts/dev/run_ui_pytest.sh` now captures that workaround. The older `fd`-capture teardown issue remains triage-only until it is either re-confirmed or retired.
 
+### BL-015 Add a live quality dashboard for stabilization monitoring
+
+- Priority: P1
+- Why now:
+  As stabilization work accumulates, we need one repeatable answer to whether startup, UI baseline, UI test slices, and real-data IO are still healthy.
+- Outputs:
+  - repo-local dashboard generator
+  - stable human-facing dashboard entry doc
+  - ignored live dashboard artifacts under `artifacts/quality/`
+  - recurring automation refresh path
+- Status:
+  In progress. The dashboard generator and human entry doc are in place; the next step is keeping it refreshed automatically via the existing heartbeat loop.
+
 ## Soon
 
 ### BL-005 Verify top-level panel happy paths manually in headless display

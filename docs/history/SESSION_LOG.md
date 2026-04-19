@@ -447,6 +447,29 @@
   - triage / queue / status report
 - 這代表目前 heartbeat 自動化若要跑 UI pytest，應該直接走 repo-local helper，而不是裸跑 pytest 指令
 
+### 品質看板與定期監測入口
+
+- 新增 `scripts/dev/update_quality_dashboard.py`
+- 新增 `docs/current/QUALITY_DASHBOARD.md` 作為人看的固定入口
+- live dashboard output 現在會寫到：
+  - `artifacts/quality/latest.md`
+  - `artifacts/quality/latest.json`
+  - `artifacts/quality/history.jsonl`
+- 新增 `artifacts/quality/.gitignore`，避免自動刷新把 generated report 變成長期 git 噪音
+- 新增單元測試：
+  - `tests/unit/scripts/test_update_quality_dashboard.py`
+- 第一輪完整 dashboard refresh 的檢查集包含：
+  - startup smoke
+  - UI baseline capture
+  - dialog acceptance
+  - UI unit suite
+  - real-data IO integration
+- 第一輪 live 結果：
+  - `overall FAIL`
+  - 失敗點不是 UI，而是 `Real-Data IO Integration`
+  - 這次看板刷新重新證明 `BUG-ENV-003` 還在，因為預設 capture 再次於 `_pytest/capture.py` teardown 階段失敗
+- 這代表 dashboard 不是單純展示綠燈，而是真的能把目前 workspace 最脆弱的驗證路徑抓出來
+
 ### AI assistant 本地啟動強化
 
 - 將 `BUG-AGENT-001` 從單一缺少 `accelerate` 的表面症狀，收斂成兩個獨立問題：
@@ -570,3 +593,37 @@
   - `STATUS_REPORT.md` 回答「現在真實狀態是什麼」
   - `CHANGELOG.md` 回答「某個版本正式改了什麼」
 - 把最新、最實際的進展移到報告最前面，讓使用者一打開就能先看到最近改了什麼
+
+### Public EEG fixture 多樣性擴充
+
+- 重新檢查目前資料集準備狀態後，確認缺口不在 repo 內 compact multiformat pack，而是在 public-source baseline 還不夠多樣
+- 更新 `scripts/dev/fetch_public_eeg_fixtures.py`，讓它從單檔下載清單升級成 fixture-group 下載：
+  - 保留既有的 PhysioNet EDF、BBCI GDF、SCCN EEGLAB `.set`
+  - 新增 MNE testing-data 的 `scan41_short.cnt`
+  - 新增 MNE testing-data 的 BrainVision `test_NO.vhdr`，並一併下載 sidecars `test_NO.eeg`、`test_NO.vmrk`
+- 更新 `tests/data/public/README.md`，明確記錄目前 public baseline 的來源與覆蓋格式
+- 更新 `tests/integration/io/test_io_integration.py`，讓 public real-data slice 也會覆蓋：
+  - CNT
+  - BrainVision `.vhdr`
+- 在實作前先用暫存目錄驗證：
+  - `scan41_short.cnt` 可被 `load_raw_data()` 成功載入
+  - `test_NO.vhdr` 可在 sidecar 齊全時被 `load_raw_data()` 成功載入
+- 實際下載到 `tests/data/public/` 後，再執行：
+  - `/home/administrator/.local/bin/poetry run python scripts/dev/fetch_public_eeg_fixtures.py`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+  - 結果：`29 passed, 11 warnings`
+- 目前新增 public fixtures 後可觀察到的非阻塞 warning：
+  - `scan41_short.cnt` 會出現 meas date 與 byte-width 相關 MNE warning
+  - 既有 `bbci-competition-iii-O3VR.gdf` 的 annotation-range warning 仍存在
+  - 兩者目前都不阻止 import 與 facade import 通過
+- 這讓目前 workspace 的 public real-data baseline 來源擴大到：
+  - PhysioNet
+  - BBCI
+  - SCCN
+  - MNE testing-data
+- 檔案型別則擴大到：
+  - EDF
+  - GDF
+  - EEGLAB `.set`
+  - CNT
+  - BrainVision `.vhdr`

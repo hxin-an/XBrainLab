@@ -24,20 +24,32 @@ Last updated: `2026-04-19`
 
 以下依照「最新且有意義」的變化往下排：
 
-1. real GDF duplicate-channel signal 已補上更誠實的 import-level observability：
+1. public EEG fixture baseline 已擴充到更像論文驗證會需要的樣子：
+   - local-only public fixture set 現在不只覆蓋 `EDF / GDF / EEGLAB .set`
+   - 新增 `CNT` 與 public `BrainVision .vhdr + .eeg + .vmrk` coverage
+   - 來源現在橫跨 PhysioNet、BBCI、SCCN、MNE testing-data
+   - `tests/integration/io/test_io_integration.py` 現在會一起驗這些 public formats 的 loader 與 facade import 路徑
+   - 目前驗證結果：`29 passed, 11 warnings`
+2. real GDF duplicate-channel signal 已補上更誠實的 import-level observability：
    - `A01T.gdf` 仍會出現 MNE duplicate-name warning
    - `load_gdf_file()` 現在也會額外記錄 XBrainLab 自己的 warning，明確指出匯入依賴了 MNE auto-rename
    - 相關驗證目前是：
      - `tests/unit/backend/load_data/test_raw_data_loader.py` -> `5 passed`
-     - `tests/integration/io/test_io_integration.py` -> `25 passed, 7 warnings`
-2. unattended UI 驗證現在有 repo 內可重用的 heartbeat-safe 路徑：
+     - `tests/integration/io/test_io_integration.py` -> `29 passed, 11 warnings`
+3. 品質看板已建立，現在可以用一份 live report 看目前程式健康度：
+   - 新增 `scripts/dev/update_quality_dashboard.py`
+   - live output 會寫到 `artifacts/quality/latest.md` 和 `artifacts/quality/latest.json`
+   - 人看的固定入口是 `docs/current/QUALITY_DASHBOARD.md`
+   - 目前看板會監測 startup、UI baseline、dialog acceptance、UI unit suite、real-data IO integration
+   - 第一輪 live refresh 的結果是：`overall FAIL`，因為 `tests/integration/io/test_io_integration.py` 又重現了預設 pytest capture teardown 問題
+4. unattended UI 驗證現在有 repo 內可重用的 heartbeat-safe 路徑：
    - heartbeat-style UI pytest 失敗點已縮小到 Qt platform plugin / matplotlib cache 環境，而不是單純 repo 測試壞掉
    - 新增 `scripts/dev/run_ui_pytest.sh`
    - `scripts/dev/run_tests.py` 的 `ui` 路徑現在也會自動套 `offscreen + --capture=sys`
    - 代表性驗證：
      - `scripts/dev/run_ui_pytest.sh tests/integration/ui/test_dialog_acceptance.py -q` -> `4 passed`
      - `python scripts/dev/run_tests.py ui` -> `742 passed, 15 skipped, 1 warning`
-3. Repo 與文件結構已重整成較清楚的主工作面：
+5. Repo 與文件結構已重整成較清楚的主工作面：
    - root `README.md`
    - `docs/current/`
    - `docs/decisions/`
@@ -46,20 +58,20 @@ Last updated: `2026-04-19`
    - `docs/guides/`
    - `docs/api/`
    - `docs/archive/`
-4. 文件工具鏈已補齊並一致化：
+6. 文件工具鏈已補齊並一致化：
    - markdown 本地連結掃描通過，`BROKEN=0`
    - MkDocs nav 目標檢查通過，`MISSING=0`
    - `poetry install --with docs` 已可正常使用
    - `poetry run mkdocs build` 已可在目前 workspace 成功執行
-5. 內建 assistant 的產品定位已更明確：
+7. 內建 assistant 的產品定位已更明確：
    - Codex 是這個 repo 的外部開發助手
    - app 內 assistant 是 workflow-aware 的軟體操作 agent
    - tool calls 是 app 內 assistant 的執行骨幹
-6. AI assistant 的啟動路徑變得更誠實也更穩定：
+8. AI assistant 的啟動路徑變得更誠實也更穩定：
    - 更早套用已儲存設定
    - backend 載入前就先做 local runtime readiness 檢查
    - 更早偵測 CUDA 不可用，讓 local backend 能更乾淨地 fallback
-7. Prep gate 的 UI 驗證已明顯補強：
+9. Prep gate 的 UI 驗證已明顯補強：
    - headless panel baseline capture 可用
    - 四個高優先 dialog 已有 acceptance coverage
    - shared refresh propagation 已有直接 bridge-level smoke coverage
@@ -109,6 +121,8 @@ Last updated: `2026-04-19`
 - `tests/integration/ui/test_dialog_acceptance.py`: `4 passed`
 - `tests/unit/ui/test_panel_event_bridges.py`: `4 passed`
 - `python scripts/dev/run_tests.py ui`: `742 passed, 15 skipped, 1 warning`
+- `python scripts/dev/update_quality_dashboard.py`: live dashboard refreshed successfully
+- `tests/integration/io/test_io_integration.py`: `29 passed, 11 warnings`
 - `tests/unit/scripts/test_capture_ui_baseline.py tests/integration/io/test_io_integration.py`: `27 passed, 7 warnings`
 
 ### 2. Tool-Call Agent 方向
@@ -173,19 +187,20 @@ Last updated: `2026-04-19`
 - public BBCI `O3VR.gdf` 仍會出現 MNE annotation-range warning，但 import 本身是成功的
 - AI assistant 現在已朝 local-first 方向前進，但這個 workspace 仍缺真正可用的 cached local model，因此還不能做完整 local end-to-end startup
 - dialog realism 雖然比之前強很多，但全域 `QDialog.exec` patch 仍表示 desktop-manual 行為和 unit harness 不完全等價
+- quality dashboard 目前先是 workspace-local live report，下一步是讓 heartbeat 定期刷新它
 
 ## 最近最值得記住的實際進展
 
 如果你只想記最重要的最新變化，就是這四件事：
 
-1. docs 已整理成比較清楚的專業結構
-2. docs toolchain 已修好並可 build
+1. 品質看板已建立
+2. unattended UI 驗證路徑已收斂
 3. in-app assistant 的產品定位已釐清
 4. prep-gate coverage 與 local-AI startup honesty 都有進步
 
 ## 立刻下一步
 
-1. 繼續完成 prep-gate runtime-signal triage，尤其是 real GDF channel identity、unattended UI validation、visualization headless fragility 這幾條。
-2. 繼續補 local-only AI bootstrap，直到這個 workspace 能用真實 local model 啟動 assistant。
-3. audit 目前的 tool surface，判斷哪些邊界該合併、刪除或重設，讓它更符合 shared human/agent control。
-4. 定出 redesigned tool-call agent 的 evaluation structure，讓驗證從方向性描述變成具體設計。
+1. 把 quality dashboard 接到自動刷新節奏，讓 heartbeat 能定期更新它。
+2. 繼續完成 prep-gate runtime-signal triage，尤其是 real GDF channel identity、unattended UI validation、visualization headless fragility 這幾條。
+3. 繼續補 local-only AI bootstrap，直到這個 workspace 能用真實 local model 啟動 assistant。
+4. audit 目前的 tool surface，判斷哪些邊界該合併、刪除或重設，讓它更符合 shared human/agent control。

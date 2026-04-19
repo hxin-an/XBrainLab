@@ -3,7 +3,7 @@ name = "xbrainlab"
 version = "0.5.6"
 description = "XBrainLab: EEG Analysis Platform with AI Agent"
 authors = ["XBrainLab Team"]
-readme = "docs/index.md"
+readme = "README.md"
 packages = [{include = "XBrainLab"}]
 
 [tool.poetry.dependencies]
@@ -73,6 +73,15 @@ pytest-cov = "^4.1.0"
 pytest-qt = "^4.2.0"
 coverage = "^7.0"
 pytest-forked = "^1.6.0"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.6.1"
+mkdocs-material = "^9.6.0"
+mkdocstrings = "^0.29.0"
+mkdocstrings-python = "^1.16.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -200,6 +209,7 @@ benchmark-llm = "scripts.agent.benchmarks.simple_bench:main"
 # Development
 verify = "python scripts/dev/verify_real_tools.py"
 run = "python run.py"
+quality-dashboard = "python scripts/dev/update_quality_dashboard.py"
 
 # Testing
 test-unit = "pytest tests/unit -v"
