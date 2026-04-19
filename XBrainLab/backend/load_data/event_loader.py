@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections import Counter
 import contextlib
+from collections import Counter
 from typing import Any
 
 import mne
@@ -311,7 +311,9 @@ class EventLoader:
             list(range(len(labels))),
         )
 
-        if len(eeg_indices) < len(filtered_eeg_events) or len(label_indices) < len(labels):
+        if len(eeg_indices) < len(filtered_eeg_events) or len(label_indices) < len(
+            labels
+        ):
             logger.warning(
                 "Alignment truncated: EEG=%d, Label=%d -> %d matches.",
                 len(filtered_eeg_events),
@@ -362,7 +364,11 @@ class EventLoader:
             new_events[row_index, -1] = code
 
         new_event_id = {
-            name: code for code, name in sorted(code_to_name.items(), key=lambda item: item[0])
+            name: code
+            for code, name in sorted(
+                code_to_name.items(),
+                key=lambda item: item[0],
+            )
         }
 
         self.events = new_events

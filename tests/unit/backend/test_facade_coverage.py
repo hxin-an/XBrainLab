@@ -437,17 +437,55 @@ class TestDelegation:
         facade.dataset.get_event_info = MagicMock(
             return_value={"events": 100, "classes": 2}
         )
+        facade.dataset.get_runtime_diagnostics = MagicMock(
+            return_value={
+                "runtime_signals": ["signal one"],
+                "gdf_duplicate_channel_files": ["sub01.gdf"],
+                "gdf_duplicate_channel_details": [
+                    {
+                        "file": "sub01.gdf",
+                        "generated_bases": ["EEG"],
+                        "generated_channels": ["EEG-0", "EEG-1"],
+                        "message": "detail message",
+                    },
+                ],
+            },
+        )
 
         summary = facade.get_data_summary()
         assert summary["count"] == 1
         assert summary["files"] == ["sub01.set"]
         assert summary["events"] == 100
+        assert summary["runtime_signals"] == ["signal one"]
+        assert summary["gdf_duplicate_channel_files"] == ["sub01.gdf"]
 
     def test_set_reference_average(self):
         facade, _ = _make_facade()
         facade.preprocess.apply_rereference = MagicMock()
         facade.set_reference("average")
         facade.preprocess.apply_rereference.assert_called_once_with("average")
+
+    def test_get_preprocess_diagnostics(self):
+        facade, _ = _make_facade()
+        facade.preprocess.get_runtime_diagnostics = MagicMock(
+            return_value={
+                "runtime_signals": ["signal one"],
+                "gdf_duplicate_channel_files": ["sub01.gdf"],
+                "gdf_duplicate_channel_details": [
+                    {
+                        "file": "sub01.gdf",
+                        "generated_bases": ["EEG"],
+                        "generated_channels": ["EEG-0", "EEG-1"],
+                        "message": "detail message",
+                    },
+                ],
+            },
+        )
+
+        diagnostics = facade.get_preprocess_diagnostics()
+
+        assert diagnostics["runtime_signals"] == ["signal one"]
+        assert diagnostics["gdf_duplicate_channel_files"] == ["sub01.gdf"]
 
     def test_set_reference_channel(self):
         facade, _ = _make_facade()

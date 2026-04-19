@@ -34,6 +34,14 @@ class TestAgentManagerPrepareModelDeletion:
         m.agent_controller.worker.engine = None
         assert m.prepare_model_deletion("test") is True
 
+    def test_active_local_model_blocks_deletion(self):
+        """Deletion should fail closed instead of auto-switching to Gemini."""
+        m = _make_manager()
+        m.agent_controller.worker.engine.config.active_mode = "local"
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert m.prepare_model_deletion("test") is False
+        m.agent_controller.set_model.assert_not_called()
+
 
 class TestAgentManagerStartSystem:
     """Cover start_system paths."""

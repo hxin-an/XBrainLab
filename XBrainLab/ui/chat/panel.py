@@ -138,7 +138,7 @@ class ChatPanel(QWidget):
         toolbar_layout.addWidget(self.feature_btn)
 
         # Model Selector
-        self.model_btn = QPushButton("Model: Gemini ▼")
+        self.model_btn = QPushButton("Model: Local ▼")
         self.model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
 
@@ -214,29 +214,42 @@ class ChatPanel(QWidget):
             local_enabled = config.local_model_enabled
             local_runtime_ready = config.local_backend_ready()
             local_runtime_message = config.local_backend_status_message()
+            gemini_enabled = config.gemini_enabled
+            active_mode = config.active_mode
         except Exception:
             logger.debug("Failed to load LLM config for model menu", exc_info=True)
             local_enabled = True
             local_runtime_ready = True
             local_runtime_message = "Local runtime unavailable."
+            gemini_enabled = False
+            active_mode = "local"
 
-        modes = ["Gemini", "Local"]
-        for mode in modes:
-            action = QAction(mode, self)
+        local_action = QAction("Local", self)
+        if not local_enabled:
+            local_action.setEnabled(False)
+            local_action.setText("Local (Disabled)")
+            local_action.setToolTip("Enable Local Model in Settings (≡) to use.")
+        elif not local_runtime_ready:
+            local_action.setEnabled(False)
+            local_action.setText("Local (Unavailable)")
+            local_action.setToolTip(local_runtime_message)
+        else:
+            local_action.triggered.connect(
+                lambda checked, m="Local": self._set_model(m)
+            )
+        self.model_menu.addAction(local_action)
 
-            # Feature: Disable Local selection if disabled in settings
-            if mode == "Local" and not local_enabled:
-                action.setEnabled(False)
-                action.setText("Local (Disabled)")
-                action.setToolTip("Enable Local Model in Settings (⚙) to use.")
-            elif mode == "Local" and not local_runtime_ready:
-                action.setEnabled(False)
-                action.setText("Local (Unavailable)")
-                action.setToolTip(local_runtime_message)
-            else:
-                action.triggered.connect(lambda checked, m=mode: self._set_model(m))
+        if gemini_enabled:
+            gemini_action = QAction("Gemini (Remote)", self)
+            gemini_action.triggered.connect(
+                lambda checked, m="Gemini": self._set_model(m)
+            )
+            self.model_menu.addAction(gemini_action)
 
-            self.model_menu.addAction(action)
+        label = (
+            "Gemini (Remote)" if active_mode == "gemini" and gemini_enabled else "Local"
+        )
+        self.model_btn.setText(f"Model: {label} ▼")
 
     def connect_controller(self, controller: ChatController):
         """Connect to a backend ChatController for state synchronization.

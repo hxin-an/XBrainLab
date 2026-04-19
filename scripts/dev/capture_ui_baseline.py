@@ -20,7 +20,6 @@ from PIL import Image
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"

@@ -20,7 +20,6 @@ from PyQt6.QtWidgets import (
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
-
 _LABEL_SUFFIX_RE = re.compile(
     r"([_-]?(label|labels|event|events|annotation|annotations|target|targets))+$",
     re.IGNORECASE,

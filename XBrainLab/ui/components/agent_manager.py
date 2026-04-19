@@ -218,7 +218,8 @@ class AgentManager(QObject):
         """Prepare for model file deletion by switching away if active.
 
         Called by ``ModelSettingsDialog`` before deleting a model. If the
-        model is currently loaded in local mode, switches to Gemini.
+        model is currently loaded in local mode, block deletion until the
+        assistant is switched away from that active local backend.
 
         Args:
             model_name: The name of the model being deleted.
@@ -244,16 +245,15 @@ class AgentManager(QObject):
         # to release locks if the user is deleting the *local* model.
 
         if current_mode == "local":
-            logger.info("User deleting model while active. Switching to Gemini.")
-            # Switch to Gemini (or Dummy if Gemini not avail? Assuming Gemini is backup)
-            # Use set_model to trigger reinit via controller
-            self.agent_controller.set_model("Gemini")
-            # Wait for switch? it's async signals.
-            # But the interaction is modal dialog.
-            # The switch might take a moment.
-            # We assume effectively immediate config change + backend switch
-            # starts lock release.
-            return True
+            logger.info("Blocking deletion of active local model: %s", model_name)
+            QMessageBox.warning(
+                self.main_window,
+                "Local Model Active",
+                "The AI assistant is currently using the local backend.\n"
+                "Close the assistant or switch it away from Local before deleting "
+                "this model.",
+            )
+            return False
 
         return True
 

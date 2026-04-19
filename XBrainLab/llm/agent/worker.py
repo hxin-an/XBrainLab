@@ -111,13 +111,16 @@ class AgentWorker(QObject):
         if self.engine:
             return  # Already initialized
 
+        config = self._load_runtime_config()
+        if config.inference_mode == "local" and not config.local_backend_ready():
+            message = config.local_backend_status_message()
+            logger.warning("Local backend not ready during initialization: %s", message)
+            self.error.emit(f"Model Load Error: {message}")
+            return
+
         try:
             logger.info("Initializing LLM Engine...")
             self.log.emit("Loading AI Model...")
-
-            config = self._load_runtime_config()
-            if config.inference_mode == "local" and not config.local_backend_ready():
-                raise RuntimeError(config.local_backend_status_message())
 
             self.engine = LLMEngine(config)
             self.engine.load_model()

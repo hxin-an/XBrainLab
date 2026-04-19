@@ -243,6 +243,40 @@ def test_get_event_info(controller, mock_study):
     assert "C" in info["unique_labels"]
 
 
+def test_get_runtime_diagnostics(controller, mock_study):
+    d1 = MagicMock()
+    d1.get_runtime_signals.return_value = ["duplicate channels", "note one"]
+    d1.get_gdf_duplicate_channel_detail.return_value = {
+        "generated_bases": ["EEG"],
+        "generated_channels": ["EEG-0", "EEG-1"],
+        "message": "duplicate detail",
+    }
+    d1.get_filename.return_value = "A01T.gdf"
+
+    d2 = MagicMock()
+    d2.get_runtime_signals.return_value = ["note one", "note two"]
+    d2.get_gdf_duplicate_channel_detail.return_value = None
+
+    mock_study.loaded_data_list = [d1, d2]
+
+    diagnostics = controller.get_runtime_diagnostics()
+
+    assert diagnostics["runtime_signals"] == [
+        "duplicate channels",
+        "note one",
+        "note two",
+    ]
+    assert diagnostics["gdf_duplicate_channel_files"] == ["A01T.gdf"]
+    assert diagnostics["gdf_duplicate_channel_details"] == [
+        {
+            "file": "A01T.gdf",
+            "generated_bases": ["EEG"],
+            "generated_channels": ["EEG-0", "EEG-1"],
+            "message": "duplicate detail",
+        },
+    ]
+
+
 def test_run_import_labels(controller, mock_study):
     controller.label_service = MagicMock()
     controller.label_service.apply_labels_batch.return_value = 5  # 5 files updated

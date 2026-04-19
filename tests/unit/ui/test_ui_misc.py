@@ -389,7 +389,9 @@ class TestDatasetActionHandler:
         }
         handler.panel.controller.apply_labels_batch.return_value = 1
 
-        with patch.object(handler, "_filter_events_for_import", return_value=None) as mock_filter:
+        with patch.object(
+            handler, "_filter_events_for_import", return_value=None
+        ) as mock_filter:
             handler.import_label()
 
         mock_filter.assert_called_once_with([data_obj], None)
@@ -841,8 +843,9 @@ class TestAgentManagerDeep:
         worker = MagicMock()
         mgr.agent_controller.worker = worker
         worker.engine.config.active_mode = "local"
-        assert mgr.prepare_model_deletion("model") is True
-        mgr.agent_controller.set_model.assert_called_with("Gemini")
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert mgr.prepare_model_deletion("model") is False
+        mgr.agent_controller.set_model.assert_not_called()
 
     def test_prepare_model_deletion_gemini(self, mgr):
         mgr.agent_controller = MagicMock()

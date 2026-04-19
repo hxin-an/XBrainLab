@@ -123,6 +123,7 @@
 ## 目前規則
 
 - UI 驗證預設走 headless-safe 路徑
+- real-data IO integration 在這個 workspace 預設也走已驗證的 `--capture=sys` 路徑，避免把已知 flaky 的 default `fd` capture teardown 當成 dashboard 的 current truth
 - 產出的 baseline screenshot 會檢查是否缺檔、幾乎全黑，並和 approved references 比較
 - 預設 dashboard 走 fast gate：`ruff`、`basedpyright`、architecture compliance、startup、UI、real-data IO
 - `mypy` 改成 slower full gate，不再阻塞每一輪高頻 dashboard refresh

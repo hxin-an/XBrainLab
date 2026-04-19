@@ -347,8 +347,10 @@ class ModelSettingsDialog(QDialog):
         )
         if reply == QMessageBox.StandardButton.Yes:
             # SAFETY: Switch backend if this model is active
-            if self.agent_manager:
-                self.agent_manager.prepare_model_deletion(repo_id)
+            if self.agent_manager and not self.agent_manager.prepare_model_deletion(
+                repo_id
+            ):
+                return
 
             import shutil
 

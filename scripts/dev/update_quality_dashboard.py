@@ -311,10 +311,18 @@ def render_markdown(report: dict) -> str:
     status_icons = {"pass": "PASS", "warn": "WARN", "fail": "FAIL"}
     checks = report["checks"]
     profile = report.get("profile", "fast")
+    generated_at = datetime.fromisoformat(report["generated_at"]).astimezone()
+    display_offset = generated_at.strftime("%z")
+    display_offset = (
+        f"{display_offset[:3]}:{display_offset[3:]}" if len(display_offset) == 5 else ""
+    )
+    generated_at_display = (
+        f"{generated_at.strftime('%Y-%m-%d %H:%M:%S')} UTC{display_offset}"
+    )
     lines = [
         "# XBrainLab Quality Dashboard",
         "",
-        f"- Generated at: `{report['generated_at']}`",
+        f"- Generated at: `{generated_at_display}`",
         f"- Profile: `{profile}`",
         f"- Overall status: `{report['overall_status'].upper()}`",
         f"- Workspace: `{report['workspace']}`",
@@ -466,7 +474,10 @@ def build_checks_for_mode(*, include_slow_checks: bool) -> list[CheckResult]:
             key="io_integration",
             label="Real-Data IO Integration",
             category="io",
-            command=f"{POETRY} run pytest tests/integration/io/test_io_integration.py -q",
+            command=(
+                f"{POETRY} run pytest --capture=sys "
+                "tests/integration/io/test_io_integration.py -q"
+            ),
             ui=False,
         ),
     ]

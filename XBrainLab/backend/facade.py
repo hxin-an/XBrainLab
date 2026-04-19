@@ -126,8 +126,12 @@ class BackendFacade:
         filepath = raw.get_filepath()
         filename = raw.get_filename()
 
-        return mapping.get(filepath) or mapping.get(filename) or mapping.get(
-            os.path.basename(filepath),
+        return (
+            mapping.get(filepath)
+            or mapping.get(filename)
+            or mapping.get(
+                os.path.basename(filepath),
+            )
         )
 
     @staticmethod
@@ -170,7 +174,20 @@ class BackendFacade:
         if hasattr(self.dataset, "get_event_info"):
             summary.update(self.dataset.get_event_info())
 
+        if hasattr(self.dataset, "get_runtime_diagnostics"):
+            diagnostics = self.dataset.get_runtime_diagnostics()
+            if diagnostics:
+                summary.update(diagnostics)
+
         return summary
+
+    def get_preprocess_diagnostics(self) -> dict:
+        """Get runtime diagnostics for the current preprocess state."""
+        if hasattr(self.preprocess, "get_runtime_diagnostics"):
+            diagnostics = self.preprocess.get_runtime_diagnostics()
+            if diagnostics:
+                return diagnostics
+        return {}
 
     # --- Preprocessing Operations ---
     def apply_filter(

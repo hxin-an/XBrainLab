@@ -4,6 +4,861 @@
 
 ## 2026-04-19
 
+### Phase-3/4 audit closure：fast dashboard 的最後一個 prep-style red point 是過期的 AI shell reference，不是新的 runtime regression
+
+- 這輪是針對 `PLAN.md` 的 phase 3 / 4 做回頭 audit，而不是再往 phase 5 開新工作
+- 直接 rerun 的 phase-3/4 evidence 目前都還是健康：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui/test_e2e_qtbot.py -q` -> `20 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui/test_dialog_acceptance.py -q` -> `4 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_panel_event_bridges.py -q` -> `19 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `31 passed, 13 warnings`
+- 但 fast dashboard refresh 一開始並沒有回到全綠，而是卡在：
+  - `UI baseline drift: ai-assistant-open.png (size (1428, 800) vs ref (1440, 800))`
+- 這不是新的 startup / dialog / data regression，而是 `AQ-006` 把 AI shell 改成 local-first 之後，approved reference 還停在舊的 Gemini-default shell
+- 本輪處理：
+  - 將 `tests/baselines/ui/ai-assistant-open.png` 升級為目前已驗證的 local-first reference
+  - `tests/baselines/ui/README.md` 補上這個 reference promotion 的原因
+  - `.agents/runbooks/active-queue.md` 的 `AQ-PREP-008` 結果補上這次 baseline re-promotion
+  - `/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py` rerun 後已回到 `Overall status: PASS`
+- reviewer-ready status correction：
+  - `docs/current/STATUS_REPORT.md` 目前仍停在 `AQ-003`，已和 queue / triage / session log 脫節
+  - 下次 reviewer sync 應至少改成：
+    - `Current queue head`: no active repair item remains
+    - `Queue Summary`: reflect `AQ-001` to `AQ-006` all done
+    - `Main Risks To Watch`: replace stale `AQ-003` wording with current risks (`BUG-AGENT-001`, remaining 3 UI skips, slower mypy debt, and future phase-5 gating)
+
+### 第四階段 Repair Loop queue closure：AQ-001 到 AQ-006 現在都已收口，repair queue 暫時清空
+
+- 這輪不是只補文件，而是先重新跑完 phase-4 尾段的 focused slices 與 shared UI sweep，再把 queue/triage/log 一次對齊
+- 最新驗證基線：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q` -> `20 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q` -> `6 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/test_ui_misc.py -q` -> `191 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `782 passed, 3 skipped, 1 warning`
+- queue 已同步成：
+  - `.agents/runbooks/active-queue.md` -> `Repair Loop current queue is complete. No active repair items remain.`
+  - `AQ-005` -> `Done`
+  - `AQ-006` -> `Done`
+- 這代表第四階段目前定義的六個 repair items 都已有 focused evidence 與 shared UI 回歸驗證，不再停留在「只在 code 裡看起來修過」
+- 尚未自動打開下一階段 queue；目前只把 phase-4 current queue truthfully 收成完成狀態
+
+### AQ-006 closure：user-facing AI shell 不再默默把 local-first flow 洗成 Gemini remote fallback
+
+- 這輪把 phase-4 最後一條 agent-facing repair 面正式收掉
+- 最新固定的是 `BUG-AGENT-002`：
+  - active local model deletion 不再默默切去 Gemini
+  - `ModelSettingsDialog` 會尊重 deletion precondition failure
+  - chat model menu 現在把 `Local` 維持為主路徑，Gemini 只在明確啟用時出現，而且標成 `Gemini (Remote)`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/test_ui_misc.py -q` -> `191 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `782 passed, 3 skipped, 1 warning`
+- triage 現在的 boundary 更清楚了：
+  - `BUG-AGENT-002` fixed = user-facing silent remote fallback / remote-menu honesty
+  - `BUG-AGENT-001` still in progress = local model cache 缺口與 dedicated local bootstrap validation
+
+### AQ-005 closure：visualization selection drift 與過期 redesign-suite skip 現在都已收口
+
+- 這輪把 visualization 的最後兩塊 phase-4 repair 面一起收掉，而不是只修單一 panel bug
+- 最新固定的是 `BUG-VIZ-004`：
+  - harmless refresh (`training_stopped`) 不會再把使用者從有效的 fold/run selection 洗回第一個 trainer
+- 同輪也正式關掉 `BUG-ENV-001`：
+  - 舊的 `tests/unit/ui/test_visualization_panel_redesign.py` class-level skip 已被完全移除
+  - 該檔現在是 headless-safe、current-architecture-aligned 的 regression suite，而不是靠 skip 蓋住 stale patch/harness/API drift
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q` -> `20 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q` -> `6 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `782 passed, 3 skipped, 1 warning`
+- 重要結果：
+  - shared UI skip surface 已從先前的 visualization redesign debt 縮到其他檔案中的 3 個既有 skip
+  - 這代表 AQ-005 不只改善 runtime behavior，也真的把 validation surface 打開了
+  - phase-4 現在不再卡在「visualization 還有一整塊被 skip 蓋住」這種文件層假完成
+
+### AQ-004 第一批 evaluation-consistency closure：training complete refresh 不再把分析上下文洗回第一個 fold/run
+
+- 這輪正式把 queue head 從 AQ-003 往下推到 `AQ-004 Tighten evaluation consistency`
+- 最新收掉的是 `BUG-EVAL-004`：Evaluation panel 過去即使只是收到 harmless 的 `training_stopped` refresh，也會把使用者已經選好的 fold/run 重設成第一筆
+- 修正前的直接 offscreen repro：
+  - `before Fold 2: Plan B Average (Finished Runs)`
+  - `after Fold 1: Plan A Repeat 1 (Finished)`
+- 這條缺口不只是 average path，對剛完成後 label 會從 `Repeat 2` 變成 `Repeat 2 (Finished)` 的 specific run 也一樣會發生；根本原因是 `update_panel()` / `on_model_changed()` 每次都無條件回到 index `0`
+- 這輪修法保持很窄：
+  - `XBrainLab/ui/panels/evaluation/panel.py`
+    - `update_panel()` 現在會先記住目前的 plan/run selection
+    - refresh 後會先嘗試以 plan / record identity 保留選擇
+    - 再以 text label 當 fallback
+    - `on_model_changed()` 也同步接受 preferred run，避免在同一個 plan 內又被重設回第一筆
+- 新增 focused coverage：
+  - `tests/unit/ui/test_evaluation_panel_redesign.py`
+    - preserve `Fold 2 / Average` across `training_stopped`
+    - preserve a specific repeat even when its label changes from unfinished to finished
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q` -> `7 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `11 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `771 passed, 12 skipped, 1 warning`
+  - `ruff check XBrainLab/ui/panels/evaluation/panel.py tests/unit/ui/test_evaluation_panel_redesign.py` -> `All checks passed!`
+- 同輪同步：
+  - `.agents/runbooks/active-queue.md`
+    - `Repair Loop is active. Work AQ-005 first.`
+    - `AQ-004` -> `Done`
+  - `docs/current/BUG_TRIAGE.md`
+    - 新增 `BUG-EVAL-004`
+- reviewer-ready status wording suggestion：
+  - `最新變更`: `AQ-004` 已完成；Evaluation panel 現在會在 harmless refresh 後保留仍然有效的 fold/run selection，不再每次 training complete 就跳回第一個 plan
+  - `目前風險`: evaluation consistency 的第一條真 drift 已收口；剩餘高風險 UI 面改回 `AQ-005` 的 visualization runtime / validation surface
+  - `立刻下一步`: 依 queue 轉到 `AQ-005 Stabilize visualization validation and runtime behavior`，先找 visualization 是否也有對稱的 selection reset 或其他 runtime drift
+
+### AQ-003 第六批 training-state fanout closure：stale log 收掉後，AQ-003 可以正式關單
+
+- 這輪沒有再往別的 queue item 漂，而是把 AQ-003 最後一個「看起來小、但其實還在誤導 panel state」的缺口收掉
+- 最新確認的是 `BUG-TRAINING-007`：training panel 的 `Log` tab 過去只會在 `training_started` / `training_stopped` append 事件訊息，但在 `history_cleared` 或 `config_changed` 後不會同步清掉舊 log
+- 修正前的直接 offscreen repro：
+  - `before_clear Training started (event). | Training stopped (event).`
+  - `after_history_cleared Training started (event). | Training stopped (event).`
+  - `after_config_changed Training started (event). | Training stopped (event). | Training started (event). | Training stopped (event).`
+- 這輪修法保持很窄：
+  - `XBrainLab/ui/panels/training/panel.py`
+    - `_on_history_cleared()` 現在會先清 `log_text`
+    - `_on_config_changed()` 也會先清 `log_text`，避免舊 trainer / 舊 run 的 event log 殘留到新的 training state
+- 這輪不只補 stale-log regression，也把先前還只停在推測的 live-refresh 面做成直接覆蓋：
+  - `tests/unit/ui/training/test_training_panel.py` 新增 `training_updated` live progress / plot refresh case
+  - focused assertion 現在直接驗證 history-table progress 由 `1/5` 變成 `2/5`
+  - 同時驗證 plot epochs 由 `[1]` 變成 `[1, 2]`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q` -> `16 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q` -> `5 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q` -> `19 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `11 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `769 passed, 12 skipped, 1 warning`
+  - `ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py` -> `All checks passed!`
+- 同輪同步：
+  - `.agents/runbooks/active-queue.md`
+    - `Repair Loop is active. Work AQ-004 first.`
+    - `AQ-003` -> `Done`
+  - `docs/current/BUG_TRIAGE.md`
+    - 新增 `BUG-TRAINING-007`
+- queue closure wording：
+  - `AQ-003` 現在可視為完整收口
+  - result 應明確寫成：`BUG-EVAL-002/003`, `BUG-VIZ-002/003`, `BUG-TRAINING-003/004/005/006/007` 已固定；目前沒有再重現新的 training-state synchronization drift
+- reviewer-ready status wording suggestion：
+  - `最新變更`: `AQ-003` 已完成；最後一批 closure 收掉的是 `BUG-TRAINING-007`，training panel 的 stale event log 不會再在 `history_cleared` / `config_changed` 後殘留，並且 `training_updated` 的 live progress / plot refresh 現在有直接 focused coverage
+  - `目前風險`: training-state synchronization 這條線目前沒有再重現新的 drift；剩餘已知 UI 風險改回 `BUG-ENV-001` 的 visualization redesign stale coverage，以及下一個 queue head `AQ-004` 的 evaluation-consistency 面
+  - `立刻下一步`: 依 queue 轉到 `AQ-004 Tighten evaluation consistency`，先找 training-complete 後 cross-screen state alignment 的最小 drift
+
+### AQ-003 第五批 training-state fanout closure：training_updated 下的 auto-follow 與 manual pin 現在分清楚了
+
+- 這輪繼續留在 AQ-003，直接往 `training_updated` 的 selection semantics 深挖
+- 最新收掉的是 `BUG-TRAINING-006`：training panel 過去沒有一致區分 auto-managed plotting selection 和 user-pinned selection
+- 這條缺口在 repeat 轉換時最明顯：
+  - 如果太保守，panel 會一直卡在舊 selected record，錯過新的 active run
+  - 如果太積極，則會把使用者刻意選來看的舊 run 覆蓋掉
+- 這輪修法仍然保持很窄：
+  - `XBrainLab/ui/panels/training/panel.py`
+    - 新增 `_selection_pinned_by_user`
+    - `on_history_selection_changed()` 現在會把手動選擇標成 pinned
+    - `_select_preferred_plot_record()` 現在會區分 auto-managed 與 pinned selection
+    - `training_started` 仍可透過 `force_active=True` 強制切到新 active run
+    - `history/config` 清理路徑會把 pinned state 一起重置
+- 直接 symptom repro：
+  - auto-follow：`auto_before True [1, 2, 3]` / `auto_after True [1]`
+  - manual pin：`manual_after True True`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q` -> `13 passed`
+  - `ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py` -> `All checks passed!`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `766 passed, 12 skipped, 1 warning`
+- triage sync：
+  - `BUG-TRAINING-006` = training panel now auto-follows new active runs during `training_updated`, while preserving user-pinned historical selections
+- reviewer-ready queue/status wording suggestion：
+  - `AQ-003` should now reflect that ongoing-run selection policy itself is materially stronger, not just event bridges
+  - exact suggested wording:
+    - `Current focus: training-state fanout hardening now covers immediate active-run selection, trainer-invalidating clears, stale-selection replacement, and explicit auto-follow vs manual-pin behavior during training updates`
+    - `Evidence: /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `Result: BUG-TRAINING-003/004/005/006, BUG-EVAL-002/003, and BUG-VIZ-002/003 are fixed; training panel selection semantics now distinguish between active-run auto-follow and user-pinned historical inspection`
+    - `Next step: probe whether any remaining AQ-003 drift still lives in live progress/log refresh itself, rather than in record-selection or invalidation semantics`
+
+### AQ-003 第四批 training-state fanout closure：training panel 不再被舊 selected record 卡住
+
+- 這輪繼續留在 AQ-003，同一條 training-state sync 線再往內層收了一個比較隱蔽的缺口
+- 最新收掉的是 `BUG-TRAINING-005`：training panel 的 plotting selection 過去太保守，只要已經有 `current_plotting_record`，後續即使有新的 active run 或 replacement history，也不會自動切走
+- 修正前可直接重現的兩個症狀：
+  - 舊 record 還在選中時，`training_started` 後不會切到新的 active run
+  - 舊 record 已不在新的 history 內，但 history 仍非空時，panel 也不會換掉它
+- 這輪修法仍然保持很窄：
+  - `XBrainLab/ui/panels/training/panel.py`
+    - 新增 `_select_preferred_plot_record()`
+    - `update_loop()` 現在會先根據當前 history 決定應該追哪個 record
+    - `training_started` 會用 `force_active=True` 優先切到新的 active run
+    - 當切換 plotting record 時會重置 `_last_epoch_count`，避免因 epoch 數碰巧相同而漏刷 plot
+- 直接 symptom repro：
+  - `before_switch True [1, 2, 3]`
+  - `after_switch True [1]`
+  - `after_replace True [1, 2]`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q` -> `11 passed`
+  - `ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py` -> `All checks passed!`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `764 passed, 12 skipped, 1 warning`
+- triage sync：
+  - `BUG-TRAINING-005` = training panel now switches off stale selected records when a new active run starts or replacement history arrives
+- reviewer-ready queue/status wording suggestion：
+  - `AQ-003` should now reflect four concrete closure batches, with training panel selection-sync no longer lagging behind history changes
+  - exact suggested wording:
+    - `Current focus: training-state fanout hardening now covers immediate active-run selection, trainer-invalidating clears, and stale-selection replacement across the training/evaluation/visualization surfaces`
+    - `Evidence: /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `Result: BUG-TRAINING-003/004/005, BUG-EVAL-002/003, and BUG-VIZ-002/003 are fixed; stale selected records no longer block the training panel from following new active runs or replacement histories`
+    - `Next step: probe whether any remaining AQ-003 drift still depends on training_updated polling semantics, especially for live progress text, log growth, or delayed plot refresh during an ongoing run`
+
+### AQ-003 第三批 training-state fanout closure：training panel 自己的 active-run / stale-history sync 也收掉了
+
+- 這輪沒有離開 AQ-003，而是把 fanout 焦點從下游 evaluation/visualization 再拉回 training 主畫面自己
+- 最新收掉的是同一條 training-state sync 線上的兩個 training-panel 缺口：
+  - `BUG-TRAINING-003`：`training_started` 後不會立刻顯示 active run
+  - `BUG-TRAINING-004`：`config_changed` 後仍會保留 stale history / plotting state
+- 修法仍然保持很窄：
+  - `XBrainLab/ui/panels/training/panel.py`
+    - `_on_training_started()` 現在會立刻 `update_loop()`
+    - `_on_config_changed()` 現在不只重算 ready state，也會同步 `update_loop()`
+    - 新增 `_clear_training_display()`，統一清理 plots、selected record、epoch counter 與 history table
+    - `update_loop()` 在 controller history 變空時現在會主動走清理路徑，而不是留著舊 plotting state
+- 直接 symptom repro：
+  - `started_before 0 None`
+  - `started_after 1 Running True`
+  - `config_after 0 None -1`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q` -> `9 passed`
+  - `ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py` -> `All checks passed!`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `762 passed, 12 skipped, 1 warning`
+- triage sync：
+  - `BUG-TRAINING-003` = training panel now populates the active run immediately on `training_started`
+  - `BUG-TRAINING-004` = training panel now clears stale history / plotting state on trainer-invalidating `config_changed`
+- reviewer-ready queue/status wording suggestion：
+  - `AQ-003` should now reflect three concrete closure batches, not just downstream result panels
+  - exact suggested wording:
+    - `Current focus: training-state fanout hardening is underway across both the training panel and downstream result panels; history_cleared, config_changed, and training_started immediate-sync gaps are now narrowed substantially`
+    - `Evidence: /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `Result: BUG-TRAINING-003/004, BUG-EVAL-002/003, and BUG-VIZ-002/003 are fixed; active-run and trainer-invalidating event sync is now substantially stronger across the training/evaluation/visualization surfaces`
+    - `Next step: probe whether any remaining AQ-003 drift still depends on training_updated polling semantics, especially where live progress or log/plot refresh still waits on a page switch or delayed tick`
+
+### AQ-003 第二批 training-state fanout closure：config_changed 現在也會把 evaluation / visualization 的舊 plan/run 清掉
+
+- 這輪沿著 AQ-003 同一條 training-state fanout 線再往前推一格，沒有換主題
+- 最新確認的第二批 drift 不是 `training_started`，而是 `config_changed`
+- 這條比較像真產品面缺口，因為 training sidebar 的 data-splitting flow 會清 trainer；但修正前 `EvaluationPanel` / `VisualizationPanel` 都沒有聽 `config_changed`
+- 修正前的實際情況：
+  - Evaluation：`eval_before 1 Fold 1: Plan A 2` / `eval_after 1 Fold 1: Plan A 2`
+  - Visualization：`viz_before 2 Fold 1 (EEGNet) 2` / `viz_after 2 Fold 1 (EEGNet) 2`
+  - 也就是說，training-side config 變更就算已讓 trainer list 變空，下游 result panels 還是會把舊 plan/run 留在畫面上
+- 這輪修法仍然保持很窄：
+  - `XBrainLab/ui/panels/evaluation/panel.py` 補上 `config_changed -> update_panel`
+  - `XBrainLab/ui/panels/visualization/panel.py` 補上 `config_changed -> update_panel`
+  - 沒有碰 controller semantics，也沒有動 layout
+- 修正後的直接 symptom repro：
+  - Evaluation：`eval_before 1 Fold 1: Plan A 2` / `eval_after 1 No Data Available 0`
+  - Visualization：`viz_before 2 Fold 1 (EEGNet) 2` / `viz_after 1 Select a plan 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q` -> `5 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q` -> `19 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `11 passed`
+  - `ruff check XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_panel_event_bridges.py` -> `All checks passed!`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `760 passed, 12 skipped, 1 warning`
+- triage sync：
+  - `BUG-EVAL-003` = evaluation stale selection after `config_changed`
+  - `BUG-VIZ-003` = visualization stale selection after `config_changed`
+- reviewer-ready queue/status wording suggestion：
+  - `AQ-003` should now reflect that the first two concrete fanout batches are already closed
+  - exact suggested wording:
+    - `Current focus: keep downstream result surfaces honest when training-controller events invalidate or erase trainer state; the history_cleared and config_changed fanout gaps are now fixed`
+    - `Evidence: /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `Result: BUG-EVAL-002/003 and BUG-VIZ-002/003 are fixed; downstream evaluation/visualization selections no longer stay stale after history clears or trainer-invalidating config changes`
+    - `Next step: probe whether any remaining AQ-003 drift still depends on training_started or training_updated to expose active-run progress without requiring a page switch`
+
+### AQ-003 第一批 training-state fanout closure：history_cleared 現在會把 evaluation / visualization 的舊 plan/run 一起清掉
+
+- 這輪正式從 `AQ-003 Stabilize training state synchronization` 起跑，而且不是只收一個單點 bug，而是把同一條 training-history fanout 線上的兩個對稱 stale-state 一起收掉
+- 最新找到的第一批 drift 不是 `training_started` 或 `training_updated`，而是 `history_cleared`
+- 修正前的實際情況：
+  - `TrainingController.clear_history()` 會發 `history_cleared`
+  - `TrainingPanel` 自己有聽這個事件
+  - 但 `EvaluationPanel` / `VisualizationPanel` 都只聽 `training_stopped`
+  - 結果是 clear history 之後，下游 result panels 仍會保留舊的 plan/run，看起來像還有結果存在
+- 這輪修法保持很窄：
+  - `XBrainLab/ui/panels/evaluation/panel.py` 補上 `history_cleared -> update_panel`
+  - `XBrainLab/ui/panels/visualization/panel.py` 補上 `history_cleared -> update_panel`
+  - 沒有重做 controller，也沒有改動 layout / widget 結構
+- 直接 symptom repro：
+  - Evaluation 修正前：`eval_before 1 Fold 1: Plan A 2` / `eval_after 1 Fold 1: Plan A 2`
+  - Evaluation 修正後：`eval_before 1 Fold 1: Plan A 2` / `eval_after 1 No Data Available 0`
+  - Visualization 修正前：`viz_before 2 Fold 1 (EEGNet) 2` / `viz_after 2 Select a plan 2`
+  - Visualization 修正後：`viz_before 2 Fold 1 (EEGNet) 2` / `viz_after 1 Select a plan 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q` -> `4 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q` -> `18 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `9 passed`
+  - `ruff check XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_panel_event_bridges.py` -> `All checks passed!`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q` -> `756 passed, 12 skipped, 1 warning`
+- triage sync：
+  - `BUG-EVAL-002` = evaluation stale selection after `history_cleared`
+  - `BUG-VIZ-002` = visualization stale selection after `history_cleared`
+- reviewer-ready queue/status wording suggestion：
+  - `AQ-003` current result should no longer say only "find the first training-event fanout drift"; the first batch is now closed
+  - exact suggested wording:
+    - `Current focus: keep downstream result surfaces honest when training-controller events invalidate or erase training history; continue from the first history-cleared fanout closure into the remaining training-event sync gaps`
+    - `Evidence: /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q ; /mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `Result: BUG-EVAL-002 and BUG-VIZ-002 are fixed; history_cleared now clears stale evaluation/visualization plan-run state immediately instead of leaving old selections visible until manual refresh`
+    - `Next step: probe the remaining AQ-003 fanout surface for training_started / training_updated / config_changed gaps, starting with any downstream view that still depends on page switches or manual refresh to reflect active training progress`
+
+### AQ-002 第三個 downstream propagation closure：Visualization panel 現在會隨 preprocess invalidation 清掉舊的 plan/run
+
+- 這輪沿著 AQ-002 的同一條線，把第三個對稱的 downstream result surface 也收掉了
+- 最新找到的第三個真 drift 是：`VisualizationPanel` 只聽 `training_stopped`，沒聽 `preprocess_changed`
+- 而且這條比 evaluation 更深一點：舊版 `refresh_combos()` 在 trainers 消失時會直接 return，所以 stale plan/run 就算手動 refresh 也不會完整清掉
+- 修法仍然保持很窄：
+  - `XBrainLab/ui/panels/visualization/panel.py` 新增可注入的 `preprocess_controller`
+  - main-window 正常路徑下會自動 resolve parent study 的 preprocess controller
+  - `VisualizationPanel` 現在會對 `preprocess_changed` 走 `update_panel()`
+  - `refresh_combos()` 也會在沒有 trainers 時清空 plan/run combo，而不是保留舊 selection
+- 直接 symptom repro：
+  - 修正前：`initial 2 Fold 1 (EEGNet) 2` / `after_notify 2 Fold 1 (EEGNet) 2` / `after_manual_refresh 2 Select a plan 2`
+  - 修正後：`initial 2 Fold 1 (EEGNet) 2` / `after_notify 1 Select a plan 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q` -> `17 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `7 passed`
+  - `ruff check XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_panel_event_bridges.py` -> `All checks passed!`
+- 同輪同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) 把 `AQ-002` 收成 `Done`
+  - [BUG_TRIAGE.md](/mnt/d/repos/XBrainLab/docs/current/BUG_TRIAGE.md) 新增 `BUG-VIZ-001`
+  - [STATUS_REPORT.md](/mnt/d/repos/XBrainLab/docs/current/STATUS_REPORT.md) 最新變更 / 目前風險 / 立刻下一步，並把下一個 head 切到 `AQ-003`
+
+### AQ-002 第二個 downstream propagation closure：Evaluation panel 現在會隨 preprocess invalidation 清掉舊的 fold/run
+
+- 這輪延續 AQ-002，但沒有一口氣碰 visualization；先把下一個更小的 downstream result surface 收掉
+- 最新找到的第二個真 drift 是：`EvaluationPanel` 只聽 `training_stopped`，沒聽 `preprocess_changed`
+- 這讓 preprocess 一旦把 trainer/dataset downstream state 清掉，evaluation panel 仍可能保留舊的 fold/run selection，直到手動 refresh
+- 修法同樣保持很窄：
+  - `XBrainLab/ui/panels/evaluation/panel.py` 新增可注入的 `preprocess_controller`
+  - main-window 正常路徑下會自動 resolve parent study 的 preprocess controller
+  - `EvaluationPanel` 現在會對 `preprocess_changed` 走 `update_panel()`
+- 直接 symptom repro：
+  - 修正前：`initial 1 Fold 1: Plan A` / `after_preprocess_notify 1 Fold 1: Plan A` / `after_manual_refresh 1 No Data Available`
+  - 修正後：`initial 1 Fold 1: Plan A` / `after_notify 1 No Data Available 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q` -> `3 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `6 passed`
+  - `ruff check XBrainLab/ui/panels/evaluation/panel.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_panel_event_bridges.py` -> `All checks passed!`
+- 同輪同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) `AQ-002`
+  - [BUG_TRIAGE.md](/mnt/d/repos/XBrainLab/docs/current/BUG_TRIAGE.md) 新增 `BUG-EVAL-001`
+  - [STATUS_REPORT.md](/mnt/d/repos/XBrainLab/docs/current/STATUS_REPORT.md) 最新變更 / 目前風險 / 立刻下一步
+
+### AQ-002 第一個 downstream propagation closure：Training panel 現在會隨 preprocess invalidation 即時重算 ready state
+
+- 這輪先沒有擴大到 training/evaluation 的整條狀態鏈，而是把 `AQ-002` 收成一個最小可驗證閉環
+- 最新找到的第一個真 drift 是：`TrainingPanel` 只聽 `data_changed/import_finished`，沒聽 `preprocess_changed`
+- 這讓 preprocess 一旦把 epoch/dataset downstream state 清掉，training sidebar 的 `Start Training` 按鈕可能還停在舊的 ready state，直到切頁或手動 refresh
+- 修法保持很窄：
+  - `XBrainLab/ui/panels/training/panel.py` 新增可注入的 `preprocess_controller`
+  - main-window 正常路徑下會自動 resolve parent study 的 preprocess controller
+  - `TrainingPanel` 現在會對 `preprocess_changed` 走 `update_panel()`
+- 直接 symptom repro：
+  - 修正前：`initial True Start Training` / `after_notify True Start Training`
+  - 修正後：`initial True Start Training` / `after_notify False Please configure: Data Splitting`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q` -> `7 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q` -> `5 passed`
+  - `ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py tests/unit/ui/test_panel_event_bridges.py` -> `All checks passed!`
+- 同輪同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) `AQ-002`
+  - [BUG_TRIAGE.md](/mnt/d/repos/XBrainLab/docs/current/BUG_TRIAGE.md) 新增 `BUG-TRAINING-002`
+  - [STATUS_REPORT.md](/mnt/d/repos/XBrainLab/docs/current/STATUS_REPORT.md) 最新變更 / 目前風險 / 立刻下一步
+
+### AQ-PREP-009 收口，`Prep Complete` 重新成立
+
+- 這輪先把 `AQ-PREP-009` 的 `ruff` blocker 清到綠燈，再補上最貼近的驗證切片：
+  - `ruff check .` -> `PASS`
+  - `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `tests/unit/backend/load_data/test_event_loader_strict.py tests/unit/backend/load_data/test_raw_data_loader.py -q` -> `12 passed`
+  - `tests/unit/ui/dataset/test_import_label.py tests/unit/llm/tools/real/test_real_tools.py -q` -> `43 passed`
+  - `tests/unit/llm/core/test_config.py tests/unit/llm/agent/test_worker.py tests/unit/scripts/test_capture_ui_baseline.py -q` -> `39 passed`
+- 接著在同一輪把 `BUG-ENV-003` 的 accepted workaround 正式升級成 dashboard command：
+  - `scripts/dev/update_quality_dashboard.py` 的 real-data IO slice 現在預設走 `pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+  - `docs/current/QUALITY_DASHBOARD.md` 也同步寫明這是目前 workspace 的 accepted path
+- 刷新後的 fast dashboard：
+  - `python scripts/dev/update_quality_dashboard.py` -> `PASS`
+  - generated at `2026-04-19 16:16:52 UTC+08:00`
+- 同輪同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) phase 切回 `Repair Loop`
+  - `AQ-PREP-009` -> `Done`
+  - `AQ-002` -> `In progress`
+  - `BUG-ENV-005` 改成已收口的 fast-gate blocker
+  - `BUG-ENV-003` 改成 monitored flaky capture issue，accepted command 已從 workaround 升級成 dashboard truth
+- `AQ-002` kickoff baseline:
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/controller/test_preprocess_controller.py -q` -> `10 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q` -> `39 passed`
+
+### AQ-PREP-002 收口：six-workflow baseline 已重新變成 host-safe accepted evidence
+
+- 這輪沒有再重跑會把主機拖進 local-model bootstrap 的舊 AI-shell 路徑，而是直接把 `tests/integration/ui/test_e2e_qtbot.py` 的 AI dock toggle case 收成更窄、更安全的 shell baseline
+- `TestAIAssistantDock.test_toggle_ai_dock` 現在在測試內 stub `AgentManager.start_system()`，所以它驗證的是：
+  - AI button checked state
+  - dock visibility toggle
+  - 不再在 Prep Gate baseline 裡直接初始化 local backend
+- 驗證結果：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui/test_e2e_qtbot.py -q` -> `20 passed`
+- 同輪同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) 把 `AQ-PREP-002` 改回 `Done`
+  - `AQ-PREP-009` 成為目前唯一剩餘的 prep blocker
+  - `BUG-AGENT-001` 改成不再把 `test_e2e_qtbot.py` 當作當前 accepted repro；Prep Gate shell baseline 與 local-startup bug 現在已分離
+
+### Prep Gate recheck: `Repair Loop` claim revoked pending fresh prep evidence
+
+- 這輪沒有接受 shared docs 先前已寫下去的 `Repair Loop` 敘事，而是重新逐條對照 prep-complete criteria、queue/status/triage/session log 與 fresh command evidence
+- 重新確認仍然成立的 prep evidence：
+  - `timeout 25s xvfb-run -a /home/administrator/.local/bin/poetry run python run.py` -> 到 `MainWindow initialized`
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py` -> 重新生成 shell、五個 panel、`ai-assistant-open.png`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui/test_dialog_acceptance.py -q` -> `4 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_main_window_sync.py tests/unit/ui/test_panel_event_bridges.py -q` -> `12 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `31 passed, 13 warnings`
+  - `/home/administrator/.local/bin/poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- 但這輪也確認兩條不能帶著進 Repair Loop 的 prep gap：
+  - six-workflow 既有 accepted command `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q` 在本輪 recheck 會走進 AI-shell local startup，記錄 `Loading local model: Qwen/Qwen2.5-7B-Instruct on cpu` / `Loading checkpoint shards`，並把 host 拖到不安全狀態，所以這條證據目前不能當作「六條 workflow 已安全 runtime-verified」
+  - `/home/administrator/.local/bin/poetry run ruff check .` 這輪直接重跑是 `22 errors`，而 shared docs 自己先前已把 fast static gate 定義為 prep-exit blocker，所以 phase 不能一邊保留 blocker，一邊又宣稱 prep complete
+- 同輪同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) phase 改回 `Prep Gate`
+  - reopened `AQ-PREP-002`：重建 host-safe 的 six-workflow / AI-shell baseline evidence
+  - reopened `AQ-PREP-009`：處理或重判仍為紅燈的 `ruff` prep-exit blocker
+  - `BUG-AGENT-001` 新增這次 AI-shell workflow rerun 造成 host 不安全的證據
+  - `BUG-ENV-005` 更新到這輪最新的 `ruff` direct rerun truth
+
+### AQ-001 收口：preprocess guardrail 已補上，normalization 暫時 defer
+
+- 這輪把 `BUG-DATASET-007` 的 ambiguity detail 再往前接到 preprocess stage，而不是直接衝進高風險 normalization
+- 新增共用 `collect_runtime_diagnostics()` helper，讓 dataset controller 與 preprocess controller 能用同一套 aggregation 邏輯
+- `PreprocessController.get_runtime_diagnostics()` 現在會暴露：
+  - `runtime_signals`
+  - `gdf_duplicate_channel_files`
+  - `gdf_duplicate_channel_details`
+- `BackendFacade.get_preprocess_diagnostics()` 也已接上同一份 preprocess-stage diagnostics
+- channel-sensitive real preprocess tools 現在會附加 guardrail note：
+  - `RealStandardPreprocessTool`
+  - `RealRereferenceTool`
+  - `RealChannelSelectionTool`
+  - `RealSetMontageTool`
+- 這讓 real GDF ambiguity 不只停在 import / dataset summary，而會在 channel selection、re-reference、standard preprocess、montage confirmation 的 agent-facing path 直接被說明
+- 驗證結果：
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/controller/test_preprocess_controller.py -q` -> `10 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q` -> `39 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/tools/real/test_real_tools.py -q` -> `21 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/pipeline/test_all_real_tools.py::TestAllRealTools::test_channel_selection_tool tests/integration/pipeline/test_all_real_tools.py::TestAllRealTools::test_set_montage_tool -q` -> `2 passed, 2 warnings`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `31 passed, 13 warnings`
+  - `poetry run ruff check ...` on the touched code/test files -> `All checks passed!`
+- 同輪已同步：
+  - [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) 把 `AQ-001` 改成 `Done`
+  - `AQ-002` 現在成為新的 active queue head
+  - `BUG-DATASET-007` 的 notes 改成「guardrail 先到位，normalization defer」
+
+### AQ-001 再往上接一層：dataset summary 與 real dataset-info tool 現在會暴露 GDF ambiguity
+
+- 這輪沒有去碰高風險的 duplicate-name normalization，而是把既有 `Raw` detail 再接到更高層的 dataset diagnostics
+- 新增 `DatasetController.get_runtime_diagnostics()`
+  - 聚合：
+    - `runtime_signals`
+    - `gdf_duplicate_channel_files`
+    - `gdf_duplicate_channel_details`
+- `BackendFacade.get_data_summary()` 現在會把這些 diagnostics 帶上去
+- `RealGetDatasetInfoTool` 也開始直接把 GDF duplicate-channel ambiguity 說出來，而不是只回傳載入數量
+- 同輪已把 [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md) 的 `AQ-001` wording 同步到這個新 closure，不再留 pending queue sync
+- 驗證結果：
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/controller/test_dataset_controller.py -q` -> `18 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q` -> `38 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/tools/real/test_real_tools.py -q` -> `19 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `31 passed, 13 warnings`
+
+### AQ-001 再收一格：把 GDF duplicate-channel detail 變成 typed Raw API
+
+- 這輪沒有直接進入高風險的 duplicate-name normalization，而是先把現有 `gdf_duplicate_channel_names` structured detail 再收斂成 `Raw` 的 typed convenience API
+- `Raw` 現在新增：
+  - `has_gdf_duplicate_channel_detail()`
+  - `get_gdf_duplicate_channel_detail()`
+- 這讓後續 dataset / preprocess diagnostics 不需要再硬編碼 runtime-detail key，就能拿到 duplicate-channel ambiguity；比較符合 AQ-001 現階段先做 guardrail、再決定是否 normalization 的節奏
+- 同步更新了 unit / integration coverage：
+  - `tests/unit/backend/load_data/test_raw.py`
+  - `tests/unit/backend/load_data/test_raw_data_loader.py`
+  - `tests/integration/io/test_io_integration.py`
+- 驗證結果：
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw.py -q` -> `32 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw_data_loader.py -q` -> `5 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `30 passed, 12 warnings`
+- 同輪嘗試把 AQ-001 的新 wording 寫回 `.agents/runbooks/active-queue.md` 時，目標路徑仍回 `OSError: [Errno 30] Read-only file system`
+- 依目前 executor 規則，這代表 host write failure，而不是 repo 權限錯誤；因此本輪先把 pending queue sync 明寫在 human-facing docs，等下個可寫 cycle 再回補 queue
+
+### 控制面簡化：回到 `active-queue + STATUS_REPORT`
+
+- 這輪把三角色機制的共享控制面做了收斂
+- 原因是先前的 `reviewer-handoff.md` / `pending-sync.md` 中心化機制，在 heartbeat host write failure 下太容易和 `active-queue.md`、`STATUS_REPORT.md` 分裂，讓 executor 被 stale handoff 綁住
+- 新規則：
+  - `active-queue.md` 是主要 queue / phase surface
+  - `STATUS_REPORT.md` 是主要人類可讀 correction / current-truth surface
+  - reviewer 透過更新 queue/status 做定期校正，不再用 handoff 檔逐步遙控 executor
+  - `reviewer-handoff.md`、`pending-sync.md` 只保留成過渡/診斷用途
+- 同步把 repo role docs、runbooks、session prompts 都改成這個簡化版，避免文件和 heartbeat prompt 繼續分裂
+- 這輪也把 human-facing phase 重新對齊到 `Repair Loop`，避免 `active-queue.md` 已進 repair loop、但 `STATUS_REPORT.md` 還停在較舊的 prep-gate 控制敘事
+
+### `Prep Gate` 已明確切到 `Repair Loop`
+
+- 這輪先依 queue 現況與 prep-complete criteria 做 explicit prep-exit review，確認目前列出的 prep items 都已完成，沒有新的 same-phase blocker 需要再掛回 prep item
+- 隨後同步 [active-queue.md](/mnt/d/repos/XBrainLab/.agents/runbooks/active-queue.md)：
+  - `Current phase` -> `Repair Loop`
+  - `AQ-001 Strengthen dataset import and label import reliability` -> `In progress`
+- 這讓 queue 不再停在 pseudo-prep limbo；`AQ-001` 現在正式成為新的 queue head
+
+### AQ-001 第一個 repair-loop closure：GDF duplicate-channel ambiguity 升級成 structured runtime detail
+
+- 這輪沒有直接做高風險 channel-name normalization，而是先把 `BUG-DATASET-007` 往更可操作的 guardrail 推一格
+- `Raw` 現在除了保留 `runtime_signals`，也能保存 structured runtime details
+- `load_gdf_file()` 在偵測到 MNE duplicate-name auto-rename 後，現在會把 `gdf_duplicate_channel_names` detail 寫進 `Raw`
+  - 內容包含：
+    - `generated_bases`
+    - `generated_channels`
+    - `message`
+- 這讓 downstream dataset / preprocess / diagnostics work 不需要再靠 logger/stderr 或字串 parsing 才能知道 real GDF import 曾依賴 MNE auto-rename
+- 驗證結果：
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw.py -q` -> `32 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw_data_loader.py -q` -> `5 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `30 passed, 12 warnings`
+
+### Reviewer fallback：host write failure 下的暫代 handoff
+
+- 這輪 reviewer 重新檢查後，判定目前仍屬於 `3. Prep Gate Before Stable Bug Fixing`，但 phase alignment 已是 `drifting`
+- 主要原因不是 executor 跑偏，而是 queue 已把 `AQ-PREP-005`、`AQ-PREP-006`、`AQ-PREP-009`、`AQ-PREP-010` 都關閉，下一個正確動作應該是 explicit prep-exit review / queue refresh；現存 `reviewer-handoff.md` 仍停在較舊的 prep-item 指令
+- 本輪 same-session write probe 結果：
+  - `.agents/runbooks/reviewer-handoff.md` -> `OSError: [Errno 30] Read-only file system`
+  - `.agents/runbooks/pending-sync.md` -> `OSError: [Errno 30] Read-only file system`
+  - `docs/current/STATUS_REPORT.md` -> `WRITE_OK`
+  - `docs/history/SESSION_LOG.md` -> `WRITE_OK`
+- 因此依 reviewer fallback 規則，這輪把 pending directive 直接鏡射到 human-facing docs，並明確標記為 host environment write failure，而不是 repo 檔案權限問題
+- 暫代 reviewer 指令：
+  - `Current phase`: `3. Prep Gate Before Stable Bug Fixing`
+  - `Primary emphasis`: `3. Prep Gate Before Stable Bug Fixing`
+  - `Phase alignment`: `drifting`
+  - `Status`: `reprioritize`
+  - `Required action for executor`: 下一輪先做 explicit prep-exit review 和 queue refresh，而不是再做一輪泛化的 `AQ-PREP-005`。若 prep-complete criteria 已滿足，就正式切到 repair loop 並讓 `AQ-001` 成為新 queue head；若仍有未滿足條件，就新開一條具體 prep item 明確命名剩餘 blocker。
+  - `Risks to watch`: pseudo-prep limbo、重開已關閉 prep item、以及在未寫下 phase / queue transition 前就滑進 repair-loop 或 redesign work
+
+### AQ-PREP-010 也已收口，prep item list 全數關閉
+
+- 在確認 `scripts/dev/update_quality_dashboard.py` 已經支援 `--skip-if-fresh-minutes 60`、而 `docs/current/QUALITY_DASHBOARD.md` 也已經把這條 command 寫進人類入口之後，這輪直接處理 `AQ-PREP-010` 的最後閉環
+- 先用 `automation_update` 檢視並更新現有 thread heartbeat `xbrainlab-executor`
+- 更新後的 automation prompt 現在明確寫著：
+  - 當 `AQ-PREP-010` 是 top eligible item 時
+  - 先跑 `/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py --skip-if-fresh-minutes 60`
+  - 若 saved dashboard artifact 與 direct rerun 衝突，以 direct rerun 為準
+- 隨後同步 `.agents/runbooks/active-queue.md`，把 `AQ-PREP-010` 改成 `Done`
+- 到這一步為止，queue 內目前列出的 prep items 都已經關閉；剩下不再是新的 prep triage item，而是顯式 phase / queue refresh 是否要切出 `Prep Gate`
+
+### AQ-PREP-005 / AQ-PREP-006 / AQ-PREP-009 一起收口，AQ-PREP-010 成為下一個 top eligible item
+
+- 這輪沒有停在單一 bug wording，而是把三個 prep item 一次收成完成態：
+  - `AQ-PREP-005` -> `Done`
+  - `AQ-PREP-006` -> `Done`
+  - `AQ-PREP-009` -> `Done`
+- `AQ-PREP-005` 的收口結果：
+  - real GDF duplicate-name ambiguity 已穩定落在 `BUG-DATASET-007`
+  - default-capture teardown 只維持 `BUG-ENV-003` 的 flaky workspace signal framing
+  - unattended UI pytest blocker 維持 `BUG-ENV-004`
+  - AI local startup 維持 `BUG-AGENT-001`，而且這輪又用 config probe 把剩餘 blocker 縮到「local model cache 不存在」
+  - visualization 則維持單一 `BUG-ENV-001`，不另拆第二條 VTK runtime bug
+- `AQ-PREP-006` 的收口依據是 repo 內的 local-only / Codex assumptions 現在都已有穩定入口：
+  - `AGENTS.md`
+  - `.agents/stack.md`
+  - `.agents/runbooks/setup.md`
+  - `.agents/runbooks/autopilot.md`
+  - `.agents/runbooks/pending-sync.md`
+  - `docs/index.md`
+  - `docs/thesis/`
+- `AQ-PREP-009` 的收口依據是直接 gate truth 已固定：
+  - `/home/administrator/.local/bin/poetry run ruff check .` -> `20 errors`
+  - `/home/administrator/.local/bin/poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `/home/administrator/.local/bin/poetry run mypy XBrainLab/` -> `7 errors in 5 files`
+  - `/home/administrator/.local/bin/poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+- 因為 005/006/009 都已關掉，queue 內下一個 top eligible prep item 現在變成 `AQ-PREP-010 Keep the quality dashboard refreshed automatically`
+
+### AQ-PREP-005 / AQ-PREP-009 wording 再對齊成同一組 current truth
+
+- 這輪先重新讀回 shared runbooks、reviewer handoff、queue、status、triage 與 session log，確認目前仍要留在 `AQ-PREP-005`
+- 再把 `tests/unit/ui/test_visualization_panel_redesign.py` 與現行 visualization panel code 對照一遍，讓 `BUG-ENV-001` 的剩餘 stale surface 不再只停在籠統的 `stale API/test drift`
+- 目前更具體的三個 drift cluster 已經能說清楚：
+  - sidebar extraction drift：`AggregateInfoPanel` 與 `btn_montage` 都已搬到 `ControlSidebar`
+  - 缺少 Qt harness：這份 unittest-style redesign file 的 no-skip 路徑沒有自己的 `QApplication`
+  - legacy widget/panel API expectations：`refresh_data`、`plot_layout`、`plot_3d_head.os`、combo assumptions、以及 topomap close semantics 都與現行實作不符
+- 同一輪也重新直接重跑 static gate，避免 human docs 還同時引用互相衝突的 `basedpyright` 敘述：
+  - `/home/administrator/.local/bin/poetry run ruff check .` -> `20 errors`
+  - `/home/administrator/.local/bin/poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- 這讓 `BUG-ENV-005` 的 current truth 再次收斂：
+  - fast static gate 這個類別仍是 prep-exit blocker
+  - 但目前 concrete red fast blocker 是 `ruff`
+  - `basedpyright` 這輪是綠燈，不該再被當成目前紅燈引用
+  - slower `mypy` 仍維持 monitored full-gate debt
+- 同一輪直接同步：
+  - `.agents/runbooks/active-queue.md`
+  - `docs/current/STATUS_REPORT.md`
+  - `docs/current/BUG_TRIAGE.md`
+
+### AQ-PREP-005 queue wording 已補齊
+
+- 這輪在宿主切回可寫後，再次重試 `.agents/runbooks/active-queue.md` 的 current-item recordkeeping
+- same-session write probe 這次已通過：
+  - `.agents/runbooks/active-queue.md` -> `ACTIVE_QUEUE_WRITE_OK`
+- 隨後把 `AQ-PREP-005 -> visualization headless fragility and skip boundaries` 真正同步到最新 framing：
+  - repo-visible boundary 仍是 redesign suite `9 skipped`
+  - current boundary 是 collection/import pollution 已隔離、`TestSaliency3DEngine` 已綠燈、仍無獨立重現的 VTK runtime-ordering crash
+  - bug-record decision 維持單一 `BUG-ENV-001`，不拆第二條獨立 VTK runtime bug
+  - next step 改成把這個剩餘 surface 當成 stale-test repair boundary 繼續收斂
+- 同一輪也把 `docs/current/STATUS_REPORT.md` 裡舊的 pending queue-sync 註記收掉，避免 human-facing docs 還停在 host write-failure fallback 狀態
+
+### AQ-PREP-005 redesign-suite class skip 再收斂成 stale-coverage surface
+
+- 這輪沿著 `AQ-PREP-005` 裡 `visualization headless fragility and skip boundaries` 的剩餘 next step，直接檢查 `tests/unit/ui/test_visualization_panel_redesign.py` 那條 class-level skip 背後到底是 monitored debt 還是已可落成更具體的 bug 面
+- 先做 temp no-skip 對照，不修改 repo 本體：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip.py -q`
+  - 結果：`9 failed`
+  - 九個 case 都先卡在過期 patch target `XBrainLab.ui.panels.visualization.panel.AggregateInfoPanel`
+- 接著在第二個 temp copy 只修正這個 patch target：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip_patchfix.py -q`
+  - 結果：process `Aborted`
+  - traceback 停在 `self.MockAggregateInfoPanel.return_value = QWidget()`，代表這份 unittest file 在 no-skip 路徑下連最基本的 Qt app harness 都還沒補上
+- 最後在第三個 temp copy 同時補上：
+  - 正確的 `AggregateInfoPanel` patch target
+  - 最小 `QApplication` bootstrap
+  - 驗證：
+    - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip_qapp.py -q`
+    - 結果：`8 failed, 1 passed`
+- 這個 no-skip + qapp 路徑揭露的已是更具體的 stale API/test drift，而不是先撞到獨立的 VTK/Qt segfault：
+  - `XBrainLab.ui.panels.visualization.plot_3d_head.os` patch target 無效
+  - `VisualizationPanel.refresh_data` 不存在
+  - `VisualizationPanel.btn_montage` 不存在
+  - `SaliencyTopographicMapWidget.plot_layout` 不存在
+  - `plan_combo.count()` 等舊 UI 假設已不再成立
+  - topomap `plt.close` 的行為預期也已過期
+- 這讓 `BUG-ENV-001` 又往前縮一格：
+  - collection-time pollution 已隔離
+  - `TestSaliency3DEngine` engine-basics slice 已在正常 pytest path 綠燈
+  - redesign suite 的 class-level skip 現在更像是在遮住 stale coverage surface，而不是在隔離一條已證實的第二條 VTK runtime bug
+- 同一輪把這個 framing 同步回：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+- 同輪也把 bug-record decision 先收斂成：`BUG-ENV-001` 目前維持單一 bug record，不另拆第二條獨立的 VTK runtime bug；因為 no-skip 路徑仍先暴露 stale patch/harness/API drift，而不是 post-harness-corrected runtime crash
+- 另外做了 same-session write probe：
+  - `docs/current/STATUS_REPORT.md`、`docs/current/BUG_TRIAGE.md`、`docs/history/SESSION_LOG.md` 都可正常寫入
+  - 只有 `.agents/runbooks/active-queue.md` 持續回 `OSError: [Errno 30] Read-only file system`
+- 依 autopilot / executor fallback，這輪把 pending queue sync wording 明確鏡射到 human-facing docs，避免下一個可寫循環退回舊 framing：
+  - repo-visible boundary：redesign suite 仍是 `9 skipped`
+  - current boundary：collection/import pollution 已隔離、`TestSaliency3DEngine` 已綠燈、仍無獨立重現的 VTK runtime-ordering crash
+  - next step：把剩餘 surface 當成 stale-test repair boundary 繼續收斂，而不是第二條 VTK bug
+
+### AQ-PREP-005 stale engine skip 已退休
+
+- 在確認 collection-time pollution 已被隔離之後，這輪直接處理剩下最明顯的過期邊界：`tests/unit/ui/test_visualization.py` 內 `TestSaliency3DEngine` 的硬編碼 `@pytest.mark.skipif(True, ...)`
+- 先重新確認同一個 UI / integration 範圍裡已沒有其他 collection-time `saliency_3d_engine` 汙染源；`rg` 結果顯示 relevant mock surface 仍集中在 `tests/unit/ui/test_visualization_panel_redesign.py`
+- 接著移除 `TestSaliency3DEngine` 上那層過期 skip guard，直接用現有 headless-safe pytest 路徑驗證：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py -q`
+  - 結果：`14 passed`
+- 對照確認 redesign suite 本身仍維持原有窄邊界：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q`
+  - 結果：`9 skipped`
+- 這讓 `BUG-ENV-001` 再往前縮一格：
+  - engine-basics slice 已不再依賴硬編碼 skip
+  - collection-time pollution 已被隔離
+  - 剩餘可見的 headless visualization risk 已收斂到 redesign suite 的 class-level skip，而不是 `TestSaliency3DEngine` 或獨立重現的 runtime-ordering fail
+- 同一輪也把這個新 framing 直接同步回：
+  - `.agents/runbooks/active-queue.md`
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+
+### AQ-PREP-005 runtime-signal triage 再次縮小兩條邊界
+
+- 先前 `BUG-ENV-003` 曾在完整 real-data IO slice 上重現 default-capture teardown failure
+- 但本輪重新切分後，`test_io_integration.py` 的四個大群各自單跑都能在預設 capture 下通過：
+  - 基本 GDF / invalid-file group -> `4 passed`
+  - supported real-format load group -> `8 passed`
+  - supported real-format facade group -> `8 passed`
+  - public real-format load + facade group -> `10 passed`
+- 接著直接重跑完整指令：
+  - `/home/administrator/.local/bin/poetry run pytest tests/integration/io/test_io_integration.py -q`
+  - 結果：`30 passed, 12 warnings`
+- 同一條完整指令在同一 workspace 再連跑 `3` 次，也全部通過：
+  - `RUN=1` -> `30 passed, 12 warnings`
+  - `RUN=2` -> `30 passed, 12 warnings`
+  - `RUN=3` -> `30 passed, 12 warnings`
+- 這讓 `BUG-ENV-003` 的定位從「目前穩定重現的 blocker」收斂成「先前曾明確出現、但目前尚未能穩定再現的 flaky workspace signal」
+- 用 repo 內的 headless-safe helper 重新收斂 visualization 風險：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py -q`
+  - 結果：`11 passed, 3 skipped`
+  - 三個 skip 全都集中在 `TestSaliency3DEngine`
+  - skip reason 明確指出這是 ordering-dependent 的 VTK / Qt global state 問題，而不是整個 visualization test slice 普遍壞掉
+- 這一輪沒有修功能碼；主要成果是把 `AQ-PREP-005` 的兩條剩餘 runtime signal 從「模糊風險」推進成更可行動的 triage 邊界
+- 同步更新：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+- 補充限制：
+  - `.agents/runbooks/active-queue.md` 在目前 sandbox 下是唯讀，因此這輪 evidence 先寫回 human-facing docs 與 session log
+
+### BUG-ENV-001 skip-policy evidence 收斂
+
+- 這輪重新檢查後，發現 `TestSaliency3DEngine` 目前不是「在 suite 裡才 skip、單跑就會過」
+- 直接跑 nodeid：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py::TestSaliency3DEngine -q`
+  - 結果：`3 skipped`
+- 原因也更清楚了：該 class 現在被 `@pytest.mark.skipif(True, ...)` 無條件跳過，所以註解裡的 workaround 說明已經過期
+- 但在 repo 的 Poetry 環境中跑等價 isolation snippet：
+  - `/home/administrator/.local/bin/poetry run python - <<'PY' ... Saliency3DEngine ... PY`
+  - 結果：`isolated-engine-check: PASS`
+- 這讓 `BUG-ENV-001` 的描述更精確：
+  - 目前真正的缺口不是 engine case 本身已確認壞掉
+  - 而是 pytest coverage 還依賴硬編碼 skip，尚未把 VTK / Qt global-state ordering 風險收斂成可重現的最小 fail path
+- 同步更新：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+
+### BUG-ENV-001 最小污染源再收斂
+
+- 這輪把 visualization 風險從「模糊 ordering 問題」再縮到更具體的 import 污染證據
+- 在乾淨的 Poetry process 內：
+  - `/home/administrator/.local/bin/poetry run python - <<'PY' ... Saliency3DEngine ... PY`
+  - 結果：`baseline_engine_type Saliency3DEngine`
+- 但只要先 import `tests.unit.ui.test_visualization_panel_redesign`：
+  - `/home/administrator/.local/bin/poetry run python - <<'PY' ... import tests.unit.ui.test_visualization_panel_redesign ... PY`
+  - 結果：
+    - `saliency_engine_module_type MagicMock`
+    - `engine_attr_type MagicMock`
+- 後續再 import engine 時也只會拿到：
+  - `post_redesign_import <MagicMock ...>`
+- 這代表目前更具體的污染源不是抽象的「VTK/Qt 有時候會亂掉」，而是 `test_visualization_panel_redesign.py` 在模組層對 `sys.modules` 的全域 mock 會直接改寫 backend visualization import surface
+- 因此 `BUG-ENV-001` 現在應拆成兩層來看：
+  - policy side：`TestSaliency3DEngine` 仍被硬編碼 skip
+  - pollution side：visualization redesign test module 會污染後續 import surface
+- 同步更新：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+
+### AQ-PREP-005 collection-pollution 最小隔離面已驗證
+
+- 這輪沒有停在 triage wording，而是直接驗證 queue 裡寫出的最小 repair-facing direction
+- 針對 `tests/unit/ui/test_visualization_panel_redesign.py`，將原本會在模組層發生的 `sys.modules` mock 與 UI imports 收進 class lifecycle，讓 collection 階段不再觸發 import side effect
+- 驗證結果：
+  - `/home/administrator/.local/bin/poetry run python - <<'PY' ... pytest.main(['--collect-only', '--capture=sys', '-q', 'tests/unit/ui/test_visualization_panel_redesign.py']) ... PY`
+  - 結果：`9 tests collected`
+  - `after_collect_module_type MISSING`
+- 進一步對照：
+  - 先 collect redesign test，再在同一 process 暫時中和 `pytest.mark.skipif` 執行 `TestSaliency3DEngine`
+  - 結果現在變成：
+    - `test_creates PASS`
+    - `test_update_scalars_returns_none_when_no_data PASS`
+    - `test_on_download_complete_error PASS`
+- 另外也用現有 headless-safe harness 重跑 redesign test file 本身：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q`
+  - 結果：`9 skipped`
+- 這讓 `BUG-ENV-001` 的邊界再前進一格：先前已確認的 collection/import pollution 現在已有最小隔離方式，而且隔離後沒有再看到獨立的 runtime-ordering fail；剩餘更明確的缺口回到過期的 `TestSaliency3DEngine` skip policy
+
+### AQ-PREP-005 queue sync 後的 forced-engine validation 再收斂
+
+- 先依角色校正把 `.agents/runbooks/active-queue.md` 的 `AQ-PREP-005` 當前項目同步完成
+- 這輪更新的是同一個 queue item 裡的兩段 current focus：
+  - `unattended UI pytest in the current /mnt/d Codex workspace now has a clearer blocker than the older capture note`
+  - `visualization headless fragility and skip boundaries`
+- 對 `BUG-ENV-001`，queue 現在已同步最新 evidence、boundary wording、workaround 與 next-step 描述，不再停在較舊的 ordering-failure 說法
+- 接著直接完成 queue 裡寫的下一步：驗證在排除 `test_visualization_panel_redesign.py` collection pollution 後，`TestSaliency3DEngine` 是否還能單獨重現真正的 runtime fail
+- 乾淨 Poetry process 內，暫時中和 `pytest.mark.skipif` 後直接執行三個 engine cases：
+  - `test_creates PASS`
+  - `test_update_scalars_returns_none_when_no_data PASS`
+  - `test_on_download_complete_error PASS`
+- 對照組：先用 `pytest --collect-only --capture=sys -q tests/unit/ui/test_visualization_panel_redesign.py` 讓 redesign test 走過 collection，再在同一 process 執行同樣三個 engine cases：
+  - `test_creates FAIL:AssertionError`
+  - `test_update_scalars_returns_none_when_no_data FAIL:AssertionError`
+  - `test_on_download_complete_error PASS`
+- 這讓目前邊界更清楚：
+  - 在排除 collection/import pollution 的前提下，還沒有獨立重現出真正的 runtime fail
+  - 目前穩定可重現的是 redesign test 在 collection/import 階段就把 engine surface 汙染成 `MagicMock`，再加上 `TestSaliency3DEngine` 本身仍被過期 skip policy 蓋住
+- 因此這輪最小閉環的結論是：queue、triage、status、session log 現在都一致指向同一個 framing，不再把這條問題描述成已確認的獨立 VTK/Qt runtime ordering crash
+
+### AQ-PREP-005 collect-only pollution evidence 再收斂
+
+- 這輪把 `BUG-ENV-001` 從「手動 import redesign test 會污染」再往前縮成更接近 pytest 真實行為的證據
+- 在同一 Poetry process 內直接跑 collect-only：
+  - `/home/administrator/.local/bin/poetry run python - <<'PY' ... pytest.main(['--collect-only', '-q', 'tests/unit/ui/test_visualization_panel_redesign.py']) ... PY`
+  - 結果：`9 tests collected`
+  - `after_collect_module_type MagicMock`
+- 對照組：
+  - `/home/administrator/.local/bin/poetry run python - <<'PY' ... pytest.main(['--collect-only', '-q', 'tests/unit/ui/test_visualization.py']) ... PY`
+  - 結果：`14 tests collected`
+  - `after_collect_module_type MISSING`
+- 這代表現在更精確的說法不是「也許執行 redesign tests 後會留下奇怪狀態」，而是「pytest collection 只要 import `test_visualization_panel_redesign.py`，就已經會把 `saliency_3d_engine` 污染成 `MagicMock`」
+- 也因此 `@unittest.skip("Segfaults in headless environment due to VTK/Qt interaction")` 並不能阻止這條污染路徑，因為 side effect 早在 skip 判斷之前就發生在模組層
+- 這讓 `BUG-ENV-001` 更穩地收斂成 collection-time import pollution 加上過期 skip policy，而不是已經分離乾淨的獨立 runtime crash
+
+### AQ-PREP-005 queue sync 嘗試與第二 bug 判斷再收斂
+
+- 依 reviewer handoff，這輪先嘗試把 `.agents/runbooks/active-queue.md` 的 `AQ-PREP-005` 記錄補齊成和 triage/status 一致
+- 但在目前宿主環境中，對 `.agents/runbooks/active-queue.md` 的實際寫入仍回報 `OSError: [Errno 30] Read-only file system`，所以 queue 端本輪無法同步
+- 在 queue 仍無法寫入的前提下，這輪先把同一結論寫進 human-facing docs：
+  - `BUG-ENV-003` 目前維持 flaky workspace signal，而不是當前穩定 blocker
+  - `BUG-ENV-001` 目前確認的 bug surface 是過期 skip policy 加上 `test_visualization_panel_redesign.py` 的模組層 `sys.modules` 污染
+- 這輪也把「是否需要第二個獨立 bug record」先收斂成暫不拆分：
+  - 乾淨 Poetry process 下 `Saliency3DEngine` 可正常 import
+  - 先 import redesign test module 後，engine import 會變成 `MagicMock`
+  - 清掉 `XBrainLab.backend.visualization` 與 `XBrainLab.backend.visualization.saliency_3d_engine` 後，真實 import surface 可恢復
+- 因此目前最穩的結論不是「已經找到獨立的 VTK/Qt runtime ordering crash」，而是「舊 skip reason 仍混著尚未分離的歷史假說」
+- 現階段更安全的記錄方式是先不另開第二個 bug，等之後真的把 import pollution 排除後還能單獨重現 runtime fail path，再拆成新的 bug ID
+
+### BUG-ENV-001 workaround evidence 再收斂
+
+- 這輪確認 `test_visualization_panel_redesign.py` 的模組層污染不只是能觀察到，還能在同一 Poetry process 內被局部清理
+- 指令結果：
+  - import redesign 後先檢查 engine module -> `before_cleanup MagicMock`
+  - 清掉：
+    - `XBrainLab.backend.visualization`
+    - `XBrainLab.backend.visualization.saliency_3d_engine`
+  - 再重新 import -> `after_cleanup module`
+  - `after_cleanup_engine_type wrappertype`
+- 這代表目前對 `BUG-ENV-001` 已經有比「重開 process 試試看」更具體的 workaround：
+  - 最穩定的做法還是 fresh Poetry process
+  - 但若同一 process 已受 `test_visualization_panel_redesign.py` 污染，也可以先清掉那兩個 `sys.modules` 鍵再驗證真實 engine import
+- 同步更新：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+
+### BUG-ENV-005 prep-exit 決策收斂
+
+- 依 reviewer handoff 的要求，這輪沒有直接修靜態品質債，而是先把 `BUG-ENV-005` 的 queue 含義定清楚
+- 最新直接指令證據：
+  - `/home/administrator/.local/bin/poetry run ruff check .` -> `20 errors`, `9` fixable
+  - `/home/administrator/.local/bin/poetry run basedpyright` -> `107 errors, 1 warning, 0 notes`
+  - `artifacts/quality/latest.md` 仍顯示較早的 `basedpyright PASS` 快照，因此 human-facing status 不能再直接照抄舊 dashboard snapshot
+- 這輪決策是：
+  - fast static gate 屬於 prep-exit blocker，因為 prep gate 需要可信的高頻驗證指令
+  - slower `mypy` 仍維持 monitored debt，持續留在 full gate 監控，但不單獨卡住其他 runtime-signal triage 的收尾
+- 同步更新：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
+- 補充限制：
+  - `.agents/runbooks/active-queue.md` 在目前 sandbox 下仍是唯讀，因此 queue 端的同一決策這輪無法直接寫回
+
+### GDF duplicate-channel ambiguity 正式進入 `Raw` metadata 面
+
+- 將 real GDF import 的 duplicate-channel signal 從「只有 MNE warning / XBrainLab logger warning」提升成 `Raw` wrapper 的 runtime metadata
+- `Raw` 現在有：
+  - `add_runtime_signal()`
+  - `get_runtime_signals()`
+  - `has_runtime_signals()`
+- `load_gdf_file()` 在偵測到 MNE duplicate-name auto-rename 後，除了 re-emit 原始 warning 與記錄 repo warning，也會把同一條訊號附著到回傳的 `Raw`
+- 這讓後續的 triage、整合測試、甚至未來 UI/summary surface 可以不用依賴 stderr/logger，就能知道該資料的 channel identity 有 ambiguity
+- 聚焦驗證：
+  - `tests/unit/backend/load_data/test_raw_data_loader.py` -> `5 passed`
+  - `tests/integration/io/test_io_integration.py` -> `30 passed, 12 warnings`
+- 這一輪沒有解決 duplicate channel naming 本身，但把 prep-gate runtime-signal triage 從「觀察到 warning」往「formalized, testable signal」推進了一步
+
 ### 品質看板改成快慢雙軌型別 gate
 
 - 將 `basedpyright` 加入 Poetry dev 依賴，並在 `pyproject.toml` 補上 repo-local 設定
@@ -134,6 +989,54 @@
 3. 開始規劃 local-only AI 模式清理與 remote API 移除方向
 
 ## 2026-04-19
+
+### AQ-001 再收一格：把 GDF duplicate-channel detail 變成 typed Raw API
+
+- 這輪沒有直接進入高風險的 duplicate-name normalization，而是先把現有 `gdf_duplicate_channel_names` structured detail 再收斂成 `Raw` 的 typed convenience API
+- `Raw` 現在新增：
+  - `has_gdf_duplicate_channel_detail()`
+  - `get_gdf_duplicate_channel_detail()`
+- 這讓後續 dataset / preprocess diagnostics 不需要再硬編碼 runtime-detail key，就能拿到 duplicate-channel ambiguity；比較符合 AQ-001 現階段先做 guardrail、再決定是否 normalization 的節奏
+- 同步更新了 unit / integration coverage：
+  - `tests/unit/backend/load_data/test_raw.py`
+  - `tests/unit/backend/load_data/test_raw_data_loader.py`
+  - `tests/integration/io/test_io_integration.py`
+- 驗證結果：
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw.py -q` -> `32 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw_data_loader.py -q` -> `5 passed`
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q` -> `30 passed, 12 warnings`
+
+### AQ-PREP-005 redesign-suite class skip 再收斂成 stale-coverage surface
+
+- 這輪沿著 `AQ-PREP-005` 裡 `visualization headless fragility and skip boundaries` 的剩餘 next step，直接檢查 `tests/unit/ui/test_visualization_panel_redesign.py` 那條 class-level skip 背後到底是 monitored debt 還是已可落成更具體的 bug 面
+- 先做 temp no-skip 對照，不修改 repo 本體：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip.py -q`
+  - 結果：`9 failed`
+  - 九個 case 都先卡在過期 patch target `XBrainLab.ui.panels.visualization.panel.AggregateInfoPanel`
+- 接著在第二個 temp copy 只修正這個 patch target：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip_patchfix.py -q`
+  - 結果：process `Aborted`
+  - traceback 停在 `self.MockAggregateInfoPanel.return_value = QWidget()`，代表這份 unittest file 在 no-skip 路徑下連最基本的 Qt app harness 都還沒補上
+- 最後在第三個 temp copy 同時補上：
+  - 正確的 `AggregateInfoPanel` patch target
+  - 最小 `QApplication` bootstrap
+  - 驗證：
+    - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip_qapp.py -q`
+    - 結果：`8 failed, 1 passed`
+- 這個 no-skip + qapp 路徑揭露的已是更具體的 stale API/test drift，而不是先撞到獨立的 VTK/Qt segfault：
+  - `XBrainLab.ui.panels.visualization.plot_3d_head.os` patch target 無效
+  - `VisualizationPanel.refresh_data` 不存在
+  - `VisualizationPanel.btn_montage` 不存在
+  - `SaliencyTopographicMapWidget.plot_layout` 不存在
+  - `plan_combo.count()` 等舊 UI 假設已不再成立
+  - topomap `plt.close` 的行為預期也已過期
+- 這讓 `BUG-ENV-001` 又往前縮一格：
+  - collection-time pollution 已隔離
+  - `TestSaliency3DEngine` engine-basics slice 已在正常 pytest path 綠燈
+  - redesign suite 的 class-level skip 現在更像是在遮住 stale coverage surface，而不是在隔離一條已證實的第二條 VTK runtime bug
+- 同一輪把這個 framing 同步回：
+  - `docs/current/BUG_TRIAGE.md`
+  - `docs/current/STATUS_REPORT.md`
 
 ### 品質看板強化與 UI reference gate
 
@@ -715,3 +1618,18 @@
   - `decisions/` = 正式決策
   - `history/` = 工作過程
   - `thesis/` = 論文材料整理面
+
+### Monitoring artifact freshness 規則補強
+
+- 這輪把一次流程上的 miss 補成明文規則：如果某個 monitoring artifact 已經影響 `Prep Gate`、gate truth、queue/status/handoff framing，就不能只留在 backlog 或 status prose
+- 更新 `.agents/roles/reviewer.md`
+  - reviewer 現在需要檢查被拿來當 current truth 的 monitoring artifact 是否夠新
+  - 如果 stale artifact 已經開始影響 prep-exit 或 queue/status 判斷，必須要求 refresh path 或升格成 active same-phase work
+- 更新 `.agents/roles/idea-desk.md`
+  - idea-desk 現在要辨認「保持 monitoring evidence 新鮮」是不是其實已經是缺失的執行項，而不是單純新想法
+  - 若它已影響 gate truth，預設不應只留在 backlog/status
+- 更新 `.agents/runbooks/autopilot.md` 與 `.agents/runbooks/reviewer-handoff.md`
+  - direct rerun 和 saved artifact 分岔時，不能再把舊 snapshot 當 current truth
+  - stale monitoring artifact 若開始影響 phase/gate framing，就應視為 active same-phase work
+- 同步更新 `.agents/runbooks/session-prompts.md`
+  - reviewer heartbeat prompt 與 idea-desk opening prompt 現在都明確要求處理這種 freshness drift

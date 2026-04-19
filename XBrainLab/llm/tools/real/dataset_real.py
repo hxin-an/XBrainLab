@@ -244,6 +244,18 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
                 f"Events: {summary['total']} (Unique: {summary['unique_count']})",
             )
 
+        diagnostics = summary.get("gdf_duplicate_channel_details", [])
+        if diagnostics:
+            info.append("Diagnostics:")
+            for detail in diagnostics:
+                filename = detail.get("file") or "unknown file"
+                bases = detail.get("generated_bases") or []
+                base_text = ", ".join(bases) if bases else "unknown bases"
+                info.append(
+                    "- GDF duplicate-channel ambiguity: "
+                    f"{filename} (bases: {base_text})",
+                )
+
         return "\n".join(info)
 
 

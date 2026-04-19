@@ -30,7 +30,13 @@ class VisualizationPanel(BasePanel):
     Manages multiple view tabs (Map, Topomap, Spectrogram, 3D) and coordinates updates.
     """
 
-    def __init__(self, controller=None, training_controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        training_controller=None,
+        parent=None,
+        preprocess_controller=None,
+    ):
         """Initialize the visualization panel.
 
         Args:
@@ -38,15 +44,20 @@ class VisualizationPanel(BasePanel):
                 the parent study if not provided.
             training_controller: Optional ``TrainingController`` for
                 subscribing to training-stopped events.
+            preprocess_controller: Optional ``PreprocessController`` for
+                subscribing to preprocess invalidation events.
             parent: Parent widget (typically the main window).
 
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("visualization")
+        if preprocess_controller is None and parent and hasattr(parent, "study"):
+            preprocess_controller = parent.study.get_controller("preprocess")
 
         # Store injected training controller
         self.training_controller = training_controller
+        self.preprocess_controller = preprocess_controller
         self.friendly_map = {}
 
         # 2. Base Init
@@ -67,6 +78,22 @@ class VisualizationPanel(BasePanel):
             self._create_bridge(
                 training_ctrl,
                 "training_stopped",
+                self.update_panel,
+            )
+            self._create_bridge(
+                training_ctrl,
+                "history_cleared",
+                self.update_panel,
+            )
+            self._create_bridge(
+                training_ctrl,
+                "config_changed",
+                self.update_panel,
+            )
+        if self.preprocess_controller:
+            self._create_bridge(
+                self.preprocess_controller,
+                "preprocess_changed",
                 self.update_panel,
             )
 
@@ -185,45 +212,85 @@ class VisualizationPanel(BasePanel):
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
         trainers = self.get_trainers()
-        if not trainers:
-            return
+        previous_plan = self.plan_combo.currentData()
+        previous_plan_text = self.plan_combo.currentText()
+        previous_run = self.run_combo.currentData()
+        previous_run_text = self.run_combo.currentText()
 
         self.plan_combo.blockSignals(True)
+        self.run_combo.blockSignals(True)
         self.plan_combo.clear()
         self.plan_combo.addItem("Select a plan")
-
+        self.run_combo.clear()
         self.friendly_map = {}
+
+        if not trainers:
+            self.plan_combo.blockSignals(False)
+            self.run_combo.blockSignals(False)
+            self.on_update()
+            return
+
         for i, trainer in enumerate(trainers):
             model_name = trainer.model_holder.target_model.__name__
             friendly_name = f"Fold {i + 1} ({model_name})"
             self.friendly_map[friendly_name] = trainer
-            self.plan_combo.addItem(friendly_name)
+            self.plan_combo.addItem(friendly_name, trainer)
 
         self.plan_combo.blockSignals(False)
+        self.run_combo.blockSignals(False)
 
         # If items exist, select first real plan
         if self.plan_combo.count() > 1:
-            self.plan_combo.setCurrentIndex(1)
+            selected_index = 1
+            for i in range(1, self.plan_combo.count()):
+                if self.plan_combo.itemData(i) is previous_plan:
+                    selected_index = i
+                    break
+                if (
+                    previous_plan_text
+                    and self.plan_combo.itemText(i) == previous_plan_text
+                ):
+                    selected_index = i
+                    break
+            self.plan_combo.setCurrentIndex(selected_index)
             # Explicitly call on_plan_changed to ensure run_combo is populated
-            self.on_plan_changed(self.plan_combo.currentText())
+            self.on_plan_changed(
+                self.plan_combo.currentText(),
+                preferred_run=previous_run,
+                preferred_run_text=previous_run_text,
+            )
 
-    def on_plan_changed(self, text):
+    def on_plan_changed(self, text, preferred_run=None, preferred_run_text=""):
         """Update Run combo when Plan changes."""
         self.run_combo.blockSignals(True)
         self.run_combo.clear()
 
         if text in self.friendly_map:
             trainer = self.friendly_map[text]
+            plans = trainer.get_plans()
             # Add runs
             for i in range(trainer.option.repeat_num):
-                self.run_combo.addItem(f"Run {i + 1}")
+                plan = plans[i] if i < len(plans) else None
+                self.run_combo.addItem(f"Run {i + 1}", plan)
             # Add Average
-            self.run_combo.addItem("Average")
+            if plans:
+                self.run_combo.addItem("Average", "average")
 
         self.run_combo.blockSignals(False)
 
         if self.run_combo.count() > 0:
-            self.run_combo.setCurrentIndex(0)  # Select first run by default
+            selected_index = 0
+            for i in range(self.run_combo.count()):
+                if self.run_combo.itemData(i) is preferred_run:
+                    selected_index = i
+                    break
+                if (
+                    preferred_run_text
+                    and self.run_combo.itemText(i) == preferred_run_text
+                ):
+                    selected_index = i
+                    break
+            self.run_combo.setCurrentIndex(selected_index)
         else:
             self.on_update()  # Trigger update to clear if empty
 
@@ -254,14 +321,18 @@ class VisualizationPanel(BasePanel):
         # Resolve Plan and EvalRecord
         target_plan = None
         eval_record = None
+        run_data = self.run_combo.currentData()
 
-        if run_name == "Average":
+        if run_data == "average" or run_name == "Average":
             eval_record = self.controller.get_averaged_record(trainer)
             if not eval_record:
                 if current_widget and hasattr(current_widget, "show_error"):
                     current_widget.show_error("No finished runs to average.")
                 return
             target_plan = trainer.get_plans()[0]  # Dummy plan for context
+        elif run_data is not None:
+            target_plan = run_data
+            eval_record = target_plan.get_eval_record()
         else:
             try:
                 # Robust parsing: Expect "Run X" or similar

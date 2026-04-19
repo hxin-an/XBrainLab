@@ -61,6 +61,27 @@ def test_training_panel_refreshes_on_dataset_events(qtbot):
     mock_update.assert_any_call(panel)
 
 
+def test_training_panel_refreshes_on_preprocess_events(qtbot):
+    training_controller = Observable()
+    preprocess_controller = Observable()
+
+    with (
+        patch.object(TrainingPanel, "init_ui"),
+        patch.object(TrainingPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = TrainingPanel(
+            controller=training_controller,
+            dataset_controller=Observable(),
+            preprocess_controller=preprocess_controller,
+        )
+        qtbot.addWidget(panel)
+
+        preprocess_controller.notify("preprocess_changed")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
 def test_evaluation_panel_refreshes_on_training_stopped(qtbot):
     training_controller = Observable()
 
@@ -80,6 +101,64 @@ def test_evaluation_panel_refreshes_on_training_stopped(qtbot):
     mock_update.assert_called_once_with(panel)
 
 
+def test_evaluation_panel_refreshes_on_history_cleared(qtbot):
+    training_controller = Observable()
+
+    with (
+        patch.object(EvaluationPanel, "init_ui"),
+        patch.object(EvaluationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = EvaluationPanel(
+            controller=MagicMock(),
+            training_controller=training_controller,
+        )
+        qtbot.addWidget(panel)
+
+        training_controller.notify("history_cleared")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
+def test_evaluation_panel_refreshes_on_config_changed(qtbot):
+    training_controller = Observable()
+
+    with (
+        patch.object(EvaluationPanel, "init_ui"),
+        patch.object(EvaluationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = EvaluationPanel(
+            controller=MagicMock(),
+            training_controller=training_controller,
+        )
+        qtbot.addWidget(panel)
+
+        training_controller.notify("config_changed")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
+def test_evaluation_panel_refreshes_on_preprocess_events(qtbot):
+    preprocess_controller = Observable()
+
+    with (
+        patch.object(EvaluationPanel, "init_ui"),
+        patch.object(EvaluationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = EvaluationPanel(
+            controller=MagicMock(),
+            training_controller=Observable(),
+            preprocess_controller=preprocess_controller,
+        )
+        qtbot.addWidget(panel)
+
+        preprocess_controller.notify("preprocess_changed")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
 def test_visualization_panel_refreshes_on_training_stopped(qtbot):
     training_controller = Observable()
 
@@ -94,6 +173,64 @@ def test_visualization_panel_refreshes_on_training_stopped(qtbot):
         qtbot.addWidget(panel)
 
         training_controller.notify("training_stopped")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
+def test_visualization_panel_refreshes_on_history_cleared(qtbot):
+    training_controller = Observable()
+
+    with (
+        patch.object(VisualizationPanel, "init_ui"),
+        patch.object(VisualizationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = VisualizationPanel(
+            controller=MagicMock(),
+            training_controller=training_controller,
+        )
+        qtbot.addWidget(panel)
+
+        training_controller.notify("history_cleared")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
+def test_visualization_panel_refreshes_on_config_changed(qtbot):
+    training_controller = Observable()
+
+    with (
+        patch.object(VisualizationPanel, "init_ui"),
+        patch.object(VisualizationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = VisualizationPanel(
+            controller=MagicMock(),
+            training_controller=training_controller,
+        )
+        qtbot.addWidget(panel)
+
+        training_controller.notify("config_changed")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
+def test_visualization_panel_refreshes_on_preprocess_events(qtbot):
+    preprocess_controller = Observable()
+
+    with (
+        patch.object(VisualizationPanel, "init_ui"),
+        patch.object(VisualizationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = VisualizationPanel(
+            controller=MagicMock(),
+            training_controller=Observable(),
+            preprocess_controller=preprocess_controller,
+        )
+        qtbot.addWidget(panel)
+
+        preprocess_controller.notify("preprocess_changed")
         qtbot.wait(50)
 
     mock_update.assert_called_once_with(panel)

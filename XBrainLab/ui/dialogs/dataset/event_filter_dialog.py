@@ -11,8 +11,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QMenu,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )

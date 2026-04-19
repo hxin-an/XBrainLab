@@ -111,21 +111,21 @@
 
 ### 已確認的環境層問題
 
-#### [BUG-ENV-001] Visualization 相關測試在 headless 模式下不穩定
+#### [BUG-ENV-001] Visualization redesign suite coverage 曾被過期 headless skip 隱藏
 
 - Priority: P2
 - Area: Visualization
 - Type: Test infrastructure
-- Status: Confirmed
+- Status: Fixed
 - Source: Test failure/skips
 
 ### 症狀
 
-某些 visualization 與 main-window 測試在 headless 執行時會被刻意 skip，因為 VTK / Qt 互動不穩定。
+當時的 visualization redesign suite 在 headless pytest 路徑中被 class-level `@unittest.skip(...)` 整段遮住，讓過期 patch target、缺少 Qt harness、以及 stale API/test drift 都被一條舊的 VTK/Qt skip reason 一起蓋住。
 
 ### 重現方式
 
-執行：
+修正前執行：
 
 ```bash
 /home/administrator/.local/bin/poetry run pytest tests/unit/ui -q
@@ -133,34 +133,73 @@
 
 ### 預期
 
-Visualization 相關測試應該要嘛穩定可跑，要嘛明確隔離並記錄其限制。
+Visualization redesign suite 應該要嘛穩定可跑，要嘛因為仍然成立的限制而被窄而誠實地隔離；skip reason 不應掩蓋其實已可直接修復的測試漂移問題。
 
 ### 實際情況
 
-目前這個 suite 會以 `15 skipped` 結束，其中包含與 headless 環境下 VTK / Qt 行為有關的 skip。
+修正前 repo 內可直接觀察到的狀態是：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py -q`
+  - 結果：`14 passed`
+  - `TestSaliency3DEngine` 的過期硬編碼 skip 已退休，engine-basics slice 能在正常 pytest 路徑中跑綠
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q`
+  - 結果：`9 skipped`
+  - redesign suite 仍被 class-level `@unittest.skip("Segfaults in headless environment due to VTK/Qt interaction")` 整段跳過
+- 最新 no-skip 對照顯示，這個 skip reason 已不再能準確描述真正的 failure surface：
+  - 去掉 class-level skip 的 temp copy 先是 `9 failed`，全部卡在過期 patch target `XBrainLab.ui.panels.visualization.panel.AggregateInfoPanel`
+  - 補上 patch target 後，還會先撞到缺少 `QApplication` harness
+  - 再補上最小 Qt harness 後，主因則是 stale API/test drift，而不是先重現一條獨立的 VTK/Qt segfault path
+- 這代表實際缺口不是「不要碰 VTK」，而是被舊 skip 蓋住的 stale coverage surface。
 
 ### 影響
 
-這會降低我們對 visualization 相關修改的信心，也代表某些 layout / rendering regression 可能躲過日常快速測試。
+這會降低我們對 visualization 相關修改的信心，也代表 redesign 相關 regression 可能被一條過期 skip reason 蓋住，看起來像是「先不要碰 VTK」，實際上卻同時隱藏了多個已可重現的測試基礎設施問題。
 
 ### 可能範圍
 
-- `tests/unit/ui/test_visualization.py`
 - `tests/unit/ui/test_visualization_panel_redesign.py`
-- `tests/unit/ui/test_main_window.py`
+- `XBrainLab/ui/panels/visualization/panel.py`
+- `XBrainLab/ui/panels/visualization/control_sidebar.py`
 - visualization widgets and VTK/PyVista integration
 
 ### 證據
 
-在 WSL2 本地於 `2026-04-18` 觀察到：`718 passed, 15 skipped`。
+於 `2026-04-19` 先確認舊 surface，再完成修復：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip.py -q`
+  - 結果：`9 failed`
+  - 第一層 failure 全都集中在過期 patch target `XBrainLab.ui.panels.visualization.panel.AggregateInfoPanel`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip_patchfix.py -q`
+  - 結果：process `Aborted`
+  - traceback 停在 `self.MockAggregateInfoPanel.return_value = QWidget()`，顯示這份 unittest file 在 no-skip 路徑下連基本 Qt app harness 都還沒補齊
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh /tmp/test_visualization_panel_redesign_noskip_qapp.py -q`
+  - 結果：`8 failed, 1 passed`
+  - 具體失敗面是 stale API/test drift：`plot_3d_head.os` patch target 無效、`refresh_data` / `btn_montage` / `plot_layout` 不存在、combo population 假設已過期、以及 topomap `plt.close` 行為預期不再相符
+- 完成 AQ-005 後：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q`
+    - 結果：`6 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q`
+    - 結果：`20 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - 結果：`782 passed, 3 skipped, 1 warning`
+  - 剩餘三個 skip 位於 `tests/unit/ui/test_main_window.py` 與 `tests/unit/ui/test_workflow.py`，不再屬於這條 redesign-suite coverage bug
 
 ### 測試覆蓋
 
-目前仍有行為層 coverage，但沒有完整 rendering 信心。
+這條 coverage surface 已恢復可見：
+
+- `tests/unit/ui/test_visualization_panel_redesign.py`
+- `tests/unit/ui/test_visualization_panel_coverage.py`
+- `tests/unit/ui -q` shared regression sweep
 
 ### 備註
 
-它本身未必是 release blocker，但確實是之後修復工作中的常駐風險區。
+這條 bug 現在可視為已修復的測試基礎設施問題：
+
+- `TestSaliency3DEngine` 的過期 skip 已退休
+- redesign suite 的 collection-time 汙染已被隔離
+- 整份 `tests/unit/ui/test_visualization_panel_redesign.py` 已改寫成 headless-safe、現行架構對齊的 regression suite
+- 剩餘 visualization skip surface 已縮到其他檔案中的三個既有 skip，應另立後續風險而不是繼續算在這條 bug 上
 
 #### [BUG-ENV-002] Baseline screenshot capture 曾產生全黑圖片
 
@@ -230,7 +269,7 @@ xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture
 - Priority: P1
 - Area: Test infrastructure
 - Type: Broken interaction
-- Status: Confirmed
+- Status: Needs verification
 - Source: Manual exploration
 
 ### 症狀
@@ -299,12 +338,23 @@ targeted slice 本身仍有 coverage，但這條問題的重現具有 slice-sens
 - 最新 recheck 中，以下預設 capture 指令也已通過：
   - `/home/administrator/.local/bin/poetry run pytest tests/unit/backend/training/test_option.py -q`
   - `/home/administrator/.local/bin/poetry run pytest tests/integration/io/test_io_integration.py -q`
-- 但在新的 quality dashboard refresh 中再次失敗：
+- 但在新的 quality dashboard refresh 中，若仍沿用預設 capture 指令也會再次失敗：
   - `/home/administrator/.local/bin/poetry run pytest tests/integration/io/test_io_integration.py -q`
   - 結果：在 `_pytest/capture.py` teardown 階段再次拋出 `FileNotFoundError`
+- 但最新 recheck 已不再穩定重現：
+  - `/home/administrator/.local/bin/poetry run pytest tests/integration/io/test_io_integration.py -q`
+  - 結果：`30 passed, 12 warnings`
+  - 同一條完整指令在同一 workspace 連跑 `3` 次也都通過：
+    - `RUN=1` -> `30 passed, 12 warnings`
+    - `RUN=2` -> `30 passed, 12 warnings`
+    - `RUN=3` -> `30 passed, 12 warnings`
 - 同樣地，`tests/unit/scripts/test_update_quality_dashboard.py -q` 也再次踩中同一條 capture teardown 問題
+- 之後已把 accepted workaround 升級成正式 dashboard command：
+  - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+  - `2026-04-19 16:16:52 UTC+08:00` 的 fast dashboard refresh 以此路徑通過：`31 passed, 13 warnings`
 
-目前在這個 workspace 裡，建議優先使用 `--capture=sys` 作為 local validation workaround，`-s` 只保留作為 fallback。
+目前這條訊號更接近「曾明確出現過、但目前尚未能穩定再現」的 flaky capture issue，而不是當前每次都會重現的 blocker。
+在這個 workspace 裡，`--capture=sys` 現在已不只是 local workaround，也已升級成 dashboard / heartbeat 的 accepted command；`-s` 只保留作為 fallback，直到新的穩定重現條件被找出來。
 
 #### [BUG-ENV-004] unattended UI pytest 在目前 Codex workspace 需要顯式 offscreen Qt 環境
 
@@ -375,17 +425,17 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 這條問題比 `BUG-ENV-003` 更接近目前 heartbeat 自動化的真實 blocker，因為它穩定影響 unattended UI pytest，而不是只影響早期那個已變得不穩定的 capture teardown 訊號。
 
-#### [BUG-ENV-005] 品質看板的 static quality gates 目前仍是紅燈
+#### [BUG-ENV-005] 品質看板的 fast static gates 曾是紅燈
 
 - Priority: P2
 - Area: Test infrastructure
 - Type: Architecture/coupling
-- Status: Confirmed
+- Status: Fixed
 - Source: Test failure
 
 ### 症狀
 
-在把 static quality gates 納入品質看板後，dashboard 現在不只回報 runtime signal，也開始如實顯示 repo 既有的靜態品質債。
+在把 static quality gates 納入品質看板後，dashboard 不只回報 runtime signal，也開始如實顯示 repo 既有的靜態品質債。
 目前策略已改成 two-speed：
 
 - 預設 dashboard 跑 `ruff`、baseline-backed `basedpyright`、`architecture compliance`
@@ -417,10 +467,10 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 ### 實際情況
 
-- `ruff check .` 目前回報 `19 errors`，其中 `9` 個可自動修復
-- `basedpyright` 已透過 `.basedpyright/baseline.json` 轉成 fast regression gate；目前可通過，但其 baseline 仍代表有待清理的舊型別債
+- `ruff check .` 與 `basedpyright` 目前都已回到綠燈
 - `mypy XBrainLab/` 目前仍回報 `7 errors in 5 files`
 - `python tests/architecture_compliance.py` 通過
+- `2026-04-19 16:16:52 UTC+08:00` 的 fast dashboard refresh 目前整體為 `PASS`
 
 ### 影響
 
@@ -443,11 +493,15 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 於 `2026-04-19` 本地觀察到：
 
-- `ruff check .` -> `FAIL` (`19 errors`, `9` fixable)
-- `basedpyright` -> `PASS`（baseline-backed fast gate）
-- `mypy XBrainLab/` -> `FAIL`（slower full gate）
-- `architecture compliance` -> `PASS`
-- live report: `artifacts/quality/latest.md`
+- 先前 blocker evidence：
+  - `ruff check .` -> `FAIL` (`22 errors`)
+  - `basedpyright` -> `PASS` (`0 errors, 0 warnings, 0 notes`)
+- 最新 closure evidence：
+  - `ruff check .` -> `PASS`
+  - `basedpyright` -> `PASS` (`0 errors, 0 warnings, 0 notes`)
+  - `python tests/architecture_compliance.py` -> `PASS`
+  - `python scripts/dev/update_quality_dashboard.py` -> fast dashboard `PASS`
+- `mypy XBrainLab/` 仍是 slower full gate 的 monitored debt
 
 ### 測試覆蓋
 
@@ -457,6 +511,13 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 這不是 dashboard 額外製造的新 regression，比較接近是原本就存在的品質債終於被正式納入可見 gate。
 需要注意的是：`.basedpyright/baseline.json` 不是豁免清單，而是讓高頻 gate 有可操作價值的暫時 debt ledger。
+
+Prep-exit decision：
+
+- `BUG-ENV-005` 不應被當成一整包模糊的「品質債」。
+- fast static gate 這個類別本身屬於 prep-exit blocker，因為 prep gate 需要可信的高頻驗證指令。
+- 這輪 closure 後，快檢查紅燈已經清掉：`ruff`、`basedpyright`、architecture compliance 與 fast dashboard 都回到綠燈。
+- slower `mypy` debt 則維持 monitored debt；它必須持續被 full gate 看見，但不單獨阻止 `Repair Loop` 啟用。
 
 #### [BUG-AGENT-001] AI assistant 的 local startup 忽略已儲存設定，並把 local runtime failure 延後到初始化時才暴露
 
@@ -472,13 +533,13 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 ### 重現方式
 
-執行：
+先前會沿著下列 prep-baseline command 進到 local startup：
 
 ```bash
 xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q
 ```
 
-`TestAIAssistantDock.test_toggle_ai_dock` 這條路徑會觸發第一次開啟初始化；當 local startup 尚未準備好時，就會在這裡發出 failure signal。
+但這條路徑現在不再是當前 accepted repro，因為 `TestAIAssistantDock.test_toggle_ai_dock` 已改成在 prep baseline 中 stub `AgentManager.start_system()`，只驗證 shell-open / dock visibility，不再直接帶起 local backend。
 
 ### 預期
 
@@ -492,7 +553,7 @@ xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integratio
 Model Load Error: ... requires `accelerate`
 ```
 
-但整體 UI integration slice 仍然會通過。
+在 `2026-04-19` 的 prep recheck 中，沿用 queue 舊記錄的 exact command 重新執行時，流程再次走進 local startup，記錄了 `Initializing LLM Engine...`、`Switching backend to: local`、`Loading local model: Qwen/Qwen2.5-7B-Instruct on cpu`、`Loading checkpoint shards`，並把 host 拖到不安全狀態，導致該次 rerun 被放棄。這條風險之後已從 Prep Gate baseline 中分離出去：同日 `tests/integration/ui/test_e2e_qtbot.py` 的 AI dock toggle case 改成只驗證 shell-open，不再直接初始化 backend。
 
 ### 影響
 
@@ -525,6 +586,18 @@ ValueError: ... requires `accelerate`
 - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/core/test_config.py tests/unit/llm/agent/test_worker.py -q`
 - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py -q`
 - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/ui/test_e2e_qtbot.py -q`
+- `2026-04-19` prep recheck:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_e2e_qtbot.py -q`
+  - partial log reached:
+    - `Initializing LLM Engine...`
+    - `Switching backend to: local`
+    - `Loading local model: Qwen/Qwen2.5-7B-Instruct on cpu`
+    - `Loading checkpoint shards`
+  - the rerun then had to be abandoned because it made the host unresponsive, so this exact command should no longer be treated as safe prep-exit evidence
+- `2026-04-19` host-safe shell-baseline split:
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/integration/ui/test_e2e_qtbot.py -q`
+  - 結果：`20 passed`
+  - `TestAIAssistantDock.test_toggle_ai_dock` now stubs `AgentManager.start_system()` so Prep Gate can validate AI shell-open behavior without invoking local-model bootstrap
 
 ### 測試覆蓋
 
@@ -533,6 +606,11 @@ ValueError: ... requires `accelerate`
 - `tests/unit/llm/agent/test_worker.py`
 - `tests/unit/ui/chat/test_chat_panel.py`
 - `tests/unit/ui/dialogs/test_model_settings.py`
+
+補充：
+
+- `tests/integration/ui/test_e2e_qtbot.py` 現在只承擔 Prep Gate 的 shell-level workflow baseline，不再作為這條 local-startup bug 的直接重現路徑
+- 這條 bug 後續需要 dedicated local-startup validation，而不是再次借用 top-level workflow baseline
 
 ### 備註
 
@@ -552,13 +630,92 @@ ValueError: ... requires `accelerate`
 - the chat menu and settings dialog now surface local-runtime unavailability earlier instead of deferring it to worker startup
 - the local backend now probes CUDA usability and falls back to CPU while disabling 4-bit loading if the host GPU cannot actually execute PyTorch work
 - 這個 workspace 現已安裝可選的 Poetry `llm` 套件，因此下一個具體 blocker 是缺少 local model cache，以及 end-to-end local bootstrap validation
+- 這也代表 `BUG-AGENT-001` 仍是有效的 local-startup bug，但它現在不再阻止 Prep Gate 的 shell baseline；目前更聚焦的剩餘 blocker 是缺少 local model cache，以及 dedicated local bootstrap validation
+- `AQ-006` 另行修掉了 user-facing silent remote fallback / remote-menu honesty 問題，該部分現在轉到已固定的 `BUG-AGENT-002`
 
 `2026-04-19` 的額外環境收斂：
 
 - `/home/administrator/.local/bin/poetry install --with llm --no-interaction` now succeeds in the current workspace
 - `LLMConfig.missing_local_runtime_packages()` now returns `[]`
+- `/home/administrator/.local/bin/poetry run python - <<'PY' ... LLMConfig.load_from_file() ... PY`
+  - 結果：
+    - `startup_mode local`
+    - `model_name Qwen/Qwen2.5-7B-Instruct`
+    - `cache_root_exists True`
+    - `cache_candidate_exists False`
 - the host still reports `torch.cuda.is_available() == True`, but a direct CUDA probe fails with `RuntimeError: CUDA error: no kernel image is available for execution on the device`
 - 這個 workspace 裡預期的 `Qwen/Qwen2.5-7B-Instruct` local model cache path 仍不存在
+
+#### [BUG-AGENT-002] AI shell 曾把 remote Gemini 當成隱性 fallback 或等價主選項暴露給使用者
+
+- Priority: P1
+- Area: Agent
+- Type: Broken interaction
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+修正前，user-facing AI shell 仍把 Gemini remote mode 當成一條太容易誤觸的 fallback path：
+
+- 刪除目前正在使用中的 local model 時，流程會默默把 assistant 切去 Gemini
+- chat model menu 也會把 Gemini 暴露成看起來和 local mode 等價的選項，而不是一個明確標示為 remote 的次要路徑
+
+### 重現方式
+
+修正前可從這幾條 UI slice 觀察到：
+
+```bash
+/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/test_ui_misc.py -q
+```
+
+### 預期
+
+在 local-first 方向下，user-facing shell 應該：
+
+- 對 active local model deletion fail closed，而不是默默切成 remote
+- 只有在 remote mode 明確可用時才顯示 Gemini，而且應清楚標示它是 remote 路徑
+
+### 實際情況
+
+修正前的 `AgentManager.prepare_model_deletion()` 會在 local model 還活躍時自動切去 Gemini；`ModelSettingsDialog` 也會沿著這個路徑繼續刪除。`ChatPanel` 的 model menu 則沒有把 Gemini 清楚降級成次要 remote affordance。
+
+### 影響
+
+這會讓 local-only 方向變得不誠實：使用者以為自己仍在 local-first flow 裡，實際上 UI 已默默幫他切去 remote mode，或把 remote surface 包裝成正常主路徑的一部分。
+
+### 可能範圍
+
+- `XBrainLab/ui/components/agent_manager.py`
+- `XBrainLab/ui/dialogs/model_settings_dialog.py`
+- `XBrainLab/ui/chat/panel.py`
+
+### 證據
+
+於 `2026-04-19` 完成 AQ-006 後再次驗證：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/test_ui_misc.py -q`
+  - 結果：`191 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - 結果：`782 passed, 3 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/components/test_agent_manager.py`
+- `tests/unit/ui/test_agent_manager_coverage.py`
+- `tests/unit/ui/chat/test_chat_panel.py`
+- `tests/unit/ui/dialogs/test_model_settings.py`
+- `tests/unit/ui/test_ui_misc.py`
+
+### 備註
+
+目前最小修復面已完成：
+
+- `AgentManager.prepare_model_deletion()` 在 local model 仍活躍時會直接阻擋刪除
+- `ModelSettingsDialog` 會尊重這個 failed precondition
+- `ChatPanel` 會把 `Local` 維持為主路徑，只在明確啟用時才顯示 `Gemini (Remote)`
+
+這條 bug 修掉後，`BUG-AGENT-001` 可以更專注在 local bootstrap readiness 本身，而不是混著 user-facing remote fallback confusion。
 
 #### [BUG-DATASET-001] Sequence label import 曾假設 label code 只能是數字
 
@@ -900,6 +1057,944 @@ training 路徑以前只信任 availability check，結果最後以 `CUDA error:
 
 現在 `TrainingOption` 會主動 probe 指定的 CUDA device；若 device 雖存在但不可用，則會以 warning 方式回退到 CPU。
 
+#### [BUG-TRAINING-002] Training panel 的 ready state 曾不會隨 preprocess invalidation 即時更新
+
+- Priority: P1
+- Area: Training
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 preprocess 變更把 epoch / dataset downstream state 清掉時，Training panel 的 `Start Training` 按鈕可能還停在舊的 ready 狀態，直到使用者切頁或手動 refresh。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `TrainingPanel`，先讓 controller 回報 ready，再模擬 preprocess invalidation：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create TrainingPanel -> initial Start Training enabled
+# notify preprocess_changed after validate_ready flips false
+PY
+```
+
+### 預期
+
+只要 preprocess invalidation 讓 training prerequisites 失效，Training panel 應立即重算 ready state，讓 `Start Training` 按鈕與 tooltip 同步反映新的缺項。
+
+### 實際情況
+
+修正前的 `TrainingPanel` 只訂閱 `data_changed` / `import_finished`，沒有聽 `preprocess_changed`，所以這類 invalidation 不會主動觸發 `update_panel()`。
+
+### 影響
+
+這會讓 training workflow 的 UI readiness 判斷變得誤導：使用者可能看到仍可按的 `Start Training`，但底層 dataset state 其實已被 preprocess 變更清掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/training/panel.py`
+- preprocess invalidation 後依賴 Training panel ready state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `initial True Start Training`
+  - `after_notify True Start Training`
+- 修正後：
+  - `initial True Start Training`
+  - `after_notify False Please configure: Data Splitting`
+
+### 測試覆蓋
+
+- `tests/unit/ui/training/test_training_panel.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+
+### 備註
+
+目前最小修復面就是補上 `TrainingPanel <- preprocess_changed` bridge，而不是先改 training controller 的 readiness 定義。
+
+#### [BUG-TRAINING-003] Training panel 曾不會在 training_started 後立即顯示 active run
+
+- Priority: P1
+- Area: Training
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 training 開始後，Training panel 的 history table 與目前選中的 plotting record 曾不會立刻切到 active run，而是要等下一次 `training_updated` poll tick 才同步。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `TrainingPanel`，先讓 controller 的 `get_formatted_history()` 已能回傳一筆 active run，再模擬 `training_started`：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create TrainingPanel with active history ready in controller
+# notify training_started
+PY
+```
+
+### 預期
+
+只要 training 已經開始，Training panel 應立即把 active run 掛進 history table，並切到可用的 plotting record，而不是等下一個 polling cycle。
+
+### 實際情況
+
+修正前的 `TrainingPanel` 在 `training_started` 時只更新 log/sidebar，沒有同步呼叫 `update_loop()`，所以 active run 要等後續 `training_updated` 才會顯示。
+
+### 影響
+
+這會讓 training workflow 的即時狀態呈現變得遲滯：使用者按下開始後，UI 短時間內看起來像還沒真正進入 training。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/training/panel.py`
+- 依賴 Training panel immediate active-run state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認修正後行為：
+
+- `started_before 0 None`
+- `started_after 1 Running True`
+
+focused validation：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q`
+  - 結果：`9 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - 結果：`762 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/training/test_training_panel.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面就是在 `training_started` handler 立刻觸發一次 `update_loop()`，不需要改 training controller 的 event 模型。
+
+#### [BUG-TRAINING-004] Training panel 曾在 training config change 後保留過期 history/plot state
+
+- Priority: P1
+- Area: Training
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 training-side config change 使 trainer/history 失效後，Training panel 曾仍保留舊的 history rows、舊的 plotting record，直到手動 refresh 或其他後續事件介入。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `TrainingPanel`，先讓 controller 回報一筆 history，再模擬 `config_changed` 後 controller history 已清空：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create TrainingPanel with one history entry
+# notify config_changed after get_formatted_history() flips empty
+PY
+```
+
+### 預期
+
+只要 training-side config change 讓 trainer/history 失效，Training panel 應立刻清空 stale history rows、清掉目前 plotting record，並重置 epoch counter。
+
+### 實際情況
+
+修正前的 `TrainingPanel` 在 `config_changed` 時只重算 ready state，沒有同步 refresh/clear history view；而 `update_loop()` 也不會在 history 空掉時主動清掉目前選中的 plotting state。
+
+### 影響
+
+這會讓 training workflow 的主畫面自己也變得不誠實：UI 仍顯示舊的 history/plot，但底層 trainer 已經被 config change 清掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/training/panel.py`
+- 依賴 Training panel history / plot state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認修正後行為：
+
+- `config_after 0 None -1`
+
+focused validation：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q`
+  - 結果：`9 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - 結果：`762 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/training/test_training_panel.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面有兩段：
+
+- `config_changed` handler 立刻觸發 `update_loop()`
+- `update_loop()` 在 history 變空時主動清掉 stale plot selection / epoch counter，而不是只把 table row count 降到 0
+
+#### [BUG-TRAINING-005] Training panel 曾被舊 selected record 卡住，錯過新 active run 或新 history
+
+- Priority: P1
+- Area: Training
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 panel 已經選著舊的 plotting record 時，後續新的 active run 開始，或整個 history 被新 trainer/history 取代後，Training panel 曾仍停在舊 record 上，不會自動切到新的 active run 或新的唯一 record。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `TrainingPanel`，先讓 controller 回報一筆舊 history，再模擬兩種情境：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# 1. old selected record exists, then training_started with a new active run
+# 2. old selected record exists, then config_changed with replacement history
+PY
+```
+
+### 預期
+
+- 新的 active run 開始時，panel 應切到新的 active record
+- 舊 history 被新的 trainer/history 取代時，panel 應丟掉過期 selection，改追新的有效 record
+
+### 實際情況
+
+修正前的 `update_loop()` 只在 `current_plotting_record` 為空時才會自動選 record，所以：
+
+- 舊 record 若仍被選中，`training_started` 後不會切到新的 active run
+- 舊 record 若已不在新的 history 內，但 history 仍非空，panel 也不會自動換掉它
+
+### 影響
+
+這會讓 training workflow 的圖表與目前選中的 run 出現更隱蔽的不同步：即使 history table 已經有新 active run，plot 仍可能卡在舊 run；更換 trainer/history 後，也可能繼續看著已失效的舊 record。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/training/panel.py`
+- 依賴 Training panel current plotting record 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認修正後行為：
+
+- 舊 record -> 新 active run：
+  - `before_switch True [1, 2, 3]`
+  - `after_switch True [1]`
+- 舊 record -> replacement history：
+  - `after_replace True [1, 2]`
+
+focused validation：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q`
+  - 結果：`11 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - 結果：`764 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/training/test_training_panel.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面是讓 `update_loop()` 先根據當前 history 決定「最合理的 plotting record」，而不是只在沒有 selection 時才自動選。`training_started` 則明確以 active run 為優先。
+
+#### [BUG-TRAINING-006] Training panel 曾無法同時兼顧 active-run auto-follow 與手動 pin 的歷史檢視
+
+- Priority: P1
+- Area: Training
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+在 `training_updated` 驅動的 repeat 轉換期間，Training panel 曾缺少一個一致的 selection policy：
+
+- 若保持完全保守，就會讓 panel 卡在舊 selected record，錯過新的 active run
+- 若一律切到新 active run，又可能覆蓋掉使用者手動選來檢視的舊 run
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `TrainingPanel`，模擬兩種 `training_updated` 路徑：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# 1. auto-managed selection, then repeat transition via training_updated
+# 2. user manually selects old run, then training_updated fires
+PY
+```
+
+### 預期
+
+- auto-managed selection 應在 repeat 轉換時跟上新的 active run
+- user-pinned 的歷史 run 應在普通 `training_updated` 下被保留，不該被自動切走
+
+### 實際情況
+
+修正前的 `TrainingPanel` 沒有明確區分 auto-managed selection 與 user-pinned selection，所以無法同時滿足這兩個需求。
+
+### 影響
+
+這會讓 ongoing training 的 plot 跟隨策略不穩定：不是錯過新的 active run，就是很容易把使用者刻意選來看的舊 run 覆蓋掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/training/panel.py`
+- 依賴 Training panel plotting selection policy 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認修正後行為：
+
+- auto-follow 路徑：
+  - `auto_before True [1, 2, 3]`
+  - `auto_after True [1]`
+- manual pin 路徑：
+  - `manual_after True True`
+
+focused validation：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q`
+  - 結果：`13 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - 結果：`766 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/training/test_training_panel.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面是引入「user-pinned selection」概念：
+
+- auto-managed selection 會在 `training_updated` 下跟隨新的 active run
+- user 手動選中的 record 則在普通 `training_updated` 下保持 pinned
+- `training_started` 仍可透過 `force_active=True` 明確切回新的 active run
+
+這讓 training panel 的 selection policy 從「碰到新 history 就全自動」或「永遠保守不切換」收斂成比較可預期的混合策略。
+
+#### [BUG-TRAINING-007] Training panel 曾在 history/config reset 後保留過期 event log
+
+- Priority: P2
+- Area: Training
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+Training panel 的 `Log` tab 過去只會在 `training_started` / `training_stopped` append 事件訊息，但在 `history_cleared` 或 `config_changed` 清空 / 取代 training state 後，不會同步清掉舊 log。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `TrainingPanel`，先觸發一次 start/stop event，再依序觸發：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# 1. training_started -> training_stopped
+# 2. history_cleared
+# 3. training_started -> training_stopped
+# 4. config_changed
+PY
+```
+
+### 預期
+
+當 training history 被清空，或 training config 讓舊 trainer / history 失效時，`Log` tab 應回到空白狀態，而不是繼續顯示已失效 run 的事件訊息。
+
+### 實際情況
+
+修正前的 `TrainingPanel` 只會清 plots/table selection state，不會清 `log_text`，所以：
+
+- `history_cleared` 後仍會留下舊的 `Training started/stopped` 事件
+- `config_changed` 即使已經切到新的 history，也仍會把舊 run 的 event log 留在畫面上
+
+### 影響
+
+這會讓 training panel 在「目前沒有那個 run 了」的情況下，仍顯示舊 event log，看起來像舊 training session 仍然是當前 state；AQ-003 原本要收的 logs/plots/state sync 也因此少了一塊。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/training/panel.py`
+- `tests/unit/ui/training/test_training_panel.py`
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認修正前後差異：
+
+- 修正前：
+  - `before_clear Training started (event). | Training stopped (event).`
+  - `after_history_cleared Training started (event). | Training stopped (event).`
+  - `after_config_changed Training started (event). | Training stopped (event). | Training started (event). | Training stopped (event).`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_training_panel.py -q`
+    - 結果：`16 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - 結果：`769 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/training/test_training_panel.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+這一輪除了把 stale log 收掉，也順手補上 `training_updated` live refresh 的直接 focused coverage：
+
+- 最新 targeted test 會驗證 history-table progress 由 `1/5` 變成 `2/5`
+- 同時確認 plot epochs 由 `[1]` 變成 `[1, 2]`
+
+因此目前 AQ-003 的剩餘風險已不再是「training panel 的 live progress / log / plot 會不會漏刷」，而是下一個 queue item `AQ-004` 的 evaluation-consistency 問題。
+
+#### [BUG-EVAL-001] Evaluation panel 曾在 preprocess invalidation 後保留過期的 fold/run 選擇
+
+- Priority: P1
+- Area: Evaluation
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 preprocess 變更把 trainer / dataset downstream state 清掉時，Evaluation panel 可能還保留舊的 fold/run selection，看起來像還有可分析的結果，直到手動 refresh。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `EvaluationPanel`，先讓 controller 回報一個 plan，再模擬 preprocess invalidation：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create EvaluationPanel -> initial Fold 1 visible
+# notify preprocess_changed after controller.get_plans() flips empty
+PY
+```
+
+### 預期
+
+只要 preprocess invalidation 讓 trainer 結果失效，Evaluation panel 應立刻清掉舊的 fold/run 選擇，回到 `No Data Available`。
+
+### 實際情況
+
+修正前的 `EvaluationPanel` 只訂閱 `training_stopped`，沒有聽 `preprocess_changed`，所以這類 invalidation 不會主動觸發 `update_panel()`。
+
+### 影響
+
+這會讓 evaluation workflow 的狀態呈現變得誤導：UI 仍顯示舊的 fold/run 選擇，但底層 trainer 結果其實已因 preprocess 變更失效。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/evaluation/panel.py`
+- preprocess invalidation 後依賴 Evaluation panel selection state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `initial 1 Fold 1: Plan A`
+  - `after_preprocess_notify 1 Fold 1: Plan A`
+  - `after_manual_refresh 1 No Data Available`
+- 修正後：
+  - `initial 1 Fold 1: Plan A`
+  - `after_notify 1 No Data Available 0`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_evaluation_panel_redesign.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+
+### 備註
+
+目前最小修復面就是補上 `EvaluationPanel <- preprocess_changed` bridge，先讓 downstream result view 對 preprocess invalidation 說實話，再決定是否要往 visualization 做對稱修補。
+
+#### [BUG-EVAL-002] Evaluation panel 曾在 training history clear 後保留過期的 fold/run 選擇
+
+- Priority: P1
+- Area: Evaluation
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 training history 被清空後，Evaluation panel 可能還保留舊的 fold/run selection，看起來像仍有結果可分析，直到手動 refresh。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `EvaluationPanel`，先讓 controller 回報一個 plan，再模擬 training history clear：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create EvaluationPanel -> initial Fold 1 visible
+# notify history_cleared after controller.get_plans() flips empty
+PY
+```
+
+### 預期
+
+只要 training history 被清空，Evaluation panel 應立刻清掉舊的 fold/run selection，回到 `No Data Available`。
+
+### 實際情況
+
+修正前的 `EvaluationPanel` 只訂閱 `training_stopped`，沒有聽 `history_cleared`，所以清空 training history 不會主動觸發 `update_panel()`。
+
+### 影響
+
+這會讓 evaluation workflow 的狀態呈現變得誤導：UI 仍顯示舊的 fold/run 選擇，但底層 training history 已經被清掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/evaluation/panel.py`
+- training history clear 後依賴 Evaluation panel selection state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `eval_before 1 Fold 1: Plan A 2`
+  - `eval_after 1 Fold 1: Plan A 2`
+- 修正後：
+  - `eval_before 1 Fold 1: Plan A 2`
+  - `eval_after 1 No Data Available 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    - 結果：`4 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q`
+    - 結果：`9 passed`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_evaluation_panel_redesign.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+
+### 備註
+
+目前最小修復面就是補上 `EvaluationPanel <- history_cleared` bridge，不需要先重做 evaluation controller 或 training history model。
+
+#### [BUG-EVAL-003] Evaluation panel 曾在 training config change 後保留過期的 fold/run 選擇
+
+- Priority: P1
+- Area: Evaluation
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 training-side config change 使 trainer 結果失效後，Evaluation panel 可能還保留舊的 fold/run selection，看起來像仍有結果可分析，直到手動 refresh。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `EvaluationPanel`，先讓 controller 回報一個 plan，再模擬 `config_changed` 後下游 planner/trainer 已經清空：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create EvaluationPanel -> initial Fold 1 visible
+# notify config_changed after controller.get_plans() flips empty
+PY
+```
+
+### 預期
+
+只要 training config change 讓 trainer 結果失效，Evaluation panel 應立刻清掉舊的 fold/run selection，回到 `No Data Available`。
+
+### 實際情況
+
+修正前的 `EvaluationPanel` 沒有聽 `config_changed`，所以像 data splitting 這類會清 trainer 的 training-side config 變更不會主動觸發 `update_panel()`。
+
+### 影響
+
+這會讓 evaluation workflow 的狀態呈現變得誤導：UI 仍顯示舊的 fold/run 選擇，但底層 trainer 已因 training config 變更而被清掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/evaluation/panel.py`
+- training-side config changes 後依賴 Evaluation panel selection state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `eval_before 1 Fold 1: Plan A 2`
+  - `eval_after 1 Fold 1: Plan A 2`
+- 修正後：
+  - `eval_before 1 Fold 1: Plan A 2`
+  - `eval_after 1 No Data Available 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    - 結果：`5 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q`
+    - 結果：`11 passed`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_evaluation_panel_redesign.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+
+### 備註
+
+目前最小修復面就是補上 `EvaluationPanel <- config_changed` bridge。這條 event 不代表所有 training config 變更都會清 trainer，但對會清掉 plan/history 的路徑而言，現在至少不會再把 stale selection 留在畫面上。
+
+#### [BUG-EVAL-004] Evaluation panel 曾在 harmless refresh 後把使用者選擇重設回第一個 fold/run
+
+- Priority: P1
+- Area: Evaluation
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當使用者已經在 Evaluation panel 切到其他 fold/run，之後只要 `training_stopped` 觸發一次 `update_panel()`，畫面就會把 selection 重設回第一個 plan 與第一個 run，即使原本選擇的 plan/run 仍然有效。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `EvaluationPanel`，先手動切到第二個 fold 與 average run，再觸發 `training_stopped`：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create EvaluationPanel -> select Fold 2 / Average
+# notify training_stopped without removing plans
+PY
+```
+
+### 預期
+
+如果原本的 fold/run 仍然存在，`training_stopped` 這類 harmless refresh 不應把使用者正在看的分析上下文洗掉。
+
+### 實際情況
+
+修正前的 `EvaluationPanel.update_panel()` 每次都會重新把 `model_combo` 設回 index `0`，然後 `on_model_changed()` 也會把 `run_combo` 設回 index `0`，所以：
+
+- 原本在看的 `Fold 2: Plan B / Average (Finished Runs)` 會被重設成 `Fold 1: Plan A / Repeat 1 (Finished)`
+- 如果原本在看的是剛完成的特定 repeat，該筆 record 雖然還存在，但 selection 仍會被沖掉
+
+### 影響
+
+這會讓 evaluation workflow 缺少穩定的分析上下文。使用者在比較不同 fold 或 average 結果時，只要 training-complete refresh 一來，畫面就跳回第一筆資料，看起來像是自己選錯或資料變掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/evaluation/panel.py`
+- 依賴 Evaluation panel selection state 的 cross-screen analysis workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `before Fold 2: Plan B Average (Finished Runs)`
+  - `after Fold 1: Plan A Repeat 1 (Finished)`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    - 結果：`7 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q`
+    - 結果：`11 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - 結果：`771 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_evaluation_panel_redesign.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面是讓 `EvaluationPanel` 在 `update_panel()` / `on_model_changed()` 期間保留「仍然有效的 selection」：
+
+- 先盡量以 plan / record identity 保留選擇
+- 再用 label 當 fallback
+- 因此 `Average (Finished Runs)` 與剛完成後 label 會改變的 specific repeat 都能在 harmless refresh 後保留下來
+
+這讓 AQ-004 不再只是「清掉 stale selection」，也補上了「不要把 valid selection 白白洗掉」這個對稱一致性缺口。
+
+#### [BUG-VIZ-001] Visualization panel 曾在 preprocess invalidation 後保留過期的 plan/run 選擇
+
+- Priority: P1
+- Area: Visualization
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 preprocess 變更把 trainer / epoch downstream state 清掉時，Visualization panel 可能還保留舊的 plan/run 選擇；更糟的是，舊版 `refresh_combos()` 在 trainers 消失時不會清掉這些 stale entries，所以連手動 refresh 都可能留下殘影。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `VisualizationPanel`，先讓 controller 回報一個 trainer，再模擬 preprocess invalidation：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create VisualizationPanel -> initial Fold 1 visible
+# notify preprocess_changed after controller.get_trainers() flips empty
+PY
+```
+
+### 預期
+
+只要 preprocess invalidation 讓 visualization 上游結果失效，Visualization panel 應立刻清掉舊的 plan/run 選擇，回到 placeholder 狀態。
+
+### 實際情況
+
+修正前的 `VisualizationPanel` 只訂閱 `training_stopped`，沒有聽 `preprocess_changed`；而且 `refresh_combos()` 在 `get_trainers()` 為空時直接 `return`，不會先清空既有 combo 內容。
+
+### 影響
+
+這會讓 visualization workflow 的狀態呈現變得誤導：UI 仍顯示可選的舊 plan/run，但底層 trainer 結果其實已因 preprocess 變更失效。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/visualization/panel.py`
+- preprocess invalidation 後依賴 Visualization panel selection state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `initial 2 Fold 1 (EEGNet) 2`
+  - `after_notify 2 Fold 1 (EEGNet) 2`
+  - `after_manual_refresh 2 Select a plan 2`
+- 修正後：
+  - `initial 2 Fold 1 (EEGNet) 2`
+  - `after_notify 1 Select a plan 0`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_visualization_panel_coverage.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+
+### 備註
+
+目前最小修復面是兩段一起做：
+
+- 補上 `VisualizationPanel <- preprocess_changed` bridge
+- 讓 `refresh_combos()` 在 trainer list 變空時也會主動清掉 stale plan/run
+
+#### [BUG-VIZ-002] Visualization panel 曾在 training history clear 後保留過期的 plan/run 選擇
+
+- Priority: P1
+- Area: Visualization
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 training history 被清空後，Visualization panel 可能還保留舊的 plan/run selection，看起來像仍有 saliency 結果可檢視，直到手動 refresh。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `VisualizationPanel`，先讓 controller 回報一個 trainer，再模擬 training history clear：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create VisualizationPanel -> initial Fold 1 visible
+# notify history_cleared after controller.get_trainers() flips empty
+PY
+```
+
+### 預期
+
+只要 training history 被清空，Visualization panel 應立刻清掉舊的 plan/run selection，回到 placeholder 狀態。
+
+### 實際情況
+
+修正前的 `VisualizationPanel` 只訂閱 `training_stopped`，沒有聽 `history_cleared`，所以清空 training history 不會主動觸發 `update_panel()`。
+
+### 影響
+
+這會讓 visualization workflow 的狀態呈現變得誤導：UI 仍顯示可選的舊 plan/run，但底層 training history 已經被清掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/visualization/panel.py`
+- training history clear 後依賴 Visualization panel selection state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `viz_before 2 Fold 1 (EEGNet) 2`
+  - `viz_after 2 Select a plan 2`
+- 修正後：
+  - `viz_before 2 Fold 1 (EEGNet) 2`
+  - `viz_after 1 Select a plan 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q`
+    - 結果：`18 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q`
+    - 結果：`9 passed`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - 結果：`756 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_visualization_panel_coverage.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面就是補上 `VisualizationPanel <- history_cleared` bridge；因為 `refresh_combos()` 本身已在 AQ-002 被修成會清掉 stale selections，所以這輪不需要再改 combo 清理邏輯本體。
+
+#### [BUG-VIZ-003] Visualization panel 曾在 training config change 後保留過期的 plan/run 選擇
+
+- Priority: P1
+- Area: Visualization
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當 training-side config change 使 trainer 結果失效後，Visualization panel 可能還保留舊的 plan/run selection，看起來像仍有 saliency 結果可檢視，直到手動 refresh。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `VisualizationPanel`，先讓 controller 回報一個 trainer，再模擬 `config_changed` 後 trainer list 已經清空：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create VisualizationPanel -> initial Fold 1 visible
+# notify config_changed after controller.get_trainers() flips empty
+PY
+```
+
+### 預期
+
+只要 training config change 讓 trainer 結果失效，Visualization panel 應立刻清掉舊的 plan/run selection，回到 placeholder 狀態。
+
+### 實際情況
+
+修正前的 `VisualizationPanel` 沒有聽 `config_changed`，所以像 data splitting 這類會清 trainer 的 training-side config 變更不會主動觸發 `update_panel()`。
+
+### 影響
+
+這會讓 visualization workflow 的狀態呈現變得誤導：UI 仍顯示可選的舊 plan/run，但底層 trainer 已因 training config 變更而被清掉。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/visualization/panel.py`
+- training-side config changes 後依賴 Visualization panel selection state 的 workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 offscreen Qt repro 確認：
+
+- 修正前：
+  - `viz_before 2 Fold 1 (EEGNet) 2`
+  - `viz_after 2 Fold 1 (EEGNet) 2`
+- 修正後：
+  - `viz_before 2 Fold 1 (EEGNet) 2`
+  - `viz_after 1 Select a plan 0`
+- focused validation：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q`
+    - 結果：`19 passed`
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_panel_event_bridges.py -q`
+    - 結果：`11 passed`
+- shared UI regression sweep：
+  - `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - 結果：`760 passed, 12 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_visualization_panel_coverage.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面就是補上 `VisualizationPanel <- config_changed` bridge；因為 `refresh_combos()` 的 stale-selection 清理已在 AQ-002 修好，所以這輪只需要把事件 fanout 接到 panel 即可。
+
+#### [BUG-VIZ-004] Visualization panel 曾在 harmless refresh 後把使用者選擇重設回第一個 plan/run
+
+- Priority: P1
+- Area: Visualization
+- Type: Data sync issue
+- Status: Fixed
+- Source: Manual exploration
+
+### 症狀
+
+當使用者已經在 Visualization panel 切到其他 fold/run，之後只要 `training_stopped` 觸發一次 harmless refresh，畫面就會把 selection 重設回第一個 plan 與第一個 run，即使原本選擇的 plan/run 仍然有效。
+
+### 重現方式
+
+在 offscreen Qt session 中建立 `VisualizationPanel`，先切到第二個 fold 與 average run，再觸發 `training_stopped`：
+
+```bash
+/home/administrator/.local/bin/poetry run python - <<'PY'
+# create VisualizationPanel -> select Fold 2 / Average
+# notify training_stopped without removing plans
+PY
+```
+
+### 預期
+
+如果原本的 plan/run 仍然存在，`training_stopped` 這類 harmless refresh 不應把使用者正在看的 saliency 分析上下文洗掉。
+
+### 實際情況
+
+修正前的 `VisualizationPanel.refresh_combos()` / `on_plan_changed()` 每次 refresh 都會無條件回到第一個 trainer 與第一個 run，所以：
+
+- 原本在看的 average path 會被重設回第一個 trainer
+- 即使只是完成訓練、並沒有讓既有結果失效，畫面仍會跳回第一筆資料
+
+### 影響
+
+這會讓 visualization workflow 缺少穩定的分析上下文。使用者在比較不同 fold 或 average saliency 時，只要來一次 harmless refresh，畫面就跳回第一筆資料，看起來像是自己選錯或結果被覆蓋。
+
+### 可能範圍
+
+- `XBrainLab/ui/panels/visualization/panel.py`
+- 依賴 Visualization panel selection state 的 cross-screen analysis workflow
+
+### 證據
+
+於 `2026-04-19` 本地以 focused slices 確認：
+
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_coverage.py -q`
+  - 結果：`20 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py -q`
+  - 結果：`6 passed`
+- `/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - 結果：`782 passed, 3 skipped, 1 warning`
+
+### 測試覆蓋
+
+- `tests/unit/ui/test_visualization_panel_coverage.py`
+- `tests/unit/ui/test_visualization_panel_redesign.py`
+- `tests/unit/ui -q` shared regression sweep
+
+### 備註
+
+目前最小修復面是讓 `VisualizationPanel` 在 refresh 前記住目前 selection，refresh 後優先以 plan/run identity 保留選擇，再以 label 當 fallback。這樣 average path 與具體 run 都能在 harmless refresh 後保留，而不會再被洗回第一個 trainer。
+
 #### [BUG-ENV-004] 兩個 real-data integration test 曾指向不存在的 fixture 目錄
 
 - Priority: P2
@@ -985,6 +2080,10 @@ EEG-Fz, EEG-0, EEG-1, ..., EEG-C3, EEG-Cz, EEG-C4, ..., EEG-Pz
 
 `2026-04-19` 補充：`load_gdf_file()` 現在已額外記錄 repo-specific warning，明確指出這次匯入依賴了 MNE 的 duplicate-name auto-rename，讓 downstream triage 不會只看到一條泛用 runtime warning。
 
+同日進一步補強：這個 signal 現在不只會寫進 `Raw` wrapper 的 runtime signals，還會保存成 structured runtime detail `gdf_duplicate_channel_names`，其中包含 `generated_bases` 與 `generated_channels`。再往上一層，dataset summary 與 real dataset-info tool 也已能直接暴露這份 ambiguity，所以整合測試與後續 workflow 不必只依賴 logger/stderr 或字串 parsing，才能知道這份資料曾經歷 channel-name auto-rename。
+
+同日 repair-loop 再往前一格後，preprocess stage 也不再是盲區：`PreprocessController.get_runtime_diagnostics()` 與 `BackendFacade.get_preprocess_diagnostics()` 現在會保留同一份 ambiguity detail，而 channel-sensitive real preprocess tools 會在 `select_channels`、`set_reference`、`standard_preprocess`、`confirm_montage` 這些 agent-facing 路徑上附加 guardrail note，提醒目前仍存在 generated channel names。
+
 ### 影響
 
 這不會立即造成 crash，但可能扭曲跨檔 channel matching，也會讓後續與 selection、montage、mismatch diagnostics 相關的失敗更難判讀。
@@ -994,6 +2093,7 @@ EEG-Fz, EEG-0, EEG-1, ..., EEG-C3, EEG-Cz, EEG-C4, ..., EEG-Pz
 - `XBrainLab/backend/load_data/raw_data_loader.py`
 - `XBrainLab/backend/load_data/raw.py`
 - 對 channel name 敏感的 preprocess 與 dataset workflow
+- channel-sensitive real preprocess tools and montage confirmation flow
 
 ### 證據
 
@@ -1007,9 +2107,24 @@ EEG-Fz, EEG-0, EEG-1, ..., EEG-C3, EEG-Cz, EEG-C4, ..., EEG-Pz
     - `unique 25`
     - first channels include `EEG-0`, `EEG-1`, ...
     - logger now emits an explicit XBrainLab warning describing the MNE auto-rename dependency
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw.py -q`
+  - 結果：`32 passed`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw_data_loader.py -q`
+  - 結果：`5 passed`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/controller/test_dataset_controller.py -q`
+  - 結果：`18 passed`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/controller/test_preprocess_controller.py -q`
+  - 結果：`10 passed`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py -q`
+  - 結果：`39 passed`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/llm/tools/real/test_real_tools.py -q`
+  - 結果：`21 passed`
+- `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/pipeline/test_all_real_tools.py::TestAllRealTools::test_channel_selection_tool tests/integration/pipeline/test_all_real_tools.py::TestAllRealTools::test_set_montage_tool -q`
+  - 結果：`2 passed, 2 warnings`
+  - real GDF path 現在會在 channel selection 與 montage confirmation 直接附帶 ambiguity guardrail wording
 - `/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
-  - 結果：`25 passed, 7 warnings`
-  - 其中 `A01T.gdf` 相關 warning 仍存在，但 import slice 持續通過
+  - 結果：`31 passed, 13 warnings`
+  - 其中 `A01T.gdf` 相關 warning 仍存在，但 import slice 持續通過，且高層 summary 現在也會帶出 `gdf_duplicate_channel_files` / `gdf_duplicate_channel_details`
 
 ### 測試覆蓋
 
@@ -1017,12 +2132,21 @@ EEG-Fz, EEG-0, EEG-1, ..., EEG-C3, EEG-Cz, EEG-C4, ..., EEG-Pz
 - `tests/integration/controller/test_preprocess_controller.py`
 - `tests/integration/pipeline/test_all_real_tools.py`
 - `tests/unit/backend/load_data/test_raw_data_loader.py`
+- `tests/unit/backend/load_data/test_raw.py`
+- `tests/unit/backend/controller/test_dataset_controller.py`
+- `tests/unit/backend/controller/test_preprocess_controller.py`
+- `tests/unit/backend/test_facade_coverage.py`
+- `tests/unit/llm/tools/real/test_real_tools.py`
+- `Raw.get_runtime_signals()` / `Raw.has_runtime_signals()`
+- `Raw.get_runtime_detail()` / `Raw.has_runtime_detail()`
+- `PreprocessController.get_runtime_diagnostics()`
+- `BackendFacade.get_preprocess_diagnostics()`
 
 ### 備註
 
-這個問題目前已從「模糊的第三方 warning」提升成「XBrainLab import layer 會明確記錄的 runtime signal」，但 underlying channel identity 問題本身還沒解決。
+這個問題目前已從「模糊的第三方 warning」提升成「XBrainLab import layer 會明確記錄，且 `Raw` 物件可程式化讀取的 runtime signal + structured detail」，但 underlying channel identity 問題本身還沒解決。
 
-下一步應在兩條方向中擇一：
+目前更窄的 repair decision 已經做完：
 
-- 對 GDF duplicate/generic channel names 做更有意識的 normalization
-- 或把這類 ambiguous channel identity 以更正式的 metadata / UI signal 暴露給 downstream workflow
+- preprocess-side diagnostics / guardrails 現在已接上，所以 `AQ-001` 不再卡在「下游看不到 ambiguity」
+- 下一步不再是預設直接做 normalization，而是把較高風險的 GDF duplicate/generic channel-name normalization 留在 deferred decision；只有當後續 preprocess / montage / mismatch evidence 顯示 guardrail 仍不足時，再重新升級

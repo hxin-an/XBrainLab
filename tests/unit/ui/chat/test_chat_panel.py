@@ -127,6 +127,8 @@ class TestChatPanelCallbacks:
         config.local_model_enabled = True
         config.local_backend_ready.return_value = False
         config.local_backend_status_message.return_value = "Missing accelerate"
+        config.gemini_enabled = False
+        config.active_mode = "local"
 
         with (
             patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
@@ -145,3 +147,54 @@ class TestChatPanelCallbacks:
         )
         assert local_action.isEnabled() is False
         assert "Unavailable" in local_action.text()
+
+    def test_update_model_menu_hides_unverified_gemini(self, qtbot):
+        config = MagicMock()
+        config.local_model_enabled = True
+        config.local_backend_ready.return_value = True
+        config.local_backend_status_message.return_value = "Local runtime ready."
+        config.gemini_enabled = False
+        config.active_mode = "local"
+
+        with (
+            patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
+            patch(
+                "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
+                return_value=config,
+            ),
+        ):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+
+        assert all(
+            "Gemini" not in action.text() for action in panel.model_menu.actions()
+        )
+        assert panel.model_btn.text() == "Model: Local ▼"
+
+    def test_update_model_menu_demotes_verified_gemini(self, qtbot):
+        config = MagicMock()
+        config.local_model_enabled = True
+        config.local_backend_ready.return_value = True
+        config.local_backend_status_message.return_value = "Local runtime ready."
+        config.gemini_enabled = True
+        config.active_mode = "gemini"
+
+        with (
+            patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
+            patch(
+                "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
+                return_value=config,
+            ),
+        ):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+
+        gemini_action = next(
+            action for action in panel.model_menu.actions() if "Gemini" in action.text()
+        )
+        assert "Remote" in gemini_action.text()
+        assert panel.model_btn.text() == "Model: Gemini (Remote) ▼"

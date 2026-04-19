@@ -5,6 +5,9 @@ formats including EEGLAB (.set), BIOSIG (.gdf), MNE (.fif), EDF (.edf),
 BioSemi (.bdf), Neuroscan (.cnt), and BrainVision (.vhdr).
 """
 
+import re
+import warnings
+
 import mne
 
 from XBrainLab.backend.exceptions import FileCorruptedError
@@ -12,6 +15,94 @@ from XBrainLab.backend.load_data.factory import RawDataLoaderFactory
 from XBrainLab.backend.utils.logger import logger
 
 from .raw import Raw
+
+_DUPLICATE_GDF_CHANNEL_WARNING = "Channel names are not unique"
+_RUNNING_NUMBER_SUFFIX = re.compile(r"^(?P<base>.+)-(?P<index>\d+)$")
+
+
+def _reemit_captured_warnings(caught_warnings):
+    """Re-emit warnings captured around a loader call.
+
+    This lets the loader inspect runtime warnings for richer repo-specific
+    diagnostics without suppressing the original MNE warning surface.
+    """
+
+    for caught_warning in caught_warnings:
+        warnings.warn_explicit(
+            message=caught_warning.message,
+            category=caught_warning.category,
+            filename=caught_warning.filename,
+            lineno=caught_warning.lineno,
+        )
+
+
+def _get_running_number_bases(channel_names):
+    """Return bases that look auto-renamed via ``name-0``, ``name-1`` patterns."""
+
+    suffixes_by_base = {}
+    for channel_name in channel_names:
+        match = _RUNNING_NUMBER_SUFFIX.match(channel_name)
+        if not match:
+            continue
+        suffixes_by_base.setdefault(match.group("base"), set()).add(
+            int(match.group("index")),
+        )
+
+    return sorted(
+        base
+        for base, suffixes in suffixes_by_base.items()
+        if len(suffixes) >= 2 and min(suffixes) == 0
+    )
+
+
+def _get_generated_channel_names(channel_names, generated_bases):
+    """Return generated channel names derived from auto-renamed duplicate bases."""
+
+    if not generated_bases:
+        return []
+
+    generated_base_set = set(generated_bases)
+    generated_names = []
+    for channel_name in channel_names:
+        match = _RUNNING_NUMBER_SUFFIX.match(channel_name)
+        if match and match.group("base") in generated_base_set:
+            generated_names.append(channel_name)
+    return generated_names
+
+
+def _build_gdf_channel_name_detail(filepath, selected_data, caught_warnings):
+    """Return repo-specific context when MNE auto-renames duplicate GDF channels."""
+
+    if not any(
+        _DUPLICATE_GDF_CHANNEL_WARNING in str(caught_warning.message)
+        for caught_warning in caught_warnings
+    ):
+        return None
+
+    channel_names = selected_data.info.get("ch_names", [])
+    generated_bases = _get_running_number_bases(channel_names)
+    generated_channels = _get_generated_channel_names(channel_names, generated_bases)
+    if generated_bases:
+        message = (
+            f"GDF import for {filepath} relied on MNE auto-renaming duplicate "
+            f"channel names for base names {generated_bases}; channel-sensitive "
+            "workflows may be unreliable until names are normalized or handled "
+            "explicitly."
+        )
+    else:
+        message = (
+            f"GDF import for {filepath} relied on MNE auto-renaming duplicate "
+            "channel names; channel-sensitive workflows may be unreliable until "
+            "names are normalized or handled explicitly."
+        )
+
+    return {
+        "kind": "gdf_duplicate_channel_names",
+        "filepath": filepath,
+        "generated_bases": generated_bases,
+        "generated_channels": generated_channels,
+        "message": message,
+    }
 
 
 def load_set_file(filepath):
@@ -80,11 +171,28 @@ def load_gdf_file(filepath):
     """
     try:
         # GDF is typically loaded as Raw
-        selected_data = mne.io.read_raw_gdf(filepath, preload=False)
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            selected_data = mne.io.read_raw_gdf(filepath, preload=False)
+
+        _reemit_captured_warnings(caught_warnings)
+        channel_name_detail = _build_gdf_channel_name_detail(
+            filepath,
+            selected_data,
+            caught_warnings,
+        )
+        if channel_name_detail:
+            logger.warning("%s", channel_name_detail["message"])
 
         if selected_data:
             # Wrap in XBrainLab Raw object
             raw_wrapper = Raw(filepath, selected_data)
+            if channel_name_detail:
+                raw_wrapper.add_runtime_signal(channel_name_detail["message"])
+                raw_wrapper.set_runtime_detail(
+                    "gdf_duplicate_channel_names",
+                    channel_name_detail,
+                )
             return raw_wrapper
 
     except Exception as e:
@@ -119,7 +227,10 @@ def load_fif_file(filepath):
             selected_data = mne.read_epochs(filepath, preload=False)
         except Exception as e:
             logger.warning("Failed to load FIF as Epochs: %s", e)
-            raise FileCorruptedError(filepath, f"Failed to load FIF as Epochs: {e}") from e
+            raise FileCorruptedError(
+                filepath,
+                f"Failed to load FIF as Epochs: {e}",
+            ) from e
     except Exception as e:
         logger.warning("Failed to load FIF as Raw: %s", e)
         try:

@@ -68,6 +68,35 @@ def test_labels_imported_status(raw):
     assert raw.is_labels_imported() is False
 
 
+def test_runtime_details_roundtrip_and_copy(raw):
+    raw.add_runtime_signal("duplicate channels")
+    raw.set_runtime_detail(
+        "gdf_duplicate_channel_names",
+        {
+            "generated_bases": ["EEG"],
+            "generated_channels": ["EEG-0", "EEG-1"],
+        },
+    )
+
+    assert raw.has_runtime_detail("gdf_duplicate_channel_names") is True
+    assert raw.has_gdf_duplicate_channel_detail() is True
+    detail = raw.get_gdf_duplicate_channel_detail()
+    assert detail == {
+        "generated_bases": ["EEG"],
+        "generated_channels": ["EEG-0", "EEG-1"],
+    }
+
+    copied = raw.copy()
+    copied_detail = copied.get_gdf_duplicate_channel_detail()
+    copied_detail["generated_bases"].append("EKG")
+
+    assert copied.get_runtime_signals() == ["duplicate channels"]
+    assert raw.get_runtime_detail("gdf_duplicate_channel_names") == {
+        "generated_bases": ["EEG"],
+        "generated_channels": ["EEG-0", "EEG-1"],
+    }
+
+
 # set event
 def _set_event(raw):
     events = np.array([[1, 0, 1], [2, 0, 2], [3, 0, 3], [4, 0, 4]])

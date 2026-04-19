@@ -34,6 +34,8 @@ class EvaluationPanel(BasePanel):
     Attributes:
         training_controller: Injected ``TrainingController`` for event
             subscription.
+        preprocess_controller: Injected ``PreprocessController`` for
+            preprocess-state invalidation events.
         model_combo: ``QComboBox`` for selecting a training fold/plan.
         run_combo: ``QComboBox`` for selecting an individual run or
             average.
@@ -46,7 +48,13 @@ class EvaluationPanel(BasePanel):
 
     """
 
-    def __init__(self, controller=None, training_controller=None, parent=None):
+    def __init__(
+        self,
+        controller=None,
+        training_controller=None,
+        parent=None,
+        preprocess_controller=None,
+    ):
         """Initialize the evaluation panel.
 
         Args:
@@ -54,15 +62,20 @@ class EvaluationPanel(BasePanel):
                 the parent study if not provided.
             training_controller: Optional ``TrainingController`` for
                 subscribing to training-stopped events.
+            preprocess_controller: Optional ``PreprocessController`` for
+                subscribing to preprocess invalidation events.
             parent: Parent widget (typically the main window).
 
         """
         # 1. Controller Resolution
         if controller is None and parent and hasattr(parent, "study"):
             controller = parent.study.get_controller("evaluation")
+        if preprocess_controller is None and parent and hasattr(parent, "study"):
+            preprocess_controller = parent.study.get_controller("preprocess")
 
         # Store injected training controller
         self.training_controller = training_controller
+        self.preprocess_controller = preprocess_controller
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -84,11 +97,40 @@ class EvaluationPanel(BasePanel):
                 "training_stopped",
                 self.update_panel,
             )
+            self._create_bridge(
+                training_ctrl,
+                "history_cleared",
+                self.update_panel,
+            )
+            self._create_bridge(
+                training_ctrl,
+                "config_changed",
+                self.update_panel,
+            )
+        if self.preprocess_controller:
+            self._create_bridge(
+                self.preprocess_controller,
+                "preprocess_changed",
+                self.update_panel,
+            )
 
     def update_panel(self):
         """Update panel content when switched to."""
         if hasattr(self, "info_panel"):
             pass  # Handled by InfoPanelService
+
+        previous_plan = (
+            self.model_combo.currentData() if hasattr(self, "model_combo") else None
+        )
+        previous_plan_text = (
+            self.model_combo.currentText() if hasattr(self, "model_combo") else ""
+        )
+        previous_run = (
+            self.run_combo.currentData() if hasattr(self, "run_combo") else None
+        )
+        previous_run_text = (
+            self.run_combo.currentText() if hasattr(self, "run_combo") else ""
+        )
 
         # Update Model Combo
         self.model_combo.blockSignals(True)
@@ -100,8 +142,24 @@ class EvaluationPanel(BasePanel):
                 self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
 
             if self.model_combo.count() > 0:
-                self.model_combo.setCurrentIndex(0)
-                self.on_model_changed(0)  # Manually trigger update for runs
+                selected_index = 0
+                for i in range(self.model_combo.count()):
+                    if self.model_combo.itemData(i) is previous_plan:
+                        selected_index = i
+                        break
+                    if (
+                        previous_plan_text
+                        and self.model_combo.itemText(i) == previous_plan_text
+                    ):
+                        selected_index = i
+                        break
+
+                self.model_combo.setCurrentIndex(selected_index)
+                self.on_model_changed(
+                    selected_index,
+                    preferred_run=previous_run,
+                    preferred_run_text=previous_run_text,
+                )
                 # Show Charts
                 self.plot_stack.setCurrentIndex(0)
             else:
@@ -119,7 +177,7 @@ class EvaluationPanel(BasePanel):
 
         self.model_combo.blockSignals(False)
 
-    def on_model_changed(self, index):
+    def on_model_changed(self, index, preferred_run=None, preferred_run_text=""):
         """Handle model selection change."""
         if index < 0:
             return
@@ -145,7 +203,18 @@ class EvaluationPanel(BasePanel):
             self.run_combo.addItem("Average (Finished Runs)", "average")
 
         if self.run_combo.count() > 0:
-            self.run_combo.setCurrentIndex(0)
+            selected_index = 0
+            for i in range(self.run_combo.count()):
+                if self.run_combo.itemData(i) is preferred_run:
+                    selected_index = i
+                    break
+                if (
+                    preferred_run_text
+                    and self.run_combo.itemText(i) == preferred_run_text
+                ):
+                    selected_index = i
+                    break
+            self.run_combo.setCurrentIndex(selected_index)
 
         self.run_combo.blockSignals(False)
         self.update_views()

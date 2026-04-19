@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
 from XBrainLab.ui.panels.evaluation.metrics_table import MetricsTableWidget
@@ -48,6 +49,7 @@ class MockTrainRecord:
     def __init__(self, finished=True):
         self.finished = finished
         self.eval_record = MockEvalRecord() if finished else None
+        self.dataset = MagicMock()
 
     def is_finished(self):
         return self.finished
@@ -190,3 +192,152 @@ def test_evaluation_panel_logic(qtbot):
     # Test Show Percentage Toggle
     panel.chk_percentage.setChecked(True)
     panel.chk_percentage.setChecked(False)
+
+
+def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):
+    """Preprocess invalidation should clear stale evaluation plan selections."""
+    main_window = MockMainWindow()
+    controller = main_window.study.get_controller("evaluation")
+    preprocess_controller = Observable()
+    panel = EvaluationPanel(
+        controller=controller,
+        preprocess_controller=preprocess_controller,
+        parent=main_window,
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    assert panel.model_combo.count() == 2
+    assert panel.model_combo.itemText(0) == "Fold 1: Plan A"
+
+    controller.get_plans.return_value = []
+    preprocess_controller.notify("preprocess_changed")
+    qtbot.wait(50)
+
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.run_combo.count() == 0
+
+
+def test_evaluation_panel_clears_stale_plans_on_history_cleared(qtbot):
+    """Training-history clears should remove stale evaluation selections."""
+    main_window = MockMainWindow()
+    controller = main_window.study.get_controller("evaluation")
+    controller.get_pooled_eval_result.return_value = (
+        [0, 1],
+        [0, 1],
+        {
+            0: {"precision": 0.8, "recall": 0.9, "f1-score": 0.85, "support": 10},
+        },
+    )
+    training_controller = Observable()
+    panel = EvaluationPanel(
+        controller=controller,
+        training_controller=training_controller,
+        parent=main_window,
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    assert panel.model_combo.count() == 2
+    assert panel.model_combo.itemText(0) == "Fold 1: Plan A"
+
+    controller.get_plans.return_value = []
+    training_controller.notify("history_cleared")
+    qtbot.wait(50)
+
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.run_combo.count() == 0
+
+
+def test_evaluation_panel_clears_stale_plans_on_config_changed(qtbot):
+    """Training config changes should remove stale evaluation selections."""
+    main_window = MockMainWindow()
+    controller = main_window.study.get_controller("evaluation")
+    training_controller = Observable()
+    panel = EvaluationPanel(
+        controller=controller,
+        training_controller=training_controller,
+        parent=main_window,
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    assert panel.model_combo.count() == 2
+    assert panel.model_combo.itemText(0) == "Fold 1: Plan A"
+
+    controller.get_plans.return_value = []
+    training_controller.notify("config_changed")
+    qtbot.wait(50)
+
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.run_combo.count() == 0
+
+
+def test_evaluation_panel_preserves_selected_plan_and_average_on_training_stopped(
+    qtbot,
+):
+    """training_stopped should keep the current plan/run selection when still valid."""
+    main_window = MockMainWindow()
+    controller = main_window.study.get_controller("evaluation")
+    controller.get_pooled_eval_result.return_value = (
+        [0, 1],
+        [0, 1],
+        {
+            0: {"precision": 0.8, "recall": 0.9, "f1-score": 0.85, "support": 10},
+        },
+    )
+    training_controller = Observable()
+    panel = EvaluationPanel(
+        controller=controller,
+        training_controller=training_controller,
+        parent=main_window,
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+    panel.model_combo.setCurrentIndex(1)
+    panel.run_combo.setCurrentIndex(2)
+
+    assert panel.model_combo.currentText() == "Fold 2: Plan B"
+    assert panel.run_combo.currentText() == "Average (Finished Runs)"
+
+    training_controller.notify("training_stopped")
+    qtbot.wait(50)
+
+    assert panel.model_combo.currentText() == "Fold 2: Plan B"
+    assert panel.run_combo.currentText() == "Average (Finished Runs)"
+
+
+def test_evaluation_panel_preserves_selected_repeat_when_status_label_changes(
+    qtbot,
+):
+    """training_stopped should keep the selected record even if its label changes."""
+    main_window = MockMainWindow()
+    controller = main_window.study.get_controller("evaluation")
+    training_controller = Observable()
+    panel = EvaluationPanel(
+        controller=controller,
+        training_controller=training_controller,
+        parent=main_window,
+    )
+    qtbot.addWidget(panel)
+
+    plan_a = controller.get_plans.return_value[0]
+    target_record = plan_a.get_plans()[1]
+    assert target_record.is_finished() is False
+
+    panel.update_panel()
+    panel.run_combo.setCurrentIndex(1)
+
+    assert panel.run_combo.currentText() == "Repeat 2"
+    assert panel.run_combo.currentData() is target_record
+
+    target_record.finished = True
+    training_controller.notify("training_stopped")
+    qtbot.wait(50)
+
+    assert panel.run_combo.currentData() is target_record
+    assert panel.run_combo.currentText() == "Repeat 2 (Finished)"

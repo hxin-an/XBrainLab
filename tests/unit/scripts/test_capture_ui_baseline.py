@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 from PIL import Image
 
-from scripts.dev.capture_ui_baseline import AI_DOCK_STEP, _prepare_capture_step, is_nearly_black
+from scripts.dev.capture_ui_baseline import (
+    AI_DOCK_STEP,
+    _prepare_capture_step,
+    is_nearly_black,
+)
 
 
 def test_is_nearly_black_detects_empty_image(tmp_path):

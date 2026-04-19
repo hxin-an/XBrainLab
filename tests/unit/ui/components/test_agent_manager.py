@@ -83,8 +83,9 @@ class TestAgentManagerMethods:
         ctrl = MagicMock()
         ctrl.worker.engine.config.active_mode = "local"
         agent_mgr.agent_controller = ctrl
-        assert agent_mgr.prepare_model_deletion("test") is True
-        ctrl.set_model.assert_called_once_with("Gemini")
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert agent_mgr.prepare_model_deletion("test") is False
+        ctrl.set_model.assert_not_called()
 
     def test_prepare_model_deletion_gemini_mode(self, agent_mgr):
         ctrl = MagicMock()

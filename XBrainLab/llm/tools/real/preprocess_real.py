@@ -22,6 +22,47 @@ from ..definitions.preprocess_def import (
 )
 
 
+def _format_channel_identity_guardrail(diagnostics: dict[str, Any]) -> str:
+    """Format a concise guardrail note for ambiguous generated channel names."""
+    details = diagnostics.get("gdf_duplicate_channel_details", [])
+    if not isinstance(details, list) or not details:
+        return ""
+
+    summaries: list[str] = []
+    for detail in details[:2]:
+        if not isinstance(detail, dict):
+            continue
+        filename = detail.get("file") or "unknown file"
+        generated_bases = detail.get("generated_bases", [])
+        if isinstance(generated_bases, list):
+            base_text = ", ".join(str(base) for base in generated_bases if base)
+        else:
+            base_text = ""
+        if not base_text:
+            base_text = "generated names"
+        summaries.append(f"{filename} (bases: {base_text})")
+
+    if not summaries:
+        return ""
+
+    extra = ""
+    remaining = len(details) - len(summaries)
+    if remaining > 0:
+        extra = f" +{remaining} more"
+
+    return (
+        " Warning: verify channel-sensitive preprocessing carefully; "
+        f"GDF duplicate-channel ambiguity remains for {'; '.join(summaries)}{extra}."
+    )
+
+
+def _append_channel_identity_guardrail(message: str, facade: BackendFacade) -> str:
+    """Append a preprocess-stage channel-identity guardrail when needed."""
+    return message + _format_channel_identity_guardrail(
+        facade.get_preprocess_diagnostics(),
+    )
+
+
 class RealStandardPreprocessTool(BaseStandardPreprocessTool):
     """Real implementation of :class:`BaseStandardPreprocessTool`.
 
@@ -83,7 +124,10 @@ class RealStandardPreprocessTool(BaseStandardPreprocessTool):
         except Exception as e:
             return f"Preprocessing failed: {e!s}"
 
-        return "Standard preprocessing applied successfully via Facade."
+        return _append_channel_identity_guardrail(
+            "Standard preprocessing applied successfully via Facade.",
+            facade,
+        )
 
 
 class RealBandPassFilterTool(BaseBandPassFilterTool):
@@ -220,7 +264,10 @@ class RealRereferenceTool(BaseRereferenceTool):
             facade.set_reference(method)
         except Exception as e:
             return f"Re-reference failed: {e!s}"
-        return f"Applied reference: {method}"
+        return _append_channel_identity_guardrail(
+            f"Applied reference: {method}",
+            facade,
+        )
 
 
 class RealChannelSelectionTool(BaseChannelSelectionTool):
@@ -246,7 +293,10 @@ class RealChannelSelectionTool(BaseChannelSelectionTool):
             facade.select_channels(channels)
         except Exception as e:
             return f"Channel selection failed: {e!s}"
-        return f"Selected {len(channels)} channels."
+        return _append_channel_identity_guardrail(
+            f"Selected {len(channels)} channels.",
+            facade,
+        )
 
 
 class RealSetMontageTool(BaseSetMontageTool):
@@ -271,9 +321,14 @@ class RealSetMontageTool(BaseSetMontageTool):
         if montage_name is None:
             return "Error: montage_name is required."
 
+        facade = BackendFacade(study)
+
         # Instead of auto-applying, request UI confirmation
         # This allows users to visually verify channel-to-electrode mapping
-        return f"Request: confirm_montage '{montage_name}'"
+        return _append_channel_identity_guardrail(
+            f"Request: confirm_montage '{montage_name}'",
+            facade,
+        )
 
 
 class RealEpochDataTool(BaseEpochDataTool):

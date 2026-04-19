@@ -17,11 +17,11 @@ from PyQt6.QtWidgets import (
     QHeaderView,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QListWidgetItem,
     QVBoxLayout,
 )
 
@@ -215,7 +215,9 @@ class ImportLabelDialog(BaseDialog):
                 and isinstance(labels[0], dict)
             ):
                 # Timestamp Mode: Extract 'label' from dicts
-                all_labels.extend(_normalize_label_value(item["label"]) for item in labels)
+                all_labels.extend(
+                    _normalize_label_value(item["label"]) for item in labels
+                )
             else:
                 # Sequence Mode: labels is ndarray
                 all_labels.extend(_normalize_label_value(label) for label in labels)

@@ -223,7 +223,8 @@ class DatasetActionHandler:
 
         if has_timestamp and has_sequence:
             raise ValueError(
-                "Cannot mix timestamp-style and sequence-style label files in one import.",
+                "Cannot mix timestamp-style and sequence-style label files in one "
+                "import.",
             )
 
         if has_timestamp:
@@ -239,9 +240,7 @@ class DatasetActionHandler:
     def _is_timestamp_labels(labels):
         """Return whether loaded labels are in timestamp-annotation format."""
         return (
-            isinstance(labels, list)
-            and len(labels) > 0
-            and isinstance(labels[0], dict)
+            isinstance(labels, list) and len(labels) > 0 and isinstance(labels[0], dict)
         )
 
     def _get_target_files_for_import(self):

@@ -21,3 +21,9 @@ Current approved set:
 - main shell
 - the five top-level panels
 - the AI assistant open-shell state
+
+Current note:
+
+- the approved `ai-assistant-open.png` reference now reflects the post-`AQ-006`
+  local-first shell, where the open assistant surface shows `Model: Local` rather
+  than the older Gemini-default wording

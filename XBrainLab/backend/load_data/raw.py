@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import os
+from typing import Any
 
 import mne
 import numpy as np
@@ -43,6 +45,8 @@ class Raw:
         self.filepath = filepath
         self.mne_data = mne_data
         self.preprocess_history: list[str] = []
+        self.runtime_signals: list[str] = []
+        self.runtime_details: dict[str, Any] = {}
         self.raw_events: np.ndarray | None = None
         self.raw_event_id: dict[str, int] | None = None
         self.subject = "0"
@@ -68,6 +72,62 @@ class Raw:
     def get_preprocess_history(self) -> list[str]:
         """Return the preprocess history of the raw data."""
         return self.preprocess_history
+
+    def add_runtime_signal(self, signal: str) -> None:
+        """Record a runtime signal associated with this dataset."""
+        validate_type(signal, str, "signal")
+        if signal and signal not in self.runtime_signals:
+            self.runtime_signals.append(signal)
+
+    def get_runtime_signals(self) -> list[str]:
+        """Return runtime signals recorded during load or processing."""
+        return self.runtime_signals.copy()
+
+    def has_runtime_signals(self) -> bool:
+        """Return whether any runtime signals have been recorded."""
+        return bool(self.runtime_signals)
+
+    def set_runtime_detail(self, name: str, detail: Any) -> None:
+        """Store structured runtime detail for later diagnostics."""
+        validate_type(name, str, "name")
+        if not name:
+            raise ValueError("Runtime detail name cannot be empty")
+        self.runtime_details[name] = copy.deepcopy(detail)
+
+    def get_runtime_detail(self, name: str) -> Any | None:
+        """Return one structured runtime detail, if recorded."""
+        validate_type(name, str, "name")
+        if name not in self.runtime_details:
+            return None
+        return copy.deepcopy(self.runtime_details[name])
+
+    def get_runtime_details(self) -> dict[str, Any]:
+        """Return all structured runtime details."""
+        return copy.deepcopy(self.runtime_details)
+
+    def has_runtime_detail(self, name: str) -> bool:
+        """Return whether a named structured runtime detail exists."""
+        validate_type(name, str, "name")
+        return name in self.runtime_details
+
+    def has_gdf_duplicate_channel_detail(self) -> bool:
+        """Return whether GDF duplicate-channel ambiguity detail is recorded."""
+        return self.has_runtime_detail("gdf_duplicate_channel_names")
+
+    def get_gdf_duplicate_channel_detail(self) -> dict[str, Any] | None:
+        """Return GDF duplicate-channel ambiguity detail, if recorded.
+
+        This is a typed convenience accessor so downstream dataset and
+        preprocess diagnostics do not need to hard-code the runtime-detail key.
+        """
+        detail = self.get_runtime_detail("gdf_duplicate_channel_names")
+        if detail is None:
+            return None
+        if not isinstance(detail, dict):
+            raise TypeError(
+                "Runtime detail 'gdf_duplicate_channel_names' must be a dict",
+            )
+        return detail
 
     def add_preprocess(self, desc: str) -> None:
         """Append a preprocessing description to the history.
@@ -313,6 +373,8 @@ class Raw:
 
         # Copy properties
         new_obj.preprocess_history = self.preprocess_history.copy()
+        new_obj.runtime_signals = self.runtime_signals.copy()
+        new_obj.runtime_details = copy.deepcopy(self.runtime_details)
         new_obj.subject = self.subject
         new_obj.session = self.session
         new_obj.labels_imported = self.labels_imported

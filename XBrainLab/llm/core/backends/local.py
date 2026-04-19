@@ -57,9 +57,10 @@ class LocalBackend(BaseBackend):
             try:
                 probe = torch_module.zeros(1, device=device)
                 del probe
-                return
             except Exception as exc:  # pragma: no cover - hardware/runtime specific
                 reason = str(exc)
+            else:
+                return
 
         logger.warning(
             "Configured local LLM device %s is not usable; falling back to CPU: %s",

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 import torch
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox

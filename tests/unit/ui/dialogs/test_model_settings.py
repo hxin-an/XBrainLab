@@ -140,6 +140,23 @@ class TestLocalModelSection:
         ):
             dialog._delete_model()
 
+    def test_delete_model_aborts_when_agent_manager_blocks(self, dialog):
+        from PyQt6.QtWidgets import QMessageBox
+
+        dialog.local_downloaded = True
+        dialog.agent_manager.prepare_model_deletion.return_value = False
+        with (
+            patch.object(
+                QMessageBox,
+                "warning",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch("shutil.rmtree") as mock_rmtree,
+        ):
+            dialog._delete_model()
+
+        mock_rmtree.assert_not_called()
+
     def test_on_local_enable_toggled(self, dialog):
         with (
             patch("os.path.exists", return_value=False),

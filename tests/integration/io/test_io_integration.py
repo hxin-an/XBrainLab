@@ -2,8 +2,8 @@ import os
 
 import pytest
 
-from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.exceptions import FileCorruptedError
+from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file, load_raw_data
 
@@ -28,6 +28,8 @@ PUBLIC_REAL_DATA_FIXTURES = [
     os.path.join(PUBLIC_DATA_DIR, "physionet-eegmmidb-S008R01.edf"),
     os.path.join(PUBLIC_DATA_DIR, "bbci-competition-iii-O3VR.gdf"),
     os.path.join(PUBLIC_DATA_DIR, "sccn-eeglab_data.set"),
+    os.path.join(PUBLIC_DATA_DIR, "scan41_short.cnt"),
+    os.path.join(PUBLIC_DATA_DIR, "test_NO.vhdr"),
 ]
 
 
@@ -65,6 +67,30 @@ class TestIOIntegration:
         # but get_data() returns full array
         assert data.shape[0] == n_channels
         assert data.shape[1] > 0
+
+    def test_load_gdf_file_records_runtime_signal_for_duplicate_channels(self):
+        """Keep the duplicate-channel signal accessible beyond the raw warning."""
+        if not os.path.exists(GDF_FILE):
+            pytest.skip(f"Test data not found at {GDF_FILE}")
+
+        raw = load_gdf_file(GDF_FILE)
+
+        assert raw.has_runtime_signals()
+        assert any(
+            "auto-renaming duplicate channel names" in signal
+            for signal in raw.get_runtime_signals()
+        )
+        assert raw.has_runtime_detail("gdf_duplicate_channel_names")
+        assert raw.has_gdf_duplicate_channel_detail()
+
+        detail = raw.get_gdf_duplicate_channel_detail()
+        assert detail is not None
+        assert detail["kind"] == "gdf_duplicate_channel_names"
+        assert detail["filepath"] == GDF_FILE
+        assert "EEG" in detail["generated_bases"]
+        assert any(
+            channel.startswith("EEG-") for channel in detail["generated_channels"]
+        )
 
     @pytest.mark.parametrize("filepath", REAL_DATA_FIXTURES)
     def test_load_supported_real_formats(self, filepath):
@@ -106,6 +132,27 @@ class TestIOIntegration:
         summary = facade.get_data_summary()
         assert summary["count"] == 1
         assert summary["files"] == [os.path.basename(filepath)]
+
+    def test_facade_summary_records_gdf_duplicate_channel_diagnostics(self):
+        """Surface real GDF ambiguity in the high-level dataset summary."""
+        if not os.path.exists(GDF_FILE):
+            pytest.skip(f"Test data not found at {GDF_FILE}")
+
+        facade = BackendFacade()
+        success_count, errors = facade.load_data([GDF_FILE])
+
+        assert success_count == 1
+        assert errors == []
+
+        summary = facade.get_data_summary()
+        assert summary["gdf_duplicate_channel_files"] == [os.path.basename(GDF_FILE)]
+        assert summary["gdf_duplicate_channel_details"]
+        detail = summary["gdf_duplicate_channel_details"][0]
+        assert detail["file"] == os.path.basename(GDF_FILE)
+        assert "EEG" in detail["generated_bases"]
+        assert any(
+            channel.startswith("EEG-") for channel in detail["generated_channels"]
+        )
 
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
     def test_load_public_real_formats(self, filepath):
