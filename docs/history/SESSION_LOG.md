@@ -336,6 +336,39 @@ This log records meaningful progress so repair work can continue smoothly across
 - recorded a new durable design-boundary exception:
   - the user explicitly approved intentional redesign of the AI assistant panel
 
+### Priority dialog acceptance coverage
+
+- added `tests/integration/ui/test_dialog_acceptance.py` to exercise the four prep-gate priority dialogs through real widget interaction and the OK-button path:
+  - `LabelMappingDialog`
+  - `EventFilterDialog`
+  - `EpochingDialog`
+  - `TrainingSettingDialog`
+- validation run:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_dialog_acceptance.py -q`
+  - result: `4 passed`
+- this narrows the modal blind spot significantly for the prep gate:
+  - these dialogs are no longer covered only by direct method calls or patched dialog-entry mocks
+  - the remaining caveat is that the broader test harness still patches `QDialog.exec`, so this is strong headless acceptance coverage rather than full manual desktop validation
+
+### Shared refresh propagation coverage
+
+- added `tests/unit/ui/test_panel_event_bridges.py` to exercise the highest-value observer-bridge propagation paths directly:
+  - dataset events -> `PreprocessPanel.update_panel()`
+  - dataset events -> `TrainingPanel.update_panel()`
+  - `training_stopped` -> `EvaluationPanel.update_panel()`
+  - `training_stopped` -> `VisualizationPanel.update_panel()`
+- validation run:
+  - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui/test_panel_event_bridges.py -q`
+  - result: `4 passed`
+- this complements the existing `MainWindow.switch_page()` smoke tests by checking the event-driven path instead of only tab navigation
+
+### AI shell triage refinement
+
+- confirmed that `accelerate` is already declared in `pyproject.toml`, but only under the optional Poetry `llm` group
+- this narrows `BUG-AGENT-001`:
+  - the current failure is not just "missing dependency in source control"
+  - it is more specifically an environment/readiness mismatch plus missing UI-side preflight behavior before local backend startup
+
 ### Updated next recommended moves
 
 1. verify top-level panel happy paths and collect additional baseline artifacts beyond the initial shell

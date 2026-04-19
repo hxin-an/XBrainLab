@@ -75,6 +75,16 @@ What has been done:
 - IO integration coverage now exercises both the existing repo fixtures and the downloaded public fixtures
 - local-only operating assumptions were documented, including the current `pytest -s` workaround for capture teardown failures
 - top-level shell and panel happy paths now have runtime evidence from the Qt integration slice, not only from screenshots
+- the four highest-priority prep-gate dialogs now have headless acceptance coverage through a dedicated Qt integration slice:
+  - `LabelMappingDialog`
+  - `EventFilterDialog`
+  - `EpochingDialog`
+  - `TrainingSettingDialog`
+- shared refresh propagation now has direct bridge-level smoke coverage for the highest-value downstream paths:
+  - dataset events -> `PreprocessPanel`
+  - dataset events -> `TrainingPanel`
+  - `training_stopped` -> `EvaluationPanel`
+  - `training_stopped` -> `VisualizationPanel`
 - the user has explicitly approved intentional redesign of the AI assistant panel, which removes the previous design-freeze constraint for that surface only
 
 Evidence:
@@ -82,13 +92,13 @@ Evidence:
 - AI assistant baseline capture now also succeeds in `xvfb-run`
 - `tests/unit/scripts/test_capture_ui_baseline.py` currently passes with `4 passed`
 - `tests/integration/ui/test_e2e_qtbot.py` currently passes with `20 passed`
+- `tests/integration/ui/test_dialog_acceptance.py` currently passes with `4 passed`
+- `tests/unit/ui/test_panel_event_bridges.py` currently passes with `4 passed`
 - `tests/unit/scripts/test_capture_ui_baseline.py tests/integration/io/test_io_integration.py` currently passes with `27 passed, 7 warnings`
 - the downloaded public fixtures load through the direct IO path and the facade import path
 
 Open prep items:
 - deepen runtime workflow evidence beyond top-level panel navigation and dock toggling
-- run and record live/modal checks for the highest-risk dialogs
-- widen refresh/navigation and cross-panel propagation protection
 - convert the remaining runtime warnings/signals into confirmed bugs or confirmed non-blockers
 - repair or fully root-cause the default `pytest` capture teardown failure
 
@@ -110,9 +120,11 @@ What will unlock this phase:
 - real GDF fixtures still emit duplicate-channel-name warnings
 - the public BBCI `O3VR.gdf` fixture emits an MNE annotation-range warning even though import succeeds
 - AI assistant local initialization currently fails if the environment is missing `accelerate`, even though the dock can still be opened
+- `accelerate` is declared only in the optional Poetry `llm` group, so the current AI-shell failure looks like an environment/readiness mismatch plus a missing preflight guard
+- broader dialog realism is better than before, but the global `QDialog.exec` patch still means desktop-manual behavior is not identical to the unit harness
 
 ## Immediate Next Moves
 
 1. keep this report synced to the plan after each meaningful cycle
-2. continue prep-gate work on high-risk dialogs and deeper workflow sequences beyond shell-level navigation
+2. continue prep-gate work on runtime-signal triage and deeper workflow sequences beyond shell-level navigation
 3. triage or repair the AI assistant initialization failure and the default `pytest` capture teardown failure

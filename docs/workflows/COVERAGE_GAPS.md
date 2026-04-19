@@ -20,19 +20,24 @@ In practice:
 These areas appear to have meaningful existing coverage:
 
 - dataset label-import related logic
+- label mapping and event filtering acceptance paths
 - smart parser dialog flows
+- epoching dialog acceptance path
 - training setting and model selection dialogs
 - montage picker and saliency settings dialogs
 - panel structure and sidebar behaviors
 - UI refresh integration tests
+- shared event-bridge propagation into downstream panels
 
 Representative files:
 
 - `tests/unit/ui/dataset/test_import_label.py`
+- `tests/integration/ui/test_dialog_acceptance.py`
 - `tests/unit/ui/dataset/test_smart_parser.py`
 - `tests/unit/ui/training/test_training_setting.py`
 - `tests/unit/ui/training/test_model_selection.py`
 - `tests/unit/ui/test_main_window_sync.py`
+- `tests/unit/ui/test_panel_event_bridges.py`
 - `tests/unit/ui/dialogs/test_montage_picker.py`
 - `tests/unit/ui/dialogs/test_saliency_setting.py`
 - `tests/integration/ui/test_ui_refresh.py`
@@ -49,6 +54,11 @@ Why it matters:
 Risk:
 
 - acceptance/cancel paths may look correct in tests while real dialog interaction still misbehaves
+
+Current state:
+
+- the four prep-gate priority dialogs now have button-driven headless acceptance coverage in `tests/integration/ui/test_dialog_acceptance.py`
+- the remaining realism gap is mostly around dialogs that still depend on `exec()`-heavy entry flows or full manual desktop behavior
 
 ### 2. Visual correctness
 
@@ -83,6 +93,11 @@ Risk:
 
 - local tests can pass while downstream panels fail to refresh coherently
 
+Current state:
+
+- `tests/unit/ui/test_panel_event_bridges.py` now covers the highest-value propagation paths from dataset/training events into downstream panels
+- the remaining gap is broader workflow coherence across multi-step user actions, not the basic observer-bridge wiring itself
+
 ## Dialog Review Status
 
 ### Higher confidence dialogs
@@ -98,9 +113,6 @@ These appear to have at least some targeted tests, though not necessarily live m
 
 ### Still deserving explicit review
 
-- `label_mapping_dialog.py`
-- `event_filter_dialog.py`
-- `epoching_dialog.py`
 - `export_saliency_dialog.py`
 - `data_splitting_dialog.py`
 - `manual_split_dialog.py`
@@ -109,10 +121,10 @@ These matter because they mutate or gate important workflow state.
 
 ## Most Valuable Next Test Investments
 
-1. refresh and navigation smoke tests around `MainWindow.switch_page()` and panel updates
-2. one real workflow validation pass per major panel
-3. improved screenshot capture that produces usable UI evidence
-4. focused training-to-evaluation and training-to-visualization state propagation checks
+1. one real workflow validation pass per major panel
+2. improved screenshot capture that produces usable UI evidence
+3. runtime-signal triage for AI shell initialization and pytest capture teardown
+4. focused end-to-end checks for multi-step training/evaluation/visualization coherence
 
 ## Related Docs
 

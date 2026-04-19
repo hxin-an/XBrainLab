@@ -69,3 +69,17 @@ For each dialog, we care about:
 6. `model_selection_dialog.py`
 7. `montage_picker_dialog.py`
 8. `saliency_setting_dialog.py`
+
+## Current Prep-Gate Verification
+
+The highest-priority prep-gate dialogs now have headless acceptance coverage in
+`tests/integration/ui/test_dialog_acceptance.py`:
+
+- `label_mapping_dialog.py`
+- `event_filter_dialog.py`
+- `epoching_dialog.py`
+- `training_setting_dialog.py`
+
+This is stronger than the earlier method-level tests because it exercises live
+widget state plus the button-driven accept path. It is still not identical to a
+manual desktop run because the wider unit harness patches `QDialog.exec`.

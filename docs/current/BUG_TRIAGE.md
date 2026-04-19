@@ -353,6 +353,12 @@ ValueError: ... requires `accelerate`
 
 This is now a confirmed AI-shell/runtime issue. The user has also explicitly approved intentional redesign of the AI assistant panel, so the eventual fix is allowed to include product-level UI changes instead of being limited to a narrow patch.
 
+Additional triage finding on `2026-04-19`:
+
+- `pyproject.toml` already declares `accelerate`, but only inside the optional Poetry `llm` group
+- that means the current failure is likely a mismatch between the active local environment and the UI's assumption that local-model startup is ready
+- the likely fix surface is therefore not just dependency installation; it also includes preflight checks and clearer fallback behavior before the AI dock presents local inference as usable
+
 #### [BUG-DATASET-001] Sequence label import assumed numeric-only label codes
 
 - Priority: P1

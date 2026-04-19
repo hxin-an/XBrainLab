@@ -89,7 +89,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - state synchronization after controller events
   - reference `docs/workflows/COVERAGE_GAPS.md`
 - Status:
-  In progress. Main-window refresh/navigation smoke coverage has been expanded in `tests/unit/ui/test_main_window_sync.py`, and existing refresh integration coverage still passes.
+  Done. Main-window refresh/navigation smoke coverage remains in `tests/unit/ui/test_main_window_sync.py`, and `tests/unit/ui/test_panel_event_bridges.py` now covers the highest-value downstream event propagation paths.
 
 ### BL-007 Audit dialog acceptance flows for silent state loss
 
@@ -102,7 +102,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - training setup dialogs
   - visualization settings/export dialogs
 - Status:
-  In progress. `ImportLabelDialog` no longer assumes numeric-only sequence labels, but the rest of the label dialog stack still needs runtime-oriented audit.
+  In progress. The prep-gate priority four (`LabelMappingDialog`, `EventFilterDialog`, `EpochingDialog`, `TrainingSettingDialog`) now have headless acceptance coverage in `tests/integration/ui/test_dialog_acceptance.py`; visualization/export and secondary dialogs remain follow-up territory only if new evidence points there.
 
 ## Later
 

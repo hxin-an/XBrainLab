@@ -34,7 +34,7 @@ The topmost eligible item should be worked on first.
 
 ### AQ-PREP-003 Audit high-risk dialog acceptance flows
 
-- Status: Pending
+- Status: Done
 - Why:
   Dialog-heavy workflows remain one of the biggest risks because unit tests mock many modal paths.
 - Priority dialogs:
@@ -42,16 +42,29 @@ The topmost eligible item should be worked on first.
   - `EventFilterDialog`
   - `EpochingDialog`
   - `TrainingSettingDialog`
+- Evidence:
+  - `xvfb-run -a /home/administrator/.local/bin/poetry run pytest -s tests/integration/ui/test_dialog_acceptance.py -q`
+- Result:
+  - the four priority dialogs now have headless button-driven acceptance coverage
+  - the acceptance slice validates real widget state changes plus the OK-button path instead of only direct method calls
+  - the remaining modal realism caveat is now narrower: `QDialog.exec` is still patched in the broader unit harness, but these four dialogs are no longer relying only on mocked coverage
 
 ### AQ-PREP-004 Expand refresh and navigation smoke protection
 
-- Status: In progress
+- Status: Done
 - Why:
   Shared refresh coupling is a system-wide risk and must be stronger before deeper UI-adjacent fixes.
 - Current focus:
   - downstream panel propagation checks after shared events
   - keep `MainWindow.switch_page()` behavior covered
   - preserve target-panel-only refresh behavior
+- Evidence:
+  - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui/test_main_window_sync.py -q`
+  - `/home/administrator/.local/bin/poetry run pytest -s tests/unit/ui/test_panel_event_bridges.py -q`
+- Result:
+  - `switch_page()` remains covered for target-panel-only refresh behavior
+  - dataset events now have direct bridge-level smoke coverage into `PreprocessPanel` and `TrainingPanel`
+  - `training_stopped` propagation now has direct bridge-level smoke coverage into `EvaluationPanel` and `VisualizationPanel`
 
 ### AQ-PREP-005 Triage remaining runtime signals into concrete bug IDs
 
