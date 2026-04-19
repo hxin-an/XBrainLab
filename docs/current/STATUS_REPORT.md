@@ -44,9 +44,13 @@ Last updated: `2026-04-19`
    - 新增 `scripts/dev/update_quality_dashboard.py`
    - live output 會寫到 `artifacts/quality/latest.md` 和 `artifacts/quality/latest.json`
    - 人看的固定入口是 `docs/current/QUALITY_DASHBOARD.md`
-   - 目前看板會監測 startup、UI baseline、dialog acceptance、UI unit suite、real-data IO integration
-   - 目前的 UI baseline signal 仍屬於 structural-health check，還不是正式的 golden screenshot regression gate
-   - 第一輪 live refresh 的結果是：`overall FAIL`，因為 `tests/integration/io/test_io_integration.py` 又重現了預設 pytest capture teardown 問題
+   - 目前看板會監測 `ruff`、`mypy`、architecture compliance、startup、UI baseline、dialog acceptance、UI unit suite、real-data IO integration
+   - 核心 UI baseline 現在已升級成 reference-backed compare，不再只是「有圖且不是黑的」
+   - 目前最新 live refresh 的結果仍是：`overall FAIL`
+   - 目前明確的紅燈是：
+     - `ruff check .`
+     - `mypy XBrainLab/`
+     - `pytest tests/integration/io/test_io_integration.py -q` 的預設 capture teardown
 5. unattended UI 驗證現在有 repo 內可重用的 heartbeat-safe 路徑：
    - heartbeat-style UI pytest 失敗點已縮小到 Qt platform plugin / matplotlib cache 環境，而不是單純 repo 測試壞掉
    - 新增 `scripts/dev/run_ui_pytest.sh`
@@ -188,25 +192,26 @@ Last updated: `2026-04-19`
 
 - unattended UI pytest 在目前 Codex workspace 仍需要顯式 headless Qt 環境；目前推薦直接走 `scripts/dev/run_ui_pytest.sh`
 - 先前的 `pytest fd capture` teardown 問題目前變成間歇性 / 未穩定重現狀態，因此還留在 triage，但已不是最清楚的當前 blocker
+- 新增進 dashboard 後，repo-wide `ruff` 與 `mypy` 也正式成為可見紅燈；目前看板會把這些既有品質債如實顯示出來，而不是只回報 runtime slice
 - real GDF fixtures 仍會出現 duplicate channel name warnings；目前只是 observability 更清楚，underlying channel identity ambiguity 仍未解
 - public BBCI `O3VR.gdf` 仍會出現 MNE annotation-range warning，但 import 本身是成功的
 - AI assistant 現在已朝 local-first 方向前進，但這個 workspace 仍缺真正可用的 cached local model，因此還不能做完整 local end-to-end startup
 - dialog realism 雖然比之前強很多，但全域 `QDialog.exec` patch 仍表示 desktop-manual 行為和 unit harness 不完全等價
 - quality dashboard 目前先是 workspace-local live report，下一步是讓 heartbeat 定期刷新它
-- UI baseline 雖然已可重產且不再是黑圖，但目前「對的基準」仍主要是 checklist + live artifact，尚未升級成 reference-image regression gate
+- UI baseline 現在已有 repo 內的 approved reference screenshots，但 coverage 仍只涵蓋 shell、五大 panel、AI assistant open state，不是整個 app 的完整 screenshot gate
 
 ## 最近最值得記住的實際進展
 
 如果你只想記最重要的最新變化，就是這四件事：
 
-1. 品質看板已建立
+1. 品質看板已建立，且已升級成包含 static quality gates 與 reference-backed UI baseline
 2. unattended UI 驗證路徑已收斂
 3. in-app assistant 的產品定位已釐清
 4. prep-gate coverage 與 local-AI startup honesty 都有進步
 
 ## 立刻下一步
 
-1. 把 UI baseline 從目前的存在性 / 非黑圖檢查，升級成真正的 reference-backed regression gate，並讓 quality dashboard 持續刷新它。
+1. triage 現在 dashboard 已明確暴露的三條紅燈：`ruff`、`mypy`、default-capture IO integration。
 2. 繼續完成 prep-gate runtime-signal triage，尤其是 real GDF channel identity、unattended UI validation、visualization headless fragility 這幾條。
 3. 繼續補 local-only AI bootstrap，直到這個 workspace 能用真實 local model 啟動 assistant。
 4. audit 目前的 tool surface，判斷哪些邊界該合併、刪除或重設，讓它更符合 shared human/agent control。

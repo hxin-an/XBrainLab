@@ -101,13 +101,38 @@
 
 ## 2026-04-19
 
+### 品質看板強化與 UI reference gate
+
+- 將 `ruff`、`mypy`、`architecture compliance` 正式接進 `scripts/dev/update_quality_dashboard.py`
+- 將核心 UI baseline 從「檔案存在且不是黑圖」升級成和 `tests/baselines/ui/` approved references 比較
+- 重新以 live capture 重產：
+  - `artifacts/ui/main-window-initial.png`
+  - `artifacts/ui/panel-dataset.png`
+  - `artifacts/ui/panel-preprocess.png`
+  - `artifacts/ui/panel-training.png`
+  - `artifacts/ui/panel-evaluation.png`
+  - `artifacts/ui/panel-visualization.png`
+  - `artifacts/ui/ai-assistant-open.png`
+- 將同一批核心畫面升格為 repo 內 reference baseline：
+  - `tests/baselines/ui/*.png`
+- 在這個 checkout 真正安裝 pre-commit hook：
+  - `pre-commit installed at .git/hooks/pre-commit`
+- 聚焦驗證：
+  - `tests/unit/scripts/test_update_quality_dashboard.py` -> `7 passed`
+  - `python tests/architecture_compliance.py` -> `PASS`
+  - `python scripts/dev/update_quality_dashboard.py` -> `overall FAIL`
+- 這次 dashboard refresh 明確暴露的紅燈：
+  - `ruff check .` -> `21 errors`, `10` 可 auto-fix
+  - `mypy XBrainLab/` -> `7 errors in 5 files`
+  - `tests/integration/io/test_io_integration.py -q` 的 default capture teardown 仍失敗
+
 ### UI baseline 定義澄清
 
 - 明確把目前的 UI baseline 分成三層：
   - `docs/workflows/UI_BASELINE.md` 是人類可讀的結構基準
   - `artifacts/ui/` 是每次驗證時重產的 live evidence
   - `tests/baselines/ui/` 是未來正式 reference screenshots 的固定位置
-- 明確記錄 quality dashboard 目前對 UI 做的是 structural-health check，不是 golden screenshot diff
+- 明確記錄當時 quality dashboard 對 UI 做的是 structural-health check，不是 golden screenshot diff
 - 把「把 UI baseline 升級成真正 regression gate」加入 prep queue
 - 這讓後續的 UI 監測不會再把「現在能重產 screenshot」和「我們已經有正式對照基準」混為一談
 

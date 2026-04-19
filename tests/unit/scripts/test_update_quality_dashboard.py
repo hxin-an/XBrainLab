@@ -8,6 +8,7 @@ from PIL import Image
 import scripts.dev.update_quality_dashboard as dashboard
 from scripts.dev.update_quality_dashboard import (
     EXPECTED_UI_ARTIFACTS,
+    compare_ui_images,
     compute_overall_status,
     latest_is_fresh,
     render_markdown,
@@ -50,23 +51,61 @@ def test_render_markdown_lists_checks_and_artifacts():
     assert "Overall status: `WARN`" in rendered
     assert "UI Artifacts" in rendered
     assert "artifacts/ui/main-window-initial.png" in rendered
+    assert "tests/baselines/ui/main-window-initial.png" in rendered
 
 
 def test_validate_ui_artifacts_detects_missing_files(tmp_path: Path):
-    status, summary = validate_ui_artifacts(tmp_path)
+    status, summary = validate_ui_artifacts(tmp_path, reference_dir=tmp_path / "refs")
 
     assert status == "fail"
     assert "Missing UI artifacts" in summary
 
 
 def test_validate_ui_artifacts_accepts_visible_files(tmp_path: Path):
+    reference_dir = tmp_path / "refs"
+    reference_dir.mkdir()
     for filename in EXPECTED_UI_ARTIFACTS:
         Image.new("RGB", (20, 20), (255, 255, 255)).save(tmp_path / filename)
+        Image.new("RGB", (20, 20), (255, 255, 255)).save(reference_dir / filename)
 
-    status, summary = validate_ui_artifacts(tmp_path)
+    status, summary = validate_ui_artifacts(tmp_path, reference_dir=reference_dir)
 
     assert status == "pass"
-    assert "UI artifacts look usable" in summary
+    assert "match approved references" in summary
+
+
+def test_validate_ui_artifacts_fails_when_reference_images_drift(tmp_path: Path):
+    reference_dir = tmp_path / "refs"
+    reference_dir.mkdir()
+    for filename in EXPECTED_UI_ARTIFACTS:
+        Image.new("RGB", (20, 20), (255, 255, 255)).save(reference_dir / filename)
+        Image.new("RGB", (20, 20), (255, 255, 255)).save(tmp_path / filename)
+
+    Image.new("RGB", (20, 20), (0, 0, 0)).save(tmp_path / EXPECTED_UI_ARTIFACTS[0])
+
+    status, summary = validate_ui_artifacts(tmp_path, reference_dir=reference_dir)
+
+    assert status == "fail"
+    assert "Nearly black UI artifacts" in summary
+
+
+def test_compare_ui_images_detects_visual_drift(tmp_path: Path):
+    reference = tmp_path / "reference.png"
+    candidate = tmp_path / "candidate.png"
+    Image.new("RGB", (20, 20), (255, 255, 255)).save(reference)
+    Image.new("RGB", (20, 20), (255, 255, 255)).save(candidate)
+
+    status, metrics = compare_ui_images(reference, candidate)
+
+    assert status == "pass"
+    assert metrics["mean_diff"] == 0
+    assert metrics["changed_ratio"] == 0
+
+    Image.new("RGB", (20, 20), (0, 0, 0)).save(candidate)
+    status, metrics = compare_ui_images(reference, candidate)
+
+    assert status == "fail"
+    assert metrics["mean_diff"] > 0
 
 
 def test_latest_is_fresh_uses_timestamp(monkeypatch, tmp_path: Path):

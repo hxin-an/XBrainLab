@@ -22,6 +22,9 @@
 
 ## 目前監測的內容
 
+- ruff lint
+- mypy type check
+- architecture compliance
 - startup smoke
 - UI baseline capture
 - dialog acceptance UI slice
@@ -30,11 +33,12 @@
 
 ## 目前 UI 檢查到底在檢查什麼
 
-目前看板對 UI 的判斷，主要是這四層：
+目前看板對 UI 的判斷，主要是這五層：
 
 - app 和主視窗能不能穩定啟動
 - baseline capture 能不能成功重產
 - `artifacts/ui/` 裡的必要截圖有沒有缺檔或幾乎全黑
+- 核心畫面有沒有和 `tests/baselines/ui/` 的 approved references 發生明顯漂移
 - 高風險 dialog 與共用 UI 測試切片有沒有明顯壞掉
 
 也就是說，它現在回答的是：
@@ -45,9 +49,9 @@
 
 它目前還不能回答：
 
-- 現在的畫面和上一次認可的 layout 是否精確一致
-- 某個 panel 的區塊位置是不是悄悄漂移了
-- 某些元件雖然還存在，但是否已經偏離我們正式認可的基準圖
+- 所有 dialog、次級畫面、visualization-heavy views 是否都通過 reference compare
+- 所有細微 spacing、字型渲染或 theme 細節是否都維持像素等價
+- 整個 app 是否已具備完整 Percy-style 或 screenshot-review 級別的全畫面視覺回歸保護
 
 ## 目前什麼叫做「對的基準」
 
@@ -58,23 +62,24 @@
 - `artifacts/ui/`
   - 放每次驗證時產生的 live screenshot evidence
 - `tests/baselines/ui/`
-  - 預留給未來正式認可的 reference screenshots
+  - 放目前已認可的 core reference screenshots
 
-目前 quality dashboard 實際用來判斷 UI baseline 的規則仍是：
+目前 quality dashboard 對核心畫面的 UI baseline 規則是：
 
 - capture 指令成功
 - 必要 screenshot 都存在
 - screenshot 不是幾乎全黑
+- screenshot 要和 `tests/baselines/ui/` 中的 approved references 對得上
 
 所以現在的 baseline 比較準確的說法是：
 
-- `structural health baseline`
+- `reference-backed structural regression gate`
 
-還不是：
+但它還不是：
 
-- `golden screenshot regression gate`
+- `full-app visual regression system`
 
-下一步要補的是把部分核心畫面升級成真正的 reference comparison，而不是只檢查「有圖而且不是黑的」。
+下一步要補的是把 reference coverage 從核心 shell / top-level panels 擴大到更多高價值畫面，而不是停在目前這 7 張核心圖。
 
 ## 手動刷新指令
 
@@ -91,7 +96,7 @@
 ## 目前規則
 
 - UI 驗證預設走 headless-safe 路徑
-- 產出的 baseline screenshot 也會一起檢查是否缺檔或幾乎全黑
+- 產出的 baseline screenshot 會檢查是否缺檔、幾乎全黑，並和 approved references 比較
 - 這份看板偏向「現在是否健康」，不是 release changelog
 
 ## 解讀方式

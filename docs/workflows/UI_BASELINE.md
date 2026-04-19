@@ -36,6 +36,8 @@ The current UI baseline has three layers, and each layer serves a different purp
    - the reserved location for future approved reference screenshots
 
 Right now, the authoritative definition of "correct" is still this document's checklist plus the latest live captures.
+For the shell, five top-level panels, and AI assistant open state, we now also
+have approved reference screenshots under `tests/baselines/ui/`.
 
 That means the current baseline proves things like:
 
@@ -43,13 +45,15 @@ That means the current baseline proves things like:
 - controls remain visible
 - navigation state matches the visible panel
 - the AI assistant open state is still structurally sane
+- the captured core screens still match the current approved reference set
 
 It does not yet prove:
 
 - exact screenshot-level equivalence against a frozen golden image set
 - pixel-perfect stability of spacing, alignment, or rendering details
 
-So the current baseline is a stabilization baseline, not yet a full visual-regression baseline.
+So the current baseline is now a reference-backed stabilization baseline for the
+captured core screens, not yet a full visual-regression baseline for the whole app.
 
 ## Core Screens
 
@@ -161,8 +165,8 @@ The helper currently captures the shell plus the five primary panels into
 `artifacts/ui/`, plus `ai-assistant-open.png` for the dock-open shell state.
 
 Approved reference screenshots should not overwrite those live artifacts.
-When we start promoting accepted screenshots into durable regression references,
-store them under `tests/baselines/ui/`.
+The current approved reference set already lives under `tests/baselines/ui/`.
+Future promotions should continue to go there intentionally.
 
 ## Next Step
 
@@ -170,8 +174,7 @@ The first version of this baseline is checklist-based.
 
 The next upgrade should be:
 
-1. capture real screenshots for the core screens
-2. promote approved screenshots into `tests/baselines/ui/`
-3. keep fresh live validation evidence under `artifacts/ui/`
-4. annotate known acceptable skips for visualization-heavy screens
-5. use them during bug-fix review and dashboard refreshes
+1. expand approved references beyond the shell and top-level panels
+2. keep fresh live validation evidence under `artifacts/ui/`
+3. annotate known acceptable skips for visualization-heavy screens
+4. use them during bug-fix review and dashboard refreshes

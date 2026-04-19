@@ -375,6 +375,75 @@ Qt 會在啟動時嘗試載入 `wayland` 或 `xcb` plugin，接著在 `pytestqt.
 
 這條問題比 `BUG-ENV-003` 更接近目前 heartbeat 自動化的真實 blocker，因為它穩定影響 unattended UI pytest，而不是只影響早期那個已變得不穩定的 capture teardown 訊號。
 
+#### [BUG-ENV-005] 品質看板的 static quality gates 目前仍是紅燈
+
+- Priority: P2
+- Area: Test infrastructure
+- Type: Architecture/coupling
+- Status: Confirmed
+- Source: Test failure
+
+### 症狀
+
+在把 `ruff`、`mypy`、`architecture compliance` 納入品質看板後，dashboard 現在不只回報 runtime signal，也開始如實顯示 repo 既有的 static quality debt。
+
+### 重現方式
+
+執行：
+
+```bash
+/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py
+```
+
+或分別執行：
+
+```bash
+/home/administrator/.local/bin/poetry run ruff check .
+/home/administrator/.local/bin/poetry run mypy XBrainLab/
+/home/administrator/.local/bin/poetry run python tests/architecture_compliance.py
+```
+
+### 預期
+
+品質看板的 static quality gates 應該為綠燈，至少不該被一批已知但未記錄的靜態品質問題長期卡住。
+
+### 實際情況
+
+- `ruff check .` 目前回報 `21 errors`，其中 `10` 個可自動修復
+- `mypy XBrainLab/` 目前回報 `7 errors in 5 files`
+- `python tests/architecture_compliance.py` 通過
+
+### 影響
+
+這代表 quality dashboard 現在雖然比較完整，但整體狀態會持續被 static quality debt 拉成紅燈，也代表 pre-commit hook 一旦真的開始攔提交，這些問題會更明顯地影響日常工作流。
+
+### 可能範圍
+
+- repo-wide import ordering / line-length / minor lint debt
+- selected type-safety issues in:
+  - `XBrainLab/ui/core/observer_bridge.py`
+  - `XBrainLab/ui/panels/visualization/saliency_views/base_saliency_view.py`
+  - `XBrainLab/llm/agent/worker.py`
+  - `XBrainLab/backend/load_data/raw_data_loader.py`
+  - `XBrainLab/ui/panels/dataset/actions.py`
+
+### 證據
+
+於 `2026-04-19` 本地 dashboard refresh 觀察到：
+
+- `ruff check .` -> `FAIL`
+- `mypy XBrainLab/` -> `FAIL`
+- `architecture compliance` -> `PASS`
+- live report: `artifacts/quality/latest.md`
+
+### 測試覆蓋
+
+目前不是 runtime test 缺失，而是 static gate 已被接到 dashboard 並可穩定重現。
+
+### 備註
+
+這不是這次 dashboard 改動額外製造的新 regression，比較接近是原本就存在的品質債終於被正式納入可見 gate。
+
 #### [BUG-AGENT-001] AI assistant 的 local startup 忽略已儲存設定，並把 local runtime failure 延後到初始化時才暴露
 
 - Priority: P1

@@ -77,7 +77,7 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - ignored live dashboard artifacts under `artifacts/quality/`
   - recurring automation refresh path
 - Status:
-  In progress. The dashboard generator and human entry doc are in place; the next step is keeping it refreshed automatically via the existing heartbeat loop.
+  In progress. The dashboard generator, live report, static quality checks, and human entry doc are in place; the next step is keeping it refreshed automatically via the existing heartbeat loop and deciding how hard the newly visible red gates should block prep exit.
 
 ### BL-016 Turn UI baseline checking into a true regression gate
 
@@ -90,7 +90,19 @@ It is intentionally biased toward reducing uncertainty and increasing repair saf
   - at least one reference-backed comparison path for the shell and top-level panels
   - dashboard wording that reflects the true strength of the UI signal
 - Status:
-  In progress. `docs/workflows/UI_BASELINE.md`, `docs/current/QUALITY_DASHBOARD.md`, and `.agents/runbooks/active-queue.md` now distinguish structural baseline from reference baseline; the remaining work is to promote approved screenshots and compare against them automatically.
+  Done. `tests/baselines/ui/` now holds the approved core reference screenshots, and the quality dashboard compares live shell/panel captures against them instead of only checking for non-black output.
+
+### BL-017 Triage static quality-gate debt now that it is visible in the dashboard
+
+- Priority: P1
+- Why now:
+  `ruff` and `mypy` are no longer hidden side checks; they are now first-class dashboard signals and need an explicit cleanup/triage plan.
+- Outputs:
+  - decide whether repo-wide `ruff` and `mypy` green status is required for prep exit
+  - break the current failures into scoped cleanup items
+  - avoid weakening the gates just to make the dashboard green
+- Status:
+  In progress. The dashboard now exposes the failures clearly; the next step is to turn them into scoped fix items instead of leaving them as one undifferentiated red block.
 
 ## Soon
 

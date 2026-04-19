@@ -117,22 +117,36 @@ The topmost eligible item should be worked on first.
 - Result:
   - repo-local dashboard generator now writes live reports under `artifacts/quality/`
   - `docs/current/QUALITY_DASHBOARD.md` is the stable human entry point for the live quality report
-  - the dashboard currently monitors startup smoke, UI baseline capture, dialog acceptance, UI unit suite, and real-data IO integration
-  - the first live run already exposed a real red signal: default-capture IO integration is still not trustworthy in this workspace
+  - the dashboard now monitors ruff, mypy, architecture compliance, startup smoke, UI baseline capture, dialog acceptance, UI unit suite, and real-data IO integration
+  - the expanded dashboard now exposes three concrete red gates instead of one vague "health feels off" signal:
+    - repo-wide ruff failures
+    - repo-wide mypy failures
+    - default-capture real-data IO integration is still not trustworthy in this workspace
   - the generated artifacts stay out of normal git noise via `artifacts/quality/.gitignore`
 
 ### AQ-PREP-008 Turn UI baseline checking into a true regression gate
 
-- Status: In progress
+- Status: Done
 - Why:
   The dashboard can currently prove that the UI renders and that baseline artifacts are not black, but it still cannot tell us whether accepted layout or visibility structure has drifted.
-- Current focus:
-  - make the current "correct baseline" explicit:
+- Result:
+  - the current "correct baseline" is now explicit:
     - structural acceptance criteria live in `docs/workflows/UI_BASELINE.md`
+    - approved reference screenshots live in `tests/baselines/ui/`
     - live observed screenshots live in `artifacts/ui/`
-  - reserve a stable home for future approved reference screenshots under `tests/baselines/ui/`
-  - keep `docs/current/QUALITY_DASHBOARD.md` honest about the current check strength
-  - upgrade at least the shell and top-level panel checks from `exists + not black` into comparison against an approved baseline
+  - the shell, five top-level panels, and AI assistant open-shell state now compare against approved reference images instead of only `exists + not black`
+  - the quality dashboard wording now reflects that this is a real reference-backed regression gate for the captured core screens, while still not claiming full-app visual coverage
+
+### AQ-PREP-009 Triage static quality-gate failures now exposed by the dashboard
+
+- Status: In progress
+- Why:
+  Now that static quality checks are part of the dashboard, prep work needs to decide which red gates are immediate blockers and which belong to later cleanup.
+- Current focus:
+  - repo-wide `ruff check .` currently fails with `21 errors`, `10` auto-fixable
+  - repo-wide `mypy XBrainLab/` currently fails with `7 errors in 5 files`
+  - decide whether these should be prep-exit blockers or repair-loop backlog items
+  - keep the dashboard honest without silently weakening the gates
 
 ## Recently Completed
 
