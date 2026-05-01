@@ -41,6 +41,8 @@ def collect_runtime_diagnostics(data_list: Iterable[Any]) -> dict[str, Any]:
 
         if not isinstance(detail, dict):
             continue
+        if detail.get("resolved") is True:
+            continue
 
         filename = None
         get_filename = getattr(data, "get_filename", None)

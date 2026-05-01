@@ -4,24 +4,22 @@ import os
 from typing import Any
 
 import numpy as np
-import torch
 
-# Imports for constructing backend objects from primitives
-from XBrainLab.backend.dataset import (
-    DataSplitter,
-    DataSplittingConfig,
-    SplitByType,
-    SplitUnit,
-    TrainingType,
-    ValSplitByType,
+from XBrainLab.backend.application import (
+    ApplicationService,
+    AttachLabelsCommand,
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
+    ErrorType,
+    GenerateDatasetCommand,
+    LoadDataCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    ResetSessionCommand,
+    StopTrainingCommand,
+    TrainCommand,
 )
-from XBrainLab.backend.load_data.label_loader import load_label_file
-from XBrainLab.backend.model_base.EEGNet import EEGNet
-from XBrainLab.backend.model_base.SCCNet import SCCNet
-from XBrainLab.backend.model_base.ShallowConvNet import ShallowConvNet
-from XBrainLab.backend.services.label_import_service import LabelImportService
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.utils.mne_helper import get_montage_positions
 
@@ -41,20 +39,45 @@ class BackendFacade:
 
     """
 
-    def __init__(self, study: Study | None = None):
+    def __init__(
+        self,
+        study: Study | None = None,
+        service: ApplicationService | None = None,
+    ):
         """Initialize the backend stack.
 
         Args:
             study: Optional existing Study instance. If None, creates a new one.
+            service: Optional existing application service. Used by tests or
+                adapters that already own the command layer.
 
         """
-        self.study = study if study is not None else Study()
+        if service is not None:
+            self.service = service
+        else:
+            self.service = ApplicationService(study if study is not None else Study())
+        self.study = self.service.study
         # Use Study's cached controllers for singleton-like access
         # This ensures all components share the same controller instances
-        self.dataset = self.study.get_controller("dataset")
-        self.preprocess = self.study.get_controller("preprocess")
-        self.training = self.study.get_controller("training")
-        self.evaluation = self.study.get_controller("evaluation")
+        self.dataset = self.service.dataset
+        self.preprocess = self.service.preprocess
+        self.training = self.service.training
+        self.evaluation = self.service.evaluation
+
+    def get_state(self):
+        """Return the shared application state snapshot."""
+        return self.service.get_state()
+
+    def get_capabilities(self):
+        """Return the backend-owned command capability policy."""
+        return self.service.get_capabilities()
+
+    @staticmethod
+    def _raise_if_failed(result) -> None:
+        if result.failed:
+            if result.recoverable:
+                raise ValueError(result.message)
+            raise RuntimeError(result.message)
 
     # --- Dataset Operations ---
     def load_data(self, filepaths: list[str]) -> tuple[int, list[str]]:
@@ -67,7 +90,16 @@ class BackendFacade:
             A tuple of (success_count, error_list).
 
         """
-        return self.dataset.import_files(filepaths)
+        result = self.service.execute(LoadDataCommand(paths=filepaths))
+        if result.failed:
+            errors = result.diagnostics.get("errors")
+            if errors:
+                return 0, list(errors)
+            return 0, [result.message]
+        return (
+            int(result.diagnostics.get("success_count", 0)),
+            list(result.diagnostics.get("errors", [])),
+        )
 
     def attach_labels(self, mapping: dict[str, str]) -> int:
         """Attach label files to loaded data files.
@@ -79,46 +111,8 @@ class BackendFacade:
             The number of files that had labels successfully attached.
 
         """
-        data_list = self.dataset.get_loaded_data_list()
-        label_service = LabelImportService()
-        label_map: dict[str, Any] = {}
-        file_mapping: dict[str, str] = {}
-        target_files = []
-
-        for raw in data_list:
-            label_path = self._resolve_label_attachment_path(raw, mapping)
-
-            if not label_path:
-                continue
-
-            try:
-                if label_path not in label_map:
-                    label_map[label_path] = load_label_file(label_path)
-                target_files.append(raw)
-                file_mapping[raw.get_filepath()] = label_path
-            except Exception as e:
-                logger.error(
-                    "Failed to attach label for %s: %s",
-                    raw.get_filename(),
-                    e,
-                    exc_info=True,
-                )
-
-        if not target_files:
-            return 0
-
-        event_name_map = self._build_default_label_name_map(label_map)
-        success_count = label_service.apply_labels_batch(
-            target_files,
-            label_map,
-            file_mapping,
-            event_name_map,
-        )
-
-        if success_count > 0:
-            self.dataset.notify("data_changed")
-
-        return success_count
+        result = self.service.execute(AttachLabelsCommand(mapping=mapping))
+        return int(result.diagnostics.get("success_count", 0))
 
     @staticmethod
     def _resolve_label_attachment_path(raw, mapping: dict[str, str]) -> str | None:
@@ -155,7 +149,8 @@ class BackendFacade:
 
     def clear_data(self):
         """Clear all loaded data."""
-        self.dataset.clean_dataset()
+        result = self.service.execute(ResetSessionCommand(confirmed=True))
+        self._raise_if_failed(result)
 
     def get_data_summary(self) -> dict:
         """Get a summary of loaded data.
@@ -204,8 +199,15 @@ class BackendFacade:
             notch_freq: Frequency to notch out (Hz), or None to skip.
 
         """
-        notch_list = [notch_freq] if notch_freq else None
-        self.preprocess.apply_filter(low_freq, high_freq, notch_list)
+        result = self.service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS,
+                low_freq=low_freq,
+                high_freq=high_freq,
+                notch_freq=notch_freq,
+            ),
+        )
+        self._raise_if_failed(result)
 
     def apply_notch_filter(self, freq: float):
         """Apply a notch filter at the specified frequency.
@@ -214,7 +216,13 @@ class BackendFacade:
             freq: The frequency (Hz) to notch out.
 
         """
-        self.preprocess.apply_filter(None, None, [freq])
+        result = self.service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.NOTCH,
+                notch_freq=freq,
+            ),
+        )
+        self._raise_if_failed(result)
 
     def resample_data(self, rate: int):
         """Resample data to the specified sampling rate.
@@ -223,7 +231,10 @@ class BackendFacade:
             rate: Target sampling rate in Hz.
 
         """
-        self.preprocess.apply_resample(rate)
+        result = self.service.execute(
+            PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=rate),
+        )
+        self._raise_if_failed(result)
 
     def normalize_data(self, method: str):
         """Apply normalization to the data.
@@ -232,7 +243,10 @@ class BackendFacade:
             method: Normalization method name.
 
         """
-        self.preprocess.apply_normalization(method)
+        result = self.service.execute(
+            PreprocessCommand(operation=PreprocessOperation.NORMALIZE, method=method),
+        )
+        self._raise_if_failed(result)
 
     def set_reference(self, method: str):
         """Set the EEG reference.
@@ -241,10 +255,10 @@ class BackendFacade:
             method: Reference method — ``"average"`` or a specific channel name.
 
         """
-        if method == "average":
-            self.preprocess.apply_rereference("average")
-        else:
-            self.preprocess.apply_rereference([method])
+        result = self.service.execute(
+            PreprocessCommand(operation=PreprocessOperation.REREFERENCE, method=method),
+        )
+        self._raise_if_failed(result)
 
     def select_channels(self, channels: list[str]):
         """Select a subset of EEG channels to keep.
@@ -253,7 +267,13 @@ class BackendFacade:
             channels: List of channel names to retain.
 
         """
-        self.dataset.apply_channel_selection(channels)
+        result = self.service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.SELECT_CHANNELS,
+                channels=channels,
+            ),
+        )
+        self._raise_if_failed(result)
 
     def set_montage(self, montage_name: str) -> str:
         """Set EEG channel positions using a standard montage with fuzzy matching.
@@ -339,7 +359,15 @@ class BackendFacade:
             event_ids: List of event names to keep, or None for all events.
 
         """
-        self.preprocess.apply_epoching(baseline, event_ids, t_min, t_max)
+        result = self.service.execute(
+            CreateEpochCommand(
+                t_min=t_min,
+                t_max=t_max,
+                baseline=baseline,
+                event_ids=event_ids,
+            ),
+        )
+        self._raise_if_failed(result)
 
     # --- Training Configuration ---
     def generate_dataset(
@@ -359,46 +387,15 @@ class BackendFacade:
             training_mode: Training paradigm — ``"individual"`` or ``"group"``.
 
         """
-        s_strat = SplitByType.TRIAL
-        if split_strategy.lower() == "session":
-            s_strat = SplitByType.SESSION
-        elif split_strategy.lower() == "subject":
-            s_strat = SplitByType.SUBJECT
-
-        t_mode = TrainingType.IND
-        if training_mode.lower() == "group":
-            t_mode = TrainingType.FULL
-
-        # Construct Splitters
-        test_splitter = DataSplitter(
-            split_type=s_strat,
-            value_var=str(test_ratio),
-            split_unit=SplitUnit.RATIO,
+        result = self.service.execute(
+            GenerateDatasetCommand(
+                test_ratio=test_ratio,
+                val_ratio=val_ratio,
+                split_strategy=split_strategy,
+                training_mode=training_mode,
+            ),
         )
-
-        # For validation, we use the corresponding VAL enum
-        v_strat_val = ValSplitByType.TRIAL
-        if s_strat == SplitByType.SESSION:
-            v_strat_val = ValSplitByType.SESSION
-        elif s_strat == SplitByType.SUBJECT:
-            v_strat_val = ValSplitByType.SUBJECT
-
-        val_splitter = DataSplitter(
-            split_type=v_strat_val,
-            value_var=str(val_ratio),
-            split_unit=SplitUnit.RATIO,
-        )
-
-        config = DataSplittingConfig(
-            train_type=t_mode,
-            is_cross_validation=False,
-            val_splitter_list=[val_splitter],
-            test_splitter_list=[test_splitter],
-        )
-
-        generator = self.study.get_datasets_generator(config)
-
-        self.training.apply_data_splitting(generator)
+        self._raise_if_failed(result)
 
     def set_model(self, model_name: str):
         """Select a model architecture by name.
@@ -411,18 +408,10 @@ class BackendFacade:
             ValueError: If the model name is not recognized.
 
         """
-        models_map = {
-            "eegnet": EEGNet,
-            "sccnet": SCCNet,
-            "shallowconvnet": ShallowConvNet,
-        }
-
-        model_class = models_map.get(model_name.lower())
-        if not model_class:
-            raise ValueError(f"Unknown model architecture: {model_name}")
-
-        holder = ModelHolder(model_class, {})
-        self.training.set_model_holder(holder)
+        result = self.service.execute(
+            ConfigureTrainingCommand(model_name=model_name),
+        )
+        self._raise_if_failed(result)
 
     def configure_training(
         self,
@@ -449,42 +438,32 @@ class BackendFacade:
             output_dir: Directory for saving training outputs.
 
         """
-        # Resolve Optimizer
-        optimizers_map = {
-            "adam": torch.optim.Adam,
-            "sgd": torch.optim.SGD,
-            "adamw": torch.optim.AdamW,
-        }
-        optim_class = optimizers_map.get(optimizer.lower(), torch.optim.Adam)
-
-        # Resolve Device
-        use_cpu = device.lower() == "cpu"
-        gpu_idx = 0 if not use_cpu else None
-
-        option = TrainingOption(
-            output_dir=output_dir,
-            optim=optim_class,
-            optim_params={},
-            use_cpu=use_cpu,
-            gpu_idx=gpu_idx,
-            epoch=epoch,
-            bs=batch_size,
-            lr=learning_rate,
-            checkpoint_epoch=save_checkpoints_every,
-            evaluation_option=TrainingEvaluation.LAST_EPOCH,
-            repeat_num=repeat,
+        result = self.service.execute(
+            ConfigureTrainingCommand(
+                epoch=epoch,
+                batch_size=batch_size,
+                learning_rate=learning_rate,
+                repeat=repeat,
+                device=device,
+                optimizer=optimizer,
+                save_checkpoints_every=save_checkpoints_every,
+                output_dir=output_dir,
+            ),
         )
-
-        self.training.set_training_option(option)
+        self._raise_if_failed(result)
 
     # --- Training Execution ---
     def run_training(self):
         """Start training (threaded)."""
-        self.training.start_training()
+        result = self.service.execute(TrainCommand())
+        self._raise_if_failed(result)
 
     def stop_training(self):
         """Stop the current training run."""
-        self.training.stop_training()
+        result = self.service.execute(StopTrainingCommand())
+        if result.failed and result.error_type == ErrorType.PRECONDITION:
+            return
+        self._raise_if_failed(result)
 
     def is_training(self) -> bool:
         """Check whether training is currently running.
