@@ -37,14 +37,15 @@
     ApplicationService capability policy。
   - Agent prompt tool list 和 execution guard 讀同一套 capability policy。
   - Agent tool output 寫回 structured JSON payload。
+  - Agent real tools 透過 typed result adapter 區分 success / failed /
+    blocked，不再把 `"Error: ..."` legacy 字串誤當成功。
   - Chat panel 補 retry / clear / compact backend diagnostics。
 
 ## 現在要做
 
 1. 正在把更多 UI action execution 改成 command adapter，而不是只讀 capability policy。
-2. 正在將 agent real tools 從 facade 舊字串回傳推進到 `CommandResult` / typed result adapter。
-3. 正在驗收 launcher -> MainWindow -> chat panel -> agent blocked-command product flow。
-4. 正在設計 `evaluate` / `visualize` / `saliency` 的 query command contract，再決定何時實作。
+2. 正在驗收 launcher -> MainWindow -> chat panel -> agent blocked-command product flow。
+3. 正在設計 `evaluate` / `visualize` / `saliency` 的 query command contract，再決定何時實作。
 
 ## Product Delivery Milestone TODO
 
@@ -81,7 +82,7 @@
 ### Milestone C - UI / Agent Command Surface Unification
 
 狀態：第一批高價值 workflow 通過，可支撐 local runtime / launcher；legacy execution path
-仍需逐步遷移。
+仍需逐步遷移。agent tool result 已收斂成 typed adapter。
 
 - [x] UI readiness for load / preprocess / create epoch / generate dataset /
   train / reset 讀同一套 `ApplicationService` capability policy。
@@ -90,8 +91,8 @@
 - [x] Agent tool output 保留 structured JSON payload。
 - [x] `BackendFacade` 仍相容 headless tests。
 - [ ] 本輪剩餘：更多 UI action execution 改成 service command adapter。
-- [ ] 本輪剩餘：agent real tools 從舊 facade string result 收斂到 typed
-  `CommandResult` adapter。
+- [x] Agent real tools 從舊 facade string result 收斂到 typed
+  `CommandResult` / equivalent result adapter。
 
 ### Milestone D - UI Chat / Agent Panel Stabilization
 
@@ -106,13 +107,13 @@
 
 ### Milestone E - Agent Tool System Alignment
 
-狀態：部分完成；execution guard 已對齊 policy，typed result adapter 是本輪仍要完成的交付缺口。
+狀態：agent command guard 與 typed result adapter 已完成；剩下 product walkthrough 和 UI state refresh 驗收。
 
 - [x] Agent prompt tool list 讀 `ApplicationService` capability policy。
 - [x] Tool call 前用 ApplicationService guard 檢查 blocked reason。
 - [x] Tool output 寫入 conversation history 時保留 structured JSON payload。
 - [x] empty state 不能 train 的 blocked reason 由 backend policy 產生。
-- [ ] Agent real tools 改為消費 typed `CommandResult` 或等價 adapter。
+- [x] Agent real tools 改為消費 typed `CommandResult` 或等價 adapter。
 - [ ] Tool call 後用 state snapshot 更新 UI / agent diagnostics。
 - [ ] reset / new session confirmation boundary 的 product UI flow 還要驗收。
 

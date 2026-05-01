@@ -28,6 +28,52 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Agent tool typed result adapter
+
+### 背景
+
+UI / agent command surface 已開始共用 ApplicationService capability policy，但 agent real tools
+仍有一個產品級可靠性缺口：部分 legacy tools 用字串回傳錯誤，例如 `"Error: ..."` 或
+`"Failed ..."`，而 controller 會把「工具正常返回字串」當成 successful execution。這會讓
+assistant 把 failed backend operation 記成成功，後續對話和 UI feedback 都會失真。
+
+### 變更
+
+- 在 `XBrainLab/llm/tools/application_surface.py` 新增 `ToolCommandResult` typed adapter。
+- 將 ApplicationService blocked command 轉成 structured failed result，包含 command name、
+  blocked reason、capability 和 state snapshot。
+- 將 legacy string result 正規化：`Error:`、`Failed ...`、`Dataset generation failed ...`
+  等會被視為 failed result，不再當成成功。
+- `LLMController._execute_tool_no_loop()` 對 ApplicationService-backed tools 回傳
+  `ToolCommandResult`，並把 failure 記入 metrics / history。
+- `Tool Output` JSON payload 現在保留 `command_name`、`error_type`、`recoverable`、
+  `blocked_reason`、`state`、`capability`、`raw_result`。
+- 修正 `tests/unit/llm/agent/test_worker.py`，避免 LLM unit tests 將 repo `settings.json`
+  污染回 Gemini / API mode。
+
+### 影響範圍
+
+- agent tool execution
+- ApplicationService capability gate
+- structured tool result history
+- LLM unit tests and local runtime default config hygiene
+
+### 驗證
+
+- `timeout 120s poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q`
+  - `55 passed`
+- `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+  - `321 passed`
+- `timeout 60s git diff --check`
+  - 通過
+
+### 剩餘風險
+
+- 部分 real tools 仍先走 `BackendFacade` legacy method，再由 adapter 包成 structured result；
+  之後應逐步讓 load / preprocess / epoch / dataset / train execution 直接回傳 backend
+  `CommandResult`。
+- UI side effects 仍使用 `Request:` 字串協定；下一步應改成 typed UI request/event。
+
 ## 2026-05-02 Local LLM runtime 與 desktop launcher baseline
 
 ### 背景

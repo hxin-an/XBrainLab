@@ -182,9 +182,17 @@ Study / DataManager / TrainingManager / controllers
 
 新增 `XBrainLab/llm/tools/application_surface.py` 作為 agent tool name 和
 ApplicationService command name 的對映層。`ContextAssembler` 用它決定可列出的 tools；
-`LLMController` 在 tool execution 前再次用它檢查 blocked reason。`Tool Output` 寫回
-conversation history 時會保留 `ok`、`tool_name`、`message`、`raw_result` JSON payload，
-不再只放一段無結構字串。
+`LLMController` 在 tool execution 前再次用它檢查 blocked reason。
+
+`ToolCommandResult` 是目前 agent-facing typed result adapter：
+
+- ApplicationService blocked command 會回傳 structured failed result，包含 `command_name`、
+  `blocked_reason`、capability 和 state snapshot。
+- legacy real tools 若仍回傳 `"Error: ..."`、`"Failed ..."` 等字串，controller 會將它
+  正規化成 failed result，不再把 legacy failure 當成 successful tool execution。
+- `CommandResult` 可直接轉成 agent payload；目前仍有部分 real tools 先走 facade legacy method，
+  但 conversation history 中的 `Tool Output` 已保留 `ok`、`tool_name`、`command_name`、
+  `message`、`error_type`、`recoverable`、`state`、`capability`、`raw_result` JSON payload。
 
 ## Workflow State Gate
 

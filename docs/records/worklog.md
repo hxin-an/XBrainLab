@@ -37,6 +37,32 @@
 
 ## 2026-05-02
 
+### 06:25 Agent typed result adapter
+
+- 做了什麼：
+  - 在 `XBrainLab/llm/tools/application_surface.py` 新增 `ToolCommandResult`，把 agent tool
+    blocked / failed / successful result 轉成 typed payload。
+  - `LLMController._execute_tool_no_loop()` 對 ApplicationService-backed tools 回傳 structured
+    result，並把 legacy `"Error: ..."` / `"Failed ..."` 字串判定成 failed result。
+  - 補 `test_application_surface.py` 和 `test_controller.py`，確認 blocked preprocess / blocked
+    train / legacy string failure 都不再被當成成功。
+  - 修正 `tests/unit/llm/agent/test_worker.py`，避免測試將 repo `settings.json` 寫回
+    Gemini / API mode。
+- 結果：
+  - Agent tool system alignment 的 typed result adapter 缺口已收斂。
+  - ApplicationService-backed tool output 會保留 `command_name`、`error_type`、`blocked_reason`、
+    `state`、`capability`、`raw_result`。
+- 證據：
+  - `timeout 120s poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q`
+    - `55 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    - `321 passed`
+  - `timeout 60s git diff --check`
+    - 通過
+- 本輪剩餘：
+  - 驗收 launcher -> MainWindow -> chat panel -> blocked-command product flow。
+  - 逐步把 real tool execution 由 legacy facade string surface 推進到直接回傳 backend `CommandResult`。
+
 ### 04:46 Resource-safe autopilot 恢復與 worktree checkpoint 規劃
 
 - 做了什麼：

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -458,8 +459,13 @@ class TestPipelineGate:
         )
 
         assert not success
-        assert "ApplicationService command 'preprocess'" in result
-        assert "Load raw data" in result
+        assert result.ok is False
+        assert result.command_name == "preprocess"
+        assert "ApplicationService command 'preprocess'" in result.message
+        assert "Load raw data" in result.message
+        payload = result.to_payload()
+        assert payload["ok"] is False
+        assert payload["capability"]["command_name"] == "preprocess"
 
     def test_allowed_tool_executes(self, ctrl):
         """Tool allowed by ApplicationService policy executes."""
@@ -479,7 +485,14 @@ class TestPipelineGate:
         )
 
         assert success
-        assert result == "ok"
+        assert result.ok is True
+        assert result.command_name == "preprocess"
+        assert result.message == "ok"
+        payload = json.loads(
+            ctrl._format_tool_output("apply_bandpass_filter", success, result)
+        )
+        assert payload["ok"] is True
+        assert payload["command_name"] == "preprocess"
 
     def test_train_blocked_until_backend_ready(self, ctrl):
         """Train is blocked until dataset/model/training options exist."""
@@ -492,7 +505,9 @@ class TestPipelineGate:
         success, result = ctrl._execute_tool_no_loop("start_training", {})
 
         assert not success
-        assert "Generate datasets before training" in result
+        assert result.ok is False
+        assert result.command_name == "train"
+        assert "Generate datasets before training" in result.message
 
 
 # --- Execution Mode (Single / Multi) ---

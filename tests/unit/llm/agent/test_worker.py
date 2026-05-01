@@ -381,8 +381,10 @@ class TestReinitializeAgent:
         engine.config = LLMConfig()
         engine.config.active_mode = "gemini"
         worker.engine = engine
-        worker.reinitialize_agent("Local")
+        with patch.object(engine.config, "save_to_file") as mock_save:
+            worker.reinitialize_agent("Local")
         engine.switch_backend.assert_called_once_with("local")
+        mock_save.assert_called_once()
         assert engine.config.active_mode == "local"
         assert engine.config.inference_mode == "local"
 
@@ -392,8 +394,10 @@ class TestReinitializeAgent:
         engine.config.active_mode = "gemini"
         engine.config.inference_mode = "gemini"
         worker.engine = engine
-        worker.reinitialize_agent("gpt-4o")
+        with patch.object(engine.config, "save_to_file") as mock_save:
+            worker.reinitialize_agent("gpt-4o")
         engine.switch_backend.assert_called_once_with("api")
+        mock_save.assert_called_once()
         assert engine.config.api_model_name == "gpt-4o"
         assert engine.config.active_mode == "gemini"
         assert engine.config.inference_mode == "api"

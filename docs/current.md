@@ -10,11 +10,12 @@ XBrainLab 的 active repo 已在目前 workspace 專案區。標準 `dev,test,do
 第一版已落地，並完成 command contract、capability policy、reset state invalidation
 和 facade compatibility 的驗收補強。最新一輪已完成 UI / Agent command surface
 第一批統一：UI readiness 和 agent tool availability 都開始讀同一套
-ApplicationService capability policy。local LLM runtime 已完成非中國 primary / fallback
+ApplicationService capability policy，agent tool result 已收斂成 typed adapter，避免把
+legacy `"Error: ..."` 字串誤當成功。local LLM runtime 已完成非中國 primary / fallback
 模型選型、cache preflight、下載、GPU prompt smoke 和 structured-output smoke；desktop
 launcher 已產出並完成 startup smoke。當前工作不是停在 baseline，而是繼續推進 UI action
-command adapter、agent typed result adapter、launcher product smoke、worktree checkpoint
-整理和 end-to-end product stabilization。
+command adapter、launcher product smoke、worktree checkpoint 整理和 end-to-end product
+stabilization。
 
 ## 可信狀態
 
@@ -124,9 +125,8 @@ command contract。
 ## 目前執行中
 
 1. 把更多 UI action execution 改成 command adapter。
-2. 將 agent real tools 推進到 `CommandResult` / typed result adapter。
-3. 驗收 launcher -> MainWindow -> chat panel -> agent blocked-command flow。
-4. 設計 evaluation / visualization / saliency query command contract。
+2. 驗收 launcher -> MainWindow -> chat panel -> agent blocked-command flow。
+3. 設計 evaluation / visualization / saliency query command contract。
 5. 將 dirty worktree 依 product delivery 切成可審查、可回滾理解的 checkpoint commits。
 
 ## 相關文件

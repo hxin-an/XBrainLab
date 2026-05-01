@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application import CommandName, CommandResult
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
@@ -57,6 +57,152 @@ class ToolAvailability:
     def reason_text(self) -> str:
         return "; ".join(self.reasons)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "tool_name": self.tool_name,
+            "enabled": self.enabled,
+            "reasons": list(self.reasons),
+            "command_name": self.command_name,
+            "confirmation_required": self.confirmation_required,
+            "destructive": self.destructive,
+            "long_running": self.long_running,
+            "read_only": self.read_only,
+        }
+
+
+@dataclass(frozen=True)
+class ToolCommandResult:
+    """Agent-facing structured result for ApplicationService-backed tools."""
+
+    ok: bool
+    tool_name: str
+    message: str
+    command_name: str | None = None
+    raw_result: Any = None
+    error_type: str | None = None
+    recoverable: bool = True
+    blocked_reason: str | None = None
+    state: dict[str, Any] | None = None
+    capability: dict[str, Any] | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        return self.message
+
+    @classmethod
+    def blocked(
+        cls,
+        tool_name: str,
+        availability: ToolAvailability,
+        state: dict[str, Any] | None = None,
+    ) -> ToolCommandResult:
+        """Build a failed result from a shared capability-policy block."""
+        reason = availability.reason_text or "Tool is not available right now."
+        message = (
+            f"Tool '{tool_name}' is blocked by ApplicationService "
+            f"command '{availability.command_name}': {reason}"
+            if availability.command_name
+            else f"Tool '{tool_name}' is blocked: {reason}"
+        )
+        return cls(
+            ok=False,
+            tool_name=tool_name,
+            command_name=availability.command_name,
+            message=message,
+            error_type="precondition",
+            recoverable=True,
+            blocked_reason=reason,
+            state=state,
+            capability=availability.to_dict(),
+        )
+
+    @classmethod
+    def failure(
+        cls,
+        tool_name: str,
+        message: str,
+        command_name: str | None = None,
+        state: dict[str, Any] | None = None,
+        capability: dict[str, Any] | None = None,
+        raw_result: Any = None,
+        error_type: str = "runtime",
+        recoverable: bool = True,
+    ) -> ToolCommandResult:
+        """Build a failed structured result for a legacy tool failure."""
+        return cls(
+            ok=False,
+            tool_name=tool_name,
+            command_name=command_name,
+            message=message,
+            raw_result=raw_result,
+            error_type=error_type,
+            recoverable=recoverable,
+            state=state,
+            capability=capability,
+        )
+
+    @classmethod
+    def from_command_result(
+        cls,
+        tool_name: str,
+        result: CommandResult,
+        capability: dict[str, Any] | None = None,
+    ) -> ToolCommandResult:
+        """Convert a backend :class:`CommandResult` into an agent result."""
+        return cls(
+            ok=result.ok,
+            tool_name=tool_name,
+            command_name=result.command_name,
+            message=result.message,
+            raw_result=result.to_dict(),
+            error_type=result.error_type.value,
+            recoverable=result.recoverable,
+            blocked_reason=result.error_message if result.failed else None,
+            state=result.state.to_dict() if hasattr(result.state, "to_dict") else None,
+            capability=capability,
+            diagnostics=result.diagnostics,
+        )
+
+    @classmethod
+    def from_legacy_result(
+        cls,
+        tool_name: str,
+        raw_result: Any,
+        availability: ToolAvailability | None = None,
+        state: dict[str, Any] | None = None,
+    ) -> ToolCommandResult:
+        """Wrap a legacy string/object tool result with stable semantics."""
+        message = str(raw_result) if raw_result is not None else ""
+        ok = legacy_tool_result_succeeded(message)
+        return cls(
+            ok=ok,
+            tool_name=tool_name,
+            command_name=availability.command_name if availability else None,
+            message=message,
+            raw_result=raw_result,
+            error_type=None if ok else "runtime",
+            recoverable=True,
+            blocked_reason=None if ok else message,
+            state=state,
+            capability=availability.to_dict() if availability else None,
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return JSON-friendly payload for the next agent turn."""
+        return {
+            "ok": self.ok,
+            "tool_name": self.tool_name,
+            "command_name": self.command_name,
+            "message": self.message,
+            "error_type": self.error_type,
+            "recoverable": self.recoverable,
+            "blocked_reason": self.blocked_reason,
+            "state": self.state,
+            "capability": self.capability,
+            "diagnostics": self.diagnostics,
+            "raw_result": self.raw_result,
+        }
+
 
 def build_agent_tool_policy(study: Any) -> dict[str, ToolAvailability]:
     """Return agent tool availability from the ApplicationService policy."""
@@ -96,6 +242,20 @@ def build_agent_tool_policy(study: Any) -> dict[str, ToolAvailability]:
     return tool_policy
 
 
+def get_application_context(
+    study: Any,
+    tool_name: str,
+) -> tuple[ToolAvailability | None, dict[str, Any] | None]:
+    """Return availability and current state for a tool, when available."""
+    try:
+        availability = get_tool_availability(study, tool_name)
+    except CapabilityPolicyUnavailableError:
+        return None, None
+
+    state = _state_snapshot_dict(study)
+    return availability, state
+
+
 def get_tool_availability(study: Any, tool_name: str) -> ToolAvailability:
     """Return a single tool availability record."""
     policy = build_agent_tool_policy(study)
@@ -106,6 +266,63 @@ def get_tool_availability(study: Any, tool_name: str) -> ToolAvailability:
         enabled=False,
         reasons=("Tool is not part of the unified ApplicationService surface.",),
     )
+
+
+def normalize_tool_result(
+    study: Any,
+    tool_name: str,
+    raw_result: Any,
+    availability: ToolAvailability | None = None,
+) -> ToolCommandResult:
+    """Convert a real tool return value into a structured agent result."""
+    if isinstance(raw_result, ToolCommandResult):
+        return raw_result
+
+    if availability is None:
+        try:
+            availability = get_tool_availability(study, tool_name)
+        except CapabilityPolicyUnavailableError:
+            availability = None
+
+    capability = availability.to_dict() if availability else None
+    if isinstance(raw_result, CommandResult):
+        return ToolCommandResult.from_command_result(
+            tool_name,
+            raw_result,
+            capability=capability,
+        )
+
+    return ToolCommandResult.from_legacy_result(
+        tool_name,
+        raw_result,
+        availability=availability,
+        state=_state_snapshot_dict(study),
+    )
+
+
+def legacy_tool_result_succeeded(message: str) -> bool:
+    """Infer success from legacy string-only tool output."""
+    text = message.strip().lower()
+    if not text:
+        return True
+    failure_prefixes = (
+        "error:",
+        "failed",
+        "failure:",
+        "preprocessing failed",
+        "dataset generation failed",
+        "epoching failed",
+        "bandpass filter failed",
+        "notch filter failed",
+        "resample failed",
+        "normalization failed",
+        "re-reference failed",
+        "channel selection failed",
+        "failed to",
+    )
+    if text.startswith(failure_prefixes):
+        return False
+    return " failed:" not in text
 
 
 def enabled_tool_names(study: Any) -> list[str]:
@@ -144,3 +361,12 @@ def _from_capability(
 
 def _blocked_prompt_name(availability: ToolAvailability) -> str:
     return availability.command_name or availability.tool_name
+
+
+def _state_snapshot_dict(study: Any) -> dict[str, Any] | None:
+    if not isinstance(study, Study):
+        return None
+    try:
+        return BackendFacade(study).get_state().to_dict()
+    except Exception:
+        return None

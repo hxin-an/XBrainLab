@@ -13,6 +13,8 @@ from XBrainLab.llm.tools.application_surface import (
     CapabilityPolicyUnavailable,
     blocked_tool_reasons,
     build_agent_tool_policy,
+    legacy_tool_result_succeeded,
+    normalize_tool_result,
 )
 
 
@@ -58,3 +60,22 @@ def test_clear_dataset_surface_preserves_reset_confirmation_boundary():
 def test_application_surface_requires_real_study():
     with pytest.raises(CapabilityPolicyUnavailable):
         build_agent_tool_policy(MagicMock())
+
+
+def test_legacy_error_string_becomes_failed_structured_result():
+    result = normalize_tool_result(
+        Study(),
+        "start_training",
+        "Failed to start training: Generate datasets before training.",
+    )
+
+    assert result.ok is False
+    assert result.command_name == CommandName.TRAIN.value
+    assert result.error_type == "runtime"
+    assert "Generate datasets" in result.message
+
+
+def test_legacy_result_success_inference_handles_error_prefixes():
+    assert legacy_tool_result_succeeded("Successfully loaded 1 files.") is True
+    assert legacy_tool_result_succeeded("Error: paths list cannot be empty.") is False
+    assert legacy_tool_result_succeeded("Dataset generation failed: no epoch") is False

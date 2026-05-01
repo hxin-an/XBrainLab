@@ -15,6 +15,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
+from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.pipeline_state import (  # noqa: F401
     STAGE_CONFIG,
@@ -24,8 +25,12 @@ from XBrainLab.llm.pipeline_state import (  # noqa: F401
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.application_surface import (
+    TOOL_TO_COMMAND,
     CapabilityPolicyUnavailable,
+    ToolAvailability,
+    ToolCommandResult,
     get_tool_availability,
+    normalize_tool_result,
 )
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
@@ -480,11 +485,15 @@ class LLMController(QObject):
 
             availability = self._check_tool_availability(cmd)
             if availability is not None:
-                logger.warning("Tool blocked by ApplicationService: %s", availability)
-                self.status_update.emit(f"Blocked: {availability}")
+                block_result = self._tool_block_result(cmd, availability)
+                logger.warning(
+                    "Tool blocked by ApplicationService: %s",
+                    block_result.message,
+                )
+                self.status_update.emit(f"Blocked: {block_result.message}")
                 self._append_history(
                     "user",
-                    f"System: Tool call REJECTED: {availability}",
+                    f"System: Tool call REJECTED: {block_result.message}",
                 )
                 has_failure = True
                 break
@@ -694,31 +703,43 @@ class LLMController(QObject):
             params: Dictionary of parameters to pass to the tool.
 
         Returns:
-            A ``(success, result_str)`` tuple where *success* is a bool
-            and *result_str* is the tool's output or an error message.
+            A ``(success, result)`` tuple where ApplicationService-backed
+            tools return a structured ``ToolCommandResult`` and legacy tools
+            keep their existing string result.
 
         """
         tool = self.registry.get_tool(command_name)
         if tool:
             availability = self._check_tool_availability(command_name)
             if availability is not None:
-                logger.warning(availability)
+                result = self._tool_block_result(command_name, availability)
+                logger.warning(result.message)
                 if self.metrics.current_turn:
                     self.metrics.current_turn.record_tool(
                         command_name,
                         False,
                         0,
-                        availability,
+                        result.message,
                     )
-                self.status_update.emit(f"Blocked: {availability}")
-                return False, f"Error: {availability}"
+                self.status_update.emit(f"Blocked: {result.message}")
+                return False, result
 
             t0 = _time.monotonic()
             try:
-                result = tool.execute(self.study, **params)
+                raw_result = tool.execute(self.study, **params)
             except Exception as e:
                 elapsed = (_time.monotonic() - t0) * 1000
                 error_msg = f"Tool execution failed: {e}"
+                if command_name in TOOL_TO_COMMAND:
+                    result = ToolCommandResult.failure(
+                        command_name,
+                        error_msg,
+                        command_name=TOOL_TO_COMMAND[command_name].value,
+                        state=self._application_state_payload(),
+                        raw_result=str(e),
+                    )
+                else:
+                    result = error_msg
                 if self.metrics.current_turn:
                     self.metrics.current_turn.record_tool(
                         command_name,
@@ -727,16 +748,29 @@ class LLMController(QObject):
                         str(e),
                     )
                 self.status_update.emit(error_msg)
-                return False, error_msg
+                return False, result
             else:
                 elapsed = (_time.monotonic() - t0) * 1000
+                result = raw_result
+                success = True
+                if command_name in TOOL_TO_COMMAND:
+                    tool_result = normalize_tool_result(
+                        self.study,
+                        command_name,
+                        raw_result,
+                    )
+                    result = tool_result
+                    success = tool_result.ok
                 if self.metrics.current_turn:
                     self.metrics.current_turn.record_tool(
                         command_name,
-                        True,
+                        success,
                         elapsed,
+                        None if success else str(result),
                     )
-                return True, result
+                if not success:
+                    self.status_update.emit(f"Tool failed: {result}")
+                return success, result
         else:
             if self.metrics.current_turn:
                 self.metrics.current_turn.record_tool(
@@ -748,8 +782,11 @@ class LLMController(QObject):
             self.status_update.emit(f"Unknown tool: {command_name}")
             return False, f"Error: Unknown tool '{command_name}'"
 
-    def _check_tool_availability(self, command_name: str) -> str | None:
-        """Return a backend policy block reason, or ``None`` if available."""
+    def _check_tool_availability(
+        self,
+        command_name: str,
+    ) -> ToolAvailability | str | None:
+        """Return a backend policy block record, or ``None`` if available."""
         try:
             availability = get_tool_availability(self.study, command_name)
         except CapabilityPolicyUnavailable:
@@ -760,13 +797,40 @@ class LLMController(QObject):
 
         if availability.enabled:
             return None
-        reason = availability.reason_text or "Tool is not available right now."
-        if availability.command_name:
-            return (
-                f"Tool '{command_name}' is blocked by ApplicationService "
-                f"command '{availability.command_name}': {reason}"
+        return availability
+
+    def _tool_block_result(
+        self,
+        command_name: str,
+        availability: ToolAvailability | str,
+    ) -> ToolCommandResult:
+        """Convert a capability block or read failure into a structured result."""
+        if isinstance(availability, ToolAvailability):
+            return ToolCommandResult.blocked(
+                command_name,
+                availability,
+                state=self._application_state_payload(),
             )
-        return f"Tool '{command_name}' is blocked: {reason}"
+        return ToolCommandResult.failure(
+            command_name,
+            availability,
+            command_name=TOOL_TO_COMMAND.get(command_name).value
+            if command_name in TOOL_TO_COMMAND
+            else None,
+            state=self._application_state_payload(),
+            error_type="runtime",
+            recoverable=True,
+        )
+
+    def _application_state_payload(self) -> dict[str, Any] | None:
+        """Return a compact current ApplicationService state payload."""
+        if not hasattr(self.study, "data_manager"):
+            return None
+        try:
+            return BackendFacade(self.study).get_state().to_dict()
+        except Exception:
+            logger.debug("Failed to capture ApplicationService state", exc_info=True)
+            return None
 
     def _detect_loop(self, current_call_signature) -> bool:
         """Checks whether the same tool call has been made excessively.
@@ -786,7 +850,7 @@ class LLMController(QObject):
                 count += 1
         return count >= 3
 
-    def _handle_tool_result_logic(self, result: str, success: bool = True) -> bool:
+    def _handle_tool_result_logic(self, result: Any, success: bool = True) -> bool:
         """Processes tool output for UI side effects.
 
         Detects special ``Request:`` prefixed results (e.g. panel switches,
@@ -794,7 +858,7 @@ class LLMController(QObject):
         signals to the UI.
 
         Args:
-            result: The tool's output string.
+            result: The tool's output string or structured tool result.
             success: Whether the tool execution was successful.
 
         Returns:
@@ -802,7 +866,9 @@ class LLMController(QObject):
             ``False`` otherwise.
 
         """
-        if not isinstance(result, str):
+        if isinstance(result, ToolCommandResult):
+            result = result.message
+        elif not isinstance(result, str):
             result = str(result) if result is not None else ""
         if result.startswith("Request:"):
             # Format: "Request: CMD params... (View: view_mode)"
@@ -848,6 +914,9 @@ class LLMController(QObject):
     @staticmethod
     def _format_tool_output(command_name: str, success: bool, result: Any) -> str:
         """Serialize tool output so the next LLM turn sees structured state."""
+        if isinstance(result, ToolCommandResult):
+            return json.dumps(result.to_payload(), ensure_ascii=False, default=str)
+
         payload = {
             "ok": bool(success),
             "tool_name": command_name,
