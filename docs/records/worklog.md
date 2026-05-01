@@ -37,6 +37,57 @@
 
 ## 2026-05-02
 
+### 06:46 Resource-safe final gate plan
+
+- 做了什麼：
+  - 準備進入本輪 final validation / documentation closure。
+  - 依 resource-safe execution 規則，每次只跑一個重型任務，所有 pytest / UI / LLM /
+    launcher / docs build 都加 `timeout`。
+- 將跑哪些：
+  - backend unit：`timeout 300s poetry run pytest --capture=sys tests/unit/backend -q`
+  - backend + IO integration：`timeout 300s poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q`
+  - pipeline integration：`timeout 600s poetry run pytest --capture=sys tests/integration/pipeline -q`
+  - UI unit：`timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - LLM unit：`timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+  - local runtime health/prompt/structured smoke：單獨執行，不與測試並行。
+  - launcher startup smoke：`timeout 45s xvfb-run -a poetry run python run.py --model local`
+  - docs / whitespace：`timeout 120s poetry run mkdocs build --strict`、`timeout 60s git diff --check`
+- 為什麼：
+  - 目前 backend、UI、agent、local runtime、launcher 都已有分段 evidence；final gate 要確認
+    commit checkpoint 後仍能一起過。
+- 預估風險：
+  - pipeline integration 和 local model smoke 可能最耗時 / 最吃資源；若超時，會記錄超時點並改跑代表性抽樣。
+- 結果：
+  - backend unit、backend/IO integration、pipeline integration、UI unit、LLM unit、local runtime
+    health/prompt/structured smoke、launcher startup smoke 皆完成。
+  - local model preflight 首次發現 product bug：primary 已在 cache 中時仍被當成新增下載，
+    造成 projected cache 誤判超過 20GB。已修成 already-cached model 不增加 projected cache。
+  - launcher smoke 在 `MainWindow initialized` 後以 timeout 結束，屬 GUI smoke 預期結果。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend -q`
+    - `2661 passed, 1 skipped, 1 xfailed, 3 warnings`
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q`
+    - `33 passed, 8 warnings`
+  - `timeout 600s poetry run pytest --capture=sys tests/integration/pipeline -q`
+    - `70 passed, 4 warnings`
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `811 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+    - first run found stale coverage tests expecting string-only tool results; after test/product fix:
+      `649 passed`
+  - `timeout 120s poetry run python scripts/dev/plan_local_model_download.py --format markdown`
+    - after fix: `ok=True`, estimated download `0.00 GB`, projected cache `15.34 GB`
+  - `timeout 300s poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
+    - classification `gpu-ready`; prompt smoke `passed`; structured-output smoke `passed`
+  - `timeout 45s xvfb-run -a poetry run python run.py --model local`
+    - `MainWindow initialized` before expected timeout `124`
+  - `timeout 60s git diff --check`
+    - 通過
+  - `timeout 120s poetry run mkdocs build --strict`
+    - 通過
+- worktree：
+  - final docs closure 前仍有 local preflight fix、typed result compatibility test、validation docs 更新待 commit。
+
 ### 06:39 UI -> agent -> backend blocked-command flow test
 
 - 做了什麼：

@@ -83,8 +83,32 @@ agent 架構文件整理時也跑：
 
 2026-05-02 launcher / startup smoke：
 
-- `timeout 35s xvfb-run -a poetry run python run.py --model local`
+- `timeout 45s xvfb-run -a poetry run python run.py --model local`
 - `MainWindow initialized` 出現後 timeout 結束，屬於 GUI smoke 預期結果。
+
+2026-05-02 product-delivery final gate：
+
+- backend unit：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend -q`
+  - `2661 passed, 1 skipped, 1 xfailed, 3 warnings`
+- backend + IO integration：
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q`
+  - `33 passed, 8 warnings`
+- pipeline integration：
+  - `timeout 600s poetry run pytest --capture=sys tests/integration/pipeline -q`
+  - `70 passed, 4 warnings`
+- UI unit:
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - `811 passed`
+- LLM unit:
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+  - `649 passed`
+- local model preflight:
+  - `timeout 120s poetry run python scripts/dev/plan_local_model_download.py --format markdown`
+  - `ok=True`; primary already cached; projected cache `15.34 GB`
+- local runtime health:
+  - `timeout 300s poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
+  - classification `gpu-ready`; prompt smoke `passed`; structured-output smoke `passed`
 
 ## Clean Dashboard 判定
 

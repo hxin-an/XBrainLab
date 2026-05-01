@@ -182,6 +182,13 @@ def model_cache_candidates(cache_dir: str, repo_id: str) -> list[str]:
     ]
 
 
+def model_cache_exists(cache_dir: str, repo_id: str) -> bool:
+    """Return whether a supported local cache layout already exists."""
+    return any(
+        Path(path).exists() for path in model_cache_candidates(cache_dir, repo_id)
+    )
+
+
 def _directory_size_bytes(path: Path) -> int:
     """Return recursive directory size, ignoring files that disappear mid-scan."""
     if not path.exists():
@@ -299,6 +306,23 @@ def plan_model_download(
             cleanup_candidates=cleanup,
         )
     estimated_bytes = _bytes_from_gb(spec.estimated_download_gb)
+    if model_cache_exists(cache_dir, repo_id):
+        return DownloadPreflightResult(
+            ok=True,
+            model_id=repo_id,
+            message=(
+                f"Model {repo_id} is already cached; no download is required. "
+                f"Current cache usage is {format_bytes(current_bytes)}."
+            ),
+            cache_dir=cache_dir,
+            estimated_download_bytes=0,
+            current_cache_bytes=current_bytes,
+            projected_cache_bytes=current_bytes,
+            max_single_model_bytes=max_single_bytes,
+            max_total_cache_bytes=max_total_bytes,
+            available_disk_bytes=free_bytes,
+            cleanup_candidates=cleanup,
+        )
 
     if estimated_bytes > max_single_bytes:
         return DownloadPreflightResult(

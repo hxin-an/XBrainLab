@@ -177,7 +177,11 @@ class ToolCommandResult:
         return cls(
             ok=ok,
             tool_name=tool_name,
-            command_name=availability.command_name if availability else None,
+            command_name=(
+                availability.command_name
+                if availability
+                else _command_name_for_tool(tool_name)
+            ),
             message=message,
             raw_result=raw_result,
             error_type=None if ok else "runtime",
@@ -361,6 +365,11 @@ def _from_capability(
 
 def _blocked_prompt_name(availability: ToolAvailability) -> str:
     return availability.command_name or availability.tool_name
+
+
+def _command_name_for_tool(tool_name: str) -> str | None:
+    command_name = TOOL_TO_COMMAND.get(tool_name)
+    return command_name.value if command_name else None
 
 
 def _state_snapshot_dict(study: Any) -> dict[str, Any] | None:

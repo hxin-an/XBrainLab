@@ -88,6 +88,9 @@ poetry run python scripts/dev/plan_local_model_download.py \
   --model microsoft/Phi-3.5-mini-instruct --format markdown
 ```
 
+已下載的模型會被視為 cached：preflight 應顯示 `ok=True`、estimated download `0.00 GB`，
+projected cache 不會重複加上同一模型大小。
+
 runtime health check：
 
 ```bash

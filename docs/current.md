@@ -79,13 +79,13 @@ stabilization。
   - `44 passed`
 - UI unit suite：
   - `scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
-  - `807 passed`
+  - `811 passed`
 - agent tool/control suite：
   - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
-  - `318 passed`
+  - `321 passed`
 - backend unit suite：
   - `poetry run pytest --capture=sys tests/unit/backend -q`
-  - `2660 passed, 1 skipped, 1 xfailed`
+  - `2661 passed, 1 skipped, 1 xfailed`
 - backend + IO integration：
   - `poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q`
   - `33 passed`
@@ -93,6 +93,9 @@ stabilization。
   - `poetry run pytest --capture=sys tests/integration/pipeline -q`
   - `70 passed`
 - local assistant runtime smoke：
+  - preflight：
+  - `poetry run python scripts/dev/plan_local_model_download.py --format markdown`
+  - primary already cached；estimated download `0.00 GB`；projected cache `15.34 GB`
   - `poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
   - primary prompt smoke：`passed`
   - primary structured-output smoke：`passed`
@@ -100,7 +103,7 @@ stabilization。
   - fallback prompt smoke：`passed`
   - fallback structured-output smoke：`passed`
 - startup smoke：
-  - `timeout 35s xvfb-run -a poetry run python run.py --model local`
+  - `timeout 45s xvfb-run -a poetry run python run.py --model local`
   - `MainWindow initialized` 後 timeout 結束，屬於 GUI smoke 預期結果。
 - `ai-assistant-open.png` 的 `(1428, 800)` baseline 已接受，尺寸和 live artifact、repo HEAD reference 一致。
 
@@ -117,10 +120,10 @@ stabilization。
 
 ## 目前 blocker
 
-目前沒有 fast dashboard blocker。主要風險是 UI action execution 仍直接使用 controllers，
-assistant real tools 仍消費 `BackendFacade` 舊回傳值，launcher 尚未完整做 click-through
-互動驗收，`evaluate` / `visualize` / `saliency` / `new_session` 仍只是 disabled future
-command contract。
+目前沒有 final gate blocker。主要風險是 UI action execution 仍有不少直接 controller path，
+部分 assistant real tools 仍先走 `BackendFacade` legacy method 再由 typed adapter 正規化結果，
+launcher 尚未完整做人工 click-through 互動驗收，`evaluate` / `visualize` / `saliency` /
+`new_session` 仍只是 disabled future command contract。
 
 ## 目前執行中
 

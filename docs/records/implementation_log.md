@@ -28,6 +28,57 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Final product gate 與 local model preflight idempotence
+
+### 背景
+
+final gate 前的 local model preflight 暴露出一個產品交付問題：primary model 已在
+`XBrainLab/llm/core/models` cache 中，但 preflight 仍把它當成新下載，導致 projected cache
+從 `15.34 GB` 誤算成 `23.03 GB` 並回報超過 20GB 上限。這會讓已安裝模型的使用者看到錯誤
+下載狀態。
+
+### 變更
+
+- `plan_model_download()` 現在會辨識 Hugging Face cache layout 和 safe local cache layout。
+- 若模型已存在，preflight 回傳 `ok=True`、estimated download `0.00 GB`，projected cache
+維持 current cache。
+- 補 `test_download_preflight_allows_already_cached_model_without_increment()`。
+- final gate 依 resource-safe execution 單項執行 backend、UI、LLM、pipeline、local runtime、
+launcher、MkDocs 與 whitespace 檢查。
+
+### 影響範圍
+
+- local model download preflight
+- operations / validation docs
+- final product gate evidence
+
+### 驗證
+
+- `timeout 120s poetry run pytest --capture=sys tests/unit/llm/core/test_model_catalog.py tests/unit/scripts/test_plan_local_model_download.py -q`
+  - `7 passed`
+- `timeout 120s poetry run python scripts/dev/plan_local_model_download.py --format markdown`
+  - `ok=True`; primary already cached; projected cache `15.34 GB`
+- `timeout 300s poetry run pytest --capture=sys tests/unit/backend -q`
+  - `2661 passed, 1 skipped, 1 xfailed, 3 warnings`
+- `timeout 300s poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q`
+  - `33 passed, 8 warnings`
+- `timeout 600s poetry run pytest --capture=sys tests/integration/pipeline -q`
+  - `70 passed, 4 warnings`
+- `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - `811 passed`
+- `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+  - `649 passed`
+- `timeout 300s poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
+  - classification `gpu-ready`; prompt smoke `passed`; structured-output smoke `passed`
+- `timeout 45s xvfb-run -a poetry run python run.py --model local`
+  - `MainWindow initialized` before expected timeout.
+
+### 剩餘風險
+
+- launcher smoke is still automated startup under `xvfb`, not a human click-through of the Windows Desktop shortcut.
+- local runtime health confirms prompt / structured smoke, but not full multi-turn scientific workflow quality.
+- tool-call eval / thesis evidence still must wait until product walkthrough is stable.
+
 ## 2026-05-02 Agent tool typed result adapter
 
 ### 背景

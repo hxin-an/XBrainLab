@@ -92,7 +92,9 @@ class TestControllerToolExecution:
 
         success, result = ctrl._execute_tool_no_loop("load_data", {})
         assert success is True
-        assert result == "Done"
+        assert result.ok is True
+        assert result.command_name == "load_data"
+        assert result.message == "Done"
 
     def test_execute_gated(self):
         ctrl = _make_ctrl()
@@ -104,7 +106,9 @@ class TestControllerToolExecution:
 
         success, result = ctrl._execute_tool_no_loop("load_data", {})
         assert success is False
-        assert "blocked" in result
+        assert result.ok is False
+        assert result.command_name == "load_data"
+        assert "blocked" in result.message
 
     def test_execute_unknown_tool(self):
         ctrl = _make_ctrl()

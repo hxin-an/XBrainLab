@@ -61,7 +61,7 @@
 - [x] 重新確認 `docs/current.md`、本文件、roadmap、validation、agent docs。
 - [x] 判斷目前已完成到 backend baseline、UI/agent command readiness、local runtime
   preflight/launcher 初步實作。
-- [ ] 最終收尾前重新列出仍髒的 worktree 大類。
+- [x] 最終收尾前重新列出仍髒的 worktree 大類。
 
 ### Milestone B - Backend Product Core
 
@@ -168,7 +168,7 @@
 - [x] UI -> agent debug tool -> backend blocked command flow 會顯示 shared blocked reason。
 - [ ] backend command 成功 / failed / blocked reason 的真 launcher 互動式 walkthrough。
 - [ ] destructive reset / new session 有 confirmation boundary。
-- [ ] backend / UI / agent / local runtime smoke 通過。
+- [x] backend / UI / agent / local runtime automated final gate 通過。
 
 ### Milestone I - Tool-Call Eval / Thesis Evidence
 
@@ -183,14 +183,14 @@
 
 ### Milestone J - Final Validation / Documentation Closure
 
-狀態：尚未開始；只有 Milestone B-H product flow 穩定後才進入。
+狀態：automated final gate 已通過；仍需人工 launcher click-through 後才能宣稱完整桌面交付。
 
-- [ ] 跑 backend unit / backend integration / pipeline integration。
-- [ ] 跑 UI unit / dialog smoke。
-- [ ] 跑 LLM unit / local health / prompt smoke。
-- [ ] 跑 mkdocs strict 與 `git diff --check`。
-- [ ] 更新 worklog / implementation log / architecture docs / planning docs。
-- [ ] 清楚列出仍髒的 worktree 大類與 release 前風險。
+- [x] 跑 backend unit / backend integration / pipeline integration。
+- [x] 跑 UI unit / dialog smoke。
+- [x] 跑 LLM unit / local health / prompt smoke。
+- [x] 跑 mkdocs strict 與 `git diff --check`。
+- [x] 更新 worklog / implementation log / architecture docs / planning docs。
+- [x] 清楚列出仍髒的 worktree 大類與 release 前風險。
 
 ## 當前執行邊界
 

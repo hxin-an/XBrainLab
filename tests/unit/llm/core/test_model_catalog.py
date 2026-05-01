@@ -33,6 +33,25 @@ def test_download_preflight_allows_primary_under_limits(tmp_path: Path):
     assert result.projected_cache_bytes < result.max_total_cache_bytes
 
 
+def test_download_preflight_allows_already_cached_model_without_increment(
+    tmp_path: Path,
+):
+    cache_dir = tmp_path / "models"
+    cached_model = cache_dir / "models--microsoft--Phi-4-mini-instruct"
+    cached_model.mkdir(parents=True)
+    (cached_model / "config.json").write_text("{}", encoding="utf-8")
+
+    result = plan_model_download(
+        "microsoft/Phi-4-mini-instruct",
+        str(cache_dir),
+    )
+
+    assert result.ok is True
+    assert result.estimated_download_bytes == 0
+    assert result.projected_cache_bytes == result.current_cache_bytes
+    assert "already cached" in result.message
+
+
 def test_download_preflight_blocks_total_cache_over_limit(tmp_path: Path):
     cache_dir = tmp_path / "models"
     blocked_cache = cache_dir / "models--Qwen--Qwen2.5-7B-Instruct"
