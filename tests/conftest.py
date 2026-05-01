@@ -15,13 +15,26 @@ This conftest module provides:
 # Global mocks have been disabled as the environment has all dependencies installed.
 # Previously, this file mocked mne, captum, and torch, which caused import errors.
 
+import os
 import sys
+import tempfile
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 # --- PYTEST COLLECTION FIX ---
 # Prevent pytest from scanning XBrainLab source directory as tests
 collect_ignore_glob = ["../XBrainLab/**"]
+
+# --- HEADLESS DEFAULTS FOR THIS WORKSPACE ---
+# Direct unattended pytest invocations in the current Codex/WSL workspace can
+# otherwise abort during pytest-qt qapp startup or fall back to flaky fd
+# capture behavior. Set conservative defaults here so the repo itself carries
+# the known-good test environment, instead of relying only on wrappers.
+matplotlib_cache_dir = os.path.join(tempfile.gettempdir(), "matplotlib-codex")
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("MPLCONFIGDIR", matplotlib_cache_dir)
+os.makedirs(matplotlib_cache_dir, exist_ok=True)
 
 # --- KNOWN ISSUE: pytest-cov / PyTorch Conflict ---
 # Coverage.py's trace instrumentation conflicts with PyTorch's C-extension docstring

@@ -68,18 +68,29 @@ class TestIOIntegration:
         assert data.shape[0] == n_channels
         assert data.shape[1] > 0
 
-    def test_load_gdf_file_records_runtime_signal_for_duplicate_channels(self):
-        """Keep the duplicate-channel signal accessible beyond the raw warning."""
+    def test_load_gdf_file_restores_known_graz_channel_names(self):
+        """Known Graz fixtures should restore canonical labels after MNE auto-rename."""
         if not os.path.exists(GDF_FILE):
             pytest.skip(f"Test data not found at {GDF_FILE}")
 
         raw = load_gdf_file(GDF_FILE)
 
-        assert raw.has_runtime_signals()
-        assert any(
-            "auto-renaming duplicate channel names" in signal
-            for signal in raw.get_runtime_signals()
-        )
+        assert raw.has_runtime_signals() is False
+        assert raw.get_mne().ch_names[0:7] == [
+            "EEG-Fz",
+            "EEG-FC3",
+            "EEG-FC1",
+            "EEG-FCz",
+            "EEG-FC2",
+            "EEG-FC4",
+            "EEG-C5",
+        ]
+        assert raw.get_mne().ch_names[18:22] == [
+            "EEG-P1",
+            "EEG-Pz",
+            "EEG-P2",
+            "EEG-POz",
+        ]
         assert raw.has_runtime_detail("gdf_duplicate_channel_names")
         assert raw.has_gdf_duplicate_channel_detail()
 
@@ -87,10 +98,10 @@ class TestIOIntegration:
         assert detail is not None
         assert detail["kind"] == "gdf_duplicate_channel_names"
         assert detail["filepath"] == GDF_FILE
+        assert detail["resolved"] is True
         assert "EEG" in detail["generated_bases"]
-        assert any(
-            channel.startswith("EEG-") for channel in detail["generated_channels"]
-        )
+        assert "EEG-0" in detail["generated_channels"]
+        assert "EEG-FC3" in detail["normalized_channels"]
 
     @pytest.mark.parametrize("filepath", REAL_DATA_FIXTURES)
     def test_load_supported_real_formats(self, filepath):
@@ -133,8 +144,8 @@ class TestIOIntegration:
         assert summary["count"] == 1
         assert summary["files"] == [os.path.basename(filepath)]
 
-    def test_facade_summary_records_gdf_duplicate_channel_diagnostics(self):
-        """Surface real GDF ambiguity in the high-level dataset summary."""
+    def test_facade_summary_excludes_resolved_gdf_channel_normalization(self):
+        """Do not keep resolved Graz normalization in unresolved ambiguity summaries."""
         if not os.path.exists(GDF_FILE):
             pytest.skip(f"Test data not found at {GDF_FILE}")
 
@@ -145,14 +156,8 @@ class TestIOIntegration:
         assert errors == []
 
         summary = facade.get_data_summary()
-        assert summary["gdf_duplicate_channel_files"] == [os.path.basename(GDF_FILE)]
-        assert summary["gdf_duplicate_channel_details"]
-        detail = summary["gdf_duplicate_channel_details"][0]
-        assert detail["file"] == os.path.basename(GDF_FILE)
-        assert "EEG" in detail["generated_bases"]
-        assert any(
-            channel.startswith("EEG-") for channel in detail["generated_channels"]
-        )
+        assert summary["gdf_duplicate_channel_files"] == []
+        assert summary["gdf_duplicate_channel_details"] == []
 
     @pytest.mark.parametrize("filepath", PUBLIC_REAL_DATA_FIXTURES)
     def test_load_public_real_formats(self, filepath):

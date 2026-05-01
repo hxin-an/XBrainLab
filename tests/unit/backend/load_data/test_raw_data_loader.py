@@ -84,6 +84,97 @@ class TestRawDataLoaderUnit:
             for caught_warning in caught_warnings
         )
 
+    @patch("XBrainLab.backend.load_data.raw.validate_type")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.logger.info")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.logger.warning")
+    @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf")
+    def test_load_gdf_normalizes_known_graz_2a_duplicate_names(
+        self,
+        mock_read_gdf,
+        mock_logger_warning,
+        mock_logger_info,
+        mock_validate,
+    ):
+        """Restore canonical labels when the known Graz 2a duplicate pattern appears."""
+        ch_names = [
+            "EEG-Fz",
+            "EEG-0",
+            "EEG-1",
+            "EEG-2",
+            "EEG-3",
+            "EEG-4",
+            "EEG-5",
+            "EEG-C3",
+            "EEG-6",
+            "EEG-Cz",
+            "EEG-7",
+            "EEG-C4",
+            "EEG-8",
+            "EEG-9",
+            "EEG-10",
+            "EEG-11",
+            "EEG-12",
+            "EEG-13",
+            "EEG-14",
+            "EEG-Pz",
+            "EEG-15",
+            "EEG-16",
+            "EOG-left",
+            "EOG-central",
+            "EOG-right",
+        ]
+        mock_raw = MagicMock()
+        mock_raw.info = {"ch_names": ch_names.copy()}
+
+        def rename_channels(mapping):
+            mock_raw.info["ch_names"] = [mapping.get(name, name) for name in ch_names]
+
+        mock_raw.rename_channels.side_effect = rename_channels
+
+        def fake_read(*args, **kwargs):
+            warnings.warn(
+                "Channel names are not unique, found duplicates for: {'EEG'}. "
+                "Applying running numbers for duplicates.",
+                RuntimeWarning,
+                stacklevel=1,
+            )
+            return mock_raw
+
+        mock_read_gdf.side_effect = fake_read
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            result = load_gdf_file("A01T.gdf")
+
+        assert isinstance(result, Raw)
+        assert result.get_mne() == mock_raw
+        mock_logger_warning.assert_not_called()
+        mock_logger_info.assert_called_once()
+        assert result.get_mne().info["ch_names"][1:6] == [
+            "EEG-FC3",
+            "EEG-FC1",
+            "EEG-FCz",
+            "EEG-FC2",
+            "EEG-FC4",
+        ]
+        assert result.get_mne().info["ch_names"][18:22] == [
+            "EEG-P1",
+            "EEG-Pz",
+            "EEG-P2",
+            "EEG-POz",
+        ]
+        assert result.has_runtime_signals() is False
+        detail = result.get_gdf_duplicate_channel_detail()
+        assert detail is not None
+        assert detail["resolved"] is True
+        assert detail["normalization_name"] == "graz_2a_canonical_22"
+        assert "EEG-0" in detail["generated_channels"]
+        assert "EEG-FC3" in detail["normalized_channels"]
+        assert not any(
+            "Channel names are not unique" in str(caught_warning.message)
+            for caught_warning in caught_warnings
+        )
+
     @patch("XBrainLab.backend.load_data.raw_data_loader.mne.io.read_raw_gdf")
     def test_load_gdf_failure(self, mock_read_gdf):
         """Test GDF loading failure handling."""

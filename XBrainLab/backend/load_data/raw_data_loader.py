@@ -18,9 +18,67 @@ from .raw import Raw
 
 _DUPLICATE_GDF_CHANNEL_WARNING = "Channel names are not unique"
 _RUNNING_NUMBER_SUFFIX = re.compile(r"^(?P<base>.+)-(?P<index>\d+)$")
+_GRAZ_2A_AUTO_RENAMED_CHANNELS = [
+    "EEG-Fz",
+    "EEG-0",
+    "EEG-1",
+    "EEG-2",
+    "EEG-3",
+    "EEG-4",
+    "EEG-5",
+    "EEG-C3",
+    "EEG-6",
+    "EEG-Cz",
+    "EEG-7",
+    "EEG-C4",
+    "EEG-8",
+    "EEG-9",
+    "EEG-10",
+    "EEG-11",
+    "EEG-12",
+    "EEG-13",
+    "EEG-14",
+    "EEG-Pz",
+    "EEG-15",
+    "EEG-16",
+    "EOG-left",
+    "EOG-central",
+    "EOG-right",
+]
+_GRAZ_2A_CANONICAL_CHANNELS = [
+    "EEG-Fz",
+    "EEG-FC3",
+    "EEG-FC1",
+    "EEG-FCz",
+    "EEG-FC2",
+    "EEG-FC4",
+    "EEG-C5",
+    "EEG-C3",
+    "EEG-C1",
+    "EEG-Cz",
+    "EEG-C2",
+    "EEG-C4",
+    "EEG-C6",
+    "EEG-CP3",
+    "EEG-CP1",
+    "EEG-CPz",
+    "EEG-CP2",
+    "EEG-CP4",
+    "EEG-P1",
+    "EEG-Pz",
+    "EEG-P2",
+    "EEG-POz",
+    "EOG-left",
+    "EOG-central",
+    "EOG-right",
+]
 
 
-def _reemit_captured_warnings(caught_warnings):
+def _reemit_captured_warnings(
+    caught_warnings,
+    *,
+    suppress_duplicate_channel_warning: bool = False,
+):
     """Re-emit warnings captured around a loader call.
 
     This lets the loader inspect runtime warnings for richer repo-specific
@@ -28,6 +86,10 @@ def _reemit_captured_warnings(caught_warnings):
     """
 
     for caught_warning in caught_warnings:
+        if suppress_duplicate_channel_warning and _DUPLICATE_GDF_CHANNEL_WARNING in str(
+            caught_warning.message
+        ):
+            continue
         warnings.warn_explicit(
             message=caught_warning.message,
             category=caught_warning.category,
@@ -36,10 +98,49 @@ def _reemit_captured_warnings(caught_warnings):
         )
 
 
-def _get_running_number_bases(channel_names):
+def _normalize_known_graz_2a_channel_names(selected_data):
+    """Normalize the known BCI Competition IV 2a auto-renamed GDF pattern.
+
+    The official Graz 2a description documents a fixed 22-channel montage.
+    In these fixtures MNE receives many generic ``EEG`` labels and auto-renames
+    them to ``EEG-0``, ``EEG-1``, ... . When the resulting full 25-channel
+    pattern matches the published montage order exactly, we can deterministically
+    restore the canonical labels instead of leaving downstream code to reason
+    about generated placeholder names.
+    """
+
+    channel_names = list(selected_data.info.get("ch_names", []))
+    if channel_names != _GRAZ_2A_AUTO_RENAMED_CHANNELS:
+        return None
+
+    rename_map = {
+        original: normalized
+        for original, normalized in zip(
+            _GRAZ_2A_AUTO_RENAMED_CHANNELS,
+            _GRAZ_2A_CANONICAL_CHANNELS,
+            strict=True,
+        )
+        if original != normalized
+    }
+    if not rename_map:
+        return None
+
+    selected_data.rename_channels(rename_map)
+    return {
+        "resolved": True,
+        "normalization_name": "graz_2a_canonical_22",
+        "normalized_channels": [
+            rename_map[original]
+            for original in _GRAZ_2A_AUTO_RENAMED_CHANNELS
+            if original in rename_map
+        ],
+    }
+
+
+def _get_running_number_bases(channel_names: list[str]) -> list[str]:
     """Return bases that look auto-renamed via ``name-0``, ``name-1`` patterns."""
 
-    suffixes_by_base = {}
+    suffixes_by_base: dict[str, set[int]] = {}
     for channel_name in channel_names:
         match = _RUNNING_NUMBER_SUFFIX.match(channel_name)
         if not match:
@@ -55,7 +156,10 @@ def _get_running_number_bases(channel_names):
     )
 
 
-def _get_generated_channel_names(channel_names, generated_bases):
+def _get_generated_channel_names(
+    channel_names: list[str],
+    generated_bases: list[str],
+) -> list[str]:
     """Return generated channel names derived from auto-renamed duplicate bases."""
 
     if not generated_bases:
@@ -175,24 +279,43 @@ def load_gdf_file(filepath):
             warnings.simplefilter("always")
             selected_data = mne.io.read_raw_gdf(filepath, preload=False)
 
-        _reemit_captured_warnings(caught_warnings)
         channel_name_detail = _build_gdf_channel_name_detail(
             filepath,
             selected_data,
             caught_warnings,
         )
+        normalized_channel_names = False
         if channel_name_detail:
-            logger.warning("%s", channel_name_detail["message"])
+            normalization_detail = _normalize_known_graz_2a_channel_names(selected_data)
+            if normalization_detail:
+                channel_name_detail.update(normalization_detail)
+                channel_name_detail["message"] = (
+                    f"GDF import for {filepath} matched the known Graz 2a "
+                    "duplicate-name pattern; XBrainLab restored canonical EEG "
+                    "channel labels after MNE auto-rename."
+                )
+                normalized_channel_names = True
+
+        _reemit_captured_warnings(
+            caught_warnings,
+            suppress_duplicate_channel_warning=normalized_channel_names,
+        )
+        if channel_name_detail:
+            if normalized_channel_names:
+                logger.info("%s", channel_name_detail["message"])
+            else:
+                logger.warning("%s", channel_name_detail["message"])
 
         if selected_data:
             # Wrap in XBrainLab Raw object
             raw_wrapper = Raw(filepath, selected_data)
             if channel_name_detail:
-                raw_wrapper.add_runtime_signal(channel_name_detail["message"])
                 raw_wrapper.set_runtime_detail(
                     "gdf_duplicate_channel_names",
                     channel_name_detail,
                 )
+                if not normalized_channel_names:
+                    raw_wrapper.add_runtime_signal(channel_name_detail["message"])
             return raw_wrapper
 
     except Exception as e:

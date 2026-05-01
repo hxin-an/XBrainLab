@@ -77,6 +77,15 @@
     - `38d3f00`
   - `timeout 120s poetry run mkdocs build --strict`
     - 通過；用於驗收 docs cleanup / current-facing docs patch。
+  - data / validation chunk：
+    - `timeout 180s poetry run pytest --capture=sys tests/unit/backend/load_data/test_raw_data_loader.py tests/unit/scripts/test_report_dataset_validation_matrix.py tests/unit/scripts/test_run_public_cross_source_training_smoke.py -q`
+      - `10 passed`
+    - `timeout 300s poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+      - `31 passed, 8 warnings`
+    - `timeout 300s poetry run pytest --capture=sys tests/integration/pipeline/test_checked_in_real_dataset_validation.py -q`
+      - `6 passed`
+    - `timeout 300s poetry run pytest --capture=sys tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
+      - `4 passed, 3 warnings`
 - 本輪剩餘：
   - 先提交 local LLM runtime + launcher + docs correction checkpoint。
   - 再盤點並提交 backend / UI-agent / docs cleanup / validation chunks。
