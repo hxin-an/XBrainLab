@@ -1,7 +1,0 @@
-interface:
-  display_name: "XBrainLab Prep Gate"
-  short_description: "Run XBrainLab stabilization prep work"
-  default_prompt: "Use $xbrainlab-prep-gate to continue XBrainLab's prep-gate stabilization work."
-
-policy:
-  allow_implicit_invocation: true

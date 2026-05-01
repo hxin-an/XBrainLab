@@ -1,282 +1,299 @@
-# Agent Architecture (Agent 架構設計)
+# Agent Architecture
 
-**最後更新**: 2026-02-25
+最後更新：`2026-05-02`
 
-## 1. 系統綜覽 (System Overview)
+## 範圍
 
-XBrainLab 的 Agent 系統採用 **"Headless Backend + Intelligent Bridge + RAG"** 的設計模式。
-Agent 扮演「操作員」的角色，它不直接持有數據，而是透過標準化的 **Tools** 介面來操作後端的 **Study** 物件，並通過 **RAG** 檢索知識庫來增強決策能力。
+這份文件描述 XBrainLab 內建 assistant 的目前架構與重構方向。
 
-```mermaid
-graph TD
-    User([User 👤])
+這裡的 agent 指 app 內的 workflow-aware software operation agent，不是外部開發用的 Codex。
 
-    subgraph MainThread ["Main Thread (UI & Controller)"]
-        direction TB
-        UI[UI: ChatPanel]
+## 一句話
 
-        subgraph ControllerScope ["Controller Logic"]
-            direction TB
-            Controller[Controller: LLMController]
-            Assembler["ContextAssembler<br/>(Prompt Construction)"]
-            Parser[Parser: CommandParser]
-            Verifier["VerificationLayer<br/>(Safety Check)"]
+目前 assistant 不是單純聊天視窗，而是已經能透過 tool call 操作 XBrainLab workflow 的功能層。
 
-            Controller -- "delegates" --> Assembler
-            Controller -- "validates" --> Verifier
-        end
+目前實際路徑是：
 
-        ToolReg[Tool Registry]
-        RAG["RAG Retriever<br/>(Qdrant)"]
-    end
-
-    subgraph WorkerThread ["QThread: Worker"]
-        direction TB
-        Worker[Worker: AgentWorker]
-        GenThread["GenerationThread<br/>(Actual Inference)"]
-        LLM[Engine: LLMEngine]
-
-        Worker --> GenThread
-        GenThread --> LLM
-    end
-
-    subgraph Backend ["Backend System"]
-        direction TB
-        Facade["BackendFacade<br/>(Unified API)"]
-        Study[Study Object]
-        Facade --> Study
-    end
-
-    User --> |"1. Input Text"| UI
-    UI --> |"2. signal: send_message"| Controller
-    Controller --> |"3. Query"| RAG
-    RAG --> |"4. Few-Shot Examples"| Assembler
-    Assembler --> |"5. Full Prompt"| Worker
-    Worker --> |"6. Stream Tokens"| Controller
-    Controller --> |"7. Parse Response"| Parser
-    Parser --> |"8. Tool Call"| Verifier
-    Verifier --> |"9. Execute Tool"| ToolReg
-    ToolReg --> |"10. Call Method"| Facade
-
-    Study -.-> |"11. Observable notify"| UI
+```text
+ChatPanel
+  |
+  v
+AgentManager
+  |
+  v
+LLMController
+  |
+  +--> AgentWorker / LLMEngine
+  |
+  +--> Parser / VerificationLayer / ToolRegistry
+  |
+  v
+Real Tools
+  |
+  +--> ApplicationService capability policy
+  |
+  v
+BackendFacade
+  |
+  v
+ApplicationService / Command API
+  |
+  v
+Study / cached controllers
 ```
 
-## 2. 核心元件 (Core Components)
+這是一個可工作的中間狀態，但還不是最終理想架構。
 
-### 2.1 Agent Controller (`controller.py`)
-**職責**: Agent 的中樞神經，協調 User、LLM、RAG 與 Tools 之間的訊息傳遞與狀態管理。
+## 主要位置
 
-**主要屬性**:
-- `history`: 對話歷史（Sliding Window, `MAX_HISTORY = 20`）
-- `assembler`: `ContextAssembler` — 動態組裝 System Prompt + Tool Definitions + RAG Context
-- `verifier`: `VerificationLayer` — 驗證 Tool Call 的合法性（含 Pluggable Validator 策略）
-- `metrics`: `AgentMetricsTracker` — 結構化日誌、Token 計數、工具執行追蹤
-- `worker` / `worker_thread`: 背景推論執行緒
-- `rag_retriever`: RAG 語義檢索器
+| 區域 | 目前責任 |
+| --- | --- |
+| `XBrainLab/ui/chat/` | chat panel、使用者輸入、模型 / 執行模式 UI。 |
+| `XBrainLab/ui/components/agent_manager.py` | UI 和 assistant 的接線層，負責啟動 controller、轉送訊息、處理 UI side effects。 |
+| `XBrainLab/llm/agent/controller.py` | agent 主控制器，負責 context、RAG、parser、verification、tool loop、ApplicationService capability gate。 |
+| `XBrainLab/llm/agent/worker.py` | 背景 thread 中的 LLM 初始化、生成、timeout、model switch。 |
+| `XBrainLab/llm/core/` | backend selection、local backend、既有 API / Gemini runtime code、runtime config。 |
+| `XBrainLab/llm/tools/` | tool definitions、registry、real tools。 |
+| `XBrainLab/llm/rag/` | RAG retriever 與 prompt context 補充。 |
 
-**主要方法**:
-- `handle_user_input(text)`: 接收 UI 輸入 → 查詢 RAG → 觸發生成
-- `_generate_response()`: 透過 Assembler 組合完整 Prompt，發送給 Worker
-- `_on_generation_finished()`: 解析 LLM 回應，進入 ReAct Loop
-- `_process_tool_calls()`: 執行工具呼叫，結果回饋 LLM 循環
-- `stop_generation()`: 中斷生成並發出 `processing_finished` 信號
+## 目前分層
 
-**安全機制**:
-- `_loop_break_count` / `_max_loop_breaks = 3`: 防止無限迴圈偵測失效
-- `_tool_failure_count` / `_max_tool_failures = 3`: 工具連續失敗上限
-- `try/except` 包裝 `handle_user_input`，確保異常時重置 `is_processing`
+### 1. Chat UI
 
-### 2.2 Context Assembler (`assembler.py`)
-**職責**: 動態組裝 AI 的認知上下文，整合四大元件：
-1. **System Prompt** — 定義 Agent 角色與 ReAct 推理模式
-2. **Tool Definitions** — 根據後端狀態動態插入可用工具 Schema
-3. **RAG Context** — 從 Qdrant 檢索的 Few-Shot 相似案例
-4. **Memory** — 對話歷史（Sliding Window）
+`ChatPanel` 主要是 UI component。
 
-### 2.3 Verification Layer (`verifier.py`)
-**職責**: 在執行 Tool Call 前的安全檢查，採用 Pluggable Validator 策略模式：
+它負責：
 
-**內建 Validator**:
-- `FrequencyRangeValidator`：驗證帶通濾波參數 (`low_freq < high_freq`，皆為正數)
-- `TrainingParamValidator`：驗證訓練參數 (`epoch`、`batch_size` 為正整數)
-- `PathExistsValidator`：驗證檔案路徑存在性
+- 發出使用者訊息。
+- 發出停止生成、模型切換、執行模式切換等 signal。
+- 顯示 local 狀態；目前 UI / runtime code 仍殘留 Gemini/API 支援。
+- debug 模式下可觸發測試用 tool command。
 
-**驗證流程**:
-- **參數驗證**: 根據 Tool 名稱匹配對應 Validator，檢查參數合法性
-- **信心度檢查**: 評估 LLM 的信心度
-- **低信心 / 無效** → 觸發自我修正（Reflection），將錯誤回饋給 Assembler 重試
-- **高信心 & 有效** → 執行工具
+它不應該直接懂 backend workflow。
 
-> **注意**: 信心度檢查目前尚未完全啟用（見 KNOWN_ISSUES.md）。
+### 2. AgentManager
 
-### 2.4 Agent Worker (`worker.py`)
-**職責**: 在獨立 QThread 中執行 LLM 推論，避免阻塞 UI。
+`AgentManager` 是目前 UI 和 agent runtime 的整合點。
 
-**類別**:
-- `GenerationThread(QThread)`: 實際呼叫 `engine.generate_stream()` 並透過信號發送 Chunk
-- `AgentWorker(QObject)`: 管理 LLM Engine 生命週期，啟動 GenerationThread
+它負責：
 
-### 2.5 Command Parser (`parser.py`)
-**職責**: 解析 LLM 文字輸出，提取 JSON 工具指令。
-- 使用 Regex 尋找 `` ```json ... ``` `` 區塊
-- 驗證 JSON 格式
-- 回傳 `(command_name, parameters)` 或 `None`
+- 在 `start_system()` 時建立 `LLMController(self.study)`。
+- 將 chat panel 的輸入轉給 `LLMController.handle_user_input()`。
+- 將 assistant 回覆、streaming chunk、錯誤狀態送回 UI。
+- 處理需要 UI 介入的 request，例如 switch panel、confirm montage、confirm action。
+- 透過 `LLMConfig.normalize_backend_mode()` 把 UI label 對齊 runtime key。
 
-### 2.6 LLM Engine (`core/engine.py`)
-**職責**: 封裝模型載入與推論，支援混合推論引擎 (Hybrid Inference Engine)。
+目前 UI side effect 是透過 tool 回傳 `Request:` 字串，再由 `AgentManager` 處理。這是現況，不是理想長期介面。
 
-**支援模式**:
-| 模式 | Backend | 說明 |
-|------|---------|------|
-| **Local** | `LocalBackend` | Qwen2.5-7B-Instruct（免費、離線、需 GPU） |
-| **API** | `OpenAIBackend` | GPT-4o / DeepSeek（高準確率、需 API Key） |
-| **Gemini** | `GeminiBackend` | Gemini 2.0 Flash（免費、快速、需 API Key） |
+### 3. LLMController
 
-**資料處理範圍**:
-- ✅ LLM 處理: 使用者指令、Tool 執行結果描述、檔案路徑
-- ❌ LLM 看不到: EEG Raw Data、模型權重、實際數據內容
+`LLMController` 是目前 agent 行為的核心。
 
-### 2.7 RAG Engine (`rag/`)
-**職責**: 為 LLM 提供特定領域的知識與 Few-Shot 相似案例檢索。
+它負責：
 
-**模組**:
-- `indexer.py`: 文件索引邏輯（Qdrant Local Mode）
-- `retriever.py`: 語義相似度檢索器
-- `config.py`: Qdrant 配置
-- `storage/`: Qdrant 本地儲存（執行時產物，已加入 .gitignore）
-- `data/`: 母集 (`gold_set.json` 210 題)
+- 建立 `ToolRegistry` 並註冊 real tools。
+- 組 prompt：conversation history、workflow state、RAG examples、ApplicationService policy 可用工具與 blocked reason。
+- 讓 `AgentWorker` 在 background thread 生成回覆。
+- 用 `CommandParser` 從 LLM 文字輸出中找 tool call JSON。
+- 用 `VerificationLayer` 檢查參數、confidence、部分資料範圍。
+- 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
+- 處理 destructive / long-running tool 的 human confirmation。
+- 防止明顯 tool loop，並限制 multi-step execution 次數。
 
-**索引資料**:
-| 資料來源 | 用途 | 優先級 |
-|---------|------|--------|
-| `train.json`（126 題，分割自 gold_set） | RAG Few-Shot 索引（避免 data leakage） | P0 |
-| `tool_definitions.md` | 工具參數規格 | P0 |
-| `GLOSSARY.md` | 領域知識 | P2 |
+這一層目前同時包含 agent orchestration 和一部分 workflow policy。
 
-### 2.8 Tool Registry (`tools/`)
-**架構**: 採用 Factory Pattern 與分層設計。
+### 4. Worker / Engine / Backend
 
-```
-tools/
-├── definitions/          # Base Classes (工具介面定義)
-│   ├── dataset_def.py    # ListFiles, LoadData, AttachLabels, ClearDataset,
-│   │                     # GetDatasetInfo, GenerateDataset
-│   ├── preprocess_def.py # BandPassFilter, NotchFilter, Resample, Normalize,
-│   │                     # Rereference, ChannelSelection, SetMontage, EpochData,
-│   │                     # StandardPreprocess
-│   ├── training_def.py   # SetModel, ConfigureTraining, StartTraining
-│   └── ui_control_def.py  # SwitchPanel
-├── mock/                 # Mock 實作 (用於 Benchmark 評測)
-├── real/                 # Real 實作 ✅ 已完成 (19/19)
-│   ├── dataset_real.py   # → BackendFacade
-│   ├── preprocess_real.py
-│   ├── training_real.py
-│   └── ui_control_real.py
-├── base.py               # Tool Base Class
-├── tool_registry.py      # ToolRegistry 動態管理
-└── __init__.py           # AVAILABLE_TOOLS 工廠
+`AgentWorker` 和 `LLMEngine` 負責 LLM runtime。
+
+新的產品方向是 local-only assistant：
+
+- local model backend。
+- 不依賴 API key。
+- 不把 Gemini/API 當成未來產品目標。
+- 優先讓本地模型、模型 cache、GPU/CPU fallback 可理解、可測、可交接。
+- 模型選型不使用中國公司或中國來源模型。
+- Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入 primary / fallback 選型。
+- 優先考慮非中國來源、授權清楚、可本地部署的模型。
+
+2026-05-02 product runtime baseline：
+
+| role | model | provider | estimated download | cache status | smoke |
+| --- | --- | --- | ---: | --- | --- |
+| primary | `microsoft/Phi-4-mini-instruct` | Microsoft | 7.69 GB | downloaded | prompt + structured-output passed |
+| fallback | `microsoft/Phi-3.5-mini-instruct` | Microsoft | 7.64 GB | downloaded | prompt + structured-output passed |
+
+cache 位置：
+
+```text
+XBrainLab/llm/core/models
 ```
 
-## 3. 資料流與互動機制
+目前 cache 約 `15.34 GB`，低於 20GB 上限。舊 Qwen cache 已刪除。
 
-### 3.1 角色職責
-- **UI 層**: `ChatPanel` — 只負責「顯示」與「接收輸入」
-- **Controller 層**: `LLMController` — 記憶對話、決策（ReAct Loop）、解析工具指令、調度 Worker
-- **Worker 層**: `AgentWorker` + `GenerationThread` — 在獨立 QThread 中執行 LLM 推論
+新增 runtime policy：
 
-### 3.2 詳細資料傳輸流程
+- `XBrainLab/llm/core/model_catalog.py` 是 local model allow-list / block-list / size policy 的單一來源。
+- 下載前必須通過 `plan_model_download()`，限制單模型 10GB、總 cache 20GB。
+- `AgentWorker` 啟動 local runtime 時會先嘗試設定中的 local model；若不可用且 fallback cache 可用，
+  會依 policy 切到 fallback model，而不是啟動 API / Gemini。
+- `LocalBackend` 會阻擋未列入 product catalog 或被中國模型 policy 擋下的 repo id。
+- Phi remote-code compatibility patch 目前只針對 runtime annotation / cache API 差異，並用
+  prompt smoke 與 structured-output smoke 驗證。
 
-#### 階段一：使用者輸入 (UI → Controller)
-1. 使用者在 `ChatPanel` 輸入指令
-2. `ChatPanel` → `MainWindow` → `agent_controller.handle_user_input()`
+目前程式碼仍存在 API / Gemini backend 與切換邏輯。這是 current code state，不是未來設計目標，產品收斂時要隔離或移除。
 
-#### 階段二：思考與推論 (Controller ↔ Worker)
-3. Controller 將訊息加入 `history`（Sliding Window）
-4. Controller 查詢 `RAGRetriever.get_similar_examples(text)`
-5. `ContextAssembler` 組合 System Prompt + Tools + RAG Context + History
-6. 發出 `sig_generate` → Worker（跨執行緒邊界）
-7. `GenerationThread` 執行 LLM 推論，串流回傳
+目前仍要保留在架構判讀中的 runtime 行為包括：
 
-#### 階段三：執行與回應 (Controller → Backend → UI)
-8. `CommandParser` 解析回應：
-   - **純對話**: 發出 `response_ready` → UI 顯示
-   - **工具呼叫 (ReAct Loop)**:
-     1. `VerificationLayer` 驗證 Tool Call
-     2. 執行工具 → 操作 `BackendFacade` → 修改 `Study` 狀態
-     3. 工具結果加入 history，重新觸發生成（Loop）
+- runtime config reload。
+- model / backend switch。
+- generation timeout。
 
-### 3.3 UI 刷新機制
+`LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
-**核心原則**: Agent/Tool **不直接操作 UI**。UI 刷新由 Observer Bridge 觸發。
+目前 primary / fallback local LLM 已通過 GPU prompt smoke 和 structured-output smoke。
+4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
-```
-Agent Tool (Worker Thread)
-    │ exec: facade.apply_filter()
-    ▼
-Backend Observable ── notify("preprocess_changed") ──►
-    │
-    ▼ (Background Thread → Main Thread, QueuedConnection)
-QtObserverBridge ── Qt Signal ──► UI Panel.update()
-```
+Gemini/API 不再列為產品驗證目標；應在 agent runtime 簡化時移除，不再保留為相容路徑。
 
-## 4. 專案結構 (LLM Module)
+### 5. Tools
 
-```
-XBrainLab/llm/
-├── pipeline_state.py         # Stage Gate 狀態機 (PipelineStage, STAGE_CONFIG)
-├── agent/                    # 控制層
-│   ├── controller.py         # 協調者 (Main Thread, ReAct Loop)
-│   ├── assembler.py          # Prompt 組裝器 (System+Tools+RAG+History)
-│   ├── verifier.py           # 驗證層 (Pluggable Validator 策略)
-│   ├── metrics.py            # 結構化日誌 / Token 追蹤 (AgentMetricsTracker)
-│   ├── worker.py             # 執行者 (Worker Thread, LLM Inference)
-│   └── parser.py             # 輸出解析 (JSON Tool Call Parser)
-│
-├── core/                     # LLM 引擎層
-│   ├── config.py             # 模型設定 (支援 Local/API/Gemini)
-│   ├── engine.py             # 推論引擎 (Backend 工廠)
-│   ├── downloader.py         # 模型下載進度
-│   └── backends/             # 推論後端
-│       ├── base.py           # BaseBackend 抽象類別
-│       ├── local.py          # HuggingFace Transformers (4-bit 量化)
-│       ├── api.py            # OpenAI-compatible API
-│       └── gemini.py         # Google Gemini API
-│
-├── tools/                    # 工具介面層 (Factory Pattern)
-│   ├── definitions/          # Base Classes (19 個工具介面)
-│   ├── mock/                 # Mock Implementation (用於 Benchmark)
-│   ├── real/                 # Real Implementation ✅ (19/19)
-│   ├── base.py               # Tool Base Class
-│   ├── tool_registry.py      # ToolRegistry 動態管理
-│   └── __init__.py           # AVAILABLE_TOOLS 工廠
-│
-└── rag/                      # RAG 檢索模組
-    ├── indexer.py            # 文件索引 (Qdrant Local Mode)
-    ├── retriever.py          # 語義檢索器
-    ├── config.py             # Qdrant 配置
-    ├── data/                 # 母集 (gold_set.json → split 為 train/test/val)
-    └── storage/              # Qdrant 本地儲存 (runtime, .gitignore)
+`XBrainLab/llm/tools/definitions/` 定義工具名稱、參數 schema、描述和是否需要 confirmation。
 
-相關資料:
-├── scripts/agent/benchmarks/
-│   ├── simple_bench.py           # Stage-Aware Benchmark 評測腳本
-│   ├── rag_experiment.py         # RAG 檢索品質評測 (CPU only)
-│   ├── validate_architecture.py  # Pipeline 架構靜態驗證
-│   ├── validate_gold_set.py      # 資料集 Schema + 分割完整性驗證
-│   ├── split_dataset.py          # gold_set → train/test/val 分割
-│   └── data/
-│       ├── train.json            # 60% (126 examples) — RAG 索引用
-│       ├── test.json             # 20% (42 examples) — 評估用
-│       └── val.json              # 20% (42 examples) — 調參用
-│
-└── scripts/agent/debug/
-    ├── all_tools.json            # Interactive Debug 全工具腳本
-    ├── debug_filter.json         # 濾波測試腳本
-    └── debug_ui_switch.json      # UI 切換測試腳本
+`XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
+
+目前 real tools 主要透過：
+
+```text
+Real Tool
+  |
+  v
+BackendFacade(study)
+  |
+  v
+ApplicationService / Command API
+  |
+  v
+Study / DataManager / TrainingManager / controllers
 ```
 
-**核心設計原則**:
-1. **資料分離**: RAG 索引僅使用 train.json (126 題)，test/val 從不索引，避免 Data Leakage。
-2. **模組化**: Agent, Core, Tools, RAG 各司其職，介面清晰。
-3. **可測試性**: Mock/Real 分離，支援單元測試與整合測試。
-4. **可擴展性**: Factory Pattern 支援動態切換 Tool 實作與 LLM Backend。
+這表示 assistant 目前不是自己複製一套 backend，而是使用 `BackendFacade` 進入
+`ApplicationService` 和既有 `Study` 狀態。
+
+新增 `XBrainLab/llm/tools/application_surface.py` 作為 agent tool name 和
+ApplicationService command name 的對映層。`ContextAssembler` 用它決定可列出的 tools；
+`LLMController` 在 tool execution 前再次用它檢查 blocked reason。`Tool Output` 寫回
+conversation history 時會保留 `ok`、`tool_name`、`message`、`raw_result` JSON payload，
+不再只放一段無結構字串。
+
+## Workflow State Gate
+
+`XBrainLab/llm/pipeline_state.py` 仍會從 live `Study` 推出目前 workflow stage，主要作為
+prompt narrative；真正可用工具與 blocked reason 改由 ApplicationService capability
+policy 產生。
+
+目前主要 stage 包括：
+
+- `empty`
+- `data_loaded`
+- `preprocessed`
+- `dataset_ready`
+- `training`
+- `trained`
+
+舊 stage table 不再是 execution gate。這很重要，因為 stage table 比較像單一路徑
+pipeline，不足以完整描述同一 dataset 上多個 training run、已完成 result 可視覺化、
+以及 reset / new session / fork 這類高風險資料切換情境。
+
+這不代表所有 tool 都能並行。沒有 loaded data 不能 preprocess，沒有 dataset 不能 training，沒有 trained result 不能 saliency / model-based visualization。epoch / dataset 形成後，load new data 應被擋下，除非使用者明確選擇 reset / new session / fork。
+
+## 目前可信判斷
+
+已對照 source code 的部分：
+
+- chat UI、agent manager、controller、worker、engine、tool registry 都存在。
+- real tools 目前會進 `BackendFacade(study)`。
+- `LLMController` 會做 parser、verification、stage gate、confirmation、loop limit。
+- `pipeline_state.py` 會從 live `Study` 推導 workflow stage。
+- runtime backend selection 已由 structured config 管理，不應再用 UI label 判斷。
+
+已在本輪 runtime 驗證的部分：
+
+- local LLM primary / fallback model cache 存在且低於容量上限。
+- primary / fallback 都可在 CUDA 上載入並回覆最小 prompt。
+- primary / fallback 都可照 prompt-protocol 輸出 `{"tool_name":"get_state","arguments":{}}`。
+- local runtime unavailable 時，chat panel 會保持可開並顯示原因，不再用 first-open modal 擋住狀態面板。
+
+尚未在本輪完整驗證的部分：
+
+- RAG corpus 的品質和可用性。
+- 多步 tool-call loop 在真實使用者 workflow 中是否穩定。
+- agent 操作完整資料 pipeline 的端到端正確性。
+- API / Gemini code path 的移除尚未完成。
+
+## 架構評斷
+
+目前設計是「可工作的中間狀態」。
+
+好的地方：
+
+- UI thread 和 LLM generation 已經分開。
+- assistant 有 workflow stage awareness。
+- real tools 沒有完全繞過 backend，而是經過 `BackendFacade`。
+- destructive / long-running 操作有 confirmation 機制。
+- runtime 已開始用 structured config 管理，而不是靠 UI label 判斷。
+
+主要問題：
+
+- runtime code 還保留 API / Gemini 分支，已經和 local-only 目標不一致，需要在產品收斂中拔掉或隔離。
+- `BackendFacade` 目前仍接到 `Study` 和 controllers，不是未來理想的 Application Service / Command API。
+- tool result 和 UI request 主要靠字串協定，型別邊界不夠清楚。
+- `CommandParser` 是從 LLM 文字中掃 JSON，不是 host-native structured tool calling。
+- `VerificationLayer` 已有基本檢查，但還不是完整的 tool contract validation。
+- `AgentManager` 同時處理 UI wiring 和 agent request，長期會讓 UI side effect 難測。
+- RAG 已接入 controller，但本輪尚未驗證資料來源和品質。
+
+## 目標架構
+
+未來重構目標是讓 UI、Agent、Script 共用同一套 app operation surface。
+
+assistant runtime 目標是 local-only。這可以讓開發、部署、論文驗證和隱私邊界簡化：
+
+- 不需要 API key 管理。
+- 不需要雲端 provider fallback policy。
+- tool-call 驗證只需要面對一套本地 runtime。
+- offline / local lab machine 的行為比較容易固定。
+
+目標形狀：
+
+```text
+UI actions
+Assistant tools
+Headless scripts
+  |
+  v
+Application Service / Command API
+  |
+  v
+Domain managers / Study state
+  |
+  v
+Data / Training / Evaluation / Persistence
+```
+
+在這個目標裡：
+
+- agent-specific 的部分只負責自然語言、RAG、tool selection、verification、confirmation。
+- LLM runtime 只保留本地模型路線，不再把 API / Gemini 作為產品路線。
+- 真正 app 操作應該落在 shared command layer。
+- UI side effects 應該改成 typed events / typed requests，而不是 `Request:` 字串。
+- `BackendFacade` 可以保留為 assistant / script adapter，但不應成為另一套業務邏輯來源。
+- tool taxonomy 可以重設計，不需要被目前 `real/` 工具切法綁住。
+
+## 文件狀態
+
+這份文件目前是 `partially-verified`。
+
+它已經對照主要 source code，但還沒有證明 local LLM runtime、RAG 品質、真實多步 tool-call workflow 都可穩定運作。
+
+此外，source code 目前仍保留 API / Gemini runtime；文件中的 local-only 是新的目標決策，不代表程式碼已經完成移除。這些殘留路徑應在產品收斂中刪掉或隔離，而不是維持相容。

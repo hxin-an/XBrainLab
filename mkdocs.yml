@@ -3,7 +3,7 @@ site_description: "EEG Analysis Platform with AI Agent"
 site_url: https://xbrainlab.readthedocs.io/
 
 repo_name: XBrainLab
-repo_url: https://github.com/CECNL/XBrainLab
+repo_url: https://github.com/hxin-an/XBrainLab
 
 theme:
   name: material
@@ -28,54 +28,31 @@ theme:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quickstart.md
+  - Core:
+      - Current: current.md
+      - Operations: operations.md
+  - Target:
+      - Overview: target/README.md
+      - Requirements: target/requirements.md
+      - Architecture: target/architecture.md
+      - Agent: target/agent.md
   - Architecture:
-      - Overview: architecture/overview.md
-      - Backend: architecture/backend.md
+      - Overview: architecture/README.md
       - UI: architecture/ui.md
+      - Backend: architecture/backend.md
+      - Data Pipeline: architecture/data_pipeline.md
       - Agent: architecture/agent.md
-  - Agent:
-      - Benchmark: agent/benchmark.md
-      - Experiment Guide: agent/experiment-guide.md
-      - Data Management: agent/data-management.md
-      - Context Assembler: agent/context-assembler.md
-      - Tool Definitions: agent/tool-definitions.md
-  - API Reference:
-      - Backend:
-          - Study: api/backend/study.md
-          - DataManager: api/backend/data_manager.md
-          - TrainingManager: api/backend/training_manager.md
-      - Agent:
-          - Controller: api/agent/controller.md
-          - Metrics: api/agent/metrics.md
-          - Verifier: api/agent/verifier.md
-      - UI:
-          - BasePanel: api/ui/base_panel.md
-  - Development:
-      - Roadmap: ROADMAP.md
-      - Implementation Plan: development/implementation-plan.md
-      - Known Issues: development/known-issues.md
-      - Scripts: development/scripts.md
-      - Testing:
-          - Overview: development/testing.md
-          - LLM Test Cases: development/testing/llm-test-cases.md
-          - UI Testing Strategy: development/testing/ui-testing-strategy.md
+      - Validation Architecture: architecture/validation.md
+  - Planning:
+      - Now: planning/now.md
+      - Roadmap: planning/roadmap.md
   - Decisions:
-      - ADR-001 LangChain: decisions/ADR-001-langchain-adoption.md
-      - ADR-002 Multi-Agent: decisions/ADR-002-multi-agent-vision.md
-      - ADR-003 Qdrant: decisions/ADR-003-vector-store-qdrant.md
-      - ADR-004 UI Refresh: decisions/ADR-004-ui-refresh-mechanism.md
-      - ADR-005 State Lock: decisions/ADR-005-unified-state-lock-system.md
-      - ADR-006 ReAct: decisions/ADR-006-agent-react-architecture.md
-      - ADR-007 Testing: decisions/ADR-007-tool-call-testing-strategy.md
-      - ADR-008 Evaluation: decisions/ADR-008-tool-call-evaluation-framework.md
-  - Reference:
-      - Glossary: reference/glossary.md
-  - Contributing: contributing.md
-  - Changelog: CHANGELOG.md
-
+      - Decisions: decisions/README.md
+  - Validation:
+      - Validation Strategy: validation/README.md
+  - Records:
+      - Implementation Log: records/implementation_log.md
+      - Worklog: records/worklog.md
 plugins:
   - search
   - mkdocstrings:

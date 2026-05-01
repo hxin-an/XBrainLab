@@ -1,190 +1,101 @@
-# XBrainLab Codex Setup
+# XBrainLab Agent Setup
 
-This document is the canonical setup and operating spec for Codex work in this repository.
+最後更新：`2026-05-02`
 
-It holds the durable agent-side rules that should not live in the short repo-root `AGENTS.md`.
+這份文件是目前 agent 在 XBrainLab repo 裡工作的 setup 規則。它取代舊的 Prep Gate / Repair Loop setup。
 
-## Purpose
+## Repo 位置
 
-The goal is to let Codex keep moving on stabilization work with:
+目前 active repo：
 
-- a reliable reading order
-- explicit separation between human-facing docs and agent runtime docs
-- official-first research rules
-- clear branch and checkpoint habits
-- explicit validation commands
-- hard stop conditions
-
-## Product Definition Reminder
-
-Keep the assistant roles separate:
-
-- Codex in this repository is the external development assistant.
-- the in-app XBrainLab assistant is a workflow-aware software-operation agent inside the product.
-
-For the in-app assistant:
-
-- humans and the in-app assistant are two control modes over the same software capability surface
-- direct UI control and agent tool control should stay conceptually aligned
-- the current tool taxonomy is redesignable and should be changed if a better workflow-oriented action surface is needed
-
-## Canonical Layout
-
-- `AGENTS.md`
-  - short repo map and guardrails
-- `.agents/stack.md`
-  - selected skills, external references, rule policy, and heartbeat reading order
-- `.agents/runbooks/*.md`
-  - canonical agent runtime docs
-- `.agents/skills/*/SKILL.md`
-  - repo-local reusable workflows
-- `docs/current/*.md`
-  - the human-facing now/plan/triage surface
-- `docs/workflows/*.md`
-  - workflow maps, testing strategy, and risk references
-- `docs/history/*.md`
-  - session history and backlog
-- `docs/archive/reference/AGENT_SKILLS.md`
-  - human-facing background on skill selection, not a required read for each cycle
-
-## Source Of Truth
-
-Use this reading order:
-
-1. `AGENTS.md`
-2. `.agents/stack.md`
-3. `.agents/runbooks/setup.md`
-4. `.agents/runbooks/autopilot.md`
-5. `.agents/runbooks/active-queue.md`
-6. `docs/current/PLAN.md`
-7. `docs/current/STATUS_REPORT.md`
-8. `docs/current/BUG_TRIAGE.md`
-9. `docs/history/SESSION_LOG.md`
-10. deeper workflow or testing docs only when the current task needs them
-
-Interpretation:
-
-- `.agents/` is the canonical operating surface for the agent.
-- `docs/current/` is the human entry point for current status.
-- `docs/workflows/` and `docs/history/` are deeper support docs.
-
-## Official-First Research Rules
-
-When the task involves OpenAI, Codex, MCP, skills, plugins, automations, or current prompting guidance:
-
-1. use the OpenAI developer docs MCP server first
-2. use the local `openai-docs` skill when it applies
-3. if MCP is unavailable or insufficient, fall back only to official OpenAI domains
-
-When evaluating better agent setup patterns, it is acceptable to additionally consult:
-
-- Anthropic Claude Code official docs
-- GitHub official docs for agent skills
-- high-signal GitHub repositories that show reusable skill and agent-layout patterns
-
-When evaluating the in-app XBrainLab assistant specifically:
-
-- do not limit research to OpenAI platform patterns
-- also consult Anthropic tool-use guidance, relevant agent papers, and high-signal open-source agent implementations
-- keep the product definition straight:
-  - Codex is the external development assistant
-  - the in-app assistant is a workflow-aware software-operation agent for XBrainLab itself
-  - the human user and the in-app assistant should be treated as two control modes over the same capability surface
-
-## Local Codex Configuration
-
-Required local expectations for this workspace:
-
-- `~/.codex/config.toml` should include the OpenAI Docs MCP server as `openaiDeveloperDocs`
-- the built-in `openai-docs` skill is treated as required local capability for OpenAI-related questions
-- `.agents/stack.md` should be kept current when the selected skill, rule, or heartbeat setup changes
-- repo-local reusable workflows should live in `.agents/skills/`
-- the current heartbeat automation for this thread should continue the prep-first stabilization loop
-
-## Branch And Checkpoint Policy
-
-- Do active stabilization work on `codex/stabilization-autopilot` unless the user requests another branch.
-- Do not keep long-running stabilization work on `main`.
-- Treat existing dirty worktree changes as in-progress work to preserve, not as noise to wipe.
-- Checkpoint meaningful progress on the working branch after validation so unattended work is resumable.
-
-## Validation Commands
-
-Run from the current workspace root:
-
-```bash
-/home/administrator/.local/bin/poetry run python run.py
-timeout 25s xvfb-run -a /home/administrator/.local/bin/poetry run python run.py
-xvfb-run -a /home/administrator/.local/bin/poetry run python scripts/dev/capture_ui_baseline.py
-/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py
-/home/administrator/.local/bin/poetry run python scripts/dev/update_quality_dashboard.py --include-slow-checks
-/home/administrator/.local/bin/poetry run basedpyright
-/home/administrator/.local/bin/poetry run pytest --capture=sys tests/unit/backend/training/test_option.py -q
-/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui/test_main_window_sync.py -q
-/home/administrator/.local/bin/poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
-/mnt/d/repos/XBrainLab/scripts/dev/run_ui_pytest.sh tests/unit/ui -q
+```text
+/mnt/d/workspace_v2/projects/lab/XBrainLab
 ```
 
-Current local note:
+舊路徑 `/mnt/d/repos/XBrainLab` 只作備援 / 參考，不要在新指令中使用。
 
-- In the current `/mnt/d/repos/XBrainLab` Codex workspace, unattended UI pytest runs need explicit headless Qt env because `pytest-qt` can otherwise abort during `qapp` setup while trying to load `xcb` or `wayland`.
-- Use `scripts/dev/run_ui_pytest.sh` for unattended or heartbeat-driven UI pytest commands; it applies `QT_QPA_PLATFORM=offscreen`, `MPLBACKEND=Agg`, `MPLCONFIGDIR=/tmp/matplotlib-codex`, and `--capture=sys`.
-- Use `scripts/dev/update_quality_dashboard.py` when you want one current health snapshot instead of reading multiple test logs manually.
-- The default dashboard is now the fast regression view: `ruff`, baseline-backed `basedpyright`, architecture compliance, startup, UI baseline, UI slices, and real-data IO.
-- Use `scripts/dev/update_quality_dashboard.py --include-slow-checks` or `poe quality-dashboard-full` when you also want the slower debt sweep that includes `mypy`.
-- The committed `.basedpyright/baseline.json` is intentional; it keeps old repo-wide typing debt visible for scheduled cleanup while making the fast gate useful for catching new regressions.
-- The older `fd`-capture teardown issue has become inconsistent and should stay in triage until it is either re-reproduced reliably or retired.
+## 開始工作
 
-## Prep Gate
+1. 用 `git status --short` 看 dirty worktree。
+2. 讀 `AGENTS.md`、`docs/current.md`、`docs/planning/now.md`。
+3. 若工作會碰需求或理想架構，讀 `docs/target/README.md`。
+4. 若工作會碰驗證、測試、dashboard，讀 `docs/validation/README.md`。
+5. 若工作會碰架構，讀 `docs/architecture/README.md` 和相關架構文件。
+6. 若工作可套用既有 agent 能力或流程，讀 `.agents/skills/README.md` 和 `.agents/workflows/README.md`。
 
-Do not switch the queue into normal repair mode until all of the following are true:
+## 目前不要做的事
 
-- startup and validation commands are trustworthy and documented
-- screenshot baseline capture produces a usable non-black artifact
-- the six main workflows have runtime-verified baselines
-- high-risk dialogs have at least one live/modal validation pass recorded
-- refresh and navigation smoke protection is strong enough for shared UI changes
-- current risk clusters have been converted into concrete bug IDs and priorities
-- notable runtime signals are either fixed or triaged into reproducible issues
-- local-only development and Codex operating assumptions are written down clearly
+- 不要恢復舊 `AQ-*` queue。
+- 不要恢復舊 role / skill / workflow automation；新的 skills / workflows 必須對齊 `.agents/skills/` 和 `.agents/workflows/`。
+- 不要把 milestone 當工作上限；清單勾完但產品不可用不算完成。
+- 不要讓 UI / agent 各自維護第二套 backend workflow。
+- 不要在產品主線未穩定前提前做 tool-call eval / thesis evidence。
+- 不要下載超過容量邊界的大模型；單模型原則 10GB 內，總 cache 原則 20GB 內。
+- 不要增加大量 planning docs。
 
-## Default Work Loop
+## 驗證指令
 
-For each unattended or manual Codex work cycle:
+fast quality dashboard：
 
-1. read `AGENTS.md`, `.agents/stack.md`, `.agents/runbooks/setup.md`, `.agents/runbooks/autopilot.md`, and `.agents/runbooks/active-queue.md`
-2. activate the most relevant repo-local skill when the task clearly matches one
-3. pick the top eligible item
-4. reproduce the issue or confirm the current behavior
-5. add the narrowest useful test or capture the best available evidence
-6. make the smallest effective fix or supporting refactor
-7. run the smallest relevant validation slice
-8. re-run broader UI safety tests if shared UI plumbing changed
-9. update `docs/current/BUG_TRIAGE.md`, `docs/history/BACKLOG.md`, `docs/history/SESSION_LOG.md`, `docs/current/STATUS_REPORT.md`, and `.agents/runbooks/active-queue.md`
-10. continue unless a stop condition is hit
+```bash
+poetry run python scripts/dev/update_quality_dashboard.py
+```
 
-## Stop Conditions
+文件站點：
 
-Pause and wait for the user when any of these become true:
+```bash
+poetry run mkdocs build --strict
+```
 
-- the change would intentionally alter layout or visual design
-- a user-facing workflow would be fundamentally reshaped
-- a large architectural rewrite is required outside the allowed backend/test-infra scope
-- risky system changes outside the repo or local Codex setup are required
-- the bug has multiple plausible product directions and the right one is not obvious
+real-data IO：
 
-## Allowed Deep Work
+```bash
+poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
+```
 
-Aggressive redesign is allowed only in:
+代表性 pipeline smoke：
 
-- backend state, services, facades, and controller boundaries
-- load-data pipeline and related import infrastructure
-- shared non-visual UI plumbing
-- test infrastructure, fixtures, and harness
+```bash
+poetry run pytest --capture=sys \
+  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
+  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
+  -q
+```
 
-It is not allowed for:
+UI 測試如需 unattended headless，優先使用 repo 內 wrapper：
 
-- panel composition redesign
-- sidebar arrangement redesign
-- dialog visual redesign
-- any intentional change to user-accepted layout structure
+```bash
+scripts/dev/run_ui_pytest.sh tests/unit/ui -q
+```
+
+## 文件寫入
+
+- 工作流水帳：`docs/records/worklog.md`
+- 重要工程紀錄：`docs/records/implementation_log.md`
+- 現況摘要：`docs/current.md`
+- 短期工作：`docs/planning/now.md`
+- 長期路線：`docs/planning/roadmap.md`
+- 決策：`docs/decisions/README.md`
+- 驗證邊界：`docs/validation/README.md`
+- agent 操作規則：`.agents/stack.md` 或 `.agents/runbooks/*.md`
+- agent reusable skills：`.agents/skills/*/SKILL.md`
+- agent multi-step workflows：`.agents/workflows/*.md`
+
+更新文件時，優先修 existing file。只有在真的有新邊界需要獨立承載時才新增文件。
+
+## 停止條件
+
+遇到以下情況先停下來問使用者：
+
+- 需要改產品方向或論文 claim。
+- 需要大幅改 UI layout。
+- 需要刪除或重塑既有 workflow。
+- 需要下載超過容量邊界的模型，或下載 27B+ 模型。
+- 需要危險 git 操作，例如 reset / checkout 大量檔案。
+- 文件和程式碼衝突到無法用局部驗證判斷。
+
+## Dirty Worktree 原則
+
+這個 repo 目前有大量歷史改動。不要把不相關變更當噪音清掉。
+
+只處理當前任務需要的文件或程式碼；若碰到同檔案內別人的改動，保留並順著它工作。

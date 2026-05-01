@@ -1,7 +1,0 @@
-interface:
-  display_name: "XBrainLab Repair Loop"
-  short_description: "Run confirmed XBrainLab repair work"
-  default_prompt: "Use $xbrainlab-repair-loop to continue confirmed XBrainLab repair-loop work."
-
-policy:
-  allow_implicit_invocation: true

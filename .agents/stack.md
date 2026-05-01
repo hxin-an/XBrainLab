@@ -1,153 +1,116 @@
 # XBrainLab Agent Stack
 
-Last reviewed: `2026-04-19`
+最後更新：`2026-05-02`
 
-This file records the selected agent-side setup for this repository: default skills, external reference sources, canonical agent runbooks, rule policy, and what the heartbeat should read before it keeps working.
+這份文件只記錄「目前有效」的 agent 操作層。舊的 automation、role、skill、AQ queue 已整合到 canonical 文件或刪除。
 
-## External Basis
+## 現行 agent 文件
 
-This setup was reviewed against:
+| 文件 | 用途 |
+| --- | --- |
+| `AGENTS.md` | repo 根層規則和最短閱讀入口。 |
+| `.agents/README.md` | repo-local agent 操作入口。 |
+| `.agents/stack.md` | 本文件；說明 agent 文件分工和有效能力。 |
+| `.agents/runbooks/setup.md` | 現行 setup、工作規則、驗證指令。 |
+| `.agents/runbooks/autopilot.md` | 長時間工作時的保守工作循環。 |
+| `.agents/runbooks/active-queue.md` | 舊 AQ queue 的退役宣告和目前短 queue。 |
+| `.agents/runbooks/architecture-review.md` | 全盤架構複盤步驟。 |
+| `.agents/runbooks/refactor-gate.md` | 後端重構開工前 gate。 |
+| `.agents/skills/README.md` | repo-local reusable skills 入口。 |
+| `.agents/workflows/README.md` | repo-local workflows 入口。 |
+| `.agents/context/project.md` | 專案接手脈絡與目前目標。 |
+| `.agents/context/architecture-target.md` | 目標架構濃縮版。 |
+| `.agents/context/thesis.md` | 給 agent 的碩論 context，只在 thesis / evaluation / agent claim 相關工作使用。 |
 
-- OpenAI Codex docs for [AGENTS.md](https://developers.openai.com/codex/guides/agents-md)
-- OpenAI Codex docs for [Skills](https://developers.openai.com/codex/skills)
-- OpenAI Codex docs for [Automations](https://developers.openai.com/codex/app/automations)
-- OpenAI docs for [Docs MCP](https://developers.openai.com/learn/docs-mcp)
-- OpenAI Codex docs for [Rules](https://developers.openai.com/codex/rules)
-- Anthropic Claude Code docs for [memory / CLAUDE.md](https://code.claude.com/docs/en/memory), [subagents](https://code.claude.com/docs/en/sub-agents), and [hooks](https://code.claude.com/docs/en/hooks)
-- GitHub Docs for [agent skills](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills)
-- the vendor-neutral [`agentmd/agent.md`](https://github.com/agentmd/agent.md) repository
+目前 active repo-local skills 在 `.agents/skills/`。
 
-## Selected Default Capabilities
+舊的 `xbrainlab-*` skills 已刪除，因為它們大量引用舊 `docs/current/*` 和 AQ queue。新的 skills 必須短、可重用、對齊目前 `docs/` canonical 文件。
 
-These are part of the default standing setup for this repo:
+active workflows 在 `.agents/workflows/`。workflow 是多步驟流程，skill 是可重用能力，不要混在一起。
 
-- Docs MCP via `openaiDeveloperDocs`
-- the built-in `openai-docs` skill
-- the repo-local `$xbrainlab-prep-gate` skill while prep is active
-- the thread heartbeat automation attached to this conversation
+## Source Of Truth
 
-## Repo Agent Files
+人類和 agent 都應以這些 canonical 文件為準：
 
-- `.agents/stack.md`
-  - the authoritative agent-side stack, skills, and rule policy
-- `.agents/runbooks/setup.md`
-  - canonical agent setup and operating rules
-- `.agents/runbooks/autopilot.md`
-  - canonical unattended loop definition
-- `.agents/runbooks/active-queue.md`
-  - canonical unattended queue
-- `.agents/skills/xbrainlab-prep-gate/SKILL.md`
-  - repo-local prep-gate workflow skill
-- `.agents/skills/xbrainlab-repair-loop/SKILL.md`
-  - repo-local repair-loop workflow skill
-- `.agents/skills/xbrainlab-workflow-baseline/SKILL.md`
-  - runtime workflow and panel baseline skill
-- `.agents/skills/xbrainlab-dialog-audit/SKILL.md`
-  - dialog and modal acceptance audit skill
-- `.agents/skills/xbrainlab-real-data-validation/SKILL.md`
-  - real EEG fixture and cross-format validation skill
-- `.agents/skills/xbrainlab-refresh-smoke/SKILL.md`
-  - shared refresh and navigation smoke skill
-- `.agents/workflows/commit.md`
-  - opt-in commit workflow, not part of the default heartbeat loop
-- `.agents/workflows/tdd.md`
-  - opt-in TDD workflow, only when the task explicitly wants TDD
+1. `docs/current.md`
+2. `docs/target/README.md`
+3. `docs/architecture/README.md`
+4. `docs/planning/now.md`
+5. `docs/planning/roadmap.md`
+6. `docs/decisions/README.md`
+7. `docs/validation/README.md`
+8. `docs/records/implementation_log.md`
 
-## Skill Policy
+架構細節以 `docs/architecture/` 為準。舊設計文件已整合後刪除，不能當 current truth。
 
-### Required by default
+`.agents/context/` 只作導讀，不保存 current / target / architecture 的第二份 truth。
 
-- `openai-docs`
-  - Use whenever the task touches OpenAI, Codex, MCP, automations, skills, plugins, or current prompting guidance.
-- `xbrainlab-prep-gate`
-  - Use for the repeated stabilization prep loop until prep is complete.
+## 目前階段
 
-### Conditional only
+目前工作已從文件整理與現況盤點，進入 product-delivery engineering。
 
-- `xbrainlab-repair-loop`
-  - use after prep is complete, or for clearly confirmed repair-loop items
-- `xbrainlab-workflow-baseline`
-  - use for workflow mapping, panel verification, and baseline refresh
-- `xbrainlab-dialog-audit`
-  - use for dialog and modal acceptance auditing
-- `xbrainlab-real-data-validation`
-  - use for real EEG fixture and cross-format validation
-- `xbrainlab-refresh-smoke`
-  - use for shared refresh and navigation checks
-- `github:github`
-  - for repo, PR, and issue orientation
-- `github:gh-fix-ci`
-  - for failing GitHub Actions or CI checks
-- `github:gh-address-comments`
-  - for unresolved review comments
-- `github:yeet`
-  - only when the user explicitly wants to publish changes
-- `skill-installer`
-  - only when we intentionally decide to evaluate or install a curated skill
+這代表：
 
-### Not selected yet
+- legacy 文件已整合後刪除，不再保留 `docs/legacy/` 或 `.agents/legacy/` 閱讀面。
+- backend `ApplicationService / Command API` 第一版已落地，下一步是產品級收斂，不是停在 contract baseline。
+- agent 必須統一 UI 和 agent 使用 backend 的 command surface，避免兩套狀態判斷。
+- 可以推進 UI chat / agent panel、local LLM runtime、desktop launcher 和 product stabilization。
+- tool-call eval / thesis evidence 要等產品主線穩定後再開始。
+- milestone 是最低交付門檻，不是工作上限；完成後仍要主動修 bug、補測試、校準文件。
 
-- no repo-local plugin for XBrainLab yet
-- no standing Gmail / spreadsheet / slide / image-generation skill for this repo
+## 能力政策
 
-Rationale:
+- OpenAI、Codex、MCP、skills、plugins、automations 相關問題：用官方 OpenAI docs / `openai-docs` skill。
+- GitHub issue / PR / CI 相關問題：用 GitHub plugin 或 `gh`。
+- XBrainLab repo-local skills：使用 `.agents/skills/` 內的 active skills；不要恢復舊 `xbrainlab-*` skills。
+- 不新增新的 agent role 文件，除非使用者明確要恢復多角色 automation。
 
-- OpenAI and GitHub both position skills as reusable, narrowly-scoped workflows.
-- Repo knowledge stays in docs and runbooks, while repeated workflows are now packaged as repo-local skills under `.agents/skills/`.
-- Anthropic's official subagent guidance also favors focused, single-purpose units over one broad do-everything agent.
+## 讀取順序
 
-## Ecosystem Review Notes
-
-The strongest external patterns we found were:
-
-- Anthropic's official docs and public `anthropics/skills` repository favor focused, reusable skills and version-controlled project assets.
-- Awesome GitHub Copilot's large public skill directory highlights codebase-knowledge, eval-driven development, and governance as common reusable patterns.
-- OpenAI's own Codex docs favor explicit trigger descriptions, progressive disclosure, and pairing Docs MCP with a narrow doc skill for current product questions.
-
-For XBrainLab, that translated into a small set of repo-local workflow skills instead of a large bucket of generic installs.
-
-## Rule Policy
-
-Durable repo rules should live in:
-
-- `AGENTS.md`
-- `.agents/stack.md`
-- `.agents/runbooks/setup.md`
-- `.agents/runbooks/autopilot.md`
-- `.agents/runbooks/active-queue.md`
-
-Do not add repo-shared Codex `.rules` files yet.
-
-Rationale:
-
-- OpenAI documents `.rules` as user-local, machine-specific command-approval controls.
-- This repo currently needs shared workflow rules more than machine-specific command prefixes.
-
-## Human Vs Agent Boundary
-
-- `AGENTS.md`, `.agents/stack.md`, `.agents/runbooks/*.md`, and `.agents/skills/*/SKILL.md` are the operating inputs for the agent.
-- `docs/current/PLAN.md`, `docs/current/STATUS_REPORT.md`, and `docs/current/BUG_TRIAGE.md` are the main human-facing current-state docs.
-- `docs/workflows/*.md` are supporting workflow and risk references.
-- `docs/history/*.md` are working records and long-running context.
-- `docs/reference/AGENT_SKILLS.md` is human-facing background on skill selection, not part of the default heartbeat read.
-
-## Heartbeat Reading Order
-
-Before substantial unattended work, read in this order:
+substantial work 前讀：
 
 1. `AGENTS.md`
-2. `.agents/stack.md`
-3. `.agents/runbooks/setup.md`
-4. `.agents/runbooks/autopilot.md`
-5. `.agents/runbooks/active-queue.md`
-6. `docs/current/PLAN.md`
-7. `docs/current/STATUS_REPORT.md`
-8. `docs/current/BUG_TRIAGE.md`
-9. `docs/history/SESSION_LOG.md`
+2. `docs/current.md`
+3. `docs/target/README.md`
+4. `docs/planning/now.md`
+5. `docs/validation/README.md`
+6. `.agents/runbooks/setup.md`
+7. `.agents/runbooks/autopilot.md`
+8. `.agents/skills/README.md`
+9. `.agents/workflows/README.md`
 
-After meaningful progress, update:
+需要論文或 agent product framing 時，再讀：
 
-- `.agents/runbooks/active-queue.md`
-- `docs/current/STATUS_REPORT.md`
-- `docs/history/SESSION_LOG.md`
-- `docs/current/BUG_TRIAGE.md`
+1. `.agents/context/thesis.md`
+2. `docs/architecture/agent.md`
+3. `docs/architecture/validation.md`
+
+## 寫入規則
+
+- 目前狀態寫 `docs/current.md`。
+- 短期工作寫 `docs/planning/now.md`。
+- 長期路線寫 `docs/planning/roadmap.md`。
+- 決策寫 `docs/decisions/README.md`。
+- 驗證邊界寫 `docs/validation/README.md`。
+- 專業交接紀錄寫 `docs/records/implementation_log.md`。
+- 流水帳寫 `docs/records/worklog.md`。
+- agent 操作規則才寫 `.agents/`。
+- 可重用 agent 能力寫 `.agents/skills/`。
+- 多步驟 agent 流程寫 `.agents/workflows/`。
+
+如果只是做一次驗證或踩坑，不要新開文件；先進 `docs/records/worklog.md`。
+
+## 已退役
+
+以下不再是 current control surface：
+
+- `Prep Gate`
+- `Repair Loop`
+- `AQ-*`
+- old `EXECUTOR / REVIEWER / idea-desk` heartbeat roles
+- `docs/current/*`
+- `docs/history/*`
+- `docs/workflows/*`
+- `docs/legacy/*`
+- `.agents/legacy/*`
+- old `/mnt/d/repos/XBrainLab` command paths

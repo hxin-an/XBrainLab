@@ -1,0 +1,279 @@
+# XBrainLab Validation
+
+最後更新：`2026-05-02`
+
+## 這份文件的用途
+
+這份文件整理 XBrainLab 的驗證策略。
+
+重點不是列出所有測試，而是回答：
+
+- 哪些測試代表哪些可信度？
+- 哪些 evidence 可以支撐 thesis claim？
+- 哪些只是 engineering smoke？
+- 現在有哪些驗證還不能信？
+
+## 目前狀態
+
+`artifacts/quality/latest.*` 已可引用作為今天的 fast engineering evidence，但目前整體狀態是：
+
+- generated at: `2026-05-01 19:28:48 UTC+08:00`
+- workspace: `/mnt/d/workspace_v2/projects/lab/XBrainLab`
+- overall: `PASS`
+
+`ai-assistant-open.png` 已接受 `(1428, 800)` approved baseline。最新 UI baseline capture 結果：
+
+- `7 UI artifacts match approved references`
+- `max mean diff 0.000`
+- `max changed 0.00%`
+
+文件站點也已通過：
+
+- `poetry run mkdocs build --strict`
+
+data pipeline 文件驗證時也重跑：
+
+- `poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+  - `31 passed, 8 warnings`
+- tiny E2E pipeline smoke
+  - `2 passed in 5.89s`
+
+agent 架構文件整理時也跑：
+
+- `poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/chat/test_chat_panel.py -q`
+  - `157 passed in 7.61s`
+
+2026-05-02 UI / Agent command surface unification 後新增一組 product engineering gate：
+
+- backend command contract：
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q`
+  - `9 passed`
+- facade/headless compatibility：
+  - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py -q`
+  - `44 passed`
+- agent command surface / controller：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+  - `318 passed`
+- UI readiness / chat / panel unit suite：
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - `807 passed`
+- ApplicationService low-mock backend workflow:
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+  - `2 passed`
+
+這組 gate 只代表 backend policy / UI readiness / agent command surface 的工程可信度；
+它仍不是 thesis-grade tool-call evaluation。
+
+2026-05-02 local LLM runtime gate 已另行通過，不屬於 fast dashboard 預設 profile：
+
+- primary model：
+  - `microsoft/Phi-4-mini-instruct`
+  - estimated download `7.69 GB`
+  - prompt smoke `passed`
+  - structured-output smoke `passed`
+- fallback model：
+  - `microsoft/Phi-3.5-mini-instruct`
+  - estimated download `7.64 GB`
+  - prompt smoke `passed`
+  - structured-output smoke `passed`
+- cache directory：`XBrainLab/llm/core/models`
+- cache usage：約 `15.34 GB`
+- cache policy：單模型 10GB 內、總 cache 20GB 內。
+- 已刪除 Qwen cache；中國公司或中國來源模型不列入候選。
+
+2026-05-02 launcher / startup smoke：
+
+- `timeout 35s xvfb-run -a poetry run python run.py --model local`
+- `MainWindow initialized` 出現後 timeout 結束，屬於 GUI smoke 預期結果。
+
+## Clean Dashboard 判定
+
+fast quality dashboard 的 clean 判定不是只看 script 有沒有跑完。
+
+目前專案採用的 clean 定義是：
+
+1. `artifacts/quality/latest.json` 的 `overall_status` 必須是 `pass`。
+2. `checks[*].status` 必須全部是 `pass`。
+3. `artifacts/quality/latest.md` 的 summary table 不應有 `FAIL` 或 `WARN`。
+4. `workspace` 必須是目前 active repo：
+   - `/mnt/d/workspace_v2/projects/lab/XBrainLab`
+5. `generated_at` 必須是本次驗證時間，不是舊 artifact。
+
+腳本內部的 overall 規則是：
+
+- 任何 check 是 `fail` -> overall 是 `fail`
+- 沒有 `fail`，但有 `warn` -> overall 是 `warn`
+- 全部都是 `pass` -> overall 才是 `pass`
+
+因此「clean」比「command exit 0」更嚴格：我們要的是 overall `PASS`，不是只有 script 沒崩潰。
+
+## 驗證層級
+
+| 層級 | 用途 |
+| --- | --- |
+| unit tests | 保護局部行為和 regression。 |
+| integration tests | 驗證 UI/backend/data pipeline 的跨模組行為。 |
+| real-data tests | 驗證實際 EEG format / fixture path。 |
+| UI baselines | 驗證核心 UI 畫面沒有明顯漂移。 |
+| quality dashboard | 快速整合健康檢查。 |
+| thesis validation | 將工程 evidence 映射到研究 claim。 |
+
+## Mock-heavy Test 判讀
+
+目前測試確實偏 mock-heavy。
+
+快速掃描結果：
+
+- test files：`254`
+- 含 `MagicMock` / `Mock` / `patch` / `monkeypatch` / `mocker` 的 test files：`144`
+- unit test files：`214`
+- mock-heavy unit test files：`124`
+- integration test files：`33`
+- 含 mock 的 integration test files：`17`
+
+這代表目前測試比較擅長抓：
+
+- API contract 變了。
+- UI signal / slot wiring 斷了。
+- controller method 沒被呼叫。
+- 錯誤處理、狀態切換、參數 normalization 出現 regression。
+- dashboard 這類 fast gate 裡已納入的啟動、UI baseline、IO slice 壞掉。
+
+目前比較不擅長抓：
+
+- 真實使用者 workflow 的長鏈路錯誤。
+- 真實 Qt event timing / thread race。
+- 真實 LLM local runtime、GPU、model cache、tool-call output。
+- controller -> manager -> data pipeline 的完整 side effect。
+- 長時間訓練、真實資料集 reproducibility、thesis-grade validation。
+
+所以 test health 的判讀是：
+
+- daily regression floor：尚可。
+- end-to-end confidence：中等偏弱。
+- agent runtime confidence：低。
+- thesis validation confidence：低。
+
+要提升可信度，不是刪掉 mocks，而是補少量高價值 non-mocked path：
+
+- real `Study` + real controllers 的 backend workflow tests。
+- UI button-driven acceptance tests。
+- local-only assistant runtime smoke。
+- public fixture pipeline smoke。
+- thesis validation matrix。
+
+## Pipeline Validation 分層
+
+完整 pipeline 要測，但不要只靠一個超大的測試。
+
+目前採用四層判斷：
+
+| 層級 | 要回答的問題 | 代表 evidence |
+| --- | --- | --- |
+| fast dashboard | repo 今天是否健康？ | lint、type、startup、UI、real-data IO |
+| tiny E2E pipeline smoke | `dataset -> train -> evaluate` 是否能閉環？ | 小資料、CPU、1-2 epoch、metrics 不壞 |
+| public fixture pipeline smoke | 真實 EEG 來源是否能走到 training smoke？ | public event-rich fixtures |
+| scientific validation | 結果是否可重現且支撐 thesis claim？ | 固定 protocol、baseline、統計與 threat analysis |
+
+### Tiny E2E Pipeline Clean 定義
+
+tiny E2E pipeline clean 不是追求高 accuracy，而是確認流程正確：
+
+1. dataset 能提供 training / validation / test split。
+2. model args 和資料 shape 對得上。
+3. CPU one-epoch 或 two-epoch training 能跑完。
+4. loss / accuracy 等 metrics 存在且範圍合理。
+5. evaluation record 存在。
+6. 檔案輸出要被 patch 或寫到受控目錄，不能污染 workspace。
+
+### 目前已跑過的 Pipeline Evidence
+
+`2026-05-01` targeted pipeline smoke：
+
+```bash
+poetry run pytest --capture=sys \
+  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
+  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
+  -q
+```
+
+首次結果：
+
+- `2 passed in 7.54s`
+
+data pipeline 文件驗證重跑結果：
+
+- `2 passed in 5.89s`
+
+這代表 tiny train/evaluate 和 Study facade train cycle 有基本閉環證據。
+
+但它仍不代表：
+
+- 所有 real EEG source 都能完整 training。
+- training result 可重現。
+- thesis claim 已成立。
+- local LLM / agent runtime 的完整互動式產品流程已驗證。
+
+## Agent Runtime Validation
+
+新的 assistant runtime 方向是 local-only。
+
+這代表目前 validation 重點是：
+
+- local model cache 是否存在。
+- local transformer runtime 是否能在目標 GPU 上載入。
+- GPU / CPU fallback 是否可預期。
+- local generation timeout / stop / model reload 是否穩定。
+- local model tool-call output 是否能穩定被 parser / verifier 接住。
+
+目前已驗證：
+
+- local model catalog、preflight、cache policy、health check 已落地。
+- primary / fallback model cache 已存在且通過 CUDA prompt / structured-output smoke。
+- local runtime smoke 尚未納入 fast dashboard 預設 profile。
+
+Gemini/API 不再列為未來產品驗證目標。source code 目前仍有相關分支，但那是待移除的 current code state。
+
+## Agent Tool-Call Scoring
+
+thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
+
+這套工具應：
+
+- 使用固定 benchmark cases。
+- 驗證 LLM proposed tool call，而不是只看自然語言回答。
+- 比對 expected intent、tool name、parameters、required state 和 expected result。
+- 記錄 backend execution 是否成功，以及 state 是否如預期改變。
+- 對 validation failure / self-correction 做分項評分。
+- 產生 machine-readable report 和 human-readable summary。
+
+建議分數：
+
+- intent accuracy。
+- tool selection accuracy。
+- parameter accuracy。
+- state-transition accuracy。
+- error-recovery accuracy。
+- invalid / unsafe call rate。
+- self-correction success rate。
+
+舊 `scripts/agent/benchmarks/*` 可以作為歷史參考，但不能直接視為新的 thesis evidence。新的 scoring system 需要對齊 local-only runtime、State Manager、Verification Layer 和未來 Application Service / Command API。
+
+## 目前優先驗證
+
+1. Product delivery 主線優先：backend -> UI -> agent -> local LLM -> desktop launcher。
+2. UI / agent command surface 統一後，補對應 backend、UI、agent regression tests。
+3. Local LLM runtime 需要 health check、prompt smoke、structured-output / tool-call smoke 和 fallback evidence。
+4. Desktop launcher 需要 startup smoke 與 missing local LLM 不閃退證據。
+5. Tool-call eval / thesis evidence 只在產品主線穩定後開始。
+6. scoring system 可重跑後，再收集 thesis validation evidence matrix。
+7. Local LLM validation 只驗證符合選型限制的非中國模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不作為候選。
+
+## 注意事項
+
+- dashboard PASS 不是論文結論。
+- training smoke 不是完整 reproducibility。
+- local-only public fixtures 要和 checked-in baseline 分開標示。
+- 每個 thesis claim 最後都應該能對到 command、test、artifact、experiment、score report 或文獻。
+- `dev,test,docs` 是目前已驗證的標準 group；local LLM smoke 已另行驗證，但尚未納入 fast dashboard 預設 profile。
+- assistant 以 local-only 為產品目標；Gemini/API key flow 不是必驗路線，相關 code path 應移除或隔離。

@@ -1,113 +1,123 @@
 # XBrainLab Agent Guide
 
-This file is the short map for any AI coding agent working in this repository.
+最後更新：`2026-05-02`
 
-## Mission
+這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
-This repository is the implementation workspace for the user's master's thesis.
+## Agent 定位
 
-The thesis has three linked goals:
+XBrainLab 是碩論實作 workspace，也正在被整理成可直接使用的本地 EEG 桌面工具。
 
-1. stabilize the existing PyQt application without making it harder to reason about
-2. redesign the tool-call agent architecture so it becomes dependable enough to use
-3. validate the resulting system rigorously enough to support thesis claims
+進入本 repo 的 coding agent 不是口令執行器，而是工程交付者。你的任務不是把清單草草勾完，而是把需求落成工程級可用、可維護、可驗證的程式碼。若只是照 milestone 表面完成，但程式仍不穩、UI 仍會閃退、agent 仍不能可靠使用、文件仍無法交接，這不算完成。
 
-Immediate operating priority:
+Milestone 是最低交付門檻，不是工作上限。完成一個 milestone 後，要主動判斷是否還有 bug、缺測試、文件失真、使用體驗破洞或架構不一致；有就繼續修到能交接。使用者希望你像工程師一樣思考，不是一個指令一個動作。
 
-- first make the app runnable and repeatable
-- understand workflows, failure modes, and risk boundaries
-- add enough safety rails that bug fixes do not create fresh regressions
-- then repair high-value bugs and structural issues incrementally
-- only redesign the tool-call agent on top of a sufficiently stable base
-- treat validation design as thesis-critical work, not as an afterthought
+目前主線：
 
-This is still a stabilization-first project, not a feature-expansion or visual-redesign project.
+1. 穩定 backend `ApplicationService / Command API`，讓它成為 UI、agent、headless scripts 可依賴的 backend core。
+2. 統一 UI 和 agent 使用 backend 的方式；同一個 workflow 不應有兩套狀態判斷、兩套 capability policy 或兩套錯誤語意。
+3. 修穩 UI chat / agent panel，包含 loading、error、tool-call feedback、local LLM unavailable 狀態與閃退問題。
+4. 讓 agent tools 使用 backend state snapshot、capability policy 和 structured command result，而不是猜狀態或只解析字串。
+5. 建立 local-only LLM runtime；可下載模型，但必須控制模型大小、VRAM、硬碟 cache 和失敗 fallback。
+6. 交付可從桌面點擊啟動的 XBrainLab launcher；完整 executable packaging 可後續推進，但至少要有可靠 launcher。
+7. 產品主線穩定後，才開始 tool-call eval / thesis evidence。不要太早評估半成品。
 
-## Start Here
+不要把舊的 `Prep Gate`、`Repair Loop`、`AQ-*` queue 當成現在的任務系統。
 
-Read these in order before substantial work:
+## 先讀這些
 
-1. `.agents/stack.md`
-2. `.agents/runbooks/setup.md`
-3. `.agents/runbooks/autopilot.md`
-4. `.agents/runbooks/active-queue.md`
-5. `docs/current/PLAN.md`
-6. `docs/current/STATUS_REPORT.md`
-7. `docs/current/BUG_TRIAGE.md`
-8. `docs/history/SESSION_LOG.md`
+一般工作先讀：
 
-Open deeper docs only as needed:
+1. `docs/current.md`
+2. `docs/target/README.md`
+3. `docs/architecture/README.md`
+4. `docs/planning/now.md`
+5. `docs/validation/README.md`
+6. `.agents/README.md`
+7. `.agents/stack.md`
 
-- `.agents/skills/xbrainlab-prep-gate/SKILL.md`
-- `.agents/skills/xbrainlab-repair-loop/SKILL.md`
-- `.agents/workflows/commit.md`
-- `.agents/workflows/tdd.md`
-- `docs/workflows/TAKEOVER.md`
-- `docs/workflows/TESTING_STRATEGY.md`
-- `docs/workflows/UI_BASELINE.md`
-- `docs/workflows/WORKFLOWS.md`
-- `docs/workflows/RISK_CLUSTERS.md`
-- `docs/workflows/DIALOG_MATRIX.md`
-- `docs/workflows/COVERAGE_GAPS.md`
-- `docs/decisions/README.md`
-- `docs/history/BACKLOG.md`
+只有碰到論文主張、實驗設計、tool-call agent claim 時，才讀：
 
-Keep `docs/current/STATUS_REPORT.md` concise and current so the user can rejoin the work quickly.
+- `.agents/context/thesis.md`
 
-## Core Rules
+## 文件分工
 
-1. Understand before editing.
-2. Prefer small, verifiable changes over broad refactors unless the queue explicitly calls for deeper work.
-3. Do not trust docs blindly; verify against the code and current runtime behavior.
-4. Keep UI bugs, workflow bugs, and structural/backend bugs conceptually separate.
-5. Preserve headless testability whenever possible.
-6. Keep repo-specific operating knowledge in repo docs, not in ad hoc local notes.
+- `docs/` 是人類優先讀的 current truth。
+- `docs/architecture/` 是目前架構圖與邊界。
+- `.agents/` 是 agent 操作層，不是人類主要文件入口。
 
-## Design Boundaries
+## 工作原則
 
-Do not proactively redesign layouts the user is already satisfied with.
+1. 先驗證，再相信文件。
+2. 需求和目標已經定義時，主動做產品級整合，不要停在提案或局部補洞。
+3. milestone 是最低標準；完成後仍要檢查使用者能不能真的使用。
+4. 不新增大型 planning 文件；需要新文件時，優先合併進既有 canonical docs。
+5. 不因舊文件說 clean / fixed / complete 就直接相信，要看目前 code、test、artifact 或 runtime evidence。
+6. 不任意改 UI layout；除非使用者明確要求或它是修 bug 必要條件。
+7. 保留 dirty worktree 裡不是你做的改動，不要 reset 或 checkout。
+8. 重要進度、決策、驗證結果寫進文件，不靠聊天回報保存狀態。
+9. tool-call eval 要等 backend / UI / agent / local LLM 主線穩定後再做。
 
-Functional fixes are allowed. Layout breakage fixes are allowed. Intentional visual or layout redesign requires user discussion first.
+## 交付 Milestone
 
-Exception:
+這些 milestone 是最低標準。你可以、也應該在不破壞邊界的前提下做得更完整。
 
-- the AI assistant panel is explicitly approved for intentional redesign if that is the clearest path to a stable experience
+1. Backend product core：`ApplicationService / Command API` contract、state lifecycle、capability policy、`BackendFacade` parity 和 low-mock workflow tests。
+2. UI chat / agent panel：修到可啟動、可對話、可顯示 loading/error/tool result、local LLM missing 不閃退。
+3. UI / agent command surface unification：UI 和 agent 對 load / preprocess / epoch / dataset / train / reset 的 readiness、blocked reason 和 command result 使用同一套 backend contract。
+4. Agent tool system：agent tools 使用 state snapshot、capability policy、verification layer 和 structured result。
+5. Local LLM runtime：選擇適合 RTX 5070 Ti 16GB 的本地模型，控制單模型與總 cache 大小，提供 health check、prompt smoke、fallback 和文件化清理方式。
+6. Desktop launch / packaging：提供可點擊啟動方式，至少 reliable Windows launcher / shortcut，並驗證 MainWindow 可啟動。
+7. Product stabilization：確認 backend -> UI -> agent -> local LLM 主線至少有一條可展示流程。
+8. Tool-call eval / thesis evidence：產品主線穩定後，建立可重跑 tool-call eval cases、scoring script、JSON/Markdown artifact 和 validation 文件。
+9. Final validation / docs closure：跑相關測試、更新 implementation log / worklog / architecture / validation / planning 文件。
 
-Be especially careful in:
+## Local LLM 與下載邊界
 
-- `XBrainLab/ui/main_window.py`
-- `XBrainLab/ui/core/*`
-- `XBrainLab/backend/study.py`
-- `XBrainLab/backend/training_manager.py`
-- `tests/conftest.py`
+- 使用者電腦目標硬體是 RTX 5070 Ti，約 16GB VRAM。
+- 可以下載 local LLM 模型，但不能把硬碟或 VRAM 炸掉。
+- 下載前要估算模型大小、quantization、VRAM 需求、cache 位置和清理方式。
+- 不使用中國公司或中國來源模型。
+- 不使用 Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 或其他中國模型。
+- 優先考慮非中國來源、授權清楚、可本地部署的模型，例如 Gemma、Llama、Mistral、Phi。
+- 若模型來源或授權不確定，先查清楚，不要直接下載。
+- 單一模型原則上不要超過 10GB；總模型 cache 原則上不要超過 20GB。
+- 不要下載 27B / 31B / 32B 以上模型，除非使用者明確同意。
+- local LLM 不可用時 UI 不可閃退，要顯示明確原因並提供 fallback。
 
-## Validation Rules
+## 常用驗證
 
-For non-trivial changes:
+從 repo root 執行：
 
-1. identify the affected workflow
-2. reproduce the issue or record the failure signal
-3. add the narrowest useful test when practical
-4. make the fix
-5. run the smallest relevant validation slice first
-6. re-run `tests/unit/ui` if shared UI plumbing changed
-7. update the relevant docs if assumptions changed
+```bash
+poetry run python scripts/dev/update_quality_dashboard.py
+poetry run mkdocs build --strict
+poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q
+```
 
-Minimum done criteria:
+pipeline smoke 目前用代表性抽樣：
 
-- there is clear evidence of the bug or risk
-- at least one focused validation slice passes, or there is a documented reason why not
-- shared UI regressions are checked when common UI plumbing changed
+```bash
+poetry run pytest --capture=sys \
+  tests/integration/pipeline/test_full_pipeline.py::TestFullPipeline::test_train_and_evaluate_metrics \
+  tests/integration/pipeline/test_study_training_e2e.py::TestStudyTrainCycle::test_full_cycle_eegnet \
+  -q
+```
 
-## Current Operating Notes
+最新已知 fast dashboard clean PASS 的事實，請以 `artifacts/quality/latest.md` 和 `docs/validation/README.md` 為準。
 
-- The active stabilization branch is `codex/stabilization-autopilot`.
-- Preserve any existing dirty worktree changes unless they directly conflict with the current task.
-- Use official OpenAI/Codex sources first for Codex, MCP, skills, or automation guidance.
-- Treat `.agents/stack.md` as the explicit record of selected skills, rule policy, and heartbeat reading order.
-- Treat `.agents/runbooks/*.md` as the canonical agent operating docs.
-- Keep `docs/current/PLAN.md` and `docs/current/STATUS_REPORT.md` readable for humans following progress.
-- Treat `docs/decisions/` as the canonical home for tool-call agent redesign decisions.
-- Prefer updating the current human-facing entry docs instead of adding many new top-level planning files.
-- The current AI assistant direction is local-only startup; do not treat Gemini fallback as the solution for local assistant bootstrap failures.
-- Follow the prep-first queue in `.agents/runbooks/active-queue.md` until `Prep Complete` is achieved.
+## 禁用舊入口
+
+以下路徑若出現在舊文件中，通常是歷史引用，不是現在入口：
+
+- `docs/current/*`
+- `docs/history/*`
+- `docs/workflows/*`
+- `docs/thesis/*`
+- `docs/legacy/*`
+- `.agents/legacy/*`
+- `/mnt/d/repos/XBrainLab`
+
+目前 active repo 是：
+
+- `/mnt/d/workspace_v2/projects/lab/XBrainLab`

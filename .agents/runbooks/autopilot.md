@@ -1,133 +1,68 @@
-# XBrainLab Autopilot Mechanism
+# XBrainLab Autopilot
 
-This document defines how Codex should continue stabilization work in this repository without needing the user to restate the plan every time.
+最後更新：`2026-05-02`
 
-## Core Rule
+這份文件描述 agent 長時間工作時的 product-delivery 循環。舊的 `Prep Gate` / `Repair Loop` autopilot 已退役。
 
-Keep moving on the highest-value eligible task. Do not stop just because one subtask finished.
+## 核心規則
 
-The queue has two phases:
+持續推進，並以文件保存狀態。milestone 是最低交付門檻，不是工作上限。
 
-1. `Prep Gate`
-2. `Repair Loop`
+目前階段是：
 
-Stay in `Prep Gate` until the prep-complete criteria are met.
+```text
+product-delivery engineering
+```
 
-## Eligible Work
+所以 autopilot 的工作重點是：
 
-Autopilot work is allowed when all of the following are true:
+1. 維持 legacy 整合後刪除的閱讀面。
+2. 推進 backend core、UI / agent command surface、UI chat、agent tools、local LLM、desktop launcher。
+3. 每個 milestone 自己驗證；測試失敗先修。
+4. 把重要結果寫回少數 canonical docs。
+5. 產品主線穩定後，才開始 tool-call eval / thesis evidence。
+6. 開始較大工作前，先讀 `AGENTS.md`、`docs/planning/now.md` 和相關 `.agents/workflows/`。
 
-- work stays inside the local XBrainLab environment
-- work does not intentionally redesign layouts or visual structure
-- work does not require missing product judgement from the user
-- work is not destructive
-- any deep refactor stays inside the allowed backend/test-infra scope
+## 當前 queue
 
-## Prep Gate
+以 `.agents/runbooks/active-queue.md` 的短 queue 為準。
 
-`Prep Complete` is achieved only when all of these are true:
+## 工作循環
 
-- startup and validation commands are trustworthy and documented
-- screenshot baseline capture produces usable non-black artifacts
-- the six primary workflows have runtime-verified baselines
-- high-risk dialogs have at least one live/modal review pass recorded
-- refresh and navigation smoke protection is strong enough for shared UI work
-- risk clusters have been converted into concrete bug IDs and priorities
-- notable runtime signals are fixed or triaged into reproducible issues
-- local-only development and Codex operating assumptions are written down clearly
+每輪工作：
 
-Prep task order:
+1. 讀 `AGENTS.md` 和 `docs/current.md`。
+2. 確認 `docs/planning/now.md`、`docs/planning/roadmap.md` 沒有混在一起。
+3. 對要改的程式或文件做 code / runtime / artifact 對照。
+4. 實作能讓產品更可用的最小完整工程成果。
+5. 跑對應驗證。
+6. 把結果寫進 `docs/records/worklog.md`。
+7. 若結果會改變 current truth，再同步 `docs/current.md`、`docs/validation/README.md`、`docs/decisions/README.md` 或 `docs/planning/now.md`。
 
-1. visual baseline reliability
-2. workflow baseline verification
-3. high-risk dialog acceptance flows
-4. refresh and navigation smoke protection
-5. remaining runtime-signal triage
-6. local-only and Codex operating assumptions
+## 可做
 
-## Repair Loop
+- 清理 `.agents/` 舊引用。
+- 清理 canonical 文件的舊路徑與過期說法。
+- 把短期舊文件的有效內容整合到 canonical 文件，然後刪除原舊文件。
+- 對 dashboard、pipeline smoke、docs build 做驗證。
+- 對架構文件做 source-code 對照。
+- 使用新的 repo-local skills / workflows 推進 product delivery、驗證或文件校準。
+- 推進 backend command adapter、UI chat、agent tool alignment、local LLM runtime、desktop launcher。
 
-After `Prep Complete`, use this default task order unless new evidence changes it:
+## 邊界
 
-1. dataset and load-data reliability
-2. preprocess readiness and downstream state
-3. training state synchronization
-4. evaluation consistency
-5. visualization stabilization
-6. AI shell and local-only cleanup
+- 不恢復舊 `xbrainlab-*` repo-local skills。
+- 不新增新多角色 automation。
+- 不把 UI / agent 各自接成第二套 backend workflow。
+- 不在產品主線未穩定前提前做 tool-call eval。
+- 不下載超過容量邊界的大模型。
 
-Allowed deep work:
+## 完成定義
 
-- backend state, service, facade, and controller boundaries
-- load-data pipeline
-- shared non-visual UI plumbing
-- test infrastructure, fixtures, and harness
+一輪 autopilot 工作完成時，至少要有：
 
-Not allowed without user discussion:
-
-- panel composition redesign
-- sidebar arrangement redesign
-- dialog visual redesign
-- other intentional layout changes
-
-Approved exception:
-
-- the AI assistant panel may be intentionally redesigned, because the user has explicitly allowed that surface to be reworked
-
-## Loop
-
-For each work cycle:
-
-1. read `AGENTS.md`, `.agents/stack.md`, `.agents/runbooks/setup.md`, and `.agents/runbooks/active-queue.md`
-2. use `$xbrainlab-prep-gate` while `Prep Gate` is active
-3. inside prep work, prefer narrower repo-local skills when they match:
-   - `$xbrainlab-workflow-baseline`
-   - `$xbrainlab-dialog-audit`
-   - `$xbrainlab-real-data-validation`
-   - `$xbrainlab-refresh-smoke`
-4. switch to `$xbrainlab-repair-loop` only after prep is complete or the task is a clearly confirmed repair-loop item
-5. reproduce the issue or verify current behavior
-6. add the narrowest useful test when practical, or capture strong manual/runtime evidence
-7. make the smallest effective fix or supporting refactor
-8. run the smallest relevant validation slice
-9. re-run broader shared tests if shared UI or shared backend plumbing changed
-10. update:
-   - `docs/current/BUG_TRIAGE.md`
-   - `docs/history/BACKLOG.md`
-   - `docs/history/SESSION_LOG.md`
-   - `docs/current/STATUS_REPORT.md`
-   - `.agents/runbooks/active-queue.md`
-11. continue unless a stop condition is hit
-
-## Required Evidence
-
-Before treating work as complete, collect at least one of:
-
-- a passing targeted test
-- a passing smoke test
-- a clear runtime log improvement
-- a documented manual validation result
-
-## Stop Conditions
-
-Pause and wait for the user when any of these happen:
-
-- a change would intentionally alter layout or visual design
-- a change would remove or fundamentally reshape a user-facing workflow
-- a large architectural rewrite appears necessary outside the allowed scope
-- work needs risky actions outside the repo or local Codex setup
-- a bug has multiple plausible product directions and the right one is not obvious
-
-## Recordkeeping
-
-Every meaningful cycle should leave traces in:
-
-- `.agents/runbooks/active-queue.md`
-- `docs/history/SESSION_LOG.md`
-- `docs/current/BUG_TRIAGE.md`
-- `docs/history/BACKLOG.md`
-- `docs/current/STATUS_REPORT.md`
-
-## Current Automation Note
-
-The current thread has a heartbeat automation named `XBrainLab Autopilot` scheduled every 10 minutes. It should follow this document, the active queue, and the user-facing status report.
+- 清楚的修改範圍。
+- 一個可檢查的驗證結果，或明確寫出沒跑的原因。
+- `docs/records/worklog.md` 裡的流水帳紀錄。
+- 沒有把 legacy 文件重新升格成 current truth。
+- 若改變產品能力或架構，已更新 implementation log 和相關 architecture / validation / planning 文件。

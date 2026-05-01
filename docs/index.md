@@ -1,153 +1,60 @@
 # XBrainLab Docs
 
-這裡是給人看的文件入口，不是 agent runtime 區。
+這裡是 XBrainLab 的文件入口。
 
-目前 `docs/` 雖然有很多資料夾，但真正常用的只有少數幾個。
+現在文件分成幾個明確區域：
 
-如果你現在只想知道「現在要看哪些」，先只看這五份：
+```text
+docs/
+  current.md       目前狀態
+  operations.md    操作指令
+  target/          需求與理想架構
+  architecture/    目前實際架構
+  planning/        短期與長期規劃
+  decisions/       已確認決策
+  validation/      驗證策略與證據邊界
+  records/         實作紀錄與流水帳
+```
 
-1. [目前狀態](current/STATUS_REPORT.md)
-2. [長期計畫](current/PLAN.md)
-3. [問題分流](current/BUG_TRIAGE.md)
-4. [品質看板](current/QUALITY_DASHBOARD.md)
-5. [決策紀錄](decisions/README.md)
+## 先看這幾份
 
-## 一頁理解
+1. [current.md](current.md)
+   - 目前真實狀態、不能信什麼、下一步是什麼。
+2. [target/README.md](target/README.md)
+   - 需求、理想架構與 agent 目標。
+3. [architecture/README.md](architecture/README.md)
+   - 系統總覽與分層架構入口。
+4. [planning/now.md](planning/now.md)
+   - 目前短期焦點。
+5. [planning/roadmap.md](planning/roadmap.md)
+   - 少量路線規劃、階段主線和暫存問題。
+6. [decisions/README.md](decisions/README.md)
+   - 目前有效決策。
+7. [validation/README.md](validation/README.md)
+   - 測試、dashboard、資料集和 thesis evidence 的可信邊界。
 
-把 `docs/` 先這樣理解就好：
+## 文件分工
 
-- `current/`
-  - 現在必看
-- `decisions/`
-  - agent 重設計必看
-- `workflows/`
-  - 修 bug 或設計驗證時再看
-- `history/`
-  - 要追脈絡時再看
-- `guides/`
-  - 安裝與貢獻時再看
-- `api/`
-  - 查 API 時再看
-- `archive/`
-  - 舊參考、技術背景與歷史內容，平常先不要讀
+| 文件 | 用途 |
+| --- | --- |
+| [current.md](current.md) | 目前狀態、blocker、下一步。 |
+| [operations.md](operations.md) | 安裝、啟動、測試、環境操作。 |
+| [target/](target/README.md) | 需求、理想架構、agent 目標。 |
+| [architecture/](architecture/README.md) | 目前實際架構與 source 對照。 |
+| [planning/](planning/now.md) | 短期現在做什麼、長期路線。 |
+| [decisions/](decisions/README.md) | 討論後確認的決策。 |
+| [validation/](validation/README.md) | 驗證策略、目前 evidence、mock 邊界。 |
+| [records/](records/implementation_log.md) | 實作紀錄與流水帳。 |
 
-## 資料夾導覽
+## 目前最重要提醒
 
-| Folder | 現在要不要看 | 用途 |
-| --- | --- | --- |
-| `current/` | 必看 | 目前進度、主線、triage |
-| `decisions/` | 必看 | thesis 與 agent 架構決策 |
-| `workflows/` | 有需要再看 | 穩定化、測試、workflow 參考 |
-| `history/` | 有需要再看 | 工作紀錄與 backlog |
-| `guides/` | 有需要再看 | 安裝、quickstart、contributing |
-| `api/` | 先忽略 | API 參考文件 |
-| `archive/` | 先忽略 | 舊架構、舊 agent、舊開發筆記、reference |
+`artifacts/quality/latest.*` 已在新 workspace 刷新，fast dashboard 目前是 clean `PASS`。這代表工程健康快照通過，但不代表 thesis claim 或 optional LLM runtime 已完整驗證。
 
-## 建議閱讀順序
+目前工作已進入 product-delivery engineering。legacy / active 閱讀面已收掉；後端
+`ApplicationService / Command API` 第一版已落地。下一步是把 UI 和 agent 的
+backend command surface 統一，修穩 UI chat / agent panel，建立 local-only LLM
+runtime 與桌面啟動方式。Tool-call eval / thesis evidence 要等產品主線穩定後再做。
 
-### 1. 只想跟上現在狀態
+assistant 的 local-only 方向已確認；API / Gemini code path 是後續要拔掉或隔離的舊路徑，不是產品目標。
 
-讀這三份：
-
-- [current/STATUS_REPORT.md](current/STATUS_REPORT.md)
-- [current/PLAN.md](current/PLAN.md)
-- [current/BUG_TRIAGE.md](current/BUG_TRIAGE.md)
-
-如果要看「現在程式有沒有壞掉」，再加看：
-
-- [current/QUALITY_DASHBOARD.md](current/QUALITY_DASHBOARD.md)
-
-### 2. 要開始做 agent 重設計
-
-再加讀：
-
-- [decisions/README.md](decisions/README.md)
-- [decisions/ADR-011-thesis-direction.md](decisions/ADR-011-thesis-direction.md)
-
-### 3. 要修 bug 或做驗證
-
-有需要再讀：
-
-- [workflows/README.md](workflows/README.md)
-- [history/README.md](history/README.md)
-
-## 精簡地圖
-
-### `current/`
-
-現在真正要持續更新的主文件。
-
-- [STATUS_REPORT.md](current/STATUS_REPORT.md)
-  - 目前做到哪、驗證到哪、下一步是什麼
-- [PLAN.md](current/PLAN.md)
-  - 目前的階段與 thesis 工作主線
-- [BUG_TRIAGE.md](current/BUG_TRIAGE.md)
-  - 已知 bug、runtime signals、優先序
-- [QUALITY_DASHBOARD.md](current/QUALITY_DASHBOARD.md)
-  - 目前 UI / startup / baseline / 核心驗證的品質看板入口
-
-### `decisions/`
-
-agent 重設計與 thesis 方向的正式決策區。
-
-- [README.md](decisions/README.md)
-  - 如何分辨目前有效決策與歷史 ADR
-- [ADR-011-thesis-direction.md](decisions/ADR-011-thesis-direction.md)
-  - 目前的碩論主線與工作順序
-
-### `workflows/`
-
-當前穩定化與驗證時才需要打開的支撐文件。
-
-- [README.md](workflows/README.md)
-- [WORKFLOWS.md](workflows/WORKFLOWS.md)
-- [TESTING_STRATEGY.md](workflows/TESTING_STRATEGY.md)
-- [DIALOG_MATRIX.md](workflows/DIALOG_MATRIX.md)
-- [COVERAGE_GAPS.md](workflows/COVERAGE_GAPS.md)
-- [UI_BASELINE.md](workflows/UI_BASELINE.md)
-
-### `history/`
-
-保留脈絡，但預設不用先讀。
-
-- [README.md](history/README.md)
-- [SESSION_LOG.md](history/SESSION_LOG.md)
-- [BACKLOG.md](history/BACKLOG.md)
-
-### `guides/`
-
-安裝、quickstart、contributing 這類次級入口。
-
-- [README.md](guides/README.md)
-- [installation.md](guides/installation.md)
-- [quickstart.md](guides/quickstart.md)
-- [contributing.md](guides/contributing.md)
-
-### `api/`
-
-查具體類別與模組時再進來。
-
-- [README.md](api/README.md)
-- `api/agent/`
-- `api/backend/`
-- `api/ui/`
-
-### `archive/`
-
-保留舊資料，但不放在日常主線上。
-
-- [README.md](archive/README.md)
-- `archive/architecture/`
-- `archive/agent/`
-- `archive/development/`
-- `archive/reference/`
-
-## 預設規則
-
-如果你不確定要看哪個資料夾，就先不要展開整個 `docs/`。
-
-直接從這裡開始：
-
-1. `current/`
-2. `decisions/`
-3. 真的需要時才進 `workflows/`、`history/` 或 `guides/`
+給 agent 看的 thesis context 現在放在 `.agents/context/thesis.md`，不放在人類 active 入口。

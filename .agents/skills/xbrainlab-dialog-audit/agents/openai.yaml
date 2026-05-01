@@ -1,7 +1,0 @@
-interface:
-  display_name: "Dialog Audit"
-  short_description: "Audit XBrainLab modal workflows"
-  default_prompt: "Use $xbrainlab-dialog-audit to audit a high-risk XBrainLab dialog workflow."
-
-policy:
-  allow_implicit_invocation: true
