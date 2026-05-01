@@ -183,10 +183,12 @@ class TestAgentWorkerReinitialize:
 
     def test_gemini_model_switch(self):
         from XBrainLab.llm.agent.worker import AgentWorker
+        from XBrainLab.llm.core.config import LLMConfig
 
         worker = AgentWorker()
         worker.engine = MagicMock()
-        worker.engine.config = MagicMock()
+        worker.engine.config = LLMConfig(gemini_model_name="gemini-1.5-pro")
+        worker.engine.config.save_to_file = MagicMock()
         worker.log = MagicMock()
         worker.error = MagicMock()
 
@@ -196,13 +198,16 @@ class TestAgentWorkerReinitialize:
 
     def test_gemini_generic_switch(self):
         from XBrainLab.llm.agent.worker import AgentWorker
+        from XBrainLab.llm.core.config import LLMConfig
 
         worker = AgentWorker()
         worker.engine = MagicMock()
-        worker.engine.config = MagicMock()
+        worker.engine.config = LLMConfig(gemini_model_name="gemini-1.5-pro")
+        worker.engine.config.save_to_file = MagicMock()
         worker.log = MagicMock()
         worker.error = MagicMock()
 
         # generic "gemini" should NOT set gemini_model_name
         worker.reinitialize_agent("gemini")
         worker.engine.switch_backend.assert_called_with("gemini")
+        assert worker.engine.config.gemini_model_name == "gemini-1.5-pro"

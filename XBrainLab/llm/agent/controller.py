@@ -15,13 +15,18 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
-from XBrainLab.llm.pipeline_state import (
+from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.pipeline_state import (  # noqa: F401
     STAGE_CONFIG,
     PipelineStage,
     compute_pipeline_stage,
 )
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
+from XBrainLab.llm.tools.application_surface import (
+    CapabilityPolicyUnavailable,
+    get_tool_availability,
+)
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 from .assembler import ContextAssembler
@@ -473,6 +478,17 @@ class LLMController(QObject):
                 # Do not execute remaining commands — let LLM fix.
                 break
 
+            availability = self._check_tool_availability(cmd)
+            if availability is not None:
+                logger.warning("Tool blocked by ApplicationService: %s", availability)
+                self.status_update.emit(f"Blocked: {availability}")
+                self._append_history(
+                    "user",
+                    f"System: Tool call REJECTED: {availability}",
+                )
+                has_failure = True
+                break
+
             self.status_update.emit(f"Executing: {cmd}...")
 
             # --- HITL: Dangerous Action Confirmation ---
@@ -504,7 +520,10 @@ class LLMController(QObject):
             self._handle_tool_result_logic(result, _success)
 
             # Feed result back to History
-            self._append_history("user", f"Tool Output: {result}")
+            self._append_history(
+                "user",
+                f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
+            )
 
         # Intelligent Continuation Strategy:
         # 1. If FAILURE occurred: Auto-trigger loop to allow Agent to self-correct.
@@ -586,7 +605,10 @@ class LLMController(QObject):
 
             _success, result = self._execute_tool_no_loop(cmd, params)
             self._handle_tool_result_logic(result, _success)
-            self._append_history("user", f"Tool Output: {result}")
+            self._append_history(
+                "user",
+                f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
+            )
 
             if not _success:
                 self._tool_failure_count += 1
@@ -663,8 +685,9 @@ class LLMController(QObject):
     def _execute_tool_no_loop(self, command_name, params):
         """Executes a single tool call without triggering generation.
 
-        Performs a pipeline-stage gate check before execution to reject
-        tool calls that are not allowed in the current stage.
+        Performs an ApplicationService capability-policy check before
+        execution to reject tool calls that are not allowed in the
+        current backend state.
 
         Args:
             command_name: Name of the tool to execute.
@@ -677,27 +700,18 @@ class LLMController(QObject):
         """
         tool = self.registry.get_tool(command_name)
         if tool:
-            # --- Execution-time pipeline gate ---
-            stage = compute_pipeline_stage(self.study)
-            config = STAGE_CONFIG.get(stage)
-            if config is None:
-                config = STAGE_CONFIG.get(PipelineStage.EMPTY, {"tools": []})
-            if command_name not in config["tools"]:
-                gate_msg = (
-                    f"Tool '{command_name}' is not available in the current "
-                    f"pipeline stage '{stage.value}'. "
-                    f"Allowed tools: {config['tools']}"
-                )
-                logger.warning(gate_msg)
+            availability = self._check_tool_availability(command_name)
+            if availability is not None:
+                logger.warning(availability)
                 if self.metrics.current_turn:
                     self.metrics.current_turn.record_tool(
                         command_name,
                         False,
                         0,
-                        gate_msg,
+                        availability,
                     )
-                self.status_update.emit(f"Blocked: {gate_msg}")
-                return False, f"Error: {gate_msg}"
+                self.status_update.emit(f"Blocked: {availability}")
+                return False, f"Error: {availability}"
 
             t0 = _time.monotonic()
             try:
@@ -733,6 +747,26 @@ class LLMController(QObject):
                 )
             self.status_update.emit(f"Unknown tool: {command_name}")
             return False, f"Error: Unknown tool '{command_name}'"
+
+    def _check_tool_availability(self, command_name: str) -> str | None:
+        """Return a backend policy block reason, or ``None`` if available."""
+        try:
+            availability = get_tool_availability(self.study, command_name)
+        except CapabilityPolicyUnavailable:
+            return None
+        except Exception as exc:
+            logger.debug("Tool availability check failed", exc_info=True)
+            return f"Could not read backend capability policy: {exc}"
+
+        if availability.enabled:
+            return None
+        reason = availability.reason_text or "Tool is not available right now."
+        if availability.command_name:
+            return (
+                f"Tool '{command_name}' is blocked by ApplicationService "
+                f"command '{availability.command_name}': {reason}"
+            )
+        return f"Tool '{command_name}' is blocked: {reason}"
 
     def _detect_loop(self, current_call_signature) -> bool:
         """Checks whether the same tool call has been made excessively.
@@ -811,6 +845,21 @@ class LLMController(QObject):
             self.response_ready.emit("System", f"Tool Error: {result}")
         return False
 
+    @staticmethod
+    def _format_tool_output(command_name: str, success: bool, result: Any) -> str:
+        """Serialize tool output so the next LLM turn sees structured state."""
+        payload = {
+            "ok": bool(success),
+            "tool_name": command_name,
+            "message": str(result) if result is not None else "",
+            "raw_result": result,
+        }
+        try:
+            return json.dumps(payload, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            payload["raw_result"] = str(result)
+            return json.dumps(payload, ensure_ascii=False)
+
     def _on_worker_error(self, error_msg):
         """Handle a fatal worker error by notifying the UI.
 
@@ -853,17 +902,18 @@ class LLMController(QObject):
         """Switches the active LLM model.
 
         Args:
-            model_display_name: Display name or identifier of the model
-                to switch to (e.g. ``'Gemini'``, ``'Local'``).
+            model_display_name: Runtime mode key or backend-specific
+                model identifier.
 
         """
-        # Map Display Name to Model ID
-        # "Gemini", "Local"
-        # We pass these directly to worker.reinitialize_agent which now handles logic
-        _mode_id = model_display_name
+        normalized_mode = LLMConfig.normalize_backend_mode(
+            model_display_name,
+            fallback="",
+        )
+        target = normalized_mode if normalized_mode else model_display_name
 
         self.status_update.emit(f"Switching mode to: {model_display_name}")
-        self.sig_reinit.emit(_mode_id)
+        self.sig_reinit.emit(target)
 
     def reset_conversation(self):
         """Resets conversation history and all internal state counters."""
@@ -911,7 +961,7 @@ class LLMController(QObject):
         self._handle_tool_result_logic(result, success)
 
         # Show Output
-        msg = f"Tool Output: {result}"
+        msg = f"Tool Output: {self._format_tool_output(tool_name, success, result)}"
         self._append_history("assistant", msg)
         self.response_ready.emit("System", msg)
 

@@ -314,7 +314,7 @@ class TestStopGeneration:
 class TestSetModel:
     def test_emits_reinit(self, ctrl):
         ctrl.set_model("Gemini")
-        ctrl.sig_reinit.emit.assert_called_once_with("Gemini")
+        ctrl.sig_reinit.emit.assert_called_once_with("gemini")
 
 
 # --- reset_conversation ---

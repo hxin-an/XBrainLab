@@ -6,7 +6,9 @@ running smart parse, and managing event filtering.
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
 
+from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import blocked_reason, get_command_capability
 from XBrainLab.ui.dialogs.dataset import (
     EventFilterDialog,
     ImportLabelDialog,
@@ -47,6 +49,18 @@ class DatasetActionHandler:
 
     def import_data(self):
         """Opens a file dialog to select and import EEG data files."""
+        load_capability = get_command_capability(self.panel, CommandName.LOAD_DATA)
+        if load_capability is not None and not load_capability.enabled:
+            QMessageBox.warning(
+                self.panel,
+                "Import Blocked",
+                blocked_reason(
+                    load_capability,
+                    "Dataset is locked. Please clear or reset before importing.",
+                ),
+            )
+            return
+
         if self.controller.is_locked():
             QMessageBox.warning(
                 self.panel,
@@ -300,7 +314,7 @@ class DatasetActionHandler:
         # Suggestions?
         suggested = []
         if target_count and raw_files:
-            suggested_names = set()
+            suggested_names: set[str] = set()
             for raw_file in raw_files:
                 s_ids = self.controller.get_smart_filter_suggestions(
                     raw_file,

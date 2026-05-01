@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import CommandName
+from XBrainLab.ui.application_capabilities import blocked_reason, get_command_capability
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 
 # Dialog imports will be local to avoid circular deps if needed,
@@ -152,18 +154,31 @@ class TrainingSidebar(QWidget):
 
     def check_ready_to_train(self, *args):
         """Check if all configurations are set and enable/disable start button."""
-        ready = self.controller.validate_ready()
+        train_capability = get_command_capability(self, CommandName.TRAIN)
+        ready = (
+            train_capability.enabled
+            if train_capability is not None
+            else self.controller.validate_ready()
+        )
         self.btn_start.setEnabled(ready)
 
         if not ready:
-            missing = []
-            if not self.controller.has_datasets():
-                missing.append("Data Splitting")
-            if not self.controller.has_model():
-                missing.append("Model Selection")
-            if not self.controller.has_training_option():
-                missing.append("Training Settings")
-            self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
+            if train_capability is None:
+                missing = []
+                if not self.controller.has_datasets():
+                    missing.append("Data Splitting")
+                if not self.controller.has_model():
+                    missing.append("Model Selection")
+                if not self.controller.has_training_option():
+                    missing.append("Training Settings")
+                self.btn_start.setToolTip(f"Please configure: {', '.join(missing)}")
+            else:
+                self.btn_start.setToolTip(
+                    blocked_reason(
+                        train_capability,
+                        "Training is not ready. Check dataset, model, and settings.",
+                    )
+                )
         else:
             self.btn_start.setToolTip("Start Training")
 
@@ -280,6 +295,17 @@ class TrainingSidebar(QWidget):
 
         """
         try:
+            train_capability = get_command_capability(self, CommandName.TRAIN)
+            if train_capability is not None and not train_capability.enabled:
+                QMessageBox.warning(
+                    self,
+                    "Training Not Ready",
+                    blocked_reason(
+                        train_capability,
+                        "Training is not ready.",
+                    ),
+                )
+                return
             if not self.controller.is_training():
                 self.controller.start_training()
                 self.btn_stop.setEnabled(True)

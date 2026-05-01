@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -44,8 +45,10 @@ class TestModelSummaryWindow:
         trainer.dataset.get_epoch_data.return_value.get_model_args.return_value = {}
         trainer.option.bs = 32
         trainer.option.get_device.return_value = "cpu"
-        with patch("torchinfo.summary") as mock_summary:
-            mock_summary.return_value = "Model Summary Text"
+        mock_summary = MagicMock(return_value="Model Summary Text")
+        mock_torchinfo = ModuleType("torchinfo")
+        mock_torchinfo.summary = mock_summary
+        with patch.dict("sys.modules", {"torchinfo": mock_torchinfo}):
             window.on_plan_select("Plan-0")
         assert "Model Summary Text" in window.summary_text.toPlainText()
 

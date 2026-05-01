@@ -11,6 +11,8 @@ import time
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
+from XBrainLab.llm.core.model_catalog import plan_model_download
+
 try:
     from huggingface_hub import snapshot_download
 except ImportError:
@@ -29,7 +31,7 @@ def run_download_task(repo_id, cache_dir, result_queue):
 
     Args:
         repo_id: HuggingFace repository identifier (e.g.
-            ``'Qwen/Qwen2.5-7B-Instruct'``).
+            ``'microsoft/Phi-4-mini-instruct'``).
         cache_dir: Local directory for storing downloaded model files.
         result_queue: A ``multiprocessing.Queue`` for sending status
             messages back to the parent process.  Messages are tuples
@@ -42,16 +44,20 @@ def run_download_task(repo_id, cache_dir, result_queue):
         return
 
     try:
+        preflight = plan_model_download(repo_id, cache_dir)
+        if not preflight.ok:
+            result_queue.put(("error", preflight.message))
+            return
+
         # Disable HF Hub progress bars to prevent messy terminal output
         os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
-        result_queue.put(("progress", (0, "Starting download...")))
+        result_queue.put(("progress", (0, preflight.message)))
 
         # This BLOCKS until done.
         model_path = snapshot_download(
             repo_id=repo_id,
             cache_dir=cache_dir,
-            local_dir=os.path.join(cache_dir, repo_id.replace("/", "_")),
             resume_download=True,
         )
 

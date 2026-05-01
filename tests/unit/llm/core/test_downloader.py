@@ -168,7 +168,7 @@ class TestRunDownloadTask:
             "XBrainLab.llm.core.downloader.snapshot_download",
             return_value="/model/path",
         ):
-            run_download_task("repo/id", "/cache", q)
+            run_download_task("microsoft/Phi-4-mini-instruct", "/cache", q)
 
         messages = _drain_queue(q)
 
@@ -184,7 +184,7 @@ class TestRunDownloadTask:
         original = _dl_mod.snapshot_download
         try:
             _dl_mod.snapshot_download = None  # type: ignore[assignment]
-            run_download_task("repo/id", "/cache", q)
+            run_download_task("microsoft/Phi-4-mini-instruct", "/cache", q)
         finally:
             _dl_mod.snapshot_download = original
 
@@ -199,7 +199,7 @@ class TestRunDownloadTask:
             "XBrainLab.llm.core.downloader.snapshot_download",
             side_effect=OSError("disk full"),
         ):
-            run_download_task("repo/id", "/cache", q)
+            run_download_task("microsoft/Phi-4-mini-instruct", "/cache", q)
 
         messages = _drain_queue(q)
         # Should have progress then error

@@ -94,20 +94,17 @@ class TestControllerToolExecution:
         assert success is True
         assert result == "Done"
 
-    @patch("XBrainLab.llm.agent.controller.compute_pipeline_stage")
-    @patch("XBrainLab.llm.agent.controller.STAGE_CONFIG")
-    def test_execute_gated(self, mock_config, mock_stage):
-        from XBrainLab.llm.agent.controller import PipelineStage
-
+    def test_execute_gated(self):
         ctrl = _make_ctrl()
-        mock_stage.return_value = PipelineStage.EMPTY
-        mock_config.get.return_value = {"tools": ["other_tool"]}
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
+        ctrl._check_tool_availability = MagicMock(
+            return_value="Tool 'load_data' is blocked: no raw data"
+        )
 
         success, result = ctrl._execute_tool_no_loop("load_data", {})
         assert success is False
-        assert "not available" in result
+        assert "blocked" in result
 
     def test_execute_unknown_tool(self):
         ctrl = _make_ctrl()

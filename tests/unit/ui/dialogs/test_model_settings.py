@@ -15,7 +15,8 @@ def config():
     cfg = LLMConfig()
     cfg.gemini_enabled = False
     cfg.inference_mode = "local"
-    cfg.model_name = "Qwen/Qwen2.5-7B-Instruct"
+    cfg.model_name = "microsoft/Phi-4-mini-instruct"
+    cfg.device = "cpu"
     cfg.gemini_api_key = ""
     cfg.gemini_model_name = "gemini-2.0-flash"
     cfg.local_model_enabled = True
@@ -51,7 +52,11 @@ class TestModelSettingsInit:
         assert dialog.isVisible() is False
 
     def test_combo_has_models(self, dialog):
-        assert dialog.local_model_combo.count() >= 4
+        assert dialog.local_model_combo.count() >= 2
+        assert "Qwen" not in "\n".join(
+            dialog.local_model_combo.itemText(i)
+            for i in range(dialog.local_model_combo.count())
+        )
 
 
 class TestLocalModelSection:
@@ -66,7 +71,14 @@ class TestLocalModelSection:
     def test_check_local_model_status_downloaded(self, dialog):
         with (
             patch("os.path.exists", return_value=True),
-            patch("os.listdir", return_value=["file1"]),
+            patch(
+                "os.listdir",
+                return_value=[
+                    "config.json",
+                    "tokenizer_config.json",
+                    "model.safetensors.index.json",
+                ],
+            ),
         ):
             dialog.check_local_model_status()
             assert dialog.local_downloaded is True
@@ -74,9 +86,35 @@ class TestLocalModelSection:
 
     def test_start_download(self, dialog):
         dialog.is_downloading = False
-        dialog._start_download()
+        with patch(
+            "XBrainLab.ui.dialogs.model_settings_dialog.plan_model_download",
+        ) as mock_plan:
+            mock_plan.return_value.ok = True
+            mock_plan.return_value.message = "Download allowed"
+            dialog._start_download()
         assert dialog.is_downloading is True
         assert "cancel" in dialog.local_action_btn.text().lower()
+
+    def test_start_download_blocks_failed_preflight(self, dialog):
+        dialog.is_downloading = False
+        with (
+            patch(
+                "XBrainLab.ui.dialogs.model_settings_dialog.plan_model_download",
+            ) as mock_plan,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+        ):
+            mock_plan.return_value.ok = False
+            mock_plan.return_value.message = "cache too large"
+            mock_plan.return_value.current_cache_bytes = 15_000_000_000
+            mock_plan.return_value.estimated_download_bytes = 8_000_000_000
+            mock_plan.return_value.available_disk_bytes = 100_000_000_000
+            mock_plan.return_value.projected_cache_bytes = 23_000_000_000
+            mock_plan.return_value.cache_dir = "/models"
+            mock_plan.return_value.cleanup_candidates = ("/models/models--Qwen--x",)
+            dialog._start_download()
+
+        assert dialog.is_downloading is False
+        mock_warning.assert_called_once()
 
     def test_on_download_progress(self, dialog):
         dialog.on_download_progress(50, "50% done")
@@ -140,6 +178,32 @@ class TestLocalModelSection:
         ):
             dialog._delete_model()
 
+    def test_delete_model_removes_all_supported_cache_layouts(self, dialog):
+        from PyQt6.QtWidgets import QMessageBox
+
+        dialog.local_downloaded = True
+        with (
+            patch.object(
+                QMessageBox,
+                "warning",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch.object(
+                dialog.config,
+                "local_cache_candidates",
+                return_value=["/tmp/safe", "/tmp/hf"],
+            ),
+            patch("os.path.exists", return_value=True),
+            patch("shutil.rmtree") as mock_rmtree,
+            patch("os.listdir", return_value=[]),
+        ):
+            dialog._delete_model()
+
+        assert [call.args[0] for call in mock_rmtree.call_args_list] == [
+            "/tmp/safe",
+            "/tmp/hf",
+        ]
+
     def test_delete_model_aborts_when_agent_manager_blocks(self, dialog):
         from PyQt6.QtWidgets import QMessageBox
 
@@ -173,6 +237,25 @@ class TestLocalModelSection:
             patch("PyQt6.QtWidgets.QMessageBox.information"),
         ):
             dialog._cleanup_partial_files()
+
+    def test_cleanup_partial_files_removes_all_supported_cache_layouts(self, dialog):
+        with (
+            patch.object(
+                dialog.config,
+                "local_cache_candidates",
+                return_value=["/tmp/safe", "/tmp/hf"],
+            ),
+            patch("os.path.exists", return_value=True),
+            patch("os.listdir", return_value=[]),
+            patch("shutil.rmtree") as mock_rmtree,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            dialog._cleanup_partial_files()
+
+        assert [call.args[0] for call in mock_rmtree.call_args_list] == [
+            "/tmp/safe",
+            "/tmp/hf",
+        ]
 
 
 class TestGeminiSection:
@@ -226,6 +309,23 @@ class TestActivateAndSave:
             dialog.update_validation_state()
         assert not dialog.btn_activate.isEnabled()
 
+    def test_refresh_local_runtime_status_shows_cpu_fallback(self, dialog):
+        with (
+            patch.object(dialog.config, "local_backend_ready", return_value=True),
+            patch.object(
+                dialog.config,
+                "local_backend_status_message",
+                return_value=(
+                    "Local runtime ready. GPU execution is unavailable in this "
+                    "environment, so startup will fall back to CPU and disable "
+                    "4-bit loading."
+                ),
+            ),
+        ):
+            dialog._refresh_local_runtime_status()
+
+        assert "fall back to CPU" in dialog.local_runtime_label.text()
+
     def test_on_activate_clicked(self, dialog):
         dialog.local_downloaded = True
         dialog.gemini_enabled = False
@@ -235,6 +335,7 @@ class TestActivateAndSave:
             patch.object(LLMConfig, "save_to_file"),
         ):
             dialog.on_activate_clicked()
+        assert dialog.config.inference_mode == "local"
 
     def test_on_activate_clicked_gemini_only(self, dialog):
         dialog.local_downloaded = False
@@ -247,6 +348,27 @@ class TestActivateAndSave:
         ):
             dialog.on_activate_clicked()
         assert dialog.config.active_mode == "gemini"
+        assert dialog.config.inference_mode == "gemini"
+
+    def test_on_activate_clicked_keeps_structured_ui_mode_when_both_backends_ready(
+        self,
+        dialog,
+    ):
+        dialog.local_downloaded = True
+        dialog.gemini_enabled = True
+        dialog.config.active_mode = "gemini"
+        dialog.config.inference_mode = "api"
+        dialog.api_key_input.setText("AIzaKey123")
+        with (
+            patch.object(dialog.config, "local_backend_ready", return_value=True),
+            patch.object(LLMConfig, "save_to_file"),
+            patch("builtins.open", MagicMock()),
+            patch("os.path.exists", return_value=False),
+        ):
+            dialog.on_activate_clicked()
+
+        assert dialog.config.active_mode == "gemini"
+        assert dialog.config.inference_mode == "gemini"
 
     def test_on_activate_clicked_blocks_local_runtime_gap(self, dialog):
         dialog.local_downloaded = True

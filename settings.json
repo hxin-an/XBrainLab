@@ -1,11 +1,17 @@
 {
   "local": {
-    "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "model_name": "microsoft/Phi-4-mini-instruct",
     "enabled": true
   },
   "gemini": {
-    "model_name": "gemini-1.5-flash",
+    "model_name": "gemini-2.0-flash",
     "enabled": false
   },
-  "active_mode": "local"
+  "active_mode": "local",
+  "inference_mode": "local",
+  "generation": {
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_new_tokens": 512
+  }
 }

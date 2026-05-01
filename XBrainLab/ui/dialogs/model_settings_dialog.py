@@ -28,6 +28,10 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import ModelDownloader
+from XBrainLab.llm.core.model_catalog import (
+    format_bytes,
+    plan_model_download,
+)
 
 
 class ModelSettingsDialog(QDialog):
@@ -87,14 +91,7 @@ class ModelSettingsDialog(QDialog):
 
         # Model Dropdown
         self.local_model_combo = QComboBox()
-        self.local_model_combo.addItems(
-            [
-                "Qwen/Qwen2.5-7B-Instruct",
-                "google/gemma-2b-it",
-                "microsoft/Phi-3.5-mini-instruct",
-                "meta-llama/Llama-3.1-8B-Instruct",
-            ],
-        )
+        self.local_model_combo.addItems(LLMConfig.allowed_local_model_ids())
         self.local_model_combo.currentTextChanged.connect(self.check_local_model_status)
         local_layout.addWidget(QLabel("Select Model:"))
         local_layout.addWidget(self.local_model_combo)
@@ -245,6 +242,8 @@ class ModelSettingsDialog(QDialog):
 
     def load_state(self):
         """Load UI state from config."""
+        selection = self.config.assistant_runtime_selection()
+
         # Local
         index = self.local_model_combo.findText(self.config.model_name)
         if index >= 0:
@@ -265,31 +264,37 @@ class ModelSettingsDialog(QDialog):
         # Set Enable Checkbox state and trigger update
         self.local_enable_chk.setChecked(self.config.local_model_enabled)
         self._on_local_enable_toggled(self.config.local_model_enabled)
+        self.config.active_mode = selection.ui_active_mode
+        self.config.inference_mode = selection.backend_mode
 
         self.check_local_model_status()
         self.update_validation_state()
 
     def _refresh_local_runtime_status(self):
         """Reflect local-runtime readiness without trying to load the model."""
-        missing = self.config.missing_local_runtime_packages()
-        if missing:
-            self.local_runtime_label.setText(f"Runtime: Missing {', '.join(missing)}")
+        model_name = self.local_model_combo.currentText()
+        message = self.config.local_backend_status_message(model_name=model_name)
+        if self.config.local_backend_ready(model_name=model_name):
+            detail = message.removeprefix("Local runtime ready.").strip()
+            if not detail:
+                self.local_runtime_label.setText("Runtime: Ready")
+                self.local_runtime_label.setStyleSheet("color: #4caf50;")
+            else:
+                self.local_runtime_label.setText(f"Runtime: {detail}")
+                self.local_runtime_label.setStyleSheet("color: #ff9800;")
+            return
+
+        detail = message.removeprefix("Local runtime unavailable. ")
+        self.local_runtime_label.setText(f"Runtime: {detail}")
+        if "Missing optional packages" in message:
             self.local_runtime_label.setStyleSheet("color: #f44336;")
         else:
-            self.local_runtime_label.setText("Runtime: Ready")
-            self.local_runtime_label.setStyleSheet("color: #4caf50;")
+            self.local_runtime_label.setStyleSheet("color: #ff9800;")
 
     def check_local_model_status(self):
         """Check if selected model exists in cache."""
         model_name = self.local_model_combo.currentText()
-        repo_id = model_name  # In our list, text is repo_id
-
-        # Expected path (simplified logic matching downloader)
-        safe_name = repo_id.replace("/", "_")
-        cache_dir = self.config.cache_dir
-        model_path = os.path.join(cache_dir, safe_name)
-
-        if os.path.exists(model_path) and os.listdir(model_path):
+        if self.config.has_local_model_cache(model_name):
             self.local_downloaded = True
             self.local_status_label.setText("[+] Downloaded")
             self.local_status_label.setStyleSheet("color: #4caf50;")
@@ -302,6 +307,7 @@ class ModelSettingsDialog(QDialog):
             self.local_action_btn.setText("Install Model")
             self.local_action_btn.setEnabled(True)
 
+        self._refresh_local_runtime_status()
         self.update_validation_state()
 
     def on_local_action_clicked(self):
@@ -328,6 +334,31 @@ class ModelSettingsDialog(QDialog):
     def _start_download(self):
         """Begin downloading the selected local model."""
         model_name = self.local_model_combo.currentText()
+        preflight = plan_model_download(model_name, self.config.cache_dir)
+        if not preflight.ok:
+            cleanup = ""
+            if preflight.cleanup_candidates:
+                cleanup = "\n\nCleanup candidates:\n" + "\n".join(
+                    f"- {path}" for path in preflight.cleanup_candidates
+                )
+            QMessageBox.warning(
+                self,
+                "Model Download Blocked",
+                (
+                    f"{preflight.message}\n\n"
+                    f"Current cache: {format_bytes(preflight.current_cache_bytes)}\n"
+                    f"Estimated download: "
+                    f"{format_bytes(preflight.estimated_download_bytes)}\n"
+                    f"Available disk: "
+                    f"{format_bytes(preflight.available_disk_bytes)}\n"
+                    f"Projected cache: "
+                    f"{format_bytes(preflight.projected_cache_bytes)}\n"
+                    f"Cache directory: {preflight.cache_dir}"
+                    f"{cleanup}"
+                ),
+            )
+            self.check_local_model_status()
+            return
 
         self.is_downloading = True
         self.local_action_btn.setText("Cancel")
@@ -354,10 +385,20 @@ class ModelSettingsDialog(QDialog):
 
             import shutil
 
-            safe_name = repo_id.replace("/", "_")
-            path = os.path.join(self.config.cache_dir, safe_name)
             try:
-                shutil.rmtree(path)
+                removed_any = False
+                for path in self.config.local_cache_candidates(repo_id):
+                    if not os.path.exists(path):
+                        continue
+                    shutil.rmtree(path)
+                    removed_any = True
+                if not removed_any:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to delete: {repo_id}",
+                    )
+                    return
                 self.check_local_model_status()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete: {e}")
@@ -409,11 +450,14 @@ class ModelSettingsDialog(QDialog):
             import shutil
 
             repo_id = self.local_model_combo.currentText()
-            safe_name = repo_id.replace("/", "_")
-            path = os.path.join(self.config.cache_dir, safe_name)
-
-            if os.path.exists(path):
+            removed_any = False
+            for path in self.config.local_cache_candidates(repo_id):
+                if not os.path.exists(path):
+                    continue
                 shutil.rmtree(path)
+                removed_any = True
+
+            if removed_any:
                 self.check_local_model_status()  # Update UI state
                 QMessageBox.information(self, "Cleanup", "Partial files removed.")
         except Exception as e:
@@ -501,10 +545,11 @@ class ModelSettingsDialog(QDialog):
         """Enable Activate button if conditions met."""
         # Core Condition: Local Downloaded OR Gemini Verified
         # Also disable if currently downloading
+        model_name = self.local_model_combo.currentText()
         local_ready = (
             self.local_enable_chk.isChecked()
             and self.local_downloaded
-            and self.config.local_backend_ready()
+            and self.config.local_backend_ready(model_name=model_name)
         )
         is_ready = (local_ready or self.gemini_enabled) and not self.is_downloading
 
@@ -541,15 +586,34 @@ class ModelSettingsDialog(QDialog):
             )
             return
 
+        previous_selection = self.config.assistant_runtime_selection()
+
         # Determine active mode
         if self.gemini_enabled and not local_ready:
-            self.config.active_mode = "gemini"
+            backend_mode = "gemini"
+            ui_mode = "gemini"
         elif local_ready and not self.gemini_enabled:
-            self.config.active_mode = "local"
+            backend_mode = "local"
+            ui_mode = "local"
         else:
             # Both available — preserve whatever mode was previously active
             # (active_mode was loaded from settings.json or set by user)
-            pass  # config.active_mode already holds the correct value
+            ui_mode = previous_selection.ui_active_mode
+            backend_mode = (
+                previous_selection.backend_mode
+                if previous_selection.backend_mode in {"local", "gemini"}
+                else ui_mode
+            )
+
+        self.config.apply_runtime_selection(
+            backend_mode,
+            model_id=(
+                self.config.runtime_backend_model_id(backend_mode)
+                if backend_mode == "api"
+                else None
+            ),
+            ui_active_mode=ui_mode,
+        )
 
         # Persist to JSON
         self.config.save_to_file()

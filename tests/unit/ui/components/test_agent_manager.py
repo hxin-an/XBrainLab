@@ -60,7 +60,7 @@ class TestAgentManagerMethods:
 
     def test_set_model(self, agent_mgr):
         agent_mgr.set_model("Gemini")
-        agent_mgr.agent_controller.set_model.assert_called_once_with("Gemini")
+        agent_mgr.agent_controller.set_model.assert_called_once_with("gemini")
 
     def test_start_new_conversation(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -82,6 +82,7 @@ class TestAgentManagerMethods:
     def test_prepare_model_deletion_local_mode(self, agent_mgr):
         ctrl = MagicMock()
         ctrl.worker.engine.config.active_mode = "local"
+        ctrl.worker.engine.config.inference_mode = "local"
         agent_mgr.agent_controller = ctrl
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert agent_mgr.prepare_model_deletion("test") is False
@@ -90,8 +91,17 @@ class TestAgentManagerMethods:
     def test_prepare_model_deletion_gemini_mode(self, agent_mgr):
         ctrl = MagicMock()
         ctrl.worker.engine.config.active_mode = "gemini"
+        ctrl.worker.engine.config.inference_mode = "gemini"
         agent_mgr.agent_controller = ctrl
         assert agent_mgr.prepare_model_deletion("test") is True
+
+    def test_prepare_model_deletion_uses_inference_mode_truth(self, agent_mgr):
+        ctrl = MagicMock()
+        ctrl.worker.engine.config.active_mode = "gemini"
+        ctrl.worker.engine.config.inference_mode = "local"
+        agent_mgr.agent_controller = ctrl
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert agent_mgr.prepare_model_deletion("test") is False
 
     def test_on_processing_state_changed(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -99,12 +109,67 @@ class TestAgentManagerMethods:
 
     def test_toggle_first_open(self, agent_mgr):
         agent_mgr.agent_initialized = False
-        with patch(
-            "XBrainLab.ui.components.agent_manager.ModelSettingsDialog"
-        ) as MockDlg:
-            MockDlg.return_value.exec.return_value = False
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr.chat_dock = MagicMock()
+        with (
+            patch.object(agent_mgr, "_load_runtime_config", return_value=MagicMock()),
+            patch.object(
+                agent_mgr,
+                "_assistant_runtime_start_status",
+                return_value=(True, "Local runtime ready."),
+            ),
+            patch.object(agent_mgr, "start_system") as mock_start,
+        ):
             agent_mgr.toggle()
-            # Cancelled, so not initialized
+        agent_mgr.chat_dock.show.assert_called_once()
+        mock_start.assert_called_once()
+
+    def test_toggle_first_open_unavailable_keeps_panel_open(self, agent_mgr):
+        agent_mgr.agent_initialized = False
+        agent_mgr.chat_panel = MagicMock()
+        agent_mgr.chat_dock = MagicMock()
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.ModelSettingsDialog"
+            ) as MockDlg,
+            patch.object(agent_mgr, "_load_runtime_config", return_value=MagicMock()),
+            patch.object(
+                agent_mgr,
+                "_assistant_runtime_start_status",
+                return_value=(False, "Model cache not found."),
+            ),
+            patch.object(agent_mgr, "start_system") as mock_start,
+        ):
+            agent_mgr.toggle()
+
+        MockDlg.assert_not_called()
+        agent_mgr.chat_dock.show.assert_called_once()
+        mock_start.assert_not_called()
+        agent_mgr.chat_controller.add_agent_message.assert_called_with(
+            "**Assistant unavailable**: Model cache not found. Use the settings "
+            "button to install or switch runtime."
+        )
+
+    def test_handle_user_input_reports_runtime_reason_when_controller_missing(
+        self,
+        agent_mgr,
+    ):
+        agent_mgr.agent_controller = None
+        with (
+            patch.object(agent_mgr, "_load_runtime_config", return_value=MagicMock()),
+            patch.object(
+                agent_mgr,
+                "_assistant_runtime_start_status",
+                return_value=(False, "Model cache not found."),
+            ),
+        ):
+            agent_mgr.handle_user_input("train")
+
+        agent_mgr.chat_controller.add_user_message.assert_called_with("train")
+        agent_mgr.chat_controller.add_agent_message.assert_called_with(
+            "**Assistant unavailable**: Model cache not found. Use the settings "
+            "button to install or switch runtime."
+        )
 
     def test_toggle_already_visible(self, agent_mgr):
         agent_mgr.agent_initialized = True

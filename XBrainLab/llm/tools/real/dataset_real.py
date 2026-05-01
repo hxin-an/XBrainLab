@@ -20,15 +20,21 @@ from ..definitions.dataset_def import (
     BaseLoadDataTool,
 )
 
-# Directories that should NEVER be exposed to the LLM agent.
+
+def _existing_env_realpath(name: str) -> str | None:
+    value = os.environ.get(name)
+    return os.path.realpath(value) if value else None
+
+
+# Directories that should NEVER be exposed to the LLM agent. Windows paths are
+# included only when the environment variables exist; otherwise WSL/Linux would
+# resolve fallback strings relative to the repo and block the workspace itself.
 _SENSITIVE_DIRS: frozenset[str] = frozenset(
-    {
-        # Windows
-        os.path.realpath(os.environ.get("SYSTEMROOT", r"C:\Windows")),
-        os.path.realpath(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
-        os.path.realpath(
-            os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")
-        ),
+    path
+    for path in {
+        _existing_env_realpath("SYSTEMROOT"),
+        _existing_env_realpath("PROGRAMFILES"),
+        _existing_env_realpath("PROGRAMFILES(X86)"),
         # Unix
         "/etc",
         "/var",
@@ -38,7 +44,8 @@ _SENSITIVE_DIRS: frozenset[str] = frozenset(
         "/boot",
         "/proc",
         "/sys",
-    },
+    }
+    if path
 )
 
 

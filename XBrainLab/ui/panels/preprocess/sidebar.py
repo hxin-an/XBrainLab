@@ -10,7 +10,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import blocked_reason, get_command_capability
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.preprocess import (
     EpochingDialog,
@@ -172,44 +174,68 @@ class PreprocessSidebar(QWidget):
                 preprocessing is locked.
 
         """
-        # Filter
-        if is_epoched:
-            self.btn_filter.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
+        preprocess_enabled = (
+            preprocess_capability.enabled if preprocess_capability is not None else True
+        )
+        epoch_enabled = (
+            epoch_capability.enabled if epoch_capability is not None else True
+        )
+        preprocess_reason = blocked_reason(
+            preprocess_capability,
+            "Preprocessing is not available.",
+        )
+        epoch_reason = blocked_reason(
+            epoch_capability,
+            "Epoching is not available.",
+        )
+        if preprocess_capability is None and is_epoched:
+            preprocess_reason = (
+                "Preprocessing is locked (Data Epoched). Click to see details."
             )
+        if epoch_capability is None and is_epoched:
+            epoch_reason = (
+                "Preprocessing is locked (Data Epoched). Click to see details."
+            )
+
+        for button in (
+            self.btn_filter,
+            self.btn_resample,
+            self.btn_rereference,
+            self.btn_normalize,
+        ):
+            button.setEnabled(preprocess_enabled)
+        self.btn_epoch.setEnabled(epoch_enabled)
+
+        # Filter
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_filter.setToolTip(preprocess_reason)
         else:
             self.btn_filter.setToolTip("Apply bandpass/notch filters")
 
         # Resample
-        if is_epoched:
-            self.btn_resample.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_resample.setToolTip(preprocess_reason)
         else:
             self.btn_resample.setToolTip("Change sampling rate")
 
         # Re-reference
-        if is_epoched:
-            self.btn_rereference.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_rereference.setToolTip(preprocess_reason)
         else:
             self.btn_rereference.setToolTip("Change reference")
 
         # Normalize
-        if is_epoched:
-            self.btn_normalize.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not preprocess_enabled or (preprocess_capability is None and is_epoched):
+            self.btn_normalize.setToolTip(preprocess_reason)
         else:
             self.btn_normalize.setToolTip("Apply Z-Score or Min-Max normalization")
 
         # Epoch Button
-        if is_epoched:
-            self.btn_epoch.setText("Epoched (Locked)")
-            self.btn_epoch.setToolTip(
-                "Preprocessing is locked (Data Epoched). Click to see details.",
-            )
+        if not epoch_enabled or (epoch_capability is None and is_epoched):
+            self.btn_epoch.setText("Epoched (Locked)" if is_epoched else "Epoching")
+            self.btn_epoch.setToolTip(epoch_reason)
         else:
             self.btn_epoch.setText("Epoching")
             self.btn_epoch.setToolTip("Segment data into epochs")
@@ -227,6 +253,17 @@ class PreprocessSidebar(QWidget):
         """
         if not self.controller:
             return False
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        if preprocess_capability is not None and not preprocess_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Action Blocked",
+                blocked_reason(
+                    preprocess_capability,
+                    "Preprocessing is not available.",
+                ),
+            )
+            return True
         if self.controller.is_epoched():
             QMessageBox.warning(
                 self,
@@ -246,6 +283,17 @@ class PreprocessSidebar(QWidget):
             bool: ``True`` if data is loaded, ``False`` otherwise.
 
         """
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        if preprocess_capability is not None and not preprocess_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                blocked_reason(
+                    preprocess_capability,
+                    "No data loaded. Please import data first.",
+                ),
+            )
+            return False
         if not self.controller or not self.controller.has_data():
             QMessageBox.warning(
                 self,
@@ -328,6 +376,15 @@ class PreprocessSidebar(QWidget):
 
     def open_epoching(self):
         """Open the epoching dialog and segment the continuous data into epochs."""
+        epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
+        if epoch_capability is not None and not epoch_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Epoching Blocked",
+                blocked_reason(epoch_capability, "Epoching is not available."),
+            )
+            return
+
         if self.check_lock() or not self.check_data_loaded():
             return
 

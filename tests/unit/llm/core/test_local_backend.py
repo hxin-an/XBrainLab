@@ -11,7 +11,7 @@ from XBrainLab.llm.core.config import LLMConfig
 
 def _make_config(**overrides):
     defaults = {
-        "model_name": "test-model",
+        "model_name": "microsoft/Phi-4-mini-instruct",
         "device": "cpu",
         "load_in_4bit": False,
         "cache_dir": "/tmp/cache",
@@ -88,14 +88,16 @@ class TestLocalBackendLoad:
         backend = LocalBackend(cfg)
 
         mock_tokenizer = MagicMock()
-        mock_model_cls = MagicMock(return_value=mock_tokenizer)
         mock_model = MagicMock()
+        mock_quantization_config = object()
+        mock_bnb_config = MagicMock(return_value=mock_quantization_config)
 
         with patch.dict(
             "sys.modules",
             {
                 "torch": mock_torch,
                 "transformers": MagicMock(
+                    BitsAndBytesConfig=mock_bnb_config,
                     AutoTokenizer=MagicMock(
                         from_pretrained=MagicMock(return_value=mock_tokenizer)
                     ),
@@ -108,6 +110,7 @@ class TestLocalBackendLoad:
             backend.load()
 
         assert backend.is_loaded is True
+        mock_bnb_config.assert_called_once_with(load_in_4bit=True)
 
     @patch("XBrainLab.llm.core.backends.local.torch", create=True)
     def test_load_failure(self, mock_torch):
@@ -155,6 +158,7 @@ class TestLocalBackendLoad:
             {
                 "torch": mock_torch,
                 "transformers": MagicMock(
+                    BitsAndBytesConfig=MagicMock(),
                     AutoTokenizer=MagicMock(
                         from_pretrained=MagicMock(return_value=mock_tokenizer)
                     ),
@@ -167,8 +171,71 @@ class TestLocalBackendLoad:
         assert cfg.device == "cpu"
         assert cfg.load_in_4bit is False
         call_kwargs = mock_model_loader.call_args.kwargs
-        assert call_kwargs["device_map"] == "cpu"
-        assert "load_in_4bit" not in call_kwargs
+        assert "device_map" not in call_kwargs
+        assert "quantization_config" not in call_kwargs
+
+    def test_phi_remote_code_compat_adds_loss_kwargs(self):
+        import transformers.utils as transformers_utils
+
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        cfg = _make_config(model_name="microsoft/Phi-4-mini-instruct")
+        backend = LocalBackend(cfg)
+        previous = getattr(transformers_utils, "LossKwargs", None)
+        had_previous = hasattr(transformers_utils, "LossKwargs")
+
+        if had_previous:
+            delattr(transformers_utils, "LossKwargs")
+        try:
+            backend._patch_remote_code_compat()
+            assert hasattr(transformers_utils, "LossKwargs")
+        finally:
+            if had_previous:
+                transformers_utils.LossKwargs = previous
+            elif hasattr(transformers_utils, "LossKwargs"):
+                delattr(transformers_utils, "LossKwargs")
+
+    def test_phi_remote_code_compat_adds_dynamic_cache_seen_tokens(self):
+        from transformers.cache_utils import DynamicCache
+
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        cfg = _make_config(model_name="microsoft/Phi-3.5-mini-instruct")
+        backend = LocalBackend(cfg)
+        previous_seen = getattr(DynamicCache, "seen_tokens", None)
+        previous_max = getattr(DynamicCache, "get_max_length", None)
+        previous_usable = getattr(DynamicCache, "get_usable_length", None)
+        had_seen = hasattr(DynamicCache, "seen_tokens")
+        had_max = hasattr(DynamicCache, "get_max_length")
+        had_usable = hasattr(DynamicCache, "get_usable_length")
+
+        if had_seen:
+            delattr(DynamicCache, "seen_tokens")
+        if had_max:
+            delattr(DynamicCache, "get_max_length")
+        if had_usable:
+            delattr(DynamicCache, "get_usable_length")
+        try:
+            backend._patch_remote_code_compat()
+            assert hasattr(DynamicCache, "seen_tokens")
+            assert hasattr(DynamicCache, "get_max_length")
+            assert hasattr(DynamicCache, "get_usable_length")
+            assert DynamicCache().seen_tokens == 0
+            assert DynamicCache().get_max_length() is None
+            assert DynamicCache().get_usable_length(1) == 0
+        finally:
+            if had_seen:
+                DynamicCache.seen_tokens = previous_seen
+            elif hasattr(DynamicCache, "seen_tokens"):
+                delattr(DynamicCache, "seen_tokens")
+            if had_max:
+                DynamicCache.get_max_length = previous_max
+            elif hasattr(DynamicCache, "get_max_length"):
+                delattr(DynamicCache, "get_max_length")
+            if had_usable:
+                DynamicCache.get_usable_length = previous_usable
+            elif hasattr(DynamicCache, "get_usable_length"):
+                delattr(DynamicCache, "get_usable_length")
 
 
 class TestProcessMessages:
@@ -293,3 +360,53 @@ class TestGenerateStream:
             result = list(backend.generate_stream([{"role": "user", "content": "hi"}]))
             mock_thread_cls.return_value.start.assert_called_once()
             assert result == ["Hello", " world"]
+
+    def test_generate_stream_surfaces_generation_thread_error(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        cfg = _make_config()
+        backend = LocalBackend(cfg)
+        backend.is_loaded = True
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "prompt text"
+        mock_tokenizer.return_value = MagicMock(to=MagicMock(return_value={}))
+
+        mock_model = MagicMock()
+        mock_model.device = "cpu"
+        mock_model.generate.side_effect = RuntimeError("boom")
+
+        backend.tokenizer = mock_tokenizer
+        backend.model = mock_model
+
+        mock_streamer = MagicMock()
+        mock_streamer.__iter__ = MagicMock(return_value=iter([]))
+
+        class ImmediateThread:
+            def __init__(self, target):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+            def join(self, timeout=0):
+                return None
+
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "transformers": MagicMock(
+                        TextIteratorStreamer=MagicMock(return_value=mock_streamer)
+                    ),
+                },
+            ),
+            patch(
+                "XBrainLab.llm.core.backends.local.Thread",
+                ImmediateThread,
+            ),
+            pytest.raises(RuntimeError, match="Local generation failed: boom"),
+        ):
+            list(backend.generate_stream([{"role": "user", "content": "hi"}]))
+
+        mock_streamer.end.assert_called_once()

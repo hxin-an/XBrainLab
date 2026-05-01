@@ -111,12 +111,43 @@ class TestChatPanelCallbacks:
             chat_panel._on_new_conversation()
             mock_sig.emit.assert_called_once()
 
+    def test_retry_signal_when_idle(self, chat_panel):
+        with patch.object(chat_panel, "retry_requested") as mock_sig:
+            mock_sig.emit = MagicMock()
+            chat_panel._on_retry()
+            mock_sig.emit.assert_called_once()
+
+    def test_retry_ignored_while_processing(self, chat_panel):
+        chat_panel.set_processing_state(True)
+        with patch.object(chat_panel, "retry_requested") as mock_sig:
+            mock_sig.emit = MagicMock()
+            chat_panel._on_retry()
+            mock_sig.emit.assert_not_called()
+
+    def test_clear_uses_new_conversation_signal(self, chat_panel):
+        with patch.object(chat_panel, "new_conversation_requested") as mock_sig:
+            mock_sig.emit = MagicMock()
+            chat_panel._on_clear()
+            mock_sig.emit.assert_called_once()
+
+    def test_status_summary_updates_label_and_tooltip(self, chat_panel):
+        chat_panel.set_status_summary("Backend: empty", "Train blocked")
+        assert chat_panel.status_label.text() == "Backend: empty"
+        assert chat_panel.status_label.toolTip() == "Train blocked"
+
     def test_set_model(self, chat_panel):
         with patch.object(chat_panel, "model_changed") as mock_sig:
             mock_sig.emit = MagicMock()
             chat_panel._set_model("Gemini")
             assert "Gemini" in chat_panel.model_btn.text()
-            mock_sig.emit.assert_called_once_with("Gemini")
+            mock_sig.emit.assert_called_once_with("gemini")
+
+    def test_set_model_keeps_ui_label_separate_from_runtime_mode(self, chat_panel):
+        with patch.object(chat_panel, "model_changed") as mock_sig:
+            mock_sig.emit = MagicMock()
+            chat_panel._set_model("local", "Local (CPU fallback)")
+            assert "CPU fallback" in chat_panel.model_btn.text()
+            mock_sig.emit.assert_called_once_with("local")
 
     def test_set_feature(self, chat_panel):
         chat_panel._set_feature("EEG Analyst")
@@ -180,6 +211,7 @@ class TestChatPanelCallbacks:
         config.local_backend_status_message.return_value = "Local runtime ready."
         config.gemini_enabled = True
         config.active_mode = "gemini"
+        config.inference_mode = "gemini"
 
         with (
             patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
@@ -197,4 +229,58 @@ class TestChatPanelCallbacks:
             action for action in panel.model_menu.actions() if "Gemini" in action.text()
         )
         assert "Remote" in gemini_action.text()
+        assert panel.model_btn.text() == "Model: Gemini (Remote) ▼"
+
+    def test_update_model_menu_surfaces_cpu_fallback(self, qtbot):
+        config = MagicMock()
+        config.local_model_enabled = True
+        config.local_backend_ready.return_value = True
+        config.local_backend_status_message.return_value = (
+            "Local runtime ready. GPU execution is unavailable in this "
+            "environment, so startup will fall back to CPU and disable "
+            "4-bit loading."
+        )
+        config.gemini_enabled = False
+        config.active_mode = "local"
+
+        with (
+            patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
+            patch(
+                "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
+                return_value=config,
+            ),
+        ):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+
+        local_action = next(
+            action for action in panel.model_menu.actions() if "Local" in action.text()
+        )
+        assert "CPU fallback" in local_action.text()
+        assert "fall back to CPU" in local_action.toolTip()
+        assert panel.model_btn.text() == "Model: Local (CPU fallback) ▼"
+
+    def test_update_model_menu_prefers_inference_mode_for_gemini_label(self, qtbot):
+        config = MagicMock()
+        config.local_model_enabled = True
+        config.local_backend_ready.return_value = True
+        config.local_backend_status_message.return_value = "Local runtime ready."
+        config.gemini_enabled = True
+        config.active_mode = "local"
+        config.inference_mode = "gemini"
+
+        with (
+            patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
+            patch(
+                "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
+                return_value=config,
+            ),
+        ):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+
         assert panel.model_btn.text() == "Model: Gemini (Remote) ▼"

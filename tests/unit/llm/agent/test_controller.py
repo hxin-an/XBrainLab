@@ -315,7 +315,7 @@ class TestStopGeneration:
 class TestSetModel:
     def test_emits_reinit(self, ctrl):
         ctrl.set_model("Gemini")
-        ctrl.sig_reinit.emit.assert_called_once_with("Gemini")
+        ctrl.sig_reinit.emit.assert_called_once_with("gemini")
 
 
 # --- reset_conversation ---
@@ -442,78 +442,57 @@ class TestProcessToolCallsConfirmation:
         ctrl._execute_tool_no_loop.assert_called_once()
 
 
-# --- Pipeline stage gate in _execute_tool_no_loop ---
+# --- ApplicationService capability gate in _execute_tool_no_loop ---
 class TestPipelineGate:
     def test_blocked_tool_returns_error(self, ctrl):
-        """Tool not in current stage config is rejected at execution time."""
+        """Tool blocked by ApplicationService policy is rejected at execution time."""
+        from XBrainLab.backend.study import Study
+
+        ctrl.study = Study()
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with patch(
-            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-        ) as mock_stage:
-            mock_stage.return_value = MagicMock(value="empty")
-            with patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {mock_stage.return_value: {"tools": ["list_files", "load_data"]}},
-            ):
-                success, result = ctrl._execute_tool_no_loop(
-                    "apply_bandpass_filter",
-                    {},
-                )
+        success, result = ctrl._execute_tool_no_loop(
+            "apply_bandpass_filter",
+            {},
+        )
 
         assert not success
-        assert "not available" in result
-        assert "empty" in result
+        assert "ApplicationService command 'preprocess'" in result
+        assert "Load raw data" in result
 
     def test_allowed_tool_executes(self, ctrl):
-        """Tool present in current stage config is allowed."""
+        """Tool allowed by ApplicationService policy executes."""
+        from XBrainLab.backend.study import Study
+
+        ctrl.study = Study()
+        raw = MagicMock()
+        ctrl.study.data_manager.loaded_data_list = [raw]
+        ctrl.study.data_manager.preprocessed_data_list = []
         mock_tool = MagicMock()
         mock_tool.execute.return_value = "ok"
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with patch(
-            "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-        ) as mock_stage:
-            mock_stage.return_value = MagicMock(value="data_loaded")
-            with patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {mock_stage.return_value: {"tools": ["apply_bandpass_filter"]}},
-            ):
-                success, result = ctrl._execute_tool_no_loop(
-                    "apply_bandpass_filter",
-                    {},
-                )
+        success, result = ctrl._execute_tool_no_loop(
+            "apply_bandpass_filter",
+            {},
+        )
 
         assert success
         assert result == "ok"
 
-    def test_unknown_stage_falls_back_to_empty(self, ctrl):
-        """Stage not in STAGE_CONFIG falls back to EMPTY (restrictive)."""
-        from XBrainLab.llm.pipeline_state import PipelineStage
+    def test_train_blocked_until_backend_ready(self, ctrl):
+        """Train is blocked until dataset/model/training options exist."""
+        from XBrainLab.backend.study import Study
 
+        ctrl.study = Study()
         mock_tool = MagicMock()
         ctrl.registry.get_tool.return_value = mock_tool
 
-        unknown = MagicMock(value="mystery")
-        with (
-            patch(
-                "XBrainLab.llm.agent.controller.compute_pipeline_stage",
-                return_value=unknown,
-            ),
-            patch(
-                "XBrainLab.llm.agent.controller.STAGE_CONFIG",
-                {
-                    PipelineStage.EMPTY: {
-                        "tools": ["list_files", "load_data", "switch_panel"],
-                    },
-                },
-            ),
-        ):
-            success, result = ctrl._execute_tool_no_loop("start_training", {})
+        success, result = ctrl._execute_tool_no_loop("start_training", {})
 
         assert not success
-        assert "not available" in result
+        assert "Generate datasets before training" in result
 
 
 # --- Execution Mode (Single / Multi) ---

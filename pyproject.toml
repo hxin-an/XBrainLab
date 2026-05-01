@@ -21,9 +21,9 @@ mne = "^1.6.0"
 pymatreader = "^1.0.0"
 
 # Deep Learning Core (Required for Backend & LLM)
-torch = "^2.3.0"
-torchvision = "^0.18.0"
-torchaudio = "^2.3.0"
+torch = "^2.11.0"
+torchvision = "^0.26.0"
+torchaudio = "^2.11.0"
 captum = "^0.7.0"
 
 # Utilities
@@ -167,7 +167,7 @@ reportMissingTypeStubs = "none"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q -v"
+addopts = "-ra -q -v --capture=sys"
 pythonpath = "."
 testpaths = ["tests"]
 norecursedirs = ["XBrainLab", ".git", "__pycache__", "*.egg-info"]

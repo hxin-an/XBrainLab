@@ -38,9 +38,17 @@ class TestAgentManagerPrepareModelDeletion:
         """Deletion should fail closed instead of auto-switching to Gemini."""
         m = _make_manager()
         m.agent_controller.worker.engine.config.active_mode = "local"
+        m.agent_controller.worker.engine.config.inference_mode = "local"
         with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
             assert m.prepare_model_deletion("test") is False
         m.agent_controller.set_model.assert_not_called()
+
+    def test_inference_mode_truth_blocks_deletion_even_if_active_mode_stale(self):
+        m = _make_manager()
+        m.agent_controller.worker.engine.config.active_mode = "gemini"
+        m.agent_controller.worker.engine.config.inference_mode = "local"
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert m.prepare_model_deletion("test") is False
 
 
 class TestAgentManagerStartSystem:
@@ -58,6 +66,27 @@ class TestAgentManagerStartSystem:
         m.agent_initialized = False
         m.chat_panel = None
         m.start_system()
+
+
+class TestAgentManagerRetry:
+    """Cover chat retry behaviour."""
+
+    def test_retry_last_user_input(self):
+        m = _make_manager()
+        m.chat_controller.is_processing = False
+        m._last_user_input = "train the model"
+        with patch.object(m, "handle_user_input") as mock_handle:
+            m.retry_last_user_input()
+        mock_handle.assert_called_once_with("train the model")
+
+    def test_retry_without_previous_message_reports_status(self):
+        m = _make_manager()
+        m.chat_controller.is_processing = False
+        m._last_user_input = None
+        m.retry_last_user_input()
+        m.chat_controller.add_agent_message.assert_called_with(
+            "No previous request to retry."
+        )
 
 
 class TestAgentManagerExecutionMode:

@@ -15,8 +15,10 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.controller.chat_controller import ChatController
+from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
+from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
@@ -66,6 +68,7 @@ class AgentManager(QObject):
         super().__init__(main_window)
         self.main_window = main_window
         self.study = study
+        self.backend_facade = BackendFacade(study)
 
         self.chat_panel = None
         self.chat_dock = None
@@ -79,6 +82,8 @@ class AgentManager(QObject):
         self.agent_controller = None
 
         self.agent_initialized = False
+        self._last_user_input: str | None = None
+        self._runtime_unavailable_notice: str | None = None
 
         # M3.4 VRAM Monitoring — delegated to VRAMConflictChecker
         self.vram_checker = VRAMConflictChecker(
@@ -108,6 +113,7 @@ class AgentManager(QObject):
         self.chat_panel.model_changed.connect(self.set_model)
         self.chat_panel.execution_mode_changed.connect(self._on_execution_mode_changed)
         self.chat_panel.new_conversation_requested.connect(self.start_new_conversation)
+        self.chat_panel.retry_requested.connect(self.retry_last_user_input)
 
         self.chat_dock = QDockWidget("AI Assistant", self.main_window)
         self.chat_dock.setWidget(self.chat_panel)
@@ -161,6 +167,7 @@ class AgentManager(QObject):
 
         self.chat_dock.visibilityChanged.connect(self.update_ai_btn_state)
         self.chat_dock.hide()
+        self.refresh_backend_status()
 
     def update_ai_btn_state(self, visible):
         """Sync the AI toggle button checked state with dock visibility.
@@ -180,31 +187,71 @@ class AgentManager(QObject):
             self.chat_dock.setFloating(not self.chat_dock.isFloating())
 
     def toggle(self):
-        """Toggle the Agent dock visibility, initializing on first open.
-
-        On first invocation, shows the ``ModelSettingsDialog`` to
-        configure the LLM backend before starting the agent system.
-        """
+        """Toggle the Agent dock visibility, initializing on first open."""
         if not self.agent_initialized:
-            # Show Model Settings Dialog instead of Warning
-            dialog = ModelSettingsDialog(self.main_window)
-
-            if dialog.exec():
-                # User set up config and clicked Activate
-                self.start_system()
-                if self.chat_dock:
-                    self.chat_dock.show()
-                if hasattr(self.main_window, "ai_btn"):
-                    self.main_window.ai_btn.setChecked(True)
-            else:
-                # User cancelled
+            if not self.chat_panel or not self.chat_dock:
+                logger.warning("Agent dock requested before init_ui completed")
                 if hasattr(self.main_window, "ai_btn"):
                     self.main_window.ai_btn.setChecked(False)
                 return
+
+            self.chat_dock.show()
+            if hasattr(self.main_window, "ai_btn"):
+                self.main_window.ai_btn.setChecked(True)
+
+            config = self._load_runtime_config()
+            ready, message = self._assistant_runtime_start_status(config)
+            self.refresh_backend_status()
+            if ready:
+                self.start_system()
+                self._runtime_unavailable_notice = None
+            else:
+                self._show_runtime_unavailable(message)
         elif self.chat_dock and self.chat_dock.isVisible():
             self.chat_dock.close()
         elif self.chat_dock:
             self.chat_dock.show()
+
+    @staticmethod
+    def _load_runtime_config() -> LLMConfig:
+        """Load persisted assistant runtime config with a safe fallback."""
+        return LLMConfig.load_from_file() or LLMConfig()
+
+    @staticmethod
+    def _assistant_runtime_start_status(config: LLMConfig) -> tuple[bool, str]:
+        """Return whether the assistant runtime can start and why."""
+        selection = LLMConfig.assistant_runtime_selection_from(config)
+
+        if selection.backend_mode == "local":
+            model_id, message = config.available_local_model_id(selection.model_id)
+            return model_id is not None, message
+
+        if selection.backend_mode == "gemini":
+            if getattr(config, "gemini_enabled", False):
+                return True, "Remote Gemini backend is enabled."
+            return (
+                False,
+                "Remote Gemini backend is not verified. Switch to Local in "
+                "assistant settings.",
+            )
+
+        return (
+            False,
+            f"{selection.backend_mode.upper()} backend is a legacy runtime path and "
+            "is not enabled for product startup. Switch to Local in assistant "
+            "settings.",
+        )
+
+    def _show_runtime_unavailable(self, message: str) -> None:
+        """Surface assistant startup blockers in the chat panel."""
+        if self._runtime_unavailable_notice == message:
+            return
+
+        self._runtime_unavailable_notice = message
+        self.chat_controller.add_agent_message(
+            "**Assistant unavailable**: "
+            f"{message} Use the settings button to install or switch runtime.",
+        )
 
     def open_settings_dialog(self):
         """Open the model settings dialog and refresh the UI on accept."""
@@ -213,6 +260,7 @@ class AgentManager(QObject):
         if dialog.exec() and self.chat_panel:
             # Refresh UI based on new settings (e.g. enable/disable Local mode)
             self.chat_panel.update_model_menu()
+            self.refresh_backend_status()
 
     def prepare_model_deletion(self, model_name: str):
         """Prepare for model file deletion by switching away if active.
@@ -237,7 +285,7 @@ class AgentManager(QObject):
 
         # Check if active
         config = worker.engine.config
-        current_mode = config.active_mode  # "local", "gemini"
+        current_mode = LLMConfig.assistant_runtime_selection_from(config).backend_mode
 
         # Heuristic: If we are in local mode, and the model name matches (roughly)
         # Detailed check: verify if the deleting model is the one loaded.
@@ -298,10 +346,10 @@ class AgentManager(QObject):
             self.chat_panel.collapse_agent_message,
         )
 
-        # 8. M3.1 Debug Mode: Handled by MainWindow (offline support)
-        # self.chat_panel.debug_tool_requested.connect(
-        #     self.agent_controller.execute_debug_tool
-        # )
+        # 8. M3.1 Debug Mode: direct UI -> agent tool flow for offline testing.
+        self.chat_panel.debug_tool_requested.connect(
+            self.agent_controller.execute_debug_tool,
+        )
 
         # 8. Finished Signal (Robust)
         self.agent_controller.processing_finished.connect(self.on_processing_finished)
@@ -313,6 +361,7 @@ class AgentManager(QObject):
 
         self.agent_controller.initialize()
         self.agent_initialized = True
+        self.refresh_backend_status()
 
     def handle_user_input(self, text):
         """Handle text input from ChatPanel.
@@ -324,12 +373,33 @@ class AgentManager(QObject):
             text: The user's message text.
 
         """
+        text = text.strip()
+        if not text:
+            return
+
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
+        self._last_user_input = text
 
         # 2. Forward to Agent
         if self.agent_controller:
             self.agent_controller.handle_user_input(text)
+        else:
+            config = self._load_runtime_config()
+            _ready, message = self._assistant_runtime_start_status(config)
+            self.chat_controller.add_agent_message(
+                "**Assistant unavailable**: "
+                f"{message} Use the settings button to install or switch runtime.",
+            )
+
+    def retry_last_user_input(self):
+        """Retry the most recent user request if the assistant is idle."""
+        if self.chat_controller.is_processing:
+            return
+        if not self._last_user_input:
+            self.chat_controller.add_agent_message("No previous request to retry.")
+            return
+        self.handle_user_input(self._last_user_input)
 
     def stop_generation(self):
         """Stop the currently running LLM generation."""
@@ -341,16 +411,19 @@ class AgentManager(QObject):
         """Switch the active LLM model and check for VRAM conflicts.
 
         Args:
-            model_name: The model name to switch to (e.g., ``"Gemini"``,
-                ``"Local"``).
+            model_name: Runtime mode key or backend-specific identifier.
 
         """
+        normalized_mode = LLMConfig.normalize_backend_mode(model_name, fallback="")
         if self.agent_controller:
-            self.agent_controller.set_model(model_name)
+            self.agent_controller.set_model(
+                normalized_mode if normalized_mode else model_name
+            )
 
         # VRAM Check on Mode Switch
-        if "local" in model_name.lower():
+        if normalized_mode == "local":
             self.vram_checker.check(switching_to_local=True)
+        self.refresh_backend_status()
 
     def on_viz_tab_changed(self, index):
         """Monitor visualization tab changes for VRAM conflict.
@@ -415,6 +488,7 @@ class AgentManager(QObject):
 
         # 1. Clear UI / History
         self.chat_controller.clear_conversation()
+        self._last_user_input = None
 
         # 2. Reset Agent State
         if self.agent_controller:
@@ -423,6 +497,7 @@ class AgentManager(QObject):
 
         # 3. Do not add greeting, keep it empty as requested
         # self.chat_controller.add_agent_message("Conversation cleared.")
+        self.refresh_backend_status()
 
     # Signal to notify Main Window (or other listeners) about status updates
     status_message_received = pyqtSignal(str)
@@ -441,6 +516,7 @@ class AgentManager(QObject):
     def on_processing_finished(self):
         """Handle the end of LLM processing by resetting state."""
         self.chat_controller.set_processing(False)
+        self.refresh_backend_status()
 
     def on_agent_status_update(self, msg):
         """Forward agent status messages and handle error states.
@@ -466,6 +542,52 @@ class AgentManager(QObject):
         self.chat_controller.set_processing(False)
         self.chat_controller.add_agent_message(f"**Error**: {error_msg}")
         logger.error("Agent Error: %s", error_msg)
+        self.refresh_backend_status()
+
+    def refresh_backend_status(self):
+        """Refresh the compact backend/model status shown in the chat panel."""
+        if not self.chat_panel or not hasattr(self.chat_panel, "set_status_summary"):
+            return
+
+        try:
+            state = self.backend_facade.get_state()
+            capabilities = self.backend_facade.get_capabilities()
+            enabled = [
+                name
+                for name, capability in capabilities.capabilities.items()
+                if capability.enabled
+            ]
+            stage = str(state.pipeline_stage).replace("_", " ")
+            model_config = LLMConfig.load_from_file() or LLMConfig()
+            selection = LLMConfig.assistant_runtime_selection_from(model_config)
+            model_ready = model_config.local_backend_ready(selection.model_id)
+            model_status = "local ready" if model_ready else "local unavailable"
+            text = f"Backend: {stage} | {model_status}"
+
+            train_capability = capabilities.get("train")
+            tooltip_lines = [
+                f"Pipeline stage: {stage}",
+                f"Assistant runtime: {selection.backend_mode}",
+                (
+                    "Local model: "
+                    f"{model_config.local_backend_status_message(selection.model_id)}"
+                ),
+                "Available commands: " + (", ".join(enabled) if enabled else "none"),
+            ]
+            if train_capability.reasons:
+                tooltip_lines.append(
+                    "Train blocked: " + "; ".join(train_capability.reasons),
+                )
+            if state.last_error:
+                tooltip_lines.append(f"Last backend error: {state.last_error.message}")
+
+            self.chat_panel.set_status_summary(text, "\n".join(tooltip_lines))
+        except Exception as exc:
+            logger.debug("Failed to refresh backend status", exc_info=True)
+            self.chat_panel.set_status_summary(
+                "Backend: status unavailable",
+                f"Status refresh failed: {exc}",
+            )
 
     def close(self):
         """Clean up the agent controller resources."""

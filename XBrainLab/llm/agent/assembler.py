@@ -9,6 +9,12 @@ import json
 from typing import Any
 
 from ..pipeline_state import STAGE_CONFIG, PipelineStage, compute_pipeline_stage
+from ..tools.application_surface import (
+    READ_ONLY_TOOLS,
+    TOOL_TO_COMMAND,
+    blocked_tool_reasons,
+    enabled_tool_names,
+)
 from ..tools.tool_registry import ToolRegistry
 
 
@@ -31,6 +37,9 @@ class ContextAssembler:
     _TOOL_BLOCK_TEMPLATE = """
 Available Tools:
 {tools_str}
+
+Blocked Commands:
+{blocked_str}
 
 To use a tool, you MUST output a JSON object in the following format:
 ```json
@@ -106,6 +115,36 @@ Rules:
 
         return "\n".join(tool_descs)
 
+    def _application_allowed_tools(self, fallback: list[str]) -> list[str]:
+        """Return tool names allowed by ApplicationService capability policy."""
+        registered_names = {tool.name for tool in self.registry.get_all_tools()}
+        try:
+            app_allowed = set(enabled_tool_names(self.study_state))
+        except Exception:
+            return fallback
+        legacy_allowed = {
+            name
+            for name in fallback
+            if name in registered_names
+            and name not in TOOL_TO_COMMAND
+            and name not in READ_ONLY_TOOLS
+        }
+        return sorted(app_allowed | legacy_allowed)
+
+    def _format_blocked_tools(self) -> str:
+        """Format blocked tools and reasons from the ApplicationService policy."""
+        try:
+            blocked = blocked_tool_reasons(self.study_state)
+        except Exception:
+            return "Unavailable: backend capability policy could not be read."
+
+        lines = [
+            f"- {tool_name}: {reason}"
+            for tool_name, reason in sorted(blocked.items())
+            if reason
+        ]
+        return "\n".join(lines) if lines else "None."
+
     def build_system_prompt(self) -> str:
         """Constructs the full system prompt with stage-filtered tools.
 
@@ -119,10 +158,15 @@ Rules:
 
         """
         _stage, config = self._get_stage_config()
-        tools_str = self._format_tools(config["tools"])
+        allowed_tools = self._application_allowed_tools(config["tools"])
+        tools_str = self._format_tools(allowed_tools)
+        blocked_str = self._format_blocked_tools()
 
         prompt = config["system_prompt"]
-        prompt += self._TOOL_BLOCK_TEMPLATE.format(tools_str=tools_str)
+        prompt += self._TOOL_BLOCK_TEMPLATE.format(
+            tools_str=tools_str,
+            blocked_str=blocked_str,
+        )
 
         if self.context_notes:
             prompt += "\nAdditional Context:\n" + "\n".join(self.context_notes)

@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QMessageBox
 
+from XBrainLab.llm.core.config import LLMConfig
+
 if TYPE_CHECKING:
     from typing import Any
 
@@ -91,7 +93,11 @@ class VRAMConflictChecker:
         if controller and controller.worker:
             try:
                 if controller.worker.engine:
-                    return controller.worker.engine.config.active_mode == "local"
+                    config = controller.worker.engine.config
+                    return (
+                        LLMConfig.assistant_runtime_selection_from(config).backend_mode
+                        == "local"
+                    )
             except Exception:
                 logger.debug(
                     "Engine not yet initialized, skipping local mode check",

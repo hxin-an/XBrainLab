@@ -14,7 +14,7 @@ from XBrainLab.llm.core.engine import LLMEngine
 @pytest.fixture
 def mock_config():
     return LLMConfig(
-        model_name="test-model",
+        model_name=LLMConfig.default_local_model_id(),
         inference_mode="local",
         api_key="test-key",  # pragma: allowlist secret
         gemini_api_key="test-gemini-key",  # pragma: allowlist secret
@@ -70,6 +70,7 @@ def test_local_backend_load_success(mock_model_cls, mock_tokenizer_cls, mock_con
     mock_tokenizer_cls.from_pretrained.return_value = mock_tokenizer
 
     mock_model = MagicMock()
+    mock_model.to.return_value = mock_model
     mock_model_cls.from_pretrained.return_value = mock_model
 
     backend.load()

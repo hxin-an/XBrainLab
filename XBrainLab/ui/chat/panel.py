@@ -10,6 +10,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,  # Added for M3.1
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMenu,
     QPushButton,
@@ -66,6 +67,7 @@ class ChatPanel(QWidget):
     model_changed = pyqtSignal(str)
     execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
     new_conversation_requested = pyqtSignal()  # M0.3 New Conversation
+    retry_requested = pyqtSignal()
     debug_tool_requested = pyqtSignal(str, dict)  # M3.1 Debug Mode
 
     def __init__(self):
@@ -172,7 +174,36 @@ class ChatPanel(QWidget):
         self.mode_btn.setMenu(self.mode_menu)
         toolbar_layout.addWidget(self.mode_btn)
 
-        toolbar_layout.addStretch()  # Push buttons to left
+        self.retry_btn = QToolButton()
+        self.retry_btn.setText("↻")
+        self.retry_btn.setFixedSize(28, 28)
+        self.retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.retry_btn.setToolTip("Retry last user request")
+        self.retry_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+        self.retry_btn.clicked.connect(self._on_retry)
+        toolbar_layout.addWidget(self.retry_btn)
+
+        self.clear_btn = QToolButton()
+        self.clear_btn.setText("x")
+        self.clear_btn.setFixedSize(28, 28)
+        self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_btn.setToolTip("Clear conversation")
+        self.clear_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+        self.clear_btn.clicked.connect(self._on_clear)
+        toolbar_layout.addWidget(self.clear_btn)
+
+        toolbar_layout.addStretch()  # Push status to the right
+
+        self.status_label = QLabel("Backend: checking")
+        self.status_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+        self.status_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;",
+        )
+        self.status_label.setToolTip("Backend and local model status")
+        toolbar_layout.addWidget(self.status_label, 1)
+
         control_layout.addWidget(toolbar_widget)
 
         # Row 2: Input Field and Send Button
@@ -215,7 +246,9 @@ class ChatPanel(QWidget):
             local_runtime_ready = config.local_backend_ready()
             local_runtime_message = config.local_backend_status_message()
             gemini_enabled = config.gemini_enabled
-            active_mode = config.active_mode
+            active_mode = LLMConfig.assistant_runtime_selection_from(
+                config
+            ).ui_active_mode
         except Exception:
             logger.debug("Failed to load LLM config for model menu", exc_info=True)
             local_enabled = True
@@ -234,20 +267,36 @@ class ChatPanel(QWidget):
             local_action.setText("Local (Unavailable)")
             local_action.setToolTip(local_runtime_message)
         else:
+            if local_runtime_message != "Local runtime ready.":
+                local_action.setText("Local (CPU fallback)")
+                local_action.setToolTip(local_runtime_message)
             local_action.triggered.connect(
-                lambda checked, m="Local": self._set_model(m)
+                lambda checked, action=local_action: self._set_model(
+                    "local",
+                    action.text(),
+                )
             )
         self.model_menu.addAction(local_action)
 
         if gemini_enabled:
             gemini_action = QAction("Gemini (Remote)", self)
             gemini_action.triggered.connect(
-                lambda checked, m="Gemini": self._set_model(m)
+                lambda checked, action=gemini_action: self._set_model(
+                    "gemini",
+                    action.text(),
+                )
             )
             self.model_menu.addAction(gemini_action)
 
+        local_label = (
+            "Local (CPU fallback)"
+            if local_runtime_ready and local_runtime_message != "Local runtime ready."
+            else "Local"
+        )
         label = (
-            "Gemini (Remote)" if active_mode == "gemini" and gemini_enabled else "Local"
+            "Gemini (Remote)"
+            if active_mode == "gemini" and gemini_enabled
+            else local_label
         )
         self.model_btn.setText(f"Model: {label} ▼")
 
@@ -275,15 +324,22 @@ class ChatPanel(QWidget):
         """
         self.feature_btn.setText(f"{feature_name} ▼")
 
-    def _set_model(self, model_name: str):
-        """Update the model selector button and emit model change signal.
+    def _set_model(self, mode_key: str, label: str | None = None):
+        """Update the selector button and emit a normalized runtime mode.
 
         Args:
-            model_name: The selected model name.
+            mode_key: Runtime backend mode identifier.
+            label: Optional UI label to show on the button.
 
         """
-        self.model_btn.setText(f"{model_name} ▼")
-        self.model_changed.emit(model_name)
+        normalized_mode = LLMConfig.normalize_backend_mode(mode_key)
+        button_label = (
+            label
+            if label is not None
+            else ("Gemini (Remote)" if normalized_mode == "gemini" else "Local")
+        )
+        self.model_btn.setText(f"{button_label} ▼")
+        self.model_changed.emit(normalized_mode)
 
     def _set_execution_mode(self, mode_key: str, label: str):
         """Update the execution mode selector and emit mode change signal.
@@ -299,6 +355,16 @@ class ChatPanel(QWidget):
     def _on_new_conversation(self):
         """Emit the new conversation requested signal."""
         self.new_conversation_requested.emit()
+
+    def _on_retry(self):
+        """Emit a request to retry the most recent user message."""
+        if not self.is_processing:
+            self.retry_requested.emit()
+
+    def _on_clear(self):
+        """Emit a request to clear the conversation."""
+        if not self.is_processing:
+            self.new_conversation_requested.emit()
 
     def _on_send(self):
         """Handle send button click or Enter key press.
@@ -360,6 +426,19 @@ class ChatPanel(QWidget):
         else:
             self.send_btn.setText("➤")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
+
+        if hasattr(self, "retry_btn"):
+            self.retry_btn.setEnabled(not is_processing)
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.setEnabled(not is_processing)
+
+    def set_status_summary(self, text: str, tooltip: str | None = None) -> None:
+        """Set the compact backend/model status line shown in the toolbar."""
+        if not hasattr(self, "status_label"):
+            return
+        self.status_label.setText(text)
+        if tooltip is not None:
+            self.status_label.setToolTip(tooltip)
 
     def resizeEvent(self, event):  # noqa: N802
         """Re-adjust all bubble widths on window resize.
