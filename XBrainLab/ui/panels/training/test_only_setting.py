@@ -23,6 +23,8 @@ class TestOnlySettingWindow(BaseDialog):
     Allows setting batch size, device, and output directory.
     """
 
+    __test__ = False
+
     def __init__(self, parent):
         """Initialize the test-only settings dialog.
 

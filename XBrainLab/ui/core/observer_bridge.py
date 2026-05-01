@@ -1,6 +1,8 @@
 """Qt-compatible observer bridge for thread-safe backend-to-UI signalling."""
 
 import contextlib
+from collections.abc import Callable
+from typing import Any
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -34,12 +36,12 @@ class QtObserverBridge(QObject):
         super().__init__(parent)
         self.observable = observable
         self.event_name = event_name
-        self._wrapper = None
+        self._wrapper: Callable[[tuple[Any, ...], dict[str, Any]], Any] | None = None
 
         # Subscribe to the backend event
         self.observable.subscribe(self.event_name, self._on_event)
 
-    def _on_event(self, *args, **kwargs):
+    def _on_event(self, *args: Any, **kwargs: Any) -> None:
         """Callback invoked by the backend on any thread.
 
         Wraps arguments and emits the ``triggered`` Qt signal for
@@ -54,7 +56,7 @@ class QtObserverBridge(QObject):
         # Note: Qt signals need pickle-able types usually, but tuple/dict are fine.
         self.triggered.emit(args, kwargs)
 
-    def connect_to(self, slot):
+    def connect_to(self, slot: Callable[..., Any]) -> None:
         """Connect the bridge's triggered signal to a UI slot.
 
         The slot receives unpacked ``(*args, **kwargs)`` from the
@@ -68,7 +70,11 @@ class QtObserverBridge(QObject):
         if self._wrapper is not None:
             with contextlib.suppress(TypeError, RuntimeError):
                 self.triggered.disconnect(self._wrapper)
-        self._wrapper = lambda args, kwargs: slot(*args, **kwargs)
+
+        def _wrapped(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+            return slot(*args, **kwargs)
+
+        self._wrapper = _wrapped
         self.triggered.connect(self._wrapper)
 
     def cleanup(self):

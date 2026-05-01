@@ -16,6 +16,8 @@ class SaliencyTopographicMapWidget(BaseSaliencyView):
     def init_ui(self):
         super().init_ui()
         # Add initial text to the default canvas
+        if self.fig is None:
+            raise RuntimeError("Base saliency view figure was not initialized")
         self.ax = self.fig.add_subplot(111)
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
         self.ax.text(

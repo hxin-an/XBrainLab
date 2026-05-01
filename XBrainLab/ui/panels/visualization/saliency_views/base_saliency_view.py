@@ -29,7 +29,7 @@ class BaseSaliencyView(QWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         # 1. Matplotlib Canvas (Default, subclasses can override)
-        self.fig = Figure(figsize=(5, 4), dpi=100)
+        self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
         self.canvas = FigureCanvas(self.fig)
 
         # Apply Theme
@@ -56,6 +56,8 @@ class BaseSaliencyView(QWidget):
         """Clear the plot and reset error state."""
         self.error_label.hide()
         self.canvas.show()
+        if self.fig is None:
+            return
         self.fig.clear()
         self.canvas.draw()
 

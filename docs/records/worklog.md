@@ -86,6 +86,9 @@
       - `6 passed`
     - `timeout 300s poetry run pytest --capture=sys tests/integration/pipeline/test_public_cross_source_training_smoke.py -q`
       - `4 passed, 3 warnings`
+  - UI/type/artifact chunk：
+    - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+      - `810 passed`
 - 本輪剩餘：
   - 先提交 local LLM runtime + launcher + docs correction checkpoint。
   - 再盤點並提交 backend / UI-agent / docs cleanup / validation chunks。

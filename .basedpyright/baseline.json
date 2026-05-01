@@ -522,24 +522,6 @@
                 }
             }
         ],
-        "./XBrainLab/llm/agent/worker.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 27,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 27,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/llm/core/backends/local.py": [
             {
                 "code": "reportPrivateImportUsage",
@@ -1076,16 +1058,6 @@
                 "range": {
                     "startColumn": 27,
                     "endColumn": 38,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./XBrainLab/ui/panels/visualization/saliency_views/base_saliency_view.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 17,
-                    "endColumn": 22,
                     "lineCount": 1
                 }
             }

@@ -756,7 +756,7 @@ class TestAgentManagerDeep:
     def test_set_model(self, mgr):
         mgr.agent_controller = MagicMock()
         mgr.set_model("Gemini")
-        mgr.agent_controller.set_model.assert_called_with("Gemini")
+        mgr.agent_controller.set_model.assert_called_with("gemini")
 
     def test_on_processing_state_changed(self, mgr):
         mgr.chat_panel = MagicMock()
