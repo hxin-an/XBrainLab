@@ -172,14 +172,14 @@
 
 ### Milestone I - Tool-Call Eval / Thesis Evidence
 
-狀態：禁止提前開始；只有 Milestone B-H 工程穩定後才做。
+狀態：deterministic baseline 已建立並跑通；local LLM primary / fallback 真實 eval runner 尚未開始。
 
-- [ ] 研究 BFCL / trajectory evaluation / function-calling eval / local structured-output 限制。
-- [ ] 實作 deterministic mock-agent baseline evaluator。
-- [ ] 至少 20 個 XBrainLab 專用 eval cases。
-- [ ] 產出 machine-readable JSON 與 human-readable Markdown report。
+- [x] 研究 BFCL / trajectory evaluation / function-calling eval / local structured-output 限制。
+- [x] 實作 deterministic mock-agent baseline evaluator。
+- [x] 至少 20 個 XBrainLab 專用 eval cases。
+- [x] 產出 machine-readable JSON 與 human-readable Markdown report。
 - [ ] 若 local LLM 穩定，再跑 primary / fallback model。
-- [ ] 更新 `docs/validation/README.md` 與 implementation log。
+- [x] 更新 `docs/validation/README.md` 與 implementation log。
 
 ### Milestone J - Final Validation / Documentation Closure
 

@@ -105,6 +105,10 @@ stabilization。
 - startup smoke：
   - `timeout 45s xvfb-run -a poetry run python run.py --model local`
   - `MainWindow initialized` 後 timeout 結束，屬於 GUI smoke 預期結果。
+- tool-call eval deterministic baseline：
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+  - artifacts：`artifacts/agent_evals/latest.json`、`artifacts/agent_evals/latest.md`
+  - `21 / 21` cases passed；deterministic baseline，不是 local LLM performance claim。
 - `ai-assistant-open.png` 的 `(1428, 800)` baseline 已接受，尺寸和 live artifact、repo HEAD reference 一致。
 
 ## 邊界與未驗證事項
@@ -123,7 +127,8 @@ stabilization。
 目前沒有 final gate blocker。主要風險是 UI action execution 仍有不少直接 controller path，
 部分 assistant real tools 仍先走 `BackendFacade` legacy method 再由 typed adapter 正規化結果，
 launcher 尚未完整做人工 click-through 互動驗收，`evaluate` / `visualize` / `saliency` /
-`new_session` 仍只是 disabled future command contract。
+`new_session` 仍只是 disabled future command contract，tool-call eval 目前只有 deterministic
+baseline，尚未跑 local LLM primary / fallback 真實 agent runner。
 
 ## 目前執行中
 

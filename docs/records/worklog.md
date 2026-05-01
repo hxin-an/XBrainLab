@@ -37,6 +37,26 @@
 
 ## 2026-05-02
 
+### 07:05 Deterministic tool-call eval baseline
+
+- 做了什麼：
+  - 參考 BFCL、LangSmith trajectory evaluation、OpenAI structured-output / function-calling
+    思路，落成 XBrainLab deterministic baseline，而不是先跑不穩的 local LLM eval。
+  - 新增 `scripts/agent/evals/run_tool_call_eval.py`，定義 21 個 XBrainLab 專用 cases。
+  - cases 覆蓋 empty state train refusal、load、preprocess、epoch、dataset、train readiness、
+    reset confirmation、visualization/saliency block、invalid parameter、多輪補參數、tool result interpretation。
+  - 產出 `artifacts/agent_evals/latest.json` 和 `artifacts/agent_evals/latest.md`。
+- 結果：
+  - deterministic baseline `21 / 21` passed。
+  - 這是 eval framework / scripted baseline，不是 local LLM primary / fallback 真實成功率。
+- 證據：
+  - `timeout 180s poetry run pytest --capture=sys tests/integration/agent -q`
+    - `1 passed`
+  - `timeout 120s poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+    - wrote latest JSON / Markdown；failed cases `0`
+- 本輪剩餘：
+  - 若要宣稱 local LLM tool-call ability，需在下一輪用同一 case schema 接 primary / fallback runner。
+
 ### 06:46 Resource-safe final gate plan
 
 - 做了什麼：

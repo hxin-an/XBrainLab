@@ -1,0 +1,645 @@
+{
+  "benchmark": "xbrainlab-deterministic-tool-call",
+  "runner": "deterministic-scripted-baseline",
+  "method_references": [
+    {
+      "name": "Berkeley Function Calling Leaderboard",
+      "url": "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+      "used_for": "tool selection, argument matching, multi-turn cases"
+    },
+    {
+      "name": "LangSmith trajectory evaluations",
+      "url": "https://docs.langchain.com/langsmith/trajectory-evals",
+      "used_for": "trajectory-level sequence scoring"
+    },
+    {
+      "name": "OpenAI structured outputs/function calling guidance",
+      "url": "https://platform.openai.com/docs/guides/structured-outputs",
+      "used_for": "schema-aware tool output and strict result parsing"
+    }
+  ],
+  "total_cases": 21,
+  "summary": {
+    "total_cases": 21,
+    "passed_cases": 21,
+    "failed_cases": 0,
+    "pass_rate": 1.0,
+    "intent_accuracy": 1.0,
+    "tool_selection_accuracy": 1.0,
+    "argument_correctness_accuracy": 1.0,
+    "state_aware_accuracy": 1.0,
+    "blocked_command_accuracy": 1.0,
+    "recovery_accuracy": 1.0,
+    "tool_result_interpretation_accuracy": 1.0,
+    "trajectory_quality_accuracy": 1.0,
+    "runtime_safety_accuracy": 1.0,
+    "local_llm_reliability_accuracy": 1.0
+  },
+  "cases": [
+    {
+      "case_id": "empty-train-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "train",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Generate datasets before training.; Select a model before training.; Configure training options before training.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "empty-load-path",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "load_data",
+        "tool_calls": [
+          {
+            "tool_name": "load_data",
+            "arguments": {
+              "paths": [
+                "/data/S01.gdf"
+              ]
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "empty-load-missing-path",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "load_data",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Missing required file path; ask the user for a file path.",
+        "asks_clarification": true,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "multi-turn-load-recovery",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "load_data",
+        "tool_calls": [
+          {
+            "tool_name": "load_data",
+            "arguments": {
+              "paths": [
+                "/data/S02.edf"
+              ]
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "loaded-preprocess",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "preprocess",
+        "tool_calls": [
+          {
+            "tool_name": "apply_standard_preprocess",
+            "arguments": {
+              "l_freq": 4.0,
+              "h_freq": 40.0
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "empty-preprocess-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "preprocess",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Load raw data before preprocessing.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "preprocessed-create-epoch",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "create_epoch",
+        "tool_calls": [
+          {
+            "tool_name": "epoch_data",
+            "arguments": {
+              "t_min": -0.2,
+              "t_max": 0.8,
+              "event_id": [
+                "769"
+              ]
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "loaded-create-epoch-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "create_epoch",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Preprocess data before creating epochs.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "epoched-generate-dataset",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "generate_dataset",
+        "tool_calls": [
+          {
+            "tool_name": "generate_dataset",
+            "arguments": {
+              "test_ratio": 0.2,
+              "val_ratio": 0.2,
+              "training_mode": "individual"
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "loaded-generate-dataset-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "generate_dataset",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Create epochs before generating datasets.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "dataset-train-missing-config",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "train",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Select a model before training.; Configure training options before training.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "dataset-set-model",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "configure_training",
+        "tool_calls": [
+          {
+            "tool_name": "set_model",
+            "arguments": {
+              "model_name": "EEGNet"
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "dataset-configure-training",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "configure_training",
+        "tool_calls": [
+          {
+            "tool_name": "configure_training",
+            "arguments": {
+              "epoch": 5,
+              "batch_size": 16,
+              "learning_rate": 0.001
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "ready-train-confirmation",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "train",
+        "tool_calls": [
+          {
+            "tool_name": "start_training",
+            "arguments": {}
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": true,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "epoched-load-new-data-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "load_data",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Reset the session before loading new raw data after epoching, dataset generation, or trainer creation.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "reset-request-confirmation",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "reset_session",
+        "tool_calls": [
+          {
+            "tool_name": "clear_dataset",
+            "arguments": {}
+          }
+        ],
+        "blocked": true,
+        "confirmation_required": true,
+        "blocked_reason": "reset_session requires confirmation.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "saliency-before-trained-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "saliency",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "This ApplicationService command is a future query contract; use the existing controller/facade query path until it is implemented.; Complete at least one training run first.; Configure saliency parameters first.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "visualize-before-trained-block",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "visualize",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "This ApplicationService command is a future query contract; use the existing controller/facade query path until it is implemented.; Complete at least one training run first.",
+        "asks_clarification": false,
+        "result_interpretation": null
+      },
+      "failures": []
+    },
+    {
+      "case_id": "invalid-event-id",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "create_epoch",
+        "tool_calls": [
+          {
+            "tool_name": "epoch_data",
+            "arguments": {
+              "t_min": -0.1,
+              "t_max": 0.5,
+              "event_id": [
+                "BAD_EVENT"
+              ]
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": "recoverable_failure"
+      },
+      "failures": []
+    },
+    {
+      "case_id": "bad-load-path",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "load_data",
+        "tool_calls": [
+          {
+            "tool_name": "load_data",
+            "arguments": {
+              "paths": [
+                "/missing/file.gdf"
+              ]
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": "recoverable_failure"
+      },
+      "failures": []
+    },
+    {
+      "case_id": "successful-load-summary",
+      "passed": true,
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "prediction": {
+        "intent": "load_data",
+        "tool_calls": [
+          {
+            "tool_name": "load_data",
+            "arguments": {
+              "paths": [
+                "/data/S03.fif"
+              ]
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "result_interpretation": "success_summary"
+      },
+      "failures": []
+    }
+  ]
+}

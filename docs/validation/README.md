@@ -110,6 +110,30 @@ agent 架構文件整理時也跑：
   - `timeout 300s poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
   - classification `gpu-ready`; prompt smoke `passed`; structured-output smoke `passed`
 
+2026-05-02 deterministic tool-call eval baseline：
+
+- methodology references:
+  - [Berkeley Function Calling Leaderboard](https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard)
+  - [LangSmith trajectory evaluations](https://docs.langchain.com/langsmith/trajectory-evals)
+  - [OpenAI structured outputs](https://platform.openai.com/docs/guides/structured-outputs)
+- script:
+  - `timeout 120s poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+- test:
+  - `timeout 180s poetry run pytest --capture=sys tests/integration/agent -q`
+  - `1 passed`
+- artifacts:
+  - `artifacts/agent_evals/latest.json`
+  - `artifacts/agent_evals/latest.md`
+- deterministic baseline result:
+  - total cases `21`
+  - passed `21`
+  - failed `0`
+  - intent / tool selection / argument / state-aware / blocked / recovery /
+    trajectory / runtime safety accuracy：`100%`
+
+這是 deterministic scripted baseline，不是 local LLM performance claim。local model primary /
+fallback 真實 tool-call success rate 仍需在下一輪用相同 case schema 接 model runner 後再量測。
+
 ## Clean Dashboard 判定
 
 fast quality dashboard 的 clean 判定不是只看 script 有沒有跑完。

@@ -28,6 +28,49 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Deterministic tool-call eval baseline
+
+### 背景
+
+product-delivery final gate 通過後，可以開始 tool-call eval / thesis evidence 的第一層。
+為避免把 local model loading 和 eval framework 綁死，先建立 deterministic scripted baseline；
+這能驗證 case schema、scoring 維度、artifact 產出和 ApplicationService state/capability
+邏輯，不宣稱 local LLM 真實成功率。
+
+### 變更
+
+- 新增 `scripts/agent/evals/run_tool_call_eval.py`。
+- 建立 `21` 個 XBrainLab 專用 cases，覆蓋 empty/load/preprocess/epoch/dataset/train/reset/
+  visualize/saliency/invalid parameter/multi-turn recovery/tool-result interpretation。
+- scoring 維度包含 intent、tool selection、argument correctness、state-aware decision、
+  blocked-command handling、multi-turn recovery、tool result interpretation、trajectory quality、
+  runtime safety、local LLM reliability。
+- 產出 machine-readable `artifacts/agent_evals/latest.json` 與 human-readable
+  `artifacts/agent_evals/latest.md`。
+- 新增 `tests/integration/agent/test_tool_call_eval.py`，驗證至少 20 cases、summary metrics 和
+  artifact writing。
+
+### 影響範圍
+
+- agent validation scripts
+- validation artifacts
+- thesis evidence foundation
+- validation docs
+
+### 驗證
+
+- `timeout 180s poetry run pytest --capture=sys tests/integration/agent -q`
+  - `1 passed`
+- `timeout 120s poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+  - `21 / 21` deterministic cases passed
+  - artifacts written to `artifacts/agent_evals/latest.json` and `artifacts/agent_evals/latest.md`
+
+### 剩餘風險
+
+- 這是 deterministic baseline，不是 local LLM primary / fallback 真實 tool-call result。
+- 下一步要接 local model runner，測同一批 cases 的穩定性、structured-output failure、
+  retry / recovery 和 model-to-model 差異。
+
 ## 2026-05-02 Final product gate 與 local model preflight idempotence
 
 ### 背景
