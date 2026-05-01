@@ -184,3 +184,35 @@ class TestAgentManagerMethods:
         agent_mgr.chat_dock.isVisible.return_value = False
         agent_mgr.toggle()
         agent_mgr.chat_dock.show.assert_called()
+
+    def test_debug_tool_flow_surfaces_backend_blocked_result(self, qtbot):
+        """UI -> agent -> backend command flow reports shared blocked reason."""
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        main_window = QMainWindow()
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        study = Study()
+
+        with (
+            patch("XBrainLab.llm.agent.controller.AgentWorker") as MockWorker,
+            patch("XBrainLab.llm.agent.controller.QThread") as MockThread,
+            patch("XBrainLab.llm.agent.controller.threading.Thread") as MockThreading,
+        ):
+            MockWorker.return_value.generation_thread = None
+            MockThread.return_value.isRunning.return_value = False
+            MockThreading.return_value.start = MagicMock()
+
+            manager = AgentManager(main_window, study)
+            manager.init_ui()
+            manager.start_system()
+            manager.agent_controller.execute_debug_tool("start_training", {})
+
+        messages = [message["content"] for message in manager.chat_controller.messages]
+        tool_output = next(message for message in messages if "Tool Output:" in message)
+
+        assert '"ok": false' in tool_output
+        assert '"command_name": "train"' in tool_output
+        assert "Generate datasets before training" in tool_output
+        assert manager.chat_panel.status_label.text().startswith("Backend: empty")

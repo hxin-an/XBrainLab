@@ -37,6 +37,25 @@
 
 ## 2026-05-02
 
+### 06:39 UI -> agent -> backend blocked-command flow test
+
+- 做了什麼：
+  - 新增 `tests/unit/ui/components/test_agent_manager.py` deterministic product-flow test。
+  - 測試在不載入本地模型的情況下啟動 `AgentManager` / real `LLMController` / real `Study`，
+    透過 debug tool 執行 `start_training`。
+  - empty state 下 `ApplicationService` policy 擋下 train，UI chat 收到 structured
+    `Tool Output`，內含 `ok=false`、`command_name=train` 和 shared blocked reason。
+- 結果：
+  - Milestone D/H 的「至少一條 UI -> agent -> backend blocked command flow 可測」已有 low-risk
+    deterministic coverage。
+  - 這不是取代真 launcher click-through；真桌面啟動後開 chat panel 的 product smoke 仍要跑。
+- 證據：
+  - `timeout 180s scripts/dev/run_ui_pytest.sh tests/unit/ui/components/test_agent_manager.py tests/unit/ui/chat/test_chat_panel.py -q`
+    - `49 passed`
+- 本輪剩餘：
+  - launcher startup / chat-panel smoke。
+  - final gate 前依 resource-safe 規則逐步跑 backend、UI、LLM、integration、MkDocs。
+
 ### 06:25 Agent typed result adapter
 
 - 做了什麼：

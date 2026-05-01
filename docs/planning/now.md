@@ -102,6 +102,7 @@
 - [x] loading / error / compact backend diagnostics 可見。
 - [x] local runtime unavailable 不讓 UI 直接閃退，會顯示狀態。
 - [x] UI tests、dialog acceptance smoke、agent manager smoke 通過。
+- [x] UI -> agent -> backend blocked-command deterministic tool flow 可測。
 - [ ] 本輪剩餘：真 local model load / failure / fallback 下的 UI smoke。
 - [ ] 本輪剩餘：桌面 launcher 啟動後開 chat panel 的 product smoke。
 
@@ -164,7 +165,8 @@
 - [x] desktop launcher / run.py startup -> MainWindow smoke 可展示。
 - [x] local LLM 狀態可見於 chat panel diagnostics。
 - [x] empty state 要求 train 時，agent 依 capability policy 拒絕並說明缺 dataset / config（unit 覆蓋）。
-- [ ] backend command 成功 / failed / blocked reason 的互動式 UI walkthrough。
+- [x] UI -> agent debug tool -> backend blocked command flow 會顯示 shared blocked reason。
+- [ ] backend command 成功 / failed / blocked reason 的真 launcher 互動式 walkthrough。
 - [ ] destructive reset / new session 有 confirmation boundary。
 - [ ] backend / UI / agent / local runtime smoke 通過。
 
