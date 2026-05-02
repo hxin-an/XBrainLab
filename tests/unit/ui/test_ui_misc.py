@@ -755,8 +755,10 @@ class TestAgentManagerDeep:
 
     def test_set_model(self, mgr):
         mgr.agent_controller = MagicMock()
+        mgr.vram_checker = MagicMock()
         mgr.set_model("Gemini")
-        mgr.agent_controller.set_model.assert_called_with("gemini")
+        mgr.agent_controller.set_model.assert_called_with("local")
+        mgr.vram_checker.check.assert_called_once_with(switching_to_local=True)
 
     def test_on_processing_state_changed(self, mgr):
         mgr.chat_panel = MagicMock()
@@ -852,7 +854,9 @@ class TestAgentManagerDeep:
         worker = MagicMock()
         mgr.agent_controller.worker = worker
         worker.engine.config.active_mode = "gemini"
-        assert mgr.prepare_model_deletion("model") is True
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert mgr.prepare_model_deletion("model") is False
+        mgr.agent_controller.set_model.assert_not_called()
 
     def test_check_vram_not_local(self, mgr):
         mgr.agent_controller = None
