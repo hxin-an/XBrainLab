@@ -57,6 +57,7 @@ class TestSaveAndLoad:
         cfg.gemini_enabled = True
         cfg.gemini_model_name = "gemini-2.0-flash"
         cfg.model_name = "TestModel"
+        cfg.local_runtime_notice_acknowledged = True
 
         cfg.save_to_file(filepath)
         assert os.path.exists(filepath)
@@ -67,6 +68,7 @@ class TestSaveAndLoad:
         assert loaded.gemini_enabled is True
         assert loaded.gemini_model_name == "gemini-2.0-flash"
         assert loaded.model_name == "TestModel"
+        assert loaded.local_runtime_notice_acknowledged is True
 
     def test_save_and_load_preserves_inference_mode_separately(self, tmp_path):
         filepath = str(tmp_path / "settings.json")

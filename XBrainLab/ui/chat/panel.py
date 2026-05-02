@@ -158,6 +158,27 @@ class ChatPanel(QWidget):
         input_layout.addWidget(self.send_btn)
 
         control_layout.addWidget(input_widget)
+
+        footer_row = QHBoxLayout()
+        footer_row.setContentsMargins(6, 0, 6, 0)
+        footer_row.setSpacing(8)
+        self.runtime_status_label = QLabel("Local assistant: checking")
+        self.runtime_status_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;"
+        )
+        self.runtime_status_label.setWordWrap(True)
+        footer_row.addWidget(self.runtime_status_label, 1)
+
+        self.step_mode_status_label = QLabel("Single step")
+        self.step_mode_status_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;"
+        )
+        self.step_mode_status_label.setToolTip(
+            "Single step stops after one completed action. Auto steps can continue "
+            "through safe follow-up actions."
+        )
+        footer_row.addWidget(self.step_mode_status_label)
+        control_layout.addLayout(footer_row)
         layout.addWidget(control_panel)
 
     def _build_header(self, parent_layout: QVBoxLayout) -> None:
@@ -189,6 +210,15 @@ class ChatPanel(QWidget):
         title_stack.addWidget(subtitle)
 
         title_row.addLayout(title_stack, 1)
+
+        self.options_btn = QToolButton()
+        self.options_btn.setText("Options")
+        self.options_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.options_btn.setFixedSize(76, 28)
+        self.options_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.options_btn.setToolTip("Assistant options")
+        self.options_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+        title_row.addWidget(self.options_btn)
 
         self.retry_btn = QToolButton()
         self.retry_btn.setText("Retry")
@@ -222,7 +252,7 @@ class ChatPanel(QWidget):
         self.model_status_chip = QLabel("Checking local model")
         self.model_status_chip.setStyleSheet(STATUS_CHIP_WARNING_STYLE)
         self.model_status_chip.setToolTip("Local model status")
-        chip_row.addWidget(self.model_status_chip)
+        self.model_status_chip.setVisible(False)
 
         self.available_commands_chip = QLabel("Next steps: checking")
         self.available_commands_chip.setStyleSheet(STATUS_CHIP_STYLE)
@@ -244,8 +274,9 @@ class ChatPanel(QWidget):
             action = QAction(feat, self)
             action.triggered.connect(lambda checked, f=feat: self._set_feature(f))
             self.feature_menu.addAction(action)
+        self.feature_menu.setTitle("Assistant mode")
         self.feature_btn.setMenu(self.feature_menu)
-        toolbar_layout.addWidget(self.feature_btn)
+        self.feature_btn.setVisible(False)
 
         self.model_btn = QPushButton("Local model")
         self.model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -253,9 +284,10 @@ class ChatPanel(QWidget):
 
         self.model_menu = QMenu(self)
         self.model_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
+        self.model_menu.setTitle("Runtime")
         self.model_btn.setMenu(self.model_menu)
         self.update_model_menu()
-        toolbar_layout.addWidget(self.model_btn)
+        self.model_btn.setVisible(False)
 
         self.mode_btn = QPushButton("Single step")
         self.mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -277,8 +309,16 @@ class ChatPanel(QWidget):
                 )
             )
             self.mode_menu.addAction(action)
+        self.mode_menu.setTitle("Step behavior")
         self.mode_btn.setMenu(self.mode_menu)
-        toolbar_layout.addWidget(self.mode_btn)
+        self.mode_btn.setVisible(False)
+
+        self.options_menu = QMenu(self)
+        self.options_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
+        self.options_menu.addMenu(self.feature_menu)
+        self.options_menu.addMenu(self.model_menu)
+        self.options_menu.addMenu(self.mode_menu)
+        self.options_btn.setMenu(self.options_menu)
         toolbar_layout.addStretch()
 
         self.status_label = QLabel("Backend: checking")
@@ -403,6 +443,8 @@ class ChatPanel(QWidget):
             else local_label
         )
         self.model_btn.setText(label)
+        if hasattr(self, "runtime_status_label"):
+            self.runtime_status_label.setText(f"Runtime: {label}")
 
     def connect_controller(self, controller: ChatController):
         """Connect to a backend ChatController for state synchronization.
@@ -427,6 +469,8 @@ class ChatPanel(QWidget):
 
         """
         self.feature_btn.setText(feature_name)
+        if hasattr(self, "options_btn"):
+            self.options_btn.setToolTip(f"Assistant mode: {feature_name}")
 
     def _set_model(self, mode_key: str, label: str | None = None):
         """Update the selector button and emit a normalized runtime mode.
@@ -445,6 +489,8 @@ class ChatPanel(QWidget):
             )
         )
         self.model_btn.setText(button_label)
+        if hasattr(self, "runtime_status_label"):
+            self.runtime_status_label.setText(f"Runtime: {button_label}")
         self.model_changed.emit(normalized_mode)
 
     def _set_execution_mode(self, mode_key: str, label: str):
@@ -456,6 +502,8 @@ class ChatPanel(QWidget):
 
         """
         self.mode_btn.setText(label)
+        if hasattr(self, "step_mode_status_label"):
+            self.step_mode_status_label.setText(label)
         self.execution_mode_changed.emit(mode_key)
 
     def _on_new_conversation(self):
@@ -545,6 +593,8 @@ class ChatPanel(QWidget):
             self.retry_btn.setEnabled(not is_processing)
         if hasattr(self, "clear_btn"):
             self.clear_btn.setEnabled(not is_processing)
+        if hasattr(self, "options_btn"):
+            self.options_btn.setEnabled(not is_processing)
 
     def set_status_summary(self, text: str, tooltip: str | None = None) -> None:
         """Set the compact backend/model status line shown in the toolbar."""
@@ -617,6 +667,10 @@ class ChatPanel(QWidget):
             )
             if tooltip:
                 self.model_status_chip.setToolTip(tooltip)
+        if hasattr(self, "runtime_status_label"):
+            self.runtime_status_label.setText(f"Local assistant: {model_status}")
+            if tooltip:
+                self.runtime_status_label.setToolTip(tooltip)
 
         display_commands = (
             None if available_commands is None else command_labels(available_commands)

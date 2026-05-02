@@ -171,6 +171,55 @@ class TestAgentManagerMethods:
             "button to install or switch runtime."
         )
 
+    def test_first_run_later_keeps_runtime_unloaded(self, agent_mgr):
+        from XBrainLab.llm.core.config import LLMConfig
+        from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
+            LocalRuntimeFirstRunDialog,
+        )
+
+        config = LLMConfig()
+        with patch.object(config, "save_to_file") as mock_save:
+            should_continue = agent_mgr._handle_local_runtime_first_run_choice(
+                config,
+                LocalRuntimeFirstRunDialog.LATER,
+            )
+
+        assert should_continue is False
+        mock_save.assert_not_called()
+        agent_mgr.chat_controller.add_agent_message.assert_called_with(
+            "Local assistant runtime was not started. Open assistant settings "
+            "when you are ready to enable or download a model."
+        )
+
+    def test_first_run_disable_persists_without_loading(self, agent_mgr):
+        from XBrainLab.llm.core.config import LLMConfig
+        from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
+            LocalRuntimeFirstRunDialog,
+        )
+
+        config = LLMConfig()
+        with patch.object(config, "save_to_file") as mock_save:
+            should_continue = agent_mgr._handle_local_runtime_first_run_choice(
+                config,
+                LocalRuntimeFirstRunDialog.DISABLE,
+            )
+
+        assert should_continue is False
+        assert config.local_model_enabled is False
+        assert config.local_runtime_notice_acknowledged is True
+        mock_save.assert_called_once()
+
+    def test_local_disabled_runtime_status_is_user_visible(self, agent_mgr):
+        from XBrainLab.llm.core.config import LLMConfig
+
+        config = LLMConfig()
+        config.local_model_enabled = False
+
+        ready, message = agent_mgr._assistant_runtime_start_status(config)
+
+        assert ready is False
+        assert "disabled" in message
+
     def test_toggle_already_visible(self, agent_mgr):
         agent_mgr.agent_initialized = True
         agent_mgr.chat_dock = MagicMock()

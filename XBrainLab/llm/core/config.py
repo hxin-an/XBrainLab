@@ -119,6 +119,7 @@ class LLMConfig:
     # Active Mode
     active_mode: str = "local"  # 'local' or 'gemini'
     local_model_enabled: bool = True  # Whether local model features are enabled
+    local_runtime_notice_acknowledged: bool = False
 
     @staticmethod
     def normalize_backend_mode(mode: str | None, fallback: str = "local") -> str:
@@ -482,6 +483,7 @@ class LLMConfig:
             "local": {
                 "model_name": self.model_name,
                 "enabled": self.local_model_enabled,
+                "runtime_notice_acknowledged": (self.local_runtime_notice_acknowledged),
             },
             "gemini": {
                 "model_name": self.gemini_model_name,
@@ -536,6 +538,10 @@ class LLMConfig:
             if "local" in data:
                 config.model_name = data["local"].get("model_name", config.model_name)
                 config.local_model_enabled = data["local"].get("enabled", True)
+                config.local_runtime_notice_acknowledged = data["local"].get(
+                    "runtime_notice_acknowledged",
+                    False,
+                )
             if "gemini" in data:
                 config.gemini_model_name = data["gemini"].get(
                     "model_name",

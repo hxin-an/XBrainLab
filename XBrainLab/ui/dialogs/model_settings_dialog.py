@@ -112,6 +112,10 @@ class ModelSettingsDialog(QDialog):
         self.local_runtime_label.setWordWrap(True)
         local_layout.addWidget(self.local_runtime_label)
 
+        self.local_resource_label = QLabel("")
+        self.local_resource_label.setWordWrap(True)
+        local_layout.addWidget(self.local_resource_label)
+
         # Enable Checkbox (Moved to bottom)
         self.local_enable_chk = QCheckBox("ACTIVATE LOCAL MODEL")
         self.local_enable_chk.toggled.connect(self._on_local_enable_toggled)
@@ -273,6 +277,13 @@ class ModelSettingsDialog(QDialog):
     def _refresh_local_runtime_status(self):
         """Reflect local-runtime readiness without trying to load the model."""
         model_name = self.local_model_combo.currentText()
+        preflight = plan_model_download(model_name, self.config.cache_dir)
+        self.local_resource_label.setText(
+            "Local runtime uses this computer's GPU or CPU only after activation. "
+            f"Estimated download: {format_bytes(preflight.estimated_download_bytes)}; "
+            f"current cache: {format_bytes(preflight.current_cache_bytes)}; "
+            f"projected cache: {format_bytes(preflight.projected_cache_bytes)}."
+        )
         message = self.config.local_backend_status_message(model_name=model_name)
         if self.config.local_backend_ready(model_name=model_name):
             detail = message.removeprefix("Local runtime ready.").strip()
@@ -559,6 +570,8 @@ class ModelSettingsDialog(QDialog):
         """Save settings, persist configuration, and accept the dialog."""
         # Save to config object
         self.config.local_model_enabled = self.local_enable_chk.isChecked()
+        if self.config.local_model_enabled:
+            self.config.local_runtime_notice_acknowledged = True
         self.config.model_name = self.local_model_combo.currentText()
         self.config.gemini_model_name = self.gemini_model_combo.currentText()
         self.config.gemini_enabled = self.gemini_enabled

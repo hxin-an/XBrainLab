@@ -21,6 +21,9 @@ from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
+from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
+    LocalRuntimeFirstRunDialog,
+)
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
 from XBrainLab.ui.product_language import workflow_stage_label
@@ -189,6 +192,14 @@ class AgentManager(QObject):
 
     def toggle(self):
         """Toggle the Agent dock visibility, initializing on first open."""
+        if (
+            not self.agent_initialized
+            and self.chat_dock
+            and self.chat_dock.isVisible() is True
+        ):
+            self.chat_dock.close()
+            return
+
         if not self.agent_initialized:
             if not self.chat_panel or not self.chat_dock:
                 logger.warning("Agent dock requested before init_ui completed")
@@ -201,6 +212,12 @@ class AgentManager(QObject):
                 self.main_window.ai_btn.setChecked(True)
 
             config = self._load_runtime_config()
+            if self._needs_local_runtime_first_run(config):
+                choice = self._show_local_runtime_first_run_dialog(config)
+                if not self._handle_local_runtime_first_run_choice(config, choice):
+                    return
+                config = self._load_runtime_config()
+
             ready, message = self._assistant_runtime_start_status(config)
             self.refresh_backend_status()
             if ready:
@@ -214,6 +231,75 @@ class AgentManager(QObject):
             self.chat_dock.show()
 
     @staticmethod
+    def _needs_local_runtime_first_run(config: LLMConfig) -> bool:
+        """Return whether local runtime consent should be shown before startup."""
+        if not hasattr(config, "model_name"):
+            return False
+        selection = LLMConfig.assistant_runtime_selection_from(config)
+        return (
+            selection.backend_mode == "local"
+            and bool(getattr(config, "local_model_enabled", True))
+            and not bool(
+                getattr(config, "local_runtime_notice_acknowledged", False),
+            )
+        )
+
+    def _show_local_runtime_first_run_dialog(self, config: LLMConfig) -> str:
+        """Show the local-runtime consent dialog and return the selected choice."""
+        dialog = LocalRuntimeFirstRunDialog(self.main_window, config)
+        if dialog.exec():
+            return dialog.choice
+        return LocalRuntimeFirstRunDialog.LATER
+
+    def _handle_local_runtime_first_run_choice(
+        self,
+        config: LLMConfig,
+        choice: str,
+    ) -> bool:
+        """Apply a first-run runtime choice.
+
+        Returns ``True`` when startup may continue immediately, otherwise the
+        assistant dock remains open with a visible status message.
+        """
+        if choice in {
+            LocalRuntimeFirstRunDialog.ENABLE,
+            LocalRuntimeFirstRunDialog.USE_CACHE,
+        }:
+            config.local_model_enabled = True
+            config.local_runtime_notice_acknowledged = True
+            config.save_to_file()
+            return True
+
+        if choice == LocalRuntimeFirstRunDialog.DOWNLOAD:
+            config.local_runtime_notice_acknowledged = True
+            config.save_to_file()
+            self.open_settings_dialog()
+            updated_config = self._load_runtime_config()
+            ready, message = self._assistant_runtime_start_status(updated_config)
+            self.refresh_backend_status()
+            if ready:
+                return True
+            self._show_runtime_unavailable(message)
+            return False
+
+        if choice == LocalRuntimeFirstRunDialog.DISABLE:
+            config.local_model_enabled = False
+            config.local_runtime_notice_acknowledged = True
+            config.save_to_file()
+            self.refresh_backend_status()
+            self.chat_controller.add_agent_message(
+                "Local assistant runtime is disabled. Open assistant settings "
+                "when you want to enable it."
+            )
+            return False
+
+        self.chat_controller.add_agent_message(
+            "Local assistant runtime was not started. Open assistant settings "
+            "when you are ready to enable or download a model."
+        )
+        return False
+
+    @staticmethod
     def _load_runtime_config() -> LLMConfig:
         """Load persisted assistant runtime config with a safe fallback."""
         return LLMConfig.load_from_file() or LLMConfig()
@@ -224,6 +310,12 @@ class AgentManager(QObject):
         selection = LLMConfig.assistant_runtime_selection_from(config)
 
         if selection.backend_mode == "local":
+            if not config.local_model_enabled:
+                return (
+                    False,
+                    "Local assistant runtime is disabled. Enable it in assistant "
+                    "settings when you want to use the local model.",
+                )
             model_id, message = config.available_local_model_id(selection.model_id)
             return model_id is not None, message
 
@@ -568,11 +660,7 @@ class AgentManager(QObject):
         try:
             state = self.backend_facade.get_state()
             capabilities = self.backend_facade.get_capabilities()
-            enabled = [
-                name
-                for name, capability in capabilities.capabilities.items()
-                if capability.enabled
-            ]
+            enabled = self._product_next_steps(state, capabilities)
             stage = workflow_stage_label(state)
             model_config = LLMConfig.load_from_file() or LLMConfig()
             selection = LLMConfig.assistant_runtime_selection_from(model_config)
@@ -591,7 +679,7 @@ class AgentManager(QObject):
                     "Local model: "
                     f"{model_config.local_backend_status_message(selection.model_id)}"
                 ),
-                "Available commands: " + (", ".join(enabled) if enabled else "none"),
+                "Available next steps: " + (", ".join(enabled) if enabled else "none"),
             ]
             if train_capability.reasons:
                 tooltip_lines.append(
@@ -620,6 +708,36 @@ class AgentManager(QObject):
                 "Backend: status unavailable",
                 f"Status refresh failed: {exc}",
             )
+
+    @staticmethod
+    def _product_next_steps(state, capabilities) -> list[str]:
+        """Return user-facing next-step command IDs, not every enabled command."""
+        active_dataset = state.active_dataset
+        training = state.training
+        evaluation = state.evaluation
+
+        candidates: list[str]
+        if evaluation.finished_runs:
+            candidates = ["evaluate", "visualize", "saliency"]
+        elif active_dataset.has_datasets:
+            if training.has_model and training.has_training_option:
+                candidates = ["train"]
+            else:
+                candidates = ["configure_training"]
+        elif active_dataset.has_epoch_data:
+            candidates = ["generate_dataset"]
+        elif active_dataset.has_preprocessed_data:
+            candidates = ["create_epoch"]
+        elif active_dataset.has_raw_data:
+            candidates = ["preprocess", "attach_labels"]
+        else:
+            candidates = ["load_data"]
+
+        return [
+            command_name
+            for command_name in candidates
+            if capabilities.get(command_name).enabled
+        ]
 
     def close(self):
         """Clean up the agent controller resources."""

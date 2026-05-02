@@ -215,11 +215,11 @@ class MessageBubble(QWidget):
 
         # Enforce minimum height
         desc_height = max(desc_height, 20)
-        final_height = int(desc_height) + layout_v_margins
+        final_height = int(desc_height) + layout_v_margins + 6
 
         # 5. Apply Height
         if self.text_edit:
-            self.text_edit.setFixedHeight(int(desc_height))
+            self.text_edit.setFixedHeight(int(desc_height) + 4)
         self.bubble_frame.setFixedHeight(final_height)
         self.setFixedHeight(final_height)
 

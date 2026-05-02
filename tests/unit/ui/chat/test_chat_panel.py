@@ -295,10 +295,14 @@ class TestChatPanelCallbacks:
         assert chat_panel.empty_state_widget.isHidden() is False
         assert "Workflow" in chat_panel.empty_state_backend_label.text()
         assert chat_panel.backend_stage_chip.text()
-        assert chat_panel.model_status_chip.text()
+        assert chat_panel.model_status_chip.isHidden()
+        assert chat_panel.runtime_status_label.text()
         assert chat_panel.available_commands_chip.text().startswith("Next steps:")
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
+        assert chat_panel.options_btn.text() == "Options"
+        assert chat_panel.feature_btn.isHidden()
+        assert chat_panel.mode_btn.isHidden()
         assert chat_panel.retry_btn.text() == "Retry"
         assert chat_panel.clear_btn.text() == "Clear"
 
@@ -313,6 +317,8 @@ class TestChatPanelCallbacks:
 
         assert chat_panel.backend_stage_chip.text() == "No data loaded"
         assert chat_panel.model_status_chip.text() == "Local model unavailable"
+        assert chat_panel.model_status_chip.isHidden()
+        assert "Local model unavailable" in chat_panel.runtime_status_label.text()
         assert "Load EEG data" in chat_panel.available_commands_chip.text()
         assert "load_data" not in chat_panel.available_commands_chip.text()
         assert chat_panel.empty_state_backend_label.text() == "Workflow: No data loaded"
