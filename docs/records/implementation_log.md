@@ -28,6 +28,53 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Dual-monitor startup geometry follow-up
+
+### 背景
+
+第一版 MainWindow geometry recovery 通過 automated tests，但人工回報真 Windows desktop
+launcher 仍會把視窗打到最上方，且啟動 loading splash 不在螢幕中央。這代表原修復只覆蓋
+top-left / offscreen，沒有完整處理 top-edge、native frame titlebar、dual-monitor startup
+screen selection。
+
+### 變更
+
+- 新增 `XBrainLab/ui/window_placement.py`，集中處理：
+  - saved geometry screen ranking
+  - cursor / primary fallback
+  - startup screen hint
+  - splash centering
+  - frame-aware geometry health check
+- `run.py` 在 splash `show()` 前先置中，並記住同一個 startup screen，讓 splash 和
+  MainWindow 不再各自選螢幕。
+- MainWindow 改用 shared placement helper；restored / persisted geometry 會檢查
+  client geometry、native frame geometry、available geometry 和 full screen geometry。
+- top-edge、top-center、top-right、frame top 超出螢幕、跨螢幕 frame 都會視為不健康並
+  reset / recenter。
+- 預設 window size 改成保留更多上下視覺空間，避免小螢幕上看起來貼在最上方。
+
+### 影響範圍
+
+- Startup shell：`run.py`。
+- UI shell：`XBrainLab/ui/main_window.py`、`XBrainLab/ui/window_placement.py`。
+- Tests：`tests/integration/ui/test_window_geometry.py`、
+  `tests/unit/ui/test_window_placement.py`、`tests/unit/test_run_splash_geometry.py`。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/test_run_splash_geometry.py -q`
+  - `15 passed`
+- `poetry run ruff check run.py XBrainLab/ui/main_window.py XBrainLab/ui/window_placement.py tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/test_run_splash_geometry.py`
+  - `All checks passed!`
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 本輪仍需要真雙螢幕 Windows launcher 人工 click-through。Automated tests 可覆蓋 screen
+  ranking、top-edge rejection、splash centering helper，但不能完全替代 Windows / WSLg
+  window manager 行為。
+
 ## 2026-05-02 MainWindow saved geometry recovery
 
 ### 背景

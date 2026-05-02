@@ -34,6 +34,16 @@ from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 from XBrainLab.ui.panels.training.panel import TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+from XBrainLab.ui.window_placement import (
+    bounded_window_position,
+    choose_screen_for_rect,
+    default_window_size_for_available,
+    frame_extents_for,
+    is_window_geometry_usable,
+    screen_geometry_for,
+    startup_screen_hint,
+    usable_window_position_bounds,
+)
 
 
 class MainWindow(QMainWindow):
@@ -64,9 +74,9 @@ class MainWindow(QMainWindow):
     sig_generate = pyqtSignal(str, str)
     DEFAULT_WINDOW_SIZE = QSize(1280, 800)
     MIN_WINDOW_SIZE = QSize(760, 520)
-    WINDOW_EDGE_MARGIN = 16
-    WINDOW_TOP_DRAG_MARGIN = 48
-    WINDOW_BOTTOM_MARGIN = 24
+    WINDOW_EDGE_MARGIN = 24
+    WINDOW_TOP_DRAG_MARGIN = 72
+    WINDOW_BOTTOM_MARGIN = 48
 
     def __init__(self, study):
         """Initialize the main window.
@@ -154,67 +164,89 @@ class MainWindow(QMainWindow):
             except TypeError:
                 logger.debug("Ignoring invalid saved main-window geometry")
 
-        if restored and self._is_current_window_geometry_usable():
+        target_screen = self._target_screen_for_window()
+        if restored and self._is_current_window_geometry_usable(target_screen):
             return
 
         if saved_geometry is not None:
             logger.info("Resetting unusable saved main-window geometry")
             settings.remove("main_window/geometry")
 
-        self._place_default_window()
+        self._place_default_window(target_screen)
 
-    def _place_default_window(self) -> None:
+    def _place_default_window(self, screen=None) -> None:
         """Place a default-size window where the native title bar is reachable."""
-        self.resize(self._default_window_size_for_screen())
-        self._center_window_on_available_screen()
+        target_screen = screen or self._target_screen_for_window()
+        self.resize(self._default_window_size_for_screen(target_screen))
+        self._center_window_on_available_screen(target_screen)
 
     @staticmethod
     def _window_settings() -> QSettings:
         """Return persistent UI shell settings."""
         return QSettings("XBrainLab", "XBrainLab")
 
-    def _default_window_size_for_screen(self) -> QSize:
+    def _default_window_size_for_screen(self, screen=None) -> QSize:
         """Scale the initial size down while leaving room to drag the title bar."""
-        available = self._available_screen_geometry()
-        max_width = max(available.width() - (self.WINDOW_EDGE_MARGIN * 2), 1)
-        max_height = max(
-            available.height()
-            - self.WINDOW_TOP_DRAG_MARGIN
-            - self.WINDOW_BOTTOM_MARGIN,
-            1,
-        )
-        width = min(self.DEFAULT_WINDOW_SIZE.width(), max_width)
-        height = min(self.DEFAULT_WINDOW_SIZE.height(), max_height)
-        width = min(
-            max(width, min(self.MIN_WINDOW_SIZE.width(), available.width())),
-            available.width(),
-        )
-        height = min(
-            max(height, min(self.MIN_WINDOW_SIZE.height(), available.height())),
-            available.height(),
-        )
-        return QSize(width, height)
-
-    def _available_screen_geometry(self) -> QRect:
-        """Return the usable geometry for the current or primary screen."""
-        screen = self.screen() or QApplication.primaryScreen()
-        if screen is not None:
-            return screen.availableGeometry()
-        return QRect(
-            0,
-            0,
-            self.DEFAULT_WINDOW_SIZE.width(),
-            self.DEFAULT_WINDOW_SIZE.height(),
+        return default_window_size_for_available(
+            self.DEFAULT_WINDOW_SIZE,
+            self.MIN_WINDOW_SIZE,
+            self._available_screen_geometry(screen),
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
         )
 
-    def _center_window_on_available_screen(self) -> None:
+    def _available_screen_geometry(self, screen=None) -> QRect:
+        """Return the usable geometry for a selected screen."""
+        target_screen = screen or self._target_screen_for_window()
+        return screen_geometry_for(target_screen, self.DEFAULT_WINDOW_SIZE).available
+
+    def _screen_geometry(self, screen=None) -> QRect:
+        """Return full screen geometry for frame-aware placement."""
+        target_screen = screen or self._target_screen_for_window()
+        return screen_geometry_for(target_screen, self.DEFAULT_WINDOW_SIZE).full
+
+    def _target_screen_for_window(self):
+        """Choose a target screen from frame/client geometry, startup hint, cursor."""
+        candidate = self._window_rect_for_screen_choice()
+        startup_hint = startup_screen_hint()
+        if (
+            startup_hint is not None
+            and not self.isVisible()
+            and candidate is not None
+            and candidate.x() == 0
+            and candidate.y() == 0
+        ):
+            candidate = None
+        return choose_screen_for_rect(candidate, preferred_screen=startup_hint)
+
+    def _window_rect_for_screen_choice(self) -> QRect | None:
+        """Return the best current rectangle for screen selection."""
+        frame = self.frameGeometry()
+        if frame.isValid():
+            return frame
+        current = self.geometry()
+        if current.isValid():
+            return current
+        return None
+
+    def _center_window_on_available_screen(self, screen=None) -> None:
         """Center the current window rectangle on the available screen."""
-        available = self._available_screen_geometry()
+        target_screen = screen or self._target_screen_for_window()
+        available = self._available_screen_geometry(target_screen)
+        screen_geometry = self._screen_geometry(target_screen)
         width = min(self.width(), available.width())
         height = min(self.height(), available.height())
         x = available.left() + max((available.width() - width) // 2, 0)
         y = available.top() + max((available.height() - height) // 2, 0)
-        x, y = self._bounded_window_position(available, width, height, x, y)
+        x, y = self._bounded_window_position(
+            available,
+            width,
+            height,
+            x,
+            y,
+            screen_geometry=screen_geometry,
+        )
         self.setGeometry(QRect(x, y, width, height))
 
     def _clamp_window_to_available_screen(self) -> None:
@@ -222,7 +254,9 @@ class MainWindow(QMainWindow):
         if self.isMaximized() or self.isFullScreen():
             return
 
-        available = self._available_screen_geometry()
+        target_screen = self._target_screen_for_window()
+        available = self._available_screen_geometry(target_screen)
+        screen_geometry = self._screen_geometry(target_screen)
         current = self.geometry()
         width = min(
             max(current.width(), self.MIN_WINDOW_SIZE.width()),
@@ -238,39 +272,30 @@ class MainWindow(QMainWindow):
             height,
             current.x(),
             current.y(),
+            screen_geometry=screen_geometry,
         )
         self.setGeometry(QRect(x, y, width, height))
 
-    def _is_current_window_geometry_usable(self) -> bool:
+    def _is_current_window_geometry_usable(self, screen=None) -> bool:
         """Return whether current geometry is safe to restore or persist."""
         if self.isMaximized() or self.isFullScreen():
             return True
 
-        available = self._available_screen_geometry()
+        target_screen = screen or self._target_screen_for_window()
+        available = self._available_screen_geometry(target_screen)
+        screen_geometry = self._screen_geometry(target_screen)
         current = self.geometry()
-        if not current.isValid():
-            return False
-
-        min_width = min(self.MIN_WINDOW_SIZE.width(), available.width())
-        min_height = min(self.MIN_WINDOW_SIZE.height(), available.height())
-        if current.width() < min_width or current.height() < min_height:
-            return False
-        if current.width() > available.width() or current.height() > available.height():
-            return False
-        if not (
-            available.contains(current.topLeft())
-            and available.contains(current.bottomRight())
-        ):
-            return False
-
-        min_x, _max_x, min_y, _max_y = self._usable_window_position_bounds(
-            available,
-            current.width(),
-            current.height(),
+        frame = self.frameGeometry()
+        return is_window_geometry_usable(
+            current,
+            available_geometry=available,
+            screen_geometry=screen_geometry,
+            frame_geometry=frame,
+            min_size=self.MIN_WINDOW_SIZE,
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
         )
-        if current.y() < min_y:
-            return False
-        return not (current.x() < min_x and current.y() <= min_y)
 
     def _bounded_window_position(
         self,
@@ -279,45 +304,44 @@ class MainWindow(QMainWindow):
         height: int,
         preferred_x: int,
         preferred_y: int,
+        *,
+        screen_geometry: QRect | None = None,
     ) -> tuple[int, int]:
         """Clamp a window position while preserving drag-safe top margins."""
-        min_x, max_x, min_y, max_y = self._usable_window_position_bounds(
+        frame_extents = frame_extents_for(self.geometry(), self.frameGeometry())
+        return bounded_window_position(
             available,
             width,
             height,
+            preferred_x,
+            preferred_y,
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
+            screen_geometry=screen_geometry,
+            frame_extents=frame_extents,
         )
-        x = min(max(preferred_x, min_x), max_x)
-        y = min(max(preferred_y, min_y), max_y)
-        return x, y
 
     def _usable_window_position_bounds(
         self,
         available: QRect,
         width: int,
         height: int,
+        *,
+        screen_geometry: QRect | None = None,
     ) -> tuple[int, int, int, int]:
         """Return screen bounds that leave room for native window dragging."""
-        remaining_x = max(available.width() - width, 0)
-        left_margin = min(self.WINDOW_EDGE_MARGIN, remaining_x)
-        right_margin = min(self.WINDOW_EDGE_MARGIN, max(remaining_x - left_margin, 0))
-
-        remaining_y = max(available.height() - height, 0)
-        top_margin = min(self.WINDOW_TOP_DRAG_MARGIN, remaining_y)
-        bottom_margin = min(
-            self.WINDOW_BOTTOM_MARGIN,
-            max(remaining_y - top_margin, 0),
+        frame_extents = frame_extents_for(self.geometry(), self.frameGeometry())
+        return usable_window_position_bounds(
+            available,
+            width,
+            height,
+            edge_margin=self.WINDOW_EDGE_MARGIN,
+            top_drag_margin=self.WINDOW_TOP_DRAG_MARGIN,
+            bottom_margin=self.WINDOW_BOTTOM_MARGIN,
+            screen_geometry=screen_geometry,
+            frame_extents=frame_extents,
         )
-
-        min_x = available.left() + left_margin
-        max_x = available.right() - width + 1 - right_margin
-        min_y = available.top() + top_margin
-        max_y = available.bottom() - height + 1 - bottom_margin
-
-        if min_x > max_x:
-            min_x = max_x = available.left() + max(remaining_x // 2, 0)
-        if min_y > max_y:
-            min_y = max_y = available.top() + max(remaining_y // 2, 0)
-        return min_x, max_x, min_y, max_y
 
     def apply_vscode_theme(self):
         """Apply the VS Code dark theme stylesheet to the main window."""

@@ -37,6 +37,33 @@
 
 ## 2026-05-02
 
+### 22:14 Dual-monitor startup geometry follow-up
+
+- 做了什麼：
+  - 使用者回報第一版 geometry recovery 後仍會貼到最上方，且 loading splash 不在螢幕中央；
+    判斷上一版只處理 top-left / offscreen，沒有完整處理 top-edge、native frame、
+    dual-monitor startup screen。
+  - 新增 `XBrainLab/ui/window_placement.py`，把 startup screen selection、saved geometry
+    screen ranking、splash centering、frame-aware geometry health check 抽成可測 helper。
+  - `run.py` 的 loading splash 會在 `show()` 前根據 saved geometry / cursor / primary
+    選定 startup screen 並置中，並把同一個 screen hint 傳給 MainWindow。
+  - MainWindow 對 restored / persisted geometry 改成 frame-aware 判斷：top-edge、
+    native frame titlebar 不可達、跨螢幕 frame、尺寸不合理都會 reset / recenter。
+  - 預設 window size 改為保留足夠上下視覺空間，避免小螢幕上看起來貼在最上方。
+- 結果：
+  - 第一版「只處理左上角」的缺口已補；loading splash 和 main window 不再各自選螢幕。
+  - 正常 saved geometry 仍會保留；貼上緣 / top-center / top-right 都會視為不健康。
+- 證據：
+  - `poetry run pytest --capture=sys tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/test_run_splash_geometry.py -q`
+    - `15 passed`
+  - `poetry run ruff check run.py XBrainLab/ui/main_window.py XBrainLab/ui/window_placement.py tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/test_run_splash_geometry.py`
+    - `All checks passed!`
+  - `poetry run basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+- 接續 / 本輪剩餘：
+  - 仍需要使用者在真雙螢幕 Windows launcher 上人工確認；這是 WSLg / Windows window
+    manager 行為，不能只靠 xvfb 宣稱完全通過。
+
 ### 21:08 MainWindow saved geometry recovery
 
 - 做了什麼：

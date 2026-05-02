@@ -17,9 +17,15 @@ import sys
 # Ensure the project root is importable when running the script directly.
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont, QPainter
+from PyQt6.QtCore import QSettings, QSize, Qt
+from PyQt6.QtGui import QColor, QFont, QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication, QSplashScreen
+
+from XBrainLab.ui.window_placement import (
+    center_widget_on_screen,
+    choose_screen_for_saved_geometry,
+    remember_startup_screen,
+)
 
 
 class _Splash(QSplashScreen):
@@ -36,6 +42,23 @@ class _Splash(QSplashScreen):
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
             "Loading…",
         )
+
+
+def _create_splash_pixmap() -> QPixmap:
+    """Create the splash pixmap without importing the heavier UI stack."""
+    pixmap = QPixmap(QSize(420, 200))
+    pixmap.fill(QColor("#1e1e1e"))
+    return pixmap
+
+
+def _create_centered_splash(app: QApplication, saved_geometry=None) -> _Splash:
+    """Create a splash centered on the same startup screen as MainWindow."""
+    splash = _Splash(_create_splash_pixmap())
+    target_screen = choose_screen_for_saved_geometry(saved_geometry)
+    remember_startup_screen(target_screen)
+    center_widget_on_screen(splash, target_screen)
+    app.processEvents()
+    return splash
 
 
 def main() -> None:
@@ -60,12 +83,8 @@ def main() -> None:
     app = QApplication(sys.argv)
 
     # --- Splash Screen (shown while heavy imports load) ---
-    from PyQt6.QtCore import QSize
-    from PyQt6.QtGui import QPixmap
-
-    pixmap = QPixmap(QSize(420, 200))
-    pixmap.fill(QColor("#1e1e1e"))
-    splash = _Splash(pixmap)
+    settings = QSettings("XBrainLab", "XBrainLab")
+    splash = _create_centered_splash(app, settings.value("main_window/geometry", None))
     splash.show()
     app.processEvents()
 

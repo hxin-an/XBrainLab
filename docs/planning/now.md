@@ -49,6 +49,9 @@
 - Windows launcher geometry blocker 已補產品級防護：MainWindow 不再信任只因
   `restoreGeometry()` 成功的 saved geometry；貼左上、offscreen、尺寸不合理或 titlebar
   不可達的 `main_window/geometry` 會 migration reset，關閉時也不會再次保存。
+- 第二輪補強雙螢幕 / 上緣貼齊問題：startup screen selection 已抽成共用 helper，
+  loading splash 和 MainWindow 使用同一個 startup screen；MainWindow 也會把 top-edge、
+  native frame titlebar 不可達、跨螢幕 frame 判為不健康並重新置中。
 
 ## 產品線盤點
 
@@ -75,8 +78,8 @@
   visible error feedback 都有 regression tests。
 - `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
   synthetic EEG button-driven pipeline walkthrough。
-- 真 Windows launcher 打開 assistant 後的 click-through 仍未完成；主視窗壞 geometry
-  recovery 已有 regression tests。
+- 真 Windows launcher 打開 assistant 後的 click-through 仍未完成；主視窗壞 geometry、
+  雙螢幕 screen selection、loading splash centering 已有 regression tests。
 
 ### C. Agent
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from PyQt6.QtCore import QRect, Qt
 
 from XBrainLab.ui.main_window import MainWindow
@@ -79,20 +80,37 @@ def test_first_launch_window_is_on_available_screen(qtbot):
 
     available = window._available_screen_geometry()
     geometry = window.geometry()
+    _min_x, _max_x, min_y, _max_y = window._usable_window_position_bounds(
+        available,
+        geometry.width(),
+        geometry.height(),
+        screen_geometry=window._screen_geometry(),
+    )
 
     assert available.contains(geometry.topLeft())
     assert available.contains(geometry.bottomRight())
+    assert geometry.y() >= min_y
+    assert geometry.center().y() > available.center().y() - 2
     assert window._is_current_window_geometry_usable()
     assert not window.windowFlags() & Qt.WindowType.FramelessWindowHint
 
 
-def test_saved_top_left_window_geometry_is_reset_and_recentered(qtbot):
+@pytest.mark.parametrize("anchor", ["left", "center", "right"])
+def test_saved_top_edge_window_geometry_is_reset_and_recentered(qtbot, anchor):
     seed = _make_lightweight_window(qtbot, _FakeSettings())
+    available = seed._available_screen_geometry()
+    width = seed.MIN_WINDOW_SIZE.width()
+    if anchor == "left":
+        x = available.left()
+    elif anchor == "center":
+        x = available.left() + max((available.width() - width) // 2, 0)
+    else:
+        x = available.right() - width + 1
     seed.setGeometry(
         QRect(
-            seed._available_screen_geometry().left(),
-            seed._available_screen_geometry().top(),
-            seed.MIN_WINDOW_SIZE.width(),
+            x,
+            available.top(),
+            width,
             seed.MIN_WINDOW_SIZE.height(),
         )
     )
@@ -105,6 +123,23 @@ def test_saved_top_left_window_geometry_is_reset_and_recentered(qtbot):
     assert window.geometry() == _default_centered_geometry(window)
     assert window._is_current_window_geometry_usable()
     assert settings.removed_keys == ["main_window/geometry"]
+
+
+def test_frame_geometry_above_available_top_is_unusable(qtbot):
+    window = _make_lightweight_window(qtbot, _FakeSettings())
+    window.setGeometry(_healthy_user_geometry(window))
+
+    available = window._available_screen_geometry()
+    current = window.geometry()
+    bad_frame = QRect(
+        current.left(),
+        available.top() - 8,
+        current.width(),
+        current.height() + 8,
+    )
+
+    with patch.object(window, "frameGeometry", return_value=bad_frame):
+        assert not window._is_current_window_geometry_usable()
 
 
 def test_saved_offscreen_window_geometry_is_reset_and_recentered(qtbot):
@@ -170,15 +205,18 @@ def test_main_window_can_resize_maximize_and_restore(qtbot):
     qtbot.wait(20)
 
     available = window._available_screen_geometry()
-    target_width = min(
-        960,
-        available.width() - (window.WINDOW_EDGE_MARGIN * 2),
+    target_width = max(
+        window.minimumWidth(),
+        min(960, available.width() - (window.WINDOW_EDGE_MARGIN * 2)),
     )
-    target_height = min(
-        620,
-        available.height()
-        - window.WINDOW_TOP_DRAG_MARGIN
-        - window.WINDOW_BOTTOM_MARGIN,
+    target_height = max(
+        window.minimumHeight(),
+        min(
+            620,
+            available.height()
+            - window.WINDOW_TOP_DRAG_MARGIN
+            - window.WINDOW_BOTTOM_MARGIN,
+        ),
     )
     window.resize(target_width, target_height)
     qtbot.wait(20)
