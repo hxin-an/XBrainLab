@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import SaliencyCommand
+from XBrainLab.backend.application import ApplyMontageCommand, SaliencyCommand
 from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.visualization import (
@@ -115,6 +115,22 @@ class ControlSidebar(QWidget):
 
     # --- Actions ---
 
+    @staticmethod
+    def _normalize_montage_positions(chs, positions):
+        """Return montage positions as JSON-safe ``(x, y, z)`` tuples."""
+        if isinstance(positions, dict):
+            position_values = [positions[ch] for ch in chs]
+        else:
+            position_values = positions
+
+        normalized = []
+        for position in position_values:
+            coords = list(position)
+            if len(coords) != 3:
+                raise ValueError("Each montage position must contain x, y, z values.")
+            normalized.append((float(coords[0]), float(coords[1]), float(coords[2])))
+        return normalized
+
     def set_montage(self):
         """Open the montage-picker dialog and apply channel positions."""
         if not self.controller.has_epoch_data():
@@ -127,7 +143,32 @@ class ControlSidebar(QWidget):
         if win.exec():
             chs, positions = win.get_result()
             if chs is not None and positions is not None:
-                self.controller.set_montage(chs, positions)
+                try:
+                    normalized_positions = self._normalize_montage_positions(
+                        chs,
+                        positions,
+                    )
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Montage setup failed: {e}")
+                    return
+
+                result = execute_application_command(
+                    self,
+                    ApplyMontageCommand(
+                        channels=list(chs),
+                        positions=normalized_positions,
+                    ),
+                )
+                if result is None:
+                    return
+                if result.failed:
+                    QMessageBox.warning(
+                        self,
+                        "Montage blocked" if result.recoverable else "Montage failed",
+                        result.message,
+                    )
+                    return
+
                 QMessageBox.information(self, "Success", "Montage set")
 
                 # Notify parent to refresh view

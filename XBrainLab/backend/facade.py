@@ -319,15 +319,21 @@ class BackendFacade:
             Status string describing the result of the montage application.
 
         """
-        data_list = self.dataset.get_loaded_data_list()
-        target_info = None
-        if self.training.has_epoch_data():
-            target_info = self.training.get_epoch_data().get_mne().info
-        elif data_list:
-            target_info = data_list[0].get_mne().info
+        if not self.training.has_epoch_data():
+            result = self.service.execute(
+                ApplyMontageCommand(
+                    channels=[],
+                    positions=[],
+                    montage_name=montage_name,
+                ),
+            )
+            return f"Error: {result.message}" if result.failed else result.message
 
-        if not target_info:
-            return "Error: No data loaded to apply montage."
+        epoch_data = self.training.get_epoch_data()
+        if epoch_data is None:
+            return "Error: No epoch data loaded to apply montage."
+
+        target_info = epoch_data.get_mne().info
 
         try:
             # Get Standard Positions
@@ -358,7 +364,9 @@ class BackendFacade:
 
                 if real_name:
                     mapped_chs.append(ch)
-                    mapped_positions.append(tuple(ch_pos_dict[real_name]))
+                    mapped_positions.append(
+                        tuple(float(value) for value in ch_pos_dict[real_name])
+                    )
 
             if not mapped_chs:
                 return f"Request: Verify Montage '{montage_name}'"
@@ -369,12 +377,24 @@ class BackendFacade:
                     f"(Only {len(mapped_chs)}/{len(current_chs)} channels matched)"
                 )
 
-            self.study.set_channels(mapped_chs, mapped_positions)
-            return f"Set Montage '{montage_name}' (Matched {len(mapped_chs)} channels)"
+            result = self.service.execute(
+                ApplyMontageCommand(
+                    channels=mapped_chs,
+                    positions=mapped_positions,
+                    montage_name=montage_name,
+                ),
+            )
+            if result.failed:
+                return f"Error: {result.message}"
 
         except Exception as e:
             logger.error("SetMontage failed", exc_info=True)
             return f"SetMontage failed: {e!s}"
+
+        matched_count = int(
+            result.diagnostics.get("channel_count", len(mapped_chs)),
+        )
+        return f"Set Montage '{montage_name}' (Matched {matched_count} channels)"
 
     def apply_montage(
         self,

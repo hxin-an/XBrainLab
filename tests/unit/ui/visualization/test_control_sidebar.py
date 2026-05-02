@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
 
+from XBrainLab.backend.application import ApplyMontageCommand
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
 
 # Ensure QApplication exists
@@ -52,12 +53,54 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         patch(
             "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
         ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
+        ) as mock_execute,
     ):
         instance = MockDialog.return_value
         instance.exec.return_value = True
-        instance.get_result.return_value = (["Ch1"], {"Ch1": [0, 0, 0]})
+        instance.get_result.return_value = (["Ch1"], [[0, 0, 0]])
+        mock_execute.return_value = MagicMock(failed=False)
 
         sidebar.set_montage()
 
-        mock_panel.controller.set_montage.assert_called()
+        command = mock_execute.call_args.args[1]
+        assert isinstance(command, ApplyMontageCommand)
+        assert command.channels == ["Ch1"]
+        assert command.positions == [(0.0, 0.0, 0.0)]
+        mock_panel.controller.set_montage.assert_not_called()
         mock_info.assert_called_once()
+
+
+def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as MockDialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ) as mock_info,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command"
+        ) as mock_execute,
+    ):
+        instance = MockDialog.return_value
+        instance.exec.return_value = True
+        instance.get_result.return_value = (["Ch1"], [[0, 0, 0]])
+        mock_execute.return_value = MagicMock(
+            failed=True,
+            recoverable=True,
+            message="Create epochs before applying a montage.",
+        )
+
+        sidebar.set_montage()
+
+        mock_panel.controller.set_montage.assert_not_called()
+        mock_info.assert_not_called()
+        mock_warning.assert_called_once()

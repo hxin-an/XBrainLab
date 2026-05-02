@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.application import ApplyMontageCommand
 from XBrainLab.backend.facade import BackendFacade
 
 # ---------------------------------------------------------------------------
@@ -231,12 +232,19 @@ class TestAttachLabels:
 
 
 class TestSetMontage:
-    def test_uses_legacy_path_not_application_service(self):
+    def test_full_match_delegates_to_application_service(self):
         facade, _ = _make_facade()
-        raw = _make_raw_mock("/data/sub01.set")
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
-        facade.service.execute = MagicMock()
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
+        facade.service.execute = MagicMock(
+            return_value=MagicMock(
+                failed=False,
+                message="Applied montage.",
+                diagnostics={"channel_count": 3},
+            ),
+        )
 
         positions = {
             "ch_pos": {
@@ -252,21 +260,43 @@ class TestSetMontage:
             result = facade.set_montage("standard_1020")
 
         assert "Matched 3" in result
-        facade.service.execute.assert_not_called()
+        command = facade.service.execute.call_args.args[0]
+        assert isinstance(command, ApplyMontageCommand)
+        assert command.channels == ["Fp1", "Fp2", "Cz"]
+        assert command.positions == [
+            (0.1, 0.2, 0.3),
+            (0.4, 0.5, 0.6),
+            (0.7, 0.8, 0.9),
+        ]
+        facade.study.set_channels.assert_not_called()
 
     def test_no_data_loaded(self):
         facade, _ = _make_facade()
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[])
         facade.training.has_epoch_data = MagicMock(return_value=False)
+        facade.service.execute = MagicMock(
+            return_value=MagicMock(
+                failed=True,
+                message="Create epochs before applying a montage.",
+            ),
+        )
 
         result = facade.set_montage("standard_1020")
-        assert "Error" in result
+        assert "Create epochs" in result
+        facade.service.execute.assert_called_once()
 
     def test_full_match(self):
         facade, mock_study = _make_facade()
-        raw = _make_raw_mock("/data/sub01.set")
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
+        facade.service.execute = MagicMock(
+            return_value=MagicMock(
+                failed=False,
+                message="Applied montage.",
+                diagnostics={"channel_count": 3},
+            ),
+        )
 
         positions = {
             "ch_pos": {
@@ -282,13 +312,16 @@ class TestSetMontage:
             result = facade.set_montage("standard_1020")
 
         assert "Matched 3" in result
-        mock_study.set_channels.assert_called_once()
+        facade.service.execute.assert_called_once()
+        mock_study.set_channels.assert_not_called()
 
     def test_partial_match(self):
         facade, mock_study = _make_facade()
-        raw = _make_raw_mock("/data/sub01.set")
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
+        facade.service.execute = MagicMock()
 
         # Only 2 of 3 channels match
         positions = {
@@ -304,13 +337,16 @@ class TestSetMontage:
             result = facade.set_montage("standard_1020")
 
         assert "Only 2/3" in result
+        facade.service.execute.assert_not_called()
         mock_study.set_channels.assert_not_called()
 
     def test_no_match(self):
         facade, _mock_study = _make_facade()
-        raw = _make_raw_mock("/data/sub01.set")
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
+        facade.service.execute = MagicMock()
 
         positions = {"ch_pos": {"O1": (0.1, 0.2, 0.3)}}
         with patch(
@@ -320,14 +356,24 @@ class TestSetMontage:
             result = facade.set_montage("standard_1020")
 
         assert "Verify Montage" in result
+        facade.service.execute.assert_not_called()
 
     def test_fuzzy_matching_eeg_prefix(self):
         """Channels like 'EEGFp1' should fuzzy-match to 'Fp1'."""
         facade, mock_study = _make_facade()
-        raw = MagicMock()
-        raw.get_mne.return_value.info = {"ch_names": ["EEGFp1", "EEGFp2", "EEGCz"]}
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {
+            "ch_names": ["EEGFp1", "EEGFp2", "EEGCz"]
+        }
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
+        facade.service.execute = MagicMock(
+            return_value=MagicMock(
+                failed=False,
+                message="Applied montage.",
+                diagnostics={"channel_count": 3},
+            ),
+        )
 
         positions = {
             "ch_pos": {
@@ -343,13 +389,16 @@ class TestSetMontage:
             result = facade.set_montage("standard_1020")
 
         assert "Matched 3" in result
-        mock_study.set_channels.assert_called_once()
+        command = facade.service.execute.call_args.args[0]
+        assert command.channels == ["EEGFp1", "EEGFp2", "EEGCz"]
+        mock_study.set_channels.assert_not_called()
 
     def test_empty_montage_positions(self):
         facade, _ = _make_facade()
-        raw = _make_raw_mock("/data/sub01.set")
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
 
         with patch(
             "XBrainLab.backend.facade.get_montage_positions",
@@ -361,9 +410,10 @@ class TestSetMontage:
 
     def test_exception_handling(self):
         facade, _ = _make_facade()
-        raw = _make_raw_mock("/data/sub01.set")
-        facade.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
-        facade.training.has_epoch_data = MagicMock(return_value=False)
+        epoch_mock = MagicMock()
+        epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1", "Fp2", "Cz"]}
+        facade.training.has_epoch_data = MagicMock(return_value=True)
+        facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
 
         with patch(
             "XBrainLab.backend.facade.get_montage_positions",
@@ -383,6 +433,13 @@ class TestSetMontage:
         epoch_mock.get_mne.return_value.info = {"ch_names": ["Fp1"]}
         facade.training.has_epoch_data = MagicMock(return_value=True)
         facade.training.get_epoch_data = MagicMock(return_value=epoch_mock)
+        facade.service.execute = MagicMock(
+            return_value=MagicMock(
+                failed=False,
+                message="Applied montage.",
+                diagnostics={"channel_count": 1},
+            ),
+        )
 
         positions = {"ch_pos": {"Fp1": (0.1, 0.2, 0.3)}}
         with patch(
@@ -392,6 +449,8 @@ class TestSetMontage:
             result = facade.set_montage("standard_1020")
 
         assert "Matched 1" in result
+        command = facade.service.execute.call_args.args[0]
+        assert command.channels == ["Fp1"]
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ Usage::
 
     python run.py
     python run.py --tool-debug path/to/script.json
-    python run.py --model gemini
+    python run.py --model local
 """
 
 import argparse
@@ -52,8 +52,8 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=str,
-        choices=["local", "gemini", "api"],
-        help="Override the active inference mode (local, gemini, api)",
+        choices=["local"],
+        help="Use the local-only assistant runtime for this session.",
     )
     args = parser.parse_args()
 
@@ -80,7 +80,7 @@ def main() -> None:
         logger.info("Tool Debug Mode enabled. Script: %s", args.tool_debug)
         app.setProperty("tool_debug_script", args.tool_debug)
 
-    # Apply --model override for this session only (not persisted)
+    # Apply the local-only model override for this session only (not persisted)
     if args.model:
         app.setProperty("model_override", args.model)
         logger.info("CLI override: inference mode set to '%s'", args.model)
