@@ -28,6 +28,54 @@
 ### 剩餘風險
 ```
 
+## 2026-05-03 Supervisor delivery gate, window fallback, backend rollback boundary
+
+### 背景
+
+人工退件指出先前把局部修復與 dashboard PASS 誤當成完成。使用者要求主 agent
+扮演審查者 / 發包者，worker 完成回報不能直接轉交；仍有已知 blocker 時必須打回。
+同時 Windows/WSLg offset dual-monitor layout 讓新增的置中 / recovery 邏輯把視窗開到
+螢幕上方，backend 也仍需補強 service-first contract 的可靠邊界。
+
+### 變更
+
+- `AGENTS.md`、`.agents/README.md`、`.agents/runbooks/autopilot.md` 補上 supervisor
+  model：主 agent 必須自己讀 diff、看 artifact、跑 tests、確認 docs/current truth。
+- `MainWindow` 對 first launch、不健康 saved geometry、post-show recovery 改用
+  maximized fallback；fullscreen geometry 視為不健康，不保存。
+- Window placement tests 加入使用者回報的 offset monitor layout 與 virtual-gap cursor
+  regression。
+- `ApplicationService.generate_dataset` 把 split apply 與 audit 包進同一 rollback boundary；
+  apply exception 或 audit blocking issue 都會還原 datasets / generator / trainer。
+- `evaluate` / `clear_training_history` capability 改以 actual training plan history 為準。
+- 修正 architecture/current/now 文件，不再把 synthetic UI walkthrough 或 deterministic eval
+  說成完整產品交付證據。
+
+### 影響範圍
+
+- Agent 操作規則：`AGENTS.md`、`.agents/README.md`、`.agents/runbooks/autopilot.md`。
+- UI shell：`XBrainLab/ui/main_window.py`、window geometry tests。
+- Backend contract：`XBrainLab/backend/application/capabilities.py`、
+  `XBrainLab/backend/application/service.py`、`XBrainLab/backend/facade.py`。
+- Documentation：`docs/current.md`、`docs/planning/now.md`、architecture docs、records。
+
+### 驗證
+
+- `git diff --check`
+- Python ruff gate on touched Python files：PASS
+- Window geometry gate：`22 passed`
+- Backend application / facade / agent surface gate：`80 passed`
+- Assistant chat product slice：`48 passed`
+- `poetry run basedpyright`：`0 errors, 0 warnings, 0 notes`
+- `poetry run mkdocs build --strict`：PASS
+
+### 剩餘風險
+
+- 真 Windows/WSLg 雙螢幕 Desktop launcher click-through 尚未人工驗收。
+- 現有 UI product walkthrough 仍使用 patched training / synthetic records，不是真 UI 點按到
+  real training/evaluation/visualization completion。
+- true local model 在 ChatPanel 中的長時間 UI walkthrough 尚未完成。
+
 ## 2026-05-02 Launcher visible startup logs and geometry diagnostics
 
 ### 背景

@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 ## 摘要
 
@@ -42,10 +42,12 @@ new session、metadata update、smart parse、remove files、label import 和 mo
 讓 UI / agent 不必繞 controller 拿 typed result。本輪新增 split audit / thesis protocol
 artifact schema，讓 train/validation/test split 可保存、重跑、審計。2026-05-03
 `Backend Workflow Contract v2` 第一個切片新增 reset/cleanup lifecycle commands，
-並讓 dataset split audit failure 以 structured `DATA_MISMATCH` failure 回傳且 rollback
-dataset / generator / trainer state，避免半成功後仍可 train。真 Windows launcher 人工
-click-through、真 local model 長時間 UI walkthrough、external thesis experiment runner 仍未完成，
-不能宣稱完整 release closure。
+並讓 dataset split apply / audit failure 以 structured `DATA_MISMATCH` failure 回傳且
+rollback dataset / generator / trainer state，避免半成功後仍可 train。`evaluate` /
+`clear_training_history` capability 也改以 actual training plan history 為準。
+MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
+跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 長時間
+UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release closure。
 
 ## 可信狀態
 
@@ -257,6 +259,10 @@ click-through、真 local model 長時間 UI walkthrough、external thesis exper
   `set_montage` 和 `switch_panel` 仍是 UI request path；真正 montage apply 在 confirmation
   後走 `ApplyMontageCommand`。
 - 真 Windows launcher / true local model UI walkthrough 尚未人工驗收。
+- Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
+  fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
+- `tests/integration/ui/test_product_walkthrough.py` 仍是 synthetic / patched training
+  walkthrough，不是真正從 UI click 到 real TrainCommand completion 的產品 E2E。
 
 仍存在的非阻塞架構風險：
 
@@ -269,7 +275,8 @@ click-through、真 local model 長時間 UI walkthrough、external thesis exper
 
 1. 等待真 Windows Desktop launcher click-through。
 2. 等待 true local LLM ChatPanel 長時間 walkthrough。
-3. 等待 external thesis dataset experiment / statistical reporting。
+3. 補真正 UI button-click 到 training / evaluation / visualization completion 的 E2E。
+4. 等待 external thesis dataset experiment / statistical reporting。
 
 ## 相關文件
 

@@ -1,6 +1,6 @@
 # Backend Architecture
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 ## 可信度
 
@@ -27,7 +27,10 @@ reset / new session、preprocess、channel selection、epoching、split / model 
 dialogs、evaluation / visualization / saliency query、training start / stop、metadata update、
 smart parse、remove files、label import、montage confirmation。controller 邊界尚未完整收斂，
 但上述 real `Study` mutating paths 已回 `CommandResult`；mock/unit-test fallback 和部分
-read-only panel refresh 仍保留相容 controller path。
+read-only panel refresh 仍保留相容 controller path。2026-05-03 backend hardening 又把
+dataset generation 的 apply/audit failure 包成同一個 rollback boundary，避免 datasets /
+generator / trainer 半成功殘留；`evaluate` 和 `clear_training_history` 也改成需要真的
+training plan history，不能只因 trainer 物件存在就開啟。
 
 ## 一句話架構
 
@@ -243,7 +246,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - 已接上的核心 commands：
   `load_data`、`attach_labels`、`import_labels`、`update_metadata`、`apply_smart_parse`、
   `remove_files`、preprocess operations、`create_epoch`、`generate_dataset`、
-  `configure_training`、`train`、`stop_training`、`apply_montage`、`reset_session`、
+  `clear_datasets`、`configure_training`、`train`、`stop_training`、
+  `clear_training_history`、`apply_montage`、`reset_preprocess`、`reset_session`、
   `new_session`。
 - service-backed query / setup commands：
   `evaluate`、`visualize`、`saliency`、`query_state`。它們回傳 typed summary diagnostics；
@@ -256,6 +260,10 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `ApplicationService` / `CapabilityPolicy` 仍是 UI / Agent shared decision 的正確入口。
 - backend query command 已從 future placeholder 推進成 service-backed summary / setup
   result；完整 interactive evaluation / visualization workflow 仍要由 UI walkthrough 驗收。
+- `evaluate` / `clear_training_history` capability 以 actual training plan history 為準；
+  trainer object 存在但 history 已清空時不再啟用這兩個 command。
+- `generate_dataset` 的 split apply 和 audit 共用 rollback boundary；audit blocking issue
+  或 apply 中途例外都不應留下新 datasets / dataset generator / trainer。
 - error boundary 對 command result 已足夠支撐 UI 顯示 blocked reason；UI / agent 必須把它
   轉成 visible user feedback，而不是只記在 diagnostics。
 

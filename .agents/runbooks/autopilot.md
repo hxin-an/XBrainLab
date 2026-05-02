@@ -1,12 +1,20 @@
 # XBrainLab Autopilot
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 這份文件描述 agent 長時間工作時的 product-delivery 循環。舊的 `Prep Gate` / `Repair Loop` autopilot 已退役。
 
 ## 核心規則
 
 持續推進，並以文件保存狀態。milestone 是最低交付門檻，不是工作上限。
+
+Autopilot 不能把「worker 說已完成」當成完成。主 agent 必須像 reviewer / engineering manager 一樣驗收：
+
+1. 先判斷本輪核心需求是否真的被解掉，而不是只修到局部症狀。
+2. 讀取 worker diff 和 touched files，確認沒有繞過目標架構或新增第二套 truth。
+3. 對 UI 工作看 screenshot / artifact；對 backend 工作跑 low-mock workflow 和 integration tests；對 agent 工作檢查 visible transcript 與 structured payload。
+4. 若仍有明顯產品缺陷、架構旁路、未驗證流程或文件失真，打回繼續做。
+5. 最終回報只能建立在主 agent 親自驗證過的 evidence 上。
 
 目前階段是：
 
@@ -63,6 +71,7 @@ product-delivery engineering
 
 - 清楚的修改範圍。
 - 一個可檢查的驗證結果，或明確寫出沒跑的原因。
+- 主 agent 自己做過驗收，而不是只引用 worker 回報。
 - `docs/records/worklog.md` 裡的流水帳紀錄。
 - 沒有把 legacy 文件重新升格成 current truth。
 - 若改變產品能力或架構，已更新 implementation log 和相關 architecture / validation / planning 文件。

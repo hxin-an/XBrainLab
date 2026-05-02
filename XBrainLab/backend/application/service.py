@@ -702,48 +702,59 @@ class ApplicationService:
         previous_datasets = list(getattr(self.study, "datasets", []) or [])
         previous_generator = getattr(self.study, "dataset_generator", None)
         previous_trainer = getattr(self.study, "trainer", None)
-        self.training.apply_data_splitting(generator)
-        datasets = list(getattr(self.study, "datasets", []) or [])
-        count = len(datasets)
-        protocol = self._split_protocol_for_generation(command, generator)
-        audit = audit_dataset_splits(
-            cast(list[Any], datasets),
-            protocol=protocol,
-        )
-        audit_payload = audit.to_dict()
-        blocking_issues = [
-            issue
-            for issue in audit.issues
-            if issue.severity == "error" or " split is empty" in issue.message
-        ]
-        if blocking_issues:
+        try:
+            self.training.apply_data_splitting(generator)
+            datasets = list(getattr(self.study, "datasets", []) or [])
+            count = len(datasets)
+            protocol = self._split_protocol_for_generation(command, generator)
+            audit = audit_dataset_splits(
+                cast(list[Any], datasets),
+                protocol=protocol,
+            )
+            audit_payload = audit.to_dict()
+            blocking_issues = [
+                issue
+                for issue in audit.issues
+                if issue.severity == "error" or " split is empty" in issue.message
+            ]
+        except Exception:
             self._restore_dataset_generation_state(
                 datasets=previous_datasets,
                 generator=previous_generator,
                 trainer=previous_trainer,
             )
-            raise ApplicationError(
-                message=(
-                    "Generated dataset failed split audit; fix empty splits or "
-                    "leakage before training."
-                ),
-                error_type=ErrorType.DATA_MISMATCH,
-                recoverable=True,
-                diagnostics={
+            raise
+
+        if not blocking_issues:
+            return (
+                f"Generated {count} dataset(s).",
+                {
                     "dataset_count": count,
                     "protocol": protocol,
-                    "rolled_back": True,
                     "split_audit": audit_payload,
                     "split_summary": self._dataset_split_summary(datasets),
                 },
             )
-        return (
-            f"Generated {count} dataset(s).",
-            {
+
+        split_summary = self._dataset_split_summary(datasets)
+        self._restore_dataset_generation_state(
+            datasets=previous_datasets,
+            generator=previous_generator,
+            trainer=previous_trainer,
+        )
+        raise ApplicationError(
+            message=(
+                "Generated dataset failed split audit; fix empty splits or "
+                "leakage before training."
+            ),
+            error_type=ErrorType.DATA_MISMATCH,
+            recoverable=True,
+            diagnostics={
                 "dataset_count": count,
                 "protocol": protocol,
+                "rolled_back": True,
                 "split_audit": audit_payload,
-                "split_summary": self._dataset_split_summary(datasets),
+                "split_summary": split_summary,
             },
         )
 

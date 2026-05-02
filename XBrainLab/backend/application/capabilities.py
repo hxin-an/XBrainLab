@@ -201,7 +201,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     clear_history_reasons = []
     if active_training.is_running:
         clear_history_reasons.append("Stop training before clearing history.")
-    if not active_training.has_trainer:
+    if not active_training.has_trainer or state.evaluation.total_plans == 0:
         clear_history_reasons.append("No training history is available to clear.")
     capabilities[CommandName.CLEAR_TRAINING_HISTORY.value] = CommandCapability(
         command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
@@ -212,7 +212,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
 
     evaluate_reasons = []
-    if not active_training.has_trainer:
+    if state.evaluation.total_plans == 0:
         evaluate_reasons.append("Create a training plan before evaluating results.")
     capabilities[CommandName.EVALUATE.value] = _cap(
         CommandName.EVALUATE,

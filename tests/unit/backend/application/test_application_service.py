@@ -283,6 +283,8 @@ def test_generate_dataset_fails_when_split_audit_has_empty_or_leaking_splits():
     assert result.error_type == ErrorType.DATA_MISMATCH
     assert "split audit" in result.message
     assert result.state.dataset.available is False
+    assert result.state.dataset.generator_exists is False
+    assert result.state.training.has_trainer is False
     assert result.diagnostics["rolled_back"] is True
     assert result.diagnostics["split_audit"]["ok"] is False
     assert any(
@@ -292,6 +294,34 @@ def test_generate_dataset_fails_when_split_audit_has_empty_or_leaking_splits():
     train = service.execute(TrainCommand())
     assert train.failed is True
     assert "Generate datasets before training" in train.message
+
+
+def test_generate_dataset_rolls_back_partial_apply_failure():
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = MagicMock()
+    partial_dataset = MagicMock()
+    partial_generator = MagicMock()
+    partial_trainer = MagicMock()
+
+    def fail_after_partial_mutation(_generator):
+        service.study.data_manager.datasets = [partial_dataset]
+        service.study.data_manager.dataset_generator = partial_generator
+        service.study.training_manager.trainer = partial_trainer
+        raise RuntimeError("split worker crashed")
+
+    service.training.apply_data_splitting = MagicMock(
+        side_effect=fail_after_partial_mutation,
+    )
+
+    result = service.execute(GenerateDatasetCommand(generator=MagicMock()))
+
+    assert result.failed is True
+    assert result.state.dataset.available is False
+    assert result.state.dataset.generator_exists is False
+    assert result.state.training.has_trainer is False
+    assert result.changed_state.datasets_changed is False
+    assert result.changed_state.training_changed is False
+    assert result.changed_state.error_changed is True
 
 
 def test_generate_dataset_audits_custom_trial_generator_as_trial_protocol():
@@ -369,6 +399,8 @@ def test_clear_datasets_and_training_history_commands_route_cleanup():
 
     trainer = MagicMock()
     trainer.is_running.return_value = False
+    plan = MagicMock()
+    service.evaluation.get_plans = MagicMock(return_value=[plan])
     service.study.training_manager.trainer = trainer
     service.training.clear_history = MagicMock()
 
@@ -376,6 +408,25 @@ def test_clear_datasets_and_training_history_commands_route_cleanup():
 
     assert clear_history.ok is True
     service.training.clear_history.assert_called_once_with()
+
+
+def test_evaluate_and_clear_history_block_when_trainer_has_no_plan_history():
+    service = ApplicationService(Study())
+    trainer = MagicMock()
+    trainer.is_running.return_value = False
+    trainer.get_training_plan_holders.return_value = []
+    service.study.training_manager.trainer = trainer
+
+    policy = service.get_capabilities()
+    evaluate = service.execute(EvaluateCommand())
+    clear_history = service.execute(ClearTrainingHistoryCommand(confirmed=True))
+
+    assert policy.get(CommandName.EVALUATE).available is False
+    assert policy.get(CommandName.CLEAR_TRAINING_HISTORY).available is False
+    assert evaluate.failed is True
+    assert evaluate.error_type == ErrorType.PRECONDITION
+    assert clear_history.failed is True
+    assert clear_history.error_type == ErrorType.PRECONDITION
 
 
 def test_blocked_query_and_lifecycle_commands_still_return_result_envelopes():

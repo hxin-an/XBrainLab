@@ -571,6 +571,8 @@ class BackendFacade:
         """
         result = self.service.execute(EvaluateCommand())
         diagnostics = dict(result.diagnostics)
+        if result.failed and result.error_type == ErrorType.PRECONDITION:
+            return {"status": "no_plans"}
         if result.ok and diagnostics.get("plan_count", 0) == 0:
             return {"status": "no_plans"}
 

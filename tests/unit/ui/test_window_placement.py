@@ -28,6 +28,19 @@ def _dual_screens() -> list[ScreenGeometry]:
     ]
 
 
+def _reported_offset_screens() -> list[ScreenGeometry]:
+    return [
+        ScreenGeometry(
+            available=QRect(0, 362, 1920, 1080),
+            full=QRect(0, 362, 1920, 1080),
+        ),
+        ScreenGeometry(
+            available=QRect(1920, 0, 1920, 1080),
+            full=QRect(1920, 0, 1920, 1080),
+        ),
+    ]
+
+
 def test_choose_screen_prefers_restored_window_center_on_second_monitor():
     restored_top_edge = QRect(2200, 0, 760, 520)
 
@@ -63,6 +76,34 @@ def test_choose_screen_falls_back_to_cursor_then_primary():
         )
         == 0
     )
+
+
+def test_offset_monitor_gap_cursor_falls_back_to_primary():
+    assert (
+        choose_screen_index_for_rect(
+            None,
+            _reported_offset_screens(),
+            cursor_pos=QPoint(0, 0),
+            primary_index=1,
+        )
+        == 1
+    )
+
+
+def test_offset_monitor_mixed_axis_geometry_is_unusable():
+    min_size = QSize(760, 520)
+    mixed_axes = QRect(320, 140, 1280, 800)
+
+    for screen in _reported_offset_screens():
+        assert not is_window_geometry_usable(
+            mixed_axes,
+            available_geometry=screen.available,
+            screen_geometry=screen.full,
+            min_size=min_size,
+            edge_margin=24,
+            top_drag_margin=72,
+            bottom_margin=48,
+        )
 
 
 def test_geometry_health_rejects_top_edge_and_frame_outside_screen():

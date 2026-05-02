@@ -139,5 +139,6 @@ def test_backend_facade_headless():
 
         facade.training.clear_history = MagicMock()
         mock_study_instance.trainer = MagicMock()
+        facade.evaluation.get_plans = MagicMock(return_value=[MagicMock()])
         facade.clear_training_history()
         facade.training.clear_history.assert_called_once_with()

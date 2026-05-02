@@ -8,7 +8,7 @@ import sys
 from typing import Any
 
 from PyQt6 import sip
-from PyQt6.QtCore import QRect, QSettings, QSize, QTimer, pyqtSignal
+from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -182,14 +182,20 @@ class MainWindow(QMainWindow):
             settings.remove("main_window/geometry")
             self._log_startup_geometry_message("removed unusable saved geometry")
 
-        self._place_default_window(target_screen)
-        self._log_startup_geometry("main_window.after_default_placement")
+        self._place_maximized_fallback(target_screen)
+        self._log_startup_geometry("main_window.after_maximized_fallback")
 
     def _place_default_window(self, screen=None) -> None:
         """Place a default-size window where the native title bar is reachable."""
         target_screen = screen or self._target_screen_for_window()
         self.resize(self._default_window_size_for_screen(target_screen))
         self._center_window_on_available_screen(target_screen)
+
+    def _place_maximized_fallback(self, screen=None) -> None:
+        """Place the window on a valid screen, then start maximized."""
+        self.setWindowState(Qt.WindowState.WindowNoState)
+        self._place_default_window(screen)
+        self.setWindowState(Qt.WindowState.WindowMaximized)
 
     @staticmethod
     def _window_settings() -> QSettings:
@@ -221,13 +227,7 @@ class MainWindow(QMainWindow):
         """Choose a target screen from frame/client geometry, startup hint, cursor."""
         candidate = self._window_rect_for_screen_choice()
         startup_hint = startup_screen_hint()
-        if (
-            startup_hint is not None
-            and not self.isVisible()
-            and candidate is not None
-            and candidate.x() == 0
-            and candidate.y() == 0
-        ):
+        if not self.isVisible() and self._is_unshown_default_rect(candidate):
             candidate = None
         return choose_screen_for_rect(candidate, preferred_screen=startup_hint)
 
@@ -240,6 +240,12 @@ class MainWindow(QMainWindow):
         if current.isValid():
             return current
         return None
+
+    def _is_unshown_default_rect(self, candidate: QRect | None) -> bool:
+        """Return whether a hidden widget rect is only Qt's default origin."""
+        if candidate is None or not candidate.isValid():
+            return False
+        return candidate.x() == 0 and candidate.y() == 0
 
     def _center_window_on_available_screen(self, screen=None) -> None:
         """Center the current window rectangle on the available screen."""
@@ -289,7 +295,9 @@ class MainWindow(QMainWindow):
 
     def _is_current_window_geometry_usable(self, screen=None) -> bool:
         """Return whether current geometry is safe to restore or persist."""
-        if self.isMaximized() or self.isFullScreen():
+        if self.isFullScreen():
+            return False
+        if self.isMaximized():
             return True
 
         target_screen = screen or self._target_screen_for_window()
@@ -561,7 +569,7 @@ class MainWindow(QMainWindow):
             "Recovering unusable main-window geometry after show (%s)",
             recovery_label,
         )
-        self._place_default_window()
+        self._place_maximized_fallback()
         self._log_startup_geometry(f"main_window.{recovery_label}.after")
 
     def closeEvent(self, event):  # noqa: N802

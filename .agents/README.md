@@ -1,6 +1,6 @@
 # XBrainLab Agent Entry
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 這是 repo-local agent 操作入口。
 
@@ -19,6 +19,16 @@
 任務目標是把 XBrainLab 做成工程級可用的本地 EEG 桌面工具：backend 穩、UI 不閃退、agent 能可靠用 tool、本地 LLM 有可控路線、文件能交接。
 
 Milestone 是最低交付門檻，不是只需要做這些。若 milestone 勾完但程式碼仍不可用、測試不能支撐、文件和現況不一致，工作沒有完成。
+
+## 監督模式
+
+大工作預設採 supervisor model：
+
+- 主 agent 是交付審查者，可以把工作拆給多個 worker，但不能把 worker 的完成回報直接轉交給使用者。
+- 每個 worker 交付後，主 agent 必須獨立驗證：讀 diff、看 UI artifact、跑對應 tests、確認 docs/current truth。
+- 若發現 worker 只修局部、留下明顯產品問題、或沒有碰到核心需求，必須打回並要求補完。
+- 使用者要求的是工程級可用軟體；「完成 checklist」但仍不專業、不穩定、不可操作，不算完成。
+- 只有在已知 blocker 被解除、剩餘風險被清楚界定且不違背本輪核心需求時，才能回報為可交付。
 
 目前主線是 product delivery：
 

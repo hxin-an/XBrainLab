@@ -48,7 +48,9 @@
   title bar 的單一功能列，Clear 收進 settings menu。
 - 2026-05-03 `Backend Workflow Contract v2` first slice 已補 lifecycle commands：
   `ClearDatasetsCommand`、`ClearTrainingHistoryCommand`、`ResetPreprocessCommand`，
-  並讓 split audit failure rollback dataset / generator / trainer state。
+  並讓 dataset split apply / audit failure rollback dataset / generator / trainer state。
+  `evaluate` / `clear_training_history` capability 也改以 actual training plan history 為準，
+  避免 trainer 物件存在但 history 已清空時仍顯示可執行。
 - Assistant product runtime 已改成 local-only：remote backend modules 已從 product package
   移除；舊 `api` / `gemini` selection 會 migrate local 或 fail closed，不會 instantiate
   remote backend。
@@ -57,9 +59,10 @@
 - Windows launcher geometry blocker 已補產品級防護：MainWindow 不再信任只因
   `restoreGeometry()` 成功的 saved geometry；貼左上、offscreen、尺寸不合理或 titlebar
   不可達的 `main_window/geometry` 會 migration reset，關閉時也不會再次保存。
-- 第二輪補強雙螢幕 / 上緣貼齊問題：startup screen selection 已抽成共用 helper，
-  loading splash 和 MainWindow 使用同一個 startup screen；MainWindow 也會把 top-edge、
-  native frame titlebar 不可達、跨螢幕 frame 判為不健康並重新置中。
+- 第三輪補強雙螢幕 / 上緣貼齊問題：不健康 saved geometry、first launch、
+  post-show recovery 不再嘗試自己算完美置中，而是落到 maximized fallback。
+  這避免使用者回報的 offset monitor layout 中 x/y 來自不同螢幕，造成 titlebar
+  被推出螢幕上方。
 
 ## 產品線盤點
 
@@ -73,6 +76,8 @@
 - `evaluate` / `visualize` / `saliency` / `new_session` 已是 service-backed query /
   lifecycle command，回傳 summary / setup diagnostics；完整互動式 evaluation /
   visualization analysis workflow 仍要另外驗收。
+- dataset generation failure boundary 已補強：apply 中途例外或 split audit blocking issue
+  都會 rollback datasets / generator / trainer，不留下半成功 training state。
 
 ### B. UI
 
@@ -88,7 +93,9 @@
 - `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
   synthetic EEG button-driven pipeline walkthrough。
 - 真 Windows launcher 打開 assistant 後的 click-through 仍未完成；主視窗壞 geometry、
-  雙螢幕 screen selection、loading splash centering 已有 regression tests。
+  雙螢幕 screen selection、offset monitor gap、maximized fallback 已有 regression tests。
+- 目前 button-driven pipeline walkthrough 仍使用 patched training / synthetic records，
+  不等於真 UI click-through 到 training / evaluation / visualization completion。
 
 ### C. Agent
 

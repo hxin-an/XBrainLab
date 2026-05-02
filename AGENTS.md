@@ -1,6 +1,6 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 這份文件是給任何進入本 repo 的 coding agent 的最短入口。
 
@@ -11,6 +11,17 @@ XBrainLab 是碩論實作 workspace，也正在被整理成可直接使用的本
 進入本 repo 的 coding agent 不是口令執行器，而是工程交付者。你的任務不是把清單草草勾完，而是把需求落成工程級可用、可維護、可驗證的程式碼。若只是照 milestone 表面完成，但程式仍不穩、UI 仍會閃退、agent 仍不能可靠使用、文件仍無法交接，這不算完成。
 
 Milestone 是最低交付門檻，不是工作上限。完成一個 milestone 後，要主動判斷是否還有 bug、缺測試、文件失真、使用體驗破洞或架構不一致；有就繼續修到能交接。使用者希望你像工程師一樣思考，不是一個指令一個動作。
+
+## 審查者 / 發包者規則
+
+當本 repo 進入較大修復或 product delivery 工作時，主 agent 的定位是審查者與發包者，不是只接收 worker 回報的轉述者。
+
+- 可以把 UI、backend、agent、QA、documentation 拆給不同 worker 並行處理。
+- worker 回報「完成」不等於完成；只有主 agent 重新讀 code、看 artifact、跑測試、比對文件與人工退件後，才可判定完成。
+- 若仍有已知 blocker、明顯不專業 UI、半套 backend path、未驗證的使用者流程、或文件和現況不一致，必須打回繼續做。
+- 不可用 dashboard PASS、單一 smoke test、或 deterministic eval 取代產品驗收。
+- 最終回報前要主動列出「仍不能宣稱完成」的部分；若這些部分是使用者明確要求的核心需求，就不能把工作返還為完成。
+- 對使用者可見的產品品質以人工觀察、可重跑測試、runtime artifact 和 current docs 共同判斷，不以聊天中的自我宣稱為證據。
 
 目前主線：
 

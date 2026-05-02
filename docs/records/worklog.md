@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 ## 這份文件的用途
 
@@ -34,6 +34,46 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-03
+
+### 00:40 Supervisor rule / window fallback / backend hardening review
+
+- 做了什麼：
+  - 將 repo agent 入口補上 supervisor model：worker 回報完成不算完成，主 agent 必須自己讀 diff、
+    看 artifact、跑 tests、比對 current docs，仍有 blocker 就打回。
+  - 發包 UI/window worker 修正 Windows/WSLg offset dual-monitor 開窗回歸；first launch、
+    壞 saved geometry、post-show recovery 改成 maximized fallback，不使用 fullscreen。
+  - 發包 backend worker 補 dataset generation apply/audit rollback boundary，並把
+    `evaluate` / `clear_training_history` capability 改成看 actual training plan history。
+  - 發包 QA explorer 只讀審核 tests 是否真的支撐 product delivery。
+- 結果：
+  - UI/window slice 的 regression tests 覆蓋使用者回報 geometry：
+    `screen[0] x=0 y=362`、`screen[1] x=1920 y=0`、cursor `(0,0)` 在 virtual gap。
+  - Backend slice 避免 split apply 例外或 split audit blocker 留下半成功 datasets /
+    generator / trainer。
+  - QA 審核確認仍不能宣稱完整產品完成：真 Windows launcher click-through、true local model
+    UI walkthrough、real UI button-click 到 training/eval/viz completion 仍未完成。
+  - 我自己的驗證中曾把 Markdown 檔誤丟給 `ruff`，該失敗是驗證命令錯誤，不是程式碼失敗；
+    已改用只含 Python 檔的 ruff gate。
+- 證據：
+  - `git diff --check` PASS
+  - `poetry run ruff check XBrainLab/ui/main_window.py XBrainLab/backend/application/capabilities.py XBrainLab/backend/application/service.py XBrainLab/backend/facade.py tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/backend/application/test_application_service.py tests/unit/backend/test_facade_headless.py`
+    - `All checks passed!`
+  - `poetry run pytest --capture=sys tests/unit/ui/test_window_placement.py tests/integration/ui/test_window_geometry.py tests/unit/test_run_splash_geometry.py -q`
+    - `22 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py tests/unit/backend/test_facade_headless.py tests/unit/backend/test_facade_coverage.py tests/unit/llm/tools/test_application_surface.py -q`
+    - `80 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout -q`
+    - `48 passed`
+  - `poetry run basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict`
+    - PASS
+- 接續 / 本輪剩餘：
+  - 使用者仍需在真 Windows/WSLg 雙螢幕上 click-through 確認 launcher / splash / main window。
+  - 要補真 UI E2E：button click 到 real training completion、evaluation record、visualization/saliency。
+  - 不可把 synthetic product walkthrough 或 deterministic eval 當完整 release evidence。
 
 ## 2026-05-02
 

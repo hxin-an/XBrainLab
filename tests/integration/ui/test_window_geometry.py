@@ -40,6 +40,12 @@ def _make_lightweight_window(qtbot, settings):
     return window
 
 
+def _make_normal_lightweight_window(qtbot, settings):
+    window = _make_lightweight_window(qtbot, settings)
+    window.setWindowState(Qt.WindowState.WindowNoState)
+    return window
+
+
 def _healthy_user_geometry(window: MainWindow) -> QRect:
     available = window._available_screen_geometry()
     width = min(
@@ -92,12 +98,14 @@ def test_first_launch_window_is_on_available_screen(qtbot):
     assert geometry.y() >= min_y
     assert geometry.center().y() > available.center().y() - 2
     assert window._is_current_window_geometry_usable()
+    assert window.isMaximized()
+    assert not window.isFullScreen()
     assert not window.windowFlags() & Qt.WindowType.FramelessWindowHint
 
 
 @pytest.mark.parametrize("anchor", ["left", "center", "right"])
 def test_saved_top_edge_window_geometry_is_reset_and_recentered(qtbot, anchor):
-    seed = _make_lightweight_window(qtbot, _FakeSettings())
+    seed = _make_normal_lightweight_window(qtbot, _FakeSettings())
     available = seed._available_screen_geometry()
     width = seed.MIN_WINDOW_SIZE.width()
     if anchor == "left":
@@ -120,13 +128,14 @@ def test_saved_top_edge_window_geometry_is_reset_and_recentered(qtbot, anchor):
     settings = _FakeSettings(saved_geometry)
     window = _make_lightweight_window(qtbot, settings)
 
-    assert window.geometry() == _default_centered_geometry(window)
+    assert window.isMaximized()
+    assert not window.isFullScreen()
     assert window._is_current_window_geometry_usable()
     assert settings.removed_keys == ["main_window/geometry"]
 
 
 def test_frame_geometry_above_available_top_is_unusable(qtbot):
-    window = _make_lightweight_window(qtbot, _FakeSettings())
+    window = _make_normal_lightweight_window(qtbot, _FakeSettings())
     window.setGeometry(_healthy_user_geometry(window))
 
     available = window._available_screen_geometry()
@@ -143,7 +152,7 @@ def test_frame_geometry_above_available_top_is_unusable(qtbot):
 
 
 def test_saved_offscreen_window_geometry_is_reset_and_recentered(qtbot):
-    seed = _make_lightweight_window(qtbot, _FakeSettings())
+    seed = _make_normal_lightweight_window(qtbot, _FakeSettings())
     seed.setGeometry(QRect(-8000, -8000, 1800, 1200))
     saved_geometry = seed.saveGeometry()
     seed.close()
@@ -159,12 +168,14 @@ def test_saved_offscreen_window_geometry_is_reset_and_recentered(qtbot):
     assert available.contains(geometry.bottomRight())
     assert geometry.width() <= available.width()
     assert geometry.height() <= available.height()
+    assert window.isMaximized()
+    assert not window.isFullScreen()
     assert window._is_current_window_geometry_usable()
     assert settings.removed_keys == ["main_window/geometry"]
 
 
 def test_healthy_saved_window_geometry_is_preserved(qtbot):
-    seed = _make_lightweight_window(qtbot, _FakeSettings())
+    seed = _make_normal_lightweight_window(qtbot, _FakeSettings())
     seed.setGeometry(_healthy_user_geometry(seed))
     expected_geometry = seed.geometry()
     saved_geometry = seed.saveGeometry()
@@ -174,13 +185,15 @@ def test_healthy_saved_window_geometry_is_preserved(qtbot):
     window = _make_lightweight_window(qtbot, settings)
 
     assert window.geometry() == expected_geometry
+    assert not window.isMaximized()
+    assert not window.isFullScreen()
     assert window._is_current_window_geometry_usable()
     assert settings.removed_keys == []
 
 
 def test_close_event_discards_unusable_window_geometry(qtbot):
     settings = _FakeSettings()
-    window = _make_lightweight_window(qtbot, settings)
+    window = _make_normal_lightweight_window(qtbot, settings)
     available = window._available_screen_geometry()
     window.setGeometry(
         QRect(
@@ -203,7 +216,10 @@ def test_main_window_can_resize_maximize_and_restore(qtbot):
     window.show()
     qtbot.waitExposed(window)
     qtbot.wait(20)
+    assert window.isMaximized()
 
+    window.showNormal()
+    qtbot.wait(50)
     available = window._available_screen_geometry()
     target_width = max(
         window.minimumWidth(),
@@ -248,6 +264,8 @@ def test_delayed_recovery_recenters_late_top_edge_geometry(qtbot):
     window.show()
     qtbot.waitExposed(window)
     qtbot.wait(20)
+    window.showNormal()
+    qtbot.wait(50)
 
     available = window._available_screen_geometry()
     window.setGeometry(
@@ -263,5 +281,6 @@ def test_delayed_recovery_recenters_late_top_edge_geometry(qtbot):
 
     window._recover_unusable_window_geometry("post_show_250ms")
 
-    assert window.geometry() == _default_centered_geometry(window)
+    assert window.isMaximized()
+    assert not window.isFullScreen()
     assert window._is_current_window_geometry_usable()
