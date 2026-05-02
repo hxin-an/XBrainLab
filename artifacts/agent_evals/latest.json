@@ -54,7 +54,7 @@
         "tool_calls": [],
         "blocked": true,
         "confirmation_required": false,
-        "blocked_reason": "Generate datasets before training.; Select a model before training.; Configure training options before training.",
+        "blocked_reason": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training.",
         "asks_clarification": false,
         "result_interpretation": null
       },
