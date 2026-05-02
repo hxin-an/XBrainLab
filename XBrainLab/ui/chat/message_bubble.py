@@ -69,7 +69,7 @@ class MessageBubble(QWidget):
         """
         # Main horizontal layout for this row
         row_layout = QHBoxLayout(self)
-        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setContentsMargins(2, 0, 2, 0)
         row_layout.setSpacing(0)
 
         # Create the bubble frame
@@ -106,8 +106,9 @@ class MessageBubble(QWidget):
         self.text_edit.anchorClicked.connect(self._on_link_clicked)
 
         if self.text_edit:
-            # Use WordWrap to break at word boundaries, not in the middle of words
-            self.text_edit.setWordWrapMode(QTextOption.WrapMode.WordWrap)
+            self.text_edit.setWordWrapMode(
+                QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+            )
             doc = self.text_edit.document()
             if doc:
                 doc.setDocumentMargin(0)  # Remove internal document margin
@@ -125,6 +126,7 @@ class MessageBubble(QWidget):
             self.bubble_frame.setStyleSheet(USER_BUBBLE_FRAME_STYLE)
             self.text_edit.setStyleSheet(USER_BUBBLE_TEXT_STYLE)
 
+            row_layout.addStretch(1)
             row_layout.addWidget(self.bubble_frame)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignRight)
         else:
@@ -132,6 +134,7 @@ class MessageBubble(QWidget):
             self.text_edit.setStyleSheet(AGENT_BUBBLE_TEXT_STYLE)
 
             row_layout.addWidget(self.bubble_frame)
+            row_layout.addStretch(1)
             row_layout.setAlignment(self.bubble_frame, Qt.AlignmentFlag.AlignLeft)
 
     def _on_link_clicked(self, url: QUrl):
@@ -200,7 +203,8 @@ class MessageBubble(QWidget):
 
         # 3. Apply width constraint
         self.bubble_frame.setFixedWidth(int(actual_width))
-        doc.setTextWidth(actual_width - layout_h_margins)
+        text_width = max(actual_width - layout_h_margins - 6, 1)
+        doc.setTextWidth(text_width)
 
         # 4. Calculate Height based on wrapped text
         # Use documentLayout for precise height calculation

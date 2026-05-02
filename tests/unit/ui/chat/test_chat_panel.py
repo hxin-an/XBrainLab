@@ -138,7 +138,7 @@ class TestChatPanelCallbacks:
         chat_panel.set_status_summary("Backend: empty", "Train blocked")
         assert chat_panel.status_label.text() == "Backend: empty"
         assert chat_panel.status_label.toolTip() == "Train blocked"
-        assert chat_panel.backend_stage_chip.text() == "Stage: empty"
+        assert chat_panel.backend_stage_chip.text() == "No data loaded"
 
     def test_set_model(self, chat_panel):
         with patch.object(chat_panel, "model_changed") as mock_sig:
@@ -150,13 +150,13 @@ class TestChatPanelCallbacks:
     def test_set_model_keeps_ui_label_separate_from_runtime_mode(self, chat_panel):
         with patch.object(chat_panel, "model_changed") as mock_sig:
             mock_sig.emit = MagicMock()
-            chat_panel._set_model("local", "Local (CPU fallback)")
+            chat_panel._set_model("local", "Local model (CPU fallback)")
             assert "CPU fallback" in chat_panel.model_btn.text()
             mock_sig.emit.assert_called_once_with("local")
 
     def test_set_feature(self, chat_panel):
-        chat_panel._set_feature("EEG Analyst")
-        assert "EEG Analyst" in chat_panel.feature_btn.text()
+        chat_panel._set_feature("EEG analyst")
+        assert "EEG analyst" in chat_panel.feature_btn.text()
 
     def test_update_model_menu_disables_unready_local_mode(self, qtbot):
         config = MagicMock()
@@ -182,7 +182,7 @@ class TestChatPanelCallbacks:
             action for action in panel.model_menu.actions() if "Local" in action.text()
         )
         assert local_action.isEnabled() is False
-        assert "Unavailable" in local_action.text()
+        assert "unavailable" in local_action.text()
 
     def test_update_model_menu_hides_unverified_gemini(self, qtbot):
         config = MagicMock()
@@ -207,7 +207,7 @@ class TestChatPanelCallbacks:
         assert all(
             "Gemini" not in action.text() for action in panel.model_menu.actions()
         )
-        assert panel.model_btn.text() == "Model: Local"
+        assert panel.model_btn.text() == "Local model"
 
     def test_update_model_menu_demotes_verified_gemini(self, qtbot):
         config = MagicMock()
@@ -234,7 +234,7 @@ class TestChatPanelCallbacks:
             action for action in panel.model_menu.actions() if "Gemini" in action.text()
         )
         assert "Remote" in gemini_action.text()
-        assert panel.model_btn.text() == "Model: Gemini (Remote)"
+        assert panel.model_btn.text() == "Gemini (Remote)"
 
     def test_update_model_menu_surfaces_cpu_fallback(self, qtbot):
         config = MagicMock()
@@ -265,7 +265,7 @@ class TestChatPanelCallbacks:
         )
         assert "CPU fallback" in local_action.text()
         assert "fall back to CPU" in local_action.toolTip()
-        assert panel.model_btn.text() == "Model: Local (CPU fallback)"
+        assert panel.model_btn.text() == "Local model (CPU fallback)"
 
     def test_update_model_menu_prefers_inference_mode_for_gemini_label(self, qtbot):
         config = MagicMock()
@@ -288,15 +288,15 @@ class TestChatPanelCallbacks:
             panel = ChatPanel()
             qtbot.addWidget(panel)
 
-        assert panel.model_btn.text() == "Model: Gemini (Remote)"
+        assert panel.model_btn.text() == "Gemini (Remote)"
 
     def test_product_ui_structure_is_visible(self, chat_panel):
         assert chat_panel.title_label.text() == "XBrainLab Assistant"
         assert chat_panel.empty_state_widget.isHidden() is False
-        assert "Backend stage" in chat_panel.empty_state_backend_label.text()
-        assert chat_panel.backend_stage_chip.text().startswith("Stage:")
-        assert chat_panel.model_status_chip.text().startswith("Model:")
-        assert chat_panel.available_commands_chip.text().startswith("Commands:")
+        assert "Workflow" in chat_panel.empty_state_backend_label.text()
+        assert chat_panel.backend_stage_chip.text()
+        assert chat_panel.model_status_chip.text()
+        assert chat_panel.available_commands_chip.text().startswith("Next steps:")
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.retry_btn.text() == "Retry"
@@ -305,17 +305,18 @@ class TestChatPanelCallbacks:
     def test_product_status_updates_empty_state_and_chips(self, chat_panel):
         chat_panel.set_product_status(
             stage="empty",
-            model_status="local unavailable",
+            model_status="Local model unavailable",
             available_commands=["load_data", "reset_session"],
             tooltip="Local model cache missing",
             blocked_reason="Generate datasets before training.",
         )
 
-        assert chat_panel.backend_stage_chip.text() == "Stage: empty"
-        assert chat_panel.model_status_chip.text() == "Model: local unavailable"
-        assert "load_data" in chat_panel.available_commands_chip.text()
-        assert chat_panel.empty_state_backend_label.text() == "Backend stage: empty"
+        assert chat_panel.backend_stage_chip.text() == "No data loaded"
+        assert chat_panel.model_status_chip.text() == "Local model unavailable"
+        assert "Load EEG data" in chat_panel.available_commands_chip.text()
+        assert "load_data" not in chat_panel.available_commands_chip.text()
+        assert chat_panel.empty_state_backend_label.text() == "Workflow: No data loaded"
         assert chat_panel.empty_state_model_label.text() == (
-            "Local model: local unavailable"
+            "Assistant runtime: Local model unavailable"
         )
-        assert "load_data" in chat_panel.empty_state_next_label.text()
+        assert "Load EEG data" in chat_panel.empty_state_next_label.text()

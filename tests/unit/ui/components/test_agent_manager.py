@@ -215,7 +215,9 @@ class TestAgentManagerMethods:
         assert '"ok": false' in tool_output
         assert '"command_name": "train"' in tool_output
         assert "Generate datasets before training" in tool_output
-        assert manager.chat_panel.status_label.text().startswith("Backend: empty")
+        assert manager.chat_panel.status_label.text().startswith(
+            "Backend: No data loaded"
+        )
 
 
 class _FakeAgentController(QObject):

@@ -30,7 +30,7 @@ class TestMessageBubble:
         # Max width should be ~80% of 500 = 400
         assert bubble.bubble_frame.maximumWidth() == 400
         # Text width should be set
-        assert bubble.text_edit.document().textWidth() == 370  # 400 - 30 margin
+        assert bubble.text_edit.document().textWidth() == 364  # 400 - margins - guard
 
     def test_link_handling(self, qtbot):
         bubble = MessageBubble("[Link](https://example.com)", is_user=False)

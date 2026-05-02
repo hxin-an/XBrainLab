@@ -23,6 +23,7 @@ from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
+from XBrainLab.ui.product_language import workflow_stage_label
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
@@ -494,7 +495,7 @@ class AgentManager(QObject):
 
         """
         if self.chat_panel:
-            label = "Single" if mode == "single" else "Multi"
+            label = "Single step" if mode == "single" else "Auto steps"
             self.chat_panel.mode_btn.setText(label)
 
     def start_new_conversation(self):
@@ -572,16 +573,19 @@ class AgentManager(QObject):
                 for name, capability in capabilities.capabilities.items()
                 if capability.enabled
             ]
-            stage = str(state.pipeline_stage).replace("_", " ")
+            stage = workflow_stage_label(state)
             model_config = LLMConfig.load_from_file() or LLMConfig()
             selection = LLMConfig.assistant_runtime_selection_from(model_config)
             model_ready = model_config.local_backend_ready(selection.model_id)
-            model_status = "local ready" if model_ready else "local unavailable"
+            model_status = (
+                "Local model ready" if model_ready else "Local model unavailable"
+            )
             text = f"Backend: {stage} | {model_status}"
 
             train_capability = capabilities.get("train")
             tooltip_lines = [
-                f"Pipeline stage: {stage}",
+                f"Workflow stage: {stage}",
+                f"Raw pipeline stage: {state.pipeline_stage}",
                 f"Assistant runtime: {selection.backend_mode}",
                 (
                     "Local model: "

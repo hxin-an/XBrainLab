@@ -27,6 +27,7 @@ from XBrainLab.backend.utils.logger import logger
 # M3.1: Debug Mode
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.ui.product_language import command_labels, workflow_stage_text_label
 
 from ..styles.theme import Theme
 from .message_bubble import MessageBubble
@@ -181,7 +182,7 @@ class ChatPanel(QWidget):
         self.title_label.setStyleSheet(HEADER_TITLE_STYLE)
         title_stack.addWidget(self.title_label)
 
-        subtitle = QLabel("Workflow-aware local assistant for EEG analysis")
+        subtitle = QLabel("Guide EEG workflows from data import to training")
         subtitle.setObjectName("AssistantSubtitle")
         subtitle.setStyleSheet(HEADER_SUBTITLE_STYLE)
         subtitle.setWordWrap(True)
@@ -213,19 +214,19 @@ class ChatPanel(QWidget):
         chip_row.setContentsMargins(0, 0, 0, 0)
         chip_row.setSpacing(6)
 
-        self.backend_stage_chip = QLabel("Stage: checking")
+        self.backend_stage_chip = QLabel("Checking workflow")
         self.backend_stage_chip.setStyleSheet(STATUS_CHIP_STYLE)
         self.backend_stage_chip.setToolTip("Current backend workflow stage")
         chip_row.addWidget(self.backend_stage_chip)
 
-        self.model_status_chip = QLabel("Model: checking")
+        self.model_status_chip = QLabel("Checking local model")
         self.model_status_chip.setStyleSheet(STATUS_CHIP_WARNING_STYLE)
         self.model_status_chip.setToolTip("Local model status")
         chip_row.addWidget(self.model_status_chip)
 
-        self.available_commands_chip = QLabel("Commands: checking")
+        self.available_commands_chip = QLabel("Next steps: checking")
         self.available_commands_chip.setStyleSheet(STATUS_CHIP_STYLE)
-        self.available_commands_chip.setToolTip("Available backend commands")
+        self.available_commands_chip.setToolTip("Available workflow actions")
         chip_row.addWidget(self.available_commands_chip, 1)
 
         header_layout.addLayout(chip_row)
@@ -234,19 +235,19 @@ class ChatPanel(QWidget):
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
         toolbar_layout.setSpacing(6)
 
-        self.feature_btn = QPushButton("General Assistant")
+        self.feature_btn = QPushButton("Workflow guide")
         self.feature_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.feature_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         self.feature_menu = QMenu(self)
         self.feature_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
-        for feat in ["General Assistant", "EEG Analyst", "Coder"]:
+        for feat in ["Workflow guide", "EEG analyst", "Training helper"]:
             action = QAction(feat, self)
             action.triggered.connect(lambda checked, f=feat: self._set_feature(f))
             self.feature_menu.addAction(action)
         self.feature_btn.setMenu(self.feature_menu)
         toolbar_layout.addWidget(self.feature_btn)
 
-        self.model_btn = QPushButton("Model: Local")
+        self.model_btn = QPushButton("Local model")
         self.model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
 
@@ -256,16 +257,19 @@ class ChatPanel(QWidget):
         self.update_model_menu()
         toolbar_layout.addWidget(self.model_btn)
 
-        self.mode_btn = QPushButton("Single")
+        self.mode_btn = QPushButton("Single step")
         self.mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mode_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         self.mode_btn.setToolTip(
-            "Single: stop after each tool success\n"
-            "Multi: auto-continue until done or limit reached"
+            "Single step: stop after each completed action\n"
+            "Auto steps: continue through safe follow-up actions until done"
         )
         self.mode_menu = QMenu(self)
         self.mode_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
-        for mode_label, mode_key in [("Single", "single"), ("Multi", "multi")]:
+        for mode_label, mode_key in [
+            ("Single step", "single"),
+            ("Auto steps", "multi"),
+        ]:
             action = QAction(mode_label, self)
             action.triggered.connect(
                 lambda checked, m=mode_key, lbl=mode_label: self._set_execution_mode(
@@ -297,32 +301,32 @@ class ChatPanel(QWidget):
         empty_layout.setContentsMargins(14, 14, 14, 14)
         empty_layout.setSpacing(8)
 
-        self.empty_state_title = QLabel("Start with a clear next step")
+        self.empty_state_title = QLabel("Load EEG files to begin")
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         empty_layout.addWidget(self.empty_state_title)
 
         intro = QLabel(
-            "Ask the assistant to inspect the current workflow state, explain why "
-            "a command is blocked, or guide load -> preprocess -> epoch -> "
-            "dataset -> train."
+            "Ask the assistant to inspect workflow state, explain blocked steps, "
+            "or guide data import, preprocessing, epoching, dataset creation, and "
+            "training."
         )
         intro.setWordWrap(True)
         intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         empty_layout.addWidget(intro)
 
-        self.empty_state_backend_label = QLabel("Backend stage: checking")
+        self.empty_state_backend_label = QLabel("Workflow: checking")
         self.empty_state_backend_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_backend_label.setWordWrap(True)
         empty_layout.addWidget(self.empty_state_backend_label)
 
-        self.empty_state_model_label = QLabel("Local model: checking")
+        self.empty_state_model_label = QLabel("Assistant runtime: checking")
         self.empty_state_model_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_model_label.setWordWrap(True)
         empty_layout.addWidget(self.empty_state_model_label)
 
         self.empty_state_next_label = QLabel(
-            "Next available step: waiting for backend diagnostics."
+            "Available next steps: waiting for workflow diagnostics."
         )
         self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_next_label.setWordWrap(True)
@@ -357,18 +361,18 @@ class ChatPanel(QWidget):
             gemini_enabled = False
             active_mode = "local"
 
-        local_action = QAction("Local", self)
+        local_action = QAction("Local model", self)
         if not local_enabled:
             local_action.setEnabled(False)
-            local_action.setText("Local (Disabled)")
-            local_action.setToolTip("Enable Local Model in Settings (≡) to use.")
+            local_action.setText("Local model disabled")
+            local_action.setToolTip("Enable the local model in settings to use it.")
         elif not local_runtime_ready:
             local_action.setEnabled(False)
-            local_action.setText("Local (Unavailable)")
+            local_action.setText("Local model unavailable")
             local_action.setToolTip(local_runtime_message)
         else:
             if local_runtime_message != "Local runtime ready.":
-                local_action.setText("Local (CPU fallback)")
+                local_action.setText("Local model (CPU fallback)")
                 local_action.setToolTip(local_runtime_message)
             local_action.triggered.connect(
                 lambda checked, action=local_action: self._set_model(
@@ -389,16 +393,16 @@ class ChatPanel(QWidget):
             self.model_menu.addAction(gemini_action)
 
         local_label = (
-            "Local (CPU fallback)"
+            "Local model (CPU fallback)"
             if local_runtime_ready and local_runtime_message != "Local runtime ready."
-            else "Local"
+            else "Local model"
         )
         label = (
             "Gemini (Remote)"
             if active_mode == "gemini" and gemini_enabled
             else local_label
         )
-        self.model_btn.setText(f"Model: {label}")
+        self.model_btn.setText(label)
 
     def connect_controller(self, controller: ChatController):
         """Connect to a backend ChatController for state synchronization.
@@ -436,7 +440,9 @@ class ChatPanel(QWidget):
         button_label = (
             label
             if label is not None
-            else ("Gemini (Remote)" if normalized_mode == "gemini" else "Local")
+            else (
+                "Gemini remote model" if normalized_mode == "gemini" else "Local model"
+            )
         )
         self.model_btn.setText(button_label)
         self.model_changed.emit(normalized_mode)
@@ -556,6 +562,7 @@ class ChatPanel(QWidget):
             model_status = model_part.strip()
         elif text.lower().startswith("backend:"):
             stage = text.replace("Backend:", "").strip()
+        stage = workflow_stage_text_label(stage)
 
         self._update_status_widgets(
             stage=stage,
@@ -573,6 +580,7 @@ class ChatPanel(QWidget):
         blocked_reason: str | None = None,
     ) -> None:
         """Update header chips and empty-state diagnostics."""
+        stage = workflow_stage_text_label(stage)
         text = f"Backend: {stage} | {model_status}"
         self.status_label.setText(text)
         if tooltip is not None:
@@ -595,7 +603,7 @@ class ChatPanel(QWidget):
     ) -> None:
         """Apply status text to chips and empty-state labels."""
         if hasattr(self, "backend_stage_chip"):
-            self.backend_stage_chip.setText(f"Stage: {stage}")
+            self.backend_stage_chip.setText(stage)
             if tooltip:
                 self.backend_stage_chip.setToolTip(tooltip)
 
@@ -603,22 +611,25 @@ class ChatPanel(QWidget):
             model_status.lower()
         )
         if hasattr(self, "model_status_chip"):
-            self.model_status_chip.setText(f"Model: {model_status}")
+            self.model_status_chip.setText(model_status)
             self.model_status_chip.setStyleSheet(
                 STATUS_CHIP_STYLE if model_ready else STATUS_CHIP_WARNING_STYLE
             )
             if tooltip:
                 self.model_status_chip.setToolTip(tooltip)
 
-        if available_commands is None:
-            command_text = "Commands: see details"
+        display_commands = (
+            None if available_commands is None else command_labels(available_commands)
+        )
+        if display_commands is None:
+            command_text = "Next steps: see details"
         elif available_commands:
-            preview = ", ".join(available_commands[:3])
-            extra_count = len(available_commands) - 3
+            preview = ", ".join(display_commands[:3])
+            extra_count = len(display_commands) - 3
             suffix = "" if extra_count <= 0 else f" +{extra_count}"
-            command_text = f"Commands: {preview}{suffix}"
+            command_text = f"Next steps: {preview}{suffix}"
         else:
-            command_text = "Commands: none available"
+            command_text = "Next steps: none available"
 
         if hasattr(self, "available_commands_chip"):
             self.available_commands_chip.setText(command_text)
@@ -626,19 +637,19 @@ class ChatPanel(QWidget):
                 self.available_commands_chip.setToolTip(tooltip)
 
         if hasattr(self, "empty_state_backend_label"):
-            self.empty_state_backend_label.setText(f"Backend stage: {stage}")
+            self.empty_state_backend_label.setText(f"Workflow: {stage}")
         if hasattr(self, "empty_state_model_label"):
-            self.empty_state_model_label.setText(f"Local model: {model_status}")
+            self.empty_state_model_label.setText(f"Assistant runtime: {model_status}")
         if hasattr(self, "empty_state_next_label"):
-            if available_commands:
+            if display_commands:
                 self.empty_state_next_label.setText(
-                    "Next available step: " + ", ".join(available_commands[:4])
+                    "Available next steps: " + ", ".join(display_commands[:4])
                 )
             elif blocked_reason:
                 self.empty_state_next_label.setText(f"Blocked: {blocked_reason}")
             else:
                 self.empty_state_next_label.setText(
-                    "Next available step: ask for current state or load data."
+                    "Available next steps: ask for current state or load EEG data."
                 )
 
     def resizeEvent(self, event):  # noqa: N802
