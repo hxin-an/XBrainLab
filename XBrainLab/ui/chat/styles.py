@@ -8,14 +8,14 @@ from ..styles.theme import Theme
 
 ASSISTANT_PANEL_STYLE = """
     QWidget#AssistantPanel {
-        background-color: #15191d;
+        background-color: #1e1e1e;
     }
 """
 
 HEADER_STYLE = """
     QWidget#AssistantHeader {
-        background-color: #1b2025;
-        border-bottom: 1px solid #303840;
+        background-color: #252526;
+        border-bottom: 1px solid #3e3e3e;
     }
 """
 
@@ -40,8 +40,8 @@ HEADER_SUBTITLE_STYLE = """
 
 GUIDANCE_PANEL_STYLE = """
     QWidget#WorkflowGuidance {
-        background-color: #15191d;
-        border-bottom: 1px solid #26313a;
+        background-color: #1e1e1e;
+        border-bottom: 1px solid #3e3e3e;
     }
 """
 
@@ -67,8 +67,8 @@ GUIDANCE_TEXT_STYLE = """
 STATUS_CHIP_STYLE = """
     QLabel {
         color: #d7e0ea;
-        background-color: #26313a;
-        border: 1px solid #394652;
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
         border-radius: 7px;
         padding: 4px 8px;
         font-size: 12px;
@@ -88,7 +88,7 @@ STATUS_CHIP_WARNING_STYLE = """
 
 EMPTY_STATE_STYLE = """
     QFrame#AssistantEmptyState {
-        background-color: #15191d;
+        background-color: #1e1e1e;
         border: none;
         border-radius: 0px;
     }
@@ -117,23 +117,23 @@ EMPTY_STATE_TEXT_STYLE = """
 # Scroll Area Styles
 SCROLL_AREA_STYLE = """
     QScrollArea {
-        background-color: #15191d;
+        background-color: #1e1e1e;
         border: none;
     }
     QScrollBar:vertical {
         border: none;
-        background: #15191d;
+        background: #1e1e1e;
         width: 14px;
         margin: 0px;
     }
     QScrollBar::handle:vertical {
-        background: #3c4650;
+        background: #4f4f4f;
         min-height: 20px;
         border-radius: 7px;
         margin: 2px;
     }
     QScrollBar::handle:vertical:hover {
-        background: #53606b;
+        background: #5f5f5f;
     }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         height: 0px;
@@ -146,9 +146,9 @@ SCROLL_AREA_STYLE = """
 # Control Panel Styles
 CONTROL_PANEL_STYLE = """
     QWidget#ControlPanel {
-        background-color: #1b2025;
-        border-top: 1px solid #303840;
-        min-height: 72px;
+        background-color: #252526;
+        border-top: 1px solid #3e3e3e;
+        min-height: 56px;
     }
 """
 
@@ -183,8 +183,8 @@ TOOLBAR_BUTTON_STYLE = """
         font-weight: 700;
     }
     QToolButton:hover {
-        background-color: #26313a;
-        border: 1px solid #35404a;
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
         color: #ffffff;
     }
     QToolButton:disabled {
@@ -204,8 +204,8 @@ FOOTER_BUTTON_STYLE = """
         font-size: 12px;
     }
     QToolButton:hover {
-        background-color: #26313a;
-        border: 1px solid #35404a;
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
         color: #f2f6fa;
     }
     QToolButton:disabled {
@@ -247,15 +247,15 @@ DROPDOWN_MENU_STYLE = f"""
 # Input Field Styles
 INPUT_FIELD_STYLE = """
     QLineEdit {
-        background-color: #101418;
+        background-color: #1e1e1e;
         color: #f1f5f9;
-        border: 1px solid #394652;
+        border: 1px solid #4a4a4a;
         border-radius: 8px;
         padding: 9px 11px;
         font-size: 15px;
     }
     QLineEdit:focus {
-        border: 1px solid #6c9bd2;
+        border: 1px solid #5B7DB1;
     }
     QLineEdit:disabled {
         color: #7c8792;
@@ -296,8 +296,8 @@ SEND_BUTTON_PROCESSING_STYLE = """
 # Message Bubble Styles
 USER_BUBBLE_FRAME_STYLE = """
     QFrame#BubbleFrame {
-        background-color: #1f5f54;
-        border: 1px solid #2c7568;
+        background-color: #263f39;
+        border: 1px solid #3b5f56;
         border-radius: 8px;
     }
 """
@@ -312,8 +312,8 @@ USER_BUBBLE_TEXT_STYLE = f"""
 
 AGENT_BUBBLE_FRAME_STYLE = """
     QFrame#BubbleFrame {
-        background-color: #202932;
-        border: 1px solid #33404a;
+        background-color: #2d2d2d;
+        border: 1px solid #3e3e3e;
         border-radius: 8px;
     }
 """

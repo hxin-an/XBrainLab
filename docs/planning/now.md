@@ -16,6 +16,7 @@
 -> thesis split audit protocol 建立
 -> assistant product audit follow-up：UI header / transcript / tool output / legacy remote exposure 修正
 -> local-only assistant runtime enforcement：remote backend modules 從 product package 移除
+-> assistant UI 單一功能列與 Backend Workflow Contract v2 first slice 收斂
 ```
 
 ## 重要狀態修正
@@ -41,6 +42,13 @@
 - 2026-05-02 follow-up 修掉人工產品審核明確不通過的 assistant 問題：
   top chip dump 移除、Retry no-previous-request 不再進 transcript、短 user bubble 不再切字、
   visible tool result 改成使用者語言、`list_files` missing/empty result 不再外洩 schema / `[]`。
+- 2026-05-03 follow-up 再修掉人工 UI 審核不通過的 assistant 問題：
+  chat panel 內不再顯示 `Conversation` header、composer 底下狀態列、developer mode /
+  step behavior controls 或第二個 options menu；Retry / New / Settings / Float 收斂到 dock
+  title bar 的單一功能列，Clear 收進 settings menu。
+- 2026-05-03 `Backend Workflow Contract v2` first slice 已補 lifecycle commands：
+  `ClearDatasetsCommand`、`ClearTrainingHistoryCommand`、`ResetPreprocessCommand`，
+  並讓 split audit failure rollback dataset / generator / trainer state。
 - Assistant product runtime 已改成 local-only：remote backend modules 已從 product package
   移除；舊 `api` / `gemini` selection 會 migrate local 或 fail closed，不會 instantiate
   remote backend。
@@ -72,10 +80,11 @@
 - UI readiness 已共用 ApplicationService capability policy；主要 mutating execution 已透過
   `ApplicationService.execute()`。剩餘 legacy path 主要是 mock fallback、human-in-the-loop
   UI request 和 read-only population。
-- ChatPanel 本輪已完成 product redesign follow-up：header 只保留產品名 / subtitle / Options；
-  workflow state 改成單句 guidance；runtime / backend detail 降到底部低干擾 status；
-  Retry / Clear 移到 composer footer；empty state、bubble minimum width、composer fit、
-  visible error feedback 都有 regression tests。
+- ChatPanel 本輪已完成 product redesign follow-up：panel 內不再放 `Conversation` header、
+  chat footer status、developer mode / step behavior controls 或第二個 options menu。
+  第一層 controls 收斂到 dock title bar：`XBrainLab`、retry icon、new conversation、
+  settings menu、float/dock；Clear 收進 settings menu。empty state、bubble minimum width、
+  composer fit、visible error feedback 和 raw tool output 不外洩都有 regression tests。
 - `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
   synthetic EEG button-driven pipeline walkthrough。
 - 真 Windows launcher 打開 assistant 後的 click-through 仍未完成；主視窗壞 geometry、

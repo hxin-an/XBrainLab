@@ -150,6 +150,19 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         dataset_reasons,
     )
 
+    clear_dataset_reasons = []
+    if not active_dataset.has_datasets and not active_training.has_trainer:
+        clear_dataset_reasons.append(
+            "No generated datasets or training plans to clear.",
+        )
+    capabilities[CommandName.CLEAR_DATASETS.value] = CommandCapability(
+        command_name=CommandName.CLEAR_DATASETS.value,
+        enabled=not clear_dataset_reasons,
+        reasons=clear_dataset_reasons,
+        destructive=True,
+        confirmation_required=not clear_dataset_reasons,
+    )
+
     configure_reasons = []
     if active_training.is_running:
         configure_reasons.append(
@@ -185,18 +198,54 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         stop_reasons,
     )
 
-    capabilities[CommandName.EVALUATE.value] = _cap(
-        CommandName.EVALUATE,
-        [],
-    )
-    capabilities[CommandName.VISUALIZE.value] = _cap(
-        CommandName.VISUALIZE,
-        [],
+    clear_history_reasons = []
+    if active_training.is_running:
+        clear_history_reasons.append("Stop training before clearing history.")
+    if not active_training.has_trainer:
+        clear_history_reasons.append("No training history is available to clear.")
+    capabilities[CommandName.CLEAR_TRAINING_HISTORY.value] = CommandCapability(
+        command_name=CommandName.CLEAR_TRAINING_HISTORY.value,
+        enabled=not clear_history_reasons,
+        reasons=clear_history_reasons,
+        destructive=True,
+        confirmation_required=not clear_history_reasons,
     )
 
+    evaluate_reasons = []
+    if not active_training.has_trainer:
+        evaluate_reasons.append("Create a training plan before evaluating results.")
+    capabilities[CommandName.EVALUATE.value] = _cap(
+        CommandName.EVALUATE,
+        evaluate_reasons,
+    )
+
+    visualize_reasons = []
+    if (
+        not active_dataset.has_epoch_data
+        and state.evaluation.finished_runs == 0
+        and not state.visualization.saliency_available
+    ):
+        visualize_reasons.append(
+            "Create epochs, complete training, or configure saliency before "
+            "opening visualization views."
+        )
+    capabilities[CommandName.VISUALIZE.value] = _cap(
+        CommandName.VISUALIZE,
+        visualize_reasons,
+    )
+
+    saliency_reasons = []
+    if not (
+        active_training.has_trainer
+        or (active_training.has_model and active_training.has_training_option)
+    ):
+        saliency_reasons.append(
+            "Select a model and training settings before configuring saliency. "
+            "Saliency views remain unavailable until evaluation finishes."
+        )
     capabilities[CommandName.SALIENCY.value] = _cap(
         CommandName.SALIENCY,
-        [],
+        saliency_reasons,
     )
 
     montage_reasons = []
@@ -210,6 +259,23 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     capabilities[CommandName.QUERY_STATE.value] = _cap(
         CommandName.QUERY_STATE,
         [],
+    )
+
+    reset_preprocess_reasons = []
+    if not active_dataset.has_raw_data:
+        reset_preprocess_reasons.append("Load raw data before resetting preprocessing.")
+    capabilities[CommandName.RESET_PREPROCESS.value] = CommandCapability(
+        command_name=CommandName.RESET_PREPROCESS.value,
+        enabled=not reset_preprocess_reasons,
+        reasons=reset_preprocess_reasons,
+        destructive=True,
+        confirmation_required=not reset_preprocess_reasons
+        and (
+            bool(state.preprocessed.operations)
+            or active_dataset.has_epoch_data
+            or active_dataset.has_datasets
+            or active_training.has_trainer
+        ),
     )
 
     capabilities[CommandName.RESET_SESSION.value] = CommandCapability(

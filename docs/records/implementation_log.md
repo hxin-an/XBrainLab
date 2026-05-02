@@ -1857,3 +1857,79 @@ Assistant 仍像 developer/debug dock，raw command names 污染主 UI，user bu
 - `evaluate` / `visualize` / `saliency` / `new_session` 仍是 disabled future command contract。
 - 真 Windows launcher click-through 和 true local model UI walkthrough 尚未人工驗收。
 - deterministic tool-call eval 不是 local LLM 真實 performance claim。
+
+## 2026-05-03 Backend Workflow Contract v2 first slice
+
+### 背景
+
+Backend 已有 `ApplicationService` command spine，但 reset / cleanup / eval / visualization /
+saliency / split audit 仍有 service bypass 或過寬 policy。這個切片目標是先消除高風險
+mutating/lifecycle bypass，並讓 thesis evidence path 不會把 invalid split 當成功。
+
+### 變更
+
+- Command contract：
+  - 新增 `ClearDatasetsCommand`、`ClearTrainingHistoryCommand`、`ResetPreprocessCommand`。
+  - 更新 command export、handler routing、capability policy、confirmation gate 和
+    `BackendFacade` wrapper compatibility。
+- Dataset audit：
+  - `GenerateDatasetCommand` 會執行 split audit，回傳 `split_audit`、`protocol`、
+    `rolled_back` 等 structured diagnostics。
+  - empty train/validation/test 或 leakage 會變成 `DATA_MISMATCH` command failure。
+  - audit failure 會 rollback dataset / generator / trainer state，避免 failure 後仍可 train。
+  - custom UI generator 會從 `test_splitter_list` 推斷 audit protocol，避免 trial split
+    被 default subject-wise audit 誤擋。
+- Query/readiness：
+  - `evaluate`、`visualize`、`saliency` 不再於 empty state 無條件 available。
+  - blocked query / lifecycle commands 仍回 `CommandResult` envelope。
+  - `saliency` 回傳 `action=configure/query`；configure 可先保存參數，但 saliency view
+    readiness 仍依 finished evaluation + configured params。
+
+### 驗證
+
+- `poetry run ruff check XBrainLab tests`
+  - pass
+- `poetry run basedpyright XBrainLab/backend/application XBrainLab/backend/facade.py`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run pytest tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py tests/integration/ui/test_product_walkthrough.py tests/integration/pipeline/test_public_cross_source_training_smoke.py`
+  - `32 passed, 3 warnings`
+- `poetry run pytest tests/unit/backend/application tests/integration/backend tests/integration/pipeline`
+  - `95 passed, 4 warnings`
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是 Backend Workflow Contract v2 + Evidence-Ready Pipeline 的第一個可交付切片，不是終局。
+- UI service-first migration 還有剩餘 bypass；本切片沒有完成整個 UI service-first migration。
+- thesis evidence 還需要 external dataset runner、repeat/baseline/statistics 和 artifact emission policy。
+
+## 2026-05-03 Assistant UI single-toolbar product correction
+
+### 背景
+
+人工驗收指出上一輪 Assistant UI 仍不夠像使用者產品：chat panel 內還有 `Conversation`
+標題、composer 底下狀態列、兩組功能列、未設計完成的 `Assistant mode` / `Step behavior`
+選項，以及過大的短訊息 bubble。
+
+### 變更
+
+- ChatPanel 內移除可見 header、第二條 status footer、developer mode controls 和第二個
+  options menu；對話區第一視覺回到 empty state / transcript。
+- Dock title bar 成為唯一第一層功能列：`XBrainLab`、retry icon、new conversation、
+  settings menu、float/dock。`Clear conversation` 收進 settings menu。
+- Retry 沒有上一則 request 時 disabled；有上一則 request 時只在 title bar 單一位置啟用。
+- tool/debug output 由 `AgentManager` 攔截並轉成 notice，不再把 `Tool list_files completed...`
+  或 schema/internal class name 放進 visible transcript。
+- user / assistant short message bubble 降低 minimum width，避免 `hello` 形成過大的框，同時
+  保留窄 dock 可讀文字欄。
+
+### 驗證
+
+- `poetry run ruff check XBrainLab/ui/chat XBrainLab/ui/components/agent_manager.py tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py`
+  - pass
+- `poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py -q`
+  - `50 passed`
+- combined assistant UI + backend workflow contract gate：
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py tests/unit/backend/test_facade_headless.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q` -> `80 passed, 3 warnings`

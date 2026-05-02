@@ -19,14 +19,17 @@ class CommandName(str, Enum):
     PREPROCESS = "preprocess"
     CREATE_EPOCH = "create_epoch"
     GENERATE_DATASET = "generate_dataset"
+    CLEAR_DATASETS = "clear_datasets"
     CONFIGURE_TRAINING = "configure_training"
     TRAIN = "train"
     STOP_TRAINING = "stop_training"
+    CLEAR_TRAINING_HISTORY = "clear_training_history"
     EVALUATE = "evaluate"
     VISUALIZE = "visualize"
     SALIENCY = "saliency"
     APPLY_MONTAGE = "apply_montage"
     QUERY_STATE = "query_state"
+    RESET_PREPROCESS = "reset_preprocess"
     RESET_SESSION = "reset_session"
     NEW_SESSION = "new_session"
 
@@ -186,6 +189,17 @@ class GenerateDatasetCommand:
 
 
 @dataclass(frozen=True)
+class ClearDatasetsCommand:
+    """Clear generated datasets and any training plan tied to them."""
+
+    confirmed: bool = False
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.CLEAR_DATASETS
+
+
+@dataclass(frozen=True)
 class ConfigureTrainingCommand:
     """Configure model and training hyperparameters."""
 
@@ -228,6 +242,17 @@ class StopTrainingCommand:
     @property
     def name(self) -> CommandName:
         return CommandName.STOP_TRAINING
+
+
+@dataclass(frozen=True)
+class ClearTrainingHistoryCommand:
+    """Clear training plan/run history while preserving current configuration."""
+
+    confirmed: bool = False
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.CLEAR_TRAINING_HISTORY
 
 
 @dataclass(frozen=True)
@@ -291,6 +316,17 @@ class QueryStateCommand:
 
 
 @dataclass(frozen=True)
+class ResetPreprocessCommand:
+    """Reset preprocessing to loaded raw data and remove downstream artifacts."""
+
+    confirmed: bool = False
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.RESET_PREPROCESS
+
+
+@dataclass(frozen=True)
 class ResetSessionCommand:
     """Clear loaded data and downstream state."""
 
@@ -322,14 +358,17 @@ Command = (
     | PreprocessCommand
     | CreateEpochCommand
     | GenerateDatasetCommand
+    | ClearDatasetsCommand
     | ConfigureTrainingCommand
     | TrainCommand
     | StopTrainingCommand
+    | ClearTrainingHistoryCommand
     | EvaluateCommand
     | VisualizeCommand
     | SaliencyCommand
     | ApplyMontageCommand
     | QueryStateCommand
+    | ResetPreprocessCommand
     | ResetSessionCommand
     | NewSessionCommand
 )

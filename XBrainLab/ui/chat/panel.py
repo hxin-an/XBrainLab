@@ -84,6 +84,7 @@ class ChatPanel(QWidget):
     stop_generation = pyqtSignal()
     model_changed = pyqtSignal(str)
     execution_mode_changed = pyqtSignal(str)  # 'single' or 'multi'
+    settings_requested = pyqtSignal()
     new_conversation_requested = pyqtSignal()  # M0.3 New Conversation
     retry_requested = pyqtSignal()
     debug_tool_requested = pyqtSignal(str, dict)  # M3.1 Debug Mode
@@ -112,6 +113,8 @@ class ChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        # Builds compatibility anchors only; the user-facing controls live in
+        # the dock title bar so the transcript/empty state is the first visual.
         self._build_header(layout)
         self._build_workflow_guidance(layout)
 
@@ -125,7 +128,7 @@ class ChatPanel(QWidget):
 
         # Container Widget inside ScrollArea
         self.chat_content_widget = QWidget()
-        self.chat_content_widget.setStyleSheet("background-color: #15191d;")
+        self.chat_content_widget.setStyleSheet("background-color: #1e1e1e;")
         self.chat_layout = QVBoxLayout(self.chat_content_widget)
         self.chat_layout.setContentsMargins(12, 12, 12, 12)
         self.chat_layout.setSpacing(12)
@@ -170,10 +173,6 @@ class ChatPanel(QWidget):
 
         control_layout.addWidget(input_widget)
 
-        footer_row = QHBoxLayout()
-        footer_row.setContentsMargins(6, 0, 6, 0)
-        footer_row.setSpacing(8)
-
         # Compatibility anchor for tests/callers that still read runtime status.
         # It is deliberately not added to the footer: the composer should stay
         # focused on input, not repeat workflow diagnostics.
@@ -192,10 +191,10 @@ class ChatPanel(QWidget):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        footer_row.addWidget(self.footer_status_label, 1)
+        self.footer_status_label.setVisible(False)
 
         self.retry_btn = QToolButton()
-        self.retry_btn.setText("Retry")
+        self.retry_btn.setText("")
         self.retry_btn.setFixedSize(52, 26)
         self.retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.retry_btn.setToolTip("Send a request before retrying.")
@@ -203,28 +202,21 @@ class ChatPanel(QWidget):
         self.retry_btn.setEnabled(False)
         self.retry_btn.setVisible(False)
         self.retry_btn.clicked.connect(self._on_retry)
-        footer_row.addWidget(self.retry_btn)
 
         self.clear_btn = QToolButton()
-        self.clear_btn.setText("Clear")
+        self.clear_btn.setText("")
         self.clear_btn.setFixedSize(52, 26)
         self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clear_btn.setToolTip("Clear conversation")
         self.clear_btn.setStyleSheet(FOOTER_BUTTON_STYLE)
         self.clear_btn.setVisible(False)
         self.clear_btn.clicked.connect(self._on_clear)
-        footer_row.addWidget(self.clear_btn)
 
-        self.step_mode_status_label = QLabel("Step by step")
+        self.step_mode_status_label = QLabel("")
         self.step_mode_status_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;"
         )
-        self.step_mode_status_label.setToolTip(
-            "Step by step pauses after one completed action. Continue safely can "
-            "follow safe next actions."
-        )
         self.step_mode_status_label.setVisible(False)
-        control_layout.addLayout(footer_row)
 
         self.notice_label = QLabel("")
         self.notice_label.setObjectName("AssistantNotice")
@@ -235,7 +227,7 @@ class ChatPanel(QWidget):
         layout.addWidget(control_panel)
 
     def _build_header(self, parent_layout: QVBoxLayout) -> None:
-        """Build a compact product header with settings kept out of the transcript."""
+        """Build hidden compatibility anchors for older callers/tests."""
         header = QWidget()
         header.setObjectName("AssistantHeader")
         header.setStyleSheet(HEADER_STYLE)
@@ -251,27 +243,28 @@ class ChatPanel(QWidget):
         title_stack.setContentsMargins(0, 0, 0, 0)
         title_stack.setSpacing(2)
 
-        self.title_label = QLabel("Conversation")
+        self.title_label = QLabel("")
         self.title_label.setObjectName("AssistantTitle")
         self.title_label.setStyleSheet(HEADER_TITLE_STYLE)
-        title_stack.addWidget(self.title_label)
+        self.title_label.setVisible(False)
 
         subtitle = QLabel("Ask about data, preprocessing, and training.")
         subtitle.setObjectName("AssistantSubtitle")
         subtitle.setStyleSheet(HEADER_SUBTITLE_STYLE)
         subtitle.setWordWrap(True)
+        subtitle.setVisible(False)
         title_stack.addWidget(subtitle)
 
         title_row.addLayout(title_stack, 1)
 
         self.options_btn = QToolButton()
-        self.options_btn.setText("...")
+        self.options_btn.setText("")
         self.options_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.options_btn.setFixedSize(32, 28)
         self.options_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.options_btn.setToolTip("Options")
         self.options_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
-        title_row.addWidget(self.options_btn)
+        self.options_btn.setVisible(False)
 
         header_layout.addLayout(title_row)
 
@@ -279,16 +272,11 @@ class ChatPanel(QWidget):
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
         toolbar_layout.setSpacing(6)
 
-        self.feature_btn = QPushButton("Workflow guide")
+        self.feature_btn = QPushButton("")
         self.feature_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.feature_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         self.feature_menu = QMenu(self)
         self.feature_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
-        for feat in ["Workflow guide", "EEG analyst", "Training helper"]:
-            action = QAction(feat, self)
-            action.triggered.connect(lambda checked, f=feat: self._set_feature(f))
-            self.feature_menu.addAction(action)
-        self.feature_menu.setTitle("Assistant mode")
         self.feature_btn.setMenu(self.feature_menu)
         self.feature_btn.setVisible(False)
 
@@ -303,44 +291,25 @@ class ChatPanel(QWidget):
         self.update_model_menu()
         self.model_btn.setVisible(False)
 
-        self.mode_btn = QPushButton("Step by step")
+        self.mode_btn = QPushButton("")
         self.mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mode_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
-        self.mode_btn.setToolTip(
-            "Step by step: pause after each completed action\n"
-            "Continue safely: continue through safe follow-up actions until done"
-        )
         self.mode_menu = QMenu(self)
         self.mode_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
-        for mode_label, mode_key in [
-            ("Step by step", "single"),
-            ("Continue safely", "multi"),
-        ]:
-            action = QAction(mode_label, self)
-            action.triggered.connect(
-                lambda checked, m=mode_key, lbl=mode_label: self._set_execution_mode(
-                    m, lbl
-                )
-            )
-            self.mode_menu.addAction(action)
-        self.mode_menu.setTitle("Step behavior")
         self.mode_btn.setMenu(self.mode_menu)
         self.mode_btn.setVisible(False)
 
         self.options_menu = QMenu(self)
         self.options_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
-        self.retry_action = QAction("Retry last request", self)
-        self.retry_action.setEnabled(False)
-        self.retry_action.triggered.connect(self._on_retry)
-        self.options_menu.addAction(self.retry_action)
+        self.settings_action = QAction("Assistant settings", self)
+        self.settings_action.triggered.connect(
+            lambda _checked=False: self.settings_requested.emit()
+        )
+        self.options_menu.addAction(self.settings_action)
         self.clear_conversation_action = QAction("Clear conversation", self)
         self.clear_conversation_action.setEnabled(False)
         self.clear_conversation_action.triggered.connect(self._on_clear)
-        self.options_menu.addAction(self.clear_conversation_action)
         self.new_conversation_action = self.clear_conversation_action
-        self.options_menu.addSeparator()
-        self.options_menu.addMenu(self.feature_menu)
-        self.options_menu.addMenu(self.mode_menu)
         self.options_btn.setMenu(self.options_menu)
         toolbar_layout.addStretch()
 
@@ -353,6 +322,7 @@ class ChatPanel(QWidget):
         toolbar_layout.addWidget(self.status_label)
 
         header_layout.addLayout(toolbar_layout)
+        header.setVisible(False)
         parent_layout.addWidget(header)
 
     def _build_workflow_guidance(self, parent_layout: QVBoxLayout) -> None:
@@ -631,8 +601,6 @@ class ChatPanel(QWidget):
             self.mode_btn.setEnabled(not is_processing)
         if hasattr(self, "retry_btn"):
             self.retry_btn.setEnabled((not is_processing) and self._retry_available)
-        if hasattr(self, "retry_action"):
-            self.retry_action.setEnabled((not is_processing) and self._retry_available)
         if hasattr(self, "clear_btn"):
             self.clear_btn.setEnabled((not is_processing) and self._retry_available)
         if hasattr(self, "new_conversation_action"):
@@ -818,17 +786,15 @@ class ChatPanel(QWidget):
         self._retry_available = available
         if hasattr(self, "retry_btn"):
             self.retry_btn.setEnabled(available and not self.is_processing)
-            self.retry_btn.setVisible(available)
+            self.retry_btn.setVisible(False)
             self.retry_btn.setToolTip(
                 "Retry the last request"
                 if available
                 else "Send a request before retrying."
             )
         if hasattr(self, "clear_btn"):
-            self.clear_btn.setVisible(available)
+            self.clear_btn.setVisible(False)
             self.clear_btn.setEnabled(available and not self.is_processing)
-        if hasattr(self, "retry_action"):
-            self.retry_action.setEnabled(available and not self.is_processing)
         if hasattr(self, "new_conversation_action"):
             self.new_conversation_action.setEnabled(
                 available and not self.is_processing

@@ -318,7 +318,8 @@ class TestChatPanelCallbacks:
         assert panel.model_btn.text() == "Local model"
 
     def test_product_ui_structure_is_visible(self, chat_panel):
-        assert chat_panel.title_label.text() == "Conversation"
+        assert chat_panel.title_label.text() == ""
+        assert chat_panel.title_label.isHidden()
         assert chat_panel.empty_state_title.text() == "Start with your EEG data"
         assert chat_panel.empty_state_widget.isHidden() is False
         assert chat_panel.workflow_guidance.isHidden()
@@ -333,23 +334,19 @@ class TestChatPanelCallbacks:
         assert "load_data" not in chat_panel.available_commands_chip.text()
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
-        assert chat_panel.options_btn.text() == "..."
+        assert chat_panel.options_btn.isHidden()
         assert chat_panel.feature_btn.isHidden()
         assert chat_panel.mode_btn.isHidden()
         assert chat_panel.step_mode_status_label.isHidden()
-        assert chat_panel.retry_btn.text() == "Retry"
         assert chat_panel.retry_btn.isEnabled() is False
         assert chat_panel.retry_btn.isHidden()
-        assert chat_panel.clear_btn.text() == "Clear"
         assert chat_panel.clear_btn.isHidden()
         visible_footer_labels = [
             label.text()
             for label in chat_panel.control_panel.findChildren(QLabel)
             if not label.isHidden()
         ]
-        assert visible_footer_labels == ["No EEG data open · Import files to begin"]
-        assert "Local" not in visible_footer_labels[0]
-        assert "Backend" not in visible_footer_labels[0]
+        assert visible_footer_labels == []
 
         visible_text = " ".join(
             child.text()
@@ -360,8 +357,12 @@ class TestChatPanelCallbacks:
         )
         for hidden_product_detail in [
             "Assistant",
+            "Conversation",
+            "Assistant mode",
+            "Step behavior",
             "Single step",
             "Step by step",
+            "Continue safely",
             "Local model ready",
             "Backend:",
             "Commands:",
@@ -401,7 +402,8 @@ class TestChatPanelCallbacks:
         assert chat_panel.retry_btn.isHidden()
         chat_panel.set_retry_available(True)
         assert chat_panel.retry_btn.isEnabled() is True
-        assert chat_panel.retry_btn.isHidden() is False
+        assert chat_panel.retry_btn.isHidden()
+        assert chat_panel.clear_btn.isHidden()
         chat_panel.set_processing_state(True)
         assert chat_panel.retry_btn.isEnabled() is False
         chat_panel.set_processing_state(False)
@@ -414,23 +416,15 @@ class TestChatPanelCallbacks:
         assert chat_panel.chat_layout.count() == 2
 
     @pytest.mark.parametrize("width", [320, 380, 460])
-    def test_narrow_dock_header_controls_fit(self, qtbot, chat_panel, width):
+    def test_narrow_dock_composer_controls_fit(self, qtbot, chat_panel, width):
         chat_panel.resize(width, 720)
         chat_panel.show()
         qtbot.wait(10)
 
-        assert (
-            chat_panel.options_btn.mapTo(
-                chat_panel, chat_panel.options_btn.rect().topRight()
-            ).x()
-            <= chat_panel.width()
-        )
         assert not chat_panel.input_field.geometry().intersects(
             chat_panel.send_btn.geometry()
         )
-        assert chat_panel.footer_status_label.geometry().right() <= (
-            chat_panel.control_panel.width() - 8
-        )
+        assert chat_panel.footer_status_label.isHidden()
 
     @pytest.mark.parametrize("width", [320, 380, 460])
     def test_user_bubble_keeps_short_word_readable_in_narrow_dock(
@@ -450,5 +444,5 @@ class TestChatPanelCallbacks:
             if hasattr(chat_panel.chat_layout.itemAt(i).widget(), "get_text")
         )
         assert bubble.get_text() == "hello"
-        assert bubble.bubble_frame.width() >= 118
-        assert bubble.text_edit.document().textWidth() >= 80
+        assert 72 <= bubble.bubble_frame.width() <= 110
+        assert bubble.text_edit.document().textWidth() >= 48

@@ -1500,3 +1500,44 @@
   - 真 Windows launcher click-through 和 true local model UI walkthrough 尚未跑。
   - label import、smart parse、montage confirmation 仍要做 typed/service 收斂。
   - thesis protocol 已建立；external dataset runner、repeat runs、baselines、statistics 尚未完成。
+
+### 2026-05-03 Backend Workflow Contract v2 first slice
+
+- 做了什麼：
+  - 新增 `ClearDatasetsCommand`、`ClearTrainingHistoryCommand`、`ResetPreprocessCommand`，
+    補齊 command export、service handlers、capability policy 和 `BackendFacade` compatibility wrappers。
+  - `GenerateDatasetCommand` 接上 split audit；empty train/validation/test 或 leakage 會回
+    structured `DATA_MISMATCH` failure，不再悄悄當成功。
+  - split audit failure 會 rollback dataset / generator / trainer state，避免 failure 後仍可 train。
+  - `evaluate`、`visualize`、`saliency` policy 不再在 empty state 無條件可用；blocked command
+    仍透過 `CommandResult` envelope 回傳。
+  - `saliency` diagnostics 分出 `action=configure/query`；configure 可先保存參數，
+    saliency view/readiness 仍以 finished evaluation + configured params 為準。
+- 證據：
+  - `poetry run ruff check XBrainLab tests` -> pass
+  - `poetry run basedpyright XBrainLab/backend/application XBrainLab/backend/facade.py` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run pytest tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py tests/integration/ui/test_product_walkthrough.py tests/integration/pipeline/test_public_cross_source_training_smoke.py` -> `32 passed, 3 warnings`
+  - `poetry run pytest tests/unit/backend/application tests/integration/backend tests/integration/pipeline` -> `95 passed, 4 warnings`
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- 後續：
+  - 這只是 Backend Workflow Contract v2 + Evidence-Ready Pipeline 的第一個可交付切片，
+    不是終局。
+  - UI service-first migration 還有 remaining UI bypass，需要逐步接到 command layer。
+  - thesis evidence 還需要 external dataset runner、repeat runs、baseline/statistics 和 artifact
+    emission policy。
+
+### 2026-05-03 Assistant UI single-toolbar correction
+
+- 做了什麼：
+  - 移除 chat panel 內可見 `Conversation` header、composer 底下狀態列、第二個 options menu
+    和未完成的 Assistant mode / Step behavior controls。
+  - dock title bar 成為唯一第一層功能列：`XBrainLab`、retry icon、new conversation、
+    settings menu、float/dock；`Clear conversation` 收進 settings menu。
+  - `AgentManager` 攔截 tool/debug sender 或 internal tool syntax，visible transcript 不再顯示
+    `Tool list_files completed...`、schema error、`ApplicationService` / `BackendFacade`。
+  - short bubble minimum width 降低，避免 `hello` 形成過大的框，同時保留窄 dock 可讀性。
+- 證據：
+  - `poetry run ruff check XBrainLab/ui/chat XBrainLab/ui/components/agent_manager.py tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py` -> pass
+  - `poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py -q` -> `50 passed`
+  - combined assistant UI + backend workflow contract gate -> `80 passed, 3 warnings`
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`

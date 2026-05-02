@@ -31,6 +31,8 @@ from .commands import (
     ApplyMontageCommand,
     ApplySmartParseCommand,
     AttachLabelsCommand,
+    ClearDatasetsCommand,
+    ClearTrainingHistoryCommand,
     Command,
     CommandName,
     ConfigureTrainingCommand,
@@ -46,6 +48,7 @@ from .commands import (
     PreprocessOperation,
     QueryStateCommand,
     RemoveFilesCommand,
+    ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
     StopTrainingCommand,
@@ -255,14 +258,17 @@ class ApplicationService:
             CommandName.PREPROCESS: self._handle_preprocess,
             CommandName.CREATE_EPOCH: self._handle_create_epoch,
             CommandName.GENERATE_DATASET: self._handle_generate_dataset,
+            CommandName.CLEAR_DATASETS: self._handle_clear_datasets,
             CommandName.CONFIGURE_TRAINING: self._handle_configure_training,
             CommandName.TRAIN: self._handle_train,
             CommandName.STOP_TRAINING: self._handle_stop_training,
+            CommandName.CLEAR_TRAINING_HISTORY: self._handle_clear_training_history,
             CommandName.EVALUATE: self._handle_evaluate,
             CommandName.VISUALIZE: self._handle_visualize,
             CommandName.SALIENCY: self._handle_saliency,
             CommandName.APPLY_MONTAGE: self._handle_apply_montage,
             CommandName.QUERY_STATE: self._handle_query_state,
+            CommandName.RESET_PREPROCESS: self._handle_reset_preprocess,
             CommandName.RESET_SESSION: self._handle_reset_session,
             CommandName.NEW_SESSION: self._handle_new_session,
         }
@@ -337,6 +343,10 @@ class ApplicationService:
         """Execute a dataset-generation command."""
         return self.execute(command)
 
+    def clear_datasets(self, confirmed: bool = False) -> CommandResult:
+        """Execute a dataset cleanup command."""
+        return self.execute(ClearDatasetsCommand(confirmed=confirmed))
+
     def configure_training(self, command: ConfigureTrainingCommand) -> CommandResult:
         """Execute a training-configuration command."""
         return self.execute(command)
@@ -348,6 +358,14 @@ class ApplicationService:
     def stop_training(self) -> CommandResult:
         """Execute a stop-training command."""
         return self.execute(StopTrainingCommand())
+
+    def clear_training_history(self, confirmed: bool = False) -> CommandResult:
+        """Execute a training-history cleanup command."""
+        return self.execute(ClearTrainingHistoryCommand(confirmed=confirmed))
+
+    def reset_preprocess(self, confirmed: bool = False) -> CommandResult:
+        """Execute a preprocessing reset command."""
+        return self.execute(ResetPreprocessCommand(confirmed=confirmed))
 
     def reset_session(self, confirmed: bool = False) -> CommandResult:
         """Execute a session reset command."""
@@ -385,9 +403,25 @@ class ApplicationService:
         name = command_name(command)
         capability = build_capability_policy(state).get(name)
         if (
-            name in (CommandName.RESET_SESSION, CommandName.NEW_SESSION)
+            name
+            in (
+                CommandName.CLEAR_DATASETS,
+                CommandName.CLEAR_TRAINING_HISTORY,
+                CommandName.RESET_PREPROCESS,
+                CommandName.RESET_SESSION,
+                CommandName.NEW_SESSION,
+            )
             and capability.confirmation_required
-            and isinstance(command, (ResetSessionCommand, NewSessionCommand))
+            and isinstance(
+                command,
+                (
+                    ClearDatasetsCommand,
+                    ClearTrainingHistoryCommand,
+                    ResetPreprocessCommand,
+                    ResetSessionCommand,
+                    NewSessionCommand,
+                ),
+            )
             and not command.confirmed
         ):
             raise ConfirmationRequiredError(f"{name.value} requires confirmation.")
@@ -665,15 +699,86 @@ class ApplicationService:
         if generator is None:
             config = self._build_data_splitting_config(command)
             generator = self.study.get_datasets_generator(config)
+        previous_datasets = list(getattr(self.study, "datasets", []) or [])
+        previous_generator = getattr(self.study, "dataset_generator", None)
+        previous_trainer = getattr(self.study, "trainer", None)
         self.training.apply_data_splitting(generator)
-        count = len(getattr(self.study, "datasets", []) or [])
+        datasets = list(getattr(self.study, "datasets", []) or [])
+        count = len(datasets)
+        protocol = self._split_protocol_for_generation(command, generator)
+        audit = audit_dataset_splits(
+            cast(list[Any], datasets),
+            protocol=protocol,
+        )
+        audit_payload = audit.to_dict()
+        blocking_issues = [
+            issue
+            for issue in audit.issues
+            if issue.severity == "error" or " split is empty" in issue.message
+        ]
+        if blocking_issues:
+            self._restore_dataset_generation_state(
+                datasets=previous_datasets,
+                generator=previous_generator,
+                trainer=previous_trainer,
+            )
+            raise ApplicationError(
+                message=(
+                    "Generated dataset failed split audit; fix empty splits or "
+                    "leakage before training."
+                ),
+                error_type=ErrorType.DATA_MISMATCH,
+                recoverable=True,
+                diagnostics={
+                    "dataset_count": count,
+                    "protocol": protocol,
+                    "rolled_back": True,
+                    "split_audit": audit_payload,
+                    "split_summary": self._dataset_split_summary(datasets),
+                },
+            )
         return (
             f"Generated {count} dataset(s).",
             {
                 "dataset_count": count,
-                "split_summary": self._dataset_split_summary(
-                    list(getattr(self.study, "datasets", []) or [])
-                ),
+                "protocol": protocol,
+                "split_audit": audit_payload,
+                "split_summary": self._dataset_split_summary(datasets),
+            },
+        )
+
+    def _restore_dataset_generation_state(
+        self,
+        *,
+        datasets: list[Any],
+        generator: Any,
+        trainer: Any,
+    ) -> None:
+        data_manager = getattr(self.study, "data_manager", None)
+        if data_manager is not None:
+            data_manager.datasets = datasets
+            data_manager.dataset_generator = generator
+        else:
+            self.study.datasets = datasets
+            self.study.dataset_generator = generator
+
+        training_manager = getattr(self.study, "training_manager", None)
+        if training_manager is not None:
+            training_manager.trainer = trainer
+        else:
+            self.study.trainer = trainer
+
+    def _handle_clear_datasets(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ClearDatasetsCommand):
+            raise TypeError("Invalid command for clear_datasets")
+        dataset_count = len(getattr(self.study, "datasets", []) or [])
+        trainer_present = getattr(self.study, "trainer", None) is not None
+        self.training.clean_datasets(force_update=True)
+        return (
+            "Datasets and dependent training plans cleared.",
+            {
+                "dataset_count_before": dataset_count,
+                "trainer_cleared": trainer_present,
             },
         )
 
@@ -751,6 +856,66 @@ class ApplicationService:
         self.training.stop_training()
         return "Training stop requested."
 
+    def _handle_clear_training_history(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ClearTrainingHistoryCommand):
+            raise TypeError("Invalid command for clear_training_history")
+        before = self.get_state().evaluation
+        self.training.clear_history()
+        try:
+            self.training.notify("training_updated")
+        except Exception:
+            logger.debug("Training-history clear notification failed", exc_info=True)
+        return (
+            "Training history cleared.",
+            {
+                "plan_count_before": before.total_plans,
+                "run_count_before": before.total_runs,
+                "finished_run_count_before": before.finished_runs,
+            },
+        )
+
+    def _handle_reset_preprocess(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ResetPreprocessCommand):
+            raise TypeError("Invalid command for reset_preprocess")
+        before = self.get_state()
+        previous_preprocessed = list(getattr(self.study, "preprocessed_data_list", []))
+        previous_epoch = getattr(self.study, "epoch_data", None)
+        previous_datasets = list(getattr(self.study, "datasets", []) or [])
+        previous_generator = getattr(self.study, "dataset_generator", None)
+        previous_trainer = getattr(self.study, "trainer", None)
+        try:
+            self.study.reset_preprocess(force_update=True)
+            self.training.clean_datasets(force_update=True)
+        except Exception:
+            data_manager = getattr(self.study, "data_manager", None)
+            if data_manager is not None:
+                data_manager.preprocessed_data_list = previous_preprocessed
+                data_manager.epoch_data = previous_epoch
+            else:
+                self.study.preprocessed_data_list = previous_preprocessed
+                self.study.epoch_data = previous_epoch
+            self._restore_dataset_generation_state(
+                datasets=previous_datasets,
+                generator=previous_generator,
+                trainer=previous_trainer,
+            )
+            raise
+        try:
+            self.preprocess.notify("preprocess_changed")
+            self.dataset.notify("data_changed")
+            self.dataset.notify("dataset_locked", False)
+        except Exception:
+            logger.debug("Preprocess reset notification failed", exc_info=True)
+        return (
+            "Preprocessing reset to loaded raw data.",
+            {
+                "preprocess_operations_before": before.preprocessed.operations,
+                "had_epoch_data": before.epoch.exists,
+                "dataset_count_before": before.dataset.count,
+                "trainer_cleared": before.training.has_trainer,
+            },
+        )
+
     def _handle_reset_session(self, command: Command) -> HandlerResult:
         if not isinstance(command, ResetSessionCommand):
             raise TypeError("Invalid command for reset_session")
@@ -800,6 +965,7 @@ class ApplicationService:
         return (
             message,
             {
+                "payload_type": "evaluation_summary",
                 "available": finished_total > 0,
                 "target": command.target,
                 "plan_count": len(plans),
@@ -830,6 +996,7 @@ class ApplicationService:
         return (
             message,
             {
+                "payload_type": "visualization_summary",
                 "available": bool(available_views),
                 "view": command.view,
                 "available_views": available_views,
@@ -852,7 +1019,12 @@ class ApplicationService:
             return (
                 "Saliency parameters configured.",
                 {
+                    "payload_type": "saliency_configuration",
+                    "action": "configure",
                     "saliency_configured": True,
+                    "saliency_available": (
+                        self.get_state().visualization.saliency_available
+                    ),
                     "params": self._json_safe(params),
                 },
             )
@@ -866,6 +1038,8 @@ class ApplicationService:
                 else "Saliency parameters are not configured yet."
             ),
             {
+                "payload_type": "saliency_summary",
+                "action": "query",
                 "saliency_configured": current_params is not None,
                 "saliency_available": state.visualization.saliency_available,
                 "params": self._json_safe(current_params or {}),
@@ -1177,6 +1351,37 @@ class ApplicationService:
                 ),
             ],
         )
+
+    @staticmethod
+    def _split_protocol(split_strategy: str) -> str:
+        normalized = str(split_strategy or "trial").strip().lower()
+        if normalized in {"subject", "subject-wise", "subjectwise"}:
+            return "subject-wise"
+        if normalized in {"session", "session-wise", "sessionwise"}:
+            return "session-wise"
+        return "trial-wise"
+
+    def _split_protocol_for_generation(
+        self,
+        command: GenerateDatasetCommand,
+        generator: Any,
+    ) -> str:
+        if command.generator is None:
+            return self._split_protocol(command.split_strategy)
+
+        splitters = getattr(generator, "test_splitter_list", None)
+        if splitters is None:
+            config = getattr(generator, "config", None)
+            splitters = getattr(config, "test_splitter_list", None)
+        if splitters:
+            split_type = getattr(splitters[0], "split_type", None)
+            if split_type in {SplitByType.SUBJECT, SplitByType.SUBJECT_IND}:
+                return "subject-wise"
+            if split_type in {SplitByType.SESSION, SplitByType.SESSION_IND}:
+                return "session-wise"
+            if split_type in {SplitByType.TRIAL, SplitByType.TRIAL_IND}:
+                return "trial-wise"
+        return self._split_protocol(command.split_strategy)
 
     @staticmethod
     def _resolve_model_class(model_name: str) -> type:

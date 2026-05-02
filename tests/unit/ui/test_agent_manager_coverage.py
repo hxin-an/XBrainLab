@@ -100,15 +100,15 @@ class TestAgentManagerExecutionMode:
         m.agent_controller.set_execution_mode.assert_called_with("multi")
 
     def test_sync_execution_mode_ui(self):
-        """L408-410: Syncs mode btn text."""
+        """Execution mode sync must not surface unfinished step controls."""
         m = _make_manager()
         m._sync_execution_mode_ui("single")
-        m.chat_panel.mode_btn.setText.assert_called_with("Step by step")
+        m.chat_panel.mode_btn.setText.assert_called_with("")
 
     def test_sync_multi(self):
         m = _make_manager()
         m._sync_execution_mode_ui("multi")
-        m.chat_panel.mode_btn.setText.assert_called_with("Continue safely")
+        m.chat_panel.mode_btn.setText.assert_called_with("")
 
 
 class TestAgentManagerHandleUICommand:

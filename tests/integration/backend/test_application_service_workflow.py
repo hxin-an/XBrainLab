@@ -16,6 +16,7 @@ from XBrainLab.backend.application import (
     PreprocessCommand,
     PreprocessOperation,
     QueryStateCommand,
+    ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
     VisualizeCommand,
@@ -141,11 +142,20 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     saliency_result = service.execute(SaliencyCommand())
     query_result = service.execute(QueryStateCommand(query="data_summary"))
 
-    assert evaluate_result.ok is True
+    assert evaluate_result.failed is True
     assert visualize_result.ok is True
+    assert visualize_result.diagnostics["payload_type"] == "visualization_summary"
     assert saliency_result.ok is True
+    assert saliency_result.diagnostics["payload_type"] == "saliency_summary"
     assert query_result.ok is True
     assert query_result.diagnostics["count"] == 1
+
+    reset_preprocess_without_confirmation = service.execute(ResetPreprocessCommand())
+    assert reset_preprocess_without_confirmation.failed is True
+    assert (
+        reset_preprocess_without_confirmation.state.last_error.error_type
+        == "confirmation_required"
+    )
 
     reset_without_confirmation = service.execute(ResetSessionCommand())
     assert reset_without_confirmation.failed is True

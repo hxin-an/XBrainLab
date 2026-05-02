@@ -10,6 +10,8 @@ from XBrainLab.backend.application import (
     ApplyMontageCommand,
     ApplySmartParseCommand,
     AttachLabelsCommand,
+    ClearDatasetsCommand,
+    ClearTrainingHistoryCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     ErrorType,
@@ -24,6 +26,7 @@ from XBrainLab.backend.application import (
     PreprocessOperation,
     QueryStateCommand,
     RemoveFilesCommand,
+    ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
     StopTrainingCommand,
@@ -189,6 +192,11 @@ class BackendFacade:
     def clear_data(self):
         """Clear all loaded data."""
         result = self.service.execute(ResetSessionCommand(confirmed=True))
+        self._raise_if_failed(result)
+
+    def reset_preprocess(self):
+        """Reset preprocessing through the command layer."""
+        result = self.service.execute(ResetPreprocessCommand(confirmed=True))
         self._raise_if_failed(result)
 
     def new_session(self):
@@ -466,6 +474,11 @@ class BackendFacade:
         )
         self._raise_if_failed(result)
 
+    def clear_datasets(self):
+        """Clear generated datasets and dependent training plans."""
+        result = self.service.execute(ClearDatasetsCommand(confirmed=True))
+        self._raise_if_failed(result)
+
     def set_model(self, model_name: str):
         """Select a model architecture by name.
 
@@ -532,6 +545,11 @@ class BackendFacade:
         result = self.service.execute(StopTrainingCommand())
         if result.failed and result.error_type == ErrorType.PRECONDITION:
             return
+        self._raise_if_failed(result)
+
+    def clear_training_history(self):
+        """Clear training history through the command layer."""
+        result = self.service.execute(ClearTrainingHistoryCommand(confirmed=True))
         self._raise_if_failed(result)
 
     def is_training(self) -> bool:

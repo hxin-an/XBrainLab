@@ -5,11 +5,13 @@ handling initialization, user interaction, model switching, and VRAM checks.
 """
 
 from PyQt6.QtCore import QObject, QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QWidget,
@@ -154,6 +156,7 @@ class AgentManager(QObject):
         self.chat_panel.stop_generation.connect(self.stop_generation)
         self.chat_panel.model_changed.connect(self.set_model)
         self.chat_panel.execution_mode_changed.connect(self._on_execution_mode_changed)
+        self.chat_panel.settings_requested.connect(self.open_settings_dialog)
         self.chat_panel.new_conversation_requested.connect(self.start_new_conversation)
         self.chat_panel.retry_requested.connect(self.retry_last_user_input)
 
@@ -183,6 +186,14 @@ class AgentManager(QObject):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
+        self.retry_title_btn = QPushButton("↻")
+        self.retry_title_btn.setFixedSize(20, 20)
+        self.retry_title_btn.setToolTip("Send a request before retrying.")
+        self.retry_title_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
+        self.retry_title_btn.setEnabled(False)
+        self.retry_title_btn.clicked.connect(self.retry_last_user_input)
+        title_layout.addWidget(self.retry_title_btn)
+
         # New Conversation Button (+ icon)
         self.new_conv_title_btn = QPushButton("+")
         self.new_conv_title_btn.setFixedSize(20, 20)
@@ -191,12 +202,27 @@ class AgentManager(QObject):
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
-        # Options button (≡ icon)
-        self.settings_btn = QPushButton("≡")
-        self.settings_btn.setFixedSize(20, 20)
+        # Options menu. Keep it to real, implemented actions.
+        self.settings_btn = QPushButton("...")
+        self.settings_btn.setFixedSize(26, 20)
         self.settings_btn.setToolTip("Options")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
-        self.settings_btn.clicked.connect(self.open_settings_dialog)
+        self.settings_menu = QMenu(self.settings_btn)
+        settings_action = QAction("Assistant settings", self.settings_btn)
+        settings_action.triggered.connect(
+            lambda _checked=False: self.open_settings_dialog()
+        )
+        self.settings_menu.addAction(settings_action)
+        self.clear_conversation_title_action = QAction(
+            "Clear conversation",
+            self.settings_btn,
+        )
+        self.clear_conversation_title_action.setEnabled(False)
+        self.clear_conversation_title_action.triggered.connect(
+            lambda _checked=False: self.start_new_conversation()
+        )
+        self.settings_menu.addAction(self.clear_conversation_title_action)
+        self.settings_btn.setMenu(self.settings_menu)
         title_layout.addWidget(self.settings_btn)
 
         # Float Button (❐ icon) - allows undocking
@@ -503,9 +529,7 @@ class AgentManager(QObject):
 
         # 1. Response Ready -> Add to ChatController
         # Note: 'sender' argument from LLMController is usually 'Assistant' or 'Tool'
-        self.agent_controller.response_ready.connect(
-            lambda sender, text: self.chat_controller.add_agent_message(text),
-        )
+        self.agent_controller.response_ready.connect(self._handle_agent_response)
 
         # 2. Status Updates -> Update UI Status (Legacy behavior, maybe simplify later)
         self.agent_controller.status_update.connect(self.on_agent_status_update)
@@ -579,8 +603,7 @@ class AgentManager(QObject):
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
         self._last_user_input = text
-        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
-            self.chat_panel.set_retry_available(True)
+        self._set_retry_available(True)
 
         # 2. Forward to Agent
         if self.agent_controller:
@@ -592,6 +615,43 @@ class AgentManager(QObject):
             self.chat_controller.add_agent_message(
                 self._runtime_unavailable_message(message),
             )
+
+    def _handle_agent_response(self, sender: str, text: str) -> None:
+        """Add assistant responses while keeping internal tool output out of chat."""
+        if self._looks_like_internal_tool_output(sender, text):
+            self._show_low_priority_notice(self._tool_output_notice(text))
+            return
+        self.chat_controller.add_agent_message(text)
+
+    @staticmethod
+    def _looks_like_internal_tool_output(sender: str, text: str) -> bool:
+        """Return whether a response is an implementation detail, not chat copy."""
+        sender_key = str(sender or "").strip().lower()
+        if sender_key in {"tool", "debug"}:
+            return True
+
+        normalized = " ".join(str(text or "").split()).lower()
+        internal_markers = (
+            "tool output:",
+            "tool call:",
+            "tool ",
+            "request:",
+            "```json",
+            "applicationservice",
+            "backendfacade",
+        )
+        return normalized.startswith(internal_markers)
+
+    @staticmethod
+    def _tool_output_notice(text: str) -> str:
+        """Translate internal tool diagnostics to a low-noise product notice."""
+        normalized = " ".join(str(text or "").split()).lower()
+        if "error" in normalized or "required" in normalized:
+            return (
+                "The assistant could not complete that action. Check the request "
+                "and try again."
+            )
+        return "The assistant completed a background action."
 
     def retry_last_user_input(self):
         """Retry the most recent user request if the assistant is idle."""
@@ -661,6 +721,32 @@ class AgentManager(QObject):
         """
         if self.chat_panel:
             self.chat_panel.set_processing_state(is_processing)
+        self._update_title_action_buttons()
+
+    def _set_retry_available(self, available: bool) -> None:
+        """Synchronize retry/clear affordances across the dock controls."""
+        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
+            self.chat_panel.set_retry_available(available)
+        self._update_title_action_buttons()
+
+    def _update_title_action_buttons(self) -> None:
+        """Keep title-bar actions enabled only when they can run."""
+        is_processing = bool(
+            self.chat_controller
+            and getattr(self.chat_controller, "is_processing", False)
+        )
+        retry_available = bool(self._last_user_input)
+        enabled = retry_available and not is_processing
+
+        if hasattr(self, "retry_title_btn"):
+            self.retry_title_btn.setEnabled(enabled)
+            self.retry_title_btn.setToolTip(
+                "Retry the last request"
+                if retry_available
+                else "Send a request before retrying."
+            )
+        if hasattr(self, "clear_conversation_title_action"):
+            self.clear_conversation_title_action.setEnabled(enabled)
 
     def _on_execution_mode_changed(self, mode: str):
         """Forward execution mode change from ChatPanel to controller.
@@ -679,9 +765,9 @@ class AgentManager(QObject):
             mode: ``'single'`` or ``'multi'``.
 
         """
+        _ = mode
         if self.chat_panel:
-            label = "Step by step" if mode == "single" else "Continue safely"
-            self.chat_panel.mode_btn.setText(label)
+            self.chat_panel.mode_btn.setText("")
 
     def start_new_conversation(self):
         """Clear the chat UI and reset the agent conversation state."""
@@ -690,8 +776,7 @@ class AgentManager(QObject):
         # 1. Clear UI / History
         self.chat_controller.clear_conversation()
         self._last_user_input = None
-        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
-            self.chat_panel.set_retry_available(False)
+        self._set_retry_available(False)
         if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
             self.chat_panel.show_notice("")
 
@@ -755,9 +840,24 @@ class AgentManager(QObject):
 
         """
         self.chat_controller.set_processing(False)
-        self.chat_controller.add_agent_message(f"**Error**: {error_msg}")
+        self.chat_controller.add_agent_message(
+            self._user_facing_error_message(error_msg),
+        )
         logger.error("Agent Error: %s", error_msg)
         self.refresh_backend_status()
+
+    @classmethod
+    def _user_facing_error_message(cls, error_msg: str) -> str:
+        """Return a concise error message without tool/debug internals."""
+        if cls._looks_like_internal_tool_output("", error_msg):
+            return (
+                "**Assistant needs input**: The requested action needs more "
+                "information. Check the request and try again."
+            )
+        reason = " ".join(str(error_msg or "").split())
+        if not reason:
+            return "**Assistant needs input**: Try again with a little more detail."
+        return f"**Error**: {reason}"
 
     def refresh_backend_status(self):
         """Refresh the compact backend/model status shown in the chat panel."""

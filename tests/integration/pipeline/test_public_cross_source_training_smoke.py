@@ -47,6 +47,7 @@ PUBLIC_TRAINING_FIXTURES = (
         "event_ids": ["0", "109", "7"],
         "tmin": 0,
         "tmax": 2,
+        "split_ratio": 0.5,
     },
 )
 
@@ -75,9 +76,10 @@ def test_public_cross_source_training_smoke(fixture: dict[str, object]) -> None:
         fixture["tmax"],
         event_ids=list(fixture["event_ids"]),
     )
+    split_ratio = float(fixture.get("split_ratio", 0.2))
     facade.generate_dataset(
-        test_ratio=0.2,
-        val_ratio=0.2,
+        test_ratio=split_ratio,
+        val_ratio=split_ratio,
         split_strategy="trial",
         training_mode="individual",
     )

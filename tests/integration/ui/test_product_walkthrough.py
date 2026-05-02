@@ -23,6 +23,9 @@ from XBrainLab.backend.dataset import (
 from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.record import RecordKey, TrainRecordKey
+from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
+    LocalRuntimeFirstRunDialog,
+)
 
 
 def _click(qtbot, button) -> None:
@@ -80,11 +83,10 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         if label.text()
     )
     assert dock_title_text == "XBrainLab"
-    assert panel.title_label.text() == "Conversation"
-    assert (
-        "Ask about data"
-        in panel.findChild(type(panel.title_label), "AssistantSubtitle").text()
-    )
+    assert panel.title_label.text() == ""
+    assert panel.title_label.isHidden()
+    assert panel.findChild(type(panel.title_label), "AssistantSubtitle").isHidden()
+    assert panel.findChild(QWidget, "AssistantHeader").isHidden()
     assert panel.workflow_guidance.isHidden()
     assert "Commands:" not in panel.available_commands_chip.text()
     assert "load_data" not in panel.available_commands_chip.text()
@@ -94,15 +96,13 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         for label in panel.control_panel.findChildren(type(panel.title_label))
         if label.isVisible()
     )
-    assert "No EEG data open" in visible_footer_text
-    assert "Import files" in visible_footer_text
+    assert visible_footer_text == ""
     assert "Local" not in visible_footer_text
     assert "Backend" not in visible_footer_text
-    assert panel.options_btn.text() == "..."
+    assert panel.options_btn.isHidden()
     assert panel.feature_btn.isHidden()
     assert panel.mode_btn.isHidden()
     assert panel.step_mode_status_label.isHidden()
-    assert "Coder" not in panel.options_btn.text()
     assert "Ask about data" in panel.input_field.placeholderText()
 
     visible_first_layer = " ".join(
@@ -116,6 +116,9 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         "General Assistant",
         "XBrainLab Assistant",
         "AI Assistant",
+        "Conversation",
+        "Assistant mode",
+        "Step behavior",
         "Single step",
         "Step by step",
         "Continue safely",
@@ -129,6 +132,26 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
 
     heading_text = f"{dock_title_text} {panel.title_label.text()}"
     assert heading_text.count("Assistant") == 0
+
+    assert manager.retry_title_btn.text() == "↻"
+    assert manager.retry_title_btn.isEnabled() is False
+    assert not hasattr(manager, "clear_title_btn")
+    assert manager.retry_title_btn.geometry().right() <= (
+        manager.new_conv_title_btn.geometry().left()
+    )
+    menu_text = [
+        action.text() for action in manager.settings_menu.actions() if action.text()
+    ]
+    assert menu_text == ["Assistant settings", "Clear conversation"]
+    assert manager.clear_conversation_title_action.isEnabled() is False
+
+    visible_title_text = " ".join(
+        child.text()
+        for child in manager.chat_dock.titleBarWidget().findChildren(QAbstractButton)
+        if child.isVisible() and child.text()
+    )
+    assert "Retry" not in visible_title_text
+    assert "Clear" not in visible_title_text
 
     visible_transcript = "\n".join(
         message["content"] for message in manager.chat_controller.messages
@@ -144,8 +167,20 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     ]:
         assert forbidden not in visible_transcript
 
+    with (
+        patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
+        patch.object(
+            manager,
+            "_assistant_runtime_start_status",
+            return_value=(False, "Model cache not found."),
+        ),
+    ):
+        manager.handle_user_input("hello")
+    assert manager.retry_title_btn.isEnabled()
+    assert manager.clear_conversation_title_action.isEnabled()
     assert panel.retry_btn.isHidden()
     assert panel.clear_btn.isHidden()
+
     send_text_width = panel.send_btn.fontMetrics().horizontalAdvance(
         panel.send_btn.text()
     )
@@ -159,6 +194,16 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         user_bubble.text_edit.document().textWidth() < user_bubble.bubble_frame.width()
     )
 
+    manager._handle_agent_response(
+        "Tool",
+        "Tool list_files completed. Error: directory is required",
+    )
+    transcript_after_tool = "\n".join(
+        message["content"] for message in manager.chat_controller.messages
+    )
+    assert "Tool list_files completed" not in transcript_after_tool
+    assert "could not complete" in panel.notice_label.text()
+
     for index, attr in [
         (0, "dataset_panel"),
         (1, "preprocess_panel"),
@@ -169,6 +214,28 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
         _click(qtbot, test_app.nav_btns[index])
         assert test_app.stack.currentIndex() == index
         assert getattr(test_app, attr).isVisible()
+
+
+def test_assistant_first_open_preserves_local_runtime_confirmation(test_app, qtbot):
+    """Opening the dock still reaches the local runtime first-run confirmation."""
+    manager = test_app.agent_manager
+    with (
+        patch.object(manager, "_load_runtime_config", return_value=SimpleNamespace()),
+        patch.object(manager, "_needs_local_runtime_first_run", return_value=True),
+        patch.object(
+            manager,
+            "_show_local_runtime_first_run_dialog",
+            return_value=LocalRuntimeFirstRunDialog.LATER,
+        ) as show_first_run,
+        patch.object(manager, "_assistant_runtime_start_status") as start_status,
+        patch.object(manager, "start_system") as start_system,
+    ):
+        _click(qtbot, test_app.ai_btn)
+
+    assert manager.chat_dock.isVisible()
+    show_first_run.assert_called_once()
+    start_status.assert_not_called()
+    start_system.assert_not_called()
 
 
 def test_pipeline_product_walkthrough_uses_user_facing_actions(

@@ -123,3 +123,21 @@ def test_backend_facade_headless():
         mock_study_instance.training_option = MagicMock()
         facade.run_training()
         facade.training.start_training.assert_called_once()
+
+        # Lifecycle compatibility methods stay wrapped by ApplicationService.
+        facade.preprocess.notify = MagicMock()
+        mock_study_instance.reset_preprocess = MagicMock()
+        mock_study_instance.loaded_data_list = [MagicMock()]
+        mock_study_instance.preprocessed_data_list = [MagicMock()]
+        facade.reset_preprocess()
+        mock_study_instance.reset_preprocess.assert_called_once_with(force_update=True)
+
+        facade.training.clean_datasets = MagicMock()
+        mock_study_instance.datasets = [MagicMock()]
+        facade.clear_datasets()
+        facade.training.clean_datasets.assert_called_once_with(force_update=True)
+
+        facade.training.clear_history = MagicMock()
+        mock_study_instance.trainer = MagicMock()
+        facade.clear_training_history()
+        facade.training.clear_history.assert_called_once_with()
