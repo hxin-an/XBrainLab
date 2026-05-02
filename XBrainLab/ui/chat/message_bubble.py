@@ -179,7 +179,8 @@ class MessageBubble(QWidget):
         if container_width <= 0:
             return
 
-        max_bubble_width = int(container_width * 0.80)
+        max_bubble_width = int(container_width * 0.88)
+        min_bubble_width = 118
 
         # Margins: 15+15=30 horizontal, 10+10=20 vertical
         layout_h_margins = 30
@@ -196,9 +197,11 @@ class MessageBubble(QWidget):
         doc.setTextWidth(-1)
         natural_width = doc.idealWidth() + layout_h_margins
 
-        # 2. Determine actual width: min(natural, max_allowed)
-        actual_width = min(natural_width, max_bubble_width)
-        # Ensure a minimum reasonable width (e.g. 50px)
+        # 2. Determine actual width. Keep a real minimum text column so short
+        # words such as "hello" do not wrap into single-letter fragments in the
+        # narrow assistant dock.
+        actual_width = max(natural_width, min_bubble_width)
+        actual_width = min(actual_width, max_bubble_width)
         actual_width = max(actual_width, 50)
 
         # 3. Apply width constraint

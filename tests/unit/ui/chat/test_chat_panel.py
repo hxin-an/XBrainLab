@@ -116,6 +116,7 @@ class TestChatPanelCallbacks:
             mock_sig.emit.assert_called_once()
 
     def test_retry_signal_when_idle(self, chat_panel):
+        chat_panel.set_retry_available(True)
         with patch.object(chat_panel, "retry_requested") as mock_sig:
             mock_sig.emit = MagicMock()
             chat_panel._on_retry()
@@ -172,6 +173,10 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
+            patch(
+                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
+                return_value=True,
+            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
@@ -197,6 +202,10 @@ class TestChatPanelCallbacks:
             patch(
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
+            ),
+            patch(
+                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
+                return_value=True,
             ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
@@ -224,6 +233,10 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
+            patch(
+                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
+                return_value=True,
+            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
@@ -235,6 +248,36 @@ class TestChatPanelCallbacks:
         )
         assert "Remote" in gemini_action.text()
         assert panel.model_btn.text() == "Gemini (Remote)"
+
+    def test_update_model_menu_hides_verified_gemini_by_default(self, qtbot):
+        config = MagicMock()
+        config.local_model_enabled = True
+        config.local_backend_ready.return_value = True
+        config.local_backend_status_message.return_value = "Local runtime ready."
+        config.gemini_enabled = True
+        config.active_mode = "gemini"
+        config.inference_mode = "gemini"
+
+        with (
+            patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None),
+            patch(
+                "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
+                return_value=config,
+            ),
+            patch(
+                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
+                return_value=False,
+            ),
+        ):
+            from XBrainLab.ui.chat.panel import ChatPanel
+
+            panel = ChatPanel()
+            qtbot.addWidget(panel)
+
+        assert all(
+            "Gemini" not in action.text() for action in panel.model_menu.actions()
+        )
+        assert panel.model_btn.text() == "Local model"
 
     def test_update_model_menu_surfaces_cpu_fallback(self, qtbot):
         config = MagicMock()
@@ -253,6 +296,10 @@ class TestChatPanelCallbacks:
             patch(
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
+            ),
+            patch(
+                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
+                return_value=True,
             ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
@@ -282,6 +329,10 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
+            patch(
+                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
+                return_value=True,
+            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
@@ -293,17 +344,18 @@ class TestChatPanelCallbacks:
     def test_product_ui_structure_is_visible(self, chat_panel):
         assert chat_panel.title_label.text() == "XBrainLab Assistant"
         assert chat_panel.empty_state_widget.isHidden() is False
-        assert "Workflow" in chat_panel.empty_state_backend_label.text()
+        assert "workflow" in chat_panel.empty_state_backend_label.text().lower()
         assert chat_panel.backend_stage_chip.text()
         assert chat_panel.model_status_chip.isHidden()
         assert chat_panel.runtime_status_label.text()
-        assert chat_panel.available_commands_chip.text().startswith("Next steps:")
+        assert chat_panel.available_commands_chip.text().startswith("Next:")
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.options_btn.text() == "Options"
         assert chat_panel.feature_btn.isHidden()
         assert chat_panel.mode_btn.isHidden()
         assert chat_panel.retry_btn.text() == "Retry"
+        assert chat_panel.retry_btn.isEnabled() is False
         assert chat_panel.clear_btn.text() == "Clear"
 
     def test_product_status_updates_empty_state_and_chips(self, chat_panel):
@@ -321,8 +373,68 @@ class TestChatPanelCallbacks:
         assert "Local model unavailable" in chat_panel.runtime_status_label.text()
         assert "Load EEG data" in chat_panel.available_commands_chip.text()
         assert "load_data" not in chat_panel.available_commands_chip.text()
-        assert chat_panel.empty_state_backend_label.text() == "Workflow: No data loaded"
+        assert chat_panel.empty_state_backend_label.text() == (
+            "Current workflow: No data loaded"
+        )
         assert chat_panel.empty_state_model_label.text() == (
             "Assistant runtime: Local model unavailable"
         )
         assert "Load EEG data" in chat_panel.empty_state_next_label.text()
+
+    def test_retry_available_controls_disabled_state(self, chat_panel):
+        assert chat_panel.retry_btn.isEnabled() is False
+        chat_panel.set_retry_available(True)
+        assert chat_panel.retry_btn.isEnabled() is True
+        chat_panel.set_processing_state(True)
+        assert chat_panel.retry_btn.isEnabled() is False
+        chat_panel.set_processing_state(False)
+        assert chat_panel.retry_btn.isEnabled() is True
+
+    def test_low_priority_notice_does_not_enter_transcript(self, chat_panel):
+        chat_panel.show_notice("Send a request before using Retry.")
+        assert chat_panel.notice_label.isHidden() is False
+        assert "Retry" in chat_panel.notice_label.text()
+        assert chat_panel.chat_layout.count() == 2
+
+    def test_narrow_dock_header_controls_fit(self, qtbot, chat_panel):
+        chat_panel.resize(380, 720)
+        chat_panel.show()
+        qtbot.wait(10)
+
+        assert (
+            chat_panel.options_btn.mapTo(
+                chat_panel, chat_panel.options_btn.rect().topRight()
+            ).x()
+            <= chat_panel.width()
+        )
+        assert (
+            chat_panel.retry_btn.mapTo(
+                chat_panel, chat_panel.retry_btn.rect().topRight()
+            ).x()
+            <= chat_panel.width()
+        )
+        assert (
+            chat_panel.clear_btn.mapTo(
+                chat_panel, chat_panel.clear_btn.rect().topRight()
+            ).x()
+            <= chat_panel.width()
+        )
+
+    def test_user_bubble_keeps_short_word_readable_in_narrow_dock(
+        self,
+        qtbot,
+        chat_panel,
+    ):
+        chat_panel.resize(380, 720)
+        chat_panel.show()
+        chat_panel.append_message("user", "hello")
+        qtbot.wait(10)
+
+        bubble = next(
+            chat_panel.chat_layout.itemAt(i).widget()
+            for i in range(chat_panel.chat_layout.count())
+            if hasattr(chat_panel.chat_layout.itemAt(i).widget(), "get_text")
+        )
+        assert bubble.get_text() == "hello"
+        assert bubble.bubble_frame.width() >= 118
+        assert bubble.text_edit.document().textWidth() >= 80

@@ -271,7 +271,7 @@ class MainWindow(QMainWindow):
             # Ideally via chat_controller but for Direct UI debug feedback:
             self.agent_manager.chat_panel.append_message(
                 "System",
-                f"Tool '{tool_name}' executed.\nResult: {result}",
+                "Diagnostic action completed. Details were saved to logs.",
             )
             # Ensure we scroll to bottom
             self.agent_manager.chat_panel._scroll_to_bottom()

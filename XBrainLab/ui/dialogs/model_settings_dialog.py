@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.config import LLMConfig, legacy_remote_runtime_enabled
 from XBrainLab.llm.core.downloader import ModelDownloader
 from XBrainLab.llm.core.model_catalog import (
     format_bytes,
@@ -66,8 +66,11 @@ class ModelSettingsDialog(QDialog):
         # Load config or create default
         saved_config = LLMConfig.load_from_file()
         self.config = saved_config if saved_config else (config or LLMConfig())
+        self.show_legacy_remote = legacy_remote_runtime_enabled()
 
-        self.gemini_enabled = self.config.gemini_enabled
+        self.gemini_enabled = (
+            self.config.gemini_enabled if self.show_legacy_remote else False
+        )
         self.local_downloaded = False
 
         # Downloader
@@ -125,7 +128,8 @@ class ModelSettingsDialog(QDialog):
         layout.addWidget(local_group)
 
         # --- Gemini API Section ---
-        gemini_group = QGroupBox("Gemini API")
+        self.gemini_group = QGroupBox("Legacy Remote Runtime")
+        gemini_group = self.gemini_group
         gemini_layout = QVBoxLayout()
 
         # API Key Input
@@ -150,6 +154,7 @@ class ModelSettingsDialog(QDialog):
         gemini_layout.addLayout(status_layout)
 
         gemini_group.setLayout(gemini_layout)
+        gemini_group.setVisible(self.show_legacy_remote)
         layout.addWidget(gemini_group)
 
         # Gemini Model Dropdown (Restored)
@@ -254,10 +259,10 @@ class ModelSettingsDialog(QDialog):
             self.local_model_combo.setCurrentIndex(index)
 
         # Gemini
-        if self.config.gemini_api_key:
+        if self.show_legacy_remote and self.config.gemini_api_key:
             self.api_key_input.setText(self.config.gemini_api_key)
 
-        if self.config.gemini_enabled:
+        if self.show_legacy_remote and self.config.gemini_enabled:
             self.gemini_status_label.setText("Verified")
             self.gemini_status_label.setStyleSheet("color: #4caf50;")
 
@@ -562,7 +567,8 @@ class ModelSettingsDialog(QDialog):
             and self.local_downloaded
             and self.config.local_backend_ready(model_name=model_name)
         )
-        is_ready = (local_ready or self.gemini_enabled) and not self.is_downloading
+        remote_ready = self.show_legacy_remote and self.gemini_enabled
+        is_ready = (local_ready or remote_ready) and not self.is_downloading
 
         self.btn_activate.setEnabled(is_ready)
 
@@ -574,7 +580,9 @@ class ModelSettingsDialog(QDialog):
             self.config.local_runtime_notice_acknowledged = True
         self.config.model_name = self.local_model_combo.currentText()
         self.config.gemini_model_name = self.gemini_model_combo.currentText()
-        self.config.gemini_enabled = self.gemini_enabled
+        self.config.gemini_enabled = (
+            self.gemini_enabled if self.show_legacy_remote else False
+        )
 
         # Generation parameters
         self.config.temperature = self.temperature_spin.value()
@@ -602,10 +610,11 @@ class ModelSettingsDialog(QDialog):
         previous_selection = self.config.assistant_runtime_selection()
 
         # Determine active mode
-        if self.gemini_enabled and not local_ready:
+        remote_ready = self.show_legacy_remote and self.gemini_enabled
+        if remote_ready and not local_ready:
             backend_mode = "gemini"
             ui_mode = "gemini"
-        elif local_ready and not self.gemini_enabled:
+        elif local_ready and not remote_ready:
             backend_mode = "local"
             ui_mode = "local"
         else:

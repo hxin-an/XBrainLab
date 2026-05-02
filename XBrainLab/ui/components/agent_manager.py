@@ -18,7 +18,7 @@ from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
-from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.llm.core.config import LLMConfig, legacy_remote_runtime_enabled
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
@@ -320,6 +320,12 @@ class AgentManager(QObject):
             return model_id is not None, message
 
         if selection.backend_mode == "gemini":
+            if not legacy_remote_runtime_enabled():
+                return (
+                    False,
+                    "Remote assistant runtime is a legacy path and is hidden from "
+                    "the product assistant. Switch to Local in assistant settings.",
+                )
             if getattr(config, "gemini_enabled", False):
                 return True, "Remote Gemini backend is enabled."
             return (
@@ -488,6 +494,8 @@ class AgentManager(QObject):
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
         self._last_user_input = text
+        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
+            self.chat_panel.set_retry_available(True)
 
         # 2. Forward to Agent
         if self.agent_controller:
@@ -505,7 +513,7 @@ class AgentManager(QObject):
         if self.chat_controller.is_processing:
             return
         if not self._last_user_input:
-            self.chat_controller.add_agent_message("No previous request to retry.")
+            self._show_low_priority_notice("Send a request before using Retry.")
             return
         self.handle_user_input(self._last_user_input)
 
@@ -597,6 +605,10 @@ class AgentManager(QObject):
         # 1. Clear UI / History
         self.chat_controller.clear_conversation()
         self._last_user_input = None
+        if self.chat_panel and hasattr(self.chat_panel, "set_retry_available"):
+            self.chat_panel.set_retry_available(False)
+        if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+            self.chat_panel.show_notice("")
 
         # 2. Reset Agent State
         if self.agent_controller:
@@ -609,6 +621,15 @@ class AgentManager(QObject):
 
     # Signal to notify Main Window (or other listeners) about status updates
     status_message_received = pyqtSignal(str)
+
+    def _show_low_priority_notice(self, message: str) -> None:
+        """Surface notices in the dock footer/status bar without polluting chat."""
+        if self.chat_panel and hasattr(self.chat_panel, "show_notice"):
+            self.chat_panel.show_notice(message)
+        try:
+            self.status_message_received.emit(message)
+        except RuntimeError:
+            logger.debug("Status notice could not be emitted: %s", message)
 
     def _on_generation_started(self):
         """Handle the start of a new LLM response generation.

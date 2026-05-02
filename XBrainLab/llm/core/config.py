@@ -22,6 +22,8 @@ from XBrainLab.llm.core.model_catalog import (
     model_cache_candidates,
 )
 
+LEGACY_REMOTE_RUNTIME_ENV = "XBRAINLAB_SHOW_LEGACY_REMOTE_LLM"
+
 
 def _cuda_available() -> bool:
     """Check CUDA availability cross-platform via PyTorch."""
@@ -31,6 +33,11 @@ def _cuda_available() -> bool:
         return torch.cuda.is_available()
     except ImportError:
         return False
+
+
+def legacy_remote_runtime_enabled() -> bool:
+    """Return whether legacy remote assistant runtime UI should be visible."""
+    return os.getenv(LEGACY_REMOTE_RUNTIME_ENV) == "1"
 
 
 @dataclass

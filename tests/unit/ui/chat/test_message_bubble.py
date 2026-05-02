@@ -27,10 +27,10 @@ class TestMessageBubble:
         container_width = 500
         bubble.adjust_width(container_width)
 
-        # Max width should be ~80% of 500 = 400
-        assert bubble.bubble_frame.maximumWidth() == 400
+        # Max width should be ~88% of 500 = 440
+        assert bubble.bubble_frame.maximumWidth() == 440
         # Text width should be set
-        assert bubble.text_edit.document().textWidth() == 364  # 400 - margins - guard
+        assert bubble.text_edit.document().textWidth() == 404  # 440 - margins - guard
 
     def test_link_handling(self, qtbot):
         bubble = MessageBubble("[Link](https://example.com)", is_user=False)
@@ -63,12 +63,21 @@ class TestMessageBubble:
 
         # Initial Width: 500
         bubble.adjust_width(500)
-        assert bubble.bubble_frame.maximumWidth() == 400  # 80% of 500
+        assert bubble.bubble_frame.maximumWidth() == 440  # 88% of 500
 
         # Resize Larger: 1000
         bubble.adjust_width(1000)
-        assert bubble.bubble_frame.maximumWidth() == 800  # 80% of 1000
+        assert bubble.bubble_frame.maximumWidth() == 880  # 88% of 1000
 
         # Resize Smaller: 200
         bubble.adjust_width(200)
-        assert bubble.bubble_frame.maximumWidth() == 160  # 80% of 200
+        assert bubble.bubble_frame.maximumWidth() == 176  # 88% of 200
+
+    def test_short_user_message_has_minimum_text_column(self, qtbot):
+        bubble = MessageBubble("hello", is_user=True)
+        qtbot.addWidget(bubble)
+
+        bubble.adjust_width(380)
+
+        assert bubble.bubble_frame.width() >= 118
+        assert bubble.text_edit.document().textWidth() >= 80

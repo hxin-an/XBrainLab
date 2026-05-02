@@ -84,8 +84,9 @@ class TestAgentManagerRetry:
         m.chat_controller.is_processing = False
         m._last_user_input = None
         m.retry_last_user_input()
-        m.chat_controller.add_agent_message.assert_called_with(
-            "No previous request to retry."
+        m.chat_controller.add_agent_message.assert_not_called()
+        m.chat_panel.show_notice.assert_called_with(
+            "Send a request before using Retry."
         )
 
 

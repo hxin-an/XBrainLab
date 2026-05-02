@@ -24,7 +24,8 @@ def config():
 
 
 @pytest.fixture
-def dialog(qtbot, config):
+def dialog(qtbot, config, monkeypatch):
+    monkeypatch.setenv("XBRAINLAB_SHOW_LEGACY_REMOTE_LLM", "1")
     with (
         patch.object(LLMConfig, "load_from_file", return_value=config),
         patch("XBrainLab.ui.dialogs.model_settings_dialog.ModelDownloader") as MockDL,
@@ -57,6 +58,38 @@ class TestModelSettingsInit:
             dialog.local_model_combo.itemText(i)
             for i in range(dialog.local_model_combo.count())
         )
+
+    def test_legacy_remote_section_hidden_without_env(self, qtbot, config, monkeypatch):
+        monkeypatch.delenv("XBRAINLAB_SHOW_LEGACY_REMOTE_LLM", raising=False)
+        config.gemini_enabled = True
+        config.inference_mode = "gemini"
+        config.active_mode = "gemini"
+
+        with (
+            patch.object(LLMConfig, "load_from_file", return_value=config),
+            patch(
+                "XBrainLab.ui.dialogs.model_settings_dialog.ModelDownloader"
+            ) as MockDL,
+            patch("os.path.exists", return_value=False),
+            patch("os.listdir", return_value=[]),
+        ):
+            dl = MockDL.return_value
+            dl.progress = MagicMock()
+            dl.finished = MagicMock()
+            dl.failed = MagicMock()
+            dl.progress.connect = MagicMock()
+            dl.finished.connect = MagicMock()
+            dl.failed.connect = MagicMock()
+
+            from XBrainLab.ui.dialogs.model_settings_dialog import (
+                ModelSettingsDialog,
+            )
+
+            dlg = ModelSettingsDialog(parent=None, config=config)
+            qtbot.addWidget(dlg)
+
+        assert dlg.gemini_group.isHidden()
+        assert dlg.gemini_enabled is False
 
 
 class TestLocalModelSection:

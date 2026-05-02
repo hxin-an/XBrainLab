@@ -259,11 +259,12 @@ class TestAgentManagerMethods:
             manager.agent_controller.execute_debug_tool("start_training", {})
 
         messages = [message["content"] for message in manager.chat_controller.messages]
-        tool_output = next(message for message in messages if "Tool Output:" in message)
+        visible = "\n".join(messages)
 
-        assert '"ok": false' in tool_output
-        assert '"command_name": "train"' in tool_output
-        assert "Generate datasets before training" in tool_output
+        assert "Training is not available yet" in visible
+        assert "Generate datasets before training" in visible
+        assert "Tool Output:" not in visible
+        assert "command_name" not in visible
         assert manager.chat_panel.status_label.text().startswith(
             "Backend: No data loaded"
         )
@@ -385,6 +386,16 @@ class TestAgentManagerProductChatFlow:
         ]
         assert any("Model load failed" in message for message in assistant_messages)
         assert manager.chat_panel.is_processing is False
+
+    def test_retry_without_prior_request_uses_notice_not_transcript(self, qtbot):
+        manager, _fake = _make_real_manager_with_fake_controller(qtbot, "normal")
+
+        manager.retry_last_user_input()
+
+        assert manager.chat_controller.messages == []
+        assert manager.chat_panel.notice_label.isHidden() is False
+        assert "Retry" in manager.chat_panel.notice_label.text()
+        assert manager.chat_panel.retry_btn.isEnabled() is False
 
     def test_local_unavailable_first_open_is_visible_with_real_panel(self, qtbot):
         from XBrainLab.backend.study import Study

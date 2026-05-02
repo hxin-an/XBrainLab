@@ -38,6 +38,32 @@ HEADER_SUBTITLE_STYLE = """
     }
 """
 
+GUIDANCE_PANEL_STYLE = """
+    QWidget#WorkflowGuidance {
+        background-color: #15191d;
+        border-bottom: 1px solid #26313a;
+    }
+"""
+
+GUIDANCE_STAGE_STYLE = """
+    QLabel#WorkflowStage {
+        color: #f3f7fb;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+        font-weight: 700;
+    }
+"""
+
+GUIDANCE_TEXT_STYLE = """
+    QLabel#WorkflowGuidanceText {
+        color: #aebbc6;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+"""
+
 STATUS_CHIP_STYLE = """
     QLabel {
         color: #d7e0ea;
@@ -62,9 +88,9 @@ STATUS_CHIP_WARNING_STYLE = """
 
 EMPTY_STATE_STYLE = """
     QFrame#AssistantEmptyState {
-        background-color: #1d242a;
-        border: 1px solid #33404a;
-        border-radius: 8px;
+        background-color: #15191d;
+        border: none;
+        border-radius: 0px;
     }
 """
 
@@ -122,7 +148,7 @@ CONTROL_PANEL_STYLE = """
     QWidget#ControlPanel {
         background-color: #1b2025;
         border-top: 1px solid #303840;
-        min-height: 62px;
+        min-height: 70px;
     }
 """
 
@@ -163,6 +189,36 @@ TOOLBAR_BUTTON_STYLE = """
         color: #717c86;
         background-color: #1f252b;
         border: 1px solid #2c343c;
+    }
+"""
+
+FOOTER_BUTTON_STYLE = """
+    QToolButton {
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        color: #b9c4ce;
+        padding: 3px 7px;
+        font-size: 12px;
+    }
+    QToolButton:hover {
+        background-color: #26313a;
+        border: 1px solid #35404a;
+        color: #f2f6fa;
+    }
+    QToolButton:disabled {
+        color: #626d76;
+        background-color: transparent;
+        border: 1px solid transparent;
+    }
+"""
+
+NOTICE_LABEL_STYLE = """
+    QLabel#AssistantNotice {
+        color: #d6b36b;
+        background: transparent;
+        border: none;
+        font-size: 12px;
     }
 """
 
