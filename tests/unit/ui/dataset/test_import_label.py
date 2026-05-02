@@ -108,7 +108,9 @@ def test_event_filter_dialog(qtbot):
 
 def test_event_filter_dialog_defaults_to_all_when_history_has_no_overlap(qtbot):
     """A stale saved selection should not uncheck every event in a new dataset."""
-    with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings") as mock_settings:
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings"
+    ) as mock_settings:
         mock_settings.return_value.value.return_value = ["OldEvent"]
         dialog = EventFilterDialog(None, ["Event1", "Event2"])
         qtbot.addWidget(dialog)
@@ -120,7 +122,9 @@ def test_event_filter_dialog_defaults_to_all_when_history_has_no_overlap(qtbot):
 @patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QMessageBox.warning")
 def test_event_filter_dialog_rejects_empty_selection(mock_warning, qtbot):
     """The dialog should not accept an empty keep-list."""
-    with patch("XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings") as mock_settings:
+    with patch(
+        "XBrainLab.ui.dialogs.dataset.event_filter_dialog.QSettings"
+    ) as mock_settings:
         mock_settings.return_value.value.return_value = []
         dialog = EventFilterDialog(None, ["Event1", "Event2"])
         qtbot.addWidget(dialog)
@@ -166,8 +170,14 @@ def test_label_mapping_dialog_avoids_ambiguous_substring_match(qtbot):
     dialog = LabelMappingDialog(None, data_files, label_files)
     qtbot.addWidget(dialog)
 
-    assert dialog.label_list.item(0).data(Qt.ItemDataRole.UserRole) == "/path/sub01_labels.txt"
-    assert dialog.label_list.item(1).data(Qt.ItemDataRole.UserRole) == "/path/sub010_labels.txt"
+    assert (
+        dialog.label_list.item(0).data(Qt.ItemDataRole.UserRole)
+        == "/path/sub01_labels.txt"
+    )
+    assert (
+        dialog.label_list.item(1).data(Qt.ItemDataRole.UserRole)
+        == "/path/sub010_labels.txt"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -196,11 +206,13 @@ class TestImportLabelDialogBrowse:
                 "XBrainLab.ui.dialogs.dataset.import_label_dialog.QFileDialog"
             ) as mock_fd,
             patch.object(dialog, "load_file"),
-            ):
+        ):
             mock_fd.getOpenFileNames.return_value = (["/tmp/labels.txt"], "")
             dialog.browse_files()
         assert dialog.file_list.count() == 1
-        assert dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == "/tmp/labels.txt"
+        assert (
+            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == "/tmp/labels.txt"
+        )
 
     def test_browse_files_skips_duplicate(self, qtbot):
         dialog = ImportLabelDialog()
@@ -230,8 +242,14 @@ class TestImportLabelDialogBrowse:
             dialog.browse_files()
 
         assert dialog.file_list.count() == 2
-        assert dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole) == "/tmp/sub01/labels.txt"
-        assert dialog.file_list.item(1).data(Qt.ItemDataRole.UserRole) == "/tmp/sub02/labels.txt"
+        assert (
+            dialog.file_list.item(0).data(Qt.ItemDataRole.UserRole)
+            == "/tmp/sub01/labels.txt"
+        )
+        assert (
+            dialog.file_list.item(1).data(Qt.ItemDataRole.UserRole)
+            == "/tmp/sub02/labels.txt"
+        )
 
     def test_browse_files_handles_error(self, qtbot):
         dialog = ImportLabelDialog()

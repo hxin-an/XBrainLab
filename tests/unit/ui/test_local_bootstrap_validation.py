@@ -128,7 +128,7 @@ class TestLocalBootstrapValidation:
         assert dialog.local_runtime_label.text() == "Runtime: Ready"
         assert dialog.btn_activate.isEnabled() is True
         assert local_action.isEnabled() is True
-        assert local_action.text() == "Local"
+        assert local_action.text() == "Local model"
 
     def test_saved_local_config_without_cache_fails_closed_before_engine_load(
         self,

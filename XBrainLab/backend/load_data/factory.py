@@ -54,9 +54,7 @@ class RawDataLoaderFactory:
 
         """
         normalized = filepath.lower()
-        matches = [
-            ext for ext in cls._loaders if normalized.endswith(ext)
-        ]
+        matches = [ext for ext in cls._loaders if normalized.endswith(ext)]
 
         if not matches:
             _, ext = os.path.splitext(filepath)
