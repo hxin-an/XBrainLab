@@ -22,25 +22,29 @@
 第一版已落地且完成 command contract 收斂；2026-05-02 第二輪又完成第一批
 UI / Agent command surface unification，讓 load / preprocess / epoch / dataset /
 train / reset 的 readiness 和 blocked reason 由同一個 capability policy 產生。
-UI 執行動作仍大量直接吃 controllers，controller 邊界收斂與完整 runtime 證據仍未完成。
+本輪再把第一批 UI action execution 接到 `ApplicationService.execute()`：dataset import、
+reset、preprocess、epoching、training start / stop。controller 邊界尚未完整收斂，因為
+label import、smart parse、channel selection、split / model / training setting dialogs、
+evaluation / visualization query actions 仍有 controller direct-call path。
 
 ## 一句話架構
 
 XBrainLab backend 目前是以 `Study` 作為中心狀態容器，`DataManager` 和
-`TrainingManager` 分別承接資料生命週期與訓練生命週期；UI 仍主要透過
-controller 操作 `Study`，但 UI-facing readiness 判斷已開始讀
-`ApplicationService / Command API`；assistant / headless script 的 `BackendFacade`
-已改成包 command layer。
+`TrainingManager` 分別承接資料生命週期與訓練生命週期；UI 仍保留 controller 操作
+`Study` 的歷史路徑，但高價值 workflow 按鈕已開始透過 `ApplicationService / Command API`
+執行；assistant / headless script 的 `BackendFacade` 已改成包 command layer。
 
 ## 實際分層
 
 ```text
 PyQt panels
   |
-  +--> UI action execution (legacy)
+  +--> UI action execution
+  |       |
+  |       +--> ApplicationService.execute(...) for import / reset / preprocess / epoch / train start-stop
   |       |
   |       v
-Study.get_controller(...)
+  |     Study.get_controller(...) fallback / remaining dialog and query paths
   |
   v
 DatasetController / PreprocessController / TrainingController
@@ -92,9 +96,11 @@ UI 不是透過 `BackendFacade` 操作 backend。
 - `study.get_controller("evaluation")`
 - `study.get_controller("visualization")`
 
-因此現在 UI 的主要執行入口仍是 controller layer，而不是 facade。
+因此現在 UI 仍會取得 controller layer；這些 controller 仍是 panel refresh、dialog-local
+logic 和部分 action 的現況入口。但第一批高價值 workflow action 已不再只直接呼叫
+controller，而是先經過 UI command adapter 進 `ApplicationService.execute()`。
 
-但第一批 UI-facing decision 已改讀 ApplicationService capability policy：
+第一批 UI-facing decision 已改讀 ApplicationService capability policy：
 
 - Dataset import readiness 先讀 `load_data` capability，blocked reason 由 backend policy 產生。
 - Preprocess sidebar 的 filtering / resample / rereference / normalize readiness 先讀
@@ -105,8 +111,25 @@ UI 不是透過 `BackendFacade` 操作 backend。
 - Chat panel / AgentManager 的 compact backend diagnostics 讀 `BackendFacade.get_state()` 和
   `BackendFacade.get_capabilities()`。
 
+同一批 high-value execution 也已接 service-backed command adapter：
+
+- Dataset import 使用 `LoadDataCommand`。
+- Dataset clear / reset 使用 `ResetSessionCommand(confirmed=True)`。
+- Preprocess filtering / resample / rereference / normalize 使用 `PreprocessCommand`。
+- Epoching 使用 `CreateEpochCommand`。
+- Training start / stop 使用 `TrainCommand` / `StopTrainingCommand`。
+
 UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完整 mock state
 誤觸真 ApplicationService policy。
+
+仍保留 controller direct-call 的 UI path 包含：
+
+- smart parse。
+- label import。
+- channel selection / montage confirmation dialog。
+- data splitting dialog internals。
+- model selection / training setting dialog submit。
+- evaluation / visualization query controls。
 
 ### Assistant / headless 入口
 
@@ -124,11 +147,14 @@ UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完
 - `evaluation`
 - `visualization`
 
-目前 `XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py` 都會透過 `BackendFacade(study)` 操作 backend。
+目前 `XBrainLab/llm/tools/real/dataset_real.py`、`preprocess_real.py`、`training_real.py`
+大多仍可透過 `BackendFacade(study)` 操作 backend。另有一批 mapped workflow tools
+已由 `LLMController` 透過 `execute_application_tool_command(...)` 直接執行
+ApplicationService command 並回傳 `ToolCommandResult.from_command_result(...)`。
 
 結論：`BackendFacade` 可以視為 agent/tool surface 的相容入口，但它不再是新的
 核心邏輯層。新邏輯應進 `ApplicationService` 或後續更細的 command handler；
-UI 仍未改成 service-first。
+UI 目前是 service-first migration 的中間狀態，尚未完整完成。
 
 ### Agent command surface
 
@@ -158,6 +184,13 @@ ApplicationService command names：
 tool execution 後寫回 conversation history 的 `Tool Output` 已改為結構化 JSON payload：
 `ok`、`tool_name`、`message`、`raw_result`。UI side effects 仍暫時保留 `Request:` 字串
 協定，後續要改成 typed request。
+
+2026-05-02 product delivery slice 之後，mapped agent workflow tools 會優先直接執行
+ApplicationService command，包含 `attach_labels`、preprocess tools、`epoch_data`、
+`generate_dataset`、`set_model`、`configure_training`、`start_training`、`clear_dataset`。
+`load_data` 仍保留 real-tool path，因為它包含 directory expansion / file safety handling；
+`set_montage` 和 `switch_panel` 仍是 UI request path；`list_files` / `get_dataset_info`
+仍是 read-only / inspection tools。
 
 ### Script / headless path
 

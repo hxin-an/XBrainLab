@@ -153,6 +153,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | startup smoke | app 能在測試環境初始化 | 完整互動式 runtime 健康 |
 | UI baseline screenshots | approved core UI screens 未明顯漂移 | 完整 visual regression 或 UX 品質 |
 | chat product-flow tests | normal input / empty response / worker error / local unavailable 有可見 feedback | 真 local model 長時間穩定性或人工 click-through 完整體驗 |
+| product UI walkthrough tests | assistant layout / panel navigation / synthetic pipeline button path 有 regression protection | 真 Windows launcher 人工驗收或長時間 local model UX |
 | real-data IO tests | 特定 real-data / fixture import paths | 完整 data pipeline reproducibility |
 | tiny pipeline smoke | 小型 train/evaluate path 能閉環 | model quality 或 thesis reproducibility |
 | quality dashboard | fast engineering health | thesis conclusion |
@@ -237,6 +238,25 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 - LLM unit validation：`652 passed`。
 - targeted chat product-flow validation：`55 passed`。
 - targeted controller / worker validation：`75 passed`。
+
+2026-05-02 product delivery slice 新增的 product-oriented gates：
+
+- assistant click-through / layout smoke：
+  - `tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout`
+  - 覆蓋 header/status/control row 不重疊、raw command diagnostics 不污染主 UI、user bubble 不截字、
+    composer / Send button fit、五個主要 panel navigation。
+- synthetic EEG button-driven pipeline walkthrough：
+  - `tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions`
+  - 從 Dataset import button 開始，經 Preprocess filter、epoching、Training split/model/settings、
+    dry-run Start Training 到 Evaluation result-ready 狀態。
+- targeted validation：
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `62 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py tests/unit/llm/tools/test_application_surface.py tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py -q`
+  - `95 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/io/test_io_integration.py -q`
+  - `31 passed, 8 warnings`
+  - selected pipeline smoke：`2 passed`
 
 這些是 `2026-05-02` 的工程 evidence。引用到論文時，還需要 thesis validation layer。
 dashboard `PASS` 仍不能取代真人 launcher click-through 或真 local model chat walkthrough。

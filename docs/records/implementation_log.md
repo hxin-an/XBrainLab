@@ -1277,3 +1277,80 @@ root README 仍列出 root `ROADMAP.md` 和 `CHANGELOG.md`，但 root `ROADMAP.m
 - `poetry run mkdocs build --strict` 通過。
 - `git diff --check -- README.md CHANGELOG.md AGENTS.md .agents docs mkdocs.yml` 通過。
 - stale path scan 沒有 active markdown link 指向舊大寫 canonical 檔名、`docs/active/`、`docs/legacy/` 或 `validation_architecture.md`。
+
+## 2026-05-02 Product delivery stabilization slice
+
+### 背景
+
+使用者要求把 partial assistant fix 往可直接使用的桌面產品收斂。人工驗收指出 AI
+Assistant 仍像 developer/debug dock，raw command names 污染主 UI，user bubble 會吃掉
+最後一個字，且缺少真正從 UI button path 走 pipeline 的 product E2E evidence。
+
+### 變更
+
+- Assistant product UI：
+  - 新增 `XBrainLab/ui/product_language.py`，集中 stage、command、runtime、mode 的使用者語言。
+  - ChatPanel header 改成 `XBrainLab Assistant` + workflow guidance + compact readable badges。
+  - Retry / Clear / Stop / Settings 從說明文字旁拆成 controls。
+  - `Coder / Local / Multi` 重新表達為 `Workflow guide`、`Local model`、`Single step`、`Auto steps`。
+  - 第一層 UI 移除 `load_data`、`configure_training`、`reset_session` 這類 raw command name；
+    raw diagnostics 只放 tooltip / advanced details。
+  - 修正 message bubble padding、max width、right margin、word wrap，避免 user bubble 截字。
+- Backend / UI alignment：
+  - `XBrainLab/ui/application_capabilities.py` 新增 `execute_application_command(...)`。
+  - Dataset import 走 `LoadDataCommand`。
+  - Dataset reset / clear 走 `ResetSessionCommand(confirmed=True)`。
+  - Preprocess filter / resample / rereference / normalize 走 `PreprocessCommand`。
+  - Epoching 走 `CreateEpochCommand`。
+  - Training start / stop 走 `TrainCommand` / `StopTrainingCommand`。
+  - mock / incomplete `Study` 保留 controller fallback，避免測試假物件誤觸 service contract。
+- Agent alignment：
+  - `XBrainLab/llm/tools/application_surface.py` 新增 direct command execution helper。
+  - `LLMController._execute_tool_no_loop()` 先嘗試 mapped ApplicationService command，再 fallback real tool。
+  - `attach_labels`、preprocess tools、`epoch_data`、`generate_dataset`、`set_model`、
+    `configure_training`、`start_training`、`clear_dataset` 可直接回 structured
+    `ToolCommandResult.from_command_result(...)`。
+  - `load_data` 仍保留 directory expansion / safety legacy path；`set_montage`、`switch_panel`
+    仍保留 UI request path。
+- Product validation：
+  - 新增 `tests/integration/ui/test_product_walkthrough.py`。
+  - `test_assistant_product_click_through_layout` 覆蓋 assistant header/status/control row、
+    command diagnostics、message bubble、composer、panel navigation。
+  - `test_pipeline_product_walkthrough_uses_user_facing_actions` 用 synthetic FIF 走 Dataset import
+    button、Preprocess filter、epoching、Training split/model/settings、dry-run Start Training、
+    Evaluation result-ready 狀態。
+- Docs：
+  - 更新 current、planning、backend/ui/agent/validation architecture、validation README、
+    worklog、implementation log，區分已完成 baseline、service-first migration 完成範圍和剩餘風險。
+
+### 驗證
+
+- Assistant UI product slice：
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q`
+  - `78 passed`
+- UI command adapter / backend slice：
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/test_application_capabilities.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_panel_normalize.py tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/test_sidebars_and_components.py -q`
+  - `74 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py -q`
+  - `11 passed`
+- Agent command result slice:
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q`
+  - `60 passed`
+- Product walkthrough:
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py -q`
+  - `2 passed`
+- Combined gates after implementation:
+  - UI product gate: `62 passed`
+  - agent / backend gate: `95 passed`
+  - IO integration: `31 passed, 8 warnings`
+  - selected pipeline smoke: `2 passed`
+  - launcher startup smoke: `MainWindow initialized` appeared before expected GUI timeout.
+
+### 剩餘風險
+
+- UI service-first migration 尚未覆蓋 label import、smart parse、channel selection、split /
+  model / training setting dialog submit、evaluation / visualization query actions。
+- Agent `load_data`、`set_montage`、`switch_panel` 仍有 legacy / UI request semantics。
+- `evaluate` / `visualize` / `saliency` / `new_session` 仍是 disabled future command contract。
+- 真 Windows launcher click-through 和 true local model UI walkthrough 尚未人工驗收。
+- deterministic tool-call eval 不是 local LLM 真實 performance claim。

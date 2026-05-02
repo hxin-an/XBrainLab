@@ -11,23 +11,29 @@
 ```text
 後端 Application Service contract baseline -> UI / Agent command surface 第一批統一完成
 -> local LLM primary/fallback runtime smoke 通過 -> desktop launcher startup smoke 通過
--> 產品級 chat / agent walkthrough 發現阻塞問題，已完成 targeted 修復與 broader UI / LLM gate
+-> chat product blocker 修復 -> 第一批 UI execution service adapter / agent direct CommandResult path
+-> product click-through smoke / synthetic pipeline walkthrough 已新增
 ```
 
 ## 重要狀態修正
 
-2026-05-02 人工檢查發現 AI Assistant 仍有明顯產品阻塞：
+2026-05-02 人工檢查曾發現 AI Assistant 有明顯產品阻塞，並已在本輪補 targeted fix：
 
-- chat UI 仍像 debug dock，尚未達到產品級對話介面。
-- 使用者送出 `hello` 後只看到 user bubble，沒有 assistant 回覆。
-- 這代表舊的 automated product gate 沒有覆蓋「一般文字輸入 -> 可見 assistant 回覆 / 可見錯誤」這條最基本 product flow。
+- chat UI 當時仍像 debug dock，尚未達到產品級對話介面。
+- 使用者送出 `hello` 後當時只看到 user bubble，沒有 assistant 回覆。
+- 這代表舊的 automated product gate 沒有覆蓋「一般文字輸入 -> 可見 assistant 回覆 / 可見錯誤」這條最基本 product flow；本輪已補。
 - deterministic tool-call eval、local runtime health check、launcher startup smoke 不能代表 chat 產品流程已可用。
 
 後端狀態需要分開判斷：
 
 - `ApplicationService / Command API` backend baseline 已驗證，可作為後續 UI / Agent migration 的基礎。
-- 目前仍不是完整理想架構，因為 UI action execution 仍大量直接呼叫 controllers，只是 readiness / blocked reason 第一批改讀 capability policy。
-- Agent tool surface 已開始使用 backend capability policy 和 typed adapter，但 real tools 仍有 legacy facade string path，不是全部直接消費 `CommandResult`。
+- 第一批 UI execution 已接 service-backed command adapter：dataset import、reset、preprocess、
+  epoching、training start / stop。仍不是完整 service-first，因為 label import、smart parse、
+  channel selection、split/model/training dialogs、evaluation / visualization query actions
+  還有 controller direct-call path。
+- Agent tool surface 已開始使用 backend capability policy 和 typed adapter；mapped workflow
+  tools 可直接消費 `CommandResult`，但 `load_data`、`set_montage`、`switch_panel` 等仍保留
+  legacy real-tool / UI request path。
 
 ## 產品線盤點
 
@@ -44,10 +50,13 @@
 ### B. UI
 
 - MainWindow / panel startup smoke 仍可用，但這不代表 assistant 互動可用。
-- UI readiness 第一批已共用 ApplicationService capability policy；action execution 仍有 direct
+- UI readiness 第一批已共用 ApplicationService capability policy；第一批 high-value action
+  execution 已透過 `ApplicationService.execute()`，剩餘 dialog / query actions 仍有 direct
   controller legacy path。
 - ChatPanel 本輪已完成 product redesign：header、status chips、empty state、bubble、composer、
   visible error feedback。
+- `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
+  synthetic EEG button-driven pipeline walkthrough。
 - 真 Windows launcher 打開 assistant 後的 click-through 仍未完成。
 
 ### C. Agent
@@ -55,6 +64,8 @@
 - normal no-tool response、tool-call response、empty response、worker error、local unavailable
   現在都有 targeted tests。
 - tool result 保留 structured payload；tool-only success 會有可見 summary。
+- mapped workflow tools 可直接回 `ToolCommandResult.from_command_result(...)`；legacy path
+  保留給需要 directory expansion、UI request 或 read-only routing 的 tools。
 - deterministic eval 只代表 scripted baseline，不代表 local LLM 真實能力。
 
 ### D. Local LLM Runtime
@@ -111,8 +122,10 @@
    silent failure。
 2. 已完成 ChatPanel 第一輪產品化重設計：空狀態、header、status chips、model/runtime/backend
    diagnostics、bubble、composer 都已重做。
-3. broader UI / LLM gate、MkDocs、diff check 已通過；接著做 checkpoint commit。
-4. 然後回到更多 UI action execution command adapter、launcher click-through、query command contract。
+3. 已完成第一批 UI execution command adapter 與 agent direct CommandResult path。
+4. 已新增 product click-through / synthetic pipeline walkthrough tests。
+5. 現在進行 truth docs / validation closure；接著回到剩餘 UI action migration、
+   launcher click-through、query command contract。
 
 ## Product Delivery Milestone TODO
 
@@ -148,8 +161,9 @@
 
 ### Milestone C - UI / Agent Command Surface Unification
 
-狀態：第一批高價值 workflow 通過，可支撐 local runtime / launcher；legacy execution path
-仍需逐步遷移。agent tool result 已收斂成 typed adapter。
+狀態：第一批高價值 workflow 通過，可支撐 local runtime / launcher；UI execution 也已有
+第一批 service-backed command adapter。legacy controller path 仍需逐步遷移。agent tool
+result 已收斂成 typed adapter，mapped tools 可直接回 `CommandResult` payload。
 
 - [x] UI readiness for load / preprocess / create epoch / generate dataset /
   train / reset 讀同一套 `ApplicationService` capability policy。
@@ -157,9 +171,15 @@
 - [x] blocked command reason 對齊 backend capability reason。
 - [x] Agent tool output 保留 structured JSON payload。
 - [x] `BackendFacade` 仍相容 headless tests。
-- [ ] 本輪剩餘：更多 UI action execution 改成 service command adapter。
+- [x] 本輪完成：dataset import、reset、preprocess、epoching、training start / stop execution
+  改成 service command adapter，mock / legacy caller 保留 controller fallback。
+- [ ] 剩餘：label import、smart parse、channel selection、split/model/training setting dialogs、
+  evaluation / visualization query actions 仍需 service command adapter。
 - [x] Agent real tools 從舊 facade string result 收斂到 typed
   `CommandResult` / equivalent result adapter。
+- [x] Agent mapped workflow tools 可直接執行 ApplicationService command 並回 structured
+  `CommandResult` payload；`load_data` / `set_montage` / `switch_panel` 等 legacy/request path
+  仍保留。
 
 ### Milestone D - UI Chat / Agent Panel Stabilization
 
@@ -217,7 +237,8 @@ contract、ChatPanel product redesign 和 regression tests。
 
 ### Milestone G - Desktop Launcher / Packaging
 
-狀態：完成低風險 launcher baseline；正在補真 click-through product walkthrough。
+狀態：完成低風險 launcher baseline；已補 automated product click-through smoke，真 Windows
+launcher 人工 walkthrough 仍待驗收。
 
 - [x] 盤點 `run.py`、Poetry entry point、existing scripts、Windows launcher 選項。
 - [x] 產出低風險 WSL Windows launcher：
@@ -235,8 +256,9 @@ contract、ChatPanel product redesign 和 regression tests。
 ### Milestone H - End-to-End Product Stabilization
 
 狀態：targeted product-flow tests 已補，broader UI / LLM gate 已重跑；startup/local runtime
-基線通過，但完整真 launcher / local model walkthrough 仍未完成。先前 automated final gate
-漏掉 `hello` 無回覆問題，因此不能再只靠 dashboard / deterministic eval 判斷。
+基線通過；automated assistant click-through 和 synthetic pipeline walkthrough 已新增。完整真
+launcher / local model walkthrough 仍未完成。先前 automated final gate 漏掉 `hello` 無回覆
+問題，因此不能再只靠 dashboard / deterministic eval 判斷。
 
 - [x] desktop launcher / run.py startup -> MainWindow smoke 可展示。
 - [x] local LLM 狀態可見於 chat panel diagnostics。
@@ -244,6 +266,9 @@ contract、ChatPanel product redesign 和 regression tests。
 - [x] UI -> agent debug tool -> backend blocked command flow 會顯示 shared blocked reason。
 - [ ] backend command 成功 / failed / blocked reason 的真 launcher 互動式 walkthrough。
 - [x] normal chat input -> assistant visible response / visible failure 的 deterministic UI product-flow test。
+- [x] assistant header/status/bubble/composer click-through layout smoke。
+- [x] synthetic EEG button-driven pipeline walkthrough：Dataset import -> Preprocess filter ->
+  Epoch -> Training config dry-run -> Evaluation result-ready state。
 - [ ] normal chat input -> assistant visible response / visible failure 的真 launcher walkthrough。
 - [ ] destructive reset / new session 有 confirmation boundary。
 - [x] backend / UI / agent / local runtime automated gate 已補上 normal chat response targeted gate

@@ -1115,3 +1115,43 @@
   - tiny pipeline smoke -> `2 passed in 5.89s`
 - 後續：
   - 下一份 architecture 文件建議清 `agent.md`，因為它會影響未來 tool-call validation 與 Application Service 目標。
+
+### 2026-05-02 Product delivery UI / agent / validation slice
+
+- 做了什麼：
+  - 將 AI Assistant header、status chips、available next steps、persona/runtime/mode labels、
+    empty state、message bubbles 和 composer 改成使用者導向語言。
+  - 第一層 UI 不再顯示 raw command names；advanced command diagnostics 留在 tooltip / details。
+  - 修正 user bubble right margin / word wrap，避免最後一個字被截掉。
+  - 新增 `XBrainLab/ui/product_language.py`，集中 stage / command / status 的產品文字。
+  - 新增 UI command adapter，讓 dataset import、reset、preprocess、epoching、training
+    start / stop 優先走 `ApplicationService.execute()`，mock / legacy path 保留 controller fallback。
+  - agent mapped workflow tools 優先直接執行 ApplicationService command，回傳 structured
+    `CommandResult` payload；`load_data` / `set_montage` / `switch_panel` 仍保留 legacy / UI request path。
+  - 新增 product UI integration smoke，覆蓋 assistant click-through layout 和 synthetic EEG
+    button-driven pipeline walkthrough。
+  - 更新 current / planning / architecture / validation 文件，誠實標出剩餘 release risk。
+- 證據：
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q` -> `78 passed`
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/test_application_capabilities.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_panel_normalize.py tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/test_sidebars_and_components.py -q` -> `74 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py -q` -> `11 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q` -> `60 passed`
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py -q` -> `2 passed`
+  - combined UI product gate -> `62 passed`
+  - combined agent / backend gate -> `95 passed`
+  - IO integration -> `31 passed, 8 warnings`
+  - selected pipeline smoke -> `2 passed`
+  - launcher startup smoke printed `MainWindow initialized` before expected GUI timeout.
+- commits:
+  - `941efaf ui: polish assistant product language`
+  - `e52687a backend: align ui command adapter slice`
+  - `34816c7 agent: execute mapped tools via command results`
+  - `5ede90e validation: add product walkthrough smoke`
+- push status:
+  - each `git push origin HEAD` failed because GitHub credentials were unavailable in this environment:
+    `fatal: could not read Username for 'https://github.com': No such device or address`
+- 後續：
+  - 完成剩餘 service-first UI action migration：label import、smart parse、channel selection、
+    split / model / training setting dialogs、evaluation / visualization query actions。
+  - 做 Windows Desktop launcher 人工 click-through 與 true local model UI walkthrough。
+  - 將 `evaluate` / `visualize` / `saliency` / `new_session` 從 future placeholder 推進成真 command。
