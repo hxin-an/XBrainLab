@@ -26,7 +26,7 @@ closure。
 
 目前 fast engineering artifact 狀態是：
 
-- generated at: `2026-05-02 17:44:37 UTC+08:00`
+- generated at: `2026-05-02 20:35:07 UTC+08:00`
 - workspace: `/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall: `PASS`
 
@@ -46,12 +46,39 @@ UI baseline capture 結果：
 - Startup Smoke：`PASS`
 - UI Baseline Capture：`PASS`
 - UI Dialog Acceptance：`PASS`
-- UI Unit Suite：`830 passed`
+- UI Unit Suite：`814 passed`
 - Real-Data IO Integration：`31 passed, 8 warnings`
 
-文件站點也已通過：
+同輪或 supervisor final closure 已通過：
 
+- `git diff --check`
+- `poetry run ruff check .`
+- `poetry run basedpyright`
 - `poetry run mkdocs build --strict`
+- `poetry run python tests/architecture_compliance.py`
+- UI product / geometry gate：`121 passed`
+- agent / backend command gate：`225 passed`
+- backend + IO integration：`33 passed, 8 warnings`
+- full pipeline integration：`70 passed, 4 warnings`
+- LLM / local settings / script unit gate：`674 passed`
+- deterministic tool-call eval refresh：commit `e5454c7 test: refresh agent eval artifact`
+  tracked `artifacts/agent_evals/latest.json`
+
+這些 closure gates 修正並覆蓋了先前 fast dashboard fail：
+
+- local-disabled assistant startup 現在有 visible reason。
+- confirmation transcript 不再暴露 raw tool names。
+- montage apply 不再 bypass command surface。
+- `run.py` assistant startup path 維持 local-only。
+- UI baseline geometry 已穩定。
+- UI unit legacy runtime expectations 已改成 remote switch fail-closed / active local deletion block。
+- deterministic agent eval artifact 已刷新。
+
+仍未完成的 evidence：
+
+- Windows Desktop launcher 人工 click-through。
+- true local LLM ChatPanel 長時間 walkthrough。
+- external thesis dataset experiment / statistical reporting。
 
 data pipeline 文件驗證時也重跑：
 
@@ -236,13 +263,14 @@ evaluation / visualization / saliency summary query、split artifact schema 與 
   - `70 passed, 4 warnings`
 - UI unit:
   - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
-  - `811 passed`
+  - latest fast dashboard UI Unit Suite：`814 passed`
 - LLM unit:
-  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
-  - `649 passed`
+  - LLM / local settings / script unit gate：`674 passed`
 - local model preflight:
   - `timeout 120s poetry run python scripts/dev/plan_local_model_download.py --format markdown`
-  - `ok=True`; primary already cached; projected cache `15.34 GB`
+  - `ok=True`; primary `microsoft/Phi-4-mini-instruct` already cached; estimated download `0.00 GB`;
+    current / projected cache `15.34 GB`; available disk `158.54 GB`; VRAM estimate `9.0 GB`;
+    license MIT
 - local runtime health:
   - `timeout 300s poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
   - classification `gpu-ready`; prompt smoke `passed`; structured-output smoke `passed`

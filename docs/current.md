@@ -78,7 +78,7 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
 
 最新 fast dashboard：
 
-- generated at：`2026-05-02 17:44:37 UTC+08:00`
+- generated at：`2026-05-02 20:35:07 UTC+08:00`
 - workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall：`PASS`
 - 來源：`artifacts/quality/latest.json`、`artifacts/quality/latest.md`
@@ -102,11 +102,24 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
 - Startup Smoke：`PASS`
 - UI Baseline Capture：`PASS`，`7 UI artifacts match approved references`
 - UI Dialog Acceptance：`PASS`
-- UI Unit Suite：`PASS`，`830 passed`
+- UI Unit Suite：`PASS`，`814 passed`
 - Real-Data IO Integration：`PASS`，`31 passed, 8 warnings`
 
 補充已知通過項目：
 
+- supervisor final gates：
+  - `git diff --check`
+  - `poetry run ruff check .`
+  - `poetry run basedpyright`
+  - `poetry run mkdocs build --strict`
+  - `poetry run python tests/architecture_compliance.py`
+  - UI product / geometry gate：`121 passed`
+  - agent / backend command gate：`225 passed`
+  - backend + IO integration：`33 passed, 8 warnings`
+  - full pipeline integration：`70 passed, 4 warnings`
+  - LLM / local settings / script unit gate：`674 passed`
+  - deterministic tool-call eval refreshed tracked `artifacts/agent_evals/latest.json`：
+    commit `e5454c7 test: refresh agent eval artifact`
 - backend Application Service / facade contract suite：
   - `poetry run pytest --capture=sys tests/unit/backend/application -q`
   - `9 passed`
@@ -115,8 +128,7 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
   - `poetry run pytest --capture=sys tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py -q`
   - `44 passed`
 - UI unit suite：
-  - `scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
-  - `817 passed`
+  - latest fast dashboard UI Unit Suite：`814 passed`
 - LLM unit suite：
   - `poetry run pytest --capture=sys tests/unit/llm -q`
   - `652 passed`
@@ -144,7 +156,9 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
 - local assistant runtime smoke：
   - preflight：
   - `poetry run python scripts/dev/plan_local_model_download.py --format markdown`
-  - primary already cached；estimated download `0.00 GB`；projected cache `15.34 GB`
+  - primary `microsoft/Phi-4-mini-instruct` already cached；estimated download `0.00 GB`；
+    current / projected cache `15.34 GB`；available disk `158.54 GB`；VRAM estimate `9.0 GB`；
+    license MIT
   - `poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown --prompt-smoke --structured-smoke`
   - primary prompt smoke：`passed`
   - primary structured-output smoke：`passed`
@@ -165,6 +179,16 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
   - full test gate：`4386 passed, 3 skipped, 3 deselected, 1 xfailed, 14 warnings`
 - `ai-assistant-open.png` 的 `(1684, 800)` product redesign baseline 已接受，尺寸和
   live artifact、repo HEAD reference 一致。
+- 2026-05-02 final repair / closure commits：
+  - `8b04380 ui: rebuild assistant sidebar product shell`
+  - `1883d4b backend: complete command surface migration`
+  - `8a6099a llm: enforce local-only assistant runtime`
+  - `41ec91c docs: align local-only runtime status`
+  - `3edee21 ui: clarify assistant unavailable and confirmations`
+  - `5ed1c87 backend: route montage through command surface`
+  - `4cd4d4c test: align agent manager local-only expectations`
+  - `406719c ui: stabilize baseline capture geometry`
+  - `e5454c7 test: refresh agent eval artifact`
 - 2026-05-02 assistant product audit follow-up targeted evidence：
   - UI assistant / settings / AgentManager gate：
     `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q`
@@ -231,8 +255,9 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
 
 ## 目前執行中
 
-1. 跑本輪 lint、format、docs、assistant UI、backend、agent、validation gates。
-2. 分段 local commit；不 push，不納入 unrelated `settings.json`。
+1. 等待真 Windows Desktop launcher click-through。
+2. 等待 true local LLM ChatPanel 長時間 walkthrough。
+3. 等待 external thesis dataset experiment / statistical reporting。
 
 ## 相關文件
 

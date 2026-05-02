@@ -37,6 +37,46 @@
 
 ## 2026-05-02
 
+### 20:35 Final validation closure
+
+- 做了什麼：
+  - 收斂最後一輪退件：local-disabled assistant startup 改成 visible reason，
+    confirmation transcript 不再暴露 raw tool names，montage apply 改走 command surface，
+    `run.py` startup path 維持 local-only，UI baseline geometry 穩定，UI unit legacy runtime
+    expectations 改成 remote switch fail-closed / active local deletion block。
+  - 刷新 deterministic tool-call eval artifact，tracked `artifacts/agent_evals/latest.json`。
+  - 同步 canonical docs，避免 current truth 停在舊 dashboard 或舊 API/Gemini removal wording。
+- 結果：
+  - latest fast dashboard 從先前 FAIL 修到 clean `PASS`。
+  - `artifacts/quality/latest.md` generated at `2026-05-02 20:35:07 UTC+08:00`，
+    overall `PASS`。
+  - dashboard summary：Ruff PASS，Basedpyright PASS `0 errors, 0 warnings, 0 notes`，
+    Architecture PASS，Startup Smoke PASS，UI Baseline PASS，UI Dialog PASS，
+    UI Unit Suite `814 passed`，Real-Data IO Integration `31 passed, 8 warnings`。
+- 證據：
+  - `git diff --check` PASS
+  - `poetry run ruff check .` PASS
+  - `poetry run basedpyright` PASS
+  - `poetry run mkdocs build --strict` PASS
+  - `poetry run python tests/architecture_compliance.py` PASS
+  - UI product / geometry gate：`121 passed`
+  - agent / backend command gate：`225 passed`
+  - backend + IO integration：`33 passed, 8 warnings`
+  - full pipeline integration：`70 passed, 4 warnings`
+  - LLM / local settings / script unit gate：`674 passed`
+  - deterministic tool-call eval artifact refresh：commit
+    `e5454c7 test: refresh agent eval artifact`
+  - local model preflight：primary `microsoft/Phi-4-mini-instruct` already cached，
+    current / projected cache `15.34 GB`，available disk `158.54 GB`，
+    estimated download `0.00 GB`，VRAM estimate `9.0 GB`，license MIT。
+  - relevant commits：
+    `8b04380`、`1883d4b`、`8a6099a`、`41ec91c`、`3edee21`、`5ed1c87`、
+    `4cd4d4c`、`406719c`、`e5454c7`。
+- 接續 / 本輪剩餘：
+  - Windows Desktop launcher click-through 尚未人工驗收。
+  - true local LLM ChatPanel long walkthrough 尚未跑。
+  - external thesis dataset experiment / statistical reporting 尚未完成。
+
 ### 19:28 Backend command surface migration closure
 
 - 做了什麼：

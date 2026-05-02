@@ -28,6 +28,75 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Product validation closure
+
+### 背景
+
+最後一輪 review 指出 fast dashboard 曾經 FAIL，且 canonical docs 仍有 stale evidence。
+需要把退件修復、最新 dashboard 和剩餘 manual evidence 收斂成 current truth。
+
+### 變更
+
+- 修正 assistant local-disabled startup，讓使用者在 transcript 看到明確 unavailable reason。
+- 修正 confirmation / tool transcript，不再把 raw tool names、schema 或 backend wording 當產品文字顯示。
+- 修正 montage apply path，避免繞過 `ApplicationService` command surface。
+- 修正 `run.py` / assistant startup path，維持 local-only runtime；remote backend modules 已從
+  product package 移除，remote SDK 只在 optional legacy group。
+- 穩定 UI baseline capture geometry。
+- 更新 UI unit legacy runtime expectations：remote model switch fail-closed 到 local-only，
+  active local model deletion 會被 block。
+- 刷新 deterministic agent eval artifact：`artifacts/agent_evals/latest.json`。
+- 更新 canonical docs：`current.md`、`validation/README.md`、records。
+
+### 影響範圍
+
+- Product validation truth：fast dashboard、UI product gate、agent/backend command gate、
+  backend / IO / pipeline integration、LLM local settings / scripts。
+- Documentation：current state、validation strategy、worklog、implementation log。
+- Related commits：`8b04380`、`1883d4b`、`8a6099a`、`41ec91c`、`3edee21`、
+  `5ed1c87`、`4cd4d4c`、`406719c`、`e5454c7`。
+
+### 驗證
+
+- Latest fast dashboard:
+  - `artifacts/quality/latest.md`
+  - generated at `2026-05-02 20:35:07 UTC+08:00`
+  - overall `PASS`
+  - Ruff PASS
+  - Basedpyright PASS：`0 errors, 0 warnings, 0 notes`
+  - Architecture PASS
+  - Startup Smoke PASS
+  - UI Baseline PASS
+  - UI Dialog PASS
+  - UI Unit Suite：`814 passed`
+  - Real-Data IO Integration：`31 passed, 8 warnings`
+- Additional supervisor gates:
+  - `git diff --check` PASS
+  - `poetry run ruff check .` PASS
+  - `poetry run basedpyright` PASS
+  - `poetry run mkdocs build --strict` PASS
+  - `poetry run python tests/architecture_compliance.py` PASS
+  - UI product / geometry gate：`121 passed`
+  - agent / backend command gate：`225 passed`
+  - backend + IO integration：`33 passed, 8 warnings`
+  - full pipeline integration：`70 passed, 4 warnings`
+  - LLM / local settings / script unit gate：`674 passed`
+  - deterministic tool-call eval artifact refresh：commit
+    `e5454c7 test: refresh agent eval artifact`
+- Local model preflight:
+  - primary `microsoft/Phi-4-mini-instruct` already cached
+  - current / projected cache `15.34 GB`
+  - available disk `158.54 GB`
+  - estimated download `0.00 GB`
+  - VRAM estimate `9.0 GB`
+  - license MIT
+
+### 剩餘風險
+
+- Windows Desktop launcher click-through 尚未人工驗收。
+- true local LLM ChatPanel long walkthrough 尚未跑。
+- external thesis dataset experiment / statistical reporting 尚未完成。
+
 ## 2026-05-02 Local-only assistant runtime enforcement
 
 ### 背景
