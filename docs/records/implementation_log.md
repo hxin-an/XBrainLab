@@ -28,6 +28,53 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Assistant product status polish
+
+### 背景
+
+Goal session 完成 Assistant product audit follow-up 後，人工審核仍發現 footer / runtime
+status 有重複資訊風險：頂部已顯示 workflow guidance，底部再出現完整
+`Workflow: ... | Assistant: ...` 會讓 Assistant dock 看起來像 debug console。此問題雖不會讓
+測試失敗，但會影響使用者第一眼感受。
+
+### 變更
+
+- `ChatPanel` 不再把 legacy `runtime_status_label` 加到 visible composer footer；它保留為
+  compatibility anchor / tooltip carrier，避免舊測試或 caller 直接斷裂。
+- header subtitle 從較長的操作說明改成 `From data import to training`。
+- footer runtime summary 改成低干擾狀態與 tooltip，不再在畫面底部重複 workflow diagnostics。
+- 控制列高度從 70px 壓到 64px，讓 composer 區更像輸入區，而不是第二層 debug status bar。
+- 更新 `artifacts/ui/ai-assistant-open.png` 和 `tests/baselines/ui/ai-assistant-open.png`。
+- 修正 controller coverage 測試：exception path 不再用 `hi`，避免被 greeting shortcut 提前處理。
+
+### 影響範圍
+
+- UI：`XBrainLab/ui/chat/panel.py`、`XBrainLab/ui/chat/styles.py`。
+- Tests / artifacts：chat panel unit、LLM controller coverage、Assistant dock screenshot baseline。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller_cov.py tests/unit/ui/chat/test_chat_panel.py -q`
+  - `67 passed`
+- `poetry run ruff check XBrainLab/ui/chat/panel.py tests/unit/ui/chat/test_chat_panel.py tests/unit/llm/agent/test_controller_cov.py`
+  - `All checks passed!`
+- `poetry run ruff format --check XBrainLab/ui/chat/panel.py tests/unit/ui/chat/test_chat_panel.py tests/unit/llm/agent/test_controller_cov.py`
+  - `3 files already formatted`
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run python scripts/dev/update_quality_dashboard.py`
+  - overall `PASS` at `2026-05-02 18:11:29 UTC+08:00`
+  - includes Ruff, Basedpyright, Architecture Compliance, Startup Smoke, UI Baseline Capture,
+    UI Dialog Acceptance, UI Unit Suite `830 passed`, and Real-Data IO Integration `31 passed`。
+
+### 剩餘風險
+
+- 真 Windows launcher click-through 尚未做。
+- 真 local model 長時間 ChatPanel walkthrough 尚未做；本輪沒有下載模型，也沒有長時間 local
+  LLM smoke。
+- Gemini/API code path 已從一般產品入口隔離，但 source code 尚未刪除。
+
 ## 2026-05-02 Assistant product audit follow-up
 
 ### 背景

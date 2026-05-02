@@ -37,6 +37,35 @@
 
 ## 2026-05-02
 
+### 18:15 Assistant product status polish
+
+- 做了什麼：
+  - 人工審核 Goal session 產物後，確認 raw tool output 不再直接進入 visible transcript。
+  - 發現 footer / runtime status 仍有 debug 感，補修 `ChatPanel`：隱藏 legacy
+    `runtime_status_label`，改由 tooltip 保留完整資訊；subtitle 縮短；footer 狀態降噪；控制列高度
+    由 70px 調成 64px。
+  - 重新 capture `artifacts/ui/ai-assistant-open.png`，同步更新
+    `tests/baselines/ui/ai-assistant-open.png`。
+  - 修正 controller coverage 測試，避免 `hi` 被 greeting shortcut 接走而測不到 exception path。
+- 結果：
+  - Assistant dock 目前第一層資訊更接近使用者產品介面：header、guidance、empty state、
+    composer footer 各自分工，不再把 workflow / runtime diagnostics 擠成一條醜的狀態列。
+  - local ready / retry / clear 仍保留，但降到低干擾 footer，不把 raw backend command 或 tool
+    schema 直接丟給使用者。
+- 證據：
+  - `git diff --check`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller_cov.py tests/unit/ui/chat/test_chat_panel.py -q`
+    - `67 passed`
+  - `poetry run basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+  - `poetry run python scripts/dev/update_quality_dashboard.py`
+    - overall `PASS` at `2026-05-02 18:11:29 UTC+08:00`
+  - commit：`bb2c6f1 ui: polish assistant product status`
+- 接續 / 本輪剩餘：
+  - 真 Windows launcher click-through。
+  - 真 local model 長時間 ChatPanel walkthrough。
+  - API / Gemini code path 從 source code 刪除。
+
 ### 17:20 Assistant product audit follow-up
 
 - 做了什麼：
