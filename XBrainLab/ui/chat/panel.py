@@ -169,12 +169,18 @@ class ChatPanel(QWidget):
         footer_row = QHBoxLayout()
         footer_row.setContentsMargins(6, 0, 6, 0)
         footer_row.setSpacing(8)
-        self.runtime_status_label = QLabel("Workflow status: checking")
+
+        # Compatibility anchor for tests/callers that still read runtime status.
+        # It is deliberately not added to the footer: the composer should stay
+        # focused on input, not repeat workflow diagnostics.
+        self.runtime_status_label = QLabel("")
         self.runtime_status_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;"
         )
-        self.runtime_status_label.setWordWrap(True)
-        footer_row.addWidget(self.runtime_status_label, 1)
+        self.runtime_status_label.setWordWrap(False)
+        self.runtime_status_label.setVisible(False)
+
+        footer_row.addStretch(1)
 
         self.retry_btn = QToolButton()
         self.retry_btn.setText("Retry")
@@ -236,7 +242,7 @@ class ChatPanel(QWidget):
         self.title_label.setStyleSheet(HEADER_TITLE_STYLE)
         title_stack.addWidget(self.title_label)
 
-        subtitle = QLabel("Guide EEG workflows from data import to training")
+        subtitle = QLabel("From data import to training")
         subtitle.setObjectName("AssistantSubtitle")
         subtitle.setStyleSheet(HEADER_SUBTITLE_STYLE)
         subtitle.setWordWrap(True)
@@ -467,7 +473,8 @@ class ChatPanel(QWidget):
         )
         self.model_btn.setText(label)
         if hasattr(self, "runtime_status_label"):
-            self.runtime_status_label.setText(f"Assistant runtime: {label}")
+            self.runtime_status_label.setText("")
+            self.runtime_status_label.setToolTip(f"Assistant runtime: {label}")
 
     def connect_controller(self, controller: ChatController):
         """Connect to a backend ChatController for state synchronization.
@@ -513,7 +520,8 @@ class ChatPanel(QWidget):
         )
         self.model_btn.setText(button_label)
         if hasattr(self, "runtime_status_label"):
-            self.runtime_status_label.setText(f"Assistant runtime: {button_label}")
+            self.runtime_status_label.setText("")
+            self.runtime_status_label.setToolTip(f"Assistant runtime: {button_label}")
         self.model_changed.emit(normalized_mode)
 
     def _set_execution_mode(self, mode_key: str, label: str):
@@ -691,17 +699,20 @@ class ChatPanel(QWidget):
             if tooltip:
                 self.model_status_chip.setToolTip(tooltip)
         if hasattr(self, "runtime_status_label"):
-            self.runtime_status_label.setText(
-                f"Workflow: {stage} | Assistant: {model_status}"
+            self.runtime_status_label.setText("")
+            self.runtime_status_label.setToolTip(
+                f"Workflow: {stage}\nAssistant: {model_status}"
             )
             if tooltip:
-                self.runtime_status_label.setToolTip(tooltip)
+                self.runtime_status_label.setToolTip(
+                    f"Workflow: {stage}\nAssistant: {model_status}\n\n{tooltip}"
+                )
 
         display_commands = (
             None if available_commands is None else command_labels(available_commands)
         )
         if display_commands is None:
-            command_text = "Next steps: see details"
+            command_text = "Next: see details"
         elif available_commands:
             preview = ", ".join(display_commands[:3])
             extra_count = len(display_commands) - 3

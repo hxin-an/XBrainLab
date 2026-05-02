@@ -103,7 +103,7 @@ class TestHandleUserInput:
 
     def test_exception_emits_error(self, ctrl):
         ctrl.rag_retriever.get_similar_examples.side_effect = RuntimeError("boom")
-        ctrl.handle_user_input("hi")
+        ctrl.handle_user_input("run analysis")
         ctrl.error_occurred.emit.assert_called()
         assert not ctrl.is_processing
 

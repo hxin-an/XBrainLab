@@ -148,7 +148,7 @@ CONTROL_PANEL_STYLE = """
     QWidget#ControlPanel {
         background-color: #1b2025;
         border-top: 1px solid #303840;
-        min-height: 70px;
+        min-height: 64px;
     }
 """
 
