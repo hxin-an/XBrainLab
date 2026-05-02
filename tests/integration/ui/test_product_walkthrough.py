@@ -81,9 +81,11 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert "Commands:" not in panel.available_commands_chip.text()
     assert "load_data" not in panel.available_commands_chip.text()
     assert "Load EEG data" in panel.available_commands_chip.text()
-    assert panel.feature_btn.text() == "Workflow guide"
-    assert panel.mode_btn.text() == "Single step"
-    assert "Coder" not in panel.feature_btn.text()
+    assert panel.options_btn.text() == "Options"
+    assert panel.feature_btn.isHidden()
+    assert panel.mode_btn.isHidden()
+    assert panel.step_mode_status_label.text() == "Single step"
+    assert "Coder" not in panel.options_btn.text()
     assert "Ask about data" in panel.input_field.placeholderText()
 
     assert not panel.title_label.geometry().intersects(panel.retry_btn.geometry())

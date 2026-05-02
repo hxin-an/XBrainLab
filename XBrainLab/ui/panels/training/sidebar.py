@@ -10,7 +10,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import CommandName, StopTrainingCommand, TrainCommand
+from XBrainLab.backend.application import (
+    CommandName,
+    ConfigureTrainingCommand,
+    GenerateDatasetCommand,
+    StopTrainingCommand,
+    TrainCommand,
+)
 from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
@@ -242,7 +248,19 @@ class TrainingSidebar(QWidget):
 
             generator = win.get_result()
             if generator:
-                self.controller.apply_data_splitting(generator)
+                result = execute_application_command(
+                    self,
+                    GenerateDatasetCommand(generator=generator),
+                )
+                if result is None:
+                    self.controller.apply_data_splitting(generator)
+                elif result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Data Splitting Failed",
+                        result.message,
+                    )
+                    return
             QMessageBox.information(
                 self,
                 "Success",
@@ -265,7 +283,20 @@ class TrainingSidebar(QWidget):
 
         win = ModelSelectionDialog(self, self.controller)
         if win.exec():
-            self.controller.set_model_holder(win.get_result())
+            model_holder = win.get_result()
+            result = execute_application_command(
+                self,
+                ConfigureTrainingCommand(
+                    model_name=model_holder.target_model.__name__,
+                    model_params=dict(model_holder.model_params_map),
+                    pretrained_weight_path=model_holder.pretrained_weight_path,
+                ),
+            )
+            if result is None:
+                self.controller.set_model_holder(model_holder)
+            elif result.failed:
+                QMessageBox.critical(self, "Model Selection Failed", result.message)
+                return
             model_holder = self.controller.get_model_holder()
             model_name = model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
@@ -286,7 +317,38 @@ class TrainingSidebar(QWidget):
 
         win = TrainingSettingDialog(self, self.controller)
         if win.exec():
-            self.controller.set_training_option(win.get_result())
+            option = win.get_result()
+            optimizer_name = getattr(getattr(option, "optim", None), "__name__", "adam")
+            use_cpu = bool(getattr(option, "use_cpu", True))
+            gpu_idx = getattr(option, "gpu_idx", None)
+            result = execute_application_command(
+                self,
+                ConfigureTrainingCommand(
+                    epoch=getattr(option, "epoch", None),
+                    batch_size=getattr(option, "bs", None),
+                    learning_rate=getattr(option, "lr", None),
+                    repeat=getattr(option, "repeat_num", 1),
+                    device=("cpu" if use_cpu else f"cuda:{gpu_idx or 0}"),
+                    optimizer=optimizer_name,
+                    optimizer_params=dict(getattr(option, "optim_params", {}) or {}),
+                    save_checkpoints_every=getattr(option, "checkpoint_epoch", 0),
+                    output_dir=getattr(option, "output_dir", "./output"),
+                    evaluation_option=getattr(
+                        getattr(option, "evaluation_option", None),
+                        "value",
+                        None,
+                    ),
+                ),
+            )
+            if result is None:
+                self.controller.set_training_option(option)
+            elif result.failed:
+                QMessageBox.critical(
+                    self,
+                    "Training Settings Failed",
+                    result.message,
+                )
+                return
             QMessageBox.information(self, "Success", "Training settings saved.")
             self.check_ready_to_train()
 

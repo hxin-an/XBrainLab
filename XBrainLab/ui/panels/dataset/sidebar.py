@@ -10,7 +10,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import ResetSessionCommand
+from XBrainLab.backend.application import (
+    PreprocessCommand,
+    PreprocessOperation,
+    ResetSessionCommand,
+)
 from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog
@@ -200,7 +204,22 @@ class DatasetSidebar(QWidget):
             result = dialog.get_result()
             if result:
                 try:
-                    self.controller.apply_channel_selection(result)
+                    command_result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.SELECT_CHANNELS,
+                            channels=list(result),
+                        ),
+                    )
+                    if command_result is None:
+                        self.controller.apply_channel_selection(result)
+                    elif command_result.failed:
+                        QMessageBox.critical(
+                            self,
+                            "Error",
+                            f"Channel selection failed: {command_result.message}",
+                        )
+                        return
                     self.panel.update_panel()
                     QMessageBox.information(
                         self,

@@ -14,7 +14,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import EvaluateCommand
 from XBrainLab.backend.training.record.wrappers import PooledRecordWrapper
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -118,6 +120,11 @@ class EvaluationPanel(BasePanel):
         """Update panel content when switched to."""
         if hasattr(self, "info_panel"):
             pass  # Handled by InfoPanelService
+
+        self.last_application_query = execute_application_command(
+            self,
+            EvaluateCommand(),
+        )
 
         previous_plan = (
             self.model_combo.currentData() if hasattr(self, "model_combo") else None

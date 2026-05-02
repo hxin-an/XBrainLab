@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import SaliencyCommand
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.visualization import (
     ExportSaliencyDialog,
@@ -138,7 +140,19 @@ class ControlSidebar(QWidget):
         if win.exec():
             params = win.get_result()
             if params:
-                self.controller.set_saliency_params(params)
+                result = execute_application_command(
+                    self,
+                    SaliencyCommand(params=dict(params)),
+                )
+                if result is None:
+                    self.controller.set_saliency_params(params)
+                elif result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Saliency setup failed: {result.message}",
+                    )
+                    return
                 QMessageBox.information(self, "Success", "Saliency parameters set")
 
                 if self.panel and hasattr(self.panel, "on_update"):

@@ -13,8 +13,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -303,6 +305,10 @@ class VisualizationPanel(BasePanel):
 
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
+        self.last_application_query = execute_application_command(
+            self,
+            VisualizeCommand(view=self.tabs.tabText(self.tabs.currentIndex())),
+        )
         plan_name = self.plan_combo.currentText()
         run_name = self.run_combo.currentText()
         method_name = self.method_combo.currentText()
@@ -376,6 +382,7 @@ class VisualizationPanel(BasePanel):
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
+        self.last_saliency_query = execute_application_command(self, SaliencyCommand())
         if hasattr(self, "sidebar"):
             self.sidebar.update_info()
 
