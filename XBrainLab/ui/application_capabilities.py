@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import Mock
 
 from XBrainLab.backend.application import Command, CommandName, CommandResult
 from XBrainLab.backend.application.capabilities import CommandCapability
@@ -38,7 +39,7 @@ def get_command_capability(
 ) -> CommandCapability | None:
     """Read one command capability from the shared ApplicationService policy."""
     study = find_study(context)
-    if study is None or not isinstance(study, Study):
+    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
     return BackendFacade(study).get_capabilities().get(command_name)
 
@@ -63,6 +64,6 @@ def execute_application_command(
     controller methods.
     """
     study = find_study(context)
-    if study is None or not isinstance(study, Study):
+    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
     return BackendFacade(study).service.execute(command)

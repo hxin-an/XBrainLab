@@ -37,6 +37,54 @@
 
 ## 2026-05-02
 
+### 19:28 Backend command surface migration closure
+
+- 做了什麼：
+  - 擴充 `ApplicationService` command contract：`update_metadata`、`apply_smart_parse`、
+    `remove_files`、`import_labels` / `LabelImportPlan`、`apply_montage`、`query_state`。
+  - 將 dataset metadata edit / smart parse / remove / label import、InfoPanel read query、
+    agent montage confirmation、agent `load_data` command surface 接到 `ApplicationService.execute()`。
+  - 補 capability policy：train 在 load 前明確 blocked；epoch / dataset 後 raw edit、
+    label / metadata / remove / preprocess / recreate epoch / regenerate dataset 會要求 reset /
+    new session。
+  - 保留 mock/unit-test fallback；real `Study` path 回 `CommandResult`。
+- 結果：
+  - 先前列出的 label import、smart parse、remove files、metadata update、montage confirmation
+    legacy mutating paths 已收斂到 service command。
+  - `BackendFacade` 保留 compatibility wrapper，data summary / preprocess diagnostics 改用
+    `QueryStateCommand`。
+- 證據：
+  - `git diff --check`
+  - `poetry run ruff check XBrainLab/backend XBrainLab/llm/tools XBrainLab/ui/panels/dataset XBrainLab/ui/components/info_panel_service.py XBrainLab/ui/components/agent_manager.py tests/unit/backend tests/integration/backend tests/unit/llm/tools`
+    - `All checks passed!`
+  - `poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/unit/llm/tools tests/integration/io/test_io_integration.py -q`
+    - `249 passed, 8 warnings`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/components/test_info_panel_service.py -q`
+    - `133 passed`
+- 接續 / 本輪剩餘：
+  - `set_montage` / `switch_panel` 仍是 UI request path；montage apply 本身已 service-backed。
+  - 真 Windows launcher click-through / 真 local model 長時間 walkthrough 仍需人工驗收。
+
+### 19:20 Local-only assistant runtime enforcement
+
+- 做了什麼：
+  - 將 `LLMConfig`、`LLMEngine`、`AgentWorker` product path 改成 local-only。
+  - 刪除 product package 中的 remote backend modules，model settings 移除 remote key / remote model UI。
+  - `pyproject.toml` default deps 移除 remote SDK，保留 optional legacy dependency group。
+  - 刪除 Gemini verify/list scripts，legacy benchmark scripts 移除 Gemini model option。
+  - 加 architecture compliance guard，掃 product path 禁止 remote backend class / remote key env path。
+- 結果：
+  - `INFERENCE_MODE=api`、舊 settings 裡的 Gemini mode、`reinitialize_agent("Gemini")`
+    都不會 instantiate remote backend。
+  - worker/model switching 只接受 local catalog 裡的 Phi primary / fallback 或 generic `Local`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/llm/core/test_config.py tests/unit/llm/core/test_engine.py tests/unit/llm/agent/test_worker.py tests/unit/ui/dialogs/test_model_settings.py -q`
+    - `73 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm -q`
+    - `644 passed`
+- 接續 / 本輪剩餘：
+  - 跑使用者指定的完整 ruff / pytest / architecture gates。
+
 ### 19:12 Assistant product shell / window geometry rebuild
 
 - 做了什麼：

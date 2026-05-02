@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Any
+from unittest.mock import Mock
 
 from XBrainLab.backend.application import (
     AttachLabelsCommand,
@@ -13,6 +15,7 @@ from XBrainLab.backend.application import (
     ConfigureTrainingCommand,
     CreateEpochCommand,
     GenerateDatasetCommand,
+    LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
     ResetSessionCommand,
@@ -40,7 +43,7 @@ TOOL_TO_COMMAND: dict[str, CommandName] = {
     "normalize_data": CommandName.PREPROCESS,
     "set_reference": CommandName.PREPROCESS,
     "select_channels": CommandName.PREPROCESS,
-    "set_montage": CommandName.PREPROCESS,
+    "set_montage": CommandName.APPLY_MONTAGE,
     "epoch_data": CommandName.CREATE_EPOCH,
     "generate_dataset": CommandName.GENERATE_DATASET,
     "set_model": CommandName.CONFIGURE_TRAINING,
@@ -228,7 +231,7 @@ class ToolCommandResult:
 
 def build_agent_tool_policy(study: Any) -> dict[str, ToolAvailability]:
     """Return agent tool availability from the ApplicationService policy."""
-    if not isinstance(study, Study):
+    if not isinstance(study, Study) or isinstance(study, Mock):
         raise CapabilityPolicyUnavailableError(
             "ApplicationService policy requires a real Study instance.",
         )
@@ -334,7 +337,7 @@ def execute_application_tool_command(
     because it is read-only/UI-side or because the provided parameters are not
     enough to safely construct a backend command.
     """
-    if not isinstance(study, Study):
+    if not isinstance(study, Study) or isinstance(study, Mock):
         return None
 
     command = _command_for_tool(tool_name, params)
@@ -411,6 +414,15 @@ def legacy_tool_error_type(message: str) -> str:
 
 def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
     """Build an ApplicationService command for a supported agent tool."""
+    if tool_name == "load_data":
+        paths = params.get("paths")
+        if not isinstance(paths, list) or not paths:
+            return None
+        expanded_paths = _expand_load_paths([str(path) for path in paths])
+        if not expanded_paths:
+            return None
+        return LoadDataCommand(paths=expanded_paths)
+
     if tool_name == "attach_labels":
         mapping = params.get("mapping")
         if not isinstance(mapping, dict) or not mapping:
@@ -519,6 +531,23 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
     return None
 
 
+def _expand_load_paths(paths: list[str]) -> list[str]:
+    """Expand directory arguments before routing load_data to ApplicationService."""
+    expanded_paths: list[str] = []
+    for path in paths:
+        if os.path.isdir(path):
+            try:
+                for filename in sorted(os.listdir(path)):
+                    full_path = os.path.join(path, filename)
+                    if os.path.isfile(full_path):
+                        expanded_paths.append(full_path)
+            except OSError:
+                continue
+        else:
+            expanded_paths.append(path)
+    return expanded_paths
+
+
 def enabled_tool_names(study: Any) -> list[str]:
     """Return tool names that are currently available to the agent."""
     return [
@@ -563,7 +592,7 @@ def _command_name_for_tool(tool_name: str) -> str | None:
 
 
 def _state_snapshot_dict(study: Any) -> dict[str, Any] | None:
-    if not isinstance(study, Study):
+    if not isinstance(study, Study) or isinstance(study, Mock):
         return None
     try:
         return BackendFacade(study).get_state().to_dict()

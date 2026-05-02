@@ -98,12 +98,28 @@ def test_application_tool_command_returns_structured_result_for_model_config():
     assert study.model_holder.target_model.__name__ == "EEGNet"
 
 
-def test_application_tool_command_leaves_unsupported_tools_on_legacy_path():
+def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
+    sample = tmp_path / "sample.unsupported"
+    sample.write_text("not eeg", encoding="utf-8")
+
+    result = execute_application_tool_command(
+        Study(),
+        "load_data",
+        {"paths": [str(sample)]},
+    )
+
+    assert result is not None
+    assert result.ok is False
+    assert result.command_name == CommandName.LOAD_DATA.value
+    assert result.raw_result["status"] == "failed"
+
+
+def test_application_tool_command_leaves_ui_request_tools_on_legacy_path():
     assert (
         execute_application_tool_command(
             Study(),
-            "load_data",
-            {"paths": ["/tmp/sample.fif"]},
+            "set_montage",
+            {"montage_name": "standard_1020"},
         )
         is None
     )

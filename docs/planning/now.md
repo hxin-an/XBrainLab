@@ -31,11 +31,12 @@
 - `ApplicationService / Command API` backend baseline 已驗證，可作為後續 UI / Agent migration 的基礎。
 - UI execution 已接 service-backed command adapter：dataset import、reset、preprocess、
   channel selection、epoching、split / model / training dialogs、evaluation / visualization /
-  saliency query、training start / stop。仍不是完整 service-first，因為 label import、
-  smart parse、montage confirmation 還有 controller / UI-request legacy path。
+  saliency query、training start / stop、metadata update、smart parse、remove files、label import、
+  montage confirmation。real `Study` mutating path 會回 `CommandResult`；mock/unit-test fallback
+  仍保留 controller compatibility。
 - Agent tool surface 已開始使用 backend capability policy 和 typed adapter；mapped workflow
-  tools 可直接消費 `CommandResult`，但 `load_data`、`set_montage`、`switch_panel` 等仍保留
-  legacy real-tool / UI request path。
+  tools 可直接消費 `CommandResult`；`load_data` 已進 command surface，`set_montage` 仍先是
+  UI request，confirmation 後的 apply 走 `ApplyMontageCommand`。
 - 2026-05-02 follow-up 修掉人工產品審核明確不通過的 assistant 問題：
   top chip dump 移除、Retry no-previous-request 不再進 transcript、短 user bubble 不再切字、
   visible tool result 改成使用者語言、`list_files` missing/empty result 不再外洩 schema / `[]`。
@@ -59,9 +60,9 @@
 ### B. UI
 
 - MainWindow / panel startup smoke 仍可用，但這不代表 assistant 互動可用。
-- UI readiness 已共用 ApplicationService capability policy；多數 high-value action
-  execution 已透過 `ApplicationService.execute()`，剩餘 legacy path 主要集中在
-  label import、smart parse、montage confirmation 和 read-only refresh。
+- UI readiness 已共用 ApplicationService capability policy；主要 mutating execution 已透過
+  `ApplicationService.execute()`。剩餘 legacy path 主要是 mock fallback、human-in-the-loop
+  UI request 和 read-only population。
 - ChatPanel 本輪已完成 product redesign follow-up：header 只保留產品名 / subtitle / Options；
   workflow state 改成單句 guidance；runtime / backend detail 降到底部低干擾 status；
   Retry / Clear 移到 composer footer；empty state、bubble minimum width、composer fit、
@@ -192,14 +193,15 @@ result 已收斂成 typed adapter，mapped tools 可直接回 `CommandResult` pa
 - [x] `BackendFacade` 仍相容 headless tests。
 - [x] 本輪完成：dataset import、reset、preprocess、channel selection、epoching、
   split/model/training setting dialogs、evaluation / visualization / saliency query、
-  training start / stop execution 改成 service command adapter，mock / legacy caller
-  保留 controller fallback。
-- [ ] 剩餘：label import、smart parse、montage confirmation 仍需 service / typed UI request 收斂。
+  training start / stop、metadata update、smart parse、remove files、label import、montage
+  confirmation execution 改成 service command adapter，mock / legacy caller 保留 controller
+  fallback。
+- [x] label import、smart parse、montage confirmation 已完成 service / typed command 收斂。
 - [x] Agent real tools 從舊 facade string result 收斂到 typed
   `CommandResult` / equivalent result adapter。
 - [x] Agent mapped workflow tools 可直接執行 ApplicationService command 並回 structured
-  `CommandResult` payload；`load_data` / `set_montage` / `switch_panel` 等 legacy/request path
-  仍保留。
+  `CommandResult` payload；`load_data` 已進 command surface，`set_montage` / `switch_panel`
+  仍保留 UI request path。
 
 ### Milestone D - UI Chat / Agent Panel Stabilization
 

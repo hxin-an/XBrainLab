@@ -11,7 +11,9 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
+from XBrainLab.backend.application import UpdateMetadataCommand
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.theme import Theme
 
@@ -218,9 +220,27 @@ class DatasetPanel(BasePanel):
 
         if col == 1:  # Subject
             if hasattr(self, "controller"):
-                self.controller.update_metadata(row, subject=new_value)
+                result = execute_application_command(
+                    self,
+                    UpdateMetadataCommand(index=row, subject=new_value),
+                )
+                if result is None:
+                    self.controller.update_metadata(row, subject=new_value)
+                elif result.failed:
+                    QMessageBox.warning(self, "Metadata blocked", result.message)
+                    self.update_panel()
+                    return
             self.update_panel()  # Refresh aggregates
         elif col == 2:  # Session
             if hasattr(self, "controller"):
-                self.controller.update_metadata(row, session=new_value)
+                result = execute_application_command(
+                    self,
+                    UpdateMetadataCommand(index=row, session=new_value),
+                )
+                if result is None:
+                    self.controller.update_metadata(row, session=new_value)
+                elif result.failed:
+                    QMessageBox.warning(self, "Metadata blocked", result.message)
+                    self.update_panel()
+                    return
             self.update_panel()  # Refresh aggregates

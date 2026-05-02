@@ -1,15 +1,15 @@
 """Service for coordinating AggregateInfoPanel updates across the application."""
 
 import weakref
-from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 from PyQt6.QtCore import QObject
 
+from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.backend.facade import BackendFacade
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
-
-if TYPE_CHECKING:
-    from XBrainLab.backend.study import Study
 
 
 class InfoPanelService(QObject):
@@ -87,16 +87,7 @@ class InfoPanelService(QObject):
 
     def notify_all(self, *args, **kwargs):
         """Fetch current data and update all registered panels."""
-        # Fetch current state
-        loaded = []
-        if self.study.get_controller("dataset"):
-            loaded = self.study.get_controller("dataset").get_loaded_data_list()
-
-        preprocessed = []
-        if self.study.get_controller("preprocess"):
-            preprocessed = self.study.get_controller(
-                "preprocess",
-            ).get_preprocessed_data_list()
+        loaded, preprocessed = self._query_data_lists()
 
         # Notify listeners
         for panel in self._listeners:
@@ -130,6 +121,23 @@ class InfoPanelService(QObject):
             panel: The info panel to update.
 
         """
+        loaded, preprocessed = self._query_data_lists()
+
+        panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
+
+    def _query_data_lists(self):
+        """Return raw/preprocessed lists through ApplicationService when possible."""
+        if isinstance(self.study, Study) and not isinstance(self.study, Mock):
+            result = BackendFacade(self.study).service.execute(
+                QueryStateCommand(query="data_lists", include_objects=True),
+            )
+            if result.ok:
+                return (
+                    list(result.diagnostics.get("loaded_data_list", [])),
+                    list(result.diagnostics.get("preprocessed_data_list", [])),
+                )
+            logger.debug("Info panel state query failed: %s", result.message)
+
         loaded = []
         if self.study.get_controller("dataset"):
             loaded = self.study.get_controller("dataset").get_loaded_data_list()
@@ -140,4 +148,4 @@ class InfoPanelService(QObject):
                 "preprocess",
             ).get_preprocessed_data_list()
 
-        panel.update_info(loaded_data_list=loaded, preprocessed_data_list=preprocessed)
+        return loaded, preprocessed

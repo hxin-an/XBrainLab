@@ -16,6 +16,7 @@ class RawStateSnapshot:
     files: list[str] = field(default_factory=list)
     formats: list[str] = field(default_factory=list)
     channels: list[str] = field(default_factory=list)
+    metadata: list[dict[str, str]] = field(default_factory=list)
     event_total: int = 0
     unique_events: list[str] = field(default_factory=list)
     locked: bool = False

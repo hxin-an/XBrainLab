@@ -88,7 +88,28 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         attach_reasons.append("Load raw data before attaching labels.")
     capabilities[CommandName.ATTACH_LABELS.value] = _cap(
         CommandName.ATTACH_LABELS,
-        attach_reasons,
+        attach_reasons + _raw_edit_blockers(state),
+    )
+
+    capabilities[CommandName.IMPORT_LABELS.value] = _cap(
+        CommandName.IMPORT_LABELS,
+        attach_reasons + _raw_edit_blockers(state),
+    )
+
+    raw_edit_reasons = _raw_edit_blockers(state)
+    capabilities[CommandName.UPDATE_METADATA.value] = _cap(
+        CommandName.UPDATE_METADATA,
+        _requires_raw(state, "Load raw data before updating metadata.")
+        + raw_edit_reasons,
+    )
+    capabilities[CommandName.APPLY_SMART_PARSE.value] = _cap(
+        CommandName.APPLY_SMART_PARSE,
+        _requires_raw(state, "Load raw data before applying smart parse.")
+        + raw_edit_reasons,
+    )
+    capabilities[CommandName.REMOVE_FILES.value] = _cap(
+        CommandName.REMOVE_FILES,
+        _requires_raw(state, "Load raw data before removing files.") + raw_edit_reasons,
     )
 
     preprocess_reasons = []
@@ -107,6 +128,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     epoch_reasons = []
     if not active_dataset.has_preprocessed_data:
         epoch_reasons.append("Preprocess data before creating epochs.")
+    if active_dataset.has_epoch_data or active_dataset.has_datasets:
+        epoch_reasons.append(
+            "Reset the session before recreating epochs for the active dataset."
+        )
     capabilities[CommandName.CREATE_EPOCH.value] = _cap(
         CommandName.CREATE_EPOCH,
         epoch_reasons,
@@ -115,6 +140,11 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     dataset_reasons = []
     if not active_dataset.has_epoch_data:
         dataset_reasons.append("Create epochs before generating datasets.")
+    if active_dataset.has_datasets or active_training.has_trainer:
+        dataset_reasons.append(
+            "Reset the session or start a new session before generating a new "
+            "dataset from an existing active dataset."
+        )
     capabilities[CommandName.GENERATE_DATASET.value] = _cap(
         CommandName.GENERATE_DATASET,
         dataset_reasons,
@@ -133,6 +163,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     train_reasons = []
     if active_training.is_running:
         train_reasons.append("Training is already running.")
+    if not active_dataset.has_raw_data:
+        train_reasons.append("Load raw data before training.")
     if not active_dataset.has_datasets:
         train_reasons.append("Generate datasets before training.")
     if not active_training.has_model:
@@ -167,6 +199,19 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         [],
     )
 
+    montage_reasons = []
+    if not active_dataset.has_epoch_data:
+        montage_reasons.append("Create epochs before applying a montage.")
+    capabilities[CommandName.APPLY_MONTAGE.value] = _cap(
+        CommandName.APPLY_MONTAGE,
+        montage_reasons,
+    )
+
+    capabilities[CommandName.QUERY_STATE.value] = _cap(
+        CommandName.QUERY_STATE,
+        [],
+    )
+
     capabilities[CommandName.RESET_SESSION.value] = CommandCapability(
         command_name=CommandName.RESET_SESSION.value,
         enabled=True,
@@ -196,3 +241,32 @@ def _cap(
         reasons=reasons,
         long_running=long_running,
     )
+
+
+def _requires_raw(
+    state: ApplicationStateSnapshot,
+    message: str,
+) -> list[str]:
+    return [] if state.active_dataset.has_raw_data else [message]
+
+
+def _raw_edit_blockers(state: ApplicationStateSnapshot) -> list[str]:
+    active_dataset = state.active_dataset
+    active_training = state.active_training
+    reasons = []
+    if active_dataset.has_epoch_data or active_dataset.has_datasets:
+        reasons.append(
+            "Reset the session before changing raw files, labels, or metadata "
+            "after epoching or dataset generation."
+        )
+    if active_training.has_trainer:
+        reasons.append(
+            "Reset the session before changing raw files, labels, or metadata "
+            "after trainer creation."
+        )
+    if active_dataset.is_locked:
+        reasons.append(
+            "Dataset is locked by downstream preprocessing. Reset before editing "
+            "raw files, labels, or metadata."
+        )
+    return reasons

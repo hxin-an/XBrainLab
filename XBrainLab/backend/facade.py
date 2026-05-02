@@ -7,20 +7,28 @@ import numpy as np
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyMontageCommand,
+    ApplySmartParseCommand,
     AttachLabelsCommand,
     ConfigureTrainingCommand,
     CreateEpochCommand,
     ErrorType,
     EvaluateCommand,
     GenerateDatasetCommand,
+    ImportLabelsCommand,
+    LabelImportPlan,
     LoadDataCommand,
+    MetadataUpdate,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
+    RemoveFilesCommand,
     ResetSessionCommand,
     SaliencyCommand,
     StopTrainingCommand,
     TrainCommand,
+    UpdateMetadataCommand,
     VisualizeCommand,
 )
 from XBrainLab.backend.study import Study
@@ -118,6 +126,33 @@ class BackendFacade:
         result = self.service.execute(AttachLabelsCommand(mapping=mapping))
         return int(result.diagnostics.get("success_count", 0))
 
+    def import_labels(self, plan: LabelImportPlan):
+        """Apply a UI-built label import plan through the command layer."""
+        return self.service.execute(ImportLabelsCommand(plan=plan))
+
+    def update_metadata(
+        self,
+        index: int,
+        subject: str | None = None,
+        session: str | None = None,
+    ):
+        """Update loaded-file metadata through the command layer."""
+        return self.service.execute(
+            UpdateMetadataCommand(index=index, subject=subject, session=session),
+        )
+
+    def update_metadata_batch(self, updates: list[MetadataUpdate]):
+        """Update multiple loaded-file metadata rows through the command layer."""
+        return self.service.execute(UpdateMetadataCommand(updates=updates))
+
+    def apply_smart_parse(self, results: dict[str, Any]):
+        """Apply smart-parse metadata results through the command layer."""
+        return self.service.execute(ApplySmartParseCommand(results=results))
+
+    def remove_files(self, indices: list[int]):
+        """Remove loaded files through the command layer."""
+        return self.service.execute(RemoveFilesCommand(indices=indices))
+
     @staticmethod
     def _resolve_label_attachment_path(raw, mapping: dict[str, str]) -> str | None:
         """Resolve a label mapping entry for a raw file using path or basename."""
@@ -168,30 +203,20 @@ class BackendFacade:
             Dictionary containing file count and filenames.
 
         """
-        data_list = self.dataset.get_loaded_data_list()
-
-        summary = {
-            "count": len(data_list),
-            "files": [d.get_filename() for d in data_list],
-        }
-
-        if hasattr(self.dataset, "get_event_info"):
-            summary.update(self.dataset.get_event_info())
-
-        if hasattr(self.dataset, "get_runtime_diagnostics"):
-            diagnostics = self.dataset.get_runtime_diagnostics()
-            if diagnostics:
-                summary.update(diagnostics)
-
-        return summary
+        result = self.service.execute(QueryStateCommand(query="data_summary"))
+        if result.failed:
+            return {
+                "count": 0,
+                "files": [],
+                "status": "failed",
+                "error": result.message,
+            }
+        return dict(result.diagnostics)
 
     def get_preprocess_diagnostics(self) -> dict:
         """Get runtime diagnostics for the current preprocess state."""
-        if hasattr(self.preprocess, "get_runtime_diagnostics"):
-            diagnostics = self.preprocess.get_runtime_diagnostics()
-            if diagnostics:
-                return diagnostics
-        return {}
+        result = self.service.execute(QueryStateCommand(query="preprocess_diagnostics"))
+        return dict(result.diagnostics) if result.ok else {}
 
     # --- Preprocessing Operations ---
     def apply_filter(
@@ -350,6 +375,21 @@ class BackendFacade:
         except Exception as e:
             logger.error("SetMontage failed", exc_info=True)
             return f"SetMontage failed: {e!s}"
+
+    def apply_montage(
+        self,
+        channels: list[str],
+        positions: list[tuple[float, float, float]],
+        montage_name: str | None = None,
+    ):
+        """Apply a confirmed montage through the command layer."""
+        return self.service.execute(
+            ApplyMontageCommand(
+                channels=channels,
+                positions=positions,
+                montage_name=montage_name,
+            ),
+        )
 
     # --- Epoching ---
     def epoch_data(

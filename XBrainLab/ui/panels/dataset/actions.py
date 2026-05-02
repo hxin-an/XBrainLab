@@ -6,7 +6,16 @@ running smart parse, and managing event filtering.
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
 
-from XBrainLab.backend.application import CommandName, LoadDataCommand
+from XBrainLab.backend.application import (
+    ApplySmartParseCommand,
+    CommandName,
+    ImportLabelsCommand,
+    LabelImportPlan,
+    LoadDataCommand,
+    MetadataUpdate,
+    RemoveFilesCommand,
+    UpdateMetadataCommand,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     blocked_reason,
@@ -151,7 +160,17 @@ class DatasetActionHandler:
         dialog = SmartParserDialog(filepaths, self.panel)
         if dialog.exec():
             results = dialog.get_result()
-            count = self.controller.apply_smart_parse(results)
+            result = execute_application_command(
+                self.panel,
+                ApplySmartParseCommand(results=results),
+            )
+            if result is None:
+                count = self.controller.apply_smart_parse(results)
+            elif result.failed:
+                QMessageBox.critical(self.panel, "Error", result.message)
+                return
+            else:
+                count = int(result.diagnostics.get("success_count", 0))
             self.panel.update_panel()
 
             QMessageBox.information(self.panel, "Success", f"Updated {count} files.")
@@ -188,6 +207,7 @@ class DatasetActionHandler:
                     return
 
             count = 0
+            plan = None
             if len(label_map) > 1:  # Batch
                 data_paths = [d.get_filepath() for d in target_files]
                 map_dlg = LabelMappingDialog(
@@ -198,31 +218,47 @@ class DatasetActionHandler:
                 if not map_dlg.exec():
                     return
                 file_map = map_dlg.get_mapping()
-                count = self.controller.apply_labels_batch(
-                    target_files,
+                plan = self._build_label_import_plan(
                     label_map,
-                    file_map,
                     mapping,
-                    selected_event_names,
+                    mode="batch",
+                    file_mapping=file_map,
+                    selected_event_names=selected_event_names,
                 )
             elif is_timestamp:  # Legacy
                 label_fname = next(iter(label_map.keys()))
                 file_map = {d.get_filepath(): label_fname for d in target_files}
-                count = self.controller.apply_labels_batch(
-                    target_files,
+                plan = self._build_label_import_plan(
                     label_map,
-                    file_map,
                     mapping,
-                    selected_event_names,
+                    mode="timestamp",
+                    file_mapping=file_map,
+                    selected_event_names=selected_event_names,
                 )
             else:  # Single Same Length
-                labels = next(iter(label_map.values()))
-                count = self.controller.apply_labels_legacy(
+                plan = self._build_label_import_plan(
+                    label_map,
+                    mapping,
+                    mode="legacy",
+                    selected_event_names=selected_event_names,
+                )
+            result = execute_application_command(
+                self.panel,
+                ImportLabelsCommand(plan=plan),
+            )
+            if result is None:
+                count = self._run_legacy_label_import(
                     target_files,
-                    labels,
+                    label_map,
                     mapping,
                     selected_event_names,
+                    plan,
                 )
+            elif result.failed:
+                QMessageBox.critical(self.panel, "Error", result.message)
+                return
+            else:
+                count = int(result.diagnostics.get("success_count", 0))
 
             if count > 0:
                 self.panel.update_panel()
@@ -309,7 +345,56 @@ class DatasetActionHandler:
                 return []
 
         data_list = self.controller.get_loaded_data_list()
-        return [data_list[i] for i in selected_rows if i < len(data_list)]
+        self._last_target_file_indices = [
+            i for i in selected_rows if i < len(data_list)
+        ]
+        return [data_list[i] for i in self._last_target_file_indices]
+
+    def _build_label_import_plan(
+        self,
+        label_map,
+        mapping,
+        mode,
+        file_mapping=None,
+        selected_event_names=None,
+    ):
+        selected_names = (
+            sorted(selected_event_names)
+            if isinstance(selected_event_names, set)
+            else selected_event_names
+        )
+        return LabelImportPlan(
+            target_indices=list(getattr(self, "_last_target_file_indices", [])),
+            label_map=dict(label_map),
+            mapping=mapping,
+            file_mapping=dict(file_mapping or {}),
+            mode=mode,
+            selected_event_names=selected_names,
+        )
+
+    def _run_legacy_label_import(
+        self,
+        target_files,
+        label_map,
+        mapping,
+        selected_event_names,
+        plan,
+    ):
+        if plan.mode in {"batch", "timestamp"}:
+            return self.controller.apply_labels_batch(
+                target_files,
+                label_map,
+                plan.file_mapping,
+                mapping,
+                selected_event_names,
+            )
+        labels = next(iter(label_map.values()))
+        return self.controller.apply_labels_legacy(
+            target_files,
+            labels,
+            mapping,
+            selected_event_names,
+        )
 
     def _filter_events_for_import(self, target_files, target_count):
         """Show an event filter dialog for selecting which events to relabel.
@@ -380,11 +465,27 @@ class DatasetActionHandler:
     def _batch_set(self, rows, attr):
         text, ok = QInputDialog.getText(self.panel, f"Set {attr}", f"Enter {attr}:")
         if ok and text:
-            for r in rows:
+            updates = []
+            for row in rows:
                 if attr == "Subject":
-                    self.controller.update_metadata(r, subject=text)
+                    updates.append(MetadataUpdate(index=row, subject=text))
                 elif attr == "Session":
-                    self.controller.update_metadata(r, session=text)
+                    updates.append(MetadataUpdate(index=row, session=text))
+            result = execute_application_command(
+                self.panel,
+                UpdateMetadataCommand(updates=updates),
+            )
+            if result is None:
+                for update in updates:
+                    kwargs = {}
+                    if update.subject is not None:
+                        kwargs["subject"] = update.subject
+                    if update.session is not None:
+                        kwargs["session"] = update.session
+                    self.controller.update_metadata(update.index, **kwargs)
+            elif result.failed:
+                QMessageBox.critical(self.panel, "Error", result.message)
+                return
             self.panel.update_panel()
 
     def _remove_files(self, rows):
@@ -397,5 +498,13 @@ class DatasetActionHandler:
             )
             == QMessageBox.StandardButton.Yes
         ):
-            self.controller.remove_files(rows)
+            result = execute_application_command(
+                self.panel,
+                RemoveFilesCommand(indices=list(rows)),
+            )
+            if result is None:
+                self.controller.remove_files(rows)
+            elif result.failed:
+                QMessageBox.critical(self.panel, "Error", result.message)
+                return
             self.panel.update_panel()

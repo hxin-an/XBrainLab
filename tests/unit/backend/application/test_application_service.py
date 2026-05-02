@@ -6,16 +6,28 @@ from unittest.mock import MagicMock
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyMontageCommand,
+    ApplySmartParseCommand,
+    AttachLabelsCommand,
     CommandName,
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
     ErrorType,
     EvaluateCommand,
+    GenerateDatasetCommand,
+    ImportLabelsCommand,
+    LabelImportPlan,
     LoadDataCommand,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
+    RemoveFilesCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    StopTrainingCommand,
     TrainCommand,
+    UpdateMetadataCommand,
     VisualizeCommand,
 )
 from XBrainLab.backend.study import Study
@@ -47,6 +59,7 @@ def test_capability_policy_covers_all_declared_commands():
     assert policy.get(CommandName.EVALUATE).available is True
     assert policy.get(CommandName.VISUALIZE).available is True
     assert policy.get(CommandName.SALIENCY).available is True
+    assert policy.get(CommandName.QUERY_STATE).available is True
     assert policy.get(CommandName.NEW_SESSION).available is True
 
 
@@ -145,6 +158,154 @@ def test_train_command_blocked_until_backend_ready():
     assert result.state.training.has_trainer is False
 
 
+def test_every_declared_command_returns_result_envelope():
+    service = ApplicationService(Study())
+    commands = [
+        LoadDataCommand(paths=[]),
+        AttachLabelsCommand(mapping={}),
+        ImportLabelsCommand(plan=LabelImportPlan(label_map={"labels": [1]})),
+        UpdateMetadataCommand(index=0, subject="S01"),
+        ApplySmartParseCommand(results={"/tmp/sample.fif": ("S01", "001")}),
+        RemoveFilesCommand(indices=[0]),
+        PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=1,
+            high_freq=40,
+        ),
+        CreateEpochCommand(t_min=0, t_max=1),
+        GenerateDatasetCommand(),
+        ConfigureTrainingCommand(model_name="EEGNet"),
+        TrainCommand(),
+        EvaluateCommand(),
+        VisualizeCommand(),
+        SaliencyCommand(),
+        StopTrainingCommand(),
+        ApplyMontageCommand(channels=["Cz"], positions=[(0.0, 0.0, 0.0)]),
+        QueryStateCommand(),
+        ResetSessionCommand(),
+        NewSessionCommand(),
+    ]
+
+    seen = set()
+    for command in commands:
+        result = service.execute(command)
+        seen.add(result.command_name)
+        assert result.command_name
+        assert result.status.value in {"ok", "failed"}
+        assert result.state is not None
+        assert result.changed_state is not None
+
+    assert seen == {name.value for name in CommandName}
+
+
+def test_raw_mutation_commands_block_after_epoch_without_side_effects():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.study.data_manager.epoch_data = MagicMock()
+    service.dataset.remove_files = MagicMock()
+
+    result = service.execute(RemoveFilesCommand(indices=[0]))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    assert "Reset the session" in result.message
+    service.dataset.remove_files.assert_not_called()
+
+
+def test_generate_dataset_blocks_when_dataset_already_exists():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.study.data_manager.epoch_data = MagicMock()
+    service.study.data_manager.datasets = [MagicMock()]
+
+    result = service.execute(GenerateDatasetCommand())
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    assert "new session" in result.message
+
+
+def test_metadata_update_command_routes_through_service():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.dataset.update_metadata = MagicMock()
+
+    result = service.execute(UpdateMetadataCommand(index=0, subject="S01"))
+
+    assert result.ok is True
+    assert result.command_name == CommandName.UPDATE_METADATA.value
+    assert result.diagnostics["success_count"] == 1
+    service.dataset.update_metadata.assert_called_once_with(
+        0,
+        subject="S01",
+        session=None,
+    )
+
+
+def test_import_labels_plan_routes_batch_import():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    result = service.execute(
+        ImportLabelsCommand(
+            plan=LabelImportPlan(
+                target_indices=[0],
+                label_map={"labels.txt": [1, 2]},
+                file_mapping={"/tmp/sample.fif": "labels.txt"},
+                mapping={1: "left", 2: "right"},
+                mode="batch",
+            ),
+        ),
+    )
+
+    assert result.ok is True
+    assert result.diagnostics["success_count"] == 1
+    service.dataset.apply_labels_batch.assert_called_once()
+
+
+def test_apply_montage_command_routes_confirmed_positions():
+    service = ApplicationService(Study())
+    service.study.data_manager.epoch_data = MagicMock()
+    service.preprocess.apply_montage = MagicMock()
+
+    result = service.execute(
+        ApplyMontageCommand(
+            channels=["Cz"],
+            positions=[(0.0, 0.0, 0.0)],
+            montage_name="standard_1020",
+        ),
+    )
+
+    assert result.ok is True
+    assert result.command_name == CommandName.APPLY_MONTAGE.value
+    service.preprocess.apply_montage.assert_called_once_with(
+        ["Cz"],
+        [(0.0, 0.0, 0.0)],
+    )
+
+
+def test_query_state_returns_typed_dataset_summary():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+
+    result = service.execute(QueryStateCommand(query="data_summary"))
+
+    assert result.ok is True
+    assert result.diagnostics["count"] == 1
+    assert result.diagnostics["metadata"][0]["subject"] == "S01"
+
+
 def test_new_session_requires_confirmation_and_clears_single_backend_session():
     service = ApplicationService(Study())
     raw = _raw_mock()
@@ -185,6 +346,8 @@ def _raw_mock():
     raw = MagicMock()
     raw.get_filename.return_value = "sample.fif"
     raw.get_filepath.return_value = "/tmp/sample.fif"
+    raw.get_subject_name.return_value = "S01"
+    raw.get_session_name.return_value = "001"
     raw.is_raw.return_value = True
     mne_raw = MagicMock()
     mne_raw.ch_names = ["C3", "C4"]

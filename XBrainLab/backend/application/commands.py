@@ -12,6 +12,10 @@ class CommandName(str, Enum):
 
     LOAD_DATA = "load_data"
     ATTACH_LABELS = "attach_labels"
+    IMPORT_LABELS = "import_labels"
+    UPDATE_METADATA = "update_metadata"
+    APPLY_SMART_PARSE = "apply_smart_parse"
+    REMOVE_FILES = "remove_files"
     PREPROCESS = "preprocess"
     CREATE_EPOCH = "create_epoch"
     GENERATE_DATASET = "generate_dataset"
@@ -21,6 +25,8 @@ class CommandName(str, Enum):
     EVALUATE = "evaluate"
     VISUALIZE = "visualize"
     SALIENCY = "saliency"
+    APPLY_MONTAGE = "apply_montage"
+    QUERY_STATE = "query_state"
     RESET_SESSION = "reset_session"
     NEW_SESSION = "new_session"
 
@@ -61,6 +67,75 @@ class AttachLabelsCommand:
     @property
     def name(self) -> CommandName:
         return CommandName.ATTACH_LABELS
+
+
+@dataclass(frozen=True)
+class LabelImportPlan:
+    """Plan for applying labels already collected by a UI import dialog."""
+
+    target_indices: list[int] = field(default_factory=list)
+    label_map: dict[str, Any] = field(default_factory=dict)
+    mapping: Any = None
+    file_mapping: dict[str, str] = field(default_factory=dict)
+    mode: str = "batch"
+    selected_event_names: list[str] | set[str] | None = None
+    force_import: bool = False
+
+
+@dataclass(frozen=True)
+class ImportLabelsCommand:
+    """Apply an explicit label import plan to loaded raw data."""
+
+    plan: LabelImportPlan
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.IMPORT_LABELS
+
+
+@dataclass(frozen=True)
+class MetadataUpdate:
+    """Metadata edit for one loaded file."""
+
+    index: int
+    subject: str | None = None
+    session: str | None = None
+
+
+@dataclass(frozen=True)
+class UpdateMetadataCommand:
+    """Update subject/session metadata for one or more loaded files."""
+
+    index: int | None = None
+    subject: str | None = None
+    session: str | None = None
+    updates: list[MetadataUpdate] = field(default_factory=list)
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.UPDATE_METADATA
+
+
+@dataclass(frozen=True)
+class ApplySmartParseCommand:
+    """Apply filename parser results to loaded-file metadata."""
+
+    results: dict[str, tuple[str, str] | list[str] | Any]
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.APPLY_SMART_PARSE
+
+
+@dataclass(frozen=True)
+class RemoveFilesCommand:
+    """Remove loaded raw files by row/index."""
+
+    indices: list[int]
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.REMOVE_FILES
 
 
 @dataclass(frozen=True)
@@ -190,6 +265,32 @@ class SaliencyCommand:
 
 
 @dataclass(frozen=True)
+class ApplyMontageCommand:
+    """Apply confirmed channel montage positions to epoch data."""
+
+    channels: list[str]
+    positions: list[tuple[float, float, float]]
+    montage_name: str | None = None
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.APPLY_MONTAGE
+
+
+@dataclass(frozen=True)
+class QueryStateCommand:
+    """Read-only typed query through the application service."""
+
+    query: str = "state"
+    params: dict[str, Any] = field(default_factory=dict)
+    include_objects: bool = False
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.QUERY_STATE
+
+
+@dataclass(frozen=True)
 class ResetSessionCommand:
     """Clear loaded data and downstream state."""
 
@@ -214,6 +315,10 @@ class NewSessionCommand:
 Command = (
     LoadDataCommand
     | AttachLabelsCommand
+    | ImportLabelsCommand
+    | UpdateMetadataCommand
+    | ApplySmartParseCommand
+    | RemoveFilesCommand
     | PreprocessCommand
     | CreateEpochCommand
     | GenerateDatasetCommand
@@ -223,6 +328,8 @@ Command = (
     | EvaluateCommand
     | VisualizeCommand
     | SaliencyCommand
+    | ApplyMontageCommand
+    | QueryStateCommand
     | ResetSessionCommand
     | NewSessionCommand
 )

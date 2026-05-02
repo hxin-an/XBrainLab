@@ -10,9 +10,15 @@ from XBrainLab.backend.application import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    EvaluateCommand,
     GenerateDatasetCommand,
     LoadDataCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    QueryStateCommand,
     ResetSessionCommand,
+    SaliencyCommand,
+    VisualizeCommand,
 )
 
 
@@ -62,6 +68,15 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert load_result.state.preprocessed.available is True
     assert service.get_capabilities().get(CommandName.CREATE_EPOCH).available is True
 
+    preprocess_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
+        ),
+    )
+    assert preprocess_result.ok is True
+    assert preprocess_result.changed_state.preprocessed_changed is True
+
     epoch_result = service.execute(
         CreateEpochCommand(
             t_min=0.0,
@@ -77,6 +92,13 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert epoch_result.state.dataset.available is False
     policy_after_epoch = service.get_capabilities()
     assert policy_after_epoch.get(CommandName.LOAD_DATA).available is False
+    assert policy_after_epoch.get(CommandName.CREATE_EPOCH).available is False
+    assert (
+        "Reset the session"
+        in policy_after_epoch.get(
+            CommandName.CREATE_EPOCH,
+        ).reasons[0]
+    )
     assert (
         policy_after_epoch.get(CommandName.RESET_SESSION).confirmation_required is True
     )
@@ -113,6 +135,17 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert training_result.ok is True
     assert training_result.state.training.has_training_option is True
     assert service.get_capabilities().get(CommandName.TRAIN).available is True
+
+    evaluate_result = service.execute(EvaluateCommand())
+    visualize_result = service.execute(VisualizeCommand())
+    saliency_result = service.execute(SaliencyCommand())
+    query_result = service.execute(QueryStateCommand(query="data_summary"))
+
+    assert evaluate_result.ok is True
+    assert visualize_result.ok is True
+    assert saliency_result.ok is True
+    assert query_result.ok is True
+    assert query_result.diagnostics["count"] == 1
 
     reset_without_confirmation = service.execute(ResetSessionCommand())
     assert reset_without_confirmation.failed is True

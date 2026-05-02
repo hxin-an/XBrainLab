@@ -28,6 +28,8 @@ from XBrainLab.backend.utils.logger import logger
 
 from .capabilities import CapabilityPolicy, build_capability_policy
 from .commands import (
+    ApplyMontageCommand,
+    ApplySmartParseCommand,
     AttachLabelsCommand,
     Command,
     CommandName,
@@ -35,14 +37,20 @@ from .commands import (
     CreateEpochCommand,
     EvaluateCommand,
     GenerateDatasetCommand,
+    ImportLabelsCommand,
+    LabelImportPlan,
     LoadDataCommand,
+    MetadataUpdate,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
+    RemoveFilesCommand,
     ResetSessionCommand,
     SaliencyCommand,
     StopTrainingCommand,
     TrainCommand,
+    UpdateMetadataCommand,
     VisualizeCommand,
     command_name,
 )
@@ -106,6 +114,7 @@ class ApplicationService:
             files=[self._data_filename(item) for item in raw_data],
             formats=self._raw_formats(raw_data),
             channels=self._raw_channels(raw_data),
+            metadata=self._raw_metadata(raw_data),
             event_total=int(event_info.get("total", 0) or 0),
             unique_events=[
                 str(item) for item in event_info.get("unique_labels", []) or []
@@ -239,6 +248,10 @@ class ApplicationService:
         handlers: dict[CommandName, Callable[[Command], HandlerResult]] = {
             CommandName.LOAD_DATA: self._handle_load_data,
             CommandName.ATTACH_LABELS: self._handle_attach_labels,
+            CommandName.IMPORT_LABELS: self._handle_import_labels,
+            CommandName.UPDATE_METADATA: self._handle_update_metadata,
+            CommandName.APPLY_SMART_PARSE: self._handle_apply_smart_parse,
+            CommandName.REMOVE_FILES: self._handle_remove_files,
             CommandName.PREPROCESS: self._handle_preprocess,
             CommandName.CREATE_EPOCH: self._handle_create_epoch,
             CommandName.GENERATE_DATASET: self._handle_generate_dataset,
@@ -248,6 +261,8 @@ class ApplicationService:
             CommandName.EVALUATE: self._handle_evaluate,
             CommandName.VISUALIZE: self._handle_visualize,
             CommandName.SALIENCY: self._handle_saliency,
+            CommandName.APPLY_MONTAGE: self._handle_apply_montage,
+            CommandName.QUERY_STATE: self._handle_query_state,
             CommandName.RESET_SESSION: self._handle_reset_session,
             CommandName.NEW_SESSION: self._handle_new_session,
         }
@@ -270,6 +285,32 @@ class ApplicationService:
     def attach_labels(self, mapping: dict[str, str]) -> CommandResult:
         """Execute an attach-labels command."""
         return self.execute(AttachLabelsCommand(mapping=mapping))
+
+    def import_labels(self, plan: LabelImportPlan) -> CommandResult:
+        """Execute a label import plan command."""
+        return self.execute(ImportLabelsCommand(plan=plan))
+
+    def update_metadata(
+        self,
+        index: int,
+        subject: str | None = None,
+        session: str | None = None,
+    ) -> CommandResult:
+        """Execute a metadata update command."""
+        return self.execute(
+            UpdateMetadataCommand(index=index, subject=subject, session=session),
+        )
+
+    def apply_smart_parse(
+        self,
+        results: dict[str, tuple[str, str] | list[str] | Any],
+    ) -> CommandResult:
+        """Execute a smart-parse metadata update command."""
+        return self.execute(ApplySmartParseCommand(results=results))
+
+    def remove_files(self, indices: list[int]) -> CommandResult:
+        """Execute a remove-files command."""
+        return self.execute(RemoveFilesCommand(indices=indices))
 
     def preprocess_data(self, command: PreprocessCommand) -> CommandResult:
         """Execute a preprocessing command."""
@@ -327,6 +368,14 @@ class ApplicationService:
     def saliency(self, command: SaliencyCommand | None = None) -> CommandResult:
         """Execute a saliency setup/query command."""
         return self.execute(command or SaliencyCommand())
+
+    def apply_montage(self, command: ApplyMontageCommand) -> CommandResult:
+        """Execute a confirmed montage application command."""
+        return self.execute(command)
+
+    def query_state(self, command: QueryStateCommand | None = None) -> CommandResult:
+        """Execute a read-only state query command."""
+        return self.execute(command or QueryStateCommand())
 
     def _ensure_command_allowed(
         self,
@@ -419,6 +468,120 @@ class ApplicationService:
         return (
             f"Attached labels to {count} file(s).",
             {"success_count": count, "errors": errors},
+        )
+
+    def _handle_import_labels(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ImportLabelsCommand):
+            raise TypeError("Invalid command for import_labels")
+
+        plan = command.plan
+        if not plan.label_map:
+            raise PreconditionError("label_map is required.")
+
+        target_files = self._target_files_for_label_plan(plan)
+        if not target_files:
+            raise PreconditionError("No target files were selected for label import.")
+
+        selected_event_names = self._selected_event_names(plan.selected_event_names)
+        mode = str(plan.mode or "batch").lower()
+        if mode in {"batch", "timestamp"}:
+            file_mapping = dict(plan.file_mapping)
+            if not file_mapping and len(plan.label_map) == 1:
+                label_name = next(iter(plan.label_map))
+                file_mapping = {
+                    target.get_filepath(): label_name for target in target_files
+                }
+            if not file_mapping:
+                raise PreconditionError(
+                    "file_mapping is required for batch label import.",
+                )
+            count = self.dataset.apply_labels_batch(
+                target_files,
+                dict(plan.label_map),
+                file_mapping,
+                plan.mapping,
+                selected_event_names,
+            )
+        elif mode == "legacy":
+            labels = next(iter(plan.label_map.values()), None)
+            if labels is None:
+                raise PreconditionError("labels are required for legacy import.")
+            count = self.dataset.apply_labels_legacy(
+                target_files,
+                labels,
+                plan.mapping,
+                selected_event_names,
+                force_import=plan.force_import,
+            )
+        else:
+            raise ValueError(f"Unknown label import mode: {plan.mode}")
+
+        return (
+            f"Imported labels for {count} file(s).",
+            {
+                "success_count": count,
+                "mode": mode,
+                "target_count": len(target_files),
+            },
+        )
+
+    def _handle_update_metadata(self, command: Command) -> HandlerResult:
+        if not isinstance(command, UpdateMetadataCommand):
+            raise TypeError("Invalid command for update_metadata")
+
+        updates = self._metadata_updates(command)
+        if not updates:
+            raise PreconditionError("At least one metadata update is required.")
+        if all(update.subject is None and update.session is None for update in updates):
+            raise PreconditionError("subject or session is required.")
+
+        loaded_count = len(self.dataset.get_loaded_data_list())
+        updated = 0
+        skipped: list[int] = []
+        for update in updates:
+            if 0 <= update.index < loaded_count:
+                self.dataset.update_metadata(
+                    update.index,
+                    subject=update.subject,
+                    session=update.session,
+                )
+                updated += 1
+            else:
+                skipped.append(update.index)
+
+        if updated == 0:
+            raise PreconditionError("No valid metadata rows were selected.")
+        return (
+            f"Updated metadata for {updated} file(s).",
+            {"success_count": updated, "skipped_indices": skipped},
+        )
+
+    def _handle_apply_smart_parse(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ApplySmartParseCommand):
+            raise TypeError("Invalid command for apply_smart_parse")
+        if not command.results:
+            raise PreconditionError("smart parse results cannot be empty.")
+        normalized = self._normalize_smart_parse_results(command.results)
+        count = self.dataset.apply_smart_parse(normalized)
+        return (
+            f"Smart parse updated {count} file(s).",
+            {"success_count": count},
+        )
+
+    def _handle_remove_files(self, command: Command) -> HandlerResult:
+        if not isinstance(command, RemoveFilesCommand):
+            raise TypeError("Invalid command for remove_files")
+        if not command.indices:
+            raise PreconditionError("indices list cannot be empty.")
+        before = len(self.dataset.get_loaded_data_list())
+        self.dataset.remove_files([int(index) for index in command.indices])
+        after = len(self.dataset.get_loaded_data_list())
+        removed = before - after
+        if removed <= 0:
+            raise PreconditionError("No valid files were selected for removal.")
+        return (
+            f"Removed {removed} file(s).",
+            {"success_count": removed, "requested_indices": command.indices},
         )
 
     def _handle_preprocess(self, command: Command) -> HandlerResult:
@@ -710,6 +873,75 @@ class ApplicationService:
             },
         )
 
+    def _handle_apply_montage(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ApplyMontageCommand):
+            raise TypeError("Invalid command for apply_montage")
+        if not command.channels:
+            raise PreconditionError("channels list cannot be empty.")
+        if not command.positions:
+            raise PreconditionError("positions list cannot be empty.")
+        if len(command.channels) != len(command.positions):
+            raise PreconditionError("channels and positions must have equal length.")
+
+        self.preprocess.apply_montage(command.channels, command.positions)
+        message = (
+            f"Applied montage '{command.montage_name}' "
+            f"to {len(command.channels)} channel(s)."
+            if command.montage_name
+            else f"Applied montage to {len(command.channels)} channel(s)."
+        )
+        return (
+            message,
+            {
+                "channel_count": len(command.channels),
+                "montage_name": command.montage_name,
+            },
+        )
+
+    def _handle_query_state(self, command: Command) -> HandlerResult:
+        if not isinstance(command, QueryStateCommand):
+            raise TypeError("Invalid command for query_state")
+
+        query = str(command.query or "state").lower()
+        state = self.get_state()
+        if query == "state":
+            return (
+                "Application state snapshot ready.",
+                {
+                    "state": state.to_dict(),
+                    "capabilities": self.get_capabilities().to_dict(),
+                },
+            )
+        if query == "data_lists":
+            loaded = list(getattr(self.study, "loaded_data_list", []) or [])
+            preprocessed = list(
+                getattr(self.study, "preprocessed_data_list", []) or [],
+            )
+            diagnostics: dict[str, Any] = {
+                "raw_count": len(loaded),
+                "preprocessed_count": len(preprocessed),
+                "raw_files": state.raw.files,
+                "preprocessed_files": state.preprocessed.files,
+            }
+            if command.include_objects:
+                diagnostics["loaded_data_list"] = loaded
+                diagnostics["preprocessed_data_list"] = preprocessed
+            return "Data list query ready.", diagnostics
+        if query == "data_summary":
+            return "Dataset summary ready.", self._data_summary_from_state(state)
+        if query == "preprocess_diagnostics":
+            return (
+                "Preprocess diagnostics ready.",
+                dict(state.preprocessed.diagnostics),
+            )
+        if query == "smart_filter_suggestions":
+            suggestions = self._smart_filter_suggestions(command.params)
+            return (
+                "Smart filter suggestions ready.",
+                {"suggestions": suggestions},
+            )
+        raise ValueError(f"Unknown query_state request: {command.query}")
+
     def _clear_training_configuration(self) -> None:
         """Clear training config that belongs to the previous active dataset."""
         training_manager = getattr(self.study, "training_manager", None)
@@ -756,6 +988,126 @@ class ApplicationService:
             return [str(ch) for ch in raw_data[0].get_mne().ch_names]
         except Exception:
             return []
+
+    @staticmethod
+    def _raw_metadata(raw_data: list[Any]) -> list[dict[str, str]]:
+        metadata = []
+        for idx, item in enumerate(raw_data):
+            metadata.append(
+                {
+                    "index": str(idx),
+                    "file": ApplicationService._data_filename(item),
+                    "subject": ApplicationService._safe_string_attr(
+                        item,
+                        "get_subject_name",
+                    ),
+                    "session": ApplicationService._safe_string_attr(
+                        item,
+                        "get_session_name",
+                    ),
+                },
+            )
+        return metadata
+
+    @staticmethod
+    def _safe_string_attr(item: Any, method_name: str) -> str:
+        method = getattr(item, method_name, None)
+        if not callable(method):
+            return ""
+        try:
+            return str(method())
+        except Exception:
+            return ""
+
+    def _target_files_for_label_plan(self, plan: LabelImportPlan) -> list[Any]:
+        data_list = list(self.dataset.get_loaded_data_list() or [])
+        if not plan.target_indices:
+            return data_list
+        return [
+            data_list[int(index)]
+            for index in plan.target_indices
+            if 0 <= int(index) < len(data_list)
+        ]
+
+    @staticmethod
+    def _selected_event_names(
+        selected_event_names: list[str] | set[str] | None,
+    ) -> set[str] | None:
+        if selected_event_names is None:
+            return None
+        return {str(name) for name in selected_event_names}
+
+    @staticmethod
+    def _metadata_updates(command: UpdateMetadataCommand) -> list[MetadataUpdate]:
+        if command.updates:
+            return command.updates
+        if command.index is None:
+            return []
+        return [
+            MetadataUpdate(
+                index=command.index,
+                subject=command.subject,
+                session=command.session,
+            ),
+        ]
+
+    @staticmethod
+    def _normalize_smart_parse_results(
+        results: dict[str, tuple[str, str] | list[str] | Any],
+    ) -> dict[str, tuple[str, str]]:
+        normalized: dict[str, tuple[str, str]] = {}
+        for path, value in results.items():
+            if isinstance(value, (tuple, list)) and len(value) >= 2:
+                normalized[str(path)] = (str(value[0]), str(value[1]))
+            else:
+                raise ValueError(
+                    "Smart parse results must map paths to (subject, session).",
+                )
+        return normalized
+
+    def _data_summary_from_state(
+        self,
+        state: ApplicationStateSnapshot,
+    ) -> dict[str, Any]:
+        data_list = list(self.dataset.get_loaded_data_list() or [])
+        summary: dict[str, Any] = {
+            "count": len(data_list) if data_list else state.raw.count,
+            "files": [self._data_filename(item) for item in data_list]
+            if data_list
+            else state.raw.files,
+            "formats": (
+                self._raw_formats(data_list) if data_list else state.raw.formats
+            ),
+            "channels": (
+                self._raw_channels(data_list) if data_list else state.raw.channels
+            ),
+            "metadata": self._raw_metadata(data_list)
+            if data_list
+            else state.raw.metadata,
+            "total": state.raw.event_total,
+            "unique_count": len(state.raw.unique_events),
+            "unique_labels": state.raw.unique_events,
+        }
+        summary.update(self._safe_call_dict(self.dataset.get_event_info))
+        summary.update(state.raw.diagnostics)
+        return summary
+
+    def _smart_filter_suggestions(self, params: dict[str, Any]) -> list[int]:
+        target_index = params.get("target_index")
+        target_count = params.get("target_count")
+        if target_index is None or target_count is None:
+            raise PreconditionError("target_index and target_count are required.")
+        data_list = list(self.dataset.get_loaded_data_list() or [])
+        index = int(target_index)
+        if index < 0 or index >= len(data_list):
+            raise PreconditionError("target_index does not reference a loaded file.")
+        return [
+            int(item)
+            for item in self.dataset.get_smart_filter_suggestions(
+                data_list[index],
+                int(target_count),
+            )
+        ]
 
     @staticmethod
     def _preprocess_history(preprocessed: list[Any]) -> list[str]:
