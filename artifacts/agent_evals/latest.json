@@ -508,11 +508,11 @@
       "prediction": {
         "intent": "saliency",
         "tool_calls": [],
-        "blocked": true,
+        "blocked": false,
         "confirmation_required": false,
-        "blocked_reason": "This ApplicationService command is a future query contract; use the existing controller/facade query path until it is implemented.; Complete at least one training run first.; Configure saliency parameters first.",
+        "blocked_reason": "",
         "asks_clarification": false,
-        "result_interpretation": null
+        "result_interpretation": "service_query_summary"
       },
       "failures": []
     },
@@ -532,11 +532,11 @@
       "prediction": {
         "intent": "visualize",
         "tool_calls": [],
-        "blocked": true,
+        "blocked": false,
         "confirmation_required": false,
-        "blocked_reason": "This ApplicationService command is a future query contract; use the existing controller/facade query path until it is implemented.; Complete at least one training run first.",
+        "blocked_reason": "",
         "asks_clarification": false,
-        "result_interpretation": null
+        "result_interpretation": "service_query_summary"
       },
       "failures": []
     },

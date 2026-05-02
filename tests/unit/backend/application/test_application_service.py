@@ -14,7 +14,9 @@ from XBrainLab.backend.application import (
     PreprocessCommand,
     PreprocessOperation,
     ResetSessionCommand,
+    SaliencyCommand,
     TrainCommand,
+    VisualizeCommand,
 )
 from XBrainLab.backend.study import Study
 
@@ -42,10 +44,10 @@ def test_capability_policy_covers_all_declared_commands():
     policy = service.get_capabilities()
 
     assert set(policy.capabilities) == {name.value for name in CommandName}
-    assert policy.get(CommandName.EVALUATE).available is False
-    assert policy.get(CommandName.VISUALIZE).available is False
-    assert policy.get(CommandName.SALIENCY).available is False
-    assert policy.get(CommandName.NEW_SESSION).available is False
+    assert policy.get(CommandName.EVALUATE).available is True
+    assert policy.get(CommandName.VISUALIZE).available is True
+    assert policy.get(CommandName.SALIENCY).available is True
+    assert policy.get(CommandName.NEW_SESSION).available is True
 
 
 def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy():
@@ -64,16 +66,41 @@ def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy(
     )
 
 
-def test_future_command_returns_stable_failure_instead_of_router_error():
+def test_evaluate_command_returns_service_backed_empty_summary():
     service = ApplicationService(Study())
 
     result = service.execute(EvaluateCommand())
 
-    assert result.failed is True
+    assert result.ok is True
     assert result.command_name == "evaluate"
-    assert result.error_type == ErrorType.PRECONDITION
-    assert "future query contract" in result.message
-    assert result.state.last_error is not None
+    assert result.diagnostics["available"] is False
+    assert result.diagnostics["plan_count"] == 0
+    assert result.state.last_error is None
+
+
+def test_visualize_and_saliency_commands_return_typed_query_payloads():
+    service = ApplicationService(Study())
+
+    visualize = service.execute(VisualizeCommand(view="summary"))
+    saliency = service.execute(SaliencyCommand())
+
+    assert visualize.ok is True
+    assert visualize.command_name == "visualize"
+    assert visualize.diagnostics["available"] is False
+    assert "available_views" in visualize.diagnostics
+    assert saliency.ok is True
+    assert saliency.command_name == "saliency"
+    assert saliency.diagnostics["saliency_configured"] is False
+
+
+def test_saliency_command_can_configure_params():
+    service = ApplicationService(Study())
+
+    result = service.execute(SaliencyCommand(params={"method": "Gradient"}))
+
+    assert result.ok is True
+    assert result.changed_state.visualization_changed is True
+    assert result.diagnostics["saliency_configured"] is True
 
 
 def test_command_result_classifies_unsupported_load(tmp_path):
@@ -118,7 +145,7 @@ def test_train_command_blocked_until_backend_ready():
     assert result.state.training.has_trainer is False
 
 
-def test_new_session_requires_confirmation_but_remains_future_placeholder():
+def test_new_session_requires_confirmation_and_clears_single_backend_session():
     service = ApplicationService(Study())
     raw = _raw_mock()
     service.study.data_manager.loaded_data_list = [raw]
@@ -131,9 +158,9 @@ def test_new_session_requires_confirmation_but_remains_future_placeholder():
 
     confirmed = service.execute(NewSessionCommand(confirmed=True))
 
-    assert confirmed.failed is True
-    assert confirmed.error_type == ErrorType.PRECONDITION
-    assert "future application shell contract" in confirmed.message
+    assert confirmed.ok is True
+    assert confirmed.command_name == "new_session"
+    assert confirmed.state.raw.loaded is False
 
 
 def test_set_montage_preprocess_operation_requires_ui_confirmation():

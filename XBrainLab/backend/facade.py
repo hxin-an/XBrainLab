@@ -11,13 +11,17 @@ from XBrainLab.backend.application import (
     ConfigureTrainingCommand,
     CreateEpochCommand,
     ErrorType,
+    EvaluateCommand,
     GenerateDatasetCommand,
     LoadDataCommand,
+    NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
     ResetSessionCommand,
+    SaliencyCommand,
     StopTrainingCommand,
     TrainCommand,
+    VisualizeCommand,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.logger import logger
@@ -150,6 +154,11 @@ class BackendFacade:
     def clear_data(self):
         """Clear all loaded data."""
         result = self.service.execute(ResetSessionCommand(confirmed=True))
+        self._raise_if_failed(result)
+
+    def new_session(self):
+        """Clear current state and start a new single-backend session."""
+        result = self.service.execute(NewSessionCommand(confirmed=True))
         self._raise_if_failed(result)
 
     def get_data_summary(self) -> dict:
@@ -482,20 +491,36 @@ class BackendFacade:
             Dictionary with plan counts, run counts, and training status.
 
         """
-        plans = self.evaluation.get_plans()
-        if not plans:
+        result = self.service.execute(EvaluateCommand())
+        diagnostics = dict(result.diagnostics)
+        if result.ok and diagnostics.get("plan_count", 0) == 0:
             return {"status": "no_plans"}
 
-        finished_runs = 0
-        total_runs = 0
-        for plan in plans:
-            runs = plan.get_plans()
-            total_runs += len(runs)
-            finished_runs += len([r for r in runs if r.is_finished()])
-
+        plans = diagnostics.get("plans", [])
+        total_runs = sum(
+            int(plan.get("run_count", 0)) for plan in plans if isinstance(plan, dict)
+        )
         return {
-            "total_plans": len(plans),
+            "status": "ok" if result.ok else "failed",
+            "total_plans": int(diagnostics.get("plan_count", 0)),
             "total_runs": total_runs,
-            "finished_runs": finished_runs,
+            "finished_runs": int(diagnostics.get("finished_run_count", 0)),
             "training_active": self.is_training(),
+            "plans": plans,
+            "available": bool(diagnostics.get("available", False)),
+            "application_diagnostics": diagnostics,
         }
+
+    def get_visualization_summary(self, view: str | None = None) -> dict:
+        """Return a service-backed visualization readiness summary."""
+        result = self.service.execute(VisualizeCommand(view=view))
+        diagnostics = dict(result.diagnostics)
+        diagnostics["status"] = "ok" if result.ok else "failed"
+        return diagnostics
+
+    def get_saliency_summary(self) -> dict:
+        """Return service-backed saliency readiness and configuration."""
+        result = self.service.execute(SaliencyCommand())
+        diagnostics = dict(result.diagnostics)
+        diagnostics["status"] = "ok" if result.ok else "failed"
+        return diagnostics

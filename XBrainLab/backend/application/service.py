@@ -16,6 +16,7 @@ from XBrainLab.backend.dataset import (
     SplitUnit,
     TrainingType,
     ValSplitByType,
+    audit_dataset_splits,
 )
 from XBrainLab.backend.load_data.label_loader import load_label_file
 from XBrainLab.backend.model_base.EEGNet import EEGNet
@@ -32,14 +33,17 @@ from .commands import (
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    EvaluateCommand,
     GenerateDatasetCommand,
     LoadDataCommand,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
     ResetSessionCommand,
+    SaliencyCommand,
     StopTrainingCommand,
     TrainCommand,
+    VisualizeCommand,
     command_name,
 )
 from .errors import (
@@ -241,7 +245,11 @@ class ApplicationService:
             CommandName.CONFIGURE_TRAINING: self._handle_configure_training,
             CommandName.TRAIN: self._handle_train,
             CommandName.STOP_TRAINING: self._handle_stop_training,
+            CommandName.EVALUATE: self._handle_evaluate,
+            CommandName.VISUALIZE: self._handle_visualize,
+            CommandName.SALIENCY: self._handle_saliency,
             CommandName.RESET_SESSION: self._handle_reset_session,
+            CommandName.NEW_SESSION: self._handle_new_session,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -303,6 +311,22 @@ class ApplicationService:
     def reset_session(self, confirmed: bool = False) -> CommandResult:
         """Execute a session reset command."""
         return self.execute(ResetSessionCommand(confirmed=confirmed))
+
+    def new_session(self, confirmed: bool = False) -> CommandResult:
+        """Execute a new-session command for the single-session shell."""
+        return self.execute(NewSessionCommand(confirmed=confirmed))
+
+    def evaluate(self, command: EvaluateCommand | None = None) -> CommandResult:
+        """Execute an evaluation query command."""
+        return self.execute(command or EvaluateCommand())
+
+    def visualize(self, command: VisualizeCommand | None = None) -> CommandResult:
+        """Execute a visualization query command."""
+        return self.execute(command or VisualizeCommand())
+
+    def saliency(self, command: SaliencyCommand | None = None) -> CommandResult:
+        """Execute a saliency setup/query command."""
+        return self.execute(command or SaliencyCommand())
 
     def _ensure_command_allowed(
         self,
@@ -474,15 +498,33 @@ class ApplicationService:
     def _handle_generate_dataset(self, command: Command) -> HandlerResult:
         if not isinstance(command, GenerateDatasetCommand):
             raise TypeError("Invalid command for generate_dataset")
-        config = self._build_data_splitting_config(command)
-        generator = self.study.get_datasets_generator(config)
+        generator = command.generator
+        if generator is None:
+            config = self._build_data_splitting_config(command)
+            generator = self.study.get_datasets_generator(config)
         self.training.apply_data_splitting(generator)
         count = len(getattr(self.study, "datasets", []) or [])
-        return f"Generated {count} dataset(s)."
+        return (
+            f"Generated {count} dataset(s).",
+            {
+                "dataset_count": count,
+                "split_summary": self._dataset_split_summary(
+                    list(getattr(self.study, "datasets", []) or [])
+                ),
+            },
+        )
 
     def _handle_configure_training(self, command: Command) -> HandlerResult:
         if not isinstance(command, ConfigureTrainingCommand):
             raise TypeError("Invalid command for configure_training")
+        if command.training_option is not None:
+            self.training.set_training_option(command.training_option)
+            return "Training configured.", {
+                "training_option": self._training_option_snapshot(
+                    command.training_option,
+                ),
+            }
+
         if command.model_name:
             model_class = self._resolve_model_class(command.model_name)
             holder = ModelHolder(
@@ -512,23 +554,27 @@ class ApplicationService:
             )
 
         optim_class = self._resolve_optimizer(command.optimizer)
-        use_cpu = command.device.lower() == "cpu"
-        gpu_idx = 0 if not use_cpu else None
+        use_cpu, gpu_idx = self._resolve_training_device(command.device)
+        evaluation_option = self._resolve_training_evaluation(
+            command.evaluation_option,
+        )
         option = TrainingOption(
             output_dir=command.output_dir,
             optim=optim_class,
-            optim_params={},
+            optim_params=dict(command.optimizer_params),
             use_cpu=use_cpu,
             gpu_idx=gpu_idx,
             epoch=command.epoch,
             bs=command.batch_size,
             lr=command.learning_rate,
             checkpoint_epoch=command.save_checkpoints_every,
-            evaluation_option=TrainingEvaluation.LAST_EPOCH,
+            evaluation_option=evaluation_option,
             repeat_num=command.repeat,
         )
         self.training.set_training_option(option)
-        return "Training configured."
+        return "Training configured.", {
+            "training_option": self._training_option_snapshot(option),
+        }
 
     def _handle_train(self, command: Command) -> HandlerResult:
         if not isinstance(command, TrainCommand):
@@ -548,6 +594,121 @@ class ApplicationService:
         self.dataset.clean_dataset()
         self._clear_training_configuration()
         return "Session reset."
+
+    def _handle_new_session(self, command: Command) -> HandlerResult:
+        if not isinstance(command, NewSessionCommand):
+            raise TypeError("Invalid command for new_session")
+        self.dataset.clean_dataset()
+        self._clear_training_configuration()
+        return "New session started.", {"single_session_backend": True}
+
+    def _handle_evaluate(self, command: Command) -> HandlerResult:
+        if not isinstance(command, EvaluateCommand):
+            raise TypeError("Invalid command for evaluate")
+        plans = self._safe_call_list(self.evaluation.get_plans)
+        summaries = []
+        for plan_idx, plan in enumerate(plans):
+            runs = self._safe_plan_runs(plan)
+            finished = [run for run in runs if self._run_finished(run)]
+            metrics: dict[str, Any] = {}
+            if finished:
+                try:
+                    _labels, _outputs, metrics = self.evaluation.get_pooled_eval_result(
+                        plan,
+                    )
+                except Exception:
+                    logger.debug("Failed to pool evaluation metrics", exc_info=True)
+                    metrics = {}
+            summaries.append(
+                {
+                    "index": plan_idx,
+                    "name": self._safe_plan_name(plan, plan_idx),
+                    "run_count": len(runs),
+                    "finished_run_count": len(finished),
+                    "metrics": self._json_safe(metrics),
+                }
+            )
+        finished_total = sum(item["finished_run_count"] for item in summaries)
+        message = (
+            "Evaluation summary ready."
+            if finished_total
+            else "No completed training runs are available for evaluation yet."
+        )
+        return (
+            message,
+            {
+                "available": finished_total > 0,
+                "target": command.target,
+                "plan_count": len(plans),
+                "finished_run_count": finished_total,
+                "plans": summaries,
+            },
+        )
+
+    def _handle_visualize(self, command: Command) -> HandlerResult:
+        if not isinstance(command, VisualizeCommand):
+            raise TypeError("Invalid command for visualize")
+        state = self.get_state()
+        trainers = self._safe_call_list(self.visualization.get_trainers)
+        available_views = []
+        if state.epoch.available:
+            available_views.extend(["epoch overview", "channel montage"])
+        if state.evaluation.finished_runs:
+            available_views.extend(["confusion matrix", "metrics", "saliency setup"])
+        if state.visualization.saliency_available:
+            available_views.extend(
+                ["saliency map", "spectrogram", "topographic map", "3D plot"],
+            )
+        message = (
+            "Visualization summary ready."
+            if available_views
+            else "No visualization views are ready yet."
+        )
+        return (
+            message,
+            {
+                "available": bool(available_views),
+                "view": command.view,
+                "available_views": available_views,
+                "trainer_count": len(trainers),
+                "channel_count": state.visualization.channel_count,
+                "montage_available": state.visualization.montage_available,
+                "saliency_configured": state.visualization.saliency_configured,
+                "saliency_available": state.visualization.saliency_available,
+            },
+        )
+
+    def _handle_saliency(self, command: Command) -> HandlerResult:
+        if not isinstance(command, SaliencyCommand):
+            raise TypeError("Invalid command for saliency")
+        params = dict(command.params or {})
+        if command.method:
+            params.setdefault("method", command.method)
+        if params:
+            self.visualization.set_saliency_params(params)
+            return (
+                "Saliency parameters configured.",
+                {
+                    "saliency_configured": True,
+                    "params": self._json_safe(params),
+                },
+            )
+
+        current_params = self.visualization.get_saliency_params()
+        state = self.get_state()
+        return (
+            (
+                "Saliency summary ready."
+                if current_params
+                else "Saliency parameters are not configured yet."
+            ),
+            {
+                "saliency_configured": current_params is not None,
+                "saliency_available": state.visualization.saliency_available,
+                "params": self._json_safe(current_params or {}),
+                "finished_run_count": state.evaluation.finished_runs,
+            },
+        )
 
     def _clear_training_configuration(self) -> None:
         """Clear training config that belongs to the previous active dataset."""
@@ -687,6 +848,35 @@ class ApplicationService:
         return optimizers_map.get(name.lower(), torch.optim.Adam)
 
     @staticmethod
+    def _resolve_training_device(device: str) -> tuple[bool, int | None]:
+        normalized = str(device or "auto").strip().lower()
+        if normalized in {"cpu", "none"}:
+            return True, None
+        if normalized in {"auto", "cuda", "gpu"}:
+            return False, 0
+        if normalized.startswith("cuda:"):
+            try:
+                return False, int(normalized.split(":", 1)[1])
+            except (TypeError, ValueError):
+                return False, 0
+        try:
+            return False, int(normalized)
+        except ValueError:
+            return False, 0
+
+    @staticmethod
+    def _resolve_training_evaluation(
+        value: str | None,
+    ) -> TrainingEvaluation:
+        if value is None:
+            return TrainingEvaluation.LAST_EPOCH
+        normalized = str(value).strip().lower()
+        for option in TrainingEvaluation:
+            if normalized in {option.name.lower(), option.value.lower()}:
+                return option
+        return TrainingEvaluation.LAST_EPOCH
+
+    @staticmethod
     def _resolve_label_attachment_path(raw: Any, mapping: dict[str, str]) -> str | None:
         filepath = raw.get_filepath()
         filename = raw.get_filename()
@@ -768,11 +958,7 @@ class ApplicationService:
         finished_runs = 0
         metrics_available = False
         for plan in plans:
-            runs = []
-            try:
-                runs = list(plan.get_plans())
-            except Exception:
-                runs = []
+            runs = self._safe_plan_runs(plan)
             total_runs += len(runs)
             for run in runs:
                 if self._run_finished(run):
@@ -786,6 +972,20 @@ class ApplicationService:
             finished_runs=finished_runs,
             metrics_available=metrics_available,
         )
+
+    @staticmethod
+    def _safe_plan_runs(plan: Any) -> list[Any]:
+        try:
+            return list(plan.get_plans())
+        except Exception:
+            return []
+
+    @staticmethod
+    def _safe_plan_name(plan: Any, idx: int) -> str:
+        try:
+            return str(plan.get_name())
+        except Exception:
+            return f"Plan {idx + 1}"
 
     @staticmethod
     def _run_finished(run: Any) -> bool:
@@ -902,7 +1102,26 @@ class ApplicationService:
                 except Exception as exc:
                     logger.debug("Failed to summarize %s: %s", mask_name, exc)
                     continue
+        try:
+            audit = audit_dataset_splits(cast(list[Any], datasets))
+            summary["audit"] = audit.to_dict()
+        except Exception:
+            logger.debug("Failed to audit dataset splits", exc_info=True)
         return summary
+
+    @classmethod
+    def _json_safe(cls, value: Any) -> Any:
+        if isinstance(value, np.generic):
+            return value.item()
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, dict):
+            return {str(k): cls._json_safe(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [cls._json_safe(item) for item in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
 
     @staticmethod
     def _montage_available(epoch_data: Any) -> bool:

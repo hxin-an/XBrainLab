@@ -103,6 +103,7 @@ class GenerateDatasetCommand:
     val_ratio: float = 0.2
     split_strategy: str = "subject"
     training_mode: str = "individual"
+    generator: Any | None = None
 
     @property
     def name(self) -> CommandName:
@@ -119,11 +120,14 @@ class ConfigureTrainingCommand:
     repeat: int = 1
     device: str = "auto"
     optimizer: str = "adam"
+    optimizer_params: dict[str, Any] = field(default_factory=dict)
     save_checkpoints_every: int = 0
     output_dir: str = "./output"
+    evaluation_option: str | None = None
     model_name: str | None = None
     model_params: dict[str, Any] = field(default_factory=dict)
     pretrained_weight_path: str | None = None
+    training_option: Any | None = None
 
     @property
     def name(self) -> CommandName:
@@ -153,12 +157,7 @@ class StopTrainingCommand:
 
 @dataclass(frozen=True)
 class EvaluateCommand:
-    """Reserved evaluation query command.
-
-    The command object is part of the contract so callers can receive a stable
-    failure instead of a router error while the service query API is still being
-    designed.
-    """
+    """Read evaluation metrics and run summaries from the active backend."""
 
     target: str | None = None
 
@@ -169,7 +168,7 @@ class EvaluateCommand:
 
 @dataclass(frozen=True)
 class VisualizeCommand:
-    """Reserved visualization query command."""
+    """Read visualization readiness and available view summaries."""
 
     view: str | None = None
 
@@ -180,9 +179,10 @@ class VisualizeCommand:
 
 @dataclass(frozen=True)
 class SaliencyCommand:
-    """Reserved saliency command."""
+    """Configure or query saliency readiness."""
 
     method: str | None = None
+    params: dict[str, Any] | None = None
 
     @property
     def name(self) -> CommandName:
@@ -202,11 +202,7 @@ class ResetSessionCommand:
 
 @dataclass(frozen=True)
 class NewSessionCommand:
-    """Reserved new-session command.
-
-    Creating a separate session requires an owner above the backend service, so
-    this command remains disabled until that lifecycle exists.
-    """
+    """Start a new single-backend session by clearing current state."""
 
     confirmed: bool = False
 

@@ -306,27 +306,19 @@ def build_eval_cases() -> list[EvalCase]:
         ),
         EvalCase(
             "saliency-before-trained-block",
-            "Saliency before trained result is blocked",
+            "Saliency before trained result returns readiness summary",
             "dataset_without_training_config",
             ["Show saliency map for the model."],
             "saliency",
-            expected_blocked=True,
-            expected_reason_terms=[
-                "future query contract",
-                "Complete at least one training run first",
-            ],
+            expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
             "visualize-before-trained-block",
-            "Visualization before trained result is blocked",
+            "Visualization before trained result returns readiness summary",
             "dataset_without_training_config",
             ["Visualize the trained result."],
             "visualize",
-            expected_blocked=True,
-            expected_reason_terms=[
-                "future query contract",
-                "Complete at least one training run first",
-            ],
+            expected_result_interpretation="service_query_summary",
         ),
         EvalCase(
             "invalid-event-id",
@@ -386,7 +378,8 @@ def write_artifacts(result: dict[str, Any], output_dir: Path) -> tuple[Path, Pat
     json_path = output_dir / "latest.json"
     md_path = output_dir / "latest.md"
     json_path.write_text(
-        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
     )
     md_path.write_text(render_markdown_report(result), encoding="utf-8")
     return json_path, md_path
@@ -499,7 +492,17 @@ def predict_case(case: EvalCase) -> Prediction:
             CommandName.VISUALIZE if intent == "visualize" else CommandName.SALIENCY
         )
         blocked = block_from_policy(policy, command)
-        return blocked_prediction(intent, [], blocked)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        return Prediction(
+            intent=intent,
+            tool_calls=[],
+            final_message=(
+                "Service query summary is available; no trained result is required "
+                "to explain current readiness."
+            ),
+            result_interpretation=result_interpretation_for(case),
+        )
 
     return Prediction(
         intent=intent,

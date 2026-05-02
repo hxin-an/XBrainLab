@@ -153,28 +153,18 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         stop_reasons,
     )
 
-    future_result_command = (
-        "This ApplicationService command is a future query contract; use the "
-        "existing controller/facade query path until it is implemented."
-    )
-    result_reasons = [future_result_command]
-    if state.evaluation.finished_runs == 0:
-        result_reasons.append("Complete at least one training run first.")
     capabilities[CommandName.EVALUATE.value] = _cap(
         CommandName.EVALUATE,
-        result_reasons,
+        [],
     )
     capabilities[CommandName.VISUALIZE.value] = _cap(
         CommandName.VISUALIZE,
-        result_reasons,
+        [],
     )
 
-    saliency_reasons = list(result_reasons)
-    if not state.visualization.saliency_configured:
-        saliency_reasons.append("Configure saliency parameters first.")
     capabilities[CommandName.SALIENCY.value] = _cap(
         CommandName.SALIENCY,
-        saliency_reasons,
+        [],
     )
 
     capabilities[CommandName.RESET_SESSION.value] = CommandCapability(
@@ -186,11 +176,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
     capabilities[CommandName.NEW_SESSION.value] = CommandCapability(
         command_name=CommandName.NEW_SESSION.value,
-        enabled=False,
-        reasons=[
-            "New session lifecycle is a future application shell contract; "
-            "use reset_session for the current single-session backend."
-        ],
+        enabled=True,
+        reasons=[],
         destructive=True,
         confirmation_required=has_state,
     )
