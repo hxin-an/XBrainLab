@@ -22,6 +22,19 @@ COMMAND_LABELS: dict[str, str] = {
     CommandName.NEW_SESSION.value: "Start new session",
 }
 
+TOOL_ACTION_LABELS: dict[str, str] = {
+    "start_training": "Start training",
+    "stop_training": "Stop training",
+    "clear_dataset": "Clear dataset",
+    "load_data": "Load EEG data",
+    "preprocess_data": "Preprocess data",
+    "create_epochs": "Create epochs",
+    "generate_dataset": "Build training dataset",
+    "configure_training": "Configure training",
+    "reset_session": "Reset session",
+    "new_session": "Start new session",
+}
+
 
 def command_label(command_name: str | CommandName) -> str:
     """Return a user-facing label for an application command."""
@@ -32,6 +45,14 @@ def command_label(command_name: str | CommandName) -> str:
 def command_labels(command_names: list[str] | tuple[str, ...]) -> list[str]:
     """Return user-facing labels for application command names."""
     return [command_label(name) for name in command_names]
+
+
+def tool_action_label(tool_name: str) -> str:
+    """Return a user-facing label for an assistant tool/action name."""
+    key = str(tool_name or "").strip()
+    if not key:
+        return "Assistant action"
+    return TOOL_ACTION_LABELS.get(key, command_label(key))
 
 
 def workflow_stage_label(state: Any) -> str:

@@ -29,7 +29,11 @@ from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
 )
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
-from XBrainLab.ui.product_language import command_labels, workflow_stage_label
+from XBrainLab.ui.product_language import (
+    command_labels,
+    tool_action_label,
+    workflow_stage_label,
+)
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 VIZ_TAB_3D_PLOT = 3
@@ -411,8 +415,27 @@ class AgentManager(QObject):
         self._runtime_unavailable_notice = message
         logger.info("Assistant runtime unavailable: %s", message)
         self.chat_controller.add_agent_message(
-            "**Assistant unavailable**: Open assistant settings to finish setup.",
+            self._runtime_unavailable_message(message),
         )
+
+    @staticmethod
+    def _runtime_unavailable_message(message: str) -> str:
+        """Return a concise, user-facing assistant startup blocker."""
+        reason = " ".join(str(message or "").split())
+        lowered = reason.lower()
+        if "disabled" in lowered:
+            return (
+                "**Assistant unavailable**: Assistant is disabled. Open assistant "
+                "settings to enable it."
+            )
+        if "unavailable" in lowered or "not found" in lowered or "missing" in lowered:
+            return (
+                "**Assistant unavailable**: Required assistant files are unavailable. "
+                "Open assistant settings to finish setup."
+            )
+        if reason:
+            return f"**Assistant unavailable**: {reason}"
+        return "**Assistant unavailable**: Open assistant settings to finish setup."
 
     def open_settings_dialog(self):
         """Open the model settings dialog and refresh the UI on accept."""
@@ -567,7 +590,7 @@ class AgentManager(QObject):
             _ready, message = self._assistant_runtime_start_status(config)
             logger.info("Assistant unavailable on user request: %s", message)
             self.chat_controller.add_agent_message(
-                "**Assistant unavailable**: Open assistant settings to finish setup.",
+                self._runtime_unavailable_message(message),
             )
 
     def retry_last_user_input(self):
@@ -920,20 +943,24 @@ class AgentManager(QObject):
 
         """
         tool_name = params.get("tool_name", "unknown")
+        action_label = tool_action_label(tool_name)
         description = params.get("description", "")
         tool_params = params.get("params", {})
 
         detail = ""
         if tool_params:
-            detail = "\n".join(f"  {k}: {v}" for k, v in tool_params.items())
+            detail = "\n".join(
+                f"  {str(k).replace('_', ' ').title()}: {v}"
+                for k, v in tool_params.items()
+            )
 
         msg = QMessageBox(self.main_window)
         msg.setIcon(QMessageBox.Icon.Warning)
         msg.setWindowTitle("Confirm Action")
         msg.setText(
-            f"The AI assistant wants to execute a potentially dangerous action:\n\n"
-            f"  Tool: {tool_name}\n"
-            f"  Description: {description}"
+            "The assistant wants to run an action that may change your workspace:\n\n"
+            f"  Action: {action_label}\n"
+            f"  Details: {description or action_label}"
         )
         if detail:
             msg.setDetailedText(detail)
@@ -947,11 +974,11 @@ class AgentManager(QObject):
 
         if approved:
             self.chat_controller.add_agent_message(
-                f"User confirmed: {tool_name}",
+                f"Confirmed: {action_label}.",
             )
         else:
             self.chat_controller.add_agent_message(
-                f"User rejected: {tool_name}",
+                f"Cancelled: {action_label}.",
             )
 
         if self.agent_controller:

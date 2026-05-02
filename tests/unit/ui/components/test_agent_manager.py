@@ -170,7 +170,8 @@ class TestAgentManagerMethods:
         agent_mgr.chat_dock.show.assert_called_once()
         mock_start.assert_not_called()
         agent_mgr.chat_controller.add_agent_message.assert_called_with(
-            "**Assistant unavailable**: Open assistant settings to finish setup."
+            "**Assistant unavailable**: Required assistant files are unavailable. "
+            "Open assistant settings to finish setup."
         )
 
     def test_handle_user_input_reports_runtime_reason_when_controller_missing(
@@ -190,7 +191,8 @@ class TestAgentManagerMethods:
 
         agent_mgr.chat_controller.add_user_message.assert_called_with("train")
         agent_mgr.chat_controller.add_agent_message.assert_called_with(
-            "**Assistant unavailable**: Open assistant settings to finish setup."
+            "**Assistant unavailable**: Required assistant files are unavailable. "
+            "Open assistant settings to finish setup."
         )
 
     def test_first_run_later_keeps_runtime_unloaded(self, agent_mgr):

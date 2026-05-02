@@ -154,14 +154,21 @@ class TestShowActionConfirmation:
         ):
             m._show_action_confirmation(params)
         m.agent_controller.on_user_confirmed.assert_called_with(True)
-        m.chat_controller.add_agent_message.assert_called()
+        visible_text = mock_box.setText.call_args.args[0]
+        assert "Action: Start training" in visible_text
+        assert "start_training" not in visible_text
+        assert "Tool:" not in visible_text
+        assert (
+            "Confirmed: Start training."
+            in (m.chat_controller.add_agent_message.call_args.args[0])
+        )
 
     def test_rejected(self):
         """User rejects action."""
         m = _make_manager()
         params = {
-            "tool_name": "start_training",
-            "description": "Start training",
+            "tool_name": "clear_dataset",
+            "description": "Clear the current dataset",
             "params": {},
         }
         from PyQt6.QtWidgets import QMessageBox
@@ -177,6 +184,14 @@ class TestShowActionConfirmation:
         ):
             m._show_action_confirmation(params)
         m.agent_controller.on_user_confirmed.assert_called_with(False)
+        visible_text = mock_box.setText.call_args.args[0]
+        assert "Action: Clear dataset" in visible_text
+        assert "clear_dataset" not in visible_text
+        assert "Tool:" not in visible_text
+        assert (
+            "Cancelled: Clear dataset."
+            in (m.chat_controller.add_agent_message.call_args.args[0])
+        )
 
 
 class TestMontagePicker:
