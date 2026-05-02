@@ -92,10 +92,15 @@ class AgentWorker(QObject):
         if app:
             override = app.property("model_override")
             if override:
-                config.apply_runtime_selection(
-                    str(override),
-                    ui_active_mode=str(override),
-                )
+                override_value = str(override)
+                if override_value in LLMConfig.allowed_local_model_ids():
+                    config.apply_runtime_selection(
+                        "local",
+                        model_id=override_value,
+                        ui_active_mode="local",
+                    )
+                else:
+                    config.apply_runtime_selection("local", ui_active_mode="local")
 
         return config
 
@@ -103,8 +108,6 @@ class AgentWorker(QObject):
     def _resolve_local_runtime(config: LLMConfig):
         """Apply the local fallback model policy to a runtime config."""
         selection = LLMConfig.assistant_runtime_selection_from(config)
-        if selection.backend_mode != "local":
-            return selection, None, True
 
         try:
             fallback_result = config.available_local_model_id(selection.model_id)
@@ -366,16 +369,22 @@ class AgentWorker(QObject):
             self.timeout_timer.stop()
         self.error.emit(err_msg)
 
+    @staticmethod
+    def _unsupported_local_model_message(allowed_models: list[str]) -> str:
+        """Build a fail-closed message for non-catalog model switches."""
+        supported = ", ".join(allowed_models)
+        return (
+            "Only approved local assistant models can be selected. "
+            f"Supported models: {supported}."
+        )
+
     def reinitialize_agent(self, model_id: str):
         """Re-initializes the engine with a new model configuration.
 
-        Supports hot-swap between local, API, and Gemini backends based
-        on the provided ``model_id``.
+        Supports hot-swap between the approved local product models.
 
         Args:
-            model_id: Identifier or display name of the target model.
-                May contain hints like ``'gemini'`` or ``'local'`` for
-                backend routing.
+            model_id: Identifier or display name of the target local model.
 
         """
         logger.info("Worker switching model to: %s", model_id)
@@ -390,47 +399,32 @@ class AgentWorker(QObject):
         old_active_mode = engine.config.active_mode
 
         try:
-            # 1. Determine Inference Mode
-            model_id_lower = model_id.lower()
-            new_model_id = None
-
-            if "gemini" in model_id_lower:
-                new_mode = "gemini"
-                # FIX: Only update model name if not generic mode switch "Gemini"
-                if model_id_lower != "gemini":
-                    new_model_id = model_id
-
-            elif "local" in model_id_lower:
-                new_mode = "local"
-                # FIX: Only update model name if not generic mode switch "Local"
-                # Usually local models don't contain "local" in repo ID.
-                if model_id_lower != "local":
-                    new_model_id = model_id
+            allowed_models = LLMConfig.allowed_local_model_ids()
+            model_id_clean = str(model_id or "").strip()
+            if model_id_clean.lower() == "local":
+                new_model_id = engine.config.model_name
+                if new_model_id not in allowed_models:
+                    new_model_id = LLMConfig.default_local_model_id()
+            elif model_id_clean in allowed_models:
+                new_model_id = model_id_clean
             else:
-                new_mode = "api"
-                new_model_id = model_id
+                message = self._unsupported_local_model_message(allowed_models)
+                logger.warning("Rejected assistant model switch: %s", message)
+                self.error.emit(f"Switch Failed: {message}")
+                return
 
-            # 2. Update config and switch backend
-            previous_selection = LLMConfig.assistant_runtime_selection_from(
-                engine.config
-            )
-            ui_mode = (
-                new_mode
-                if new_mode in {"local", "gemini"}
-                else previous_selection.ui_active_mode
-            )
             engine.config.apply_runtime_selection(
-                new_mode,
+                "local",
                 model_id=new_model_id,
-                ui_active_mode=ui_mode,
+                ui_active_mode="local",
             )
-            engine.switch_backend(new_mode)
+            engine.switch_backend("local")
 
             # Persist change so Settings Dialog sees it
             engine.config.save_to_file()
 
-            self.log.emit(f"Switched to {new_mode.capitalize()}")
-            logger.info("Model switch successful to %s", new_mode)
+            self.log.emit(f"Switched to local model: {new_model_id}")
+            logger.info("Model switch successful to local model %s", new_model_id)
 
         except Exception as e:
             engine.config.inference_mode = old_inference_mode

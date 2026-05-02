@@ -29,8 +29,9 @@ chip dump，主 header 只保留產品名、自然語言 subtitle 和 Options；
 單句 guidance，runtime / backend readiness 降到 dock 底部低干擾 status。`Retry` 沒有上一則
 request 時預設 disabled，直接呼叫也只顯示 footer/status notice，不再污染 transcript。
 agent visible transcript 不再顯示 `Tool <name> completed (...)`、schema error、empty list 或
-snake_case command；raw tool payload 保留在 controller history / diagnostics。Gemini / remote
-runtime UI 已從一般產品入口隔離，只有明確設定 `XBRAINLAB_SHOW_LEGACY_REMOTE_LLM=1` 才顯示。
+snake_case command；raw tool payload 保留在 controller history / diagnostics。Assistant
+runtime 已改成 product local-only：API / Gemini backend modules 已從 product package 移除，
+settings / worker / engine 不再接受 remote execution mode。
 
 UI action execution 已把 import、preprocess、epoch、split / model / training setting
 dialogs、evaluation / visualization / saliency query、training start / stop、reset /
@@ -190,9 +191,11 @@ artifact schema，讓 train/validation/test split 可保存、重跑、審計。
 - thesis / agent performance claim 不能只靠 engineering dashboard 支撐。
 - local transformer runtime 已以 primary / fallback model smoke 驗證；4-bit / bitsandbytes
   仍是 optional path，不是預設產品依賴。
-- agent runtime 的目標方向是 local-only；目前 code 仍殘留 API / Gemini 相關路徑。一般產品 UI
-  已用 `XBRAINLAB_SHOW_LEGACY_REMOTE_LLM=1` 隔離 legacy remote runtime，但 code path 尚未刪除，
-  不能宣稱已完成 local-only runtime cleanup。
+- agent runtime 目前是 local-only product path。`INFERENCE_MODE=api`、舊 settings 中的
+  Gemini active mode、或 worker 直接要求 remote model，都會被 local migration / fail-closed
+  guard 擋住，不會 instantiate remote backend。
+- remote SDK 只留在 optional legacy dependency group；default dependency 不包含 OpenAI /
+  Google Gemini SDK。
 - thesis protocol 已建立 split artifact schema、split audit helper 和 validator script；正式
   external dataset runner、統計報告與 local LLM 真實 tool-call eval 還沒完成。
 

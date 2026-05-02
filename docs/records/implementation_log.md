@@ -28,6 +28,60 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Local-only assistant runtime enforcement
+
+### 背景
+
+人工驗收指出先前只是把 Gemini/API 從一般 UI gate 隱藏，product code 仍可經由
+`INFERENCE_MODE=api`、舊 settings 或 worker model switch 進入 remote backend。這不符合
+local-only runtime 目標。
+
+### 變更
+
+- `LLMConfig` 變成 local-only runtime truth：舊 remote mode 只作 migration input，讀入後統一回
+  `local`。
+- `LLMEngine` 只 instantiate `LocalBackend`；product package 刪除 remote backend modules。
+- `AgentWorker.reinitialize_agent(...)` 只接受 local model catalog 裡的 Phi primary / fallback 或
+  generic `Local`，其他 model name fail closed。
+- `ModelSettingsDialog` 移除 remote key verification / remote model UI，只保留 local model
+  install/delete/activate 和 generation parameters。
+- `pyproject.toml` default dependencies 移除 remote SDK；remote SDK 只保留 optional legacy group。
+- 刪除 Gemini verify/list scripts，移除 legacy benchmark scripts 的 Gemini model option。
+- `tests/architecture_compliance.py` 新增 local-only runtime static guard，禁止 product path 重新出現
+  remote backend class / remote key env path。
+
+### 影響範圍
+
+- Runtime：`XBrainLab/llm/core/config.py`、`engine.py`、`agent/worker.py`、local backend package。
+- UI settings：`XBrainLab/ui/dialogs/model_settings_dialog.py`。
+- Tests / scripts / deps：LLM unit tests、model settings tests、benchmark model configs、Poetry deps。
+- Docs：current、agent architecture、validation、records。
+
+### 驗證
+
+- Targeted subset：
+  - `poetry run pytest --capture=sys tests/unit/llm/core/test_config.py tests/unit/llm/core/test_engine.py tests/unit/llm/agent/test_worker.py tests/unit/ui/dialogs/test_model_settings.py -q`
+  - `73 passed`
+- LLM unit suite:
+  - `poetry run pytest --capture=sys tests/unit/llm -q`
+  - `644 passed`
+- Required validation:
+  - `git diff --check`
+  - `poetry run ruff check XBrainLab/llm XBrainLab/ui/dialogs/model_settings_dialog.py tests/unit/llm tests/unit/ui/dialogs tests/architecture_compliance.py`
+  - `poetry run pytest --capture=sys tests/unit/llm tests/unit/ui/dialogs/test_model_settings.py tests/unit/scripts/test_plan_local_model_download.py tests/unit/scripts/test_inspect_local_assistant_runtime.py -q`
+  - `674 passed`
+  - `poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant`
+- Manual fail-closed probes:
+  - `INFERENCE_MODE=api` -> `local local`
+  - settings JSON with Gemini mode -> `local local local False`
+  - `reinitialize_agent("Gemini")` -> no backend switch, one error signal
+
+### 剩餘風險
+
+- 本輪不下載模型、不跑真 GPU 長 smoke。
+- 真 local model 長時間 ChatPanel walkthrough 和 Windows launcher click-through 仍未完成。
+
 ## 2026-05-02 Assistant product shell and geometry rebuild
 
 ### 背景

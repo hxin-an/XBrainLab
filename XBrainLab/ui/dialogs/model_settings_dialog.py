@@ -1,16 +1,11 @@
-"""AI model settings dialog for configuring local and Gemini API backends.
+"""AI assistant settings dialog for the local-only runtime.
 
-Provides a unified dialog for managing local model downloads and Gemini API
-key verification, allowing users to switch between inference backends.
+Provides UI for managing approved local model downloads and generation
+parameters. Remote assistant runtimes are not part of the product path.
 """
 
 import os
 
-try:
-    from google import genai
-except ImportError:
-    genai = None  # type: ignore[assignment]
-from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,14 +14,13 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
 )
 
-from XBrainLab.llm.core.config import LLMConfig, legacy_remote_runtime_enabled
+from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.downloader import ModelDownloader
 from XBrainLab.llm.core.model_catalog import (
     format_bytes,
@@ -35,15 +29,14 @@ from XBrainLab.llm.core.model_catalog import (
 
 
 class ModelSettingsDialog(QDialog):
-    """Dialog for configuring AI model settings (Local vs Gemini).
+    """Dialog for configuring the local AI assistant runtime.
 
-    Provides UI for selecting and downloading local models, entering and
-    verifying Gemini API keys, and activating the chosen backend.
+    Provides UI for selecting, installing, deleting, and activating approved
+    local models.
 
     Attributes:
         agent_manager: Reference to AgentManager for safe backend switching.
         config: The current LLM configuration.
-        gemini_enabled: Whether the Gemini backend is enabled and verified.
         local_downloaded: Whether the selected local model is downloaded.
         downloader: ModelDownloader instance for managing model downloads.
         is_downloading: Whether a download is currently in progress.
@@ -58,7 +51,7 @@ class ModelSettingsDialog(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("AI Assistant Settings")
-        self.setFixedSize(500, 600)
+        self.setFixedSize(500, 480)
 
         # Reference to AgentManager for safe deletion (switching backend)
         self.agent_manager = agent_manager
@@ -66,11 +59,7 @@ class ModelSettingsDialog(QDialog):
         # Load config or create default
         saved_config = LLMConfig.load_from_file()
         self.config = saved_config if saved_config else (config or LLMConfig())
-        self.show_legacy_remote = legacy_remote_runtime_enabled()
-
-        self.gemini_enabled = (
-            self.config.gemini_enabled if self.show_legacy_remote else False
-        )
+        self.config._force_local_runtime_selection()
         self.local_downloaded = False
 
         # Downloader
@@ -84,7 +73,7 @@ class ModelSettingsDialog(QDialog):
         self.load_state()
 
     def init_ui(self):
-        """Initialize the dialog UI with local model and Gemini API sections."""
+        """Initialize the dialog UI with local model settings."""
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
@@ -126,52 +115,6 @@ class ModelSettingsDialog(QDialog):
 
         local_group.setLayout(local_layout)
         layout.addWidget(local_group)
-
-        # --- Gemini API Section ---
-        self.gemini_group = QGroupBox("Legacy Remote Runtime")
-        gemini_group = self.gemini_group
-        gemini_layout = QVBoxLayout()
-
-        # API Key Input
-        key_layout = QHBoxLayout()
-        key_layout.addWidget(QLabel("API Key:"))
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("Enter Gemini API Key (AIza...)")
-        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        key_layout.addWidget(self.api_key_input)
-        gemini_layout.addLayout(key_layout)
-
-        # Status & Test Button (Mirrors Local Model layout)
-        status_layout = QHBoxLayout()
-        self.gemini_status_label = QLabel("Status: Not Verified")
-        status_layout.addWidget(self.gemini_status_label)
-        status_layout.addStretch()
-
-        self.test_conn_btn = QPushButton("Test Key")
-        self.test_conn_btn.setFixedWidth(80)
-        self.test_conn_btn.clicked.connect(self.on_test_connection_clicked)
-        status_layout.addWidget(self.test_conn_btn)
-        gemini_layout.addLayout(status_layout)
-
-        gemini_group.setLayout(gemini_layout)
-        gemini_group.setVisible(self.show_legacy_remote)
-        layout.addWidget(gemini_group)
-
-        # Gemini Model Dropdown (Restored)
-        gemini_layout.addWidget(QLabel("Model:"))
-        self.gemini_model_combo = QComboBox()
-        self.gemini_model_combo.addItems(
-            [
-                "gemini-3.0-pro",
-                "gemini-3.0-flash",
-                "gemini-2.0-flash",
-                "gemini-2.0-flash-thinking-exp",
-                "gemini-1.5-pro",
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-8b",
-            ],
-        )
-        gemini_layout.addWidget(self.gemini_model_combo)
 
         # --- Generation Parameters Section ---
         gen_group = QGroupBox("Generation Parameters")
@@ -257,18 +200,6 @@ class ModelSettingsDialog(QDialog):
         index = self.local_model_combo.findText(self.config.model_name)
         if index >= 0:
             self.local_model_combo.setCurrentIndex(index)
-
-        # Gemini
-        if self.show_legacy_remote and self.config.gemini_api_key:
-            self.api_key_input.setText(self.config.gemini_api_key)
-
-        if self.show_legacy_remote and self.config.gemini_enabled:
-            self.gemini_status_label.setText("Verified")
-            self.gemini_status_label.setStyleSheet("color: #4caf50;")
-
-        index = self.gemini_model_combo.findText(self.config.gemini_model_name)
-        if index >= 0:
-            self.gemini_model_combo.setCurrentIndex(index)
 
         # Set Enable Checkbox state and trigger update
         self.local_enable_chk.setChecked(self.config.local_model_enabled)
@@ -483,92 +414,15 @@ class ModelSettingsDialog(QDialog):
                 f"Failed to cleanup partials directly: {e}",
             )
 
-    def on_test_connection_clicked(self):
-        """Validate and test the entered Gemini API key."""
-        api_key = self.api_key_input.text().strip()
-
-        # 1. Format Validation
-        if not api_key.startswith("AIza"):
-            QMessageBox.warning(self, "Invalid Key", "API Key must start with 'AIza'")
-            return
-
-        if genai is None:
-            self.gemini_enabled = False
-            self.gemini_status_label.setText("[x] Missing Lib")
-            self.gemini_status_label.setStyleSheet("color: #f44336;")
-            QMessageBox.critical(
-                self,
-                "Dependency Error",
-                "Please install google-genai library:\npoetry add google-genai",
-            )
-            return
-
-        # 2. Connection Test (Threaded)
-        self.test_conn_btn.setEnabled(False)
-        self.gemini_status_label.setText("Status: Testing...")
-
-        self.conn_thread = QThread()
-        self.conn_worker = ConnectionTestWorker(api_key)
-        self.conn_worker.moveToThread(self.conn_thread)
-
-        self.conn_thread.started.connect(self.conn_worker.run)
-        self.conn_worker.finished.connect(self._on_conn_test_success)
-        self.conn_worker.error.connect(self._on_conn_test_error)
-
-        # Cleanup
-        self.conn_worker.finished.connect(self.conn_thread.quit)
-        self.conn_worker.error.connect(self.conn_thread.quit)
-        self.conn_worker.finished.connect(self.conn_worker.deleteLater)
-        self.conn_worker.error.connect(self.conn_worker.deleteLater)
-        self.conn_thread.finished.connect(self.conn_thread.deleteLater)
-
-        self.conn_thread.start()
-
-    def _on_conn_test_success(self, api_key):
-        """Handle successful Gemini API connection test.
-
-        Args:
-            api_key: The verified API key.
-
-        """
-        self.gemini_enabled = True
-        self.gemini_status_label.setText("Status: Verified")
-        self.gemini_status_label.setStyleSheet("color: #4caf50;")
-
-        # Update config
-        os.environ["GEMINI_API_KEY"] = api_key
-        self.config.gemini_api_key = api_key
-
-        self.test_conn_btn.setEnabled(True)
-        self.update_validation_state()
-
-    def _on_conn_test_error(self, error_msg):
-        """Handle failed Gemini API connection test.
-
-        Args:
-            error_msg: Error message from the connection attempt.
-
-        """
-        self.gemini_enabled = False
-        self.gemini_status_label.setText("Status: Failed")
-        self.gemini_status_label.setStyleSheet("color: #f44336;")
-
-        QMessageBox.critical(self, "Connection Failed", error_msg)
-        self.test_conn_btn.setEnabled(True)
-        self.update_validation_state()
-
     def update_validation_state(self):
         """Enable Activate button if conditions met."""
-        # Core Condition: Local Downloaded OR Gemini Verified
-        # Also disable if currently downloading
         model_name = self.local_model_combo.currentText()
         local_ready = (
             self.local_enable_chk.isChecked()
             and self.local_downloaded
             and self.config.local_backend_ready(model_name=model_name)
         )
-        remote_ready = self.show_legacy_remote and self.gemini_enabled
-        is_ready = (local_ready or remote_ready) and not self.is_downloading
+        is_ready = local_ready and not self.is_downloading
 
         self.btn_activate.setEnabled(is_ready)
 
@@ -579,11 +433,6 @@ class ModelSettingsDialog(QDialog):
         if self.config.local_model_enabled:
             self.config.local_runtime_notice_acknowledged = True
         self.config.model_name = self.local_model_combo.currentText()
-        self.config.gemini_model_name = self.gemini_model_combo.currentText()
-        self.config.gemini_enabled = (
-            self.gemini_enabled if self.show_legacy_remote else False
-        )
-
         # Generation parameters
         self.config.temperature = self.temperature_spin.value()
         self.config.top_p = self.top_p_spin.value()
@@ -607,81 +456,16 @@ class ModelSettingsDialog(QDialog):
             )
             return
 
-        previous_selection = self.config.assistant_runtime_selection()
-
-        # Determine active mode
-        remote_ready = self.show_legacy_remote and self.gemini_enabled
-        if remote_ready and not local_ready:
-            backend_mode = "gemini"
-            ui_mode = "gemini"
-        elif local_ready and not remote_ready:
-            backend_mode = "local"
-            ui_mode = "local"
-        else:
-            # Both available — preserve whatever mode was previously active
-            # (active_mode was loaded from settings.json or set by user)
-            ui_mode = previous_selection.ui_active_mode
-            backend_mode = (
-                previous_selection.backend_mode
-                if previous_selection.backend_mode in {"local", "gemini"}
-                else ui_mode
-            )
-
         self.config.apply_runtime_selection(
-            backend_mode,
-            model_id=(
-                self.config.runtime_backend_model_id(backend_mode)
-                if backend_mode == "api"
-                else None
-            ),
-            ui_active_mode=ui_mode,
+            "local",
+            model_id=self.config.model_name if local_ready else None,
+            ui_active_mode="local",
         )
 
         # Persist to JSON
         self.config.save_to_file()
 
-        # Persist API Key to .env (Mock for now, print to console or create .env file)
-        self._save_api_key_to_env()
-
         self.accept()
-
-    def _save_api_key_to_env(self):
-        """Write API Key to .env file preserving other content."""
-        key = self.api_key_input.text().strip()
-        if not key or not key.startswith("AIza"):
-            return
-
-        from XBrainLab.config import AppConfig
-
-        env_path = str(AppConfig.BASE_DIR / ".env")
-        try:
-            # Read existing
-            lines = []
-            if os.path.exists(env_path):
-                with open(env_path, encoding="utf-8") as f:
-                    lines = f.readlines()
-
-            # Update or Append
-            new_lines = []
-            found = False
-            for line in lines:
-                if line.strip().startswith("GEMINI_API_KEY="):
-                    new_lines.append(f"GEMINI_API_KEY={key}\n")
-                    found = True
-                else:
-                    new_lines.append(line)
-
-            if not found:
-                if new_lines and not new_lines[-1].endswith("\n"):
-                    new_lines[-1] += "\n"
-                new_lines.append("GEMINI_API_KEY=" + key + "\n")
-
-            # Write back
-            with open(env_path, "w", encoding="utf-8") as f:
-                f.writelines(new_lines)
-
-        except Exception as e:
-            QMessageBox.warning(self, "Config Error", f"Failed to save .env: {e}")
 
     def reject(self):
         """Cancel any active download and reject the dialog."""
@@ -703,40 +487,3 @@ class ModelSettingsDialog(QDialog):
 
         """
         return self.config
-
-
-class ConnectionTestWorker(QObject):
-    """Background worker for testing Gemini API connectivity.
-
-    Attributes:
-        finished: Signal emitted with the API key on successful connection.
-        error: Signal emitted with an error message on failure.
-
-    """
-
-    finished = pyqtSignal(str)  # api_key
-    error = pyqtSignal(str)
-
-    def __init__(self, api_key):
-        """Initialize the connection test worker.
-
-        Args:
-            api_key: Gemini API key to test.
-
-        """
-        super().__init__()
-        self.api_key = api_key
-
-    def run(self):
-        """Execute the API connection test.
-
-        Emits ``finished`` with the API key on success, or ``error``
-        with an error message on failure.
-        """
-        try:
-            client = genai.Client(api_key=self.api_key)
-            models = client.models.list()
-            _ = next(iter(models))
-            self.finished.emit(self.api_key)
-        except Exception as e:
-            self.error.emit(str(e))

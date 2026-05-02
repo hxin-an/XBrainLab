@@ -19,6 +19,15 @@ import os
 import sys
 from pathlib import Path
 
+FORBIDDEN_PRODUCT_LLM_TOKENS = (
+    "APIBackend",
+    "GeminiBackend",
+    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "XBRAINLAB_SHOW_LEGACY_REMOTE_LLM",
+)
+REMOTE_SDK_DEFAULT_DEPS = ("openai", "google-genai")
+
 
 def check_architecture(root_dir: str) -> int:
     """Verify architecture compliance rules for the UI layer.
@@ -95,9 +104,62 @@ def check_architecture(root_dir: str) -> int:
         for v in violations:
             print(f" - {v}")
         return 1
-    else:
-        print("\nArchitecture compliant!")
-        return 0
+
+    llm_violations = check_local_only_llm_runtime(Path(root_dir))
+    if llm_violations:
+        print("\nLocal-only LLM Runtime Violations Found:")
+        for violation in llm_violations:
+            print(f" - {violation}")
+        return 1
+
+    print("\nArchitecture compliant!")
+    return 0
+
+
+def check_local_only_llm_runtime(root_dir: Path) -> list[str]:
+    """Return violations of the product local-only LLM runtime boundary."""
+    violations: list[str] = []
+    product_dir = root_dir / "XBrainLab"
+    if product_dir.exists():
+        for py_file in product_dir.rglob("*.py"):
+            if "llm/core/models" in py_file.as_posix():
+                continue
+            content = py_file.read_text(encoding="utf-8")
+            violations.extend(
+                f"{py_file.relative_to(root_dir)} contains forbidden "
+                f"local-only runtime token {token!r}"
+                for token in FORBIDDEN_PRODUCT_LLM_TOKENS
+                if token in content
+            )
+
+    pyproject = root_dir / "pyproject.toml"
+    if pyproject.exists():
+        default_deps = _read_poetry_default_dependency_names(pyproject)
+        violations.extend(
+            f"pyproject.toml default dependencies include {dep_name!r}; "
+            "remote SDKs must stay in optional legacy groups."
+            for dep_name in REMOTE_SDK_DEFAULT_DEPS
+            if dep_name in default_deps
+        )
+
+    return violations
+
+
+def _read_poetry_default_dependency_names(pyproject: Path) -> set[str]:
+    """Return dependency keys from ``[tool.poetry.dependencies]`` only."""
+    deps: set[str] = set()
+    in_default_deps = False
+    for raw_line in pyproject.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("["):
+            in_default_deps = line == "[tool.poetry.dependencies]"
+            continue
+        if not in_default_deps or "=" not in line:
+            continue
+        deps.add(line.split("=", 1)[0].strip().strip('"'))
+    return deps
 
 
 if __name__ == "__main__":

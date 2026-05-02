@@ -1,7 +1,8 @@
-"""LLM configuration management.
+"""Local-only LLM configuration management.
 
-Defines the ``LLMConfig`` dataclass holding all settings for local,
-API, and Gemini inference backends, with JSON persistence support.
+Defines the ``LLMConfig`` dataclass used by the product assistant runtime.
+Legacy remote selections from old settings are accepted only as migration
+input and are normalized back to the local runtime.
 """
 
 import importlib.util
@@ -12,8 +13,6 @@ import warnings
 from dataclasses import asdict, dataclass, field
 from typing import Any, cast
 
-from dotenv import load_dotenv
-
 from XBrainLab.llm.core.model_catalog import (
     allowed_local_model_ids,
     default_local_model_id,
@@ -21,8 +20,6 @@ from XBrainLab.llm.core.model_catalog import (
     local_model_policy_error,
     model_cache_candidates,
 )
-
-LEGACY_REMOTE_RUNTIME_ENV = "XBRAINLAB_SHOW_LEGACY_REMOTE_LLM"
 
 
 def _cuda_available() -> bool:
@@ -35,20 +32,14 @@ def _cuda_available() -> bool:
         return False
 
 
-def legacy_remote_runtime_enabled() -> bool:
-    """Return whether legacy remote assistant runtime UI should be visible."""
-    return os.getenv(LEGACY_REMOTE_RUNTIME_ENV) == "1"
-
-
 @dataclass
 class AssistantRuntimeSelection:
     """Structured runtime-selection truth for the assistant stack.
 
     ``backend_mode`` drives actual backend loading and generation.
     ``model_id`` identifies the concrete model inside that backend family.
-    ``ui_active_mode`` is the user-facing local vs. Gemini mode label that
-    settings, menus, and safety checks can present without guessing from
-    display strings.
+    ``ui_active_mode`` remains as a compatibility field for UI callers; in
+    the product runtime it is always ``local``.
     """
 
     backend_mode: str
@@ -70,15 +61,10 @@ class LLMConfig:
         do_sample: Whether to use sampling (vs. greedy decoding).
         load_in_4bit: Enable 4-bit quantization for local models.
         cache_dir: Directory for caching downloaded model files.
-        inference_mode: Active backend mode (``'local'``, ``'api'``, or
-            ``'gemini'``).
-        api_key: OpenAI-compatible API key (loaded from environment).
-        base_url: Base URL for the OpenAI-compatible API.
-        api_model_name: Model name for the API backend.
-        gemini_api_key: Google Gemini API key (loaded from environment).
-        gemini_model_name: Model name for the Gemini backend.
-        gemini_enabled: Whether the Gemini backend is enabled and verified.
-        active_mode: Currently active UI mode (``'local'`` or ``'gemini'``).
+        inference_mode: Active backend mode. Product runtime normalizes every
+            value to ``'local'``.
+        active_mode: User-facing UI mode. Product runtime normalizes every
+            value to ``'local'``.
         local_model_enabled: Whether local model features are enabled.
 
     """
@@ -99,56 +85,46 @@ class LLMConfig:
         default_factory=lambda: os.path.join(os.path.dirname(__file__), "models"),
     )
 
-    # API Configuration
+    # Runtime selection. Legacy values from env/settings are migrated by
+    # ``__post_init__`` and ``load_from_file``.
     inference_mode: str = field(
         default_factory=lambda: os.getenv("INFERENCE_MODE", "local"),
-    )  # 'local', 'api', or 'gemini'
-    api_key: str = field(
-        default_factory=lambda: os.getenv("OPENAI_API_KEY", ""),
-        repr=False,
     )
-    base_url: str = field(
-        default_factory=lambda: os.getenv(
-            "OPENAI_BASE_URL",
-            "https://api.openai.com/v1",
-        ),
-    )
-    api_model_name: str = "gpt-4o"  # or 'deepseek-chat', etc.
+    active_mode: str = "local"
 
-    # Gemini Configuration
-    gemini_api_key: str = field(
-        default_factory=lambda: os.getenv("GEMINI_API_KEY", ""),
-        repr=False,
-    )
-    gemini_model_name: str = "gemini-2.0-flash"
-    gemini_enabled: bool = False
-
-    # Active Mode
-    active_mode: str = "local"  # 'local' or 'gemini'
     local_model_enabled: bool = True  # Whether local model features are enabled
     local_runtime_notice_acknowledged: bool = False
 
+    def __post_init__(self) -> None:
+        """Migrate any remote runtime request to the local product runtime."""
+        self._force_local_runtime_selection()
+
+    def _force_local_runtime_selection(self) -> None:
+        """Normalize execution/UI modes to the only product runtime."""
+        self.inference_mode = "local"
+        self.active_mode = "local"
+        for legacy_attr in (
+            "api_key",
+            "base_url",
+            "api_model_name",
+            "gemini_api_key",
+            "gemini_model_name",
+            "gemini_enabled",
+        ):
+            if hasattr(self, legacy_attr):
+                delattr(self, legacy_attr)
+
     @staticmethod
     def normalize_backend_mode(mode: str | None, fallback: str = "local") -> str:
-        """Normalize runtime backend identifiers and tolerate legacy labels."""
-        normalized = str(mode or "").strip().lower()
-        if normalized in {"local", "api", "gemini"}:
-            return normalized
-        if "gemini" in normalized:
-            return "gemini"
-        if "local" in normalized:
-            return "local"
-        return fallback
+        """Normalize backend identifiers to the local-only product runtime."""
+        _ = mode, fallback
+        return "local"
 
     @staticmethod
     def normalize_ui_mode(mode: str | None, fallback: str = "local") -> str:
-        """Normalize local-vs-Gemini UI mode labels."""
-        normalized = str(mode or "").strip().lower()
-        if "gemini" in normalized:
-            return "gemini"
-        if "local" in normalized:
-            return "local"
-        return fallback
+        """Normalize UI mode labels to the local-only product runtime."""
+        _ = mode, fallback
+        return "local"
 
     def ui_active_mode_key(self) -> str:
         """Return the normalized user-facing local/Gemini mode."""
@@ -172,20 +148,8 @@ class LLMConfig:
         mode: str | None = None,
     ) -> str:
         """Return the model identifier for any config-like object."""
-        resolved_mode = cls.normalize_backend_mode(
-            mode,
-            fallback=cls.normalize_backend_mode(
-                getattr(config, "inference_mode", None),
-                fallback=cls.normalize_ui_mode(getattr(config, "active_mode", None)),
-            ),
-        )
-        if resolved_mode == "local":
-            return str(getattr(config, "model_name", ""))
-        if resolved_mode == "api":
-            return str(getattr(config, "api_model_name", ""))
-        if resolved_mode == "gemini":
-            return str(getattr(config, "gemini_model_name", ""))
-        return ""
+        _ = mode
+        return str(getattr(config, "model_name", ""))
 
     def assistant_runtime_selection(self) -> AssistantRuntimeSelection:
         """Return the normalized runtime-selection truth for the assistant."""
@@ -197,14 +161,16 @@ class LLMConfig:
         config: Any,
     ) -> AssistantRuntimeSelection:
         """Return normalized runtime truth for any config-like object."""
-        ui_active_mode = cls.normalize_ui_mode(getattr(config, "active_mode", None))
-        backend_mode = cls.normalize_backend_mode(
+        _ = (
             getattr(config, "inference_mode", None),
-            fallback=ui_active_mode,
+            getattr(
+                config,
+                "active_mode",
+                None,
+            ),
         )
-        ui_active_mode = (
-            backend_mode if backend_mode in {"local", "gemini"} else ui_active_mode
-        )
+        backend_mode = "local"
+        ui_active_mode = "local"
         return AssistantRuntimeSelection(
             backend_mode=backend_mode,
             model_id=cls.runtime_backend_model_id_from(config, backend_mode),
@@ -219,35 +185,17 @@ class LLMConfig:
         ui_active_mode: str | None = None,
     ) -> AssistantRuntimeSelection:
         """Persist a normalized backend/model/UI selection into this config."""
-        previous_selection = self.assistant_runtime_selection()
-        resolved_backend = self.normalize_backend_mode(
-            backend_mode,
-            fallback=previous_selection.backend_mode,
-        )
+        _ = backend_mode, ui_active_mode
+        resolved_backend = "local"
 
         if model_id:
-            if resolved_backend == "local":
-                self.model_name = model_id
-            elif resolved_backend == "api":
-                self.api_model_name = model_id
-            elif resolved_backend == "gemini":
-                self.gemini_model_name = model_id
+            policy_error = local_model_policy_error(model_id)
+            if policy_error is not None:
+                raise ValueError(policy_error)
+            self.model_name = model_id
 
         self.inference_mode = resolved_backend
-
-        resolved_ui_mode = (
-            self.normalize_ui_mode(
-                ui_active_mode,
-                fallback=previous_selection.ui_active_mode,
-            )
-            if ui_active_mode is not None
-            else (
-                resolved_backend
-                if resolved_backend in {"local", "gemini"}
-                else previous_selection.ui_active_mode
-            )
-        )
-        self.active_mode = resolved_ui_mode
+        self.active_mode = "local"
         return self.assistant_runtime_selection()
 
     def to_dict(self):
@@ -257,7 +205,8 @@ class LLMConfig:
             A dict representation of all configuration fields.
 
         """
-        return asdict(self)
+        data = asdict(self)
+        return data
 
     def missing_local_runtime_packages(self) -> list[str]:
         """Return optional local-backend packages missing in this environment.
@@ -475,9 +424,9 @@ class LLMConfig:
     def save_to_file(self, filepath: str | None = None):
         """Saves non-sensitive configuration to a JSON file.
 
-        Persists model names, enabled flags, the active mode, and
+        Persists the local model, enabled flag, the active mode, and
         generation parameters (temperature, top_p, max_new_tokens).
-        API keys are intentionally excluded for security.
+        Legacy remote settings are intentionally not persisted.
 
         Args:
             filepath: Path to the output JSON file.  Defaults to
@@ -492,12 +441,8 @@ class LLMConfig:
                 "enabled": self.local_model_enabled,
                 "runtime_notice_acknowledged": (self.local_runtime_notice_acknowledged),
             },
-            "gemini": {
-                "model_name": self.gemini_model_name,
-                "enabled": self.gemini_enabled,
-            },
-            "active_mode": self.active_mode,
-            "inference_mode": self.inference_mode,
+            "active_mode": "local",
+            "inference_mode": "local",
             "generation": {
                 "temperature": self.temperature,
                 "top_p": self.top_p,
@@ -536,11 +481,6 @@ class LLMConfig:
             with open(filepath, encoding="utf-8") as f:
                 data = json.load(f)
 
-            # Load .env BEFORE creating config so field defaults
-            # (api_key, base_url, gemini_api_key, inference_mode)
-            # can read environment variables correctly.
-            load_dotenv()
-
             config = cls()
             if "local" in data:
                 config.model_name = data["local"].get("model_name", config.model_name)
@@ -549,21 +489,11 @@ class LLMConfig:
                     "runtime_notice_acknowledged",
                     False,
                 )
-            if "gemini" in data:
-                config.gemini_model_name = data["gemini"].get(
-                    "model_name",
-                    config.gemini_model_name,
-                )
-                config.gemini_enabled = data["gemini"].get(
-                    "enabled",
-                    data["gemini"].get("verified", False),
-                )
-
+            # Old settings may contain remote active/inference modes. They are
+            # accepted as migration input and immediately normalized to local.
             config.active_mode = data.get("active_mode", "local")
-            config.inference_mode = data.get(
-                "inference_mode",
-                config.active_mode,
-            )
+            config.inference_mode = data.get("inference_mode", config.active_mode)
+            config._force_local_runtime_selection()
 
             # Restore generation parameters
             if "generation" in data:

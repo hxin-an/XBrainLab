@@ -449,7 +449,7 @@ runner、repeat runs、baseline comparison 和 statistical reporting。
 
 ## Agent Runtime Validation
 
-新的 assistant runtime 方向是 local-only。
+assistant product runtime 目前是 local-only。
 
 這代表目前 validation 重點是：
 
@@ -458,14 +458,21 @@ runner、repeat runs、baseline comparison 和 statistical reporting。
 - GPU / CPU fallback 是否可預期。
 - local generation timeout / stop / model reload 是否穩定。
 - local model tool-call output 是否能穩定被 parser / verifier 接住。
+- legacy remote settings 是否會 migrate / fail closed，而不是 instantiate remote backend。
 
 目前已驗證：
 
 - local model catalog、preflight、cache policy、health check 已落地。
 - primary / fallback model cache 已存在且通過 CUDA prompt / structured-output smoke。
+- `LLMConfig`、`LLMEngine`、`AgentWorker` 對 `api` / `gemini` legacy selection 會轉回 local
+  或 fail closed；`reinitialize_agent("Gemini")` 不會建立 remote backend。
+- product package 已移除 remote backend modules；architecture compliance 會掃 product code 中的
+  remote backend class / key env path。
+- model settings dialog 已收斂為 local-only UI；default dependencies 不包含 remote SDK。
 - local runtime smoke 尚未納入 fast dashboard 預設 profile。
 
-Gemini/API 不再列為未來產品驗證目標。source code 目前仍有相關分支，但那是待移除的 current code state。
+Gemini/API 不再列為未來產品驗證目標，也不是 product execution mode。若未來需要歷史比較，
+必須放在 optional legacy fixture，不可由 product code import。
 
 ## Agent Tool-Call Scoring
 
@@ -510,4 +517,5 @@ thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
 - local-only public fixtures 要和 checked-in baseline 分開標示。
 - 每個 thesis claim 最後都應該能對到 command、test、artifact、experiment、score report 或文獻。
 - `dev,test,docs` 是目前已驗證的標準 group；local LLM smoke 已另行驗證，但尚未納入 fast dashboard 預設 profile。
-- assistant 以 local-only 為產品目標；Gemini/API key flow 不是必驗路線，相關 code path 應移除或隔離。
+- assistant 是 local-only product runtime；Gemini/API key flow 不是必驗路線，相關 product code path
+  已移除或由 architecture guard 阻擋回歸。

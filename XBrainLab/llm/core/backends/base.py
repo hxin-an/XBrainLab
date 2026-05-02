@@ -1,7 +1,6 @@
 """Abstract base class for LLM backends.
 
-Defines the interface that all inference backends (local, API, Gemini)
-must implement.
+Defines the interface implemented by the local product inference backend.
 """
 
 from abc import ABC, abstractmethod
@@ -16,7 +15,7 @@ class BaseBackend(ABC):
 
     @abstractmethod
     def load(self):
-        """Initializes backend resources (model weights, API client, etc.)."""
+        """Initializes backend resources such as local model weights."""
 
     @abstractmethod
     def generate_stream(self, messages: list):

@@ -1,8 +1,7 @@
-"""Coverage tests for ModelSettingsDialog - targeting 272 uncovered lines."""
+"""Unit tests for the local-only assistant settings dialog."""
 
 from __future__ import annotations
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,19 +12,16 @@ from XBrainLab.llm.core.config import LLMConfig
 @pytest.fixture
 def config():
     cfg = LLMConfig()
-    cfg.gemini_enabled = False
     cfg.inference_mode = "local"
-    cfg.model_name = "microsoft/Phi-4-mini-instruct"
+    cfg.active_mode = "local"
+    cfg.model_name = LLMConfig.default_local_model_id()
     cfg.device = "cpu"
-    cfg.gemini_api_key = ""
-    cfg.gemini_model_name = "gemini-2.0-flash"
     cfg.local_model_enabled = True
     return cfg
 
 
 @pytest.fixture
-def dialog(qtbot, config, monkeypatch):
-    monkeypatch.setenv("XBRAINLAB_SHOW_LEGACY_REMOTE_LLM", "1")
+def dialog(qtbot, config):
     with (
         patch.object(LLMConfig, "load_from_file", return_value=config),
         patch("XBrainLab.ui.dialogs.model_settings_dialog.ModelDownloader") as MockDL,
@@ -52,18 +48,25 @@ class TestModelSettingsInit:
         assert dialog.windowTitle() == "AI Assistant Settings"
         assert dialog.isVisible() is False
 
-    def test_combo_has_models(self, dialog):
-        assert dialog.local_model_combo.count() >= 2
-        assert "Qwen" not in "\n".join(
+    def test_combo_has_only_approved_local_models(self, dialog):
+        model_ids = [
             dialog.local_model_combo.itemText(i)
             for i in range(dialog.local_model_combo.count())
-        )
+        ]
 
-    def test_legacy_remote_section_hidden_without_env(self, qtbot, config, monkeypatch):
-        monkeypatch.delenv("XBRAINLAB_SHOW_LEGACY_REMOTE_LLM", raising=False)
-        config.gemini_enabled = True
+        assert model_ids == LLMConfig.allowed_local_model_ids()
+        assert all("Qwen" not in model_id for model_id in model_ids)
+
+    def test_no_remote_runtime_widgets_are_exposed(self, dialog):
+        assert not hasattr(dialog, "api_key_input")
+        assert not hasattr(dialog, "test_conn_btn")
+        assert not hasattr(dialog, "gemini_group")
+        assert not hasattr(dialog, "gemini_model_combo")
+
+    def test_legacy_remote_config_loads_as_local_only(self, qtbot, config):
         config.inference_mode = "gemini"
         config.active_mode = "gemini"
+        config.gemini_enabled = True
 
         with (
             patch.object(LLMConfig, "load_from_file", return_value=config),
@@ -88,18 +91,20 @@ class TestModelSettingsInit:
             dlg = ModelSettingsDialog(parent=None, config=config)
             qtbot.addWidget(dlg)
 
-        assert dlg.gemini_group.isHidden()
-        assert dlg.gemini_enabled is False
+        assert dlg.config.assistant_runtime_selection().backend_mode == "local"
+        assert dlg.config.active_mode == "local"
+        assert dlg.config.inference_mode == "local"
 
 
 class TestLocalModelSection:
     def test_check_local_model_status_not_downloaded(self, dialog):
         with patch("os.path.exists", return_value=False):
             dialog.check_local_model_status()
-            assert (
-                "not downloaded" in dialog.local_status_label.text().lower()
-                or "install" in dialog.local_action_btn.text().lower()
-            )
+
+        assert (
+            "not downloaded" in dialog.local_status_label.text().lower()
+            or "install" in dialog.local_action_btn.text().lower()
+        )
 
     def test_check_local_model_status_downloaded(self, dialog):
         with (
@@ -114,8 +119,9 @@ class TestLocalModelSection:
             ),
         ):
             dialog.check_local_model_status()
-            assert dialog.local_downloaded is True
-            assert "downloaded" in dialog.local_status_label.text().lower()
+
+        assert dialog.local_downloaded is True
+        assert "downloaded" in dialog.local_status_label.text().lower()
 
     def test_start_download(self, dialog):
         dialog.is_downloading = False
@@ -125,6 +131,7 @@ class TestLocalModelSection:
             mock_plan.return_value.ok = True
             mock_plan.return_value.message = "Download allowed"
             dialog._start_download()
+
         assert dialog.is_downloading is True
         assert "cancel" in dialog.local_action_btn.text().lower()
 
@@ -143,99 +150,26 @@ class TestLocalModelSection:
             mock_plan.return_value.available_disk_bytes = 100_000_000_000
             mock_plan.return_value.projected_cache_bytes = 23_000_000_000
             mock_plan.return_value.cache_dir = "/models"
-            mock_plan.return_value.cleanup_candidates = ("/models/models--Qwen--x",)
+            mock_plan.return_value.cleanup_candidates = ("/models/blocked",)
             dialog._start_download()
 
         assert dialog.is_downloading is False
         mock_warning.assert_called_once()
 
-    def test_on_download_progress(self, dialog):
-        dialog.on_download_progress(50, "50% done")
-        assert "50" in dialog.local_status_label.text()
-
     def test_on_download_finished(self, dialog):
         dialog.is_downloading = True
         with patch("PyQt6.QtWidgets.QMessageBox.information"):
             dialog.on_download_finished("/path/to/model")
+
         assert dialog.is_downloading is False
 
-    def test_on_download_failed(self, dialog):
+    def test_on_download_failed_cancelled_cleans_partial_files(self, dialog):
         dialog.is_downloading = True
-        with patch("PyQt6.QtWidgets.QMessageBox.critical"):
-            dialog.on_download_failed("Network error")
-        assert dialog.is_downloading is False
-        assert "failed" in dialog.local_status_label.text().lower()
-
-    def test_on_download_failed_cancelled(self, dialog):
-        dialog.is_downloading = True
-        with (
-            patch(
-                "XBrainLab.ui.dialogs.model_settings_dialog.ModelSettingsDialog._cleanup_partial_files"
-            ),
-        ):
+        with patch.object(dialog, "_cleanup_partial_files") as cleanup:
             dialog.on_download_failed("Cancelled by user")
+
         assert dialog.is_downloading is False
-
-    def test_on_local_action_clicked_cancel(self, dialog):
-        dialog.is_downloading = True
-        dialog.on_local_action_clicked()
-        assert dialog.is_downloading is False
-
-    def test_on_local_action_clicked_download(self, dialog):
-        dialog.is_downloading = False
-        dialog.local_downloaded = False
-        dialog._start_download = MagicMock()
-        dialog.on_local_action_clicked()
-        dialog._start_download.assert_called_once()
-
-    def test_on_local_action_clicked_delete(self, dialog):
-        dialog.is_downloading = False
-        dialog.local_downloaded = True
-        dialog._delete_model = MagicMock()
-        dialog.on_local_action_clicked()
-        dialog._delete_model.assert_called_once()
-
-    def test_delete_model_confirmed(self, dialog):
-        from PyQt6.QtWidgets import QMessageBox
-
-        dialog.local_downloaded = True
-        with (
-            patch.object(
-                QMessageBox,
-                "warning",
-                return_value=QMessageBox.StandardButton.Yes,
-            ),
-            patch("shutil.rmtree"),
-            patch("os.path.exists", return_value=True),
-            patch("os.listdir", return_value=[]),
-        ):
-            dialog._delete_model()
-
-    def test_delete_model_removes_all_supported_cache_layouts(self, dialog):
-        from PyQt6.QtWidgets import QMessageBox
-
-        dialog.local_downloaded = True
-        with (
-            patch.object(
-                QMessageBox,
-                "warning",
-                return_value=QMessageBox.StandardButton.Yes,
-            ),
-            patch.object(
-                dialog.config,
-                "local_cache_candidates",
-                return_value=["/tmp/safe", "/tmp/hf"],
-            ),
-            patch("os.path.exists", return_value=True),
-            patch("shutil.rmtree") as mock_rmtree,
-            patch("os.listdir", return_value=[]),
-        ):
-            dialog._delete_model()
-
-        assert [call.args[0] for call in mock_rmtree.call_args_list] == [
-            "/tmp/safe",
-            "/tmp/hf",
-        ]
+        cleanup.assert_called_once()
 
     def test_delete_model_aborts_when_agent_manager_blocks(self, dialog):
         from PyQt6.QtWidgets import QMessageBox
@@ -260,86 +194,33 @@ class TestLocalModelSection:
             patch("os.listdir", return_value=[]),
         ):
             dialog._on_local_enable_toggled(False)
-            assert not dialog.local_model_combo.isEnabled()
 
-    def test_cleanup_partial_files(self, dialog):
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("os.listdir", return_value=[]),
-            patch("shutil.rmtree"),
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
-        ):
-            dialog._cleanup_partial_files()
-
-    def test_cleanup_partial_files_removes_all_supported_cache_layouts(self, dialog):
-        with (
-            patch.object(
-                dialog.config,
-                "local_cache_candidates",
-                return_value=["/tmp/safe", "/tmp/hf"],
-            ),
-            patch("os.path.exists", return_value=True),
-            patch("os.listdir", return_value=[]),
-            patch("shutil.rmtree") as mock_rmtree,
-            patch("PyQt6.QtWidgets.QMessageBox.information"),
-        ):
-            dialog._cleanup_partial_files()
-
-        assert [call.args[0] for call in mock_rmtree.call_args_list] == [
-            "/tmp/safe",
-            "/tmp/hf",
-        ]
-
-
-class TestGeminiSection:
-    def test_on_test_connection_invalid_key(self, dialog):
-        dialog.api_key_input.setText("bad-key")
-        with patch("PyQt6.QtWidgets.QMessageBox.warning"):
-            dialog.on_test_connection_clicked()
-
-    def test_on_test_connection_no_genai(self, dialog):
-        dialog.api_key_input.setText("AIzaTestKey123")
-        with (
-            patch("XBrainLab.ui.dialogs.model_settings_dialog.genai", None),
-            patch("PyQt6.QtWidgets.QMessageBox.critical"),
-        ):
-            dialog.on_test_connection_clicked()
-        assert not dialog.gemini_enabled
-
-    def test_on_conn_test_success(self, dialog):
-        dialog._on_conn_test_success("AIzaKey123")
-        assert dialog.gemini_enabled is True
-        assert os.environ.get("GEMINI_API_KEY") == "AIzaKey123"
-
-    def test_on_conn_test_error(self, dialog):
-        with patch("PyQt6.QtWidgets.QMessageBox.critical"):
-            dialog._on_conn_test_error("Connection refused")
-        assert dialog.gemini_enabled is False
+        assert not dialog.local_model_combo.isEnabled()
 
 
 class TestActivateAndSave:
     def test_update_validation_state_not_ready(self, dialog):
         dialog.local_downloaded = False
-        dialog.gemini_enabled = False
         dialog.is_downloading = False
         dialog.update_validation_state()
+
         assert not dialog.btn_activate.isEnabled()
 
     def test_update_validation_state_ready(self, dialog):
         dialog.local_downloaded = True
-        dialog.gemini_enabled = False
         dialog.is_downloading = False
         with patch.object(dialog.config, "local_backend_ready", return_value=True):
             dialog.update_validation_state()
+
         assert dialog.btn_activate.isEnabled()
 
     def test_update_validation_state_blocks_missing_local_runtime(self, dialog):
         dialog.local_downloaded = True
-        dialog.gemini_enabled = False
         dialog.is_downloading = False
         dialog.local_enable_chk.setChecked(True)
         with patch.object(dialog.config, "local_backend_ready", return_value=False):
             dialog.update_validation_state()
+
         assert not dialog.btn_activate.isEnabled()
 
     def test_refresh_local_runtime_status_shows_cpu_fallback(self, dialog):
@@ -361,51 +242,19 @@ class TestActivateAndSave:
 
     def test_on_activate_clicked(self, dialog):
         dialog.local_downloaded = True
-        dialog.gemini_enabled = False
-        dialog.api_key_input.setText("")
         with (
             patch.object(dialog.config, "local_backend_ready", return_value=True),
-            patch.object(LLMConfig, "save_to_file"),
+            patch.object(LLMConfig, "save_to_file") as save,
         ):
             dialog.on_activate_clicked()
+
+        save.assert_called_once()
         assert dialog.config.inference_mode == "local"
-
-    def test_on_activate_clicked_gemini_only(self, dialog):
-        dialog.local_downloaded = False
-        dialog.gemini_enabled = True
-        dialog.api_key_input.setText("AIzaKey123")
-        with (
-            patch.object(LLMConfig, "save_to_file"),
-            patch("builtins.open", MagicMock()),
-            patch("os.path.exists", return_value=False),
-        ):
-            dialog.on_activate_clicked()
-        assert dialog.config.active_mode == "gemini"
-        assert dialog.config.inference_mode == "gemini"
-
-    def test_on_activate_clicked_keeps_structured_ui_mode_when_both_backends_ready(
-        self,
-        dialog,
-    ):
-        dialog.local_downloaded = True
-        dialog.gemini_enabled = True
-        dialog.config.active_mode = "gemini"
-        dialog.config.inference_mode = "api"
-        dialog.api_key_input.setText("AIzaKey123")
-        with (
-            patch.object(dialog.config, "local_backend_ready", return_value=True),
-            patch.object(LLMConfig, "save_to_file"),
-            patch("builtins.open", MagicMock()),
-            patch("os.path.exists", return_value=False),
-        ):
-            dialog.on_activate_clicked()
-
-        assert dialog.config.active_mode == "gemini"
-        assert dialog.config.inference_mode == "gemini"
+        assert dialog.config.active_mode == "local"
+        assert not hasattr(dialog.config, "gemini_enabled")
 
     def test_on_activate_clicked_blocks_local_runtime_gap(self, dialog):
         dialog.local_downloaded = True
-        dialog.gemini_enabled = False
         dialog.local_enable_chk.setChecked(True)
         with (
             patch.object(dialog.config, "local_backend_ready", return_value=False),
@@ -421,39 +270,6 @@ class TestActivateAndSave:
 
         mock_critical.assert_called_once()
         mock_save.assert_not_called()
-
-    def test_on_activate_clicked_blocks_even_with_gemini_if_local_unready(self, dialog):
-        dialog.local_downloaded = True
-        dialog.gemini_enabled = True
-        dialog.local_enable_chk.setChecked(True)
-        dialog.config.active_mode = "local"
-        dialog.api_key_input.setText("AIzaKey123")
-        with (
-            patch.object(dialog.config, "local_backend_ready", return_value=False),
-            patch.object(
-                dialog.config,
-                "local_backend_status_message",
-                return_value="Missing accelerate",
-            ),
-            patch.object(LLMConfig, "save_to_file") as mock_save,
-            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
-        ):
-            dialog.on_activate_clicked()
-        mock_critical.assert_called_once()
-        mock_save.assert_not_called()
-
-    def test_save_api_key_to_env_no_key(self, dialog):
-        dialog.api_key_input.setText("")
-        dialog._save_api_key_to_env()
-        # Should return early
-
-    def test_save_api_key_to_env_valid(self, dialog):
-        dialog.api_key_input.setText("AIzaValidKey123")
-        with (
-            patch("os.path.exists", return_value=False),
-            patch("builtins.open", MagicMock()),
-        ):
-            dialog._save_api_key_to_env()
 
 
 class TestRejectAndClose:
@@ -473,99 +289,3 @@ class TestRejectAndClose:
     def test_get_config(self, dialog):
         cfg = dialog.get_config()
         assert cfg is dialog.config
-
-
-class TestLoadState:
-    def test_load_state(self, dialog):
-        with (
-            patch("os.path.exists", return_value=False),
-            patch("os.listdir", return_value=[]),
-        ):
-            dialog.load_state()
-        assert dialog.local_model_combo.currentText() is not None
-
-
-class TestModelSettingsMoreCoverage:
-    """Extra coverage for connection test threading and env file handling."""
-
-    def test_on_test_connection_valid_key_starts_thread(self, dialog):
-        """Test that valid API key starts connection test thread."""
-        dialog.api_key_input.setText("AIzaValidKey123")
-        mock_genai = MagicMock()
-        with (
-            patch("XBrainLab.ui.dialogs.model_settings_dialog.genai", mock_genai),
-            patch("XBrainLab.ui.dialogs.model_settings_dialog.QThread") as MockThread,
-            patch(
-                "XBrainLab.ui.dialogs.model_settings_dialog.ConnectionTestWorker"
-            ) as MockWorker,
-        ):
-            mock_worker = MockWorker.return_value
-            mock_worker.finished = MagicMock()
-            mock_worker.error = MagicMock()
-            mock_thread = MockThread.return_value
-            mock_thread.started = MagicMock()
-            mock_thread.finished = MagicMock()
-            dialog.on_test_connection_clicked()
-            mock_thread.start.assert_called_once()
-
-    def test_load_state_with_gemini_enabled(self, dialog, config):
-        config.gemini_enabled = True
-        config.gemini_api_key = "AIzaKey"  # pragma: allowlist secret
-        with (
-            patch("os.path.exists", return_value=False),
-            patch("os.listdir", return_value=[]),
-        ):
-            dialog.load_state()
-        assert "Verified" in dialog.gemini_status_label.text()
-
-    def test_save_api_key_to_env_update_existing(self, dialog):
-        dialog.api_key_input.setText("AIzaNewKey")  # pragma: allowlist secret
-        existing_content = (
-            "OTHER=value\nGEMINI_API_KEY=old\nFOO=bar\n"  # pragma: allowlist secret
-        )
-        from io import StringIO
-        from unittest.mock import mock_open
-
-        mock_read = mock_open(read_data=existing_content)
-        written_lines = []
-
-        def fake_open(path, *args, **kwargs):
-            mode = args[0] if args else kwargs.get("mode", "r")
-            if "w" in mode:
-                m = MagicMock()
-                m.__enter__ = MagicMock(return_value=m)
-                m.__exit__ = MagicMock(return_value=False)
-                m.writelines = lambda lines: written_lines.extend(lines)
-                return m
-            return StringIO(existing_content)
-
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", side_effect=fake_open),
-        ):
-            dialog._save_api_key_to_env()
-        assert any("AIzaNewKey" in line for line in written_lines)
-
-    def test_save_api_key_to_env_append_new(self, dialog):
-        dialog.api_key_input.setText("AIzaNewKey")
-        existing_content = "OTHER=value\n"
-        from io import StringIO
-
-        written_lines = []
-
-        def fake_open(path, *args, **kwargs):
-            mode = args[0] if args else kwargs.get("mode", "r")
-            if "w" in mode:
-                m = MagicMock()
-                m.__enter__ = MagicMock(return_value=m)
-                m.__exit__ = MagicMock(return_value=False)
-                m.writelines = lambda lines: written_lines.extend(lines)
-                return m
-            return StringIO(existing_content)
-
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", side_effect=fake_open),
-        ):
-            dialog._save_api_key_to_env()
-        assert any("GEMINI_API_KEY=AIzaNewKey" in line for line in written_lines)

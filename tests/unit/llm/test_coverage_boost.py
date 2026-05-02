@@ -444,17 +444,16 @@ class TestLLMConfig:
 class TestLLMEngine:
     """Cover engine.py gaps."""
 
-    def test_get_current_model_id_gemini(self):
-        """L61: returns gemini model name."""
+    def test_get_current_model_id_legacy_request_uses_local_model(self):
+        """Legacy remote model ID lookup returns the local product model."""
         from XBrainLab.llm.core.engine import LLMEngine
 
         e = LLMEngine.__new__(LLMEngine)
         e.config = MagicMock()
-        e.config.inference_mode = "gemini"
-        e.config.gemini_model_name = "gemini-pro"
+        e.config.model_name = "microsoft/Phi-4-mini-instruct"
         e.backends = {}
         result = e._get_current_model_id("gemini")
-        assert result == "gemini-pro"
+        assert result == "microsoft/Phi-4-mini-instruct"
 
     def test_stale_backend_reloads(self):
         """L83, L94: stale backend deleted and reloaded."""
@@ -462,22 +461,20 @@ class TestLLMEngine:
 
         e = LLMEngine.__new__(LLMEngine)
         e.config = MagicMock()
-        e.config.inference_mode = "gemini"
-        e.config.gemini_model_name = "gemini-2.0"
+        e.config.inference_mode = "local"
+        e.config.model_name = "microsoft/Phi-3.5-mini-instruct"
         mock_backend = MagicMock()
-        e.backends = {"gemini": mock_backend}
-        e._backend_model_ids = {"gemini": "gemini-1.5"}
+        e.backends = {"local": mock_backend}
+        e._backend_model_ids = {"local": "microsoft/Phi-4-mini-instruct"}
         e.active_backend = mock_backend
 
         new_backend = MagicMock()
-        with patch(
-            "XBrainLab.llm.core.backends.gemini.GeminiBackend",
-            return_value=new_backend,
-        ):
-            e.switch_backend("gemini")
+        with patch("XBrainLab.llm.core.backends.local.LocalBackend") as mock_local:
+            mock_local.return_value = new_backend
+            e.switch_backend("local")
         assert e.active_backend is new_backend
-        assert e.backends["gemini"] is new_backend
-        assert e._backend_model_ids["gemini"] == "gemini-2.0"
+        assert e.backends["local"] is new_backend
+        assert e._backend_model_ids["local"] == "microsoft/Phi-3.5-mini-instruct"
 
     def test_generate_stream_no_backend(self):
         """L135: raise RuntimeError if no backend."""
@@ -494,84 +491,17 @@ class TestLLMEngine:
             list(e.generate_stream([]))
 
 
-# ── backends: api.py, gemini.py, local.py ───────────────────
+# ── backends: local.py only ─────────────────────────────────
 
 
-class TestAPIBackend:
-    """Cover api.py gaps."""
+class TestRemovedRemoteBackends:
+    """Guard remote backend modules stay out of product code."""
 
-    def test_load_missing_openai(self):
-        """L59: ImportError when OpenAI not installed."""
-        from XBrainLab.llm.core.backends.api import APIBackend
+    def test_remote_backend_modules_are_absent(self):
+        import importlib.util
 
-        b = APIBackend.__new__(APIBackend)
-        b.config = MagicMock()
-        b.config.api_key = ""
-        with (
-            patch("XBrainLab.llm.core.backends.api.OpenAI", None),
-            pytest.raises(ImportError),
-        ):
-            b.load()
-
-    def test_load_env_fallback(self):
-        """L67, L70: env var fallback and no-key warning."""
-        from XBrainLab.llm.core.backends.api import APIBackend
-
-        b = APIBackend.__new__(APIBackend)
-        b.config = MagicMock()
-        b.config.api_key = ""
-        b.config.api_model_name = "gpt-4"
-        mock_openai = MagicMock()
-        with (
-            patch("XBrainLab.llm.core.backends.api.OpenAI", mock_openai),
-            patch.dict("os.environ", {"OPENAI_API_KEY": ""}, clear=False),
-        ):
-            b.load()  # should warn but not crash
-
-    def test_generate_stream_yields(self):
-        """L106: generates content chunks."""
-        from XBrainLab.llm.core.backends.api import APIBackend
-
-        b = APIBackend.__new__(APIBackend)
-        b.config = MagicMock()
-        b.config.api_model_name = "gpt-4"
-        b.config.temperature = 0.7
-        b.config.top_p = 0.9
-        b.config.max_new_tokens = 128
-        b.client = MagicMock()
-
-        chunk = MagicMock()
-        chunk.choices = [MagicMock()]
-        chunk.choices[0].delta.content = "Hello"
-        b.client.chat.completions.create.return_value = iter([chunk])
-
-        result = list(b.generate_stream([{"role": "user", "content": "hi"}]))
-        assert "Hello" in result
-
-
-class TestGeminiBackendExtra:
-    """Cover gemini.py L107-108: system message extraction."""
-
-    def test_system_message_extracted(self):
-        """L107-108: system parts extracted from messages."""
-        from XBrainLab.llm.core.backends.gemini import GeminiBackend
-
-        b = GeminiBackend.__new__(GeminiBackend)
-        b.config = MagicMock()
-        b.config.gemini_model_name = "gemini-2.0"
-        b.client = MagicMock()
-        mock_chat = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.text = "response"
-        mock_chat.send_message_stream.return_value = iter([mock_resp])
-        b.client.chats.create.return_value = mock_chat
-
-        msgs = [
-            {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "hello"},
-        ]
-        result = list(b.generate_stream(msgs))
-        assert len(result) > 0
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.api") is None
+        assert importlib.util.find_spec("XBrainLab.llm.core.backends.gemini") is None
 
 
 class TestLocalBackendExtra:

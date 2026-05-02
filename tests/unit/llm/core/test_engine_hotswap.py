@@ -22,17 +22,12 @@ class TestLLMEngineHotSwap:
         assert engine.active_backend is None
 
     @patch("XBrainLab.llm.core.backends.local.LocalBackend")
-    @patch("XBrainLab.llm.core.backends.gemini.GeminiBackend")
-    @patch("XBrainLab.llm.core.backends.api.APIBackend")
-    def test_switch_backend_caching(self, mock_api, mock_gemini, mock_local, engine):
+    def test_switch_backend_caching(self, mock_local, engine):
         """
-        Verify that switching backends caches them and doesn't re-instantiate.
+        Verify that local backend caching survives legacy remote requests.
         """
         # 1. Setup Mock Config to match Engine Config (prevent stale detection)
         mock_local.return_value.config.model_name = engine.config.model_name
-        mock_gemini.return_value.config.gemini_model_name = (
-            engine.config.gemini_model_name
-        )
 
         # 2. Switch to Local
         engine.switch_backend("local")
@@ -40,11 +35,10 @@ class TestLLMEngineHotSwap:
         assert "local" in engine.backends
         mock_local.assert_called_once()  # Created once
 
-        # 2. Switch to Gemini
+        # 2. A legacy remote request resolves to the cached local backend.
         engine.switch_backend("gemini")
-        assert engine.active_backend == mock_gemini.return_value
-        assert "gemini" in engine.backends
-        mock_gemini.assert_called_once()
+        assert engine.active_backend == mock_local.return_value
+        assert "gemini" not in engine.backends
 
         # 3. Switch back to Local (Hot-Swap Check)
         engine.switch_backend("local")

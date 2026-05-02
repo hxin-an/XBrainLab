@@ -11,14 +11,13 @@ the LLM can:
 
 Usage:
     poetry run python scripts/agent/benchmarks/multiturn_bench.py \\
-        --model gemini --delay 1 --timeout 60
+        --model phi --delay 1 --timeout 60
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -111,12 +110,6 @@ def run_multiturn_benchmark(
     """Run multi-turn conversation benchmark."""
 
     MODEL_CONFIGS = {
-        "gemini": {
-            "inference_mode": "gemini",
-            "gemini_model_name": os.environ.get(
-                "GEMINI_MODEL_NAME", "gemini-2.0-flash"
-            ),
-        },
         "phi": {"model_name": PRIMARY_LOCAL_MODEL_ID, "inference_mode": "local"},
         "phi_fallback": {
             "model_name": FALLBACK_LOCAL_MODEL_ID,

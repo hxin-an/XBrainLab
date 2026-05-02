@@ -14,15 +14,13 @@ Modes:
                             validation)
 
 Usage:
-    poetry run benchmark-llm --model gemini
-    poetry run benchmark-llm --model gemini --mode all-visible
     poetry run benchmark-llm --model phi --dataset test.json
+    poetry run benchmark-llm --model phi_fallback --mode all-visible
 """
 
 import argparse
 import csv
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -526,12 +524,6 @@ def run_benchmark(
         "phi_fallback": {
             "model_name": FALLBACK_LOCAL_MODEL_ID,
             "inference_mode": "local",
-        },
-        "gemini": {
-            "inference_mode": "gemini",
-            "gemini_model_name": os.environ.get(
-                "GEMINI_MODEL_NAME", "gemini-2.0-flash"
-            ),
         },
     }
 

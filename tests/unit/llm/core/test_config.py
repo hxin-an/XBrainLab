@@ -18,11 +18,11 @@ class TestDefaults:
 
     def test_default_inference_mode(self):
         cfg = LLMConfig()
-        assert cfg.inference_mode in ("local", "api", "gemini")
+        assert cfg.inference_mode == "local"
 
-    def test_default_gemini_enabled(self):
+    def test_default_has_no_remote_enabled_flag(self):
         cfg = LLMConfig()
-        assert cfg.gemini_enabled is False
+        assert not hasattr(cfg, "gemini_enabled")
 
     def test_default_active_mode(self):
         cfg = LLMConfig()
@@ -44,7 +44,7 @@ class TestToDict:
         assert isinstance(d, dict)
         assert "model_name" in d
         assert "device" in d
-        assert "gemini_enabled" in d
+        assert "gemini_enabled" not in d
         assert "active_mode" in d
 
 
@@ -64,13 +64,13 @@ class TestSaveAndLoad:
 
         loaded = LLMConfig.load_from_file(filepath)
         assert loaded is not None
-        assert loaded.active_mode == "gemini"
-        assert loaded.gemini_enabled is True
-        assert loaded.gemini_model_name == "gemini-2.0-flash"
+        assert loaded.active_mode == "local"
+        assert loaded.inference_mode == "local"
+        assert not hasattr(loaded, "gemini_enabled")
         assert loaded.model_name == "TestModel"
         assert loaded.local_runtime_notice_acknowledged is True
 
-    def test_save_and_load_preserves_inference_mode_separately(self, tmp_path):
+    def test_save_and_load_migrates_remote_inference_mode(self, tmp_path):
         filepath = str(tmp_path / "settings.json")
         cfg = LLMConfig()
         cfg.active_mode = "local"
@@ -81,25 +81,27 @@ class TestSaveAndLoad:
         loaded = LLMConfig.load_from_file(filepath)
         assert loaded is not None
         assert loaded.active_mode == "local"
-        assert loaded.inference_mode == "api"
+        assert loaded.inference_mode == "local"
 
     def test_load_from_nonexistent_returns_none(self):
         result = LLMConfig.load_from_file("/nonexistent/path/settings.json")
         assert result is None
 
-    def test_save_excludes_api_keys(self, tmp_path):
+    def test_save_excludes_legacy_remote_settings(self, tmp_path):
         filepath = str(tmp_path / "settings.json")
         cfg = LLMConfig()
-        cfg.api_key = "sk-secret-key"  # pragma: allowlist secret
-        cfg.gemini_api_key = "AIza-secret"  # pragma: allowlist secret
+        cfg.api_model_name = "gpt-4o"
+        cfg.gemini_model_name = "gemini-2.0-flash"
+        cfg.gemini_enabled = True
         cfg.save_to_file(filepath)
 
         with open(filepath) as f:
             data = json.load(f)
 
         raw_text = json.dumps(data)
-        assert "sk-secret-key" not in raw_text
-        assert "AIza-secret" not in raw_text
+        assert "gpt-4o" not in raw_text
+        assert "gemini-2.0-flash" not in raw_text
+        assert "gemini" not in raw_text
 
     def test_load_backwards_compat_gemini_verified(self, tmp_path):
         """Ensure old 'verified' key is read as 'enabled'."""
@@ -114,8 +116,9 @@ class TestSaveAndLoad:
 
         loaded = LLMConfig.load_from_file(filepath)
         assert loaded is not None
-        assert loaded.gemini_enabled is True
-        assert loaded.inference_mode == "gemini"
+        assert not hasattr(loaded, "gemini_enabled")
+        assert loaded.active_mode == "local"
+        assert loaded.inference_mode == "local"
 
     def test_load_malformed_json_returns_none(self, tmp_path):
         filepath = str(tmp_path / "settings.json")
@@ -270,7 +273,7 @@ class TestLocalRuntimeReadiness:
 
 
 class TestAssistantRuntimeSelection:
-    def test_selection_keeps_runtime_backend_distinct_from_ui_mode(self):
+    def test_selection_migrates_legacy_remote_runtime_to_local(self):
         cfg = LLMConfig()
         cfg.active_mode = "gemini"
         cfg.inference_mode = "api"
@@ -278,9 +281,9 @@ class TestAssistantRuntimeSelection:
 
         selection = cfg.assistant_runtime_selection()
 
-        assert selection.backend_mode == "api"
-        assert selection.model_id == "gpt-4o"
-        assert selection.ui_active_mode == "gemini"
+        assert selection.backend_mode == "local"
+        assert selection.model_id == cfg.model_name
+        assert selection.ui_active_mode == "local"
 
     def test_apply_runtime_selection_updates_model_id_and_ui_mode(self):
         cfg = LLMConfig()
@@ -289,13 +292,13 @@ class TestAssistantRuntimeSelection:
         cfg.model_name = "microsoft/Phi-Old"
 
         selection = cfg.apply_runtime_selection(
-            "Gemini (Remote)",
-            model_id="gemini-2.0-flash",
+            "local",
+            model_id=LLMConfig.fallback_local_model_id(),
         )
 
-        assert cfg.inference_mode == "gemini"
-        assert cfg.active_mode == "gemini"
-        assert cfg.gemini_model_name == "gemini-2.0-flash"
-        assert selection.backend_mode == "gemini"
-        assert selection.model_id == "gemini-2.0-flash"
-        assert selection.ui_active_mode == "gemini"
+        assert cfg.inference_mode == "local"
+        assert cfg.active_mode == "local"
+        assert cfg.model_name == LLMConfig.fallback_local_model_id()
+        assert selection.backend_mode == "local"
+        assert selection.model_id == LLMConfig.fallback_local_model_id()
+        assert selection.ui_active_mode == "local"

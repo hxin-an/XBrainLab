@@ -43,8 +43,11 @@ class TestInitializeAgent:
             patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng,
         ):
             cfg = LLMConfig()
-            cfg.model_name = "test-model"
-            cfg.inference_mode = "gemini"
+            cfg.model_name = LLMConfig.default_local_model_id()
+            cfg.inference_mode = "local"
+            cfg.available_local_model_id = MagicMock(
+                return_value=(cfg.model_name, "Local runtime ready.")
+            )
             mock_load.return_value = cfg
             engine = MockEng.return_value
             worker.initialize_agent()
@@ -57,8 +60,11 @@ class TestInitializeAgent:
             patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEng,
         ):
             saved = LLMConfig()
-            saved.inference_mode = "gemini"
-            saved.model_name = "gemini-2.0-flash"
+            saved.inference_mode = "local"
+            saved.model_name = LLMConfig.default_local_model_id()
+            saved.available_local_model_id = MagicMock(
+                return_value=(saved.model_name, "Local runtime ready.")
+            )
             mock_load.return_value = saved
             worker.initialize_agent()
             MockEng.assert_called_once_with(saved)
@@ -189,7 +195,7 @@ class TestGenerateFromMessages:
             gt.start.assert_called_once()
             timer.start.assert_called_once_with(30000)
 
-    def test_syncs_config_and_switches_backend(self, worker):
+    def test_syncs_legacy_remote_config_without_remote_switch(self, worker):
         engine = MagicMock()
         engine.config = MagicMock()
         engine.config.inference_mode = "local"
@@ -200,7 +206,10 @@ class TestGenerateFromMessages:
 
         fresh = LLMConfig()
         fresh.inference_mode = "gemini"
-        fresh.gemini_model_name = "gemini-2.0-flash"
+        fresh.active_mode = "gemini"
+        fresh.available_local_model_id = MagicMock(
+            return_value=(fresh.model_name, "Local runtime ready.")
+        )
 
         with (
             patch("XBrainLab.llm.agent.worker.GenerationThread"),
@@ -212,7 +221,7 @@ class TestGenerateFromMessages:
         ):
             msgs = [{"role": "user", "content": "test"}]
             worker.generate_from_messages(msgs)
-            engine.switch_backend.assert_called_once_with("gemini")
+            engine.switch_backend.assert_not_called()
 
     def test_reload_local_backend_when_model_id_changes_same_mode(self, worker):
         engine = MagicMock()
@@ -251,12 +260,15 @@ class TestGenerateFromMessages:
         engine.switch_backend.assert_called_once_with("local")
         assert engine.active_backend is reloaded_backend
 
-    def test_reload_gemini_backend_when_model_id_changes_same_mode(self, worker):
+    def test_legacy_remote_config_sync_switches_to_local_when_model_changes(
+        self,
+        worker,
+    ):
         engine = MagicMock()
         engine.config = MagicMock()
         engine.config.inference_mode = "gemini"
         engine.config.active_mode = "gemini"
-        engine.config.gemini_model_name = "gemini-1.5-flash"
+        engine.config.model_name = "microsoft/Phi-4-mini-instruct"
         engine.config.timeout = 60
         stale_backend = object()
         reloaded_backend = object()
@@ -266,8 +278,11 @@ class TestGenerateFromMessages:
         fresh = LLMConfig()
         fresh.inference_mode = "gemini"
         fresh.active_mode = "gemini"
-        fresh.gemini_model_name = "gemini-2.0-flash"
+        fresh.model_name = "microsoft/Phi-3.5-mini-instruct"
         fresh.timeout = 60
+        fresh.available_local_model_id = MagicMock(
+            return_value=(fresh.model_name, "Local runtime ready.")
+        )
 
         def reload_backend(mode):
             engine.active_backend = reloaded_backend
@@ -284,7 +299,7 @@ class TestGenerateFromMessages:
 
             worker.generate_from_messages([{"role": "user", "content": "test"}])
 
-        engine.switch_backend.assert_called_once_with("gemini")
+        engine.switch_backend.assert_called_once_with("local")
         assert engine.active_backend is reloaded_backend
 
     def test_fails_closed_when_config_sync_backend_switch_fails(self, worker):
@@ -364,17 +379,18 @@ class TestOnGenerationError:
 
 
 class TestReinitializeAgent:
-    def test_gemini_mode(self, worker):
+    def test_legacy_remote_mode_is_rejected(self, worker):
         engine = MagicMock()
         engine.config = LLMConfig()
         engine.config.active_mode = "local"
         worker.engine = engine
         with patch.object(engine.config, "save_to_file") as mock_save:
             worker.reinitialize_agent("Gemini")
-        engine.switch_backend.assert_called_once_with("gemini")
-        mock_save.assert_called_once()
-        assert engine.config.active_mode == "gemini"
-        assert engine.config.inference_mode == "gemini"
+        engine.switch_backend.assert_not_called()
+        mock_save.assert_not_called()
+        worker.error.emit.assert_called_once()
+        assert engine.config.active_mode == "local"
+        assert engine.config.inference_mode == "local"
 
     def test_local_mode(self, worker):
         engine = MagicMock()
@@ -388,19 +404,17 @@ class TestReinitializeAgent:
         assert engine.config.active_mode == "local"
         assert engine.config.inference_mode == "local"
 
-    def test_api_mode(self, worker):
+    def test_unknown_non_catalog_model_is_rejected(self, worker):
         engine = MagicMock()
         engine.config = LLMConfig()
-        engine.config.active_mode = "gemini"
-        engine.config.inference_mode = "gemini"
         worker.engine = engine
         with patch.object(engine.config, "save_to_file") as mock_save:
             worker.reinitialize_agent("gpt-4o")
-        engine.switch_backend.assert_called_once_with("api")
-        mock_save.assert_called_once()
-        assert engine.config.api_model_name == "gpt-4o"
-        assert engine.config.active_mode == "gemini"
-        assert engine.config.inference_mode == "api"
+        engine.switch_backend.assert_not_called()
+        mock_save.assert_not_called()
+        worker.error.emit.assert_called_once()
+        assert engine.config.active_mode == "local"
+        assert engine.config.inference_mode == "local"
 
     def test_no_engine_returns(self, worker):
         worker.engine = None
@@ -414,7 +428,7 @@ class TestReinitializeAgent:
         engine.config.active_mode = "local"
         engine.switch_backend.side_effect = RuntimeError("fail")
         worker.engine = engine
-        worker.reinitialize_agent("Gemini")
+        worker.reinitialize_agent("Local")
         worker.error.emit.assert_called_once()
         assert engine.config.inference_mode == "local"
         assert engine.config.active_mode == "local"

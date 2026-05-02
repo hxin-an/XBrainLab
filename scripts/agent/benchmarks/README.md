@@ -30,7 +30,7 @@ poetry run python scripts/agent/benchmarks/validate_architecture.py
 
 | 腳本 | 用途 | 需 API |
 |------|------|--------|
-| `simple_bench.py` | Legacy stage-aware tool-call smoke | No for `phi`; yes for `gemini` legacy path |
+| `simple_bench.py` | Legacy stage-aware tool-call smoke | No; local catalog models only |
 | `rag_experiment.py` | RAG 檢索品質 (Recall, MRR) | No |
 | `validate_gold_set.py` | 資料集 schema + 分割完整性 | No |
 | `validate_architecture.py` | Pipeline 架構靜態驗證 | No |
