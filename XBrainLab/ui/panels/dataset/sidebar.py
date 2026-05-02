@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import ResetSessionCommand
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -222,7 +224,19 @@ class DatasetSidebar(QWidget):
         )
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.controller.clean_dataset()
+                result = execute_application_command(
+                    self,
+                    ResetSessionCommand(confirmed=True),
+                )
+                if result is None:
+                    self.controller.clean_dataset()
+                elif result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to clear dataset: {result.message}",
+                    )
+                    return
                 self.panel.update_panel()
                 QMessageBox.information(self, "Success", "Dataset cleared.")
             except Exception as e:

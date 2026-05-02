@@ -10,9 +10,18 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application import (
+    CommandName,
+    CreateEpochCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+)
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import blocked_reason, get_command_capability
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.preprocess import (
     EpochingDialog,
@@ -308,6 +317,9 @@ class PreprocessSidebar(QWidget):
         if self.panel and hasattr(self.panel, "update_panel"):
             self.panel.update_panel()
 
+    def _show_command_failure(self, title: str, message: str) -> None:
+        QMessageBox.critical(self, title, message)
+
     def open_filtering(self):
         """Open the filtering dialog and apply bandpass/notch filters."""
         if self.check_lock() or not self.check_data_loaded():
@@ -319,7 +331,30 @@ class PreprocessSidebar(QWidget):
             if params:
                 l_freq, h_freq, notch_freqs = params
                 try:
-                    self.controller.apply_filter(l_freq, h_freq, notch_freqs)
+                    result = None
+                    if l_freq is not None and h_freq is not None:
+                        result = execute_application_command(
+                            self,
+                            PreprocessCommand(
+                                operation=PreprocessOperation.BANDPASS,
+                                low_freq=l_freq,
+                                high_freq=h_freq,
+                                notch_freq=notch_freqs,
+                            ),
+                        )
+                    elif notch_freqs is not None:
+                        result = execute_application_command(
+                            self,
+                            PreprocessCommand(
+                                operation=PreprocessOperation.NOTCH,
+                                notch_freq=notch_freqs,
+                            ),
+                        )
+                    if result is None:
+                        self.controller.apply_filter(l_freq, h_freq, notch_freqs)
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
                     self.notify_update()
                     QMessageBox.information(self, "Success", "Filtering applied.")
                 except Exception as e:
@@ -335,7 +370,18 @@ class PreprocessSidebar(QWidget):
             sfreq = dialog.get_params()
             if sfreq:
                 try:
-                    self.controller.apply_resample(sfreq)
+                    result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.RESAMPLE,
+                            rate=sfreq,
+                        ),
+                    )
+                    if result is None:
+                        self.controller.apply_resample(sfreq)
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
                     self.notify_update()
                     QMessageBox.information(self, "Success", "Resampling applied.")
                 except Exception as e:
@@ -352,7 +398,23 @@ class PreprocessSidebar(QWidget):
             ref_channels = dialog.get_params()
             if ref_channels:
                 try:
-                    self.controller.apply_rereference(ref_channels)
+                    result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.REREFERENCE,
+                            method=ref_channels
+                            if isinstance(ref_channels, str)
+                            else None,
+                            channels=ref_channels
+                            if isinstance(ref_channels, list)
+                            else None,
+                        ),
+                    )
+                    if result is None:
+                        self.controller.apply_rereference(ref_channels)
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
                     self.notify_update()
                     QMessageBox.information(self, "Success", "Re-reference applied.")
                 except Exception as e:
@@ -368,7 +430,18 @@ class PreprocessSidebar(QWidget):
             method = dialog.get_params()
             if method:
                 try:
-                    self.controller.apply_normalization(method)
+                    result = execute_application_command(
+                        self,
+                        PreprocessCommand(
+                            operation=PreprocessOperation.NORMALIZE,
+                            method=method,
+                        ),
+                    )
+                    if result is None:
+                        self.controller.apply_normalization(method)
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
                     self.notify_update()
                     QMessageBox.information(self, "Success", "Normalization applied.")
                 except Exception as e:
@@ -395,12 +468,29 @@ class PreprocessSidebar(QWidget):
             if params:
                 baseline, selected_events, tmin, tmax = params
                 try:
-                    if self.controller.apply_epoching(
-                        baseline,
-                        selected_events,
-                        tmin,
-                        tmax,
-                    ):
+                    result = execute_application_command(
+                        self,
+                        CreateEpochCommand(
+                            t_min=tmin,
+                            t_max=tmax,
+                            baseline=baseline,
+                            event_ids=selected_events,
+                        ),
+                    )
+                    applied = True
+                    if result is None:
+                        applied = bool(
+                            self.controller.apply_epoching(
+                                baseline,
+                                selected_events,
+                                tmin,
+                                tmax,
+                            )
+                        )
+                    elif result.failed:
+                        self._show_command_failure("Error", result.message)
+                        return
+                    if applied:
                         self.notify_update()
                         # Update main window info if needed (legacy)
                         if self.main_window and hasattr(

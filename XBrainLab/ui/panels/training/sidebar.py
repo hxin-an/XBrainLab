@@ -10,8 +10,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import CommandName
-from XBrainLab.ui.application_capabilities import blocked_reason, get_command_capability
+from XBrainLab.backend.application import CommandName, StopTrainingCommand, TrainCommand
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 
 # Dialog imports will be local to avoid circular deps if needed,
@@ -307,7 +311,16 @@ class TrainingSidebar(QWidget):
                 )
                 return
             if not self.controller.is_training():
-                self.controller.start_training()
+                result = execute_application_command(self, TrainCommand())
+                if result is None:
+                    self.controller.start_training()
+                elif result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Failed to start training: {result.message}",
+                    )
+                    return
                 self.btn_stop.setEnabled(True)
                 self.check_ready_to_train()
                 # Panel should know training started to update log?
@@ -318,7 +331,16 @@ class TrainingSidebar(QWidget):
     def stop_training(self):
         """Request the controller to stop the current training run."""
         if self.controller.is_training():
-            self.controller.stop_training()
+            result = execute_application_command(self, StopTrainingCommand())
+            if result is None:
+                self.controller.stop_training()
+            elif result.failed:
+                QMessageBox.warning(
+                    self,
+                    "Warning",
+                    f"Failed to stop training: {result.message}",
+                )
+                return
             self.btn_stop.setEnabled(False)
             # Controller will emit stopped event which panel handles
 

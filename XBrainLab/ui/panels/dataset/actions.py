@@ -6,9 +6,13 @@ running smart parse, and managing event filtering.
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
 
-from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application import CommandName, LoadDataCommand
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import blocked_reason, get_command_capability
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.dialogs.dataset import (
     EventFilterDialog,
     ImportLabelDialog,
@@ -82,7 +86,21 @@ class DatasetActionHandler:
         )
         if filepaths:
             try:
-                self.controller.import_files(filepaths)
+                result = execute_application_command(
+                    self.panel,
+                    LoadDataCommand(paths=list(filepaths)),
+                )
+                if result is None:
+                    self.controller.import_files(filepaths)
+                    return
+                if result.ok:
+                    self.panel.update_panel()
+                else:
+                    QMessageBox.critical(
+                        self.panel,
+                        "Import failed",
+                        result.message,
+                    )
             except Exception as e:
                 QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
 

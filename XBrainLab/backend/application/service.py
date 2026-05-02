@@ -420,10 +420,14 @@ class ApplicationService:
             self.preprocess.apply_normalization(method)
             return f"Normalized data using {method}."
         if operation == PreprocessOperation.REREFERENCE:
-            method = self._require(command.method, "method")
-            ref_channels: str | list[str] = (
-                "average" if method == "average" else [method]
-            )
+            if command.channels:
+                ref_channels = command.channels
+                method = ", ".join(command.channels)
+            else:
+                method = self._require(command.method, "method")
+                ref_channels: str | list[str] = (
+                    "average" if method == "average" else [method]
+                )
             self.preprocess.apply_rereference(ref_channels)
             return f"Applied reference: {method}."
         if operation in (

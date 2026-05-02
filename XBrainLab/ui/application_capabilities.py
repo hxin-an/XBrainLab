@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application import Command, CommandName, CommandResult
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
@@ -50,3 +50,19 @@ def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
     if capability.reasons:
         return "\n".join(capability.reasons)
     return fallback
+
+
+def execute_application_command(
+    context: Any,
+    command: Command,
+) -> CommandResult | None:
+    """Execute an ApplicationService command for real Study-backed UI paths.
+
+    Returns ``None`` when the caller is backed by a mock or legacy non-Study
+    object, allowing existing unit-test and compatibility paths to fall back to
+    controller methods.
+    """
+    study = find_study(context)
+    if study is None or not isinstance(study, Study):
+        return None
+    return BackendFacade(study).service.execute(command)
