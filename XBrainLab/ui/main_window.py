@@ -64,6 +64,9 @@ class MainWindow(QMainWindow):
     sig_generate = pyqtSignal(str, str)
     DEFAULT_WINDOW_SIZE = QSize(1280, 800)
     MIN_WINDOW_SIZE = QSize(760, 520)
+    WINDOW_EDGE_MARGIN = 16
+    WINDOW_TOP_DRAG_MARGIN = 48
+    WINDOW_BOTTOM_MARGIN = 24
 
     def __init__(self, study):
         """Initialize the main window.
@@ -141,7 +144,7 @@ class MainWindow(QMainWindow):
         logger.info("MainWindow initialized")
 
     def _restore_or_place_window(self) -> None:
-        """Restore saved geometry or center a first-run window on screen."""
+        """Restore healthy saved geometry or recover to a draggable placement."""
         settings = self._window_settings()
         saved_geometry = settings.value("main_window/geometry", None)
         restored = False
@@ -151,10 +154,17 @@ class MainWindow(QMainWindow):
             except TypeError:
                 logger.debug("Ignoring invalid saved main-window geometry")
 
-        if restored:
-            self._clamp_window_to_available_screen()
+        if restored and self._is_current_window_geometry_usable():
             return
 
+        if saved_geometry is not None:
+            logger.info("Resetting unusable saved main-window geometry")
+            settings.remove("main_window/geometry")
+
+        self._place_default_window()
+
+    def _place_default_window(self) -> None:
+        """Place a default-size window where the native title bar is reachable."""
         self.resize(self._default_window_size_for_screen())
         self._center_window_on_available_screen()
 
@@ -164,17 +174,24 @@ class MainWindow(QMainWindow):
         return QSettings("XBrainLab", "XBrainLab")
 
     def _default_window_size_for_screen(self) -> QSize:
-        """Scale the initial size down if the available screen is smaller."""
+        """Scale the initial size down while leaving room to drag the title bar."""
         available = self._available_screen_geometry()
-        width = min(self.DEFAULT_WINDOW_SIZE.width(), max(available.width(), 1))
-        height = min(self.DEFAULT_WINDOW_SIZE.height(), max(available.height(), 1))
-        width = max(
-            min(width, available.width()),
-            min(self.MIN_WINDOW_SIZE.width(), width),
+        max_width = max(available.width() - (self.WINDOW_EDGE_MARGIN * 2), 1)
+        max_height = max(
+            available.height()
+            - self.WINDOW_TOP_DRAG_MARGIN
+            - self.WINDOW_BOTTOM_MARGIN,
+            1,
         )
-        height = max(
-            min(height, available.height()),
-            min(self.MIN_WINDOW_SIZE.height(), height),
+        width = min(self.DEFAULT_WINDOW_SIZE.width(), max_width)
+        height = min(self.DEFAULT_WINDOW_SIZE.height(), max_height)
+        width = min(
+            max(width, min(self.MIN_WINDOW_SIZE.width(), available.width())),
+            available.width(),
+        )
+        height = min(
+            max(height, min(self.MIN_WINDOW_SIZE.height(), available.height())),
+            available.height(),
         )
         return QSize(width, height)
 
@@ -197,10 +214,11 @@ class MainWindow(QMainWindow):
         height = min(self.height(), available.height())
         x = available.left() + max((available.width() - width) // 2, 0)
         y = available.top() + max((available.height() - height) // 2, 0)
+        x, y = self._bounded_window_position(available, width, height, x, y)
         self.setGeometry(QRect(x, y, width, height))
 
     def _clamp_window_to_available_screen(self) -> None:
-        """Move/resize the window so it intersects the usable screen."""
+        """Move/resize the window into the usable screen title-bar bounds."""
         if self.isMaximized() or self.isFullScreen():
             return
 
@@ -214,11 +232,92 @@ class MainWindow(QMainWindow):
             max(current.height(), self.MIN_WINDOW_SIZE.height()),
             available.height(),
         )
-        max_x = available.right() - width + 1
-        max_y = available.bottom() - height + 1
-        x = min(max(current.x(), available.left()), max_x)
-        y = min(max(current.y(), available.top()), max_y)
+        x, y = self._bounded_window_position(
+            available,
+            width,
+            height,
+            current.x(),
+            current.y(),
+        )
         self.setGeometry(QRect(x, y, width, height))
+
+    def _is_current_window_geometry_usable(self) -> bool:
+        """Return whether current geometry is safe to restore or persist."""
+        if self.isMaximized() or self.isFullScreen():
+            return True
+
+        available = self._available_screen_geometry()
+        current = self.geometry()
+        if not current.isValid():
+            return False
+
+        min_width = min(self.MIN_WINDOW_SIZE.width(), available.width())
+        min_height = min(self.MIN_WINDOW_SIZE.height(), available.height())
+        if current.width() < min_width or current.height() < min_height:
+            return False
+        if current.width() > available.width() or current.height() > available.height():
+            return False
+        if not (
+            available.contains(current.topLeft())
+            and available.contains(current.bottomRight())
+        ):
+            return False
+
+        min_x, _max_x, min_y, _max_y = self._usable_window_position_bounds(
+            available,
+            current.width(),
+            current.height(),
+        )
+        if current.y() < min_y:
+            return False
+        return not (current.x() < min_x and current.y() <= min_y)
+
+    def _bounded_window_position(
+        self,
+        available: QRect,
+        width: int,
+        height: int,
+        preferred_x: int,
+        preferred_y: int,
+    ) -> tuple[int, int]:
+        """Clamp a window position while preserving drag-safe top margins."""
+        min_x, max_x, min_y, max_y = self._usable_window_position_bounds(
+            available,
+            width,
+            height,
+        )
+        x = min(max(preferred_x, min_x), max_x)
+        y = min(max(preferred_y, min_y), max_y)
+        return x, y
+
+    def _usable_window_position_bounds(
+        self,
+        available: QRect,
+        width: int,
+        height: int,
+    ) -> tuple[int, int, int, int]:
+        """Return screen bounds that leave room for native window dragging."""
+        remaining_x = max(available.width() - width, 0)
+        left_margin = min(self.WINDOW_EDGE_MARGIN, remaining_x)
+        right_margin = min(self.WINDOW_EDGE_MARGIN, max(remaining_x - left_margin, 0))
+
+        remaining_y = max(available.height() - height, 0)
+        top_margin = min(self.WINDOW_TOP_DRAG_MARGIN, remaining_y)
+        bottom_margin = min(
+            self.WINDOW_BOTTOM_MARGIN,
+            max(remaining_y - top_margin, 0),
+        )
+
+        min_x = available.left() + left_margin
+        max_x = available.right() - width + 1 - right_margin
+        min_y = available.top() + top_margin
+        max_y = available.bottom() - height + 1 - bottom_margin
+
+        if min_x > max_x:
+            min_x = max_x = available.left() + max(remaining_x // 2, 0)
+        if min_y > max_y:
+            min_y = max_y = available.top() + max(remaining_y // 2, 0)
+        return min_x, max_x, min_y, max_y
 
     def apply_vscode_theme(self):
         """Apply the VS Code dark theme stylesheet to the main window."""
@@ -384,7 +483,14 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         if not self._post_show_geometry_clamp_done:
             self._post_show_geometry_clamp_done = True
-            QTimer.singleShot(0, self._clamp_window_to_available_screen)
+            QTimer.singleShot(0, self._recover_unusable_window_geometry)
+
+    def _recover_unusable_window_geometry(self) -> None:
+        """Recenter after show if the window manager produced bad geometry."""
+        if self._is_current_window_geometry_usable():
+            return
+        logger.info("Recovering unusable main-window geometry after show")
+        self._place_default_window()
 
     def closeEvent(self, event):  # noqa: N802
         """Handle application close by cleaning up the agent manager.
@@ -395,10 +501,15 @@ class MainWindow(QMainWindow):
         """
         logger.info("Closing application...")
         if not self.isMaximized() and not self.isFullScreen():
-            self._window_settings().setValue(
-                "main_window/geometry",
-                self.saveGeometry(),
-            )
+            settings = self._window_settings()
+            if self._is_current_window_geometry_usable():
+                settings.setValue(
+                    "main_window/geometry",
+                    self.saveGeometry(),
+                )
+            else:
+                logger.info("Discarding unusable main-window geometry on close")
+                settings.remove("main_window/geometry")
         if hasattr(self, "agent_manager"):
             self.agent_manager.close()
         super().closeEvent(event)
