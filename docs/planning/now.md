@@ -46,6 +46,9 @@
   remote backend。
 - `openai` / `google-genai` 不在 default dependencies，只保留於 optional
   `legacy-remote-llm` dependency group。
+- Windows launcher geometry blocker 已補產品級防護：MainWindow 不再信任只因
+  `restoreGeometry()` 成功的 saved geometry；貼左上、offscreen、尺寸不合理或 titlebar
+  不可達的 `main_window/geometry` 會 migration reset，關閉時也不會再次保存。
 
 ## 產品線盤點
 
@@ -72,7 +75,8 @@
   visible error feedback 都有 regression tests。
 - `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
   synthetic EEG button-driven pipeline walkthrough。
-- 真 Windows launcher 打開 assistant 後的 click-through 仍未完成。
+- 真 Windows launcher 打開 assistant 後的 click-through 仍未完成；主視窗壞 geometry
+  recovery 已有 regression tests。
 
 ### C. Agent
 

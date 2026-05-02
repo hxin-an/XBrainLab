@@ -28,6 +28,49 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 MainWindow saved geometry recovery
+
+### 背景
+
+人工退件指出 Windows desktop launcher 開啟後主視窗會卡到螢幕左上角且移動不了。
+既有實作只要 `restoreGeometry()` 成功就只做 available-screen clamp，沒有判斷該 geometry
+是否產品上可拖曳、titlebar 是否可達，也會在 `closeEvent()` 反覆保存壞狀態。
+
+### 變更
+
+- `MainWindow` 新增 restore/persist 前的 geometry 健康檢查：貼左上、offscreen、尺寸不合理、
+  titlebar 不可達會被視為不健康。
+- 啟動時若 saved `main_window/geometry` 不健康，會 `remove("main_window/geometry")` 並用
+  留出 titlebar 拖曳空間的預設位置重置。
+- 首次啟動的預設大小 / 位置會避開左上角，仍限制在 available screen 內。
+- `closeEvent()` 只保存健康的 normal geometry；壞 geometry 會移除，避免永久卡住。
+- 補 Assistant dock titlebar event regression，確認自訂 titlebar 空白區不吃掉
+  `QDockWidget` 原生拖曳事件。
+
+### 影響範圍
+
+- UI shell：`XBrainLab/ui/main_window.py`。
+- Regression tests：`tests/integration/ui/test_window_geometry.py`、
+  `tests/unit/ui/components/test_agent_manager.py`。
+- Docs：`docs/planning/now.md`、`docs/records/worklog.md`、
+  `docs/records/implementation_log.md`。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/integration/ui/test_window_geometry.py -q`
+  - `6 passed`
+- `poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `32 passed`
+- `poetry run ruff check XBrainLab/ui/main_window.py XBrainLab/ui/components/agent_manager.py tests/integration/ui/test_window_geometry.py`
+  - `All checks passed!`
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 本輪沒有執行真人 Windows Desktop launcher click-through；persisted bad geometry recovery
+  已由 automated regression tests 覆蓋。
+
 ## 2026-05-02 Product validation closure
 
 ### 背景

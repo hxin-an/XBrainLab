@@ -5,7 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QPointF, Qt, pyqtSignal
+from PyQt6.QtGui import QMouseEvent
 from PyQt6.QtWidgets import QMainWindow
 
 
@@ -147,6 +148,50 @@ class TestAgentManagerMethods:
         assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
         assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
         assert manager.chat_dock.minimumWidth() >= 320
+
+    def test_dock_titlebar_empty_space_preserves_native_drag_events(self, qtbot):
+        from XBrainLab.ui.components.agent_manager import AssistantDockTitleBar
+
+        toggle = MagicMock()
+        title_bar = AssistantDockTitleBar(toggle)
+        qtbot.addWidget(title_bar)
+
+        for event_type in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+        ):
+            event = QMouseEvent(
+                event_type,
+                QPointF(8, 8),
+                QPointF(8, 8),
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            event.accept()
+
+            if event_type == QEvent.Type.MouseButtonPress:
+                title_bar.mousePressEvent(event)
+            elif event_type == QEvent.Type.MouseMove:
+                title_bar.mouseMoveEvent(event)
+            else:
+                title_bar.mouseReleaseEvent(event)
+
+            assert not event.isAccepted()
+
+        double_click = QMouseEvent(
+            QEvent.Type.MouseButtonDblClick,
+            QPointF(8, 8),
+            QPointF(8, 8),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        title_bar.mouseDoubleClickEvent(double_click)
+
+        toggle.assert_called_once()
+        assert double_click.isAccepted()
 
     def test_toggle_first_open_unavailable_keeps_panel_open(self, agent_mgr):
         agent_mgr.agent_initialized = False

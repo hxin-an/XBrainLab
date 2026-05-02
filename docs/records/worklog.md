@@ -37,6 +37,34 @@
 
 ## 2026-05-02
 
+### 21:08 MainWindow saved geometry recovery
+
+- 做了什麼：
+  - 針對 Windows launcher 打開後主視窗卡在左上角且不可拖的退件，重看
+    `MainWindow._restore_or_place_window()`、post-show clamp、`closeEvent()` geometry
+    persistence，以及 Assistant dock custom titlebar。
+  - 將 restore 成功和 geometry 可用拆開判斷；貼左上、offscreen、尺寸不合理、
+    titlebar 不可達的 saved `main_window/geometry` 會移除並用安全預設位置重置。
+  - `closeEvent()` 不再保存明顯不可用的 geometry，避免壞 QSettings 反覆自我保存。
+  - 補 Assistant dock titlebar regression，確認空白 titlebar mouse events 會交回
+    `QDockWidget` 原生拖曳處理，double-click 仍可 float / dock。
+- 結果：
+  - 既有壞 `QSettings("XBrainLab", "XBrainLab")["main_window/geometry"]` 不需要使用者手動清除；
+    啟動時會 migration reset 到可見、可拖曳 titlebar 的安全位置。
+  - 正常 user-resized geometry 仍會保留。
+- 證據：
+  - `poetry run pytest --capture=sys tests/integration/ui/test_window_geometry.py -q`
+    - `6 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q`
+    - `32 passed`
+  - `poetry run ruff check XBrainLab/ui/main_window.py XBrainLab/ui/components/agent_manager.py tests/integration/ui/test_window_geometry.py`
+    - `All checks passed!`
+  - `poetry run basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+- 接續 / 本輪剩餘：
+  - 真 Windows Desktop launcher click-through 仍需人工驗收，但 blocker 的 persisted bad
+    geometry path 已有 regression protection。
+
 ### 20:35 Final validation closure
 
 - 做了什麼：
