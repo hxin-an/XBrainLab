@@ -96,7 +96,7 @@ class ChatPanel(QWidget):
 
         self.is_processing = False
         self._retry_available = False
-        self._footer_status_text = "No data loaded · Import EEG files to begin"
+        self._footer_status_text = "No EEG data open · Import files to begin"
         self.setObjectName("AssistantPanel")
         self.setStyleSheet(ASSISTANT_PANEL_STYLE)
         self.init_ui()
@@ -251,12 +251,12 @@ class ChatPanel(QWidget):
         title_stack.setContentsMargins(0, 0, 0, 0)
         title_stack.setSpacing(2)
 
-        self.title_label = QLabel("XBrainLab Assistant")
+        self.title_label = QLabel("Conversation")
         self.title_label.setObjectName("AssistantTitle")
         self.title_label.setStyleSheet(HEADER_TITLE_STYLE)
         title_stack.addWidget(self.title_label)
 
-        subtitle = QLabel("From data import to training")
+        subtitle = QLabel("Ask about data, preprocessing, and training.")
         subtitle.setObjectName("AssistantSubtitle")
         subtitle.setStyleSheet(HEADER_SUBTITLE_STYLE)
         subtitle.setWordWrap(True)
@@ -269,7 +269,7 @@ class ChatPanel(QWidget):
         self.options_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.options_btn.setFixedSize(32, 28)
         self.options_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.options_btn.setToolTip("Assistant options")
+        self.options_btn.setToolTip("Options")
         self.options_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         title_row.addWidget(self.options_btn)
 
@@ -333,9 +333,11 @@ class ChatPanel(QWidget):
         self.retry_action.setEnabled(False)
         self.retry_action.triggered.connect(self._on_retry)
         self.options_menu.addAction(self.retry_action)
-        self.new_conversation_action = QAction("New conversation", self)
-        self.new_conversation_action.triggered.connect(self._on_clear)
-        self.options_menu.addAction(self.new_conversation_action)
+        self.clear_conversation_action = QAction("Clear conversation", self)
+        self.clear_conversation_action.setEnabled(False)
+        self.clear_conversation_action.triggered.connect(self._on_clear)
+        self.options_menu.addAction(self.clear_conversation_action)
+        self.new_conversation_action = self.clear_conversation_action
         self.options_menu.addSeparator()
         self.options_menu.addMenu(self.feature_menu)
         self.options_menu.addMenu(self.mode_menu)
@@ -372,7 +374,7 @@ class ChatPanel(QWidget):
         self.workflow_stage_label.setStyleSheet(GUIDANCE_STAGE_STYLE)
         guidance_layout.addWidget(self.workflow_stage_label)
 
-        self.workflow_next_label = QLabel("Next: load EEG data or ask what is ready.")
+        self.workflow_next_label = QLabel("Import EEG files or ask what is ready.")
         self.workflow_next_label.setObjectName("WorkflowGuidanceText")
         self.workflow_next_label.setStyleSheet(GUIDANCE_TEXT_STYLE)
         self.workflow_next_label.setWordWrap(True)
@@ -398,19 +400,20 @@ class ChatPanel(QWidget):
         empty_layout.setContentsMargins(14, 14, 14, 14)
         empty_layout.setSpacing(8)
 
-        self.empty_state_title = QLabel("Load EEG data to begin")
+        self.empty_state_title = QLabel("Start with your EEG data")
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         empty_layout.addWidget(self.empty_state_title)
 
         intro = QLabel(
-            "Ask what is ready, plan preprocessing, or explain why training is blocked."
+            "Ask for a quick workflow check, plan preprocessing, or explain why "
+            "training is blocked."
         )
         intro.setWordWrap(True)
         intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         empty_layout.addWidget(intro)
 
-        self.empty_state_backend_label = QLabel("No data loaded")
+        self.empty_state_backend_label = QLabel("No EEG files are open yet.")
         self.empty_state_backend_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_backend_label.setWordWrap(True)
         empty_layout.addWidget(self.empty_state_backend_label)
@@ -420,9 +423,7 @@ class ChatPanel(QWidget):
         self.empty_state_model_label.setWordWrap(True)
         self.empty_state_model_label.setVisible(False)
 
-        self.empty_state_next_label = QLabel(
-            "Ask what is ready · Explain why training is blocked"
-        )
+        self.empty_state_next_label = QLabel("Import EEG files · Ask what is ready")
         self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_next_label.setWordWrap(True)
         empty_layout.addWidget(self.empty_state_next_label)
@@ -484,7 +485,9 @@ class ChatPanel(QWidget):
         self.model_btn.setText(label)
         if hasattr(self, "runtime_status_label"):
             self.runtime_status_label.setText("")
-            self.runtime_status_label.setToolTip(f"Assistant runtime: {label}")
+            self.runtime_status_label.setToolTip(
+                "Runtime details are available in options."
+            )
 
     def connect_controller(self, controller: ChatController):
         """Connect to a backend ChatController for state synchronization.
@@ -510,7 +513,7 @@ class ChatPanel(QWidget):
         """
         self.feature_btn.setText(feature_name)
         if hasattr(self, "options_btn"):
-            self.options_btn.setToolTip(f"Assistant mode: {feature_name}")
+            self.options_btn.setToolTip(f"Mode: {feature_name}")
 
     def _set_model(self, mode_key: str, label: str | None = None):
         """Update the selector button and emit a normalized runtime mode.
@@ -525,7 +528,9 @@ class ChatPanel(QWidget):
         self.model_btn.setText(button_label)
         if hasattr(self, "runtime_status_label"):
             self.runtime_status_label.setText("")
-            self.runtime_status_label.setToolTip(f"Assistant runtime: {button_label}")
+            self.runtime_status_label.setToolTip(
+                "Runtime details are available in options."
+            )
         self.model_changed.emit(normalized_mode)
 
     def _set_execution_mode(self, mode_key: str, label: str):
@@ -629,9 +634,11 @@ class ChatPanel(QWidget):
         if hasattr(self, "retry_action"):
             self.retry_action.setEnabled((not is_processing) and self._retry_available)
         if hasattr(self, "clear_btn"):
-            self.clear_btn.setEnabled(not is_processing)
+            self.clear_btn.setEnabled((not is_processing) and self._retry_available)
         if hasattr(self, "new_conversation_action"):
-            self.new_conversation_action.setEnabled(not is_processing)
+            self.new_conversation_action.setEnabled(
+                (not is_processing) and self._retry_available
+            )
         if hasattr(self, "options_btn"):
             self.options_btn.setEnabled(not is_processing)
 
@@ -690,7 +697,7 @@ class ChatPanel(QWidget):
         blocked_reason: str | None = None,
     ) -> None:
         """Apply status text to guidance and empty-state labels."""
-        status_tooltip = f"Workflow: {stage}\nAssistant: {model_status}"
+        status_tooltip = f"Workflow: {stage}\nSetup: {model_status}"
         if tooltip:
             status_tooltip = f"{status_tooltip}\n\n{tooltip}"
         if hasattr(self, "title_label"):
@@ -738,17 +745,21 @@ class ChatPanel(QWidget):
                 self.available_commands_chip.setToolTip(tooltip)
 
         if hasattr(self, "empty_state_backend_label"):
-            self.empty_state_backend_label.setText(stage)
+            self.empty_state_backend_label.setText(
+                self._empty_state_stage_sentence(stage)
+            )
         if hasattr(self, "empty_state_model_label"):
             self.empty_state_model_label.setText("")
         if hasattr(self, "empty_state_next_label"):
             if display_commands:
-                self.empty_state_next_label.setText(" · ".join(display_commands[:3]))
+                self.empty_state_next_label.setText(
+                    self._empty_state_next_text(display_commands)
+                )
             elif blocked_reason:
                 self.empty_state_next_label.setText(blocked_reason)
             else:
                 self.empty_state_next_label.setText(
-                    "Ask what is ready · Explain why training is blocked"
+                    "Import EEG files · Ask what is ready"
                 )
         self._footer_status_text = self._footer_status_for(
             stage,
@@ -756,6 +767,20 @@ class ChatPanel(QWidget):
             blocked_reason,
         )
         self._update_footer_status_label()
+
+    @staticmethod
+    def _empty_state_stage_sentence(stage: str) -> str:
+        """Return a conversational empty-state sentence for a workflow stage."""
+        if stage == "No data loaded":
+            return "No EEG files are open yet."
+        return f"Current workflow stage: {stage}."
+
+    @staticmethod
+    def _empty_state_next_text(display_commands: list[str]) -> str:
+        """Return compact next-step copy without exposing command identifiers."""
+        if display_commands and display_commands[0] == "Load EEG data":
+            return "Import EEG files · Ask what is ready"
+        return " · ".join(display_commands[:3])
 
     @staticmethod
     def _footer_status_for(
@@ -767,12 +792,12 @@ class ChatPanel(QWidget):
         if display_commands:
             first_action = display_commands[0]
             if stage == "No data loaded" and first_action == "Load EEG data":
-                return "No data loaded · Import EEG files to begin"
+                return "No EEG data open · Import files to begin"
             return f"{stage} · {first_action}"
         if blocked_reason:
-            return f"{stage} · Ask why training is blocked"
+            return f"{stage} · Ask what is blocking training"
         if stage == "No data loaded":
-            return "No data loaded · Import EEG files to begin"
+            return "No EEG data open · Import files to begin"
         return f"{stage} · Ask what is ready"
 
     def _update_footer_status_label(self) -> None:
@@ -793,13 +818,21 @@ class ChatPanel(QWidget):
         self._retry_available = available
         if hasattr(self, "retry_btn"):
             self.retry_btn.setEnabled(available and not self.is_processing)
+            self.retry_btn.setVisible(available)
             self.retry_btn.setToolTip(
                 "Retry the last request"
                 if available
                 else "Send a request before retrying."
             )
+        if hasattr(self, "clear_btn"):
+            self.clear_btn.setVisible(available)
+            self.clear_btn.setEnabled(available and not self.is_processing)
         if hasattr(self, "retry_action"):
             self.retry_action.setEnabled(available and not self.is_processing)
+        if hasattr(self, "new_conversation_action"):
+            self.new_conversation_action.setEnabled(
+                available and not self.is_processing
+            )
 
     def show_notice(self, text: str) -> None:
         """Show a low-priority inline notice outside the transcript."""

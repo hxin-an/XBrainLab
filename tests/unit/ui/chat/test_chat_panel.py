@@ -318,23 +318,25 @@ class TestChatPanelCallbacks:
         assert panel.model_btn.text() == "Local model"
 
     def test_product_ui_structure_is_visible(self, chat_panel):
-        assert chat_panel.title_label.text() == "XBrainLab Assistant"
-        assert chat_panel.empty_state_title.text() == "Load EEG data to begin"
+        assert chat_panel.title_label.text() == "Conversation"
+        assert chat_panel.empty_state_title.text() == "Start with your EEG data"
         assert chat_panel.empty_state_widget.isHidden() is False
         assert chat_panel.workflow_guidance.isHidden()
-        assert chat_panel.empty_state_backend_label.text() == "No data loaded"
-        assert "Ask what is ready" in chat_panel.empty_state_next_label.text()
+        assert chat_panel.empty_state_backend_label.text() == (
+            "No EEG files are open yet."
+        )
+        assert "Import EEG files" in chat_panel.empty_state_next_label.text()
         assert chat_panel.backend_stage_chip.text()
         assert chat_panel.model_status_chip.isHidden()
         assert chat_panel.runtime_status_label.isHidden()
         assert chat_panel.runtime_status_label.text() == ""
-        assert chat_panel.available_commands_chip.text().startswith("Next:")
+        assert "load_data" not in chat_panel.available_commands_chip.text()
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
         assert chat_panel.options_btn.text() == "..."
         assert chat_panel.feature_btn.isHidden()
         assert chat_panel.mode_btn.isHidden()
-        assert chat_panel.step_mode_status_label.text() == "Step by step"
+        assert chat_panel.step_mode_status_label.isHidden()
         assert chat_panel.retry_btn.text() == "Retry"
         assert chat_panel.retry_btn.isEnabled() is False
         assert chat_panel.retry_btn.isHidden()
@@ -345,39 +347,61 @@ class TestChatPanelCallbacks:
             for label in chat_panel.control_panel.findChildren(QLabel)
             if not label.isHidden()
         ]
-        assert visible_footer_labels == ["No data loaded · Import EEG files to begin"]
+        assert visible_footer_labels == ["No EEG data open · Import files to begin"]
         assert "Local" not in visible_footer_labels[0]
         assert "Backend" not in visible_footer_labels[0]
+
+        visible_text = " ".join(
+            child.text()
+            for child in chat_panel.findChildren(QWidget)
+            if isinstance(child, (QLabel, QToolButton))
+            and child.isVisible()
+            and child.text()
+        )
+        for hidden_product_detail in [
+            "Assistant",
+            "Single step",
+            "Step by step",
+            "Local model ready",
+            "Backend:",
+            "Commands:",
+            "load_data",
+        ]:
+            assert hidden_product_detail not in visible_text
 
     def test_product_status_updates_empty_state_and_chips(self, chat_panel):
         chat_panel.set_product_status(
             stage="empty",
-            model_status="Assistant needs setup",
+            model_status="Setup needed",
             available_commands=["load_data", "reset_session"],
-            tooltip="Local model cache missing",
+            tooltip="Setup is incomplete",
             blocked_reason="Generate datasets before training.",
         )
 
         assert chat_panel.backend_stage_chip.text() == "No data loaded"
-        assert chat_panel.model_status_chip.text() == "Assistant needs setup"
+        assert chat_panel.model_status_chip.text() == "Setup needed"
         assert chat_panel.model_status_chip.isHidden()
         assert chat_panel.runtime_status_label.text() == ""
-        assert "Assistant needs setup" in chat_panel.runtime_status_label.toolTip()
-        assert "Assistant needs setup" in chat_panel.options_btn.toolTip()
+        assert "Setup needed" in chat_panel.runtime_status_label.toolTip()
+        assert "Setup needed" in chat_panel.options_btn.toolTip()
         assert chat_panel.workflow_guidance.isHidden()
         assert "Load EEG data" in chat_panel.available_commands_chip.text()
         assert "load_data" not in chat_panel.available_commands_chip.text()
-        assert chat_panel.empty_state_backend_label.text() == "No data loaded"
+        assert chat_panel.empty_state_backend_label.text() == (
+            "No EEG files are open yet."
+        )
         assert chat_panel.empty_state_model_label.text() == ""
-        assert "Load EEG data" in chat_panel.empty_state_next_label.text()
+        assert "Import EEG files" in chat_panel.empty_state_next_label.text()
         assert chat_panel.footer_status_label.toolTip() == (
-            "No data loaded · Import EEG files to begin"
+            "No EEG data open · Import files to begin"
         )
 
     def test_retry_available_controls_disabled_state(self, chat_panel):
         assert chat_panel.retry_btn.isEnabled() is False
+        assert chat_panel.retry_btn.isHidden()
         chat_panel.set_retry_available(True)
         assert chat_panel.retry_btn.isEnabled() is True
+        assert chat_panel.retry_btn.isHidden() is False
         chat_panel.set_processing_state(True)
         assert chat_panel.retry_btn.isEnabled() is False
         chat_panel.set_processing_state(False)

@@ -157,7 +157,7 @@ class AgentManager(QObject):
         self.chat_panel.new_conversation_requested.connect(self.start_new_conversation)
         self.chat_panel.retry_requested.connect(self.retry_last_user_input)
 
-        self.chat_dock = QDockWidget("AI Assistant", self.main_window)
+        self.chat_dock = QDockWidget("XBrainLab", self.main_window)
         self.chat_dock.setWidget(self.chat_panel)
         self.chat_dock.setAllowedAreas(
             Qt.DockWidgetArea.RightDockWidgetArea
@@ -170,14 +170,14 @@ class AgentManager(QObject):
         )
         self.chat_dock.setMinimumWidth(320)
 
-        # Custom Title Bar with Float + New Conversation Buttons
+        # Custom title bar with conversation controls and native dock dragging.
         title_bar = AssistantDockTitleBar(self._toggle_float, self.chat_dock)
         title_bar.setStyleSheet(Stylesheets.AGENT_TITLE_BAR)
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(8, 2, 4, 2)
         title_layout.setSpacing(4)
 
-        title_label = QLabel("AI Assistant")
+        title_label = QLabel("XBrainLab")
         title_label.setStyleSheet(Stylesheets.AGENT_TITLE_LABEL)
         title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         title_layout.addWidget(title_label)
@@ -191,10 +191,10 @@ class AgentManager(QObject):
         self.new_conv_title_btn.clicked.connect(self.start_new_conversation)
         title_layout.addWidget(self.new_conv_title_btn)
 
-        # Settings Button (≡ icon)
+        # Options button (≡ icon)
         self.settings_btn = QPushButton("≡")
         self.settings_btn.setFixedSize(20, 20)
-        self.settings_btn.setToolTip("Settings")
+        self.settings_btn.setToolTip("Options")
         self.settings_btn.setStyleSheet(Stylesheets.AGENT_TITLE_BTN)
         self.settings_btn.clicked.connect(self.open_settings_dialog)
         title_layout.addWidget(self.settings_btn)
@@ -772,12 +772,12 @@ class AgentManager(QObject):
             model_config = LLMConfig.load_from_file() or LLMConfig()
             selection = LLMConfig.assistant_runtime_selection_from(model_config)
             model_ready = model_config.local_backend_ready(selection.model_id)
-            model_status = "Assistant ready" if model_ready else "Assistant needs setup"
+            model_status = "Ready" if model_ready else "Setup needed"
 
             train_capability = capabilities.get("train")
             tooltip_lines = [
                 f"Workflow stage: {stage}",
-                "Assistant settings hold runtime details.",
+                "Options hold setup details.",
                 "Suggested next actions: "
                 + (", ".join(command_labels(enabled)) if enabled else "none"),
             ]
@@ -786,7 +786,7 @@ class AgentManager(QObject):
                     "Train blocked: " + "; ".join(train_capability.reasons),
                 )
             if state.last_error:
-                tooltip_lines.append(f"Last backend error: {state.last_error.message}")
+                tooltip_lines.append(f"Last workflow error: {state.last_error.message}")
 
             blocked_reason = None
             if train_capability.reasons:
@@ -826,12 +826,12 @@ class AgentManager(QObject):
         labels = command_labels(command_names)
         if labels:
             if stage == "No data loaded" and labels[0] == "Load EEG data":
-                return "No data loaded · Import EEG files to begin"
+                return "No EEG data open · Import files to begin"
             return f"{stage} · {labels[0]}"
         if blocked_reason:
-            return f"{stage} · Ask why training is blocked"
+            return f"{stage} · Ask what is blocking training"
         if stage == "No data loaded":
-            return "No data loaded · Import EEG files to begin"
+            return "No EEG data open · Import files to begin"
         return f"{stage} · Ask what is ready"
 
     @staticmethod
