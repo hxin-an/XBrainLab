@@ -37,6 +37,50 @@
 
 ## 2026-05-02
 
+### 17:20 Assistant product audit follow-up
+
+- 做了什麼：
+  - 依人工驗收失敗證據重新審視 `ChatPanel`、`AgentManager`、`LLMController`、
+    `application_surface.py` 和 local runtime settings。
+  - 移除 assistant dock 頂部 chip dump；header 只保留 `XBrainLab Assistant`、subtitle、
+    `Options`，workflow state / next step 改成單句 guidance。
+  - 將 `Retry` / `Clear` 降到底部 composer footer；`Retry` 沒有上一則 request 時 disabled，
+    direct call 只顯示 footer/status notice，不進 transcript。
+  - 修正 message bubble minimum width，避免 380px dock 下 `hello` 被切成 `hell/o`。
+  - `LLMController` 新增 greeting shortcut，`hello` 不再先亂 call tool。
+  - `ToolCommandResult` 增加 product-level error bucket；read-only `list_files` 也走 typed
+    normalization。
+  - visible transcript 改成產品語言：missing directory 追問 folder/path，empty list 顯示空狀態，
+    backend precondition 顯示 blocked reason，不再顯示 `Tool <name> completed (...)`、
+    `Error: directory is required`、`[]` 或 snake_case command。
+  - Gemini / remote runtime 一般產品 UI 和 startup 改由 `XBRAINLAB_SHOW_LEGACY_REMOTE_LLM=1`
+    隔離，未設定時不顯示或啟動 legacy remote runtime。
+  - 重跑 UI capture，更新 `artifacts/ui/ai-assistant-open.png` 和
+    `tests/baselines/ui/ai-assistant-open.png`。
+- 結果：
+  - Assistant dock 目前像使用者產品面板，而不是 tool/debug status panel。
+  - raw tool payload 仍保留在 controller history / diagnostics / logs，可供測試與 debug；
+    第一層 chat transcript 不再外洩開發者語法。
+- 證據：
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q`
+    - `131 passed`
+  - `timeout 240s poetry run pytest --capture=sys tests/integration/agent/test_product_flow.py tests/unit/llm/agent/test_controller.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/core/test_config.py -q`
+    - `110 passed`
+  - `timeout 240s poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py -q`
+    - `57 passed`
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py -q`
+    - `2 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py tests/integration/agent/test_product_flow.py -q`
+    - `7 passed`
+  - `timeout 240s xvfb-run -a poetry run python scripts/dev/capture_ui_baseline.py`
+    - saved `artifacts/ui/ai-assistant-open.png`
+  - `timeout 420s poetry run python scripts/dev/update_quality_dashboard.py`
+    - final rerun overall `PASS` at `2026-05-02 17:44:37 UTC+08:00`
+- 接續 / 本輪剩餘：
+  - final lint / format / mkdocs / dashboard gate。
+  - local commits；不 push。
+  - 真 Windows launcher click-through 和真 local model 長時間 UI walkthrough 仍未做。
+
 ### 12:02 Chat product blocker correction
 
 - 做了什麼：

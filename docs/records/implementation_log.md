@@ -28,6 +28,79 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Assistant product audit follow-up
+
+### 背景
+
+人工產品審核明確指出上一輪仍不合格：Assistant dock 頂部擠滿 chips / controls、主視覺仍像
+debug panel、user bubble 在窄 dock 會切字、Retry 沒有上一則 request 時污染 transcript、
+agent 會把 raw tool output / schema error / empty list 直接回給使用者。這些問題不能靠
+dashboard PASS 或 deterministic eval 解釋掉，必須從產品 UI 與 agent visible-output boundary 修。
+
+### 變更
+
+- 重新整理 `ChatPanel`：
+  - header 只保留產品名、自然語言 subtitle、`Options`。
+  - workflow state / next step 改成單句 guidance，不再是 top chip dump。
+  - local runtime / backend readiness 移到底部低干擾 status / tooltip / settings。
+  - `Retry` / `Clear` 移到 composer footer；沒有 previous request 時 `Retry` disabled。
+  - empty state 改成 EEG 使用者起始導引；message bubble 增加 minimum text column，避免
+    `hello` 在 380px dock 被切碎。
+- 改 `AgentManager.retry_last_user_input()`：沒有上一則 request 時只顯示 footer/status notice，
+  不新增 assistant bubble。
+- 改 `LLMController` visible-output path：
+  - greeting shortcut 直接回產品導引，不先 call tool。
+  - visible tool summary 使用產品語言，不顯示 `Tool <name> completed (...)`。
+  - missing argument / empty result / backend precondition / runtime error 分 bucket 處理。
+  - structured `Tool Output` 繼續保留在 controller history / diagnostics / logs，不進第一層
+    ChatPanel transcript。
+- 改 `ToolCommandResult` / `application_surface.py`：legacy read-only `list_files` /
+  `get_dataset_info` 也會正規化為 typed result，避免 `"Error: ..."` 或 `[]` 被當成成功回覆。
+- 隔離 legacy remote runtime：`XBRAINLAB_SHOW_LEGACY_REMOTE_LLM=1` 未設定時，ChatPanel
+  model menu、ModelSettingsDialog remote section、AgentManager startup 都不顯示或啟動 Gemini。
+- 更新 UI screenshot evidence：
+  - `artifacts/ui/ai-assistant-open.png`
+  - `tests/baselines/ui/ai-assistant-open.png`
+
+### 影響範圍
+
+- UI：`XBrainLab/ui/chat/*`、`AgentManager`、model settings、main-window debug feedback。
+- Agent：`LLMController`、tool result adapter、agent product-flow tests。
+- Runtime config：legacy remote runtime product visibility gate。
+- Docs / records / UI baseline artifacts。
+
+### 驗證
+
+- UI assistant / settings / AgentManager gate：
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/chat/test_message_bubble.py tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q`
+  - `131 passed`
+- agent product-flow / tool formatting / config gate：
+  - `timeout 240s poetry run pytest --capture=sys tests/integration/agent/test_product_flow.py tests/unit/llm/agent/test_controller.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/core/test_config.py -q`
+  - `110 passed`
+- backend application / facade workflow gate：
+  - `timeout 240s poetry run pytest --capture=sys tests/unit/backend/application tests/integration/backend/test_application_service_workflow.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py -q`
+  - `57 passed`
+- product walkthrough / agent integration:
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py -q`
+  - `2 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py tests/integration/agent/test_product_flow.py -q`
+  - `7 passed`
+- UI capture：
+  - `timeout 240s xvfb-run -a poetry run python scripts/dev/capture_ui_baseline.py`
+  - saved `artifacts/ui/ai-assistant-open.png`
+- aggregate dashboard：
+  - `timeout 420s poetry run python scripts/dev/update_quality_dashboard.py`
+  - overall `PASS` at `2026-05-02 17:44:37 UTC+08:00`
+
+### 剩餘風險
+
+- 這輪有 screenshot artifact 和 deterministic layout assertions，但仍需要人工 UI 審核判斷
+  380-460px dock 是否符合產品質感。
+- 真 Windows launcher click-through 尚未做。
+- 真 local model 長時間 ChatPanel walkthrough 未做；本輪沒有下載模型，也沒有長時間 local LLM smoke。
+- Gemini/API code path 只是從一般產品入口隔離，尚未從 codebase 刪除。
+- label import、smart parse、montage confirmation 仍是 controller / UI-request legacy path。
+
 ## 2026-05-02 Assistant runtime consent、service query commands 與 thesis split protocol
 
 ### 背景

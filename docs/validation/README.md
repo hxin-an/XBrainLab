@@ -18,13 +18,15 @@
 `artifacts/quality/latest.*` 已可引用作為今天的 fast engineering evidence，但 `2026-05-02`
 人工產品驗收修正了它的可信邊界：fast engineering evidence 不能代表 AI Assistant
 已達可用產品狀態。使用者實際打開 assistant 後曾發現 chat UI 仍像 debug dock，且輸入
-`hello` 沒有 assistant 回覆。該 blocker 已完成第一輪 targeted 修復和 product tests，
+`hello` 沒有 assistant 回覆。該 blocker 已完成第一輪 targeted 修復和 product tests；
+後續 assistant product audit follow-up 又修掉 top chip dump、Retry transcript pollution、
+raw tool output 外洩、窄 dock bubble wrapping 和 legacy remote runtime 產品入口暴露。
 但仍不能用 dashboard PASS、local runtime smoke 或 deterministic eval 直接宣稱完整 release
 closure。
 
 目前 fast engineering artifact 狀態是：
 
-- generated at: `2026-05-02 12:29:06 UTC+08:00`
+- generated at: `2026-05-02 17:44:37 UTC+08:00`
 - workspace: `/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall: `PASS`
 
@@ -34,7 +36,18 @@ UI baseline capture 結果：
 - `7 UI artifacts match approved references`
 - `max mean diff 0.114`
 - `max changed 0.66%`
-- fast dashboard after chat fix: `PASS`
+- fast dashboard after assistant product audit follow-up: `PASS`
+
+最新 fast dashboard summary：
+
+- Ruff Lint：`PASS`
+- Basedpyright：`PASS`，`0 errors, 0 warnings, 0 notes`
+- Architecture Compliance：`PASS`
+- Startup Smoke：`PASS`
+- UI Baseline Capture：`PASS`
+- UI Dialog Acceptance：`PASS`
+- UI Unit Suite：`830 passed`
+- Real-Data IO Integration：`31 passed, 8 warnings`
 
 文件站點也已通過：
 
@@ -103,7 +116,8 @@ timeout 180s poetry run pytest --capture=sys \
 - empty response 會變 visible fallback error。
 - worker error 會變 visible error。
 - local unavailable first-open 會顯示原因。
-- ChatPanel 結構包含 header、status chips、empty state、composer controls。
+- ChatPanel 結構包含簡潔 header、單句 workflow guidance、empty state、composer controls、
+  disabled Retry、窄 dock bubble wrapping。
 
 broader UI / LLM suite 仍需要跑，但不能取代上述 product-flow gate。
 

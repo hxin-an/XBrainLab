@@ -14,6 +14,7 @@
 -> chat product blocker 修復 -> 第一批 UI execution service adapter / agent direct CommandResult path
 -> local runtime first-run consent / remaining dialog-query command surface 收斂
 -> thesis split audit protocol 建立
+-> assistant product audit follow-up：UI header / transcript / tool output / legacy remote exposure 修正
 ```
 
 ## 重要狀態修正
@@ -35,6 +36,12 @@
 - Agent tool surface 已開始使用 backend capability policy 和 typed adapter；mapped workflow
   tools 可直接消費 `CommandResult`，但 `load_data`、`set_montage`、`switch_panel` 等仍保留
   legacy real-tool / UI request path。
+- 2026-05-02 follow-up 修掉人工產品審核明確不通過的 assistant 問題：
+  top chip dump 移除、Retry no-previous-request 不再進 transcript、短 user bubble 不再切字、
+  visible tool result 改成使用者語言、`list_files` missing/empty result 不再外洩 schema / `[]`。
+- Gemini / remote runtime 仍存在於 code，但一般產品 UI 與 startup 已用
+  `XBRAINLAB_SHOW_LEGACY_REMOTE_LLM=1` 隔離；未設定時不顯示 legacy remote settings，也不啟動
+  Gemini assistant runtime。
 
 ## 產品線盤點
 
@@ -55,8 +62,10 @@
 - UI readiness 已共用 ApplicationService capability policy；多數 high-value action
   execution 已透過 `ApplicationService.execute()`，剩餘 legacy path 主要集中在
   label import、smart parse、montage confirmation 和 read-only refresh。
-- ChatPanel 本輪已完成 product redesign：header、status chips、empty state、bubble、composer、
-  visible error feedback。
+- ChatPanel 本輪已完成 product redesign follow-up：header 只保留產品名 / subtitle / Options；
+  workflow state 改成單句 guidance；runtime / backend detail 降到底部低干擾 status；
+  Retry / Clear 移到 composer footer；empty state、bubble minimum width、composer fit、
+  visible error feedback 都有 regression tests。
 - `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
   synthetic EEG button-driven pipeline walkthrough。
 - 真 Windows launcher 打開 assistant 後的 click-through 仍未完成。
@@ -65,7 +74,9 @@
 
 - normal no-tool response、tool-call response、empty response、worker error、local unavailable
   現在都有 targeted tests。
-- tool result 保留 structured payload；tool-only success 會有可見 summary。
+- tool result 保留 structured payload；tool-only success / blocked / missing input / empty result
+  都會有產品語言 summary，visible transcript 不顯示 raw tool syntax、schema error、empty list
+  或 snake_case command names。
 - mapped workflow tools 可直接回 `ToolCommandResult.from_command_result(...)`；legacy path
   保留給需要 directory expansion、UI request 或 read-only routing 的 tools。
 - deterministic eval 只代表 scripted baseline，不代表 local LLM 真實能力。
@@ -87,8 +98,9 @@
 ### F. Tests / Validation
 
 - 先前 dashboard / deterministic eval 漏掉 no-response bug。
-- 新增 product-flow tests 覆蓋 normal chat response、empty response、worker error、local unavailable、
-  UI structure。
+- 新增 product-flow tests 覆蓋 greeting/help、missing argument、empty tool result、state-gated
+  command、successful command summary、local runtime unavailable / disabled、retry no transcript
+  pollution、窄 dock layout / bubble wrapping。
 - 新 validation rule：不能只用 dashboard PASS 或 deterministic eval 宣稱 assistant 可用。
 - Thesis validation protocol 已建立 split artifact schema、split audit helper、validator script
   和 unit tests；正式 external dataset experiment runner 尚未完成。
@@ -123,16 +135,16 @@
 
 ## 現在要做
 
-1. 已完成 targeted 修復：一般輸入如 `hello` 透過 product-flow test 驗證會產生可見
-   assistant 回覆；local runtime 失敗、empty response、worker error 會產生可見訊息，不能
-   silent failure。
-2. 已完成 ChatPanel 第一輪產品化重設計：空狀態、header、status chips、model/runtime/backend
-   diagnostics、bubble、composer 都已重做。
+1. 已完成 assistant product audit follow-up：UI header / guidance / composer / retry / bubble
+   wrapping / transcript wording / legacy remote exposure 已修正。
+2. 已完成 agent visible-output productization：structured diagnostics 留在 history / logs，
+   第一層 bubble 只顯示使用者語言。
 3. 已完成 split / model / training dialogs、evaluation / visualization / saliency query、
    channel selection 和 new-session command adapter。
-4. 已新增 product click-through / synthetic pipeline walkthrough tests。
-5. 現在進行 final validation、documentation closure 與 local commits；後續才是真 launcher /
-   true local model UI walkthrough。
+4. 已新增 product click-through / synthetic pipeline walkthrough tests，以及 agent product-flow
+   integration tests。
+5. 現在進行 final validation、documentation closure 與 local commits；後續仍需要真 Windows
+   launcher click-through / true local model UI walkthrough。
 
 ## Product Delivery Milestone TODO
 
