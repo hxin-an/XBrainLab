@@ -17,13 +17,14 @@ import sys
 from pathlib import Path
 
 from PIL import Image
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QPoint, QSettings, QSize, QTimer
 from PyQt6.QtWidgets import QApplication
 
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 OUTPUT_PATH = ARTIFACTS_DIR / "main-window-initial.png"
 AI_DOCK_STEP = "ai-dock"
+BASELINE_WINDOW_SIZE = QSize(1280, 800)
 CAPTURE_STEPS = [
     ("main-window-initial.png", None),
     ("panel-dataset.png", 0),
@@ -33,6 +34,25 @@ CAPTURE_STEPS = [
     ("panel-visualization.png", 4),
     ("ai-assistant-open.png", AI_DOCK_STEP),
 ]
+
+
+def _clear_saved_main_window_geometry() -> None:
+    """Remove user/session geometry so capture remains deterministic."""
+    settings = QSettings("XBrainLab", "XBrainLab")
+    settings.remove("main_window/geometry")
+    settings.sync()
+
+
+def _set_baseline_window_geometry(window) -> None:
+    """Force the screenshot window to the approved capture dimensions."""
+    screen = window.screen() or QApplication.primaryScreen()
+    target = BASELINE_WINDOW_SIZE
+    if screen is not None:
+        available = screen.availableGeometry()
+        window.move(available.topLeft())
+    else:
+        window.move(QPoint(0, 0))
+    window.resize(target)
 
 
 def is_nearly_black(path: Path) -> bool:
@@ -96,13 +116,16 @@ def capture_window(app: QApplication, output_path: Path) -> int:
 
     result: dict[str, int] = {"code": 3}
 
+    _clear_saved_main_window_geometry()
     study = Study()
     window = MainWindow(study)
+    _set_baseline_window_geometry(window)
     window.show()
 
     def _run_step(step_index: int) -> None:
         filename, step_target = CAPTURE_STEPS[step_index]
         _prepare_capture_step(window, step_target)
+        _set_baseline_window_geometry(window)
 
         app.processEvents()
         current_widget = window.stack.currentWidget()
