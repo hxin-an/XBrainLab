@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QApplication,  # Added for M3.1
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -30,12 +31,21 @@ from XBrainLab.llm.core.config import LLMConfig
 from ..styles.theme import Theme
 from .message_bubble import MessageBubble
 from .styles import (
+    ASSISTANT_PANEL_STYLE,
     CONTROL_PANEL_STYLE,
     DROPDOWN_MENU_STYLE,
+    EMPTY_STATE_STYLE,
+    EMPTY_STATE_TEXT_STYLE,
+    EMPTY_STATE_TITLE_STYLE,
+    HEADER_STYLE,
+    HEADER_SUBTITLE_STYLE,
+    HEADER_TITLE_STYLE,
     INPUT_FIELD_STYLE,
     SCROLL_AREA_STYLE,
     SEND_BUTTON_PROCESSING_STYLE,
     SEND_BUTTON_STYLE,
+    STATUS_CHIP_STYLE,
+    STATUS_CHIP_WARNING_STYLE,
     TOOLBAR_BUTTON_STYLE,
 )
 
@@ -77,6 +87,8 @@ class ChatPanel(QWidget):
         self.current_agent_bubble: MessageBubble | None = None
 
         self.is_processing = False
+        self.setObjectName("AssistantPanel")
+        self.setStyleSheet(ASSISTANT_PANEL_STYLE)
         self.init_ui()
 
         # M3.1 Interactive Debug Mode
@@ -90,6 +102,8 @@ class ChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        self._build_header(layout)
+
         # --- Chat Display (Scroll Area) ---
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -100,12 +114,12 @@ class ChatPanel(QWidget):
 
         # Container Widget inside ScrollArea
         self.chat_content_widget = QWidget()
-        self.chat_content_widget.setStyleSheet(
-            f"background-color: {Theme.BACKGROUND_DARK};",
-        )
+        self.chat_content_widget.setStyleSheet("background-color: #15191d;")
         self.chat_layout = QVBoxLayout(self.chat_content_widget)
-        self.chat_layout.setContentsMargins(10, 10, 10, 10)
-        self.chat_layout.setSpacing(10)
+        self.chat_layout.setContentsMargins(12, 12, 12, 12)
+        self.chat_layout.setSpacing(12)
+        self.empty_state_widget = self._build_empty_state()
+        self.chat_layout.addWidget(self.empty_state_widget)
         self.chat_layout.addStretch()  # Push messages to top
 
         self.scroll_area.setWidget(self.chat_content_widget)
@@ -117,17 +131,110 @@ class ChatPanel(QWidget):
         control_panel.setStyleSheet(CONTROL_PANEL_STYLE)
         control_layout = QVBoxLayout(control_panel)
         control_layout.setContentsMargins(10, 8, 10, 8)
-        control_layout.setSpacing(5)
+        control_layout.setSpacing(7)
 
-        # Row 1: Toolbar (Dropdowns)
-        toolbar_widget = QWidget()
-        toolbar_widget.setStyleSheet("background: transparent; border: none;")
-        toolbar_layout = QHBoxLayout(toolbar_widget)
+        # Composer: Input Field and Send / Stop Button
+        input_widget = QWidget()
+        input_widget.setStyleSheet("background: transparent; border: none;")
+        input_layout = QHBoxLayout(input_widget)
+        input_layout.setContentsMargins(4, 4, 4, 4)
+        input_layout.setSpacing(10)
+
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText(
+            "Ask about data, preprocessing, epoching, datasets, or training..."
+        )
+        self.input_field.setStyleSheet(INPUT_FIELD_STYLE)
+        self.input_field.returnPressed.connect(self._on_send)
+        input_layout.addWidget(self.input_field, 1)
+
+        self.send_btn = QToolButton()
+        self.send_btn.setText("Send")
+        self.send_btn.setFixedSize(64, 36)
+        self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.send_btn.clicked.connect(self._on_send)
+        self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
+        input_layout.addWidget(self.send_btn)
+
+        control_layout.addWidget(input_widget)
+        layout.addWidget(control_panel)
+
+    def _build_header(self, parent_layout: QVBoxLayout) -> None:
+        """Build the product header with status chips and compact actions."""
+        header = QWidget()
+        header.setObjectName("AssistantHeader")
+        header.setStyleSheet(HEADER_STYLE)
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(12, 10, 12, 10)
+        header_layout.setSpacing(8)
+
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(8)
+
+        title_stack = QVBoxLayout()
+        title_stack.setContentsMargins(0, 0, 0, 0)
+        title_stack.setSpacing(2)
+
+        self.title_label = QLabel("XBrainLab Assistant")
+        self.title_label.setObjectName("AssistantTitle")
+        self.title_label.setStyleSheet(HEADER_TITLE_STYLE)
+        title_stack.addWidget(self.title_label)
+
+        subtitle = QLabel("Workflow-aware local assistant for EEG analysis")
+        subtitle.setObjectName("AssistantSubtitle")
+        subtitle.setStyleSheet(HEADER_SUBTITLE_STYLE)
+        subtitle.setWordWrap(True)
+        title_stack.addWidget(subtitle)
+
+        title_row.addLayout(title_stack, 1)
+
+        self.retry_btn = QToolButton()
+        self.retry_btn.setText("Retry")
+        self.retry_btn.setFixedSize(58, 28)
+        self.retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.retry_btn.setToolTip("Retry last user request")
+        self.retry_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+        self.retry_btn.clicked.connect(self._on_retry)
+        title_row.addWidget(self.retry_btn)
+
+        self.clear_btn = QToolButton()
+        self.clear_btn.setText("Clear")
+        self.clear_btn.setFixedSize(58, 28)
+        self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_btn.setToolTip("Clear conversation")
+        self.clear_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
+        self.clear_btn.clicked.connect(self._on_clear)
+        title_row.addWidget(self.clear_btn)
+
+        header_layout.addLayout(title_row)
+
+        chip_row = QHBoxLayout()
+        chip_row.setContentsMargins(0, 0, 0, 0)
+        chip_row.setSpacing(6)
+
+        self.backend_stage_chip = QLabel("Stage: checking")
+        self.backend_stage_chip.setStyleSheet(STATUS_CHIP_STYLE)
+        self.backend_stage_chip.setToolTip("Current backend workflow stage")
+        chip_row.addWidget(self.backend_stage_chip)
+
+        self.model_status_chip = QLabel("Model: checking")
+        self.model_status_chip.setStyleSheet(STATUS_CHIP_WARNING_STYLE)
+        self.model_status_chip.setToolTip("Local model status")
+        chip_row.addWidget(self.model_status_chip)
+
+        self.available_commands_chip = QLabel("Commands: checking")
+        self.available_commands_chip.setStyleSheet(STATUS_CHIP_STYLE)
+        self.available_commands_chip.setToolTip("Available backend commands")
+        chip_row.addWidget(self.available_commands_chip, 1)
+
+        header_layout.addLayout(chip_row)
+
+        toolbar_layout = QHBoxLayout()
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(10)
+        toolbar_layout.setSpacing(6)
 
-        # Feature Selector (Keep logic, maybe move to Backend later)
-        self.feature_btn = QPushButton("General Assistant ▼")
+        self.feature_btn = QPushButton("General Assistant")
         self.feature_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.feature_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         self.feature_menu = QMenu(self)
@@ -139,22 +246,17 @@ class ChatPanel(QWidget):
         self.feature_btn.setMenu(self.feature_menu)
         toolbar_layout.addWidget(self.feature_btn)
 
-        # Model Selector
-        self.model_btn = QPushButton("Model: Local ▼")
+        self.model_btn = QPushButton("Model: Local")
         self.model_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
 
         self.model_menu = QMenu(self)
         self.model_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
         self.model_btn.setMenu(self.model_menu)
-
-        # Initial population of menu
         self.update_model_menu()
-
         toolbar_layout.addWidget(self.model_btn)
 
-        # Execution Mode Selector
-        self.mode_btn = QPushButton("Single ▼")
+        self.mode_btn = QPushButton("Single")
         self.mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mode_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         self.mode_btn.setToolTip(
@@ -173,62 +275,60 @@ class ChatPanel(QWidget):
             self.mode_menu.addAction(action)
         self.mode_btn.setMenu(self.mode_menu)
         toolbar_layout.addWidget(self.mode_btn)
-
-        self.retry_btn = QToolButton()
-        self.retry_btn.setText("↻")
-        self.retry_btn.setFixedSize(28, 28)
-        self.retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.retry_btn.setToolTip("Retry last user request")
-        self.retry_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
-        self.retry_btn.clicked.connect(self._on_retry)
-        toolbar_layout.addWidget(self.retry_btn)
-
-        self.clear_btn = QToolButton()
-        self.clear_btn.setText("x")
-        self.clear_btn.setFixedSize(28, 28)
-        self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.clear_btn.setToolTip("Clear conversation")
-        self.clear_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
-        self.clear_btn.clicked.connect(self._on_clear)
-        toolbar_layout.addWidget(self.clear_btn)
-
-        toolbar_layout.addStretch()  # Push status to the right
+        toolbar_layout.addStretch()
 
         self.status_label = QLabel("Backend: checking")
-        self.status_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        )
         self.status_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;",
         )
         self.status_label.setToolTip("Backend and local model status")
-        toolbar_layout.addWidget(self.status_label, 1)
+        self.status_label.setVisible(False)
+        toolbar_layout.addWidget(self.status_label)
 
-        control_layout.addWidget(toolbar_widget)
+        header_layout.addLayout(toolbar_layout)
+        parent_layout.addWidget(header)
 
-        # Row 2: Input Field and Send Button
-        input_widget = QWidget()
-        input_widget.setStyleSheet("background: transparent; border: none;")
-        input_layout = QHBoxLayout(input_widget)
-        input_layout.setContentsMargins(10, 5, 10, 10)
-        input_layout.setSpacing(10)
+    def _build_empty_state(self) -> QFrame:
+        """Build the initial guidance panel shown before conversation starts."""
+        empty = QFrame()
+        empty.setObjectName("AssistantEmptyState")
+        empty.setStyleSheet(EMPTY_STATE_STYLE)
+        empty_layout = QVBoxLayout(empty)
+        empty_layout.setContentsMargins(14, 14, 14, 14)
+        empty_layout.setSpacing(8)
 
-        self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText("Ask XBrainLab...")
-        self.input_field.setStyleSheet(INPUT_FIELD_STYLE)
-        self.input_field.returnPressed.connect(self._on_send)
-        input_layout.addWidget(self.input_field, 1)
+        self.empty_state_title = QLabel("Start with a clear next step")
+        self.empty_state_title.setObjectName("AssistantEmptyTitle")
+        self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
+        empty_layout.addWidget(self.empty_state_title)
 
-        self.send_btn = QToolButton()
-        self.send_btn.setText("➤")
-        self.send_btn.setFixedSize(36, 36)
-        self.send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.send_btn.clicked.connect(self._on_send)
-        self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
-        input_layout.addWidget(self.send_btn)
+        intro = QLabel(
+            "Ask the assistant to inspect the current workflow state, explain why "
+            "a command is blocked, or guide load -> preprocess -> epoch -> "
+            "dataset -> train."
+        )
+        intro.setWordWrap(True)
+        intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
+        empty_layout.addWidget(intro)
 
-        control_layout.addWidget(input_widget)
-        layout.addWidget(control_panel)
+        self.empty_state_backend_label = QLabel("Backend stage: checking")
+        self.empty_state_backend_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
+        self.empty_state_backend_label.setWordWrap(True)
+        empty_layout.addWidget(self.empty_state_backend_label)
+
+        self.empty_state_model_label = QLabel("Local model: checking")
+        self.empty_state_model_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
+        self.empty_state_model_label.setWordWrap(True)
+        empty_layout.addWidget(self.empty_state_model_label)
+
+        self.empty_state_next_label = QLabel(
+            "Next available step: waiting for backend diagnostics."
+        )
+        self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
+        self.empty_state_next_label.setWordWrap(True)
+        empty_layout.addWidget(self.empty_state_next_label)
+
+        return empty
 
     def update_model_menu(self):
         """Update the model dropdown menu based on current LLM configuration.
@@ -298,7 +398,7 @@ class ChatPanel(QWidget):
             if active_mode == "gemini" and gemini_enabled
             else local_label
         )
-        self.model_btn.setText(f"Model: {label} ▼")
+        self.model_btn.setText(f"Model: {label}")
 
     def connect_controller(self, controller: ChatController):
         """Connect to a backend ChatController for state synchronization.
@@ -322,7 +422,7 @@ class ChatPanel(QWidget):
             feature_name: The selected feature/persona name.
 
         """
-        self.feature_btn.setText(f"{feature_name} ▼")
+        self.feature_btn.setText(feature_name)
 
     def _set_model(self, mode_key: str, label: str | None = None):
         """Update the selector button and emit a normalized runtime mode.
@@ -338,7 +438,7 @@ class ChatPanel(QWidget):
             if label is not None
             else ("Gemini (Remote)" if normalized_mode == "gemini" else "Local")
         )
-        self.model_btn.setText(f"{button_label} ▼")
+        self.model_btn.setText(button_label)
         self.model_changed.emit(normalized_mode)
 
     def _set_execution_mode(self, mode_key: str, label: str):
@@ -349,7 +449,7 @@ class ChatPanel(QWidget):
             label: Human-friendly label for the button text.
 
         """
-        self.mode_btn.setText(f"{label} ▼")
+        self.mode_btn.setText(label)
         self.execution_mode_changed.emit(mode_key)
 
     def _on_new_conversation(self):
@@ -421,12 +521,20 @@ class ChatPanel(QWidget):
         """
         self.is_processing = is_processing  # Sync state
         if is_processing:
-            self.send_btn.setText("■")  # Pure text square, no emoji background
+            self.send_btn.setText("Stop")
             self.send_btn.setStyleSheet(SEND_BUTTON_PROCESSING_STYLE)
         else:
-            self.send_btn.setText("➤")
+            self.send_btn.setText("Send")
             self.send_btn.setStyleSheet(SEND_BUTTON_STYLE)
 
+        if hasattr(self, "input_field"):
+            self.input_field.setEnabled(not is_processing)
+        if hasattr(self, "feature_btn"):
+            self.feature_btn.setEnabled(not is_processing)
+        if hasattr(self, "model_btn"):
+            self.model_btn.setEnabled(not is_processing)
+        if hasattr(self, "mode_btn"):
+            self.mode_btn.setEnabled(not is_processing)
         if hasattr(self, "retry_btn"):
             self.retry_btn.setEnabled(not is_processing)
         if hasattr(self, "clear_btn"):
@@ -439,6 +547,99 @@ class ChatPanel(QWidget):
         self.status_label.setText(text)
         if tooltip is not None:
             self.status_label.setToolTip(tooltip)
+
+        stage = "checking"
+        model_status = "checking"
+        if "|" in text:
+            stage_part, model_part = text.split("|", 1)
+            stage = stage_part.replace("Backend:", "").strip()
+            model_status = model_part.strip()
+        elif text.lower().startswith("backend:"):
+            stage = text.replace("Backend:", "").strip()
+
+        self._update_status_widgets(
+            stage=stage,
+            model_status=model_status,
+            available_commands=None,
+            tooltip=tooltip,
+        )
+
+    def set_product_status(
+        self,
+        stage: str,
+        model_status: str,
+        available_commands: list[str],
+        tooltip: str | None = None,
+        blocked_reason: str | None = None,
+    ) -> None:
+        """Update header chips and empty-state diagnostics."""
+        text = f"Backend: {stage} | {model_status}"
+        self.status_label.setText(text)
+        if tooltip is not None:
+            self.status_label.setToolTip(tooltip)
+        self._update_status_widgets(
+            stage=stage,
+            model_status=model_status,
+            available_commands=available_commands,
+            tooltip=tooltip,
+            blocked_reason=blocked_reason,
+        )
+
+    def _update_status_widgets(
+        self,
+        stage: str,
+        model_status: str,
+        available_commands: list[str] | None,
+        tooltip: str | None = None,
+        blocked_reason: str | None = None,
+    ) -> None:
+        """Apply status text to chips and empty-state labels."""
+        if hasattr(self, "backend_stage_chip"):
+            self.backend_stage_chip.setText(f"Stage: {stage}")
+            if tooltip:
+                self.backend_stage_chip.setToolTip(tooltip)
+
+        model_ready = "ready" in model_status.lower() and "unavailable" not in (
+            model_status.lower()
+        )
+        if hasattr(self, "model_status_chip"):
+            self.model_status_chip.setText(f"Model: {model_status}")
+            self.model_status_chip.setStyleSheet(
+                STATUS_CHIP_STYLE if model_ready else STATUS_CHIP_WARNING_STYLE
+            )
+            if tooltip:
+                self.model_status_chip.setToolTip(tooltip)
+
+        if available_commands is None:
+            command_text = "Commands: see details"
+        elif available_commands:
+            preview = ", ".join(available_commands[:3])
+            extra_count = len(available_commands) - 3
+            suffix = "" if extra_count <= 0 else f" +{extra_count}"
+            command_text = f"Commands: {preview}{suffix}"
+        else:
+            command_text = "Commands: none available"
+
+        if hasattr(self, "available_commands_chip"):
+            self.available_commands_chip.setText(command_text)
+            if tooltip:
+                self.available_commands_chip.setToolTip(tooltip)
+
+        if hasattr(self, "empty_state_backend_label"):
+            self.empty_state_backend_label.setText(f"Backend stage: {stage}")
+        if hasattr(self, "empty_state_model_label"):
+            self.empty_state_model_label.setText(f"Local model: {model_status}")
+        if hasattr(self, "empty_state_next_label"):
+            if available_commands:
+                self.empty_state_next_label.setText(
+                    "Next available step: " + ", ".join(available_commands[:4])
+                )
+            elif blocked_reason:
+                self.empty_state_next_label.setText(f"Blocked: {blocked_reason}")
+            else:
+                self.empty_state_next_label.setText(
+                    "Next available step: ask for current state or load data."
+                )
 
     def resizeEvent(self, event):  # noqa: N802
         """Re-adjust all bubble widths on window resize.
@@ -476,6 +677,8 @@ class ChatPanel(QWidget):
             bubble.adjust_width(viewport.width())
 
         # Insert before stretch
+        if hasattr(self, "empty_state_widget"):
+            self.empty_state_widget.setVisible(False)
         self.chat_layout.insertWidget(self.chat_layout.count() - 1, bubble)
         self._scroll_to_bottom()
 
@@ -485,14 +688,20 @@ class ChatPanel(QWidget):
 
     def _clear_ui(self):
         """Remove all message bubbles from the chat layout."""
-        # Remove all widgets except stretch
-        while self.chat_layout.count() > 1:
+        # Rebuild the message area with only the empty-state widget and stretch.
+        empty_state = getattr(self, "empty_state_widget", None)
+        while self.chat_layout.count():
             item = self.chat_layout.takeAt(0)
             if item:
                 w = item.widget()
-                if w:
+                if w and w is not empty_state:
                     w.deleteLater()
+        if empty_state is not None:
+            self.chat_layout.addWidget(empty_state)
+        self.chat_layout.addStretch()
         self.current_agent_bubble = None
+        if empty_state is not None:
+            empty_state.setVisible(True)
 
     def on_chunk_received(self, text: str):
         """Handle a streaming text chunk from the agent.
@@ -505,6 +714,8 @@ class ChatPanel(QWidget):
 
         """
         # Feature: Auto-create bubble if missing (Robustness)
+        if not text:
+            return
         if not self.current_agent_bubble:
             self._render_message("", is_user=False)
 

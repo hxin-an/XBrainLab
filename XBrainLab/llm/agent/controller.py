@@ -137,6 +137,8 @@ class LLMController(QObject):
         self.is_processing = False
         self._emitted_len = 0
         self._is_buffering = False
+        self._visible_response_sent = False
+        self._last_tool_summary: str | None = None
 
         # Metrics tracker
         self.metrics = AgentMetricsTracker()
@@ -230,6 +232,11 @@ class LLMController(QObject):
         # RACE CONDITION FIX: Prevent re-entry if already generating or loading
         if self.is_processing:
             logger.warning("User input ignored - Agent is busy.")
+            self.response_ready.emit(
+                "System",
+                "The assistant is still processing the previous request. "
+                "Stop it or wait for the current response before sending again.",
+            )
             return
 
         self.is_processing = True
@@ -275,6 +282,8 @@ class LLMController(QObject):
         self.current_response = ""  # Reset accumulator
         self._emitted_len = 0  # Track what we sent to UI
         self._is_buffering = False
+        self._visible_response_sent = False
+        self._last_tool_summary = None
 
         # Track LLM call metrics
         if self.metrics.current_turn:
@@ -330,6 +339,7 @@ class LLMController(QObject):
             if to_emit:
                 self.chunk_received.emit(to_emit)
                 self._emitted_len += len(to_emit)
+                self._visible_response_sent = True
         else:
             # We are buffering (hiding) potential tool output
             pass
@@ -345,6 +355,10 @@ class LLMController(QObject):
             return
 
         response_text = self.current_response.strip()
+
+        if not response_text:
+            self._handle_empty_response()
+            return
 
         # Flush buffer if we detained text thinking it was a tool, but it's not
         # (yet validated) Actually, wait until we confirm it's NOT a tool.
@@ -365,8 +379,24 @@ class LLMController(QObject):
             if to_emit:
                 self.chunk_received.emit(to_emit)
                 self._emitted_len += len(to_emit)
+                self._visible_response_sent = True
 
             self._finalize_turn(response_text)
+
+    def _handle_empty_response(self):
+        """Finish a turn with a visible fallback when the model returns nothing."""
+        message = (
+            "Assistant returned an empty response. The local model may still be "
+            "loading, may have failed to generate text, or may have been stopped "
+            "before producing output. Try Retry, or open settings to inspect the "
+            "local runtime status."
+        )
+        logger.warning(message)
+        self.metrics.finish_turn()
+        self.error_occurred.emit(message)
+        self.status_update.emit("Empty response")
+        self.is_processing = False
+        self.processing_finished.emit()
 
     def _handle_json_broken_retry(
         self,
@@ -491,6 +521,8 @@ class LLMController(QObject):
                     block_result.message,
                 )
                 self.status_update.emit(f"Blocked: {block_result.message}")
+                self.response_ready.emit("System", block_result.message)
+                self._visible_response_sent = True
                 self._append_history(
                     "user",
                     f"System: Tool call REJECTED: {block_result.message}",
@@ -524,6 +556,11 @@ class LLMController(QObject):
 
             if not _success:
                 has_failure = True
+            self._last_tool_summary = self._summarize_tool_result(
+                cmd,
+                _success,
+                result,
+            )
 
             # Handle Side Effects
             self._handle_tool_result_logic(result, _success)
@@ -585,6 +622,13 @@ class LLMController(QObject):
         new input.  Resets the successful-tool counter.
         """
         self._successful_tool_count = 0
+        if not self._visible_response_sent:
+            summary = (
+                self._last_tool_summary
+                or "Tool execution finished, but no assistant message was produced."
+            )
+            self.response_ready.emit("Tool", summary)
+            self._visible_response_sent = True
         self.metrics.finish_turn()
         self.status_update.emit("Ready")
         self.is_processing = False
@@ -613,6 +657,11 @@ class LLMController(QObject):
             self.status_update.emit(f"Executing confirmed: {cmd}...")
 
             _success, result = self._execute_tool_no_loop(cmd, params)
+            self._last_tool_summary = self._summarize_tool_result(
+                cmd,
+                _success,
+                result,
+            )
             self._handle_tool_result_logic(result, _success)
             self._append_history(
                 "user",
@@ -811,12 +860,11 @@ class LLMController(QObject):
                 availability,
                 state=self._application_state_payload(),
             )
+        mapped_command = TOOL_TO_COMMAND.get(command_name)
         return ToolCommandResult.failure(
             command_name,
             availability,
-            command_name=TOOL_TO_COMMAND.get(command_name).value
-            if command_name in TOOL_TO_COMMAND
-            else None,
+            command_name=mapped_command.value if mapped_command is not None else None,
             state=self._application_state_payload(),
             error_type="runtime",
             recoverable=True,
@@ -909,7 +957,23 @@ class LLMController(QObject):
         if not result.startswith("Request:") and not success:
             # Only report as System Error if the tool actually failed
             self.response_ready.emit("System", f"Tool Error: {result}")
+            self._visible_response_sent = True
         return False
+
+    @staticmethod
+    def _summarize_tool_result(command_name: str, success: bool, result: Any) -> str:
+        """Build a short visible tool summary for the chat transcript."""
+        if isinstance(result, ToolCommandResult):
+            message = result.message
+            backend_command = result.command_name or command_name
+        else:
+            message = str(result) if result is not None else ""
+            backend_command = command_name
+
+        status = "completed" if success else "failed"
+        if not message:
+            message = "No additional details were returned."
+        return f"Tool `{command_name}` {status} ({backend_command}): {message}"
 
     @staticmethod
     def _format_tool_output(command_name: str, success: bool, result: Any) -> str:

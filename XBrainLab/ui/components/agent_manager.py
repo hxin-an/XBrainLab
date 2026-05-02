@@ -377,6 +377,21 @@ class AgentManager(QObject):
         if not text:
             return
 
+        if (
+            self.agent_controller
+            and getattr(
+                self.agent_controller,
+                "is_processing",
+                False,
+            )
+            is True
+        ):
+            self.chat_controller.add_agent_message(
+                "The assistant is still processing the previous request. "
+                "Use Stop or wait for the current response before sending again.",
+            )
+            return
+
         # 1. Add to ChatController (Update History)
         self.chat_controller.add_user_message(text)
         self._last_user_input = text
@@ -480,7 +495,7 @@ class AgentManager(QObject):
         """
         if self.chat_panel:
             label = "Single" if mode == "single" else "Multi"
-            self.chat_panel.mode_btn.setText(f"{label} ▼")
+            self.chat_panel.mode_btn.setText(label)
 
     def start_new_conversation(self):
         """Clear the chat UI and reset the agent conversation state."""
@@ -581,7 +596,20 @@ class AgentManager(QObject):
             if state.last_error:
                 tooltip_lines.append(f"Last backend error: {state.last_error.message}")
 
-            self.chat_panel.set_status_summary(text, "\n".join(tooltip_lines))
+            blocked_reason = None
+            if train_capability.reasons:
+                blocked_reason = "; ".join(train_capability.reasons)
+
+            if hasattr(self.chat_panel, "set_product_status"):
+                self.chat_panel.set_product_status(
+                    stage=stage,
+                    model_status=model_status,
+                    available_commands=enabled,
+                    tooltip="\n".join(tooltip_lines),
+                    blocked_reason=blocked_reason,
+                )
+            else:
+                self.chat_panel.set_status_summary(text, "\n".join(tooltip_lines))
         except Exception as exc:
             logger.debug("Failed to refresh backend status", exc_info=True)
             self.chat_panel.set_status_summary(

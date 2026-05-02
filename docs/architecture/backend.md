@@ -195,6 +195,16 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   object / policy entry，但 capability policy 會標成 unavailable，不應被 UI 或 agent
   當作可執行能力。
 
+2026-05-02 product blocker 盤點結論：
+
+- `hello` no-response 問題主要發生在 chat / agent visible-output boundary，不是
+  `ApplicationService` command contract 本身。
+- `ApplicationService` / `CapabilityPolicy` 仍是 UI / Agent shared decision 的正確入口。
+- backend 仍需要繼續補 query command：`evaluate` / `visualize` / `saliency` /
+  `new_session` 目前是明確 future placeholder，不能被產品或文件寫成已完成。
+- error boundary 對 command result 已足夠支撐 UI 顯示 blocked reason；UI / agent 必須把它
+  轉成 visible user feedback，而不是只記在 diagnostics。
+
 重要邊界：
 
 - command 目前仍透過既有 controllers 執行，以保留 observer event 與 UI refresh 行為。

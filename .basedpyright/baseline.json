@@ -522,16 +522,6 @@
                 }
             }
         ],
-        "./XBrainLab/llm/core/backends/local.py": [
-            {
-                "code": "reportPrivateImportUsage",
-                "range": {
-                    "startColumn": 52,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/ui/chat/message_bubble.py": [
             {
                 "code": "reportAttributeAccessIssue",

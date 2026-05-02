@@ -11,6 +11,8 @@
 - fast quality dashboard 是工程健康訊號，不是論文結論。
 - real-data IO、tiny pipeline smoke、public fixture smoke、scientific validation 要分層看。
 - UI baseline 是 artifact 對 approved reference 的比對，不是完整人工 UX 審查。
+- AI Assistant product flow 不能只靠 local runtime smoke、deterministic eval 或 UI baseline 判斷；
+  normal chat response、visible error、local unavailable、blocked-command feedback 必須有專門 gate。
 - local agent runtime 已有 2026-05-02 standalone smoke evidence，但尚未納入 fast dashboard
   預設 profile；未來方向是 local-only。
 
@@ -150,6 +152,7 @@ pipeline evidence 要分層，不要用單一大測試包全部。
 | architecture compliance | repo-local 結構規則 | product correctness 或 scientific validity |
 | startup smoke | app 能在測試環境初始化 | 完整互動式 runtime 健康 |
 | UI baseline screenshots | approved core UI screens 未明顯漂移 | 完整 visual regression 或 UX 品質 |
+| chat product-flow tests | normal input / empty response / worker error / local unavailable 有可見 feedback | 真 local model 長時間穩定性或人工 click-through 完整體驗 |
 | real-data IO tests | 特定 real-data / fixture import paths | 完整 data pipeline reproducibility |
 | tiny pipeline smoke | 小型 train/evaluate path 能閉環 | model quality 或 thesis reproducibility |
 | quality dashboard | fast engineering health | thesis conclusion |
@@ -214,26 +217,29 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
 
 這些 checks 只能支撐 local runtime smoke，不等於 thesis-grade tool-call eval。
 
-## 2026-05-01 現況
+## 2026-05-02 現況
 
 目前 `docs/validation/README.md` 記錄的 refresh 狀態：
 
 - latest fast dashboard artifact：`artifacts/quality/latest.*`
-- generated at：`2026-05-01 19:28:48 UTC+08:00`
+- generated at：`2026-05-02 12:29:06 UTC+08:00`
 - workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall：`PASS`
 - UI baseline capture：`7 UI artifacts match approved references`
-- max UI mean diff：`0.000`
-- max UI changed ratio：`0.00%`
+- max UI mean diff：`0.114`
+- max UI changed ratio：`0.66%`
 
-同一輪 refresh / 文件整理已記錄：
+同一輪 chat product blocker 修復已記錄：
 
 - `poetry run mkdocs build --strict` 通過。
 - Real-data IO integration：`31 passed, 8 warnings`。
-- Tiny E2E pipeline smoke：`2 passed`。
-- Targeted agent / UI unit validation：`157 passed`。
+- UI unit validation：`817 passed`。
+- LLM unit validation：`652 passed`。
+- targeted chat product-flow validation：`55 passed`。
+- targeted controller / worker validation：`75 passed`。
 
-這些是 `2026-05-01` 的工程 evidence。引用到論文時，還需要 thesis validation layer。
+這些是 `2026-05-02` 的工程 evidence。引用到論文時，還需要 thesis validation layer。
+dashboard `PASS` 仍不能取代真人 launcher click-through 或真 local model chat walkthrough。
 
 ## 更新規則
 

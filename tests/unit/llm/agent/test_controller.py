@@ -94,6 +94,7 @@ class TestHandleUserInput:
         ctrl.is_processing = True
         ctrl.handle_user_input("hi")
         assert len(ctrl.history) == 0
+        ctrl.response_ready.emit.assert_called_once()
 
     def test_normal_flow(self, ctrl):
         ctrl.rag_retriever.get_similar_examples.return_value = []
@@ -134,10 +135,21 @@ class TestOnGenerationFinished:
     def test_no_command_finalizes(self, ctrl):
         ctrl.current_response = "Just a regular reply, nothing special"
         ctrl._emitted_len = 0
+        ctrl.is_processing = True
         with patch("XBrainLab.llm.agent.controller.CommandParser") as MockParser:
             MockParser.parse.return_value = None
             ctrl._on_generation_finished()
         assert not ctrl.is_processing
+        ctrl.chunk_received.emit.assert_called_once()
+
+    def test_empty_response_emits_visible_error(self, ctrl):
+        ctrl.current_response = "   "
+        ctrl._emitted_len = 0
+        ctrl.is_processing = True
+        ctrl._on_generation_finished()
+        ctrl.error_occurred.emit.assert_called_once()
+        assert "empty response" in ctrl.error_occurred.emit.call_args[0][0]
+        ctrl.processing_finished.emit.assert_called()
 
     def test_broken_json_retries(self, ctrl):
         ctrl.current_response = '```json\n{"broken'
@@ -239,6 +251,16 @@ class TestHandleToolResultLogic:
         result = ctrl._handle_tool_result_logic("some error", success=False)
         assert not result
         ctrl.response_ready.emit.assert_called()
+
+    def test_finalize_after_tool_emits_visible_summary(self, ctrl):
+        ctrl._visible_response_sent = False
+        ctrl._last_tool_summary = "Tool `get_state` completed: state captured"
+        ctrl._finalize_turn_after_tool()
+        ctrl.response_ready.emit.assert_called_once_with(
+            "Tool",
+            "Tool `get_state` completed: state captured",
+        )
+        ctrl.processing_finished.emit.assert_called()
 
 
 # --- _process_tool_calls ---

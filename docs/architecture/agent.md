@@ -156,6 +156,30 @@ XBrainLab/llm/core/models
 
 Gemini/API 不再列為產品驗證目標；應在 agent runtime 簡化時移除，不再保留為相容路徑。
 
+### Chat Response Reliability Boundary
+
+2026-05-02 人工驗收暴露出 agent/UI 邊界問題：local runtime smoke 通過，不代表
+`ChatPanel -> AgentManager -> LLMController -> AgentWorker -> LLMEngine -> ChatPanel`
+的 user-visible flow 一定可用。
+
+已確認的可靠性缺口：
+
+- 普通自然語言回覆只靠 streaming chunk 顯示；如果模型回空字串，舊邏輯會 finalize turn，
+  但 transcript 沒有 assistant bubble。
+- 若模型只輸出 tool-call JSON 且 tool 成功，raw JSON 會被隱藏，single mode 會 stop after
+  success；舊邏輯可能沒有任何可見 tool summary。
+- worker error / local unavailable 需要變成 chat transcript 中的 visible message，不可只停在
+  status update。
+- deterministic tool-call eval 不覆蓋普通 `hello` 這種 no-tool response path。
+
+本輪修正後的 agent product contract：
+
+- empty response 會發出 visible error，並讓 UI 回 idle。
+- tool-only successful turn 會產生 short visible tool summary。
+- ApplicationService blocked command 會立即發出 shared blocked reason。
+- busy re-entry 不會默默吃掉使用者輸入；UI 會提示 assistant still processing。
+- tests 必須覆蓋 normal response、empty response、worker error、local unavailable first-open。
+
 ### 5. Tools
 
 `XBrainLab/llm/tools/definitions/` 定義工具名稱、參數 schema、描述和是否需要 confirmation。

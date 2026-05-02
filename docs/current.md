@@ -6,16 +6,24 @@
 
 XBrainLab 的 active repo 已在目前 workspace 專案區。標準 `dev,test,docs` 環境可用，fast quality dashboard 已在新路徑刷新，結果是 clean `PASS`。
 
-目前階段已進入 product-delivery engineering。後端 `ApplicationService / Command API`
-第一版已落地，並完成 command contract、capability policy、reset state invalidation
-和 facade compatibility 的驗收補強。最新一輪已完成 UI / Agent command surface
-第一批統一：UI readiness 和 agent tool availability 都開始讀同一套
-ApplicationService capability policy，agent tool result 已收斂成 typed adapter，避免把
-legacy `"Error: ..."` 字串誤當成功。local LLM runtime 已完成非中國 primary / fallback
-模型選型、cache preflight、下載、GPU prompt smoke 和 structured-output smoke；desktop
-launcher 已產出並完成 startup smoke。當前工作不是停在 baseline，而是繼續推進 UI action
-command adapter、launcher product smoke、worktree checkpoint 整理和 end-to-end product
-stabilization。
+目前階段已進入 product-delivery engineering，但 `2026-05-02` 人工驗收修正了先前的
+產品判斷：AI Assistant 仍有 release blocker。使用者實際打開 assistant 後發現 chat UI
+仍像 debug dock，且一般輸入 `hello` 後沒有任何 assistant 回覆。這代表先前 automated
+final gate、local runtime smoke、launcher startup smoke、deterministic eval 都不能被解讀成
+「可用桌面產品已完成」。
+
+後端 `ApplicationService / Command API` 第一版已落地，並完成 command contract、
+capability policy、reset state invalidation 和 facade compatibility 的驗收補強。UI / Agent
+command surface 第一批統一也已完成：UI readiness 和 agent tool availability 都開始讀同一套
+ApplicationService capability policy，agent tool result 已收斂成 typed adapter。local LLM
+runtime 已完成非中國 primary / fallback 模型選型、cache preflight、下載、GPU prompt smoke
+和 structured-output smoke；desktop launcher 已產出並完成 startup smoke。
+
+目前真正的 product gate 剛被 chat response reliability 和 chat UX 擋住；本輪已完成 targeted
+修復與 tests：normal text input 有可見 assistant 回覆、空回覆 / worker error / local
+unavailable 有可見狀態、ChatPanel 已從 debug dock 改成產品化面板。broader UI / LLM gate
+已重跑通過；真 local model / Windows launcher click-through walkthrough 仍待驗收，完成前不能
+重新宣稱完整 product delivery。
 
 ## 可信狀態
 
@@ -52,7 +60,7 @@ stabilization。
 
 最新 fast dashboard：
 
-- generated at：`2026-05-02 00:28:34 UTC+08:00`
+- generated at：`2026-05-02 12:29:06 UTC+08:00`
 - workspace：`/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall：`PASS`
 - 來源：`artifacts/quality/latest.json`、`artifacts/quality/latest.md`
@@ -79,7 +87,10 @@ stabilization。
   - `44 passed`
 - UI unit suite：
   - `scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
-  - `811 passed`
+  - `817 passed`
+- LLM unit suite：
+  - `poetry run pytest --capture=sys tests/unit/llm -q`
+  - `652 passed`
 - agent tool/control suite：
   - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
   - `321 passed`
@@ -109,7 +120,8 @@ stabilization。
   - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
   - artifacts：`artifacts/agent_evals/latest.json`、`artifacts/agent_evals/latest.md`
   - `21 / 21` cases passed；deterministic baseline，不是 local LLM performance claim。
-- `ai-assistant-open.png` 的 `(1428, 800)` baseline 已接受，尺寸和 live artifact、repo HEAD reference 一致。
+- `ai-assistant-open.png` 的 `(1684, 800)` product redesign baseline 已接受，尺寸和
+  live artifact、repo HEAD reference 一致。
 
 ## 邊界與未驗證事項
 
@@ -124,18 +136,27 @@ stabilization。
 
 ## 目前 blocker
 
-目前沒有 final gate blocker。主要風險是 UI action execution 仍有不少直接 controller path，
-部分 assistant real tools 仍先走 `BackendFacade` legacy method 再由 typed adapter 正規化結果，
-launcher 尚未完整做人工 click-through 互動驗收，`evaluate` / `visualize` / `saliency` /
-`new_session` 仍只是 disabled future command contract，tool-call eval 目前只有 deterministic
-baseline，尚未跑 local LLM primary / fallback 真實 agent runner。
+目前舊 final gate 判定已失效，不能用它宣稱 product delivery 完成：
+
+- AI Assistant 一般輸入 `hello` 曾出現 silent no-response；本輪已補 visible-response contract
+  和 deterministic product-flow test。
+- ChatPanel 視覺曾偏 debug dock；本輪已完成第一輪產品化 redesign。
+- automated gate 漏掉了最基本的 user-visible chat product flow。deterministic eval `21 / 21`、
+  local prompt smoke、launcher startup smoke 都不能替代真 chat flow 驗收。
+- broader UI / LLM gate 已針對本輪修復重跑通過；真 launcher / local model walkthrough 尚未完成。
+
+仍存在的非阻塞架構風險：
+
+- UI action execution 仍有不少直接 controller path。
+- 部分 assistant real tools 仍先走 `BackendFacade` legacy method 再由 typed adapter 正規化結果。
+- launcher 尚未完整做人工 click-through 互動驗收。
+- `evaluate` / `visualize` / `saliency` / `new_session` 仍只是 disabled future command contract。
+- tool-call eval 目前只有 deterministic baseline，尚未跑 local LLM primary / fallback 真實 agent runner。
 
 ## 目前執行中
 
-1. 把更多 UI action execution 改成 command adapter。
-2. 驗收 launcher -> MainWindow -> chat panel -> agent blocked-command flow。
-3. 設計 evaluation / visualization / saliency query command contract。
-5. 將 dirty worktree 依 product delivery 切成可審查、可回滾理解的 checkpoint commits。
+1. 做本輪 chat product fix checkpoint commit。
+2. 接著回到更多 UI action execution command adapter、launcher click-through、query command contract。
 
 ## 相關文件
 

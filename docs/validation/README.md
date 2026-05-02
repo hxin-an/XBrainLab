@@ -15,17 +15,25 @@
 
 ## 目前狀態
 
-`artifacts/quality/latest.*` 已可引用作為今天的 fast engineering evidence，但目前整體狀態是：
+`artifacts/quality/latest.*` 已可引用作為今天的 fast engineering evidence，但 `2026-05-02`
+人工產品驗收修正了它的可信邊界：fast engineering evidence 不能代表 AI Assistant
+已達可用產品狀態。使用者實際打開 assistant 後發現 chat UI 仍像 debug dock，且輸入
+`hello` 沒有 assistant 回覆。這是 product gate blocker，不能用 dashboard PASS、
+local runtime smoke 或 deterministic eval 覆蓋。
 
-- generated at: `2026-05-01 19:28:48 UTC+08:00`
+目前 fast engineering artifact 狀態是：
+
+- generated at: `2026-05-02 12:29:06 UTC+08:00`
 - workspace: `/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall: `PASS`
 
-`ai-assistant-open.png` 已接受 `(1428, 800)` approved baseline。最新 UI baseline capture 結果：
+`ai-assistant-open.png` 已接受 `(1684, 800)` product redesign approved baseline。最新
+UI baseline capture 結果：
 
 - `7 UI artifacts match approved references`
-- `max mean diff 0.000`
-- `max changed 0.00%`
+- `max mean diff 0.114`
+- `max changed 0.66%`
+- fast dashboard after chat fix: `PASS`
 
 文件站點也已通過：
 
@@ -63,6 +71,59 @@ agent 架構文件整理時也跑：
 
 這組 gate 只代表 backend policy / UI readiness / agent command surface 的工程可信度；
 它仍不是 thesis-grade tool-call evaluation。
+
+### 2026-05-02 Chat product-flow blocker
+
+先前 gate 漏掉的 product blocker：
+
+- normal user text path 沒有被產品級測試覆蓋。`hello` 這種不需要 tool 的普通輸入，
+  必須驗證 user bubble、assistant bubble、非空內容、processing 回 idle。
+- empty model response 先前可被視為「生成完成」，但 UI 沒有 visible fallback。
+- tool-only successful response 可能隱藏 JSON 並直接 finalize，導致成功執行但沒有使用者可見回饋。
+- worker error / local unavailable 需要在 chat transcript 中形成可理解 message，而不是只改 status。
+- UI baseline 只能檢查 pixels 是否接近 approved reference，不能判斷介面是否已產品級、也不能抓
+  no-response。
+
+新的 relevant chat gate 必須至少包含：
+
+```bash
+timeout 240s scripts/dev/run_ui_pytest.sh \
+  tests/unit/ui/chat/test_chat_panel.py \
+  tests/unit/ui/components/test_agent_manager.py -q
+
+timeout 180s poetry run pytest --capture=sys \
+  tests/unit/llm/agent/test_controller.py \
+  tests/unit/llm/agent/test_worker.py -q
+```
+
+這些測試要證明：
+
+- normal chat response product flow 有可見 assistant bubble。
+- empty response 會變 visible fallback error。
+- worker error 會變 visible error。
+- local unavailable first-open 會顯示原因。
+- ChatPanel 結構包含 header、status chips、empty state、composer controls。
+
+broader UI / LLM suite 仍需要跑，但不能取代上述 product-flow gate。
+
+本輪修復後的驗證結果：
+
+- `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py -q`
+  - `55 passed`
+- `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py -q`
+  - `75 passed`
+- `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - `817 passed`
+- `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+  - `652 passed`
+- `timeout 120s poetry run mkdocs build --strict`
+  - passed
+- `timeout 60s git diff --check`
+  - passed
+- `timeout 360s poetry run python scripts/dev/update_quality_dashboard.py`
+  - overall `PASS`
+  - Basedpyright `0 errors`
+  - UI baseline capture `PASS`
 
 2026-05-02 local LLM runtime gate 已另行通過，不屬於 fast dashboard 預設 profile：
 
@@ -133,6 +194,21 @@ agent 架構文件整理時也跑：
 
 這是 deterministic scripted baseline，不是 local LLM performance claim。local model primary /
 fallback 真實 tool-call success rate 仍需在下一輪用相同 case schema 接 model runner 後再量測。
+
+## Automated Evidence vs Product Evidence
+
+| Evidence | 目前能證明 | 不能證明 |
+| --- | --- | --- |
+| startup smoke | `MainWindow` 能初始化 | assistant dock 打開後可用、可回覆、可讀 |
+| local prompt smoke | local backend 能對最小 prompt 回文字 | UI chat flow 已接上、streaming 不被吃掉、錯誤可見 |
+| structured-output smoke | 模型可按 prompt 產出 tool JSON | agent 在真 UI 中能穩定選 tool、解釋 blocked reason |
+| deterministic eval | case schema / scoring / scripted policy 正確 | local LLM 真實 tool-call 成功率 |
+| UI baseline | approved screenshots 沒有大幅 pixel drift | UI 是否產品級、是否能互動、是否 no-response |
+| UI unit tests | signal / slot 和 widget state 有 regression protection | 真人 click-through 完整體驗 |
+
+未來不能再只用 deterministic eval 或 dashboard PASS 宣稱 assistant product gate 完成。
+assistant product gate 至少要包含 user-visible normal chat flow、blocked command feedback、
+local unavailable feedback 和 launcher click-through evidence。
 
 ## Clean Dashboard 判定
 

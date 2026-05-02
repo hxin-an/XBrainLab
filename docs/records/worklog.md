@@ -37,6 +37,48 @@
 
 ## 2026-05-02
 
+### 12:02 Chat product blocker correction
+
+- 做了什麼：
+  - 接受人工驗收回報：AI Assistant UI 仍像 debug dock，且使用者輸入 `hello` 後沒有
+    assistant 回覆。
+  - 將 product gate 狀態從「接近完成」修正為被 chat response reliability / chat UX 擋住。
+  - 追蹤 chat 路徑：`ChatPanel._on_send -> AgentManager.handle_user_input ->
+    ChatController.add_user_message -> LLMController.handle_user_input -> AgentWorker ->
+    LLMEngine -> chunk / finished / error -> ChatPanel bubble`。
+  - 找出 automated gate 漏掉的風險：empty response 可 silent finalize；tool-only successful
+    response 可被隱藏 JSON 後直接 finalize；normal `hello` product flow 沒有測 user-visible
+    assistant bubble。
+  - 重設計 ChatPanel 結構：header、status chips、empty state、composer、professional bubbles。
+  - 補 product-flow tests：normal response、empty response fallback、worker error visible、
+    local unavailable visible、UI structure。
+- 結果：
+  - 一般輸入 path 現在必須產生 visible assistant response 或 visible error。
+  - empty response 會顯示可理解 fallback error；tool-only success 會顯示短 tool summary。
+  - 文件已開始校正 automated smoke / deterministic eval / true product flow 的邊界。
+- 證據：
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py -q`
+    - `55 passed`
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py -q`
+    - `75 passed`
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+    - `817 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+    - `652 passed`
+  - `timeout 180s poetry run basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+  - `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_engine.py -q`
+    - `102 passed`
+  - `timeout 120s poetry run mkdocs build --strict`
+    - 通過
+  - `timeout 60s git diff --check`
+    - 通過
+  - `timeout 360s poetry run python scripts/dev/update_quality_dashboard.py`
+    - overall `PASS`
+- 接續 / 本輪剩餘：
+  - 做 checkpoint commit。
+  - 真 Windows Desktop shortcut click-through 仍需人工或可控 UI smoke。
+
 ### 07:05 Deterministic tool-call eval baseline
 
 - 做了什麼：

@@ -6,7 +6,7 @@ HuggingFace ``transformers`` with optional 4-bit quantization.
 
 import logging
 from threading import Thread
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import local_model_policy_error, local_model_spec
@@ -97,7 +97,7 @@ class LocalBackend(BaseBackend):
             class LossKwargs(TypedDict, total=False):
                 labels: Any
 
-            transformers_utils.LossKwargs = LossKwargs
+            cast(Any, transformers_utils).LossKwargs = LossKwargs
 
         try:
             from transformers.cache_utils import DynamicCache
@@ -189,7 +189,7 @@ class LocalBackend(BaseBackend):
                     load_in_4bit=True,
                 )
             elif self.config.device == "cuda":
-                model_kwargs["dtype"] = torch.float16
+                model_kwargs["dtype"] = cast(Any, torch).float16
 
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.config.model_name,

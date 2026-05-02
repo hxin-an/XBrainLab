@@ -28,6 +28,75 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Chat product flow blocker 與 visible-response contract
+
+### 背景
+
+使用者人工打開 AI Assistant 後發現兩個產品阻塞：介面仍像 debug dock，且輸入 `hello`
+後沒有 assistant 回覆。這代表先前 automated final gate、local prompt smoke、launcher
+startup smoke、deterministic eval 都沒有覆蓋最基本的 user-visible chat path，不能再宣稱
+product delivery 完成。
+
+### 變更
+
+- `LLMController` 新增 visible-response contract：
+  - empty model response 會回 visible error，不再 silent finalize。
+  - tool-only successful turn 會產生 short tool summary，避免 JSON 被隱藏後使用者看不到結果。
+  - ApplicationService blocked command 會立即發出 shared blocked reason。
+  - busy re-entry 會顯示 assistant still processing，而不是默默忽略。
+- `AgentManager` 在 controller busy 時不再先加入新的 user message 再被 controller 吃掉。
+- `ChatPanel` 重新設計成產品級結構：
+  - header：`XBrainLab Assistant`、backend stage chip、local model status chip、available command chip。
+  - empty state：說明 assistant 可做 state inspection、blocked reason explanation、workflow guidance。
+  - conversation area：專業 bubble、padding、max width、可讀 contrast。
+  - composer：清楚 `Send` / `Stop` 狀態，processing 時禁用會造成 race 的 controls。
+- 新增 product-flow tests：
+  - normal `hello` path 產生 user bubble + assistant bubble + non-empty content。
+  - empty response fallback visible。
+  - worker error visible。
+  - local unavailable first-open visible。
+  - ChatPanel structure / status chips / composer controls。
+- 文件校正 automated evidence 邊界：dashboard / deterministic eval / local smoke 不能替代真 chat product flow。
+
+### 影響範圍
+
+- UI chat panel
+- AgentManager wiring
+- LLMController response finalization
+- UI / agent validation tests
+- current / planning / architecture / validation docs
+
+### 驗證
+
+- `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py -q`
+  - `55 passed`
+- `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py -q`
+  - `75 passed`
+- `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
+  - `817 passed`
+- `timeout 300s poetry run pytest --capture=sys tests/unit/llm -q`
+  - `652 passed`
+- `timeout 180s poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- `timeout 180s poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_engine.py -q`
+  - `102 passed`
+- `timeout 120s poetry run mkdocs build --strict`
+  - passed
+- `timeout 60s git diff --check`
+  - passed
+- `timeout 360s poetry run python scripts/dev/update_quality_dashboard.py`
+  - overall `PASS`
+  - UI baseline capture `PASS`
+  - Basedpyright `0 errors`
+
+### 剩餘風險
+
+- 這一輪的 normal chat product-flow tests 使用 fake controller / fake engine，不載入大模型；
+  真 local Phi model 的 full chat walkthrough 仍需 resource-safe smoke。
+- Windows Desktop shortcut 的人工 click-through 仍未完成。
+- UI action execution 仍有 controller direct-call legacy path；本輪修的是 chat product blocker，
+  不是完成所有 UI command adapter migration。
+
 ## 2026-05-02 Deterministic tool-call eval baseline
 
 ### 背景
