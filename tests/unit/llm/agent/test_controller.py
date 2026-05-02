@@ -531,6 +531,26 @@ class TestPipelineGate:
         assert result.command_name == "train"
         assert "Generate datasets before training" in result.message
 
+    def test_mapped_tool_uses_application_command_result(self, ctrl):
+        """Mapped agent tools can bypass legacy string results."""
+        from XBrainLab.backend.study import Study
+
+        ctrl.study = Study()
+        mock_tool = MagicMock()
+        mock_tool.execute.side_effect = AssertionError("legacy path should not run")
+        ctrl.registry.get_tool.return_value = mock_tool
+
+        success, result = ctrl._execute_tool_no_loop(
+            "set_model",
+            {"model_name": "EEGNet"},
+        )
+
+        assert success is True
+        assert result.ok is True
+        assert result.command_name == "configure_training"
+        assert result.raw_result["status"] == "ok"
+        mock_tool.execute.assert_not_called()
+
 
 # --- Execution Mode (Single / Multi) ---
 class TestExecutionMode:

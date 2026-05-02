@@ -29,6 +29,7 @@ from XBrainLab.llm.tools.application_surface import (
     CapabilityPolicyUnavailable,
     ToolAvailability,
     ToolCommandResult,
+    execute_application_tool_command,
     get_tool_availability,
     normalize_tool_result,
 )
@@ -775,7 +776,13 @@ class LLMController(QObject):
 
             t0 = _time.monotonic()
             try:
-                raw_result = tool.execute(self.study, **params)
+                raw_result = execute_application_tool_command(
+                    self.study,
+                    command_name,
+                    params,
+                )
+                if raw_result is None:
+                    raw_result = tool.execute(self.study, **params)
             except Exception as e:
                 elapsed = (_time.monotonic() - t0) * 1000
                 error_msg = f"Tool execution failed: {e}"

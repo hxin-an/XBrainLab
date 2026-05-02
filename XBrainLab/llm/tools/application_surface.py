@@ -5,7 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from XBrainLab.backend.application import CommandName, CommandResult
+from XBrainLab.backend.application import (
+    AttachLabelsCommand,
+    Command,
+    CommandName,
+    CommandResult,
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
+    GenerateDatasetCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    ResetSessionCommand,
+    TrainCommand,
+)
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
@@ -304,6 +316,39 @@ def normalize_tool_result(
     )
 
 
+def execute_application_tool_command(
+    study: Any,
+    tool_name: str,
+    params: dict[str, Any],
+    availability: ToolAvailability | None = None,
+) -> ToolCommandResult | None:
+    """Execute a tool through ApplicationService when a direct command exists.
+
+    ``None`` means the tool still needs the legacy real-tool path, either
+    because it is read-only/UI-side or because the provided parameters are not
+    enough to safely construct a backend command.
+    """
+    if not isinstance(study, Study):
+        return None
+
+    command = _command_for_tool(tool_name, params)
+    if command is None:
+        return None
+
+    if availability is None:
+        try:
+            availability = get_tool_availability(study, tool_name)
+        except CapabilityPolicyUnavailableError:
+            availability = None
+
+    result = BackendFacade(study).service.execute(command)
+    return ToolCommandResult.from_command_result(
+        tool_name,
+        result,
+        capability=availability.to_dict() if availability else None,
+    )
+
+
 def legacy_tool_result_succeeded(message: str) -> bool:
     """Infer success from legacy string-only tool output."""
     text = message.strip().lower()
@@ -327,6 +372,116 @@ def legacy_tool_result_succeeded(message: str) -> bool:
     if text.startswith(failure_prefixes):
         return False
     return " failed:" not in text
+
+
+def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
+    """Build an ApplicationService command for a supported agent tool."""
+    if tool_name == "attach_labels":
+        mapping = params.get("mapping")
+        if not isinstance(mapping, dict) or not mapping:
+            return None
+        return AttachLabelsCommand(mapping={str(k): str(v) for k, v in mapping.items()})
+
+    if tool_name == "apply_bandpass_filter":
+        low_freq = params.get("low_freq")
+        high_freq = params.get("high_freq")
+        if low_freq is None or high_freq is None:
+            return None
+        return PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=float(low_freq),
+            high_freq=float(high_freq),
+        )
+
+    if tool_name == "apply_notch_filter":
+        freq = params.get("freq")
+        if freq is None:
+            return None
+        return PreprocessCommand(
+            operation=PreprocessOperation.NOTCH,
+            notch_freq=float(freq),
+        )
+
+    if tool_name == "resample_data":
+        rate = params.get("rate")
+        if rate is None:
+            return None
+        return PreprocessCommand(
+            operation=PreprocessOperation.RESAMPLE,
+            rate=int(rate),
+        )
+
+    if tool_name == "normalize_data":
+        method = params.get("method")
+        if method is None:
+            return None
+        return PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method=str(method),
+        )
+
+    if tool_name == "set_reference":
+        method = params.get("method")
+        if method is None:
+            return None
+        return PreprocessCommand(
+            operation=PreprocessOperation.REREFERENCE,
+            method=str(method),
+        )
+
+    if tool_name == "select_channels":
+        channels = params.get("channels")
+        if not isinstance(channels, list) or not channels:
+            return None
+        return PreprocessCommand(
+            operation=PreprocessOperation.SELECT_CHANNELS,
+            channels=[str(channel) for channel in channels],
+        )
+
+    if tool_name == "epoch_data":
+        t_min = params.get("t_min")
+        t_max = params.get("t_max")
+        if t_min is None or t_max is None:
+            return None
+        return CreateEpochCommand(
+            t_min=float(t_min),
+            t_max=float(t_max),
+            baseline=params.get("baseline"),
+            event_ids=params.get("event_id"),
+        )
+
+    if tool_name == "generate_dataset":
+        return GenerateDatasetCommand(
+            test_ratio=float(params.get("test_ratio", 0.2)),
+            val_ratio=float(params.get("val_ratio", 0.2)),
+            split_strategy=str(params.get("split_strategy", "trial")),
+            training_mode=str(params.get("training_mode", "individual")),
+        )
+
+    if tool_name == "set_model":
+        model_name = params.get("model_name")
+        if not model_name:
+            return None
+        return ConfigureTrainingCommand(model_name=str(model_name))
+
+    if tool_name == "configure_training":
+        return ConfigureTrainingCommand(
+            epoch=int(params.get("epoch", 10)),
+            batch_size=int(params.get("batch_size", 32)),
+            learning_rate=float(params.get("learning_rate", 0.001)),
+            repeat=int(params.get("repeat", 1)),
+            device=str(params.get("device", "cpu")),
+            optimizer=str(params.get("optimizer", "adam")),
+            save_checkpoints_every=int(params.get("save_checkpoints_every", 0)),
+        )
+
+    if tool_name == "start_training":
+        return TrainCommand()
+
+    if tool_name == "clear_dataset":
+        return ResetSessionCommand(confirmed=True)
+
+    return None
 
 
 def enabled_tool_names(study: Any) -> list[str]:

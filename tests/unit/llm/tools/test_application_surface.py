@@ -13,6 +13,7 @@ from XBrainLab.llm.tools.application_surface import (
     CapabilityPolicyUnavailable,
     blocked_tool_reasons,
     build_agent_tool_policy,
+    execute_application_tool_command,
     legacy_tool_result_succeeded,
     normalize_tool_result,
 )
@@ -79,3 +80,30 @@ def test_legacy_result_success_inference_handles_error_prefixes():
     assert legacy_tool_result_succeeded("Successfully loaded 1 files.") is True
     assert legacy_tool_result_succeeded("Error: paths list cannot be empty.") is False
     assert legacy_tool_result_succeeded("Dataset generation failed: no epoch") is False
+
+
+def test_application_tool_command_returns_structured_result_for_model_config():
+    study = Study()
+
+    result = execute_application_tool_command(
+        study,
+        "set_model",
+        {"model_name": "EEGNet"},
+    )
+
+    assert result is not None
+    assert result.ok is True
+    assert result.command_name == CommandName.CONFIGURE_TRAINING.value
+    assert result.raw_result["status"] == "ok"
+    assert study.model_holder.target_model.__name__ == "EEGNet"
+
+
+def test_application_tool_command_leaves_unsupported_tools_on_legacy_path():
+    assert (
+        execute_application_tool_command(
+            Study(),
+            "load_data",
+            {"paths": ["/tmp/sample.fif"]},
+        )
+        is None
+    )
