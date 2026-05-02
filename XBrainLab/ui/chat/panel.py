@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QMenu,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -26,7 +27,7 @@ from XBrainLab.backend.utils.logger import logger
 
 # M3.1: Debug Mode
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
-from XBrainLab.llm.core.config import LLMConfig, legacy_remote_runtime_enabled
+from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.ui.product_language import command_labels, workflow_stage_text_label
 
 from ..styles.theme import Theme
@@ -39,6 +40,7 @@ from .styles import (
     EMPTY_STATE_TEXT_STYLE,
     EMPTY_STATE_TITLE_STYLE,
     FOOTER_BUTTON_STYLE,
+    FOOTER_STATUS_STYLE,
     GUIDANCE_PANEL_STYLE,
     GUIDANCE_STAGE_STYLE,
     GUIDANCE_TEXT_STYLE,
@@ -94,6 +96,7 @@ class ChatPanel(QWidget):
 
         self.is_processing = False
         self._retry_available = False
+        self._footer_status_text = "No data loaded · Import EEG files to begin"
         self.setObjectName("AssistantPanel")
         self.setStyleSheet(ASSISTANT_PANEL_STYLE)
         self.init_ui()
@@ -135,6 +138,7 @@ class ChatPanel(QWidget):
 
         # --- Control Panel (Bottom) ---
         control_panel = QWidget()
+        self.control_panel = control_panel
         control_panel.setObjectName("ControlPanel")
         control_panel.setStyleSheet(CONTROL_PANEL_STYLE)
         control_layout = QVBoxLayout(control_panel)
@@ -180,7 +184,15 @@ class ChatPanel(QWidget):
         self.runtime_status_label.setWordWrap(False)
         self.runtime_status_label.setVisible(False)
 
-        footer_row.addStretch(1)
+        self.footer_status_label = QLabel(self._footer_status_text)
+        self.footer_status_label.setObjectName("AssistantFooterStatus")
+        self.footer_status_label.setStyleSheet(FOOTER_STATUS_STYLE)
+        self.footer_status_label.setWordWrap(False)
+        self.footer_status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        footer_row.addWidget(self.footer_status_label, 1)
 
         self.retry_btn = QToolButton()
         self.retry_btn.setText("Retry")
@@ -189,6 +201,7 @@ class ChatPanel(QWidget):
         self.retry_btn.setToolTip("Send a request before retrying.")
         self.retry_btn.setStyleSheet(FOOTER_BUTTON_STYLE)
         self.retry_btn.setEnabled(False)
+        self.retry_btn.setVisible(False)
         self.retry_btn.clicked.connect(self._on_retry)
         footer_row.addWidget(self.retry_btn)
 
@@ -198,16 +211,17 @@ class ChatPanel(QWidget):
         self.clear_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clear_btn.setToolTip("Clear conversation")
         self.clear_btn.setStyleSheet(FOOTER_BUTTON_STYLE)
+        self.clear_btn.setVisible(False)
         self.clear_btn.clicked.connect(self._on_clear)
         footer_row.addWidget(self.clear_btn)
 
-        self.step_mode_status_label = QLabel("Single step")
+        self.step_mode_status_label = QLabel("Step by step")
         self.step_mode_status_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;"
         )
         self.step_mode_status_label.setToolTip(
-            "Single step stops after one completed action. Auto steps can continue "
-            "through safe follow-up actions."
+            "Step by step pauses after one completed action. Continue safely can "
+            "follow safe next actions."
         )
         self.step_mode_status_label.setVisible(False)
         control_layout.addLayout(footer_row)
@@ -251,9 +265,9 @@ class ChatPanel(QWidget):
         title_row.addLayout(title_stack, 1)
 
         self.options_btn = QToolButton()
-        self.options_btn.setText("Options")
+        self.options_btn.setText("...")
         self.options_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.options_btn.setFixedSize(76, 28)
+        self.options_btn.setFixedSize(32, 28)
         self.options_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.options_btn.setToolTip("Assistant options")
         self.options_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
@@ -289,18 +303,18 @@ class ChatPanel(QWidget):
         self.update_model_menu()
         self.model_btn.setVisible(False)
 
-        self.mode_btn = QPushButton("Single step")
+        self.mode_btn = QPushButton("Step by step")
         self.mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.mode_btn.setStyleSheet(TOOLBAR_BUTTON_STYLE)
         self.mode_btn.setToolTip(
-            "Single step: stop after each completed action\n"
-            "Auto steps: continue through safe follow-up actions until done"
+            "Step by step: pause after each completed action\n"
+            "Continue safely: continue through safe follow-up actions until done"
         )
         self.mode_menu = QMenu(self)
         self.mode_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
         for mode_label, mode_key in [
-            ("Single step", "single"),
-            ("Auto steps", "multi"),
+            ("Step by step", "single"),
+            ("Continue safely", "multi"),
         ]:
             action = QAction(mode_label, self)
             action.triggered.connect(
@@ -315,17 +329,24 @@ class ChatPanel(QWidget):
 
         self.options_menu = QMenu(self)
         self.options_menu.setStyleSheet(DROPDOWN_MENU_STYLE)
+        self.retry_action = QAction("Retry last request", self)
+        self.retry_action.setEnabled(False)
+        self.retry_action.triggered.connect(self._on_retry)
+        self.options_menu.addAction(self.retry_action)
+        self.new_conversation_action = QAction("New conversation", self)
+        self.new_conversation_action.triggered.connect(self._on_clear)
+        self.options_menu.addAction(self.new_conversation_action)
+        self.options_menu.addSeparator()
         self.options_menu.addMenu(self.feature_menu)
-        self.options_menu.addMenu(self.model_menu)
         self.options_menu.addMenu(self.mode_menu)
         self.options_btn.setMenu(self.options_menu)
         toolbar_layout.addStretch()
 
-        self.status_label = QLabel("Backend: checking")
+        self.status_label = QLabel("No data loaded")
         self.status_label.setStyleSheet(
             f"color: {Theme.TEXT_SECONDARY}; background: transparent; border: none;",
         )
-        self.status_label.setToolTip("Backend and local model status")
+        self.status_label.setToolTip("Workflow status")
         self.status_label.setVisible(False)
         toolbar_layout.addWidget(self.status_label)
 
@@ -333,7 +354,12 @@ class ChatPanel(QWidget):
         parent_layout.addWidget(header)
 
     def _build_workflow_guidance(self, parent_layout: QVBoxLayout) -> None:
-        """Build the single-line workflow guidance band below the header."""
+        """Build hidden compatibility labels for workflow guidance.
+
+        Product status belongs in header details and the empty state. These
+        labels are kept for older callers/tests without rendering a persistent
+        status dashboard inside the chat panel.
+        """
         guidance = QWidget()
         guidance.setObjectName("WorkflowGuidance")
         guidance.setStyleSheet(GUIDANCE_PANEL_STYLE)
@@ -356,9 +382,11 @@ class ChatPanel(QWidget):
         # longer rendered as chip dumps.
         self.backend_stage_chip = self.workflow_stage_label
         self.available_commands_chip = self.workflow_next_label
-        self.model_status_chip = QLabel("Checking local model")
+        self.model_status_chip = QLabel("")
         self.model_status_chip.setVisible(False)
 
+        self.workflow_guidance = guidance
+        guidance.setVisible(False)
         parent_layout.addWidget(guidance)
 
     def _build_empty_state(self) -> QFrame:
@@ -370,32 +398,30 @@ class ChatPanel(QWidget):
         empty_layout.setContentsMargins(14, 14, 14, 14)
         empty_layout.setSpacing(8)
 
-        self.empty_state_title = QLabel("Start with EEG data")
+        self.empty_state_title = QLabel("Load EEG data to begin")
         self.empty_state_title.setObjectName("AssistantEmptyTitle")
         self.empty_state_title.setStyleSheet(EMPTY_STATE_TITLE_STYLE)
         empty_layout.addWidget(self.empty_state_title)
 
         intro = QLabel(
-            "Import raw EEG files first. Then the assistant can help prepare "
-            "preprocessing, create epochs, build train/validation/test datasets, "
-            "and summarize training readiness."
+            "Ask what is ready, plan preprocessing, or explain why training is blocked."
         )
         intro.setWordWrap(True)
         intro.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         empty_layout.addWidget(intro)
 
-        self.empty_state_backend_label = QLabel("Current workflow: checking")
+        self.empty_state_backend_label = QLabel("No data loaded")
         self.empty_state_backend_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_backend_label.setWordWrap(True)
         empty_layout.addWidget(self.empty_state_backend_label)
 
-        self.empty_state_model_label = QLabel("Assistant runtime: checking")
+        self.empty_state_model_label = QLabel("")
         self.empty_state_model_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_model_label.setWordWrap(True)
         self.empty_state_model_label.setVisible(False)
 
         self.empty_state_next_label = QLabel(
-            "Next: choose EEG files or paste a folder path."
+            "Ask what is ready · Explain why training is blocked"
         )
         self.empty_state_next_label.setStyleSheet(EMPTY_STATE_TEXT_STYLE)
         self.empty_state_next_label.setWordWrap(True)
@@ -418,7 +444,6 @@ class ChatPanel(QWidget):
             local_enabled = config.local_model_enabled
             local_runtime_ready = config.local_backend_ready()
             local_runtime_message = config.local_backend_status_message()
-            gemini_enabled = config.gemini_enabled and legacy_remote_runtime_enabled()
             active_mode = LLMConfig.assistant_runtime_selection_from(
                 config
             ).ui_active_mode
@@ -427,7 +452,6 @@ class ChatPanel(QWidget):
             local_enabled = True
             local_runtime_ready = True
             local_runtime_message = "Local runtime unavailable."
-            gemini_enabled = False
             active_mode = "local"
 
         local_action = QAction("Local model", self)
@@ -451,26 +475,12 @@ class ChatPanel(QWidget):
             )
         self.model_menu.addAction(local_action)
 
-        if gemini_enabled:
-            gemini_action = QAction("Gemini (Remote)", self)
-            gemini_action.triggered.connect(
-                lambda checked, action=gemini_action: self._set_model(
-                    "gemini",
-                    action.text(),
-                )
-            )
-            self.model_menu.addAction(gemini_action)
-
         local_label = (
             "Local model (CPU fallback)"
             if local_runtime_ready and local_runtime_message != "Local runtime ready."
             else "Local model"
         )
-        label = (
-            "Gemini (Remote)"
-            if active_mode == "gemini" and gemini_enabled
-            else local_label
-        )
+        label = local_label if active_mode == "local" else "Local model"
         self.model_btn.setText(label)
         if hasattr(self, "runtime_status_label"):
             self.runtime_status_label.setText("")
@@ -511,13 +521,7 @@ class ChatPanel(QWidget):
 
         """
         normalized_mode = LLMConfig.normalize_backend_mode(mode_key)
-        button_label = (
-            label
-            if label is not None
-            else (
-                "Gemini remote model" if normalized_mode == "gemini" else "Local model"
-            )
-        )
+        button_label = label if label is not None else ("Local model")
         self.model_btn.setText(button_label)
         if hasattr(self, "runtime_status_label"):
             self.runtime_status_label.setText("")
@@ -622,8 +626,12 @@ class ChatPanel(QWidget):
             self.mode_btn.setEnabled(not is_processing)
         if hasattr(self, "retry_btn"):
             self.retry_btn.setEnabled((not is_processing) and self._retry_available)
+        if hasattr(self, "retry_action"):
+            self.retry_action.setEnabled((not is_processing) and self._retry_available)
         if hasattr(self, "clear_btn"):
             self.clear_btn.setEnabled(not is_processing)
+        if hasattr(self, "new_conversation_action"):
+            self.new_conversation_action.setEnabled(not is_processing)
         if hasattr(self, "options_btn"):
             self.options_btn.setEnabled(not is_processing)
 
@@ -631,7 +639,6 @@ class ChatPanel(QWidget):
         """Set the compact backend/model status line shown in the toolbar."""
         if not hasattr(self, "status_label"):
             return
-        self.status_label.setText(text)
         if tooltip is not None:
             self.status_label.setToolTip(tooltip)
 
@@ -644,6 +651,7 @@ class ChatPanel(QWidget):
         elif text.lower().startswith("backend:"):
             stage = text.replace("Backend:", "").strip()
         stage = workflow_stage_text_label(stage)
+        self.status_label.setText(stage)
 
         self._update_status_widgets(
             stage=stage,
@@ -662,8 +670,7 @@ class ChatPanel(QWidget):
     ) -> None:
         """Update workflow guidance and low-priority diagnostics."""
         stage = workflow_stage_text_label(stage)
-        text = f"Backend: {stage} | {model_status}"
-        self.status_label.setText(text)
+        self.status_label.setText(stage)
         if tooltip is not None:
             self.status_label.setToolTip(tooltip)
         self._update_status_widgets(
@@ -683,6 +690,16 @@ class ChatPanel(QWidget):
         blocked_reason: str | None = None,
     ) -> None:
         """Apply status text to guidance and empty-state labels."""
+        status_tooltip = f"Workflow: {stage}\nAssistant: {model_status}"
+        if tooltip:
+            status_tooltip = f"{status_tooltip}\n\n{tooltip}"
+        if hasattr(self, "title_label"):
+            self.title_label.setToolTip(status_tooltip)
+        if hasattr(self, "options_btn"):
+            self.options_btn.setToolTip(status_tooltip)
+        if hasattr(self, "status_label"):
+            self.status_label.setToolTip(status_tooltip)
+
         if hasattr(self, "backend_stage_chip"):
             self.backend_stage_chip.setText(stage)
             if tooltip:
@@ -700,26 +717,20 @@ class ChatPanel(QWidget):
                 self.model_status_chip.setToolTip(tooltip)
         if hasattr(self, "runtime_status_label"):
             self.runtime_status_label.setText("")
-            self.runtime_status_label.setToolTip(
-                f"Workflow: {stage}\nAssistant: {model_status}"
-            )
-            if tooltip:
-                self.runtime_status_label.setToolTip(
-                    f"Workflow: {stage}\nAssistant: {model_status}\n\n{tooltip}"
-                )
+            self.runtime_status_label.setToolTip(status_tooltip)
 
         display_commands = (
             None if available_commands is None else command_labels(available_commands)
         )
         if display_commands is None:
-            command_text = "Next: see details"
+            command_text = self._footer_status_for(stage, None, blocked_reason)
         elif available_commands:
             preview = ", ".join(display_commands[:3])
             extra_count = len(display_commands) - 3
             suffix = "" if extra_count <= 0 else f" +{extra_count}"
-            command_text = f"Next: {preview}{suffix}"
+            command_text = f"{stage} · {preview}{suffix}"
         else:
-            command_text = "Next: ask what is blocking the workflow"
+            command_text = self._footer_status_for(stage, [], blocked_reason)
 
         if hasattr(self, "available_commands_chip"):
             self.available_commands_chip.setText(command_text)
@@ -727,22 +738,55 @@ class ChatPanel(QWidget):
                 self.available_commands_chip.setToolTip(tooltip)
 
         if hasattr(self, "empty_state_backend_label"):
-            self.empty_state_backend_label.setText(f"Current workflow: {stage}")
+            self.empty_state_backend_label.setText(stage)
         if hasattr(self, "empty_state_model_label"):
-            self.empty_state_model_label.setText(f"Assistant runtime: {model_status}")
+            self.empty_state_model_label.setText("")
         if hasattr(self, "empty_state_next_label"):
             if display_commands:
-                self.empty_state_next_label.setText(
-                    "Next: " + ", ".join(display_commands[:4])
-                )
+                self.empty_state_next_label.setText(" · ".join(display_commands[:3]))
             elif blocked_reason:
-                self.empty_state_next_label.setText(
-                    f"Blocked for now: {blocked_reason}"
-                )
+                self.empty_state_next_label.setText(blocked_reason)
             else:
                 self.empty_state_next_label.setText(
-                    "Next: ask for current state or load EEG data."
+                    "Ask what is ready · Explain why training is blocked"
                 )
+        self._footer_status_text = self._footer_status_for(
+            stage,
+            display_commands,
+            blocked_reason,
+        )
+        self._update_footer_status_label()
+
+    @staticmethod
+    def _footer_status_for(
+        stage: str,
+        display_commands: list[str] | None,
+        blocked_reason: str | None,
+    ) -> str:
+        """Return a user-facing workflow hint for the footer/status bar."""
+        if display_commands:
+            first_action = display_commands[0]
+            if stage == "No data loaded" and first_action == "Load EEG data":
+                return "No data loaded · Import EEG files to begin"
+            return f"{stage} · {first_action}"
+        if blocked_reason:
+            return f"{stage} · Ask why training is blocked"
+        if stage == "No data loaded":
+            return "No data loaded · Import EEG files to begin"
+        return f"{stage} · Ask what is ready"
+
+    def _update_footer_status_label(self) -> None:
+        """Elide the workflow footer hint to keep narrow docks readable."""
+        if not hasattr(self, "footer_status_label"):
+            return
+        width = max(self.footer_status_label.width(), 90)
+        text = self.footer_status_label.fontMetrics().elidedText(
+            self._footer_status_text,
+            Qt.TextElideMode.ElideRight,
+            width,
+        )
+        self.footer_status_label.setText(text)
+        self.footer_status_label.setToolTip(self._footer_status_text)
 
     def set_retry_available(self, available: bool) -> None:
         """Enable Retry only when there is a previous user request."""
@@ -754,6 +798,8 @@ class ChatPanel(QWidget):
                 if available
                 else "Send a request before retrying."
             )
+        if hasattr(self, "retry_action"):
+            self.retry_action.setEnabled(available and not self.is_processing)
 
     def show_notice(self, text: str) -> None:
         """Show a low-priority inline notice outside the transcript."""
@@ -770,6 +816,7 @@ class ChatPanel(QWidget):
 
         """
         super().resizeEvent(event)
+        self._update_footer_status_label()
         # M0.4: Dynamic Width Adjustment Fix
         viewport = self.scroll_area.viewport()
         if viewport:

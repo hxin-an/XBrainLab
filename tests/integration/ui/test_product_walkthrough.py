@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QAbstractButton, QLabel, QWidget
 
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -75,21 +76,61 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert manager.chat_dock.isVisible()
     assert panel.title_label.text() == "XBrainLab Assistant"
     assert (
-        "Guide EEG workflows"
+        "From data import to training"
         in panel.findChild(type(panel.title_label), "AssistantSubtitle").text()
     )
+    assert panel.workflow_guidance.isHidden()
     assert "Commands:" not in panel.available_commands_chip.text()
     assert "load_data" not in panel.available_commands_chip.text()
     assert "Load EEG data" in panel.available_commands_chip.text()
-    assert panel.options_btn.text() == "Options"
+    visible_footer_text = " ".join(
+        label.text()
+        for label in panel.control_panel.findChildren(type(panel.title_label))
+        if label.isVisible()
+    )
+    assert "No data loaded" in visible_footer_text
+    assert "Import EEG files" in visible_footer_text
+    assert "Local" not in visible_footer_text
+    assert "Backend" not in visible_footer_text
+    assert panel.options_btn.text() == "..."
     assert panel.feature_btn.isHidden()
     assert panel.mode_btn.isHidden()
-    assert panel.step_mode_status_label.text() == "Single step"
+    assert panel.step_mode_status_label.text() == "Step by step"
     assert "Coder" not in panel.options_btn.text()
     assert "Ask about data" in panel.input_field.placeholderText()
 
-    assert not panel.title_label.geometry().intersects(panel.retry_btn.geometry())
-    assert not panel.title_label.geometry().intersects(panel.clear_btn.geometry())
+    visible_first_layer = " ".join(
+        child.text()
+        for child in panel.findChildren(QWidget)
+        if isinstance(child, (QLabel, QAbstractButton))
+        and child.isVisible()
+        and child.text()
+    )
+    for forbidden in [
+        "General Assistant",
+        "Single step",
+        "Local model ready",
+        "Backend:",
+        "pipeline_stage",
+    ]:
+        assert forbidden not in visible_first_layer
+
+    visible_transcript = "\n".join(
+        message["content"] for message in manager.chat_controller.messages
+    )
+    for forbidden in [
+        "Tool Output:",
+        "Tool Call:",
+        "Request:",
+        "```json",
+        "ApplicationService",
+        "BackendFacade",
+        "Model cache not found",
+    ]:
+        assert forbidden not in visible_transcript
+
+    assert panel.retry_btn.isHidden()
+    assert panel.clear_btn.isHidden()
     send_text_width = panel.send_btn.fontMetrics().horizontalAdvance(
         panel.send_btn.text()
     )

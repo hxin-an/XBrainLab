@@ -28,6 +28,54 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Assistant product shell and geometry rebuild
+
+### 背景
+
+人工退件指出 Assistant 仍像 debug / developer panel：第一層出現 runtime / backend 狀態、
+mode wording、local model readiness，footer 沒有承擔使用者有用的 workflow hint；同時 app
+啟動 geometry / dock titlebar 行為可能導致視窗 off-screen 或 dock 不易拖動。
+
+### 變更
+
+- `ChatPanel` 第一層重整為產品 shell：header 只保留產品標題與 icon-only `...` options；
+  empty state 使用 EEG workflow 語言；composer footer 只顯示 workflow next action。
+- runtime / backend diagnostics 從 visible first layer 移到 tooltip / settings / logs；visible
+  transcript 不顯示 raw tool syntax、JSON、backend facade / service naming。
+- `AgentManager` dock titlebar 改成會 ignore 空白區 mouse events 的 custom titlebar，保留
+  QDockWidget 原生 drag / float；floating dock 會 clamp 到可用螢幕。
+- `MainWindow` 新增 first-run centering、saved geometry restore、off-screen clamp，以及
+  resize / maximize / restore regression test。
+- `VRAMConflictChecker` 補上缺少 visualization panel 時的安全路徑，並移除 Gemini wording。
+- 更新 chat / product walkthrough / AgentManager / window geometry tests 和 Assistant screenshot
+  artifact / baseline。
+
+### 影響範圍
+
+- UI shell：`XBrainLab/ui/chat/panel.py`、`XBrainLab/ui/chat/styles.py`。
+- Dock / window：`XBrainLab/ui/components/agent_manager.py`、
+  `XBrainLab/ui/components/vram_checker.py`、`XBrainLab/ui/main_window.py`、
+  `XBrainLab/ui/styles/stylesheets.py`。
+- Tests / artifacts：chat unit、product walkthrough、AgentManager coverage、window geometry、
+  `artifacts/ui/ai-assistant-open.png`、`tests/baselines/ui/ai-assistant-open.png`。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run ruff check XBrainLab/ui/chat XBrainLab/ui/components/agent_manager.py XBrainLab/ui/main_window.py tests/unit/ui/chat tests/integration/ui`
+  - `All checks passed!`
+- `scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `42 passed in 9.22s`
+- `scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py tests/integration/ui/test_window_geometry.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q`
+  - `92 passed in 10.86s`
+- `xvfb-run -a poetry run python scripts/dev/capture_ui_baseline.py`
+  - refreshed Assistant screenshot artifact and baseline.
+
+### 剩餘風險
+
+- 尚未做真 Windows launcher click-through。
+- 尚未做真 local model 長時間 ChatPanel walkthrough；本輪沒有下載模型，也沒有改 LLM runtime core。
+
 ## 2026-05-02 Assistant product status polish
 
 ### 背景

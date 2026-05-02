@@ -7,7 +7,7 @@ AI assistant integration, and debug tool execution.
 import sys
 from typing import Any
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import QRect, QSettings, QSize, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
@@ -62,6 +62,8 @@ class MainWindow(QMainWindow):
     # Signals to control the worker
     sig_init_agent = pyqtSignal()
     sig_generate = pyqtSignal(str, str)
+    DEFAULT_WINDOW_SIZE = QSize(1280, 800)
+    MIN_WINDOW_SIZE = QSize(760, 520)
 
     def __init__(self, study):
         """Initialize the main window.
@@ -74,7 +76,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.study = study
         self.setWindowTitle("XBrainLab")
-        self.resize(1280, 800)
+        self.setMinimumSize(self.MIN_WINDOW_SIZE)
+        self._post_show_geometry_clamp_done = False
+        self._restore_or_place_window()
 
         self.agent_initialized = False  # Flag for lazy loading
 
@@ -135,6 +139,86 @@ class MainWindow(QMainWindow):
         self.init_agent()
 
         logger.info("MainWindow initialized")
+
+    def _restore_or_place_window(self) -> None:
+        """Restore saved geometry or center a first-run window on screen."""
+        settings = self._window_settings()
+        saved_geometry = settings.value("main_window/geometry", None)
+        restored = False
+        if saved_geometry is not None:
+            try:
+                restored = bool(self.restoreGeometry(saved_geometry))
+            except TypeError:
+                logger.debug("Ignoring invalid saved main-window geometry")
+
+        if restored:
+            self._clamp_window_to_available_screen()
+            return
+
+        self.resize(self._default_window_size_for_screen())
+        self._center_window_on_available_screen()
+
+    @staticmethod
+    def _window_settings() -> QSettings:
+        """Return persistent UI shell settings."""
+        return QSettings("XBrainLab", "XBrainLab")
+
+    def _default_window_size_for_screen(self) -> QSize:
+        """Scale the initial size down if the available screen is smaller."""
+        available = self._available_screen_geometry()
+        width = min(self.DEFAULT_WINDOW_SIZE.width(), max(available.width(), 1))
+        height = min(self.DEFAULT_WINDOW_SIZE.height(), max(available.height(), 1))
+        width = max(
+            min(width, available.width()),
+            min(self.MIN_WINDOW_SIZE.width(), width),
+        )
+        height = max(
+            min(height, available.height()),
+            min(self.MIN_WINDOW_SIZE.height(), height),
+        )
+        return QSize(width, height)
+
+    def _available_screen_geometry(self) -> QRect:
+        """Return the usable geometry for the current or primary screen."""
+        screen = self.screen() or QApplication.primaryScreen()
+        if screen is not None:
+            return screen.availableGeometry()
+        return QRect(
+            0,
+            0,
+            self.DEFAULT_WINDOW_SIZE.width(),
+            self.DEFAULT_WINDOW_SIZE.height(),
+        )
+
+    def _center_window_on_available_screen(self) -> None:
+        """Center the current window rectangle on the available screen."""
+        available = self._available_screen_geometry()
+        width = min(self.width(), available.width())
+        height = min(self.height(), available.height())
+        x = available.left() + max((available.width() - width) // 2, 0)
+        y = available.top() + max((available.height() - height) // 2, 0)
+        self.setGeometry(QRect(x, y, width, height))
+
+    def _clamp_window_to_available_screen(self) -> None:
+        """Move/resize the window so it intersects the usable screen."""
+        if self.isMaximized() or self.isFullScreen():
+            return
+
+        available = self._available_screen_geometry()
+        current = self.geometry()
+        width = min(
+            max(current.width(), self.MIN_WINDOW_SIZE.width()),
+            available.width(),
+        )
+        height = min(
+            max(current.height(), self.MIN_WINDOW_SIZE.height()),
+            available.height(),
+        )
+        max_x = available.right() - width + 1
+        max_y = available.bottom() - height + 1
+        x = min(max(current.x(), available.left()), max_x)
+        y = min(max(current.y(), available.top()), max_y)
+        self.setGeometry(QRect(x, y, width, height))
 
     def apply_vscode_theme(self):
         """Apply the VS Code dark theme stylesheet to the main window."""
@@ -295,6 +379,13 @@ class MainWindow(QMainWindow):
         if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 
+    def showEvent(self, event):  # noqa: N802
+        """Clamp restored geometry once the window has a native frame."""
+        super().showEvent(event)
+        if not self._post_show_geometry_clamp_done:
+            self._post_show_geometry_clamp_done = True
+            QTimer.singleShot(0, self._clamp_window_to_available_screen)
+
     def closeEvent(self, event):  # noqa: N802
         """Handle application close by cleaning up the agent manager.
 
@@ -303,6 +394,11 @@ class MainWindow(QMainWindow):
 
         """
         logger.info("Closing application...")
+        if not self.isMaximized() and not self.isFullScreen():
+            self._window_settings().setValue(
+                "main_window/geometry",
+                self.saveGeometry(),
+            )
         if hasattr(self, "agent_manager"):
             self.agent_manager.close()
         super().closeEvent(event)

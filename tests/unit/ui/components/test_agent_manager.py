@@ -60,7 +60,7 @@ class TestAgentManagerMethods:
 
     def test_set_model(self, agent_mgr):
         agent_mgr.set_model("Gemini")
-        agent_mgr.agent_controller.set_model.assert_called_once_with("gemini")
+        agent_mgr.agent_controller.set_model.assert_called_once_with("local")
 
     def test_start_new_conversation(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
@@ -88,12 +88,13 @@ class TestAgentManagerMethods:
             assert agent_mgr.prepare_model_deletion("test") is False
         ctrl.set_model.assert_not_called()
 
-    def test_prepare_model_deletion_gemini_mode(self, agent_mgr):
+    def test_prepare_model_deletion_stale_remote_mode_still_blocks(self, agent_mgr):
         ctrl = MagicMock()
         ctrl.worker.engine.config.active_mode = "gemini"
         ctrl.worker.engine.config.inference_mode = "gemini"
         agent_mgr.agent_controller = ctrl
-        assert agent_mgr.prepare_model_deletion("test") is True
+        with patch("XBrainLab.ui.components.agent_manager.QMessageBox.warning"):
+            assert agent_mgr.prepare_model_deletion("test") is False
 
     def test_prepare_model_deletion_uses_inference_mode_truth(self, agent_mgr):
         ctrl = MagicMock()
@@ -124,6 +125,29 @@ class TestAgentManagerMethods:
         agent_mgr.chat_dock.show.assert_called_once()
         mock_start.assert_called_once()
 
+    def test_init_ui_uses_draggable_product_dock_titlebar(self, qtbot):
+        from PyQt6.QtWidgets import QDockWidget
+
+        from XBrainLab.ui.components.agent_manager import (
+            AgentManager,
+            AssistantDockTitleBar,
+        )
+
+        main_window = QMainWindow()
+        main_window.ai_btn = MagicMock()
+        qtbot.addWidget(main_window)
+        study = MagicMock()
+        study.get_controller.return_value = MagicMock()
+        manager = AgentManager(main_window, study)
+
+        manager.init_ui()
+
+        assert isinstance(manager.chat_dock.titleBarWidget(), AssistantDockTitleBar)
+        features = manager.chat_dock.features()
+        assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
+        assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        assert manager.chat_dock.minimumWidth() >= 320
+
     def test_toggle_first_open_unavailable_keeps_panel_open(self, agent_mgr):
         agent_mgr.agent_initialized = False
         agent_mgr.chat_panel = MagicMock()
@@ -146,8 +170,7 @@ class TestAgentManagerMethods:
         agent_mgr.chat_dock.show.assert_called_once()
         mock_start.assert_not_called()
         agent_mgr.chat_controller.add_agent_message.assert_called_with(
-            "**Assistant unavailable**: Model cache not found. Use the settings "
-            "button to install or switch runtime."
+            "**Assistant unavailable**: Open assistant settings to finish setup."
         )
 
     def test_handle_user_input_reports_runtime_reason_when_controller_missing(
@@ -167,8 +190,7 @@ class TestAgentManagerMethods:
 
         agent_mgr.chat_controller.add_user_message.assert_called_with("train")
         agent_mgr.chat_controller.add_agent_message.assert_called_with(
-            "**Assistant unavailable**: Model cache not found. Use the settings "
-            "button to install or switch runtime."
+            "**Assistant unavailable**: Open assistant settings to finish setup."
         )
 
     def test_first_run_later_keeps_runtime_unloaded(self, agent_mgr):
@@ -187,8 +209,8 @@ class TestAgentManagerMethods:
         assert should_continue is False
         mock_save.assert_not_called()
         agent_mgr.chat_controller.add_agent_message.assert_called_with(
-            "Local assistant runtime was not started. Open assistant settings "
-            "when you are ready to enable or download a model."
+            "Assistant setup was deferred. Open assistant settings when you are "
+            "ready to continue."
         )
 
     def test_first_run_disable_persists_without_loading(self, agent_mgr):
@@ -265,9 +287,7 @@ class TestAgentManagerMethods:
         assert "Generate datasets before training" in visible
         assert "Tool Output:" not in visible
         assert "command_name" not in visible
-        assert manager.chat_panel.status_label.text().startswith(
-            "Backend: No data loaded"
-        )
+        assert manager.chat_panel.status_label.text() == "No data loaded"
 
 
 class _FakeAgentController(QObject):
@@ -423,5 +443,7 @@ class TestAgentManagerProductChatFlow:
             if message["role"] == "assistant"
         ]
         assert any("Assistant unavailable" in message for message in assistant_messages)
-        assert any("Model cache not found" in message for message in assistant_messages)
+        assert not any(
+            "Model cache not found" in message for message in assistant_messages
+        )
         assert manager.chat_dock.isHidden() is False

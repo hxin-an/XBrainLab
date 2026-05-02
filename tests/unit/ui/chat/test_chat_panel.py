@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtWidgets import QLineEdit, QScrollArea, QToolButton, QWidget
+from PyQt6.QtWidgets import QLabel, QLineEdit, QScrollArea, QToolButton, QWidget
 
 
 @pytest.fixture
@@ -137,16 +137,17 @@ class TestChatPanelCallbacks:
 
     def test_status_summary_updates_label_and_tooltip(self, chat_panel):
         chat_panel.set_status_summary("Backend: empty", "Train blocked")
-        assert chat_panel.status_label.text() == "Backend: empty"
-        assert chat_panel.status_label.toolTip() == "Train blocked"
+        assert chat_panel.status_label.text() == "No data loaded"
+        assert "Train blocked" in chat_panel.status_label.toolTip()
+        assert "No data loaded" in chat_panel.title_label.toolTip()
         assert chat_panel.backend_stage_chip.text() == "No data loaded"
 
     def test_set_model(self, chat_panel):
         with patch.object(chat_panel, "model_changed") as mock_sig:
             mock_sig.emit = MagicMock()
             chat_panel._set_model("Gemini")
-            assert "Gemini" in chat_panel.model_btn.text()
-            mock_sig.emit.assert_called_once_with("gemini")
+            assert chat_panel.model_btn.text() == "Local model"
+            mock_sig.emit.assert_called_once_with("local")
 
     def test_set_model_keeps_ui_label_separate_from_runtime_mode(self, chat_panel):
         with patch.object(chat_panel, "model_changed") as mock_sig:
@@ -172,10 +173,6 @@ class TestChatPanelCallbacks:
             patch(
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
-            ),
-            patch(
-                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
-                return_value=True,
             ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
@@ -203,10 +200,6 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
-            patch(
-                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
-                return_value=True,
-            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
@@ -218,7 +211,7 @@ class TestChatPanelCallbacks:
         )
         assert panel.model_btn.text() == "Local model"
 
-    def test_update_model_menu_demotes_verified_gemini(self, qtbot):
+    def test_update_model_menu_hides_stale_remote_config(self, qtbot):
         config = MagicMock()
         config.local_model_enabled = True
         config.local_backend_ready.return_value = True
@@ -233,21 +226,16 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
-            patch(
-                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
-                return_value=True,
-            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
             panel = ChatPanel()
             qtbot.addWidget(panel)
 
-        gemini_action = next(
-            action for action in panel.model_menu.actions() if "Gemini" in action.text()
+        assert all(
+            "Gemini" not in action.text() for action in panel.model_menu.actions()
         )
-        assert "Remote" in gemini_action.text()
-        assert panel.model_btn.text() == "Gemini (Remote)"
+        assert panel.model_btn.text() == "Local model"
 
     def test_update_model_menu_hides_verified_gemini_by_default(self, qtbot):
         config = MagicMock()
@@ -263,10 +251,6 @@ class TestChatPanelCallbacks:
             patch(
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
-            ),
-            patch(
-                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
-                return_value=False,
             ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
@@ -297,10 +281,6 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
-            patch(
-                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
-                return_value=True,
-            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
@@ -314,7 +294,7 @@ class TestChatPanelCallbacks:
         assert "fall back to CPU" in local_action.toolTip()
         assert panel.model_btn.text() == "Local model (CPU fallback)"
 
-    def test_update_model_menu_prefers_inference_mode_for_gemini_label(self, qtbot):
+    def test_update_model_menu_ignores_stale_remote_inference_mode(self, qtbot):
         config = MagicMock()
         config.local_model_enabled = True
         config.local_backend_ready.return_value = True
@@ -329,22 +309,21 @@ class TestChatPanelCallbacks:
                 "XBrainLab.ui.chat.panel.LLMConfig.load_from_file",
                 return_value=config,
             ),
-            patch(
-                "XBrainLab.ui.chat.panel.legacy_remote_runtime_enabled",
-                return_value=True,
-            ),
         ):
             from XBrainLab.ui.chat.panel import ChatPanel
 
             panel = ChatPanel()
             qtbot.addWidget(panel)
 
-        assert panel.model_btn.text() == "Gemini (Remote)"
+        assert panel.model_btn.text() == "Local model"
 
     def test_product_ui_structure_is_visible(self, chat_panel):
         assert chat_panel.title_label.text() == "XBrainLab Assistant"
+        assert chat_panel.empty_state_title.text() == "Load EEG data to begin"
         assert chat_panel.empty_state_widget.isHidden() is False
-        assert "workflow" in chat_panel.empty_state_backend_label.text().lower()
+        assert chat_panel.workflow_guidance.isHidden()
+        assert chat_panel.empty_state_backend_label.text() == "No data loaded"
+        assert "Ask what is ready" in chat_panel.empty_state_next_label.text()
         assert chat_panel.backend_stage_chip.text()
         assert chat_panel.model_status_chip.isHidden()
         assert chat_panel.runtime_status_label.isHidden()
@@ -352,36 +331,48 @@ class TestChatPanelCallbacks:
         assert chat_panel.available_commands_chip.text().startswith("Next:")
         assert chat_panel.input_field.isHidden() is False
         assert chat_panel.send_btn.text() == "Send"
-        assert chat_panel.options_btn.text() == "Options"
+        assert chat_panel.options_btn.text() == "..."
         assert chat_panel.feature_btn.isHidden()
         assert chat_panel.mode_btn.isHidden()
+        assert chat_panel.step_mode_status_label.text() == "Step by step"
         assert chat_panel.retry_btn.text() == "Retry"
         assert chat_panel.retry_btn.isEnabled() is False
+        assert chat_panel.retry_btn.isHidden()
         assert chat_panel.clear_btn.text() == "Clear"
+        assert chat_panel.clear_btn.isHidden()
+        visible_footer_labels = [
+            label.text()
+            for label in chat_panel.control_panel.findChildren(QLabel)
+            if not label.isHidden()
+        ]
+        assert visible_footer_labels == ["No data loaded · Import EEG files to begin"]
+        assert "Local" not in visible_footer_labels[0]
+        assert "Backend" not in visible_footer_labels[0]
 
     def test_product_status_updates_empty_state_and_chips(self, chat_panel):
         chat_panel.set_product_status(
             stage="empty",
-            model_status="Local model unavailable",
+            model_status="Assistant needs setup",
             available_commands=["load_data", "reset_session"],
             tooltip="Local model cache missing",
             blocked_reason="Generate datasets before training.",
         )
 
         assert chat_panel.backend_stage_chip.text() == "No data loaded"
-        assert chat_panel.model_status_chip.text() == "Local model unavailable"
+        assert chat_panel.model_status_chip.text() == "Assistant needs setup"
         assert chat_panel.model_status_chip.isHidden()
         assert chat_panel.runtime_status_label.text() == ""
-        assert "Local model unavailable" in chat_panel.runtime_status_label.toolTip()
+        assert "Assistant needs setup" in chat_panel.runtime_status_label.toolTip()
+        assert "Assistant needs setup" in chat_panel.options_btn.toolTip()
+        assert chat_panel.workflow_guidance.isHidden()
         assert "Load EEG data" in chat_panel.available_commands_chip.text()
         assert "load_data" not in chat_panel.available_commands_chip.text()
-        assert chat_panel.empty_state_backend_label.text() == (
-            "Current workflow: No data loaded"
-        )
-        assert chat_panel.empty_state_model_label.text() == (
-            "Assistant runtime: Local model unavailable"
-        )
+        assert chat_panel.empty_state_backend_label.text() == "No data loaded"
+        assert chat_panel.empty_state_model_label.text() == ""
         assert "Load EEG data" in chat_panel.empty_state_next_label.text()
+        assert chat_panel.footer_status_label.toolTip() == (
+            "No data loaded · Import EEG files to begin"
+        )
 
     def test_retry_available_controls_disabled_state(self, chat_panel):
         assert chat_panel.retry_btn.isEnabled() is False
@@ -398,8 +389,9 @@ class TestChatPanelCallbacks:
         assert "Retry" in chat_panel.notice_label.text()
         assert chat_panel.chat_layout.count() == 2
 
-    def test_narrow_dock_header_controls_fit(self, qtbot, chat_panel):
-        chat_panel.resize(380, 720)
+    @pytest.mark.parametrize("width", [320, 380, 460])
+    def test_narrow_dock_header_controls_fit(self, qtbot, chat_panel, width):
+        chat_panel.resize(width, 720)
         chat_panel.show()
         qtbot.wait(10)
 
@@ -409,25 +401,21 @@ class TestChatPanelCallbacks:
             ).x()
             <= chat_panel.width()
         )
-        assert (
-            chat_panel.retry_btn.mapTo(
-                chat_panel, chat_panel.retry_btn.rect().topRight()
-            ).x()
-            <= chat_panel.width()
+        assert not chat_panel.input_field.geometry().intersects(
+            chat_panel.send_btn.geometry()
         )
-        assert (
-            chat_panel.clear_btn.mapTo(
-                chat_panel, chat_panel.clear_btn.rect().topRight()
-            ).x()
-            <= chat_panel.width()
+        assert chat_panel.footer_status_label.geometry().right() <= (
+            chat_panel.control_panel.width() - 8
         )
 
+    @pytest.mark.parametrize("width", [320, 380, 460])
     def test_user_bubble_keeps_short_word_readable_in_narrow_dock(
         self,
         qtbot,
         chat_panel,
+        width,
     ):
-        chat_panel.resize(380, 720)
+        chat_panel.resize(width, 720)
         chat_panel.show()
         chat_panel.append_message("user", "hello")
         qtbot.wait(10)

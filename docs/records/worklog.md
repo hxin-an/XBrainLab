@@ -37,6 +37,66 @@
 
 ## 2026-05-02
 
+### 19:12 Assistant product shell / window geometry rebuild
+
+- 做了什麼：
+  - 依退件回饋重做 Assistant 第一層：header 保留 `XBrainLab Assistant` 和低干擾 `...`
+    menu；Retry / Clear 收進 menu / compatibility controls，不再佔第一層。
+  - empty state 改成 EEG 使用者語言：`Load EEG data to begin`、`Ask what is ready`、
+    `Explain why training is blocked`。
+  - composer footer 改成只顯示 workflow hint，例如
+    `No data loaded · Import EEG files to begin`；runtime / backend detail 只留在 tooltip /
+    settings / logs，不進第一層。
+  - 修 Assistant dock custom titlebar：空白 titlebar mouse events 交回 `QDockWidget`，保留
+    dock drag；浮動 dock 會放在主視窗附近並 clamp 到可用螢幕。
+  - 修 MainWindow geometry：首次啟動依可用螢幕置中；restore geometry 後 clamp；保留 resize /
+    maximize / restore。
+  - 補 `tests/integration/ui/test_window_geometry.py`，並更新 chat / walkthrough /
+    AgentManager regression tests。
+  - 重新 capture UI screenshots，更新 `artifacts/ui/ai-assistant-open.png` 與
+    `tests/baselines/ui/ai-assistant-open.png`。
+- 結果：
+  - 第一層不再顯示 `General Assistant`、`Single step`、`Local model ready`、`Backend:`、
+    `pipeline_stage`，visible transcript 也不曝露 raw tool/debug payload。
+  - 320 / 380 / 460px dock 下 `hello` 保持可讀，composer input / Send button 不重疊。
+  - status bar / footer 只保留 workflow next action，不顯示 local runtime ready。
+- 證據：
+  - `git diff --check`
+  - `poetry run ruff check XBrainLab/ui/chat XBrainLab/ui/components/agent_manager.py XBrainLab/ui/main_window.py tests/unit/ui/chat tests/integration/ui`
+    - `All checks passed!`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py -q`
+    - `42 passed in 9.22s`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py tests/integration/ui/test_window_geometry.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/test_agent_manager_coverage.py -q`
+    - `92 passed in 10.86s`
+  - `xvfb-run -a poetry run python scripts/dev/capture_ui_baseline.py`
+    - saved `artifacts/ui/ai-assistant-open.png`
+- 接續 / 本輪剩餘：
+  - 真 Windows launcher click-through / 真 local model 長時間 walkthrough 仍需人工驗收。
+
+### 18:27 Assistant footer status removal follow-up
+
+- 做了什麼：
+  - 依最新人工不滿意回饋重看 `ChatPanel`、chat UI tests 和
+    `artifacts/ui/ai-assistant-open.png`。
+  - 確認舊 artifact 仍顯示 footer 狀態列文字，例如 workflow / local runtime summary。
+  - 將常駐 workflow guidance band 改成隱藏相容欄位；workflow / model detail 改放
+    header / Options tooltip 和 empty state。
+  - 補 UI tests 鎖住 footer：composer footer 不得再出現 visible status label。
+- 結果：
+  - Assistant footer 只服務輸入、Retry、Clear，不再當 workflow/runtime status dashboard。
+  - empty state 仍保留目前 workflow 和下一步；進入對話後不會持續把狀態文字壓在 footer。
+- 證據：
+  - `timeout 240s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py -q`
+    - `38 passed in 11.15s`
+  - `timeout 240s scripts/dev/run_ui_pytest.sh --capture=no tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout -q`
+    - `1 passed in 6.62s`
+  - `timeout 240s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_ui_baseline.py`
+    - updated `artifacts/ui/ai-assistant-open.png`
+  - synced `tests/baselines/ui/ai-assistant-open.png` to the accepted assistant artifact
+  - `git diff --check`
+- 接續 / 本輪剩餘：
+  - 仍需人工看圖確認 empty state 的 workflow 文案是否也要再降噪。
+
 ### 18:15 Assistant product status polish
 
 - 做了什麼：

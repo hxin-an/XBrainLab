@@ -79,7 +79,7 @@ class VRAMConflictChecker:
                 "VRAM Warning",
                 "This requires significant VRAM (Video Memory). "
                 "If you experience crashes or lag, please close the 3D view "
-                "or switch to Gemini mode.",
+                "before using the assistant.",
             )
 
     # ------------------------------------------------------------------
@@ -106,9 +106,12 @@ class VRAMConflictChecker:
         return False
 
     def _is_3d_active(self, switching_to_3d: bool) -> bool:
-        viz_panel = self.main_window.visualization_panel
+        viz_panel = getattr(self.main_window, "visualization_panel", None)
+        stack = getattr(self.main_window, "stack", None)
+        if viz_panel is None or stack is None:
+            return switching_to_3d
         return switching_to_3d or (
             viz_panel.tabs.currentIndex() == VIZ_TAB_3D_PLOT
             and not viz_panel.isHidden()
-            and self.main_window.stack.currentIndex() == PANEL_VISUALIZATION
+            and stack.currentIndex() == PANEL_VISUALIZATION
         )

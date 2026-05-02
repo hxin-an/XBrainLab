@@ -103,12 +103,12 @@ class TestAgentManagerExecutionMode:
         """L408-410: Syncs mode btn text."""
         m = _make_manager()
         m._sync_execution_mode_ui("single")
-        m.chat_panel.mode_btn.setText.assert_called_with("Single step")
+        m.chat_panel.mode_btn.setText.assert_called_with("Step by step")
 
     def test_sync_multi(self):
         m = _make_manager()
         m._sync_execution_mode_ui("multi")
-        m.chat_panel.mode_btn.setText.assert_called_with("Auto steps")
+        m.chat_panel.mode_btn.setText.assert_called_with("Continue safely")
 
 
 class TestAgentManagerHandleUICommand:

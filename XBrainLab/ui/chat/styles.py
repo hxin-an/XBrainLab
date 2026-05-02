@@ -24,7 +24,7 @@ HEADER_TITLE_STYLE = """
         color: #f3f7fb;
         background: transparent;
         border: none;
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
     }
 """
@@ -99,7 +99,7 @@ EMPTY_STATE_TITLE_STYLE = """
         color: #f3f7fb;
         background: transparent;
         border: none;
-        font-size: 18px;
+        font-size: 17px;
         font-weight: 700;
     }
 """
@@ -148,7 +148,7 @@ CONTROL_PANEL_STYLE = """
     QWidget#ControlPanel {
         background-color: #1b2025;
         border-top: 1px solid #303840;
-        min-height: 64px;
+        min-height: 72px;
     }
 """
 
@@ -174,15 +174,17 @@ TOOLBAR_BUTTON_STYLE = """
     }
     QPushButton::menu-indicator { image: none; }
     QToolButton {
-        background-color: #242b32;
-        border: 1px solid #35404a;
+        background-color: transparent;
+        border: 1px solid transparent;
         border-radius: 7px;
         color: #d5dee7;
-        padding: 4px 8px;
-        font-size: 12px;
+        padding: 3px 6px;
+        font-size: 15px;
+        font-weight: 700;
     }
     QToolButton:hover {
-        background-color: #2d3740;
+        background-color: #26313a;
+        border: 1px solid #35404a;
         color: #ffffff;
     }
     QToolButton:disabled {
@@ -216,6 +218,15 @@ FOOTER_BUTTON_STYLE = """
 NOTICE_LABEL_STYLE = """
     QLabel#AssistantNotice {
         color: #d6b36b;
+        background: transparent;
+        border: none;
+        font-size: 12px;
+    }
+"""
+
+FOOTER_STATUS_STYLE = """
+    QLabel#AssistantFooterStatus {
+        color: #aebbc6;
         background: transparent;
         border: none;
         font-size: 12px;
