@@ -18,14 +18,18 @@ ApplicationService capability policy，agent tool result 已收斂成 typed adap
 runtime 已完成非中國 primary / fallback 模型選型、cache preflight、下載、GPU prompt smoke
 和 structured-output smoke；desktop launcher 已產出並完成 startup smoke。
 
-目前 chat release blocker 已完成第一輪產品級修復：normal text input 有可見 assistant
-回覆，空回覆 / worker error / local unavailable 都有可見狀態，ChatPanel 已改成使用者導向
-產品面板，第一層 UI 不再顯示 raw command names。UI action execution 已把 import、
-preprocess、epoch、training start / stop、reset session 這批高價值 path 接到
-`ApplicationService.execute()`；agent mapped tools 也可直接取得 `CommandResult` payload。
-本輪新增 `tests/integration/ui/test_product_walkthrough.py`，覆蓋 assistant click-through
-layout 和 synthetic EEG button-driven pipeline walkthrough。真 Windows launcher 人工
-click-through、真 local model 長時間 UI walkthrough、query commands 仍未完成，不能宣稱
+目前 chat release blocker 已完成產品級修復：normal text input 有可見 assistant 回覆，
+空回覆 / worker error / local unavailable 都有可見狀態，ChatPanel 已改成使用者導向
+產品面板，第一層 UI 不再顯示 raw command names。local assistant runtime 現在有 first-run
+consent，使用者明確選擇 Enable / Download / Use existing cache / Later / Disable 前不會
+偷偷載入大型模型。
+
+UI action execution 已把 import、preprocess、epoch、split / model / training setting
+dialogs、evaluation / visualization / saliency query、training start / stop、reset /
+new session 這批 path 接到 `ApplicationService.execute()`；agent mapped tools 也可直接取得
+`CommandResult` payload。本輪新增 split audit / thesis protocol artifact schema，讓
+train/validation/test split 可保存、重跑、審計。真 Windows launcher 人工 click-through、
+真 local model 長時間 UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱
 完整 release closure。
 
 ## 可信狀態
@@ -48,7 +52,7 @@ click-through、真 local model 長時間 UI walkthrough、query commands 仍未
   - `XBrainLab 0.5.6`
 - 文件站點已可用：
   - `poetry run mkdocs build --strict`
-- local assistant runtime 已可用：
+- local assistant runtime 已可用且受 first-run consent 控制：
   - primary：`microsoft/Phi-4-mini-instruct`
   - fallback：`microsoft/Phi-3.5-mini-instruct`
   - cache：`XBrainLab/llm/core/models`
@@ -132,6 +136,11 @@ click-through、真 local model 長時間 UI walkthrough、query commands 仍未
   - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
   - artifacts：`artifacts/agent_evals/latest.json`、`artifacts/agent_evals/latest.md`
   - `21 / 21` cases passed；deterministic baseline，不是 local LLM performance claim。
+- 2026-05-02 assistant runtime consent / query command / thesis protocol closure：
+  - UI product gate：`62 passed`
+  - backend / split audit / config gate：`41 passed`
+  - agent / facade / backend workflow gate：`130 passed`
+  - full test gate：`4386 passed, 3 skipped, 3 deselected, 1 xfailed, 14 warnings`
 - `ai-assistant-open.png` 的 `(1684, 800)` product redesign baseline 已接受，尺寸和
   live artifact、repo HEAD reference 一致。
 
@@ -145,6 +154,8 @@ click-through、真 local model 長時間 UI walkthrough、query commands 仍未
 - local transformer runtime 已以 primary / fallback model smoke 驗證；4-bit / bitsandbytes
   仍是 optional path，不是預設產品依賴。
 - agent runtime 的目標方向是 local-only；目前 code 仍殘留 API / Gemini 相關路徑，這些路徑是本輪之後要隔離或移除的產品殘留，不能宣稱已完成 local-only。
+- thesis protocol 已建立 split artifact schema、split audit helper 和 validator script；正式
+  external dataset runner、統計報告與 local LLM 真實 tool-call eval 還沒完成。
 
 ## 目前 blocker / release risks
 
@@ -156,10 +167,10 @@ click-through、真 local model 長時間 UI walkthrough、query commands 仍未
   local model status、next-step labels、empty state、bubble padding 和 composer fit。
 - automated gate 漏掉了最基本的 user-visible chat product flow。deterministic eval `21 / 21`、
   local prompt smoke、launcher startup smoke 都不能替代真 chat flow 驗收。
-- UI import / preprocess / epoch / training start-stop / reset 已有 service-backed command
-  adapter；其他 UI actions，例如 smart parse、label import、channel selection dialog、
-  data splitting dialog internals、model/training setting dialog submit、evaluation /
-  visualization query actions，仍有 controller direct-call path。
+- UI import / preprocess / epoch / channel selection、split / model / training setting dialogs、
+  evaluation / visualization / saliency query、training start-stop / reset 已有
+  service-backed command adapter。smart parse、label import、montage confirmation 仍有
+  controller / UI-request legacy path。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 仍保留 real-tool
   directory expansion / file security legacy path，`set_montage` 和 `switch_panel` 仍是 UI
   request path。
@@ -167,14 +178,15 @@ click-through、真 local model 長時間 UI walkthrough、query commands 仍未
 
 仍存在的非阻塞架構風險：
 
-- `evaluate` / `visualize` / `saliency` / `new_session` 仍只是 disabled future command contract。
+- `evaluate` / `visualize` / `saliency` / `new_session` 已是 service-backed query / lifecycle
+  command；它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow
+  已完成。
 - tool-call eval 目前只有 deterministic baseline，尚未跑 local LLM primary / fallback 真實 agent runner。
 
 ## 目前執行中
 
-1. 更新 truth docs 和 validation evidence。
-2. 下一步是更多 service-first UI action migration、query command contract、真 launcher /
-   local model walkthrough。
+1. 跑本輪 lint、format、docs、assistant UI、backend、agent、validation gates。
+2. 分段 local commit；不 push，不納入 unrelated `settings.json`。
 
 ## 相關文件
 

@@ -50,6 +50,7 @@ nav:
       - Decisions: decisions/README.md
   - Validation:
       - Validation Strategy: validation/README.md
+      - Thesis Protocol: validation/thesis_protocol.md
   - Records:
       - Implementation Log: records/implementation_log.md
       - Worklog: records/worklog.md

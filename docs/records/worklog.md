@@ -1155,3 +1155,32 @@
     split / model / training setting dialogs、evaluation / visualization query actions。
   - 做 Windows Desktop launcher 人工 click-through 與 true local model UI walkthrough。
   - 將 `evaluate` / `visualize` / `saliency` / `new_session` 從 future placeholder 推進成真 command。
+
+### 2026-05-02 Assistant runtime consent / query commands / thesis protocol closure
+
+- 做了什麼：
+  - ChatPanel 主視覺改成使用者語言：自然語言 workflow state、next step、Options；persona、
+    runtime、single/auto mode 不再佔主視覺。
+  - 新增 local runtime first-run consent dialog，顯示 resource notice、estimated download、
+    current/projected cache、provider/license/VRAM estimate，提供 Enable / Download /
+    Use existing cache / Later / Disable。
+  - `ApplicationService` 實作 `evaluate`、`visualize`、`saliency`、`new_session` typed result；
+    `BackendFacade.get_latest_results()` 保留舊 caller shape。
+  - UI channel selection、split/model/training dialog submit、evaluation/visualization query、
+    saliency setup/query 走 service command adapter，mock / legacy path 保留 fallback。
+  - 新增 split audit helper、split artifact schema、validator script 和 thesis protocol 文件。
+  - deterministic tool-call eval 更新 query-command 語意並刷新 `artifacts/agent_evals/latest.json`。
+- 證據：
+  - `poetry run ruff check XBrainLab/ tests/ scripts/dev/validate_split_artifact.py` -> pass
+  - `poetry run ruff format --check XBrainLab/ tests/ scripts/dev/validate_split_artifact.py` -> pass
+  - `git diff --check` -> pass
+  - `poetry run mkdocs build --strict` -> pass
+  - UI product gate -> `62 passed`
+  - backend / split audit / config gate -> `41 passed`
+  - agent / facade / backend workflow gate -> `130 passed`
+  - deterministic eval refresh -> `21 / 21` cases passed
+  - full test gate -> `4386 passed, 3 skipped, 3 deselected, 1 xfailed, 14 warnings`
+- 後續：
+  - 真 Windows launcher click-through 和 true local model UI walkthrough 尚未跑。
+  - label import、smart parse、montage confirmation 仍要做 typed/service 收斂。
+  - thesis protocol 已建立；external dataset runner、repeat runs、baselines、statistics 尚未完成。

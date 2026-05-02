@@ -22,10 +22,11 @@
 第一版已落地且完成 command contract 收斂；2026-05-02 第二輪又完成第一批
 UI / Agent command surface unification，讓 load / preprocess / epoch / dataset /
 train / reset 的 readiness 和 blocked reason 由同一個 capability policy 產生。
-本輪再把第一批 UI action execution 接到 `ApplicationService.execute()`：dataset import、
-reset、preprocess、epoching、training start / stop。controller 邊界尚未完整收斂，因為
-label import、smart parse、channel selection、split / model / training setting dialogs、
-evaluation / visualization query actions 仍有 controller direct-call path。
+本輪再把 UI action execution 擴大接到 `ApplicationService.execute()`：dataset import、
+reset / new session、preprocess、channel selection、epoching、split / model / training setting
+dialogs、evaluation / visualization / saliency query、training start / stop。controller 邊界
+尚未完整收斂，因為 label import、smart parse、montage confirmation 和部分 read-only panel
+refresh 仍有 controller / UI-request legacy path。
 
 ## 一句話架構
 
@@ -41,10 +42,10 @@ PyQt panels
   |
   +--> UI action execution
   |       |
-  |       +--> ApplicationService.execute(...) for import / reset / preprocess / epoch / train start-stop
+  |       +--> ApplicationService.execute(...) for import / preprocess / epoch / split / query / train / reset
   |       |
   |       v
-  |     Study.get_controller(...) fallback / remaining dialog and query paths
+  |     Study.get_controller(...) fallback / remaining legacy and read-only paths
   |
   v
 DatasetController / PreprocessController / TrainingController
@@ -97,7 +98,7 @@ UI 不是透過 `BackendFacade` 操作 backend。
 - `study.get_controller("visualization")`
 
 因此現在 UI 仍會取得 controller layer；這些 controller 仍是 panel refresh、dialog-local
-logic 和部分 action 的現況入口。但第一批高價值 workflow action 已不再只直接呼叫
+logic 和部分 legacy action 的現況入口。但高價值 workflow action 已不再只直接呼叫
 controller，而是先經過 UI command adapter 進 `ApplicationService.execute()`。
 
 第一批 UI-facing decision 已改讀 ApplicationService capability policy：
@@ -116,20 +117,24 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 - Dataset import 使用 `LoadDataCommand`。
 - Dataset clear / reset 使用 `ResetSessionCommand(confirmed=True)`。
 - Preprocess filtering / resample / rereference / normalize 使用 `PreprocessCommand`。
+- Channel selection 使用 `PreprocessCommand(SELECT_CHANNELS)`。
 - Epoching 使用 `CreateEpochCommand`。
+- Split / model / training setting dialog submit 使用 `GenerateDatasetCommand` /
+  `ConfigureTrainingCommand`。
+- Evaluation / visualization / saliency query 使用 `EvaluateCommand` /
+  `VisualizeCommand` / `SaliencyCommand`。
 - Training start / stop 使用 `TrainCommand` / `StopTrainingCommand`。
+- New session 使用 `NewSessionCommand`，有 state 時仍受 confirmation policy 管控。
 
 UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完整 mock state
 誤觸真 ApplicationService policy。
 
-仍保留 controller direct-call 的 UI path 包含：
+仍保留 controller / UI-request legacy path 包含：
 
 - smart parse。
 - label import。
-- channel selection / montage confirmation dialog。
-- data splitting dialog internals。
-- model selection / training setting dialog submit。
-- evaluation / visualization query controls。
+- montage confirmation dialog。
+- panel read-only refresh，例如 tables、plots、combo box population。
 
 ### Assistant / headless 入口
 
@@ -222,19 +227,19 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   status、command name、message、changed state、error type、recoverable 和 diagnostics。
 - 已接上的核心 commands：
   `load_data`、`attach_labels`、preprocess operations、`create_epoch`、
-  `generate_dataset`、`configure_training`、`train`、`stop_training`、`reset_session`。
-- contract 已保留但尚未實作的 future commands：
-  `evaluate`、`visualize`、`saliency`、`new_session`。這些 command 有穩定 command
-  object / policy entry，但 capability policy 會標成 unavailable，不應被 UI 或 agent
-  當作可執行能力。
+  `generate_dataset`、`configure_training`、`train`、`stop_training`、`reset_session`、
+  `new_session`。
+- service-backed query / setup commands：
+  `evaluate`、`visualize`、`saliency`。它們回傳 typed summary diagnostics；`saliency`
+  也能設定 saliency params。
 
 2026-05-02 product blocker 盤點結論：
 
 - `hello` no-response 問題主要發生在 chat / agent visible-output boundary，不是
   `ApplicationService` command contract 本身。
 - `ApplicationService` / `CapabilityPolicy` 仍是 UI / Agent shared decision 的正確入口。
-- backend 仍需要繼續補 query command：`evaluate` / `visualize` / `saliency` /
-  `new_session` 目前是明確 future placeholder，不能被產品或文件寫成已完成。
+- backend query command 已從 future placeholder 推進成 service-backed summary / setup
+  result；完整 interactive evaluation / visualization workflow 仍要由 UI walkthrough 驗收。
 - error boundary 對 command result 已足夠支撐 UI 顯示 blocked reason；UI / agent 必須把它
   轉成 visible user feedback，而不是只記在 diagnostics。
 
@@ -248,6 +253,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `reset_session` 目前代表清掉 active backend session：raw / preprocess / epoch /
   dataset / trainer / model option / saliency config 都會失效；有既有 state 時需要
   confirmation。
+- `new_session` 目前是同一個 single-backend session 的 lifecycle boundary，不是 multi-document
+  project shell；它清掉目前 state 後回傳 `single_session_backend=True` diagnostics。
 
 ## 核心物件責任
 

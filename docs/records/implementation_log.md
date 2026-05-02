@@ -28,6 +28,75 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Assistant runtime consent、service query commands 與 thesis split protocol
+
+### 背景
+
+本輪人工接手要求把 XBrainLab 往工程級桌面產品交付推進，而不是只修局部 patch。
+前一輪已修 chat visible-response blocker，但仍留下三個產品缺口：Assistant UI 第一層仍有
+過多 debug/control 資訊、本地 LLM 啟用缺少 first-run consent、UI / agent / backend 對 query
+commands 與 dialog submit path 尚未完整收斂。另外，thesis-grade validation 不能只靠 tiny
+pipeline smoke，需要固定 split protocol 和 artifact audit。
+
+### 變更
+
+- ChatPanel 將 persona/runtime/step mode 收進 Options / 低干擾 status；主視覺保留自然語言
+  workflow stage 和 next step，不顯示 raw command names。
+- 新增 `LocalRuntimeFirstRunDialog`，首次啟用 local runtime 前顯示 GPU/CPU resource notice、
+  estimated download、cache status、provider/license/VRAM estimate，提供 Enable / Download /
+  Use existing cache / Later / Disable。
+- `LLMConfig` 增加 `local_runtime_notice_acknowledged`，settings dialog 和 assistant panel
+  共用 local runtime truth；app startup 不自動載入大型 local model。
+- `ApplicationService` 將 `evaluate`、`visualize`、`saliency`、`new_session` 從 placeholder
+  推進成 typed query / lifecycle command；`BackendFacade.get_latest_results()` 保留 legacy
+  shape，同時保存 service diagnostics。
+- UI dialog/query paths 改走 command adapter：channel selection、split dataset、model
+  selection、training settings、evaluation query、visualization query、saliency setup/query。
+- agent deterministic eval 更新 query-command 語意；tool result payload 保留 diagnostics /
+  state / capability。
+- 新增 `XBrainLab/backend/dataset/split_audit.py`、`scripts/dev/validate_split_artifact.py`、
+  `docs/validation/thesis_protocol.md`、`docs/validation/split_artifact_schema.json`，支援 split
+  indices 保存、subject/session leakage audit 和 artifact validation。
+
+### 影響範圍
+
+- backend ApplicationService / BackendFacade
+- UI ChatPanel / AgentManager / model settings / workflow sidebars
+- agent deterministic eval artifacts
+- split validation helper、script、tests
+- current / planning / architecture / validation / records docs
+
+### 驗證
+
+- `poetry run ruff check XBrainLab/ tests/ scripts/dev/validate_split_artifact.py` 通過。
+- `poetry run ruff format --check XBrainLab/ tests/ scripts/dev/validate_split_artifact.py` 通過。
+- `git diff --check` 通過。
+- `poetry run mkdocs build --strict` 通過。
+- UI product gate：
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py tests/unit/ui/dialogs/test_local_runtime_first_run_dialog.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `62 passed`
+- backend / validation / config gate：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/dataset/test_split_audit.py tests/unit/scripts/test_validate_split_artifact.py tests/unit/llm/core/test_config.py -q`
+  - `41 passed`
+- agent / facade / backend workflow gate：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_worker.py tests/unit/backend/test_facade_coverage.py tests/unit/backend/test_facade_headless.py tests/integration/backend/test_application_service_workflow.py -q`
+  - `130 passed`
+- deterministic eval artifact refresh：
+  - `timeout 120s poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+  - `21 / 21` deterministic cases passed after query-command semantic update.
+- full test gate：
+  - `timeout 2400s poetry run pytest tests/ --deselect tests/unit/ui/test_visualization.py::TestSaliency3DEngine --tb=short -q`
+  - `4386 passed, 3 skipped, 3 deselected, 1 xfailed, 14 warnings`
+
+### 剩餘風險
+
+- 真 Windows Desktop launcher click-through 尚未人工驗收。
+- 真 local model 長時間 ChatPanel walkthrough 沒有跑；本輪只跑 preflight/cache/status/UI logic，
+  沒有重複載入大型模型。
+- label import、smart parse、montage confirmation 仍是 legacy / UI-request path。
+- thesis protocol 已有 schema / audit / validator，但 external thesis dataset runner、repeat
+  runs、baseline comparison、statistical reporting 尚未完成。
+
 ## 2026-05-02 Chat product flow blocker 與 visible-response contract
 
 ### 背景
