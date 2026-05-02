@@ -542,16 +542,6 @@
                 }
             }
         ],
-        "./XBrainLab/ui/dialogs/model_settings_dialog.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 27,
-                    "endColumn": 33,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/ui/dialogs/training/training_setting_dialog.py": [
             {
                 "code": "reportAttributeAccessIssue",
@@ -600,62 +590,6 @@
             {
                 "code": "reportOptionalMemberAccess",
                 "range": {
-                    "startColumn": 27,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 31,
-                    "endColumn": 39,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 53,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 40,
-                    "endColumn": 58,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 40,
-                    "endColumn": 58,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 40,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
                     "startColumn": 36,
                     "endColumn": 56,
                     "lineCount": 1
@@ -666,30 +600,6 @@
                 "range": {
                     "startColumn": 40,
                     "endColumn": 68,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 51,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 51,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 28,
-                    "endColumn": 40,
                     "lineCount": 1
                 }
             }
@@ -708,22 +618,6 @@
                 "range": {
                     "startColumn": 36,
                     "endColumn": 56,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 47,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 47,
                     "lineCount": 1
                 }
             }

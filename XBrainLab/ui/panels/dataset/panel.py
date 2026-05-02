@@ -219,26 +219,28 @@ class DatasetPanel(BasePanel):
         new_value = item.text()
 
         if col == 1:  # Subject
-            if hasattr(self, "controller"):
+            controller = getattr(self, "controller", None)
+            if controller is not None:
                 result = execute_application_command(
                     self,
                     UpdateMetadataCommand(index=row, subject=new_value),
                 )
                 if result is None:
-                    self.controller.update_metadata(row, subject=new_value)
+                    controller.update_metadata(row, subject=new_value)
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()
                     return
             self.update_panel()  # Refresh aggregates
         elif col == 2:  # Session
-            if hasattr(self, "controller"):
+            controller = getattr(self, "controller", None)
+            if controller is not None:
                 result = execute_application_command(
                     self,
                     UpdateMetadataCommand(index=row, session=new_value),
                 )
                 if result is None:
-                    self.controller.update_metadata(row, session=new_value)
+                    controller.update_metadata(row, session=new_value)
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()

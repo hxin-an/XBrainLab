@@ -148,15 +148,24 @@ class DatasetActionHandler:
 
         Blocked if the dataset is locked or no data is loaded.
         """
-        if self.controller.is_locked():
+        controller = self.controller
+        if controller is None:
+            QMessageBox.critical(
+                self.panel,
+                "Error",
+                "Dataset controller unavailable.",
+            )
+            return
+
+        if controller.is_locked():
             QMessageBox.warning(self.panel, "Blocked", "Dataset is locked.")
             return
 
-        if not self.controller.has_data():
+        if not controller.has_data():
             QMessageBox.warning(self.panel, "Warning", "No data loaded.")
             return
 
-        filepaths = self.controller.get_filenames()
+        filepaths = controller.get_filenames()
         dialog = SmartParserDialog(filepaths, self.panel)
         if dialog.exec():
             results = dialog.get_result()
@@ -165,7 +174,7 @@ class DatasetActionHandler:
                 ApplySmartParseCommand(results=results),
             )
             if result is None:
-                count = self.controller.apply_smart_parse(results)
+                count = controller.apply_smart_parse(results)
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
@@ -380,8 +389,12 @@ class DatasetActionHandler:
         selected_event_names,
         plan,
     ):
+        controller = self.controller
+        if controller is None:
+            raise RuntimeError("Dataset controller unavailable.")
+
         if plan.mode in {"batch", "timestamp"}:
-            return self.controller.apply_labels_batch(
+            return controller.apply_labels_batch(
                 target_files,
                 label_map,
                 plan.file_mapping,
@@ -389,7 +402,7 @@ class DatasetActionHandler:
                 selected_event_names,
             )
         labels = next(iter(label_map.values()))
-        return self.controller.apply_labels_legacy(
+        return controller.apply_labels_legacy(
             target_files,
             labels,
             mapping,
@@ -465,6 +478,15 @@ class DatasetActionHandler:
     def _batch_set(self, rows, attr):
         text, ok = QInputDialog.getText(self.panel, f"Set {attr}", f"Enter {attr}:")
         if ok and text:
+            controller = self.controller
+            if controller is None:
+                QMessageBox.critical(
+                    self.panel,
+                    "Error",
+                    "Dataset controller unavailable.",
+                )
+                return
+
             updates = []
             for row in rows:
                 if attr == "Subject":
@@ -482,7 +504,7 @@ class DatasetActionHandler:
                         kwargs["subject"] = update.subject
                     if update.session is not None:
                         kwargs["session"] = update.session
-                    self.controller.update_metadata(update.index, **kwargs)
+                    controller.update_metadata(update.index, **kwargs)
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
@@ -503,7 +525,15 @@ class DatasetActionHandler:
                 RemoveFilesCommand(indices=list(rows)),
             )
             if result is None:
-                self.controller.remove_files(rows)
+                controller = self.controller
+                if controller is None:
+                    QMessageBox.critical(
+                        self.panel,
+                        "Error",
+                        "Dataset controller unavailable.",
+                    )
+                    return
+                controller.remove_files(rows)
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
