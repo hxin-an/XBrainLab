@@ -369,16 +369,17 @@ class PreprocessSidebar(QWidget):
         if dialog.exec():
             sfreq = dialog.get_params()
             if sfreq:
+                rate = int(sfreq)
                 try:
                     result = execute_application_command(
                         self,
                         PreprocessCommand(
                             operation=PreprocessOperation.RESAMPLE,
-                            rate=sfreq,
+                            rate=rate,
                         ),
                     )
                     if result is None:
-                        self.controller.apply_resample(sfreq)
+                        self.controller.apply_resample(rate)
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return

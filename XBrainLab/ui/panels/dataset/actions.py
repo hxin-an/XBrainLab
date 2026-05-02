@@ -65,7 +65,14 @@ class DatasetActionHandler:
             )
             return
 
-        if self.controller.is_locked():
+        controller = self.controller
+        if controller is None:
+            QMessageBox.critical(
+                self.panel, "Import failed", "Dataset controller unavailable."
+            )
+            return
+
+        if controller.is_locked():
             QMessageBox.warning(
                 self.panel,
                 "Import Blocked",
@@ -91,7 +98,7 @@ class DatasetActionHandler:
                     LoadDataCommand(paths=list(filepaths)),
                 )
                 if result is None:
-                    self.controller.import_files(filepaths)
+                    controller.import_files(filepaths)
                     return
                 if result.ok:
                     self.panel.update_panel()

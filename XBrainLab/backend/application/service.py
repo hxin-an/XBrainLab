@@ -1092,7 +1092,7 @@ class ApplicationService:
     def _dataset_split_summary(datasets: list[Any]) -> dict[str, Any]:
         if not datasets:
             return {}
-        summary = {"count": len(datasets)}
+        summary: dict[str, Any] = {"count": len(datasets)}
         first = datasets[0]
         for mask_name in ("train_mask", "val_mask", "test_mask"):
             mask = getattr(first, mask_name, None)

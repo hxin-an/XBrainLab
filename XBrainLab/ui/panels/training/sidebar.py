@@ -284,6 +284,9 @@ class TrainingSidebar(QWidget):
         win = ModelSelectionDialog(self, self.controller)
         if win.exec():
             model_holder = win.get_result()
+            if model_holder is None:
+                QMessageBox.warning(self, "Model Selection", "No model was selected.")
+                return
             result = execute_application_command(
                 self,
                 ConfigureTrainingCommand(
@@ -298,6 +301,13 @@ class TrainingSidebar(QWidget):
                 QMessageBox.critical(self, "Model Selection Failed", result.message)
                 return
             model_holder = self.controller.get_model_holder()
+            if model_holder is None:
+                QMessageBox.critical(
+                    self,
+                    "Model Selection Failed",
+                    "The selected model was not applied.",
+                )
+                return
             model_name = model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
             self.check_ready_to_train()
