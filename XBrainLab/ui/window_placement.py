@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,8 @@ from PyQt6.QtGui import QCursor, QGuiApplication, QScreen
 from PyQt6.QtWidgets import QWidget
 
 STARTUP_SCREEN_PROPERTY = "xbrainlab_startup_screen_name"
+STARTUP_GEOMETRY_DIAGNOSTICS_ENV = "XBRAINLAB_STARTUP_DIAGNOSTICS"
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on", "debug"}
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,72 @@ class FrameExtents:
     top: int = 0
     right: int = 0
     bottom: int = 0
+
+
+def startup_geometry_diagnostics_enabled(
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    """Return whether startup geometry diagnostics should be logged."""
+    raw_value = (environ or os.environ).get(STARTUP_GEOMETRY_DIAGNOSTICS_ENV, "")
+    return raw_value.strip().lower() in _TRUE_ENV_VALUES
+
+
+def format_rect(rect: QRect | None) -> str:
+    """Format a QRect for compact startup diagnostics."""
+    if rect is None:
+        return "<none>"
+    return (
+        f"x={rect.x()} y={rect.y()} w={rect.width()} h={rect.height()} "
+        f"valid={rect.isValid()}"
+    )
+
+
+def format_screen(screen: QScreen | None) -> str:
+    """Format a QScreen for compact startup diagnostics."""
+    if screen is None:
+        return "<none>"
+    return (
+        f"name={screen.name()!r} "
+        f"available=({format_rect(screen.availableGeometry())}) "
+        f"full=({format_rect(screen.geometry())})"
+    )
+
+
+def screen_geometry_diagnostic_lines() -> list[str]:
+    """Return screen and cursor geometry diagnostics for startup logging."""
+    app = QGuiApplication.instance()
+    if app is None:
+        return ["startup geometry: no QGuiApplication instance"]
+
+    primary = QGuiApplication.primaryScreen()
+    primary_name = primary.name() if primary is not None else "<none>"
+    lines = [
+        "startup geometry: "
+        f"screen_count={len(QGuiApplication.screens())} "
+        f"primary={primary_name!r} cursor=({format_point(QCursor.pos())})"
+    ]
+    for index, screen in enumerate(QGuiApplication.screens()):
+        lines.append(f"startup geometry: screen[{index}] {format_screen(screen)}")
+    return lines
+
+
+def widget_geometry_diagnostic_line(label: str, widget: QWidget) -> str:
+    """Return one geometry diagnostic line for a top-level widget."""
+    screen = widget.screen()
+    return (
+        f"startup geometry: {label} "
+        f"visible={widget.isVisible()} "
+        f"geometry=({format_rect(widget.geometry())}) "
+        f"frame=({format_rect(widget.frameGeometry())}) "
+        f"screen={format_screen(screen)}"
+    )
+
+
+def format_point(point: QPoint | None) -> str:
+    """Format a QPoint for compact startup diagnostics."""
+    if point is None:
+        return "<none>"
+    return f"x={point.x()} y={point.y()}"
 
 
 def screen_geometry_for(screen: QScreen | None, fallback_size: QSize) -> ScreenGeometry:

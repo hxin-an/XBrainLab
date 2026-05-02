@@ -28,6 +28,59 @@
 ### 剩餘風險
 ```
 
+## 2026-05-02 Launcher visible startup logs and geometry diagnostics
+
+### 背景
+
+人工退件指出 Windows launcher 啟動後 terminal 一片黑，無法判斷目前跑到哪裡；同時主視窗仍可能
+出現在正上方。需要先排除 Desktop launcher 是否指向舊 repo / stale generated app，再補可以
+定位 WSLg / Windows 雙螢幕行為的啟動診斷。
+
+### 變更
+
+- 確認 `/mnt/c/Users/Administrator/Desktop/XBrainLab.cmd` 指向 active repo
+  `/mnt/d/workspace_v2/projects/lab/XBrainLab`；Desktop 上沒有其他 XBrainLab app / shortcut。
+- Desktop `.cmd` 和 repo `.cmd` 改成 bootstrap active repo 的 PowerShell launcher，啟動時直接顯示
+  active repo、PowerShell launcher path 和啟動狀態。
+- PowerShell launcher 會顯示 log path、開 log / tail log 指令，並用 live tee 把 WSL / Python
+  stdout、stderr 同時寫入 terminal 和 `%LOCALAPPDATA%\XBrainLab\logs\launcher-*.log`。
+- 新增 `XBRAINLAB_STARTUP_DIAGNOSTICS=1` gated startup geometry diagnostics；啟用時 log screens、
+  cursor、splash geometry、MainWindow restore/default placement、show event 和 post-show geometry。
+- MainWindow post-show recovery 從單次 `0ms` 改成 `0ms + 250ms`，避免 Windows / WSLg 在 show 後才
+  finalize native frame 或移動 window 時漏掉 top-edge recovery。
+- Launcher 增加 `XBRAINLAB_LAUNCHER_SMOKE=1` basic smoke mode，讓 `.cmd` / `.ps1` 可驗證 preamble、
+  active repo delegation 和 log 寫入，不會真的啟動 GUI。
+
+### 影響範圍
+
+- Launchers：`scripts/launchers/xbrainlab_wsl_launcher.cmd`、
+  `scripts/launchers/xbrainlab_wsl_launcher.ps1`、
+  `/mnt/c/Users/Administrator/Desktop/XBrainLab.cmd`。
+- Startup shell：`run.py`。
+- UI shell：`XBrainLab/ui/main_window.py`、`XBrainLab/ui/window_placement.py`。
+- Tests：`tests/integration/ui/test_window_geometry.py`、
+  `tests/unit/ui/test_window_placement.py`。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/test_run_splash_geometry.py -q`
+  - `19 passed`
+- `poetry run ruff check run.py XBrainLab/ui/main_window.py XBrainLab/ui/window_placement.py tests/integration/ui/test_window_geometry.py tests/unit/ui/test_window_placement.py tests/unit/test_run_splash_geometry.py`
+  - `All checks passed!`
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- Launcher smoke：
+  - PowerShell parser：`PowerShell syntax OK`
+  - repo `.cmd` smoke：active repo bootstrap passed
+  - Desktop `.cmd` smoke：active repo bootstrap passed
+  - repo `.ps1` smoke：WSL stdout / stderr were mirrored to terminal and launcher log
+
+### 剩餘風險
+
+- 本輪仍未執行真人雙螢幕 Windows click-through；automated / smoke tests 可證明 launcher 指向 active
+  repo、terminal 不再黑、diagnostic logging 可用、post-show recovery 有 regression coverage，但不能
+  完全替代真 Windows window manager 驗收。
+
 ## 2026-05-02 Dual-monitor startup geometry follow-up
 
 ### 背景

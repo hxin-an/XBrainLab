@@ -3,12 +3,15 @@
 from PyQt6.QtCore import QPoint, QRect, QSize
 
 from XBrainLab.ui.window_placement import (
+    STARTUP_GEOMETRY_DIAGNOSTICS_ENV,
     FrameExtents,
     ScreenGeometry,
     bounded_window_position,
     choose_screen_index_for_rect,
     default_window_size_for_available,
+    format_rect,
     is_window_geometry_usable,
+    startup_geometry_diagnostics_enabled,
 )
 
 
@@ -127,3 +130,23 @@ def test_default_window_size_leaves_visual_centering_room_on_short_screen():
 
     assert size.height() < 720 - 72 - 48
     assert centered_y >= 72
+
+
+def test_startup_geometry_diagnostics_are_opt_in(monkeypatch):
+    monkeypatch.delenv(STARTUP_GEOMETRY_DIAGNOSTICS_ENV, raising=False)
+
+    assert not startup_geometry_diagnostics_enabled()
+
+    monkeypatch.setenv(STARTUP_GEOMETRY_DIAGNOSTICS_ENV, "1")
+
+    assert startup_geometry_diagnostics_enabled()
+
+
+def test_format_rect_includes_position_size_and_validity():
+    formatted = format_rect(QRect(10, 20, 300, 400))
+
+    assert "x=10" in formatted
+    assert "y=20" in formatted
+    assert "w=300" in formatted
+    assert "h=400" in formatted
+    assert "valid=True" in formatted

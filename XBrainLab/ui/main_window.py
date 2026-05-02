@@ -7,6 +7,7 @@ AI assistant integration, and debug tool execution.
 import sys
 from typing import Any
 
+from PyQt6 import sip
 from PyQt6.QtCore import QRect, QSettings, QSize, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
@@ -41,8 +42,10 @@ from XBrainLab.ui.window_placement import (
     frame_extents_for,
     is_window_geometry_usable,
     screen_geometry_for,
+    startup_geometry_diagnostics_enabled,
     startup_screen_hint,
     usable_window_position_bounds,
+    widget_geometry_diagnostic_line,
 )
 
 
@@ -90,7 +93,7 @@ class MainWindow(QMainWindow):
         self.study = study
         self.setWindowTitle("XBrainLab")
         self.setMinimumSize(self.MIN_WINDOW_SIZE)
-        self._post_show_geometry_clamp_done = False
+        self._post_show_geometry_recovery_scheduled = False
         self._restore_or_place_window()
 
         self.agent_initialized = False  # Flag for lazy loading
@@ -157,22 +160,30 @@ class MainWindow(QMainWindow):
         """Restore healthy saved geometry or recover to a draggable placement."""
         settings = self._window_settings()
         saved_geometry = settings.value("main_window/geometry", None)
+        self._log_startup_geometry_message(
+            "restore start saved_geometry=%s",
+            "yes" if saved_geometry is not None else "no",
+        )
         restored = False
         if saved_geometry is not None:
             try:
                 restored = bool(self.restoreGeometry(saved_geometry))
             except TypeError:
                 logger.debug("Ignoring invalid saved main-window geometry")
+        self._log_startup_geometry_message("restoreGeometry result=%s", restored)
 
         target_screen = self._target_screen_for_window()
         if restored and self._is_current_window_geometry_usable(target_screen):
+            self._log_startup_geometry("main_window.after_restore_healthy")
             return
 
         if saved_geometry is not None:
             logger.info("Resetting unusable saved main-window geometry")
             settings.remove("main_window/geometry")
+            self._log_startup_geometry_message("removed unusable saved geometry")
 
         self._place_default_window(target_screen)
+        self._log_startup_geometry("main_window.after_default_placement")
 
     def _place_default_window(self, screen=None) -> None:
         """Place a default-size window where the native title bar is reachable."""
@@ -343,6 +354,16 @@ class MainWindow(QMainWindow):
             frame_extents=frame_extents,
         )
 
+    def _log_startup_geometry(self, label: str) -> None:
+        """Log current geometry only when startup diagnostics are enabled."""
+        if startup_geometry_diagnostics_enabled():
+            logger.info(widget_geometry_diagnostic_line(label, self))
+
+    def _log_startup_geometry_message(self, message: str, *args: object) -> None:
+        """Log a startup diagnostic message without affecting normal UI."""
+        if startup_geometry_diagnostics_enabled():
+            logger.info("startup geometry: " + message, *args)
+
     def apply_vscode_theme(self):
         """Apply the VS Code dark theme stylesheet to the main window."""
         self.setStyleSheet(Stylesheets.MAIN_WINDOW)
@@ -505,16 +526,43 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):  # noqa: N802
         """Clamp restored geometry once the window has a native frame."""
         super().showEvent(event)
-        if not self._post_show_geometry_clamp_done:
-            self._post_show_geometry_clamp_done = True
-            QTimer.singleShot(0, self._recover_unusable_window_geometry)
+        if not self._post_show_geometry_recovery_scheduled:
+            self._post_show_geometry_recovery_scheduled = True
+            self._log_startup_geometry("main_window.show_event")
+            QTimer.singleShot(
+                0,
+                lambda: self._recover_unusable_window_geometry_if_alive(
+                    "post_show_0ms"
+                ),
+            )
+            QTimer.singleShot(
+                250,
+                lambda: self._recover_unusable_window_geometry_if_alive(
+                    "post_show_250ms"
+                ),
+            )
 
-    def _recover_unusable_window_geometry(self) -> None:
-        """Recenter after show if the window manager produced bad geometry."""
-        if self._is_current_window_geometry_usable():
+    def _recover_unusable_window_geometry_if_alive(self, recovery_label: str) -> None:
+        """Run delayed recovery only while the underlying Qt window still exists."""
+        if sip.isdeleted(self):
             return
-        logger.info("Recovering unusable main-window geometry after show")
+        self._recover_unusable_window_geometry(recovery_label)
+
+    def _recover_unusable_window_geometry(
+        self,
+        recovery_label: str = "post_show",
+    ) -> None:
+        """Recenter after show if the window manager produced bad geometry."""
+        self._log_startup_geometry(f"main_window.{recovery_label}.before")
+        if self._is_current_window_geometry_usable():
+            self._log_startup_geometry_message("%s usable=True", recovery_label)
+            return
+        logger.info(
+            "Recovering unusable main-window geometry after show (%s)",
+            recovery_label,
+        )
         self._place_default_window()
+        self._log_startup_geometry(f"main_window.{recovery_label}.after")
 
     def closeEvent(self, event):  # noqa: N802
         """Handle application close by cleaning up the agent manager.

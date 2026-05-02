@@ -232,3 +232,36 @@ def test_main_window_can_resize_maximize_and_restore(qtbot):
     assert not window.isMaximized()
     assert window.width() >= window.minimumWidth()
     assert window.height() >= window.minimumHeight()
+
+
+def test_show_event_schedules_immediate_and_delayed_geometry_recovery(qtbot):
+    with patch("XBrainLab.ui.main_window.QTimer.singleShot") as single_shot:
+        window = _make_lightweight_window(qtbot, _FakeSettings())
+        window.show()
+        qtbot.waitUntil(lambda: single_shot.call_count >= 2, timeout=1000)
+
+    assert [call.args[0] for call in single_shot.call_args_list] == [0, 250]
+
+
+def test_delayed_recovery_recenters_late_top_edge_geometry(qtbot):
+    window = _make_lightweight_window(qtbot, _FakeSettings())
+    window.show()
+    qtbot.waitExposed(window)
+    qtbot.wait(20)
+
+    available = window._available_screen_geometry()
+    window.setGeometry(
+        QRect(
+            available.left(),
+            available.top(),
+            window.MIN_WINDOW_SIZE.width(),
+            window.MIN_WINDOW_SIZE.height(),
+        )
+    )
+
+    assert not window._is_current_window_geometry_usable()
+
+    window._recover_unusable_window_geometry("post_show_250ms")
+
+    assert window.geometry() == _default_centered_geometry(window)
+    assert window._is_current_window_geometry_usable()

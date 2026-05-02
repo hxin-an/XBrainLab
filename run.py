@@ -25,6 +25,10 @@ from XBrainLab.ui.window_placement import (
     center_widget_on_screen,
     choose_screen_for_saved_geometry,
     remember_startup_screen,
+    screen_geometry_diagnostic_lines,
+    startup_geometry_diagnostics_enabled,
+    startup_screen_hint,
+    widget_geometry_diagnostic_line,
 )
 
 
@@ -61,6 +65,13 @@ def _create_centered_splash(app: QApplication, saved_geometry=None) -> _Splash:
     return splash
 
 
+def _show_centered_splash(app: QApplication, splash: _Splash) -> None:
+    """Show the splash and recenter after the window manager assigns a frame."""
+    splash.show()
+    center_widget_on_screen(splash, startup_screen_hint() or app.primaryScreen())
+    app.processEvents()
+
+
 def main() -> None:
     """Parse CLI arguments, create the application, and show the main window.
 
@@ -85,8 +96,7 @@ def main() -> None:
     # --- Splash Screen (shown while heavy imports load) ---
     settings = QSettings("XBrainLab", "XBrainLab")
     splash = _create_centered_splash(app, settings.value("main_window/geometry", None))
-    splash.show()
-    app.processEvents()
+    _show_centered_splash(app, splash)
 
     # --- Heavy imports deferred until after splash is visible ---
     from XBrainLab.backend.study import Study
@@ -94,6 +104,13 @@ def main() -> None:
     from XBrainLab.ui.main_window import MainWindow
 
     logger.info("Starting XBrainLab (PyQt6)...")
+    if startup_geometry_diagnostics_enabled():
+        logger.info(
+            "Startup geometry diagnostics enabled with XBRAINLAB_STARTUP_DIAGNOSTICS=1"
+        )
+        for line in screen_geometry_diagnostic_lines():
+            logger.info(line)
+        logger.info(widget_geometry_diagnostic_line("splash.after_show", splash))
 
     if args.tool_debug:
         logger.info("Tool Debug Mode enabled. Script: %s", args.tool_debug)
@@ -110,6 +127,8 @@ def main() -> None:
 
     window = MainWindow(study)
     window.show()
+    if startup_geometry_diagnostics_enabled():
+        logger.info(widget_geometry_diagnostic_line("main_window.after_show", window))
     splash.finish(window)
 
     sys.exit(app.exec())
