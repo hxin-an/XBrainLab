@@ -15,6 +15,7 @@
 -> local runtime first-run consent / remaining dialog-query command surface 收斂
 -> thesis split audit protocol 建立
 -> assistant product audit follow-up：UI header / transcript / tool output / legacy remote exposure 修正
+-> local-only assistant runtime enforcement：remote backend modules 從 product package 移除
 ```
 
 ## 重要狀態修正
@@ -40,9 +41,11 @@
 - 2026-05-02 follow-up 修掉人工產品審核明確不通過的 assistant 問題：
   top chip dump 移除、Retry no-previous-request 不再進 transcript、短 user bubble 不再切字、
   visible tool result 改成使用者語言、`list_files` missing/empty result 不再外洩 schema / `[]`。
-- Gemini / remote runtime 仍存在於 code，但一般產品 UI 與 startup 已用
-  `XBRAINLAB_SHOW_LEGACY_REMOTE_LLM=1` 隔離；未設定時不顯示 legacy remote settings，也不啟動
-  Gemini assistant runtime。
+- Assistant product runtime 已改成 local-only：remote backend modules 已從 product package
+  移除；舊 `api` / `gemini` selection 會 migrate local 或 fail closed，不會 instantiate
+  remote backend。
+- `openai` / `google-genai` 不在 default dependencies，只保留於 optional
+  `legacy-remote-llm` dependency group。
 
 ## 產品線盤點
 
@@ -85,6 +88,7 @@
 ### D. Local LLM Runtime
 
 - Phi primary / fallback cache、preflight、prompt smoke、structured-output smoke 已通過。
+- Product runtime 已 local-only；settings / engine / worker 不再接受 API / Gemini execution mode。
 - local ready 不能再被誤讀為 UI chat flow 一定可用；本輪已把這個邊界寫進 validation。
 - Assistant first-run consent 已落地；第一次開啟 local runtime 會說明 GPU/CPU、download
   estimate、cache status，並提供 Enable / Download / Use existing cache / Later / Disable。
@@ -144,7 +148,10 @@
    channel selection 和 new-session command adapter。
 4. 已新增 product click-through / synthetic pipeline walkthrough tests，以及 agent product-flow
    integration tests。
-5. 現在進行 final validation、documentation closure 與 local commits；後續仍需要真 Windows
+5. 已完成 local-only assistant runtime enforcement：remote backend modules 移除，remote SDK
+   只留 optional legacy dependency group，architecture guard 防止 product path 回歸 remote key /
+   backend import。
+6. 現在進行 final validation、documentation closure 與 local commits；後續仍需要真 Windows
    launcher click-through / true local model UI walkthrough。
 
 ## Product Delivery Milestone TODO
@@ -257,6 +264,9 @@ contract、ChatPanel product redesign 和 regression tests。
 - [x] 建立 fallback：primary 不可用且 fallback cache ready 時使用 fallback；UI 顯示原因。
 - [x] Assistant first-run consent：首次啟用 local runtime 前顯示資源使用、download estimate、
   cache status 和 Enable / Download / Use existing cache / Later / Disable 選項。
+- [x] Product runtime 已 local-only：remote backend modules 移除，`api` / `gemini` settings
+  會 migrate local 或 fail closed，`openai` / `google-genai` 只在 optional
+  `legacy-remote-llm` group。
 - [x] 更新 `docs/architecture/agent.md`、`docs/architecture/validation.md` 或
   `docs/validation/README.md` 的 local runtime 邊界。
 
@@ -342,7 +352,8 @@ backend、UI、agent、local LLM 和 desktop launcher，但要維持工程順序
 - agent real tools 從 facade 舊字串回傳遷移到 typed `CommandResult` formatter。
 - local LLM model selection、preflight、health check、fallback 和 UI 狀態整合。
 - desktop launcher / shortcut / startup smoke。
-- 低風險移除或隔離 API / Gemini code path；高風險時先文件化 removal plan。
+- 維持 local-only runtime guard；若需要歷史 remote fixture，必須保持 optional 且 product
+  code 不 import。
 
 仍要避免：
 

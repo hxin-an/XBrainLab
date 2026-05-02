@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | 穩定化優先 | active | 先讓既有 app 可跑、可測、可理解，再做 agent redesign。 |
 | app 內 assistant 是 workflow operator | active | 它不是外部 coding assistant，也不是普通聊天視窗。 |
-| assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，未來 assistant 不把 API / Gemini 當成產品目標；既有 API / Gemini code path 後續要移除。 |
+| assistant runtime local-only | active | 為了簡化開發、部署、隱私和驗證，assistant product runtime 已 local-only；remote backend modules 已從 product package 移除，`openai` / `google-genai` 只留 optional `legacy-remote-llm` dependency group。 |
 | tool surface 可重設計 | active | 不被舊工具 taxonomy 綁住，應以 workflow intent 設計。 |
 | validation 是 thesis-critical | active | 測試和 evidence 是論文主張的一部分。 |
 | 文件要少數 canonical 化 | active | 短期 AI / agent 文件整合後刪除，只保留少數 canonical 文件。 |

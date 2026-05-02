@@ -36,7 +36,7 @@
 | Desktop launch / packaging | baseline done | 低風險 Windows launcher / shortcut 已產出；後續再評估 PyInstaller / executable packaging。 |
 | End-to-end product stabilization | active | 驗收 backend -> UI -> agent -> local runtime -> launcher 的展示主線。 |
 | Tool-call 驗證 | later | 產品主線穩定後，再建立可重跑 scoring system 和 thesis evidence。 |
-| Agent runtime / tool surface 簡化 | active | 往 local-only runtime、typed tool result、capability-aware tool surface 收斂；API / Gemini 是移除或隔離目標。 |
+| Agent runtime / tool surface 簡化 | active | Product runtime 已 local-only；remote backend modules 已移除，後續重點是 typed tool result、capability-aware tool surface 和真 local LLM UI walkthrough。 |
 | 優化迭代 | later | 根據驗證結果改善 agent、資料流程和使用體驗。 |
 
 ## 現在先做
@@ -45,7 +45,8 @@
 2. 將 agent real tools 推進到 `CommandResult` / typed result adapter。
 3. 完成 launcher -> MainWindow -> chat panel -> agent blocked-command walkthrough。
 4. 將 local runtime smoke 和 launcher smoke 收進更穩定的 product validation script。
-5. 產品主線穩定後，再開始 tool-call eval / thesis evidence。
+5. 補真 local LLM 長時間 ChatPanel walkthrough，確認 local-only runtime 在產品 UI 中的長回覆 / timeout / fallback 體驗。
+6. 產品主線穩定後，再開始 tool-call eval / thesis evidence。
 
 ## 先不做
 

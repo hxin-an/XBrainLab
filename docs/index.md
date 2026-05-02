@@ -52,9 +52,12 @@ docs/
 
 目前工作已進入 product-delivery engineering。legacy / active 閱讀面已收掉；後端
 `ApplicationService / Command API` 第一版已落地。下一步是把 UI 和 agent 的
-backend command surface 統一，修穩 UI chat / agent panel，建立 local-only LLM
-runtime 與桌面啟動方式。Tool-call eval / thesis evidence 要等產品主線穩定後再做。
+backend command surface 統一，修穩 UI chat / agent panel，完成 local-only LLM
+runtime 的 product path 封口與桌面啟動方式。Tool-call eval / thesis evidence 要等產品主線穩定後再做。
 
-assistant 的 local-only 方向已確認；API / Gemini code path 是後續要拔掉或隔離的舊路徑，不是產品目標。
+assistant product runtime 目前已是 local-only：remote backend modules 已從 product package
+移除，`LLMConfig` / `LLMEngine` / `AgentWorker` 不會 instantiate API / Gemini backend。
+`openai` / `google-genai` 只留在 optional `legacy-remote-llm` dependency group。真 local LLM
+長時間 ChatPanel walkthrough 仍未跑，不能用 local runtime smoke 直接宣稱完整產品驗收完成。
 
 給 agent 看的 thesis context 現在放在 `.agents/context/thesis.md`，不放在人類 active 入口。

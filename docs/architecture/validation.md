@@ -14,7 +14,7 @@
 - AI Assistant product flow 不能只靠 local runtime smoke、deterministic eval 或 UI baseline 判斷；
   normal chat response、visible error、local unavailable、blocked-command feedback 必須有專門 gate。
 - local agent runtime 已有 2026-05-02 standalone smoke evidence，但尚未納入 fast dashboard
-  預設 profile；未來方向是 local-only。
+  預設 profile；product runtime 現在已是 local-only。
 - thesis-grade EEG validation 另有固定 protocol：split indices、config、metrics、logs、
   model summary、environment info 都要成 artifact，且 agent tool-call eval 必須和 EEG
   classification metrics 分開。
@@ -201,10 +201,13 @@ assistant / agent runtime validation 不屬於目前 fast dashboard 預設 profi
 - 目前模型 cache 約 `15.34 GB`，低於 20GB 上限。
 - Qwen cache 已刪除；中國公司或中國來源模型不列入 local validation 候選。
 - local agent runtime 還沒有被接受為 dashboard evidence。
-- 未來 assistant validation 方向是 local-only。
-- Gemini/API key flow 仍可能存在於 current code，但不再是未來產品驗證目標，後續應移除。
+- assistant product runtime 已完成 local-only cleanup：remote backend modules 已從 product
+  package 移除，legacy API/Gemini selection 會 migrate local 或 fail closed。
+- `openai` / `google-genai` 不在 default dependencies，只保留於 optional
+  `legacy-remote-llm` dependency group。
+- 真 local LLM 長時間 ChatPanel walkthrough 尚未跑；目前 smoke 不能取代完整 product acceptance。
 
-未來 local-only validation 應該覆蓋：
+後續 local-only validation 應該覆蓋：
 
 - local model cache 是否存在。
 - optional dependencies 是否可安裝。

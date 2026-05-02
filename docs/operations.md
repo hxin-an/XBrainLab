@@ -164,6 +164,9 @@ cat artifacts/quality/latest.md
 - 目前 legacy 閱讀面已清理完成；目前主線是 product-delivery engineering。
 - 可以推進 backend、UI、agent、local LLM 和 desktop launcher，但要維持可驗證、可回滾理解的工程邊界。
 - 不要把 `/mnt/d/repos/XBrainLab` 當 active repo。
-- 不要宣稱 agent runtime 已完全 local-only；code 仍殘留 API / Gemini，且這些路徑已決定隔離或移除。
+- assistant product runtime 已 local-only；remote backend modules 已從 product package 移除，
+  remote SDK 只留 optional `legacy-remote-llm` dependency group。
 - local LLM smoke 目前另行驗證，尚未納入 fast dashboard 預設 profile；產品驗收時要單獨跑 local health / prompt / structured smoke。
+- 真 local LLM 長時間 ChatPanel walkthrough 尚未跑；不要把 standalone local runtime smoke
+  說成完整 assistant product acceptance。
 - 多 worker 同時工作時，只改自己負責的檔案，不 revert 既有變更。

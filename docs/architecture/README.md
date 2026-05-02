@@ -64,7 +64,8 @@ Same backend operation surface used by human workflows
 
 - 先穩定既有 PyQt app，再做 agent redesign。
 - human user 和 in-app assistant 應是同一套軟體能力面的兩種控制模式。
-- assistant runtime 目標是 local-only；目前 API / Gemini code path 是待移除殘留。
+- assistant product runtime 已是 local-only；remote backend modules 已從 product package 移除。
+- `openai` / `google-genai` 只保留在 optional `legacy-remote-llm` dependency group，不是 default deps。
 - tool-call surface 不應被舊工具邊界綁死，應以 workflow intent 重設計。
 - validation 是 thesis-critical，不是最後補測試。
 - 文件主張必須能對到 source code、test、artifact 或 runtime evidence。
@@ -74,4 +75,5 @@ Same backend operation surface used by human workflows
 - 文件和 runtime evidence 尚未完全重建可信度。
 - legacy 閱讀面已清乾淨；`docs/legacy/` 和 `.agents/legacy/` 都已刪除。
 - 新 workspace 的標準 `dev,test,docs` environment 已可用，但 optional `llm` group 尚未驗證。
-- agent runtime 仍有 API / Gemini 殘留，後續要移除，但還沒進入程式碼簡化階段。
+- local LLM prompt / structured smoke 已通過，但真 local LLM 長時間 ChatPanel walkthrough
+  仍未跑，不能把 runtime smoke 等同完整 assistant product acceptance。
