@@ -10,6 +10,7 @@ import logging
 import re
 import threading
 import time as _time
+from ast import literal_eval
 from collections import deque
 from typing import Any
 
@@ -25,6 +26,7 @@ from XBrainLab.llm.pipeline_state import (  # noqa: F401
 from XBrainLab.llm.rag import RAGRetriever
 from XBrainLab.llm.tools import AVAILABLE_TOOLS
 from XBrainLab.llm.tools.application_surface import (
+    READ_ONLY_TOOLS,
     TOOL_TO_COMMAND,
     CapabilityPolicyUnavailable,
     ToolAvailability,
@@ -44,6 +46,29 @@ from .verifier import VerificationLayer
 from .worker import AgentWorker
 
 logger = logging.getLogger(__name__)
+
+
+TOOL_ACTION_LABELS = {
+    "list_files": "File browser",
+    "get_dataset_info": "Dataset summary",
+    "load_data": "Load EEG data",
+    "attach_labels": "Attach labels",
+    "apply_standard_preprocess": "Preprocessing",
+    "apply_bandpass_filter": "Bandpass filter",
+    "apply_notch_filter": "Notch filter",
+    "resample_data": "Resampling",
+    "normalize_data": "Normalization",
+    "set_reference": "Reference setup",
+    "select_channels": "Channel selection",
+    "set_montage": "Montage setup",
+    "epoch_data": "Epoch creation",
+    "generate_dataset": "Dataset builder",
+    "set_model": "Model setup",
+    "configure_training": "Training setup",
+    "start_training": "Training",
+    "clear_dataset": "Session reset",
+    "switch_panel": "Navigation",
+}
 
 
 class LLMController(QObject):
@@ -240,6 +265,9 @@ class LLMController(QObject):
             )
             return
 
+        if self._handle_product_shortcut(text):
+            return
+
         self.is_processing = True
         self.status_update.emit("Thinking...")
 
@@ -271,6 +299,37 @@ class LLMController(QObject):
             self.error_occurred.emit(str(e))
             self.is_processing = False
             self.processing_finished.emit()
+
+    def _handle_product_shortcut(self, text: str) -> bool:
+        """Answer simple product greetings without invoking tools or the LLM."""
+        normalized = re.sub(r"[^\w\s]", "", text, flags=re.UNICODE).strip().lower()
+        greetings = {
+            "hello",
+            "hi",
+            "hey",
+            "嗨",
+            "你好",
+            "您好",
+        }
+        if normalized not in greetings:
+            return False
+
+        self._retry_count = 0
+        self._tool_failure_count = 0
+        self._loop_break_count = 0
+        self._successful_tool_count = 0
+        message = (
+            "Hello. I can help you move through the EEG workflow: import raw "
+            "data, prepare preprocessing, create epochs, build a training "
+            "dataset, configure training, and explain why a step is blocked. "
+            "To begin, choose EEG files or ask what is ready now."
+        )
+        self._append_history("user", text)
+        self._append_history("assistant", message)
+        self.response_ready.emit("Assistant", message)
+        self.status_update.emit("Ready")
+        self.processing_finished.emit()
+        return True
 
     def _generate_response(self):
         """Triggers LLM generation based on the current history.
@@ -517,19 +576,25 @@ class LLMController(QObject):
             availability = self._check_tool_availability(cmd)
             if availability is not None:
                 block_result = self._tool_block_result(cmd, availability)
+                user_message = self._summarize_tool_result(
+                    cmd,
+                    False,
+                    block_result,
+                )
                 logger.warning(
                     "Tool blocked by ApplicationService: %s",
                     block_result.message,
                 )
-                self.status_update.emit(f"Blocked: {block_result.message}")
-                self.response_ready.emit("System", block_result.message)
+                self.status_update.emit(f"Blocked: {user_message}")
+                self.response_ready.emit("System", user_message)
                 self._visible_response_sent = True
                 self._append_history(
                     "user",
                     f"System: Tool call REJECTED: {block_result.message}",
                 )
-                has_failure = True
-                break
+                self._last_tool_summary = user_message
+                self._finalize_turn_after_tool()
+                return
 
             self.status_update.emit(f"Executing: {cmd}...")
 
@@ -571,6 +636,10 @@ class LLMController(QObject):
                 "user",
                 f"Tool Output: {self._format_tool_output(cmd, _success, result)}",
             )
+
+            if not _success and self._should_wait_for_user_after_tool_failure(result):
+                self._finalize_turn_after_tool()
+                return
 
         # Intelligent Continuation Strategy:
         # 1. If FAILURE occurred: Auto-trigger loop to allow Agent to self-correct.
@@ -771,7 +840,9 @@ class LLMController(QObject):
                         0,
                         result.message,
                     )
-                self.status_update.emit(f"Blocked: {result.message}")
+                self.status_update.emit(
+                    self._summarize_tool_result(command_name, False, result)
+                )
                 return False, result
 
             t0 = _time.monotonic()
@@ -809,7 +880,7 @@ class LLMController(QObject):
                 elapsed = (_time.monotonic() - t0) * 1000
                 result = raw_result
                 success = True
-                if command_name in TOOL_TO_COMMAND:
+                if command_name in TOOL_TO_COMMAND or command_name in READ_ONLY_TOOLS:
                     tool_result = normalize_tool_result(
                         self.study,
                         command_name,
@@ -825,7 +896,9 @@ class LLMController(QObject):
                         None if success else str(result),
                     )
                 if not success:
-                    self.status_update.emit(f"Tool failed: {result}")
+                    self.status_update.emit(
+                        self._summarize_tool_result(command_name, success, result)
+                    )
                 return success, result
         else:
             if self.metrics.current_turn:
@@ -922,9 +995,17 @@ class LLMController(QObject):
 
         """
         if isinstance(result, ToolCommandResult):
+            visible_message = self._summarize_tool_result(
+                result.tool_name,
+                success,
+                result,
+            )
             result = result.message
         elif not isinstance(result, str):
+            visible_message = self._summarize_tool_result("", success, result)
             result = str(result) if result is not None else ""
+        else:
+            visible_message = self._summarize_tool_result("", success, result)
         if result.startswith("Request:"):
             # Format: "Request: CMD params... (View: view_mode)"
             # Example: "Request: Switch UI to 'visualization' (View: 3d_plot)"
@@ -962,8 +1043,9 @@ class LLMController(QObject):
                 return True
 
         if not result.startswith("Request:") and not success:
-            # Only report as System Error if the tool actually failed
-            self.response_ready.emit("System", f"Tool Error: {result}")
+            # Only report as a user-facing message if the tool actually failed.
+            # Developer diagnostics stay in structured history/logs.
+            self.response_ready.emit("System", visible_message)
             self._visible_response_sent = True
         return False
 
@@ -972,15 +1054,154 @@ class LLMController(QObject):
         """Build a short visible tool summary for the chat transcript."""
         if isinstance(result, ToolCommandResult):
             message = result.message
-            backend_command = result.command_name or command_name
+            tool_name = result.tool_name or command_name
         else:
             message = str(result) if result is not None else ""
-            backend_command = command_name
+            tool_name = command_name
 
-        status = "completed" if success else "failed"
-        if not message:
-            message = "No additional details were returned."
-        return f"Tool `{command_name}` {status} ({backend_command}): {message}"
+        tool_name = tool_name or command_name
+        label = TOOL_ACTION_LABELS.get(tool_name, "Assistant action")
+        text = message.strip()
+        lower_text = text.lower()
+
+        if text.startswith("Request:"):
+            if "confirm_montage" in lower_text or "verify montage" in lower_text:
+                return (
+                    "Montage setup needs confirmation in the app before it can "
+                    "continue."
+                )
+            if "switch ui" in lower_text:
+                return "I opened the requested workspace panel."
+            return "The app needs your confirmation before this action can continue."
+
+        if tool_name == "list_files":
+            if not success and "directory is required" in lower_text:
+                return (
+                    "I need a folder path before I can list files. Choose a "
+                    "folder in the app or paste the path here."
+                )
+            if not success and "does not exist" in lower_text:
+                return (
+                    "I could not find that folder. Choose another folder or "
+                    "paste a valid path."
+                )
+            if not success and "system directories" in lower_text:
+                return (
+                    "I cannot browse protected system folders. Choose a project "
+                    "or EEG data folder instead."
+                )
+            files = LLMController._parse_legacy_file_list(text)
+            if success and files is not None:
+                if not files:
+                    return (
+                        "I did not find files in that folder. Choose another "
+                        "folder or import EEG data to begin."
+                    )
+                preview = ", ".join(files[:5])
+                suffix = "" if len(files) <= 5 else f", and {len(files) - 5} more"
+                return f"I found {len(files)} item(s): {preview}{suffix}."
+
+        if isinstance(result, ToolCommandResult) and not success:
+            reason = (result.blocked_reason or result.message or "").strip()
+            if result.error_type == "precondition":
+                clean_reason = LLMController._clean_reason(reason)
+                return f"{label} is not available yet: {clean_reason}"
+            if result.error_type == "confirmation_required":
+                return f"{label} needs confirmation in the app before it can continue."
+            if result.error_type == "input":
+                return (
+                    f"I need more information before {label.lower()} can continue: "
+                    f"{LLMController._clean_reason(reason)}"
+                )
+            return (
+                f"I could not complete {label.lower()}. Details were saved to "
+                "diagnostics; check the app status bar or try again."
+            )
+
+        if not success:
+            if not text:
+                return (
+                    f"I could not complete {label.lower()}. Check diagnostics "
+                    "or try again."
+                )
+            return (
+                f"I could not complete {label.lower()}: "
+                f"{LLMController._clean_reason(text)}"
+            )
+
+        if not text or text in {"[]", "{}"}:
+            return (
+                "The action completed, but there is nothing to show yet. "
+                "Ask what is ready or choose the next workflow step."
+            )
+
+        if "requires ui confirmation" in lower_text or "backendfacade legacy path" in (
+            lower_text
+        ):
+            return f"{label} needs confirmation in the app before it can continue."
+
+        return LLMController._clean_success_message(text)
+
+    @staticmethod
+    def _parse_legacy_file_list(message: str) -> list[str] | None:
+        """Parse legacy list_files string output without exposing Python syntax."""
+        try:
+            parsed = literal_eval(message)
+        except (SyntaxError, ValueError):
+            return None
+        if not isinstance(parsed, list):
+            return None
+        return [str(item) for item in parsed]
+
+    @staticmethod
+    def _clean_reason(reason: str) -> str:
+        """Remove developer prefixes from a reason shown in chat."""
+        cleaned = reason.strip()
+        for prefix in ("Error:", "Tool execution failed:", "Tool failed:"):
+            if cleaned.lower().startswith(prefix.lower()):
+                cleaned = cleaned[len(prefix) :].strip()
+        cleaned = cleaned.replace("ApplicationService", "the workflow")
+        cleaned = cleaned.replace("BackendFacade legacy path", "app confirmation path")
+        cleaned = cleaned.replace(
+            "paths list cannot be empty.", "a file or folder path is required."
+        )
+        cleaned = cleaned.replace("directory is required", "a folder path is required")
+        cleaned = cleaned.replace(
+            "epoch, batch_size, and learning_rate are required.",
+            "training epochs, batch size, and learning rate are required.",
+        )
+        cleaned = re.sub(
+            r"\b([A-Za-z]+(?:_[A-Za-z0-9]+)+)\b",
+            lambda match: match.group(1).replace("_", " "),
+            cleaned,
+        )
+        return cleaned or "the workflow is missing required input."
+
+    @staticmethod
+    def _clean_success_message(message: str) -> str:
+        """Return a success message safe for first-layer chat."""
+        cleaned = message.strip()
+        if cleaned.startswith("Request:"):
+            return "The app needs your confirmation before this action can continue."
+        try:
+            parsed = literal_eval(cleaned)
+        except (SyntaxError, ValueError):
+            return cleaned
+        if isinstance(parsed, list):
+            if not parsed:
+                return (
+                    "The action completed, but there is nothing to show yet. "
+                    "Ask what is ready or choose the next workflow step."
+                )
+            preview = ", ".join(str(item) for item in parsed[:5])
+            suffix = "" if len(parsed) <= 5 else f", and {len(parsed) - 5} more"
+            return f"I found {len(parsed)} item(s): {preview}{suffix}."
+        return cleaned
+
+    @staticmethod
+    def _should_wait_for_user_after_tool_failure(result: Any) -> bool:
+        """Return whether a failed tool should stop and ask the user."""
+        return isinstance(result, ToolCommandResult) and result.user_correctable
 
     @staticmethod
     def _format_tool_output(command_name: str, success: bool, result: Any) -> str:
@@ -1089,21 +1310,26 @@ class LLMController(QObject):
         self.is_processing = True
         self.status_update.emit(f"Debug: Executing {tool_name}...")
 
-        # Show Tool Call in chat (so user can see what was requested)
+        # Show a product-safe diagnostic notice in chat; raw call details remain
+        # only in controller history/logs.
         params_str = json.dumps(params, indent=2, ensure_ascii=False)
         call_msg = f"Tool Call: {tool_name}\nParams: {params_str}"
         self._append_history("user", f"[DEBUG] {call_msg}")
-        self.response_ready.emit("Debug", call_msg)
+        self.response_ready.emit("Debug", "Running a diagnostic action...")
 
         success, result = self._execute_tool_no_loop(tool_name, params)
 
         # Handle Side Effects (UI Switching etc)
         self._handle_tool_result_logic(result, success)
 
-        # Show Output
+        # Keep structured output in controller history, but do not expose raw
+        # JSON/tool syntax in the visible product transcript.
         msg = f"Tool Output: {self._format_tool_output(tool_name, success, result)}"
         self._append_history("assistant", msg)
-        self.response_ready.emit("System", msg)
+        self.response_ready.emit(
+            "System",
+            self._summarize_tool_result(tool_name, success, result),
+        )
 
         self.status_update.emit("Ready")
         self.is_processing = False

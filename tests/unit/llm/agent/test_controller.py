@@ -106,7 +106,7 @@ class TestHandleUserInput:
 
     def test_exception_emits_error(self, ctrl):
         ctrl.rag_retriever.get_similar_examples.side_effect = RuntimeError("boom")
-        ctrl.handle_user_input("hi")
+        ctrl.handle_user_input("run analysis")
         ctrl.error_occurred.emit.assert_called()
         assert not ctrl.is_processing
 
@@ -251,14 +251,15 @@ class TestHandleToolResultLogic:
         result = ctrl._handle_tool_result_logic("some error", success=False)
         assert not result
         ctrl.response_ready.emit.assert_called()
+        assert "Tool Error" not in ctrl.response_ready.emit.call_args[0][1]
 
     def test_finalize_after_tool_emits_visible_summary(self, ctrl):
         ctrl._visible_response_sent = False
-        ctrl._last_tool_summary = "Tool `get_state` completed: state captured"
+        ctrl._last_tool_summary = "Dataset summary is ready."
         ctrl._finalize_turn_after_tool()
         ctrl.response_ready.emit.assert_called_once_with(
             "Tool",
-            "Tool `get_state` completed: state captured",
+            "Dataset summary is ready.",
         )
         ctrl.processing_finished.emit.assert_called()
 

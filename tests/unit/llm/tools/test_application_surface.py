@@ -72,7 +72,7 @@ def test_legacy_error_string_becomes_failed_structured_result():
 
     assert result.ok is False
     assert result.command_name == CommandName.TRAIN.value
-    assert result.error_type == "runtime"
+    assert result.error_type == "precondition"
     assert "Generate datasets" in result.message
 
 

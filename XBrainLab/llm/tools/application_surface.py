@@ -101,6 +101,11 @@ class ToolCommandResult:
     def __str__(self) -> str:
         return self.message
 
+    @property
+    def user_correctable(self) -> bool:
+        """Whether user input is the next useful step instead of LLM retry."""
+        return self.error_type in {"input", "precondition", "confirmation_required"}
+
     @classmethod
     def blocked(
         cls,
@@ -186,6 +191,7 @@ class ToolCommandResult:
         """Wrap a legacy string/object tool result with stable semantics."""
         message = str(raw_result) if raw_result is not None else ""
         ok = legacy_tool_result_succeeded(message)
+        error_type = None if ok else legacy_tool_error_type(message)
         return cls(
             ok=ok,
             tool_name=tool_name,
@@ -196,7 +202,7 @@ class ToolCommandResult:
             ),
             message=message,
             raw_result=raw_result,
-            error_type=None if ok else "runtime",
+            error_type=error_type,
             recoverable=True,
             blocked_reason=None if ok else message,
             state=state,
@@ -372,6 +378,35 @@ def legacy_tool_result_succeeded(message: str) -> bool:
     if text.startswith(failure_prefixes):
         return False
     return " failed:" not in text
+
+
+def legacy_tool_error_type(message: str) -> str:
+    """Classify legacy string-only failures into product-level buckets."""
+    text = message.strip().lower()
+    if any(
+        marker in text
+        for marker in (
+            "is required",
+            "cannot be empty",
+            "does not exist",
+            "no valid files",
+            "path does not exist",
+        )
+    ):
+        return "input"
+    if any(
+        marker in text
+        for marker in (
+            "no data loaded",
+            "before training",
+            "before preprocessing",
+            "before generating",
+            "requires confirmation",
+            "not available",
+        )
+    ):
+        return "precondition"
+    return "runtime"
 
 
 def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
