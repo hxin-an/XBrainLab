@@ -35,16 +35,17 @@
   boundary。
 - Dataset panel 的主要資料入口已從 `Import Data` 改為 `Interpret Data Source`，並走
   scan -> preview -> validate -> confirm/apply；preview dialog 現在提供 apply 後保存 recipe
-  的選項，並透過 `SaveInterpretationRecipeCommand` 寫入 recipe。label import 尚未完成遷移。
+  的選項，並透過 `SaveInterpretationRecipeCommand` 寫入 recipe。舊 label import 入口已改成
+  `Add Labels to Loaded Data`，定位為 service-backed compatibility path。
 - headless / MCP-ready automation adapter 已新增：
   `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
   payload 轉回 typed `ApplicationService` command。
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
-- Data Interpretation System 仍未完成；目前尚缺 label import migration、完整 MCP server 和
-  更完整的 UI replay coverage。（MCP-ready schema / headless adapter 已有；backend non-mocked
-  source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有；Data Interpretation
-  preview / applied dataset panel 的 UI-observable replay artifact 已有第一版。）
+- Data Interpretation System 仍未完成；目前尚缺 label import recipe integration、完整 MCP server
+  和更完整的 UI replay coverage。（MCP-ready schema / headless adapter 已有；backend
+  non-mocked source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有；
+  Data Interpretation preview / applied dataset panel 的 UI-observable replay artifact 已有第一版。）
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現，但 override /
   recipe UI 尚未完成。
 

@@ -28,6 +28,37 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Label import compatibility wording
+
+### 背景
+
+主資料入口已改成 Data Interpretation，但 Dataset sidebar 仍有舊 `Import Label` 按鈕，容易讓
+使用者把舊 label-first 心智模型當成同級主入口。實作上 label import 已先走
+`ImportLabelsCommand(LabelImportPlan)`，controller 只是 fallback。
+
+### 變更
+
+- Dataset sidebar 按鈕從 `Import Label` 改成 `Add Labels to Loaded Data`。
+- tooltip 改為 `Apply external labels to loaded files`。
+- 更新 / 重跑相關 UI regression 和 Data Interpretation replay artifact。
+
+### 影響範圍
+
+- Dataset sidebar visible wording。
+- Data Interpretation applied screenshot / replay JSON。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q` -> `48 passed`
+- `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py` -> `PASS`
+- `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py` -> `0 errors, 0 warnings, 0 notes`
+- `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+
+### 剩餘風險
+
+- label import 仍是對已載入資料的 compatibility action；尚未整合進 Data Interpretation recipe
+  語意。
+
 ## 2026-05-04 Data Interpretation recipe save UI path
 
 ### 背景
@@ -62,7 +93,8 @@ apply 後保存 Data Interpretation recipe。這讓產品流程仍缺 `apply -> 
 
 ### 剩餘風險
 
-- label import migration 仍未完成；舊 label dialog 尚未納入 Data Interpretation recipe。
+- label import 目前是 compatibility action for already-loaded data；尚未納入 Data Interpretation
+  recipe。
 - save dialog click-through 有 unit coverage，UI replay artifact 顯示 checkbox state，但不等於真人
   file save dialog 操作。
 

@@ -37,6 +37,25 @@
 
 ## 2026-05-04
 
+### 03:22 Label import compatibility wording
+
+- 做了什麼：
+  - Dataset sidebar 的舊 `Import Label` 按鈕改成 `Add Labels to Loaded Data`。
+  - 保留既有 `ImportLabelsCommand(LabelImportPlan)` service-backed path；legacy controller 仍只作
+    fallback。
+  - 重跑 Dataset sidebar / DatasetActionHandler regression，並刷新 Data Interpretation UI replay
+    artifact。
+- 結果：
+  - 主資料入口語言保持 Data Interpretation；外部 label 匯入被定位為對已載入資料的 compatibility
+    action，不再與 `Interpret Data Source` 並列成新的主要心智模型。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q` -> `48 passed`
+  - targeted `ruff` / `basedpyright` clean。
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+- 接續 / 本輪剩餘：
+  - label import 尚未整合進 Data Interpretation recipe；完整 MCP server 和 local LLM 真實 eval
+    仍未完成。
+
 ### 03:18 Data Interpretation recipe save UI
 
 - 做了什麼：
@@ -53,7 +72,8 @@
   - targeted source/dialog `basedpyright` clean。
   - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
 - 接續 / 本輪剩餘：
-  - label import 仍是舊入口；完整 MCP server 和 local LLM 真實 tool-call eval 尚未完成。
+  - label import 仍是 compatibility path，尚未整合進 Data Interpretation recipe；完整 MCP server
+    和 local LLM 真實 tool-call eval 尚未完成。
 
 ### 03:10 Data Interpretation UI replay artifact
 

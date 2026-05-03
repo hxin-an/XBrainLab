@@ -397,8 +397,9 @@ accuracy 已驗證」。
     - `git diff --check` -> `PASS`
 
 這批 evidence 支撐 Dataset panel main import entry 的新心智模型。後續 recipe save option
-和 headless / MCP-ready adapter 已補；label import migration、完整 MCP server 和 local LLM
-真實 tool-call accuracy 仍未完成。
+和 headless / MCP-ready adapter 已補；label import 已降為 service-backed compatibility path，
+但尚未整合進 Data Interpretation recipe。完整 MCP server 和 local LLM 真實 tool-call
+accuracy 仍未完成。
 
 2026-05-04 MCP-ready automation adapter + deterministic eval expansion：
 
@@ -510,8 +511,8 @@ replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agen
   - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
   - `0 errors, 0 warnings, 0 notes`
 
-這批 evidence 支撐 UI import flow 的 recipe save option。它仍不表示舊 label import 已完成
-Data Interpretation migration。
+這批 evidence 支撐 UI import flow 的 recipe save option。舊 label import 目前是
+`Add Labels to Loaded Data` compatibility path，仍未整合進 Data Interpretation recipe。
 
 ## Automated Evidence vs Product Evidence
 

@@ -97,8 +97,8 @@ class DatasetSidebar(QWidget):
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         ops_layout.addWidget(self.import_btn)
 
-        self.import_label_btn = QPushButton("Import Label")
-        self.import_label_btn.setToolTip("Import labels from external files")
+        self.import_label_btn = QPushButton("Add Labels to Loaded Data")
+        self.import_label_btn.setToolTip("Apply external labels to loaded files")
         self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_label_btn.clicked.connect(self.panel.action_handler.import_label)
         ops_layout.addWidget(self.import_label_btn)
