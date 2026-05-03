@@ -35,6 +35,7 @@ nav:
       - Overview: target/README.md
       - Requirements: target/requirements.md
       - Architecture: target/architecture.md
+      - Data Interpretation System: target/data_interpretation_system.md
       - Agent: target/agent.md
   - Architecture:
       - Overview: architecture/README.md
@@ -43,6 +44,8 @@ nav:
       - Data Pipeline: architecture/data_pipeline.md
       - Agent: architecture/agent.md
       - Validation Architecture: architecture/validation.md
+  - Research:
+      - BCI/EEG Import Label Source: research/bci_eeg_import_label_design_source.md
   - Planning:
       - Now: planning/now.md
       - Roadmap: planning/roadmap.md

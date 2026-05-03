@@ -1,6 +1,6 @@
 # Target Requirements
 
-最後更新：`2026-05-01`
+最後更新：`2026-05-04`
 
 這份文件定義 XBrainLab 的需求與產品邊界。
 
@@ -93,8 +93,8 @@ XBrainLab 本體應至少覆蓋以下 workflow 能力：
 
 ### 同一套 workflow 能力面
 
-- UI button、agent tool、headless script 應呼叫同一套 backend capability。
-- 不應讓 UI、agent、script 各自實作 import / preprocess / training / evaluation 流程。
+- UI button、agent tool、headless script、MCP tool 應呼叫同一套 backend capability。
+- 不應讓 UI、agent、script、MCP adapter 各自實作 import / preprocess / training / evaluation 流程。
 - workflow command 的輸入、輸出、錯誤與狀態應可被測試和紀錄。
 
 ### 穩定桌面應用
@@ -102,7 +102,7 @@ XBrainLab 本體應至少覆蓋以下 workflow 能力：
 - UI 不應因 agent、長任務、資料載入或訓練狀態切換而閃退。
 - 背景工作和 UI 更新要有清楚 thread / event 邊界。
 - 使用者可理解目前 workflow stage、資料狀態、訓練狀態和錯誤原因。
-- assistant、UI 和 headless script 不應互相破壞狀態。
+- assistant、UI、headless script 和 MCP external agent 不應互相破壞狀態。
 
 ### 可驗證 EEG pipeline
 

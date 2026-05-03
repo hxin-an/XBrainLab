@@ -28,6 +28,309 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Goal 1 runbook prepared
+
+### 背景
+
+target、roadmap、now、validation 已經定義出第一個大 goal：Backend Command Spine +
+Data Interpretation System + Agent Tool Surface Migration。使用者希望後續 runner 不要再
+小修一段就回報，而是依工程級成品目標長跑，並以 reviewer 驗收。
+
+### 變更
+
+- 新增 `artifacts/goal/goal-1-product-autopilot.md`。
+- 新增 `artifacts/goal/README.md`，記錄 `/goal <objective>` 的開啟方式與 troubleshooting。
+- runbook 明確要求 runner 讀 target / architecture / validation / research docs。
+- runbook 把 Data Interpretation command surface、agent tool taxonomy、autonomy policy、
+  UI import alignment、tool-call eval、UI-observable replay、MCP-ready surface 和 commit
+  discipline 寫成同一個產品目標。
+- runbook 補強資料入口 UI 授權：新的 Data Interpretation / load data 機制可以且應該修改 UI，
+  不能只做 backend 或沿用舊 `Import Data` / `Import Label` 心智模型。
+- 補 target docs 中 UI / agent / headless / MCP external agent 共用 workflow truth 的用語。
+- 更新 `docs/planning/now.md`，把 runbook 標記為已建立，下一步改成 docs checkpoint 與啟動 goal。
+
+### 影響範圍
+
+- Goal 啟動文件、target wording、short-term planning truth。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- repo-local skill frontmatter quick check。
+- `codex-cli 0.128.0`；`codex features list` 顯示 `goals under development true`。
+
+### 剩餘風險
+
+- Goal runner 尚未啟動；Data Interpretation、MCP-ready command surface、UI-observable replay
+  仍是下一輪實作工作，不是已完成能力。
+
+## 2026-05-04 MCP and UI-observable replay
+
+### 背景
+
+使用者指出 scripted replay 不能只看 backend 報告，因為 tool call 正確不代表 UI 行為正確；
+同時也指出 headless script 的產品價值有限，MCP 作為 external agent adapter 更有意義，且
+外部 agent client 不需要自行安裝 XBrainLab 的大型科學計算 / UI 依賴。
+
+### 變更
+
+- `docs/planning/roadmap.md` 新增 Automation Adapters / MCP track。
+- `docs/target/architecture.md` 補 MCP server 作為 external agent adapter，並要求 MCP calls
+  仍經 ApplicationService、capability policy 和 autonomy policy。
+- `docs/validation/thesis_protocol.md` 將 scripted replay 拆成 backend replay 與 UI-observable
+  replay；UI replay 需要 transcript、screenshots、visible state、button enablement 或 wizard
+  artifact。
+- `docs/planning/now.md` 補 MCP-ready automation surface 與 UI-observable scripted replay
+  進 Goal 1 範圍 / done definition / validation gates。
+
+### 影響範圍
+
+- roadmap、target architecture、thesis validation protocol、short-term planning truth。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- MCP 目前只進 roadmap / target，尚未實作；Goal 1 最低要求是 MCP-ready command surface。
+- UI-observable replay 仍需 runner 實作 artifact capture。
+
+## 2026-05-04 Now aligned for Goal 1
+
+### 背景
+
+`docs/planning/roadmap.md` 已重寫為成品主線，target docs 也補完 Data Interpretation、
+Autonomy Policy / Decision Boundary 和 tool taxonomy。舊 `now.md` 仍是過去 product-delivery
+長 checklist，已不適合作為設定下一個 Codex goal 前的施工入口。
+
+### 變更
+
+- 重寫 `docs/planning/now.md`。
+- 將 `now.md` 定位為 Goal 1 啟動前的短期施工焦點。
+- 明確定義 Goal 1 範圍：Backend Command Spine + Data Interpretation System +
+  Agent Tool Surface Migration。
+- 補 Goal 1 Scope、Done Definition、Goal 前必做、Validation Gates、不能宣稱與下一步。
+- 明確要求 goal 前建立 docs checkpoint，且不要混入 `.vscode/settings.json` 或 root
+  `settings.json` 的本機變更。
+
+### 影響範圍
+
+- planning truth。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 這次只更新短期施工入口；下一步仍需建立 docs checkpoint 與 Goal 1 runbook。
+
+## 2026-05-04 Agent autonomy and tool taxonomy
+
+### 背景
+
+使用者指出 agent 不能只靠「聰明」自行判斷何時停下，也不能沿用舊 tool 種類。成熟方案需要在
+workflow state 與 capability policy 之上，定義 command-specific autonomy policy / decision
+boundary，讓 backend / Verification Layer 強制控制 agent 是否可自動執行、是否必須停下來問使用者。
+
+### 變更
+
+- `docs/target/agent.md` 新增 Autonomy Policy / Decision Boundary。
+- 定義 `Workflow State`、`Capability Policy`、`Autonomy Policy` 三層分工。
+- 補 command-specific autonomy 欄位：`can_auto_execute`、`requires_confirmation`、
+  `decision_boundary`、`continue_allowed_after_success`、`retry_limit`、`stop_after_success`、
+  `blocks_downstream_until_confirmed`。
+- 將 tool surface 重寫成成熟 taxonomy：Discovery / Query、Data Interpretation、
+  Metadata Resolution、Data Transform、Experiment Setup、Execution、Lifecycle / Destructive、
+  UI Routing。
+- `docs/target/data_interpretation_system.md` 補 subject / session / task / run metadata 作為
+  Data Interpretation 核心語意。
+- `docs/target/architecture.md` 補 Command API 需回傳 autonomy decision / decision boundary。
+- `docs/validation/thesis_protocol.md` 補 autonomy-boundary metrics 和 benchmark cases。
+
+### 影響範圍
+
+- agent target、data interpretation target、target architecture、thesis validation protocol。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 目前是 target design；實作仍需把現有 agent tool surface、ApplicationService command result、
+  verifier 和 scorer 對齊 autonomy policy。
+
+## 2026-05-04 Roadmap product tracks
+
+### 背景
+
+target design、Data Interpretation System、agent validation 和 thesis protocol 已經收斂到可作為
+後續施工依據。原 roadmap 仍混合歷史階段、短期 TODO 和產品主線，容易讓 autopilot 誤把
+局部完成當成成品完成。
+
+### 變更
+
+- 重寫 `docs/planning/roadmap.md`。
+- 將 roadmap 定位為工程級成品主線，不取代 `docs/current.md` 或 `docs/planning/now.md`。
+- 新增 Product North Star、路線原則、Product Completion Tracks、Roadmap Order、Non-goals
+  與成品判定。
+- 明確把 Data Interpretation System、Backend Command Spine、Agent Tool Surface、
+  Tool-call Evaluation 和 Packaging / Release 分成可驗收主線。
+
+### 影響範圍
+
+- planning truth。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- roadmap 已定義成品主線，但 `docs/planning/now.md` 仍需在下一步更新成對應的短期施工焦點。
+
+## 2026-05-03 Validation model alignment
+
+### 背景
+
+Data Interpretation 設計完成後，仍需要把驗證邏輯明確分層。否則後續 agent 實作可能把
+LLM confidence、資料解讀 validation 和 backend state gate 混在一起。
+
+### 變更
+
+- `docs/target/data_interpretation_system.md` 新增三層驗證模型：
+  Data Interpretation validation、Workflow State validation、Agent Tool-call validation。
+- 明確定義 recipe reload 必須重新 scan / rebuild / preview / validate，不能直接套用。
+- `docs/target/agent.md` 將資料入口 tool surface 對齊 Data Interpretation flow，不再把
+  `load_data` / `attach_labels` 當成目標心智模型。
+- `docs/validation/thesis_protocol.md` 補 Data Interpretation tool-call benchmark cases 與
+  Verification Layer guard 條件。
+
+### 影響範圍
+
+- target truth、agent target、thesis validation protocol。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 目前只是文件目標對齊；實際 agent tool surface 仍保留舊 `load_data` / `attach_labels` path，
+  下一輪實作必須移到 Data Interpretation command。
+
+## 2026-05-03 Data Interpretation design alignment
+
+### 背景
+
+全盤盤點 target design 後，確認 Data Interpretation 主軸成立，但 target architecture 仍保留
+舊 `load_data` / `attach_labels` 作為理想 command；agent confidence gate 也需要和資料解讀
+validation 區分。
+
+### 變更
+
+- `docs/target/architecture.md` 改成以 Data Interpretation flow 作為資料入口理想 command surface。
+- `docs/target/agent.md` 保留 confidence gate，但明確定義它是 agent retry / self-correction
+  gate，不能覆蓋 backend / Data Interpretation validation。
+- `docs/target/data_interpretation_system.md` 補資料解讀生命週期：
+  `ScanResult`、`InterpretationCandidate`、`InterpretationPreview`、
+  `ValidationDecision`、`AppliedInterpretation`、`ImportRecipe`。
+- 補 BIDS metadata 缺失的 `warning` / `limited` / `blocked` 分層。
+
+### 影響範圍
+
+- target truth 與 agent 目標文件。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 文件已對齊，但實作尚未開始；下一步才適合產生 goal prompt 或 implementation plan。
+
+## 2026-05-03 Data Interpretation target design
+
+### 背景
+
+使用者確認資料來源調查已足夠進入方案設計，並要求不要用 V1 / V2 或 legacy compatibility
+作為對外原則。設計目標應是終局態：使用者提供資料位置，XBrainLab 建立可靠、可預覽、
+可驗證、可重跑的資料解讀，而不是只 load file 或 attach label。
+
+### 變更
+
+- 新增 `docs/target/data_interpretation_system.md` 作為 canonical target design。
+- 明確定義輸入模型：`source_path` 為核心，`source_hint`、user choices、recipe path 為可選。
+- 明確定義輸出模型：`DataInterpretation`、label carriers、event roles、class map、time model、
+  granularity、metadata、warnings、confirmations、recipe。
+- 定義統一流程：scan -> interpret -> preview -> validate -> confirm -> apply -> save recipe。
+- 定義判斷策略：`safe`、`needs_confirmation`、`blocked`。
+- 將 BIDS 定位為 folder-level 一等入口；training / saliency 是下游 acceptance，而不是 import
+  主模組。
+- 更新 `docs/target/README.md`、`mkdocs.yml` 和 `docs/decisions/README.md`。
+
+### 影響範圍
+
+- target truth、文件導覽與決策入口。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 這次只定義終局目標設計；實作、UI flow、agent tool-call benchmark 和 migration cleanup
+  尚未開始。
+
+## 2026-05-03 BCI/EEG import label design source
+
+### 背景
+
+使用者確認這份文件的定位不是 deficiency report，也不是 roadmap，而是後續設計
+import / label / BIDS / fallback 機制時使用的整理過資料來源。文件需要整理真實
+EEG / BCI 使用場景、資料格式、label / event carrier、metadata 結構與常見歧義。
+
+### 變更
+
+- 新增 `docs/research/bci_eeg_import_label_design_source.md`。
+- 將使用者族群拆成 BCI 研究者、cognitive neuroscience / BIDS 使用者、BIDS curator /
+  consumer、初學者、benchmark / replication 使用者、自建資料使用者、臨床長時間 EEG
+  使用者。
+- 整理 label carrier、coverage classes、BIDS 獨立章節、統一分析維度、import wizard /
+  label preview / confirmation / recipe / agent eval 的設計問題。
+- `mkdocs.yml` 新增 Research 導航入口。
+
+### 影響範圍
+
+- 文件與後續設計討論的資料來源。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 這份文件只整理案例與設計依據；正式 import / label / BIDS / fallback 方案仍需另行設計
+  並落到 target / architecture。
+
 ## 2026-05-03 Tool-call eval minimum gates
 
 ### 背景

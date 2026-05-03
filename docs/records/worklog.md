@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-03`
+最後更新：`2026-05-04`
 
 ## 這份文件的用途
 
@@ -35,7 +35,176 @@
 - 接續 / 本輪剩餘：
 ```
 
+## 2026-05-04
+
+### 01:32 Goal 1 runbook 準備
+
+- 做了什麼：
+  - 補齊 target docs 中 UI / agent / headless / MCP external agent 的共同入口說法。
+  - 檢查 repo-local skills frontmatter，確認 9 個 `.agents/skills/*/SKILL.md` 都有合法
+    `name` / `description` frontmatter。
+  - 新增 `artifacts/goal/goal-1-product-autopilot.md`，作為 Codex Goal / 長時間 runner
+    可直接使用的工程級 prompt。
+  - 新增 `artifacts/goal/README.md`，記錄 WSL 開 Goal 的實際 CLI 用法與常見問題。
+  - 補強 Goal 1 對資料入口 UI 的授權：新的 Data Interpretation / load data 機制可也應該
+    修改 UI，不能只做 backend 或把新流程塞回舊 import 外殼。
+  - 更新 `docs/planning/now.md`，把 Goal 1 runbook 標成已建立，下一步改為 docs checkpoint
+    與啟動 Codex goal。
+- 結果：
+  - 下一個 runner 不應再只做 UI 小修或 prompt 小修，而要以 Backend Command Spine、
+    Data Interpretation、資料入口 UI redesign、Agent Tool Surface、UI-observable replay
+    和 MCP-ready surface 為同一個產品 goal。
+- 證據：
+  - repo-local skill frontmatter quick check。
+  - `codex-cli 0.128.0`；`codex features list` 顯示 `goals under development true`。
+- 接續 / 本輪剩餘：
+  - 跑文件 / diff 驗證，建立本地 docs checkpoint commit。
+
+### 01:14 MCP 與 UI-observable replay
+
+- 做了什麼：
+  - 在 roadmap 新增 Automation Adapters / MCP track。
+  - 在 target architecture 補 MCP server 作為 external agent adapter，MCP client 不需安裝
+    XBrainLab 的完整 EEG / PyQt / PyTorch stack，但 MCP server 必須跑在 prepared runtime 並
+    走 ApplicationService。
+  - 在 thesis protocol 將 scripted replay 分成 backend replay 與 UI-observable replay；
+    UI replay 必須保存 transcript、screenshots / UI artifact、visible status、button enablement
+    或 wizard step。
+  - 在 now 補 Goal 1 的 MCP-ready automation surface 與 UI-observable replay 驗收要求。
+- 結果：
+  - headless 不再被當作產品主介面，而是 CI / eval / batch adapter。
+  - MCP 被正式定位成外部 agent adapter，但不能變成第三套 workflow truth。
+  - scripted replay 不能只靠文字報告宣稱 UI 正確。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 驗證文件站點，下一步仍是 docs checkpoint 與 Goal 1 runbook。
+
+### 01:02 Now 對齊 Goal 1
+
+- 做了什麼：
+  - 重寫 `docs/planning/now.md`，移除舊 product-delivery 長 checklist。
+  - 將目前短期焦點改成 Goal 1 啟動前的施工入口。
+  - 定義 Goal 1 範圍：Backend Command Spine + Data Interpretation System +
+    Agent Tool Surface Migration。
+  - 補 Goal 1 Scope、Done Definition、Goal 前必做、Validation Gates、不能宣稱與下一步。
+- 結果：
+  - `now.md` 現在可直接支撐下一步寫 goal runbook。
+  - goal runner 不應再從舊 checklist 恢復，而應以 Data Interpretation / autonomy policy /
+    tool taxonomy 作為第一個大 goal 的核心。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 驗證文件站點後，建立 docs checkpoint，接著寫 Goal 1 runbook。
+
+### 00:54 Agent autonomy / decision boundary
+
+- 做了什麼：
+  - 在 `docs/target/agent.md` 補 Autonomy Policy / Decision Boundary，明確寫 agent 可規劃完整
+    workflow，但必須一個 command 一個 command 地 verify / execute / refresh state。
+  - 補 command-specific autonomy 欄位和 turn-level guard，並說明停止條件是 decision boundary，
+    不是任何 state transition。
+  - 重寫目標 tool taxonomy，從舊 dataset / preprocess / training 粗分類改成 Discovery /
+    Data Interpretation / Metadata Resolution / Data Transform / Experiment Setup / Execution /
+    Lifecycle / UI Routing。
+  - 在 Data Interpretation target 補 subject / session / task / run metadata preview、
+    confirmation 和 recipe 保存要求。
+  - 在 architecture / thesis protocol 補 autonomy decision、decision boundary 和 scorer cases。
+- 結果：
+  - 文件不再把「agent 聰明停下來」當假設，而是要求 backend / Verification Layer 用 policy 強制。
+  - goal runner 之後應實作 autonomy policy，而不是只調 prompt。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 驗證文件站點，接著更新 `now.md` 或 goal runbook 時，要把 autonomy policy 當成必做範圍。
+
+### 00:33 Roadmap 定義成產品主線
+
+- 做了什麼：
+  - 重寫 `docs/planning/roadmap.md`，移除舊的歷史階段 / 短期 TODO 混合寫法。
+  - 定義 Product North Star、路線原則、Product Completion Tracks、Roadmap Order、
+    Non-goals 和成品判定。
+  - 把 Backend Command Spine、Data Interpretation System、UI Product Experience、
+    Agent Runtime / Tool Surface、Validation / Thesis Evidence、Packaging / Release
+    分成可驗收主線。
+- 結果：
+  - roadmap 現在描述工程級成品路線，不再取代 `now.md`。
+  - 後續 autopilot 應以這份 roadmap 判斷是否完成產品，而不是只看單一 milestone。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 驗證文件站點，然後視需要更新 `now.md` 成下一個短期施工焦點。
+
 ## 2026-05-03
+
+### 22:26 驗證模型分層
+
+- 做了什麼：
+  - 在 Data Interpretation target 補三層驗證模型：資料解讀、workflow state、agent tool-call。
+  - 將 target agent 的資料入口 tool surface 改成 scan / preview / validate / apply / recipe，
+    不再以舊 load data / attach labels 為目標心智模型。
+  - 在 thesis protocol 補 Data Interpretation cases 與 Verification Layer guard 要求。
+- 結果：
+  - confidence gate 的定位更清楚：它只管 LLM tool-call retry / self-correction，不代表資料正確。
+  - recipe reload、BIDS validation、blocked / confirmation / safe 都能進入 agent benchmark。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 盤點目前實際 agent code 狀態，對照 target 說明差距。
+
+### 20:45 Data Interpretation 設計對齊
+
+- 做了什麼：
+  - 全盤 review target design 後，修正 `target/architecture.md` 的舊 data entry 心智模型。
+  - 保留 agent confidence gate，但寫清楚它只管 tool-call retry / self-correction，不管資料解讀正確性。
+  - 補 Data Interpretation lifecycle 和 BIDS `warning` / `limited` / `blocked` 分層。
+- 結果：
+  - Target architecture、agent target 和 Data Interpretation target 不再互相打架。
+  - DataInterpretation 不再同時代表候選與已套用 truth。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 之後才能把這套 target design 轉成 goal prompt 或 implementation plan。
+
+### 20:29 Data Interpretation target design
+
+- 做了什麼：
+  - 新增 `docs/target/data_interpretation_system.md`，把資料匯入 / label-event 解讀 /
+    BIDS / recipe / UI-agent 行為整理成 target truth。
+  - 明確定義使用者輸入是 `source_path`，輸出是可預覽、可驗證、可重跑的
+    `DataInterpretation` / recipe。
+  - 更新 Target README、mkdocs Target nav 和 decisions。
+- 結果：
+  - 設計結論從 research 文件抽出，正式放進 `docs/target/`。
+  - 不再把舊 `load_data` / `attach_labels` 心智模型當成終局設計原則。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 之後才能基於 target design 寫 goal prompt 或 implementation plan。
+
+### 18:11 BCI/EEG import label 設計資料來源
+
+- 做了什麼：
+  - 新增 `docs/research/bci_eeg_import_label_design_source.md`，定位為後續 import /
+    label / BIDS / fallback 設計的資料來源，不是 deficiency report 或 roadmap。
+  - 補使用者族群、label carrier、coverage classes、BIDS 獨立章節、統一分析維度與後續
+    import wizard / label preview / recipe / agent eval 應回答的問題。
+  - `mkdocs.yml` 加上 Research 導航。
+- 結果：
+  - 後續討論 label / event 制度時有一份整理過的現實案例基礎，可避免只從單一 GDF
+    或單一 `.mat` label 情境設計。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 基於這份資料來源，另行設計 import / label / BIDS / fallback 的 target solution。
 
 ### 17:20 Tool-call eval gate 補強
 

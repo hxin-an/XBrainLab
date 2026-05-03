@@ -73,7 +73,11 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
+/target/
+
+# Codex goal runtime artifacts
+artifacts/goal/*.jsonl
+artifacts/goal/*.pid
 
 # Jupyter Notebook
 .ipynb_checkpoints

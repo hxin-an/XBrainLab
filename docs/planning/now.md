@@ -1,410 +1,242 @@
 # Now
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-04`
 
-這份文件只放短期工作焦點。
+這份文件只放短期施工焦點。
+
+它不是：
+
+- roadmap：產品主線看 `docs/planning/roadmap.md`。
+- current truth：目前完整狀態看 `docs/current.md`。
+- worklog：流水帳看 `docs/records/worklog.md`。
+
+目前 `now.md` 的用途是：在設定下一個 Codex goal 前，明確定義第一個大 goal 的範圍、停止條件、
+驗收門檻，以及不能宣稱的事。
 
 ## 目前位置
 
-目前位置是：
+文件設計已進入可發包狀態：
+
+- `docs/planning/roadmap.md` 已重寫為成品主線。
+- `docs/target/data_interpretation_system.md` 已定義資料解讀終局設計。
+- `docs/target/agent.md` 已定義 agent control loop、Verification Layer、Autonomy Policy /
+  Decision Boundary 和成熟 tool taxonomy。
+- `docs/target/architecture.md` 已把 Data Interpretation command surface、capability policy
+  和 autonomy decision 寫成理想架構。
+- `docs/validation/thesis_protocol.md` 已校正 thesis 主 evidence：tool-call accuracy，不是
+  EEG training accuracy。
+- Goal 1 長跑 runbook 已建立：`artifacts/goal/goal-1-product-autopilot.md`。
+
+目前實作狀態要保守判斷：
+
+- `ApplicationService / Command API` baseline 已存在，可作為後續重構骨架。
+- UI / agent 已有第一批 capability policy / typed result 對齊，但仍受舊資料入口影響。
+- 目前 agent 實際 tool surface 仍有 `load_data / attach_labels` 舊心智模型。
+- Data Interpretation System 仍是 target design，還不是實作完成。
+- command-specific autonomy policy / decision boundary 仍是 target design，還不是實作完成。
+- subject / session / task / run metadata resolution 尚未成為資料入口核心流程。
+
+## 下一個 Goal
+
+下一個 goal 應聚焦在：
 
 ```text
-後端 Application Service contract baseline -> UI / Agent command surface 第一批統一完成
--> local LLM primary/fallback runtime smoke 通過 -> desktop launcher startup smoke 通過
--> chat product blocker 修復 -> 第一批 UI execution service adapter / agent direct CommandResult path
--> local runtime first-run consent / remaining dialog-query command surface 收斂
--> thesis split audit protocol 建立
--> assistant product audit follow-up：UI header / transcript / tool output / legacy remote exposure 修正
--> local-only assistant runtime enforcement：remote backend modules 從 product package 移除
--> assistant UI 單一功能列與 Backend Workflow Contract v2 first slice 收斂
+Backend Command Spine
+  + Data Interpretation System
+  + Agent Tool Surface Migration
 ```
 
-## 重要狀態修正
-
-2026-05-02 人工檢查曾發現 AI Assistant 有明顯產品阻塞，並已在本輪補 targeted fix：
-
-- chat UI 當時仍像 debug dock，尚未達到產品級對話介面。
-- 使用者送出 `hello` 後當時只看到 user bubble，沒有 assistant 回覆。
-- 這代表舊的 automated product gate 沒有覆蓋「一般文字輸入 -> 可見 assistant 回覆 / 可見錯誤」這條最基本 product flow；本輪已補。
-- deterministic tool-call eval、local runtime health check、launcher startup smoke 不能代表 chat 產品流程已可用。
-
-後端狀態需要分開判斷：
-
-- `ApplicationService / Command API` backend baseline 已驗證，可作為後續 UI / Agent migration 的基礎。
-- UI execution 已接 service-backed command adapter：dataset import、reset、preprocess、
-  channel selection、epoching、split / model / training dialogs、evaluation / visualization /
-  saliency query、training start / stop、metadata update、smart parse、remove files、label import、
-  montage confirmation。real `Study` mutating path 會回 `CommandResult`；mock/unit-test fallback
-  仍保留 controller compatibility。
-- Agent tool surface 已開始使用 backend capability policy 和 typed adapter；mapped workflow
-  tools 可直接消費 `CommandResult`；`load_data` 已進 command surface，`set_montage` 仍先是
-  UI request，confirmation 後的 apply 走 `ApplyMontageCommand`。
-- 2026-05-02 follow-up 修掉人工產品審核明確不通過的 assistant 問題：
-  top chip dump 移除、Retry no-previous-request 不再進 transcript、短 user bubble 不再切字、
-  visible tool result 改成使用者語言、`list_files` missing/empty result 不再外洩 schema / `[]`。
-- 2026-05-03 follow-up 再修掉人工 UI 審核不通過的 assistant 問題：
-  chat panel 內不再顯示 `Conversation` header、composer 底下狀態列、developer mode /
-  step behavior controls 或第二個 options menu；Retry / New / Settings / Float 收斂到 dock
-  title bar 的單一功能列，Clear 收進 settings menu。
-- 2026-05-03 `Backend Workflow Contract v2` first slice 已補 lifecycle commands：
-  `ClearDatasetsCommand`、`ClearTrainingHistoryCommand`、`ResetPreprocessCommand`，
-  並讓 dataset split apply / audit failure rollback dataset / generator / trainer state。
-  `evaluate` / `clear_training_history` capability 也改以 actual training plan history 為準，
-  避免 trainer 物件存在但 history 已清空時仍顯示可執行。
-- Assistant product runtime 已改成 local-only：remote backend modules 已從 product package
-  移除；舊 `api` / `gemini` selection 會 migrate local 或 fail closed，不會 instantiate
-  remote backend。
-- `openai` / `google-genai` 不在 default dependencies，只保留於 optional
-  `legacy-remote-llm` dependency group。
-- Windows launcher geometry blocker 已補產品級防護：MainWindow 不再信任只因
-  `restoreGeometry()` 成功的 saved geometry；貼左上、offscreen、尺寸不合理或 titlebar
-  不可達的 `main_window/geometry` 會 migration reset，關閉時也不會再次保存。
-- 第三輪補強雙螢幕 / 上緣貼齊問題：不健康 saved geometry、first launch、
-  post-show recovery 不再嘗試自己算完美置中，而是落到 maximized fallback。
-  這避免使用者回報的 offset monitor layout 中 x/y 來自不同螢幕，造成 titlebar
-  被推出螢幕上方。
-
-## 產品線盤點
-
-### A. Backend
-
-- `ApplicationService` command contract、state snapshot、capability policy 仍是目前最可信的
-  backend core。
-- `BackendFacade` 保留 headless / assistant compatibility surface，核心 workflow 已包
-  ApplicationService，不應再塞新 business logic。
-- reset / destructive command policy 已存在；UI confirmation walkthrough 仍要補。
-- `evaluate` / `visualize` / `saliency` / `new_session` 已是 service-backed query /
-  lifecycle command，回傳 summary / setup diagnostics；完整互動式 evaluation /
-  visualization analysis workflow 仍要另外驗收。
-- dataset generation failure boundary 已補強：apply 中途例外或 split audit blocking issue
-  都會 rollback datasets / generator / trainer，不留下半成功 training state。
-
-### B. UI
-
-- MainWindow / panel startup smoke 仍可用，但這不代表 assistant 互動可用。
-- UI readiness 已共用 ApplicationService capability policy；主要 mutating execution 已透過
-  `ApplicationService.execute()`。剩餘 legacy path 主要是 mock fallback、human-in-the-loop
-  UI request 和 read-only population。
-- ChatPanel 本輪已完成 product redesign follow-up：panel 內不再放 `Conversation` header、
-  chat footer status、developer mode / step behavior controls 或第二個 options menu。
-  第一層 controls 收斂到 dock title bar：`XBrainLab`、retry icon、new conversation、
-  settings menu、float/dock；Clear 收進 settings menu。empty state、bubble minimum width、
-  composer fit、visible error feedback 和 raw tool output 不外洩都有 regression tests。
-- `tests/integration/ui/test_product_walkthrough.py` 已覆蓋 assistant click-through layout 與
-  synthetic EEG button-driven pipeline walkthrough。
-- 真 Windows launcher 打開 assistant 後的 click-through 仍未完成；主視窗壞 geometry、
-  雙螢幕 screen selection、offset monitor gap、maximized fallback 已有 regression tests。
-- 目前 button-driven pipeline walkthrough 仍使用 patched training / synthetic records，
-  不等於真 UI click-through 到 training / evaluation / visualization completion。
-
-### C. Agent
-
-- normal no-tool response、tool-call response、empty response、worker error、local unavailable
-  現在都有 targeted tests。
-- tool result 保留 structured payload；tool-only success / blocked / missing input / empty result
-  都會有產品語言 summary，visible transcript 不顯示 raw tool syntax、schema error、empty list
-  或 snake_case command names。
-- mapped workflow tools 可直接回 `ToolCommandResult.from_command_result(...)`；legacy path
-  保留給需要 directory expansion、UI request 或 read-only routing 的 tools。
-- deterministic eval 只代表 scripted baseline，不代表 local LLM 真實能力。
-
-### D. Local LLM Runtime
-
-- Phi primary / fallback cache、preflight、prompt smoke、structured-output smoke 已通過。
-- Product runtime 已 local-only；settings / engine / worker 不再接受 API / Gemini execution mode。
-- local ready 不能再被誤讀為 UI chat flow 一定可用；本輪已把這個邊界寫進 validation。
-- Assistant first-run consent 已落地；第一次開啟 local runtime 會說明 GPU/CPU、download
-  estimate、cache status，並提供 Enable / Download / Use existing cache / Later / Disable。
-- 真 local model 在 ChatPanel 中的 full response walkthrough 仍要 resource-safe smoke。
-
-### E. Launcher / Packaging
-
-- Windows launcher / Desktop shortcut 已產出，`xvfb` startup smoke 顯示 `MainWindow initialized`。
-- 這仍不是人工 click-through。需要驗收 Desktop launcher -> MainWindow -> assistant -> visible
-  response / visible failure。
-
-### F. Tests / Validation
-
-- 先前 dashboard / deterministic eval 漏掉 no-response bug。
-- 新增 product-flow tests 覆蓋 greeting/help、missing argument、empty tool result、state-gated
-  command、successful command summary、local runtime unavailable / disabled、retry no transcript
-  pollution、窄 dock layout / bubble wrapping。
-- 新 validation rule：不能只用 dashboard PASS 或 deterministic eval 宣稱 assistant 可用。
-- Thesis validation protocol 已建立 split artifact schema、split audit helper、validator script
-  和 unit tests；正式 external dataset experiment runner 尚未完成。
-
-已完成：
-
-- `docs/legacy/` 刪除。
-- `docs/active/` 刪除。
-- root `ROADMAP.md` 刪除。
-- canonical docs 重新分層。
-- fast dashboard clean evidence 已記錄。
-- backend / UI / data pipeline / agent / validation 架構文件已有第一輪 source 對照。
-- 後端第一個重構主線已開工：
-  - 新增 `XBrainLab/backend/application/`
-  - `BackendFacade` 核心 workflow 改走 `ApplicationService`
-  - 新增 state snapshot、capability policy、command result、error boundary
-- 第二輪 contract 收斂已完成：
-  - `evaluate` / `visualize` / `saliency` / `new_session` 從 future placeholder 推進成
-    service-backed query / lifecycle command。
-  - `set_montage` 在 service contract 中不再假成功，仍留在 `BackendFacade` legacy path。
-  - `reset_session` 會清掉 active backend session 的資料與訓練設定狀態。
-  - low-mock workflow tests 已覆蓋 load -> epoch -> dataset -> training readiness -> reset。
-- 第一批 UI / Agent command surface unification 已完成：
-  - preprocess capability 改成要求 raw data；create epoch 才要求 preprocessed data。
-  - UI dataset import / preprocess / epoching / start training readiness 讀
-    ApplicationService capability policy。
-  - Agent prompt tool list 和 execution guard 讀同一套 capability policy。
-  - Agent tool output 寫回 structured JSON payload。
-  - Agent real tools 透過 typed result adapter 區分 success / failed /
-    blocked，不再把 `"Error: ..."` legacy 字串誤當成功。
-  - Chat panel 補 retry / clear / compact backend diagnostics。
-
-## 現在要做
-
-1. 已完成 assistant product audit follow-up：UI header / guidance / composer / retry / bubble
-   wrapping / transcript wording / legacy remote exposure 已修正。
-2. 已完成 agent visible-output productization：structured diagnostics 留在 history / logs，
-   第一層 bubble 只顯示使用者語言。
-3. 已完成 split / model / training dialogs、evaluation / visualization / saliency query、
-   channel selection 和 new-session command adapter。
-4. 已新增 product click-through / synthetic pipeline walkthrough tests，以及 agent product-flow
-   integration tests。
-5. 已完成 local-only assistant runtime enforcement：remote backend modules 移除，remote SDK
-   只留 optional legacy dependency group，architecture guard 防止 product path 回歸 remote key /
-   backend import。
-6. 現在進行 final validation、documentation closure 與 local commits；後續仍需要真 Windows
-   launcher click-through / true local model UI walkthrough。
-
-## Product Delivery Milestone TODO
-
-這份 checklist 是目前 autopilot 的恢復點。若對話上下文被壓縮，下一個 agent
-應先從這裡恢復，不要只根據聊天記憶判斷進度。
-
-### Milestone A - Confirm Current Progress
-
-狀態：完成；不是重做，而是從目前 dirty worktree 繼續收斂。
-
-- [x] 讀取 `git status --short`。
-- [x] 讀取 `git diff --stat`。
-- [x] 重新確認 `docs/current.md`、本文件、roadmap、validation、agent docs。
-- [x] 判斷目前已完成到 backend baseline、UI/agent command readiness、local runtime
-  preflight/launcher 初步實作。
-- [x] 最終收尾前重新列出仍髒的 worktree 大類。
-
-### Milestone B - Backend Product Core
-
-狀態：工程 baseline 通過，可支撐目前 UI / Agent migration；query command 已有 service-backed summary / setup result。
-
-- [x] `ApplicationService` / `Command API` / `CapabilityPolicy` /
-  `CommandResult` contract 對齊。
-- [x] exposed command 要嘛可執行，要嘛明確回傳 unsupported / confirmation result。
-- [x] state snapshot 覆蓋 raw / preprocessed / epoch / dataset / training /
-  evaluation / visualization / `last_error`。
-- [x] capability policy 覆蓋 load / preprocess / epoch / dataset / train /
-  reset destructive confirmation。
-- [x] `BackendFacade` 保留舊 API，但核心 workflow 包 `ApplicationService`。
-- [x] low-mock backend workflow tests 通過。
-- [x] `evaluate` / `visualize` / `saliency` / `new_session` 已從 future placeholder
-  推進成 service-backed query / lifecycle command。
-
-### Milestone C - UI / Agent Command Surface Unification
-
-狀態：高價值 workflow 通過，可支撐 local runtime / launcher；UI execution 已擴大到
-dialog submit 與 query actions。legacy controller path 仍需逐步遷移。agent tool
-result 已收斂成 typed adapter，mapped tools 可直接回 `CommandResult` payload。
-
-- [x] UI readiness for load / preprocess / create epoch / generate dataset /
-  train / reset 讀同一套 `ApplicationService` capability policy。
-- [x] Agent prompt tool list 和 execution guard 讀同一套 capability policy。
-- [x] blocked command reason 對齊 backend capability reason。
-- [x] Agent tool output 保留 structured JSON payload。
-- [x] `BackendFacade` 仍相容 headless tests。
-- [x] 本輪完成：dataset import、reset、preprocess、channel selection、epoching、
-  split/model/training setting dialogs、evaluation / visualization / saliency query、
-  training start / stop、metadata update、smart parse、remove files、label import、montage
-  confirmation execution 改成 service command adapter，mock / legacy caller 保留 controller
-  fallback。
-- [x] label import、smart parse、montage confirmation 已完成 service / typed command 收斂。
-- [x] Agent real tools 從舊 facade string result 收斂到 typed
-  `CommandResult` / equivalent result adapter。
-- [x] Agent mapped workflow tools 可直接執行 ApplicationService command 並回 structured
-  `CommandResult` payload；`load_data` 已進 command surface，`set_montage` / `switch_panel`
-  仍保留 UI request path。
-
-### Milestone D - UI Chat / Agent Panel Stabilization
-
-狀態：targeted 修復完成，broader UI / LLM gate 通過。工程 baseline 曾通過，但人工檢查發現
-chat UI 品質不足，且一般輸入 `hello` 沒有 assistant 回覆；本輪已補 visible-response
-contract、ChatPanel product redesign 和 regression tests。
-
-- [x] chat panel 可 send / stop / retry / clear。
-- [x] loading / error / compact backend diagnostics 可見。
-- [x] local runtime unavailable 不讓 UI 直接閃退，會顯示狀態。
-- [x] UI tests、dialog acceptance smoke、agent manager smoke 通過。
-- [x] UI -> agent -> backend blocked-command deterministic tool flow 可測。
-- [x] normal text input product flow：使用者輸入 `hello` 後，必須看到 assistant 回覆或可理解錯誤。
-- [x] empty model response 必須顯示 fallback/error bubble，不能只結束 processing。
-- [x] worker error / local unavailable 必須在 UI 中可見。
-- [x] chat panel 視覺與互動重新設計到產品級，不再像 debug dock。
-- [ ] 真 local model loading timeout 必須在 UI 中可見並驗收。
-- [ ] 真 local model load / failure / fallback 下的 UI smoke。
-- [ ] 桌面 launcher 啟動後開 chat panel 的 product smoke。
-
-### Milestone E - Agent Tool System Alignment
-
-狀態：agent command guard 與 typed result adapter 已完成；剩下 product walkthrough 和 UI state refresh 驗收。
-
-- [x] Agent prompt tool list 讀 `ApplicationService` capability policy。
-- [x] Tool call 前用 ApplicationService guard 檢查 blocked reason。
-- [x] Tool output 寫入 conversation history 時保留 structured JSON payload。
-- [x] empty state 不能 train 的 blocked reason 由 backend policy 產生。
-- [x] Agent real tools 改為消費 typed `CommandResult` 或等價 adapter。
-- [x] Tool call / generation 完成後用 `refresh_backend_status()` 重新讀 state snapshot 與
-  capability policy 更新 UI diagnostics。
-- [ ] reset / new session confirmation boundary 的 product UI flow 還要驗收。
-
-### Milestone F - Local LLM Runtime
-
-狀態：完成 product baseline；primary / fallback 都已下載並通過 smoke。
-
-- [x] 盤點目前 local runtime：`torch` / `transformers` 可用；`accelerate` /
-  `bitsandbytes` 不作預設硬需求，4-bit 是 optional path。
-- [x] 盤點硬體與磁碟：RTX 5070 Ti 16GB VRAM；`D:` 仍有足夠空間。
-- [x] 上網確認 2026-05 適合 RTX 5070 Ti 16GB 的非中國 primary / fallback model。
-- [x] 排除中國公司或中國來源模型，例如 Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM。
-- [x] 選型：primary `microsoft/Phi-4-mini-instruct`，fallback
-  `microsoft/Phi-3.5-mini-instruct`。
-- [x] 下載前估算 primary：約 7.69GB，BF16 safetensors，VRAM 約 9GB，cache
-  `XBrainLab/llm/core/models`。
-- [x] 建立下載前 preflight，不讓單一模型超過 10GB、不讓總 cache 超過 20GB。
-- [x] 使用者已授權刪除 Qwen cache；`models--Qwen--Qwen2.5-7B-Instruct` 和 lock 已刪。
-- [x] primary model 已下載並通過 health check。
-- [x] fallback model 已下載並通過 health check，總 cache 約 `15.34GB`，低於 20GB 上限。
-- [x] 建立 health check：cache exists / packages / GPU / minimal prompt /
-  structured-output or prompt-protocol smoke。
-- [x] 建立 fallback：primary 不可用且 fallback cache ready 時使用 fallback；UI 顯示原因。
-- [x] Assistant first-run consent：首次啟用 local runtime 前顯示資源使用、download estimate、
-  cache status 和 Enable / Download / Use existing cache / Later / Disable 選項。
-- [x] Product runtime 已 local-only：remote backend modules 移除，`api` / `gemini` settings
-  會 migrate local 或 fail closed，`openai` / `google-genai` 只在 optional
-  `legacy-remote-llm` group。
-- [x] 更新 `docs/architecture/agent.md`、`docs/architecture/validation.md` 或
-  `docs/validation/README.md` 的 local runtime 邊界。
-
-### Milestone G - Desktop Launcher / Packaging
-
-狀態：完成低風險 launcher baseline；已補 automated product click-through smoke，真 Windows
-launcher 人工 walkthrough 仍待驗收。
-
-- [x] 盤點 `run.py`、Poetry entry point、existing scripts、Windows launcher 選項。
-- [x] 產出低風險 WSL Windows launcher：
-  `scripts/launchers/xbrainlab_wsl_launcher.cmd`。
-- [x] 產出 PowerShell launcher：
-  `scripts/launchers/xbrainlab_wsl_launcher.ps1`。
-- [x] 複製可點擊 launcher 到 Windows Desktop：
-  `/mnt/c/Users/Administrator/Desktop/XBrainLab.cmd`。
-- [x] launcher 進入正確 repo / env，啟動 UI，寫錯誤 log 到
-  `%LOCALAPPDATA%\\XBrainLab\\logs`。
-- [x] missing local LLM 不可導致 app startup 閃退：startup 不載入 model；chat panel 會顯示 runtime reason。
-- [x] 更新 `docs/operations.md`。
-- [x] launcher smoke / startup log check：`xvfb-run` startup 顯示 `MainWindow initialized`。
-
-### Milestone H - End-to-End Product Stabilization
-
-狀態：targeted product-flow tests 已補，broader UI / LLM gate 已重跑；startup/local runtime
-基線通過；automated assistant click-through 和 synthetic pipeline walkthrough 已新增。完整真
-launcher / local model walkthrough 仍未完成。先前 automated final gate 漏掉 `hello` 無回覆
-問題，因此不能再只靠 dashboard / deterministic eval 判斷。
-
-- [x] desktop launcher / run.py startup -> MainWindow smoke 可展示。
-- [x] local LLM 狀態可見於 chat panel diagnostics。
-- [x] empty state 要求 train 時，agent 依 capability policy 拒絕並說明缺 dataset / config（unit 覆蓋）。
-- [x] UI -> agent debug tool -> backend blocked command flow 會顯示 shared blocked reason。
-- [ ] backend command 成功 / failed / blocked reason 的真 launcher 互動式 walkthrough。
-- [x] normal chat input -> assistant visible response / visible failure 的 deterministic UI product-flow test。
-- [x] assistant header/status/bubble/composer click-through layout smoke。
-- [x] synthetic EEG button-driven pipeline walkthrough：Dataset import -> Preprocess filter ->
-  Epoch -> Training config dry-run -> Evaluation result-ready state。
-- [ ] normal chat input -> assistant visible response / visible failure 的真 launcher walkthrough。
-- [ ] destructive reset / new session 有 confirmation boundary。
-- [x] backend / UI / agent / local runtime automated gate 已補上 normal chat response targeted gate
-  並重跑 UI / LLM suites。
-
-### Milestone I - Tool-Call Eval / Thesis Evidence
-
-狀態：deterministic baseline 已建立並跑通；thesis split protocol / artifact schema 已建立；
-local LLM primary / fallback 真實 eval runner 尚未開始。
-
-- [x] 研究 BFCL / trajectory evaluation / function-calling eval / local structured-output 限制。
-- [x] 實作 deterministic mock-agent baseline evaluator。
-- [x] 至少 20 個 XBrainLab 專用 eval cases。
-- [x] 產出 machine-readable JSON 與 human-readable Markdown report。
-- [x] 建立 `docs/validation/thesis_protocol.md`、split artifact schema、split audit helper
-  和 validator script。
-- [ ] 若 local LLM 穩定，再跑 primary / fallback model。
-- [x] 更新 `docs/validation/README.md` 與 implementation log。
-
-### Milestone J - Final Validation / Documentation Closure
-
-狀態：舊 automated final gate 不再足夠；chat product blocker targeted 修復後，broader UI /
-LLM / docs gate 已通過，但仍需人工 launcher click-through 後才能宣稱完整桌面交付。
-
-- [x] 跑 backend unit / backend integration / pipeline integration。
-- [x] 跑 UI unit / dialog smoke。
-- [x] 跑 LLM unit / local health / prompt smoke。
-- [x] 跑 mkdocs strict 與 `git diff --check`。
-- [x] 更新 worklog / implementation log / architecture docs / planning docs。
-- [x] 清楚列出仍髒的 worktree 大類與 release 前風險。
-
-## 當前執行邊界
-
-目前不是只做後端 baseline，也不是只做文件整理。下一輪可以一路推進
-backend、UI、agent、local LLM 和 desktop launcher，但要維持工程順序：
-
-1. 先讓 `ApplicationService / Command API` 成為可靠 backend core。
-2. 再統一 UI 和 agent 使用 backend 的 command surface。
-3. 再修穩 UI chat / agent panel 與 local LLM runtime。
-4. 再做 desktop launcher / product stabilization。
-5. 產品主線穩定後，才開始 tool-call eval / thesis evidence。
-
-允許做：
-
-- UI action execution 從 controller direct-call 遷移到 service-backed adapter。
-- agent real tools 從 facade 舊字串回傳遷移到 typed `CommandResult` formatter。
-- local LLM model selection、preflight、health check、fallback 和 UI 狀態整合。
-- desktop launcher / shortcut / startup smoke。
-- 維持 local-only runtime guard；若需要歷史 remote fixture，必須保持 optional 且 product
-  code 不 import。
-
-仍要避免：
-
-- 不做無測試支撐的大爆改。
-- 不把 UI / agent 各自接成第二套 backend workflow。
-- 不在產品主線未穩定前提前做 tool-call eval。
-- 不下載超過容量邊界的模型；單模型原則 10GB 內，總 cache 原則 20GB 內。
-- 不使用中國公司或中國來源模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等模型不列入選型。
-- 不把 CHANGELOG 或 records 當 current truth。
-
-## Product Delivery Done Definition
-
-Milestone 是最低交付門檻，不是工作上限。下一輪完成定義應以「成品是否可用」
-判斷，而不是只看清單是否勾完。
-
-下一輪至少要交付：
-
-- UI 和 agent 對 load / preprocess / epoch / dataset / train / reset 使用同一套
-  `ApplicationService` capability policy 與 blocked reason。
-- 至少一批 UI action execution 改成 service-backed command adapter，而不只是 read-only readiness。
-- agent real tools 能消費 typed `CommandResult` 或等價 structured result。
-- local LLM runtime 有 model selection、cache preflight、health check、prompt smoke 和 failure fallback。
-- 有可點擊啟動的 desktop launcher / shortcut 或明確可用的 Windows launcher。
-- backend -> UI -> agent -> local runtime 至少有一條可展示 product flow。
-- chat 一般文字輸入必須有可見 assistant 回覆；模型空回覆、worker error、local unavailable
-  都必須在 UI 顯示成可理解狀態，不能 silent failure。
-- 完成後更新 worklog、implementation log、backend/UI/agent/validation/planning 文件。
-- 跑完相關 backend、UI、agent、local runtime、MkDocs、diff whitespace 驗證。
-
-如果上述最低項目完成後仍有明顯閃退、狀態不同步、錯誤無法理解、文件失真或測試無法支撐，
-agent 應繼續修，不應宣稱完成。
+這不是小修 UI，也不是單純讓 agent prompt 更聰明。這個 goal 的目的，是把 XBrainLab 的資料入口、
+backend command、UI、agent tools、verification 和 scorer 基準打通成同一套 workflow truth。
+
+MCP 也應納入設計，但 Goal 1 的最低要求是 **MCP-ready command surface**：先確保 command
+taxonomy、capability policy、autonomy policy、result schema 足以支撐 MCP server。若 runner
+能安全完成 MCP server，可作為 Goal 1 延伸；若無法完成，不能因此延後 Data Interpretation
+主線。
+
+## Goal 1 Scope
+
+Goal 1 至少要包含：
+
+1. **Data Interpretation command surface**
+   - `scan_source`
+   - `preview_interpretation`
+   - `validate_interpretation`
+   - `apply_interpretation`
+   - `save_interpretation_recipe`
+   - `reload_interpretation_recipe`
+
+2. **Data Interpretation lifecycle**
+   - `ScanResult`
+   - `InterpretationCandidate`
+   - `InterpretationPreview`
+   - `ValidationDecision`
+   - `AppliedInterpretation`
+   - `ImportRecipe`
+
+3. **Metadata resolution**
+   - subject / session / task / run preview。
+   - filename / folder / BIDS / header metadata source。
+   - user confirmation / override。
+   - recipe 保存 metadata rule 與 override。
+
+4. **Validation decisions**
+   - `safe`
+   - `needs_confirmation`
+   - `blocked`
+   - BIDS metadata 的 `warning` / `limited` / `blocked`
+
+5. **Autonomy policy / decision boundary**
+   - command-specific autonomy policy。
+   - `allow_auto`、`confirm`、`ask_user`、`stop`、`repair`、`block`。
+   - `continue_allowed_after_success`。
+   - decision boundary taxonomy：semantic、high-impact、long-running、destructive、
+     missing-input、resource-lock、blocked。
+
+6. **Agent tool taxonomy migration**
+   - Discovery / Query。
+   - Data Interpretation。
+   - Metadata Resolution。
+   - Data Transform。
+   - Experiment Setup。
+   - Execution。
+   - Lifecycle / Destructive。
+   - UI Routing。
+
+7. **UI import entry redesign**
+   - 使用者給 file / folder / BIDS root / recipe。
+   - UI 顯示 scan / preview / validation / confirmation。
+   - 不再以 `Imported` / `Labels attached` 作為資料可信主語言。
+   - 使用者已允許為新 Data Interpretation / load data 機制修改資料入口 UI；不能因為 UI
+     會大改就只做 backend 或把新流程塞回舊 import 外殼。
+
+8. **Agent alignment**
+   - Context Assembler 暴露 Data Interpretation tools。
+   - Verification Layer 檢查 capability policy、Data Interpretation decision 和 autonomy policy。
+   - visible response 不暴露 raw schema、snake_case command、traceback 或 debug payload。
+
+9. **Evaluation baseline**
+   - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
+     autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
+   - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
+   - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
+     `load_data / attach_labels` 作為主設計。
+
+10. **MCP-ready automation surface**
+    - CLI / headless runner 保留給 CI、eval、batch 和 artifact generation。
+    - MCP server 作為 external agent adapter，使用同一套 command taxonomy。
+    - MCP client 不應需要安裝 XBrainLab 的 EEG / PyQt / PyTorch 依賴；MCP server 跑在 prepared
+      XBrainLab runtime。
+    - MCP calls 不能繞過 ApplicationService、capability policy 或 autonomy policy。
+
+## Goal 1 Done Definition
+
+Goal 1 不能只做文件或小 patch。至少要達到：
+
+- UI、agent、headless path 都能走同一套 Data Interpretation command surface。
+- 資料入口 UI 已反映新 Data Interpretation 心智模型；不是舊 `Import Data` / `Import Label`
+  外殼加 backend adapter。
+- 舊 `load_data / attach_labels` 不能再是新 UI / agent 的主要心智模型；若保留，只能是
+  legacy adapter 或底層 compatibility path。
+- subject / session / task / run metadata 會在資料解讀 preview 中顯示，且能保存進 recipe。
+- Data Interpretation validation 會產生 `safe`、`needs_confirmation`、`blocked`。
+- command result 或 verification result 能表達 autonomy decision / decision boundary。
+- agent 可以規劃完整 workflow，但每一步都一個 command 一個 command 地 verify / execute /
+  refresh state。
+- decision boundary 會強制停下來問使用者，不依賴 LLM 自己「夠聰明」。
+- 至少一條 non-mocked synthetic workflow 走過：
+
+```text
+source_path
+  -> scan
+  -> preview metadata / label-event interpretation
+  -> validate
+  -> confirm / apply
+  -> recipe
+  -> preprocess
+  -> epoch
+  -> dataset
+```
+
+- tests / artifacts 能證明上述行為，不只靠人工讀程式碼。
+- scripted replay 至少能產生 backend report；涉及 UI 的 replay 必須有 transcript、visible state、
+  screenshot 或 UI artifact，不能只看 backend JSON。
+- command / result schema 已足以包成 MCP tools，且 MCP 設計不會變成第三套 workflow truth。
+- 文件同步更新 `target/`、`architecture/`、`validation/`、`records/`。
+
+## Goal 前必做
+
+啟動 goal 前先做：
+
+1. 跑一次文件一致性檢查。
+   - 確認 `target/architecture.md`、`target/data_interpretation_system.md`、`target/agent.md`、
+     `validation/thesis_protocol.md`、`planning/roadmap.md`、本文件不互相矛盾。
+
+2. 建立 docs checkpoint。
+   - 目前文件變更很多；goal runner 開工前應先有一個清楚 checkpoint。
+   - 不要把 `.vscode/settings.json` 或 root `settings.json` 的本機變更混入 checkpoint。
+
+3. 確認 goal runbook。
+   - 目前 runbook 位於 `artifacts/goal/goal-1-product-autopilot.md`。
+   - runner 不應頻繁回報，應改用 `records/worklog.md` 和
+     `records/implementation_log.md` 留狀態。
+   - runner 必須遵守 commit discipline；每個可驗收切片完成後 commit。
+
+4. 設定驗收 gate。
+   - 不只跑 dashboard。
+   - 需要 backend command tests、agent tool / verifier tests、UI import walkthrough、
+     non-mocked synthetic workflow、UI-observable scripted replay、mkdocs strict。
+
+## Validation Gates
+
+Goal runner 回報完成前至少要跑：
+
+```bash
+git diff --check
+poetry run mkdocs build --strict
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+```
+
+還需要依實作範圍跑 targeted tests，例如：
+
+```bash
+poetry run pytest --capture=sys tests/unit/backend/application -q
+poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q
+poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q
+```
+
+若改 UI / import flow，還要跑相關 UI tests / walkthrough。若改 launcher / local runtime，還要跑
+Windows launcher 或 local model resource-safe smoke。
+
+若新增 MCP server，還要至少驗證：
+
+```bash
+poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
+```
+
+實際 test path 可依實作調整，但不能只靠手動 MCP 呼叫宣稱完成。
+
+## 不能宣稱
+
+- 不能宣稱 Data Interpretation System 已完成，除非 source path 到 recipe 的流程真的可用。
+- 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
+- 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
+- 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy。
+- 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
+- 不能把 mock-heavy tests 當成真實 workflow evidence。
+- 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。
+- 不能讓 API / Gemini / remote LLM 回到 product execution path。
+- 不能使用中國公司或中國來源模型。
+- 不能讓 MCP 直接操作 controller 或繞過 ApplicationService / autonomy policy。
+
+## 下一步
+
+現在最應該做的是：
+
+```text
+1. 建立 docs checkpoint
+2. 啟動 Codex goal
+3. 由 reviewer 依 runbook 驗收，不達標就打回 goal 繼續
+```
