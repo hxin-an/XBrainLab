@@ -28,6 +28,39 @@
 ### 剩餘風險
 ```
 
+## 2026-05-03 Tool-call eval minimum gates
+
+### 背景
+
+使用者確認 tool-call thesis 主線後，進一步要求把 tool 重構、verification architecture 和足量
+資料 / case 數寫成明確條件，而不是只寫方向。
+
+### 變更
+
+- 在 thesis protocol、agent target、backend goal runbook 和 `AGENTS.md` 補明確 gate。
+- tool surface 需要重構為 service-backed command，mutating agent tools 不直接包 controller。
+- Verification Layer contract 需要檢查 schema、required parameters、state precondition、
+  resource existence、confirmation boundary、unsafe / destructive action、confidence threshold。
+- tool-call eval cases 數量明確化：engineering baseline 至少 `50` cases，thesis candidate
+  至少 `100` cases，negative / blocked / recovery cases 至少 `30%`，multi-turn 至少 `15` cases，
+  local LLM primary / fallback runner 至少重跑 `3` 次。
+- 資料級支撐需要 checked-in compact fixtures、event-rich public fixture slice；external EEG dataset
+  只作 pipeline support。
+
+### 影響範圍
+
+- 文件與長任務 runner 驗收條件。
+- 不改 source code、不改 tests。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- 這次只把 gate 寫入文件；scorer、case schema、runner 和 fixture coverage 仍待實作。
+
 ## 2026-05-03 Thesis evidence positioning correction
 
 ### 背景

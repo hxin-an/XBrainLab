@@ -74,6 +74,15 @@ benchmark cases 應包含：
 - recovery after validation failure。
 - state update after backend execution。
 
+case 數量目標：
+
+- engineering baseline：至少 `50` 個 tool-call cases。
+- thesis candidate：至少 `100` 個 tool-call cases。
+- 每個主要 workflow stage 至少 `10` 個 cases。
+- negative / blocked / missing-parameter / recovery cases 至少佔 `30%`。
+- multi-turn workflow cases 至少 `15` 個。
+- local LLM primary / fallback runner 至少重跑 `3` 次；不足時只能標成 exploratory。
+
 這套 scoring system 才是 thesis evidence 的核心之一；dashboard clean 只能證明工程健康，不能替代 tool-call 準確率評估。
 
 ## Target control loop
@@ -297,6 +306,15 @@ tool 的輸出應該是 structured result，而不是只靠自然語言。
 - result schema。
 - error category。
 - 是否需要 confirmation。
+
+tool 重構的完成條件：
+
+- mutating agent tools 不再直接呼叫 controller。
+- UI 和 agent 對同一 workflow 使用同一套 `ApplicationService` command / capability policy。
+- Verification Layer 是執行前必要邊界，不是 prompt 裡的建議文字。
+- scorer 可以讀到 state snapshot、proposed tool call、verification result、backend result 和
+  visible response。
+- raw backend exception / schema 不直接顯示給使用者。
 
 ## 和 backend 重構的關係
 

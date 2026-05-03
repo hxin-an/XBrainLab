@@ -37,6 +37,22 @@
 
 ## 2026-05-03
 
+### 17:20 Tool-call eval gate 補強
+
+- 做了什麼：
+  - 把 tool 重構、Verification Layer contract、足量 cases 和資料級支撐寫進 canonical docs。
+- 結果：
+  - 不再只寫「建立 scoring system」；現在明確要求 engineering baseline `50` cases、
+    thesis candidate `100` cases、negative / blocked / recovery `30%`、multi-turn `15` cases、
+    local LLM primary / fallback 至少重跑 `3` 次。
+  - tool surface 必須重構成 service-backed command；mutating agent tools 不可直接包 controller。
+  - 資料級支撐要覆蓋 checked-in fixtures 和 event-rich public fixture slice。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 實作 scorer / runner、case schema、case set 和 artifact report。
+
 ### 17:10 Thesis evidence 主線校正
 
 - 做了什麼：

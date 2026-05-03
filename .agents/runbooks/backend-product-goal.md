@@ -109,11 +109,31 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
 
 - Agent available tools / blocked reasons 來自 `ApplicationService` capability policy。
 - Tool call 前必須重新 guard。
+- mutating agent tools 不可直接包 controller；能走 service command 的 workflow 必須走
+  `ApplicationService` command。
+- 建立或補齊 Verification Layer contract：schema、required parameter、state precondition、
+  resource existence、confirmation boundary、unsafe / destructive action、confidence threshold。
 - Raw schema/backend wording 不可進 visible transcript。
 - `list_files` missing directory 這類錯誤要轉成使用者語言。
 - Tool output 保留 structured diagnostics。
 
-### 5. Documentation Closure
+### 5. Tool-Call Evaluation Architecture
+
+完成條件：
+
+- 建立可重跑 tool-call scorer / runner，輸出 JSON 和 Markdown report。
+- case schema 至少保存 user command、initial state、available command summary、expected tool /
+  no-call、expected parameters、expected verification result、expected state delta、actual model
+  output、parsed tool call、verification result、backend result、visible response 和 score breakdown。
+- engineering baseline 至少 `50` 個 cases；thesis candidate 至少 `100` 個 cases。
+- 每個主要 workflow stage 至少 `10` 個 cases。
+- negative / blocked / missing-parameter / recovery cases 至少佔 `30%`。
+- multi-turn workflow cases 至少 `15` 個。
+- local LLM primary / fallback runner 至少重跑 `3` 次；不足時只能標成 exploratory。
+- 資料級支撐要覆蓋 checked-in compact fixtures、event-rich public fixture slice；external EEG dataset
+  只作 pipeline support，不當 thesis 主評分。
+
+### 6. Documentation Closure
 
 完成條件：
 

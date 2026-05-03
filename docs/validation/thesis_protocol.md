@@ -84,14 +84,55 @@ cases 應覆蓋：
 - invalid command：backend policy blocked 時，回覆 blocked reason 的使用者語言版本。
 - multi-step recovery：第一次 tool call 被 verifier 擋下後，能否修正。
 
+case 數量不能只停在 demo 級：
+
+- 第一版 engineering baseline 至少 `50` 個 tool-call cases。
+- 正式 thesis candidate baseline 至少 `100` 個 tool-call cases。
+- 每個主要 workflow stage 至少 `10` 個 cases：data import、label/event、preprocess、epoch、
+  dataset、training、evaluation / visualization / saliency、reset / lifecycle。
+- negative / blocked / missing-parameter / recovery cases 合計不得少於總 cases 的 `30%`。
+- multi-turn workflow cases 不得少於 `15` 個，且必須包含至少一條完整
+  load -> preprocess -> epoch -> dataset -> configure training -> train -> query result sequence。
+- local LLM primary / fallback runner 至少重跑 `3` 次，保存 run-level artifact；若因資源限制
+  降低次數，report 必須明確標成 exploratory，不能當 thesis candidate。
+
 deterministic tool-call eval 可以證明 scoring framework 和 scripted policy 正確，但不能宣稱
 local LLM 真實 tool-call 能力。local LLM tool-call eval 需要在產品主線穩定後，以同一批 cases
 重跑 primary / fallback model，並記錄 parser failure、verification failure、retry 和 recovery。
+
+## Tool Refactor And Verification Architecture
+
+正式 tool-call eval 前，tool surface 需要先完成重構：
+
+- agent tools 不直接包 controller；能走 `ApplicationService` command 的 mutating workflow 必須走
+  service command。
+- tool availability、blocked reason、confirmation requirement 必須由 backend capability policy 產生。
+- Context Assembler 只能暴露目前 state 下合理的 tool / command 摘要，不讓 LLM 自行判斷所有
+  backend capability。
+- Tool call 前必須再經 Verification Layer guard；不能只相信 prompt 內的 available tool list。
+- Verification Layer 至少檢查：schema、required parameters、state precondition、resource
+  existence、confirmation boundary、unsafe / destructive action、confidence threshold。
+- scorer 必須同時記錄 proposed tool call、verification result、backend `CommandResult`、
+  state_before / state_after 和 visible response。
+- raw backend schema、traceback、tool exception 不可直接出現在使用者 transcript；必須轉成人能理解的回覆，
+  structured diagnostics 另存。
+
+這個 verification architecture 是 thesis evidence 的一部分。若 tool surface 尚未重構完成，
+只能做 engineering baseline，不能宣稱 thesis-grade tool-call accuracy。
 
 ## EEG Pipeline Support Protocol
 
 以下 split / metrics / baseline protocol 只服務於產品 workflow 和 domain task sanity。它讓
 agent tool-call benchmark 有可重跑的 EEG 工作環境，但不是 thesis 的主要準確率評估。
+
+資料級支撐也需要足夠數量與來源分層：
+
+- checked-in compact fixtures 要覆蓋至少 GDF、MAT、metadata / label 入口和 event-rich case。
+- public fixture slice 至少要能支持一條 event-rich import -> preprocess -> epoch -> dataset smoke。
+- 若使用 external EEG dataset，只作 pipeline support；需要記錄 source、license、checksum、
+  subject/session count 和清理方式。
+- 任一資料來源不足時，tool-call report 必須標註哪些 workflow stage 的 evidence 只能算 synthetic
+  或 fixture-level，不可泛化。
 
 ## Split Protocol
 
