@@ -66,9 +66,12 @@ metadata choice、confirmation、blocked、missing-input 和 `15` 個 multi-turn
 local LLM 真實 tool-call accuracy，也不是完整 MCP server。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
 confirmation-blocked apply -> confirmed apply -> save recipe -> reload recipe review ->
-preprocess -> epoch -> dataset，並檢查 split audit / train-val-test counts。recipe save UI、
-label import migration 和 UI-observable replay 尚未完成，舊 `load_data / attach_labels` 仍不能
-宣稱已完全退出產品心智模型。
+preprocess -> epoch -> dataset，並檢查 split audit / train-val-test counts。UI-observable
+replay 也有第一份 artifact：`scripts/dev/capture_data_interpretation_replay.py` 會保存
+`artifacts/ui/data-interpretation-preview.png`、`data-interpretation-applied.png` 和
+`data-interpretation-replay.json`，對照 visible dialog state、dataset panel state 和 command
+result。recipe save UI、label import migration、完整 MCP server 和 local LLM 真實 tool-call
+accuracy 尚未完成，舊 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 長時間
 UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release closure。

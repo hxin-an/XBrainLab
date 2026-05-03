@@ -28,6 +28,52 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation UI replay artifact
+
+### 背景
+
+Goal 1 明確要求不能只用 backend JSON replay 宣稱 UI 正確；Data Interpretation import flow
+需要 visible state、screenshot 或等價 UI artifact。
+
+### 變更
+
+- 新增 `scripts/dev/capture_data_interpretation_replay.py`。
+- 腳本：
+  - 產生 deterministic synthetic `.fif` source。
+  - 啟動 real `MainWindow` / Dataset panel。
+  - 使用 `ApplicationService` 跑 scan / preview / validate。
+  - 開啟真 `DataInterpretationPreviewDialog` 並保存 screenshot。
+  - 驗證 unconfirmed apply 會被 confirmation boundary 擋下。
+  - 用 confirmed apply 載入資料，刷新 Dataset panel，保存 applied screenshot。
+  - 寫出 replay JSON，包含 transcript、command result、visible dialog state、metadata rows、
+    dataset panel visible state 和 screenshot filenames。
+- 新增 artifacts：
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+
+### 影響範圍
+
+- Dev validation script。
+- UI artifacts。
+- Validation / planning / current docs。
+
+### 驗證
+
+- `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+- replay JSON observed:
+  - dialog decision `needs_confirmation`
+  - unconfirmed apply `failed / confirmation_required`
+  - confirmed apply `ok`
+  - Dataset panel row count `1`
+
+### 剩餘風險
+
+- 這不是完整真人 click-through；file picker 與 dialog acceptance 仍由 script programmatic flow
+  驗證。
+- ChatPanel visible transcript replay 尚未補。
+- recipe save UI 和 label import migration 仍未完成。
+
 ## 2026-05-04 Data Interpretation non-mocked workflow evidence
 
 ### 背景

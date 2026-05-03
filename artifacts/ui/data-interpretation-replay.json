@@ -1,0 +1,1199 @@
+{
+  "workflow": "data_interpretation_ui_replay",
+  "source": "product_replay_raw.fif",
+  "transcript": [
+    "Selected EEG source for interpretation.",
+    "Scanned source and previewed metadata interpretation.",
+    "Validation required confirmation for missing metadata.",
+    "Unconfirmed apply was blocked.",
+    "Confirmed apply loaded the interpreted source."
+  ],
+  "commands": {
+    "scan_source": {
+      "status": "ok",
+      "command_name": "scan_source",
+      "message": "Scanned source and found 1 EEG file(s).",
+      "state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": [],
+          "formats": [],
+          "channels": [],
+          "metadata": [],
+          "event_total": 0,
+          "unique_events": [],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "files": [],
+          "is_epoched": false,
+          "channel_names": [],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": null,
+          "latest_preview_id": null,
+          "latest_interpretation_id": null,
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": null,
+          "metadata_preview": [],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": false,
+          "has_preprocessed_data": false,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": null
+      },
+      "changed_state": {
+        "raw_changed": false,
+        "preprocessed_changed": false,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": true,
+        "error_changed": true
+      },
+      "error_type": "none",
+      "recoverable": true,
+      "error_message": null,
+      "diagnostics": {
+        "payload_type": "scan_result",
+        "scan_result": {
+          "scan_id": "scan-1",
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_hint": "auto",
+          "source_kind": "file",
+          "eeg_files": [
+            "<replay_source>/product_replay_raw.fif"
+          ],
+          "label_carriers": [],
+          "metadata": [
+            {
+              "file": "<replay_source>/product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "bids": {
+            "is_bids": false,
+            "subjects": [],
+            "sessions": [],
+            "tasks": [],
+            "runs": [],
+            "events_files": [],
+            "dataset_description": null
+          },
+          "warnings": [],
+          "blocked_reasons": []
+        }
+      }
+    },
+    "preview_interpretation": {
+      "status": "ok",
+      "command_name": "preview_interpretation",
+      "message": "Interpretation preview ready.",
+      "state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": [],
+          "formats": [],
+          "channels": [],
+          "metadata": [],
+          "event_total": 0,
+          "unique_events": [],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "files": [],
+          "is_epoched": false,
+          "channel_names": [],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": true,
+          "has_preview": true,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": "candidate-2",
+          "latest_preview_id": "preview-3",
+          "latest_interpretation_id": null,
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": false,
+          "has_preprocessed_data": false,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": null
+      },
+      "changed_state": {
+        "raw_changed": false,
+        "preprocessed_changed": false,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": true,
+        "error_changed": false
+      },
+      "error_type": "none",
+      "recoverable": true,
+      "error_message": null,
+      "diagnostics": {
+        "payload_type": "interpretation_preview",
+        "candidate": {
+          "candidate_id": "candidate-2",
+          "scan_id": "scan-1",
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "selected_eeg_files": [
+            "<replay_source>/product_replay_raw.fif"
+          ],
+          "label_carriers": [],
+          "event_roles": {},
+          "class_map": {},
+          "time_model": "file_native_time",
+          "granularity": "recording",
+          "metadata": [
+            {
+              "file": "<replay_source>/product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "warnings": [],
+          "confirmation_items": [
+            "Confirm run metadata for product_replay_raw.fif.",
+            "Confirm session metadata for product_replay_raw.fif.",
+            "Confirm subject metadata for product_replay_raw.fif.",
+            "Confirm task metadata for product_replay_raw.fif."
+          ],
+          "blocked_reasons": [],
+          "choices": {},
+          "recipe_trace": [
+            "scan:scan-1",
+            "candidate:candidate-2"
+          ]
+        },
+        "preview": {
+          "preview_id": "preview-3",
+          "candidate_id": "candidate-2",
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "file_count": 1,
+          "label_carrier_count": 0,
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "warnings": [],
+          "confirmation_items": [
+            "Confirm run metadata for product_replay_raw.fif.",
+            "Confirm session metadata for product_replay_raw.fif.",
+            "Confirm subject metadata for product_replay_raw.fif.",
+            "Confirm task metadata for product_replay_raw.fif."
+          ],
+          "blocked_reasons": [],
+          "downstream_impacts": [
+            "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+          ],
+          "event_roles": {},
+          "class_map": {}
+        }
+      }
+    },
+    "validate_interpretation": {
+      "status": "ok",
+      "command_name": "validate_interpretation",
+      "message": "Interpretation validation: needs_confirmation.",
+      "state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": [],
+          "formats": [],
+          "channels": [],
+          "metadata": [],
+          "event_total": 0,
+          "unique_events": [],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "files": [],
+          "is_epoched": false,
+          "channel_names": [],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": "candidate-2",
+          "latest_preview_id": "preview-3",
+          "latest_interpretation_id": null,
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": false,
+          "has_preprocessed_data": false,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": null
+      },
+      "changed_state": {
+        "raw_changed": false,
+        "preprocessed_changed": false,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": true,
+        "error_changed": false
+      },
+      "error_type": "none",
+      "recoverable": true,
+      "error_message": null,
+      "diagnostics": {
+        "payload_type": "validation_decision",
+        "validation_decision": {
+          "candidate_id": "candidate-2",
+          "decision": "needs_confirmation",
+          "reasons": [
+            "Candidate has reviewable semantic choices."
+          ],
+          "warnings": [],
+          "required_confirmations": [
+            "Confirm run metadata for product_replay_raw.fif.",
+            "Confirm session metadata for product_replay_raw.fif.",
+            "Confirm subject metadata for product_replay_raw.fif.",
+            "Confirm task metadata for product_replay_raw.fif."
+          ],
+          "blocked_reasons": [],
+          "downstream_impacts": [
+            "Downstream workflow remains blocked until the interpretation is confirmed and applied."
+          ]
+        }
+      }
+    },
+    "apply_without_confirmation": {
+      "status": "failed",
+      "command_name": "apply_interpretation",
+      "message": "apply_interpretation requires confirmation.",
+      "state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": [],
+          "formats": [],
+          "channels": [],
+          "metadata": [],
+          "event_total": 0,
+          "unique_events": [],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "files": [],
+          "is_epoched": false,
+          "channel_names": [],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": "candidate-2",
+          "latest_preview_id": "preview-3",
+          "latest_interpretation_id": null,
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": false,
+          "has_preprocessed_data": false,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": {
+          "error_type": "confirmation_required",
+          "message": "apply_interpretation requires confirmation.",
+          "recoverable": true
+        }
+      },
+      "changed_state": {
+        "raw_changed": false,
+        "preprocessed_changed": false,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": false,
+        "error_changed": true
+      },
+      "error_type": "confirmation_required",
+      "recoverable": true,
+      "error_message": "apply_interpretation requires confirmation.",
+      "diagnostics": {
+        "exception_type": "ConfirmationRequiredError"
+      }
+    },
+    "apply_confirmed": {
+      "status": "ok",
+      "command_name": "apply_interpretation",
+      "message": "Applied interpretation and loaded 1 file(s).",
+      "state": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 1,
+          "files": [
+            "product_replay_raw.fif"
+          ],
+          "formats": [
+            ".fif"
+          ],
+          "channels": [
+            "C3",
+            "C4",
+            "Cz",
+            "Pz"
+          ],
+          "metadata": [
+            {
+              "index": "0",
+              "file": "product_replay_raw.fif",
+              "subject": "0",
+              "session": "0"
+            }
+          ],
+          "event_total": 6,
+          "unique_events": [
+            "left",
+            "right"
+          ],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 1,
+          "files": [
+            "product_replay_raw.fif"
+          ],
+          "is_epoched": false,
+          "channel_names": [
+            "C3",
+            "C4",
+            "Cz",
+            "Pz"
+          ],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": "candidate-2",
+          "latest_preview_id": "preview-3",
+          "latest_interpretation_id": "interpretation-4",
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": true,
+          "has_preprocessed_data": true,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": null
+      },
+      "changed_state": {
+        "raw_changed": true,
+        "preprocessed_changed": true,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": true,
+        "error_changed": true
+      },
+      "error_type": "none",
+      "recoverable": true,
+      "error_message": null,
+      "diagnostics": {
+        "payload_type": "applied_interpretation",
+        "success_count": 1,
+        "errors": [],
+        "applied_interpretation": {
+          "interpretation_id": "interpretation-4",
+          "candidate_id": "candidate-2",
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "loaded_files": [
+            "<replay_source>/product_replay_raw.fif"
+          ],
+          "label_carriers": [],
+          "metadata": [
+            {
+              "file": "<replay_source>/product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "subject was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "session": {
+                "field": "session",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "session was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "task was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "validation_decision": "needs_confirmation",
+          "confirmations": [
+            "Confirm run metadata for product_replay_raw.fif.",
+            "Confirm session metadata for product_replay_raw.fif.",
+            "Confirm subject metadata for product_replay_raw.fif.",
+            "Confirm task metadata for product_replay_raw.fif."
+          ],
+          "recipe_trace": [
+            "scan:scan-1",
+            "candidate:candidate-2",
+            "validation:needs_confirmation",
+            "applied:interpretation-4"
+          ]
+        },
+        "label_carriers_pending": []
+      }
+    }
+  },
+  "ui_state": {
+    "dialog": {
+      "title": "Review Data Interpretation",
+      "decision": "needs_confirmation",
+      "visible_text": [
+        "Found 1 EEG file(s) and 0 label/event carrier(s).",
+        "Source: /tmp/xbrainlab_data_interpretation_replay/product_replay_raw.fif",
+        "Validation: needs_confirmation",
+        "Confirmation required: Confirm run metadata for product_replay_raw.fif.; Confirm session metadata for product_replay_raw.fif.; Confirm subject metadata for product_replay_raw.fif.; Confirm task metadata for product_replay_raw.fif."
+      ],
+      "metadata_rows": [
+        [
+          "product_replay_raw.fif",
+          "needs_confirmation",
+          "needs_confirmation",
+          "needs_confirmation",
+          "needs_confirmation"
+        ]
+      ],
+      "apply_button_enabled": true,
+      "screenshot": "data-interpretation-preview.png"
+    },
+    "dataset_panel": {
+      "import_button_text": "Interpret Data Source",
+      "import_button_enabled": true,
+      "table_rows": 1,
+      "visible_panel_text": [],
+      "screenshot": "data-interpretation-applied.png"
+    }
+  }
+}

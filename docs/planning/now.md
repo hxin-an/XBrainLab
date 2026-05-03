@@ -40,9 +40,10 @@
   payload 轉回 typed `ApplicationService` command。
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
-- Data Interpretation System 仍未完成；目前尚缺 recipe save UI、完整 MCP server 和
-  UI-observable replay artifact。（MCP-ready schema / headless adapter 已有；backend
-  non-mocked source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有。）
+- Data Interpretation System 仍未完成；目前尚缺 recipe save UI、完整 MCP server 和更完整的
+  UI replay coverage。（MCP-ready schema / headless adapter 已有；backend non-mocked
+  source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有；Data Interpretation
+  preview / applied dataset panel 的 UI-observable replay artifact 已有第一版。）
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現，但 override /
   recipe UI 尚未完成。
 
@@ -175,7 +176,8 @@ source_path
 ```
 
 - tests / artifacts 能證明上述行為，不只靠人工讀程式碼。
-  （backend integration test 已覆蓋；UI-observable artifact 尚未完成。）
+  （backend integration test 已覆蓋；UI-observable artifact 已覆蓋 Data Interpretation preview /
+  applied dataset panel。）
 - scripted replay 至少能產生 backend report；涉及 UI 的 replay 必須有 transcript、visible state、
   screenshot 或 UI artifact，不能只看 backend JSON。
 - command / result schema 已足以包成 MCP tools，且 MCP 設計不會變成第三套 workflow truth。

@@ -37,6 +37,26 @@
 
 ## 2026-05-04
 
+### 03:10 Data Interpretation UI replay artifact
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_data_interpretation_replay.py`。
+  - 腳本在固定 temp path 產生 synthetic `.fif`，啟動 real `MainWindow` / Dataset panel，使用真
+    `ApplicationService` 跑 scan / preview / validate / apply。
+  - 保存 Data Interpretation preview dialog screenshot、applied Dataset panel screenshot 和
+    replay JSON。
+- 結果：
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON 顯示 dialog decision `needs_confirmation`、未確認 apply 是
+    `failed / confirmation_required`、確認 apply 是 `ok`、dataset table rows 是 `1`。
+- 證據：
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+- 接續 / 本輪剩餘：
+  - 這是 Data Interpretation dialog / Dataset panel 的 UI-observable replay，不是完整真人
+    click-through，也還未覆蓋 ChatPanel agent transcript。
+
 ### 03:04 Data Interpretation non-mocked workflow
 
 - 做了什麼：
