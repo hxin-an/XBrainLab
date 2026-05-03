@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any, cast
 
 import numpy as np
@@ -800,6 +801,7 @@ class ApplicationService:
 
         selected_event_names = self._selected_event_names(plan.selected_event_names)
         mode = str(plan.mode or "batch").lower()
+        file_mapping: dict[str, str] = {}
         if mode in {"batch", "timestamp"}:
             file_mapping = dict(plan.file_mapping)
             if not file_mapping and len(plan.label_map) == 1:
@@ -822,6 +824,12 @@ class ApplicationService:
             labels = next(iter(plan.label_map.values()), None)
             if labels is None:
                 raise PreconditionError("labels are required for legacy import.")
+            label_name = next(iter(plan.label_map), "")
+            file_mapping = {
+                self._data_filepath(target): str(label_name)
+                for target in target_files
+                if label_name
+            }
             count = self.dataset.apply_labels_legacy(
                 target_files,
                 labels,
@@ -832,12 +840,22 @@ class ApplicationService:
         else:
             raise ValueError(f"Unknown label import mode: {plan.mode}")
 
+        label_import = self._record_label_import_for_recipe(
+            plan=plan,
+            mode=mode,
+            target_files=target_files,
+            file_mapping=file_mapping,
+            selected_event_names=selected_event_names,
+            success_count=count,
+        )
         return (
             f"Imported labels for {count} file(s).",
             {
                 "success_count": count,
                 "mode": mode,
                 "target_count": len(target_files),
+                "recipe_updated": label_import is not None,
+                "label_import": label_import or {},
             },
         )
 
@@ -1484,6 +1502,17 @@ class ApplicationService:
             warnings=warnings,
             summary=preview.summary if preview else None,
             metadata_preview=list(preview.metadata_preview if preview else []),
+            label_carriers=list(
+                applied.label_carriers
+                if applied is not None
+                else candidate.label_carriers
+                if candidate is not None
+                else []
+            ),
+            label_import_count=len(applied.label_imports) if applied else 0,
+            label_imports=[dict(item) for item in applied.label_imports]
+            if applied
+            else [],
             recipe_path=self._latest_recipe_path,
         )
 
@@ -1624,6 +1653,71 @@ class ApplicationService:
         if selected_event_names is None:
             return None
         return {str(name) for name in selected_event_names}
+
+    def _record_label_import_for_recipe(
+        self,
+        *,
+        plan: LabelImportPlan,
+        mode: str,
+        target_files: list[Any],
+        file_mapping: dict[str, str],
+        selected_event_names: set[str] | None,
+        success_count: int,
+    ) -> dict[str, Any] | None:
+        if success_count <= 0:
+            return None
+        if not self._latest_interpretation_id:
+            return None
+        applied = self._applied_interpretations.get(self._latest_interpretation_id)
+        if applied is None:
+            return None
+
+        label_carriers = sorted(str(key) for key in plan.label_map)
+        record = {
+            "mode": mode,
+            "label_carriers": label_carriers,
+            "target_files": [self._data_filepath(item) for item in target_files],
+            "file_mapping": {
+                str(key): str(value) for key, value in file_mapping.items()
+            },
+            "selected_event_names": sorted(selected_event_names or []),
+            "class_map": self._label_mapping_for_recipe(plan.mapping),
+            "success_count": int(success_count),
+        }
+        label_import_trace = f"label_import:{mode}:{success_count}"
+        updated = replace(
+            applied,
+            label_carriers=sorted({*applied.label_carriers, *label_carriers}),
+            label_imports=[*applied.label_imports, record],
+            recipe_trace=[*applied.recipe_trace, label_import_trace],
+        )
+        self._applied_interpretations[updated.interpretation_id] = updated
+
+        if self._latest_recipe_id and self._latest_recipe_id in self._recipes:
+            recipe = self._recipes[self._latest_recipe_id]
+            self._recipes[self._latest_recipe_id] = replace(
+                recipe,
+                label_carriers=sorted({*recipe.label_carriers, *label_carriers}),
+                label_imports=[*recipe.label_imports, record],
+                recipe_trace=[*recipe.recipe_trace, label_import_trace],
+            )
+        return record
+
+    @staticmethod
+    def _label_mapping_for_recipe(mapping: Any) -> dict[str, str]:
+        if not isinstance(mapping, dict):
+            return {}
+        return {str(key): str(value) for key, value in mapping.items()}
+
+    @staticmethod
+    def _data_filepath(item: Any) -> str:
+        method = getattr(item, "get_filepath", None)
+        if callable(method):
+            try:
+                return str(method())
+            except Exception:
+                logger.debug("Failed to read raw file path", exc_info=True)
+        return ApplicationService._data_filename(item)
 
     @staticmethod
     def _metadata_updates(command: UpdateMetadataCommand) -> list[MetadataUpdate]:

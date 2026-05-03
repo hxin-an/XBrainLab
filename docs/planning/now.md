@@ -36,7 +36,9 @@
 - Dataset panel 的主要資料入口已從 `Import Data` 改為 `Interpret Data Source`，並走
   scan -> preview -> validate -> confirm/apply；preview dialog 現在提供 apply 後保存 recipe
   的選項，並透過 `SaveInterpretationRecipeCommand` 寫入 recipe。舊 label import 入口已改成
-  `Add Labels to Loaded Data`，定位為 service-backed compatibility path。
+  `Add Labels to Loaded Data`，定位為 service-backed compatibility path；label import 成功後
+  會寫入 applied interpretation 的 label carrier / class map / selected event / recipe trace，
+  UI 也可提示保存更新後 recipe。
 - headless / MCP-ready automation adapter 已新增：
   `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
   payload 轉回 typed `ApplicationService` command。
@@ -55,9 +57,9 @@
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
-- 剩餘非 Goal 1 closure blockers：label import compatibility path 尚未整合進 Data Interpretation
-  recipe UI、MCP external-client / Inspector walkthrough 尚未完成、UI replay coverage 還不是完整
-  真人 walkthrough。
+- 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
+  wizard 內的 label/recipe editor；MCP external-client / Inspector walkthrough 尚未完成、UI replay
+  coverage 還不是完整真人 walkthrough。
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現並進入 recipe trace；
   更完整的 override UI 仍是下一輪 hardening。
 
@@ -67,7 +69,7 @@
 
 ```text
 True local LLM ChatPanel workflow
-  + label/recipe UI hardening
+  + label/recipe wizard hardening
   + MCP external-client walkthrough / release config
   + Windows launcher click-through
 ```

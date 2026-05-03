@@ -37,6 +37,30 @@
 
 ## 2026-05-04
 
+### 05:52 label import recipe trace integration
+
+- 做了什麼：
+  - `AppliedInterpretation` / `ImportRecipe` 新增 `label_imports`。
+  - `ImportLabelsCommand` 成功後會把 label carriers、target files、file mapping、selected event
+    names、class map 和 success count 寫入 applied interpretation / recipe trace。
+  - `ApplicationStateSnapshot.interpretation` 新增 label carrier / label import summary。
+  - Dataset panel 的 `Add Labels to Loaded Data` 若收到 `recipe_updated` diagnostics，會提示使用者
+    可保存更新後 recipe。
+- 結果：
+  - label import 不再只是已載入 raw data 的 side mutation；它會進入 Data Interpretation recipe
+    trace，之後保存 recipe 會包含外部 label 匯入資訊。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_import_labels_updates_applied_interpretation_recipe_trace tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe -q` -> `2 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q` -> `74 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `36 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` -> `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q` -> `66 passed`
+  - targeted `ruff` / `basedpyright` clean。
+- 接續 / 本輪剩餘：
+  - 這仍不是成熟 import wizard label editor，也沒有新的 UI screenshot replay。
+  - true local LLM ChatPanel walkthrough、Windows launcher click-through、MCP external-client
+    walkthrough 和 local LLM tool-call accuracy 改善仍是 product blockers。
+
 ### 05:43 stdio MCP server baseline
 
 - 做了什麼：
@@ -56,8 +80,8 @@
   - targeted `ruff` / `basedpyright` clean。
 - 接續 / 本輪剩餘：
   - 尚未跑外部 MCP client / Inspector walkthrough，也未補 Windows release config。
-  - label import recipe integration、true local LLM ChatPanel walkthrough、Windows launcher
-    click-through 和 local LLM tool-call accuracy 改善仍是 product blockers。
+  - true local LLM ChatPanel walkthrough、Windows launcher click-through 和 local LLM tool-call
+    accuracy 改善仍是 product blockers。
 
 ### 03:50 Local LLM tool-call runner and schema verifier
 

@@ -28,6 +28,57 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 label import recipe trace integration
+
+### 背景
+
+Data Interpretation import flow 已可保存 recipe，但 Dataset panel 的 `Add Labels to Loaded Data`
+仍只像舊 compatibility action：labels 可以套到 raw data，卻不會進入 Data Interpretation recipe
+trace。這會讓後續 recipe reload、agent state snapshot、MCP / scorer evidence 看不到外部 label
+語意是如何加入的。
+
+### 變更
+
+- `AppliedInterpretation` / `ImportRecipe` 新增 `label_imports`。
+- `ApplicationService._handle_import_labels()` 成功後會在目前 applied interpretation 上記錄：
+  - mode。
+  - label carriers。
+  - target files。
+  - file mapping。
+  - selected event names。
+  - class map。
+  - success count。
+- `ApplicationStateSnapshot.interpretation` 新增 `label_carriers`、`label_import_count`、
+  `label_imports`，讓 UI / agent / MCP / scorer 能讀到同一份 recipe trace。
+- 若已有 session recipe，service 也同步更新 session recipe trace；若使用者後續保存 recipe，
+  JSON 會包含 label import trace。
+- Dataset panel 在 label import 成功且 `recipe_updated` 時，用人話提示使用者可保存更新後 recipe，
+  並重用既有 `SaveInterpretationRecipeCommand`。
+
+### 影響範圍
+
+- Backend Data Interpretation lifecycle objects。
+- ApplicationService label import command handler。
+- Application state snapshot contract。
+- Dataset panel label import success UX。
+- Backend / UI / agent application-surface tests。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_import_labels_updates_applied_interpretation_recipe_trace tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe -q` -> `2 passed`
+- `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q` -> `74 passed`
+- `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `36 passed`
+- `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` -> `3 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q` -> `66 passed`
+- targeted `ruff` / `basedpyright` clean。
+
+### 剩餘風險
+
+- 這仍是 `Add Labels to Loaded Data` compatibility UI 的 recipe trace integration，不是成熟的
+  import wizard label/recipe editor。
+- 尚未新增 UI screenshot replay 覆蓋 label import save prompt。
+- 尚未驗證真使用者 click-through 或 agent 透過 local LLM 正確操作這段 label/recipe flow。
+
 ## 2026-05-04 stdio MCP server baseline
 
 ### 背景
@@ -73,8 +124,8 @@ agent adapter，且 MCP calls 不能變成第三套 workflow truth 或繞過 App
 - 這是 stdio MCP server baseline，不是 external MCP client / Inspector walkthrough。
 - 尚未補 Windows launcher / packaged config 讓使用者一鍵註冊 MCP server。
 - 尚未驗證 long-running training tool through MCP、external agent recovery UX 或 HTTP transport。
-- 產品 completion 仍受 label import recipe integration、true local LLM ChatPanel walkthrough、
-  Windows launcher click-through 和 local LLM tool-call accuracy 影響。
+- 產品 completion 仍受 true local LLM ChatPanel walkthrough、Windows launcher click-through、
+  MCP external-client walkthrough 和 local LLM tool-call accuracy 影響。
 
 ## 2026-05-04 Local LLM tool-call runner and schema verifier
 

@@ -617,6 +617,54 @@ def test_import_labels_plan_routes_batch_import():
     service.dataset.apply_labels_batch.assert_called_once()
 
 
+def test_import_labels_updates_applied_interpretation_recipe_trace(tmp_path):
+    source_dir = tmp_path / "interpreted_with_external_labels"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    recipe_path = tmp_path / "recipe_with_labels.json"
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(PreviewInterpretationCommand())
+    service.execute(ValidateInterpretationCommand())
+    service.execute(ApplyInterpretationCommand(confirmed=True))
+    service.study.data_manager.loaded_data_list = [raw]
+    import_result = service.execute(
+        ImportLabelsCommand(
+            plan=LabelImportPlan(
+                target_indices=[0],
+                label_map={"labels.tsv": [1, 2]},
+                file_mapping={"/tmp/sample.fif": "labels.tsv"},
+                mapping={1: "left", 2: "right"},
+                mode="batch",
+                selected_event_names=["cue"],
+            ),
+        ),
+    )
+    save_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert import_result.ok is True
+    assert import_result.diagnostics["recipe_updated"] is True
+    label_import = import_result.diagnostics["label_import"]
+    assert label_import["mode"] == "batch"
+    assert label_import["label_carriers"] == ["labels.tsv"]
+    assert label_import["selected_event_names"] == ["cue"]
+    assert import_result.state.interpretation.label_carriers == ["labels.tsv"]
+    assert import_result.state.interpretation.label_import_count == 1
+    assert save_result.ok is True
+    recipe = save_result.diagnostics["recipe"]
+    assert recipe["label_carriers"] == ["labels.tsv"]
+    assert recipe["label_imports"][0]["class_map"] == {"1": "left", "2": "right"}
+    assert "label_import:batch:1" in recipe["recipe_trace"]
+
+
 def test_apply_montage_command_routes_confirmed_positions():
     service = ApplicationService(Study())
     service.study.data_manager.epoch_data = MagicMock()

@@ -709,6 +709,58 @@ class TestDatasetActionHandler:
         handler.import_label()
         handler.panel.controller.apply_labels_batch.assert_called_once()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_offers_to_save_updated_recipe(
+        self,
+        mock_dlg,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ImportLabelsCommand,
+            SaveInterpretationRecipeCommand,
+        )
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        data_obj.is_raw.return_value = False
+        data_obj.get_filepath.return_value = "/file1.set"
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = True
+        mock_dlg.return_value.get_result.return_value = (
+            {"label1.txt": [0, 1]},
+            {0: "left", 1: "right"},
+        )
+        mock_mb.StandardButton.Yes = 1
+        mock_mb.StandardButton.No = 2
+        mock_mb.question.return_value = 1
+        mock_fd.getSaveFileName.return_value = ("/recipes/with_labels.json", "")
+        saved: list[SaveInterpretationRecipeCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ImportLabelsCommand):
+                return _command_result(success_count=1, recipe_updated=True)
+            if isinstance(command, SaveInterpretationRecipeCommand):
+                saved.append(command)
+                return _command_result(import_recipe={"recipe_id": "recipe-1"})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_label()
+
+        assert saved
+        assert saved[0].recipe_path == "/recipes/with_labels.json"
+        assert "Recipe saved." in mock_mb.information.call_args.args[2]
+
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_exception(self, mock_dlg, mock_mb, handler):

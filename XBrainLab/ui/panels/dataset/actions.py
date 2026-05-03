@@ -435,10 +435,17 @@ class DatasetActionHandler:
 
             if count > 0:
                 self.panel.update_panel()
+                recipe_message = (
+                    self._offer_label_recipe_save(result) if result is not None else ""
+                )
                 QMessageBox.information(
                     self.panel,
                     "Success",
-                    f"Applied to {count} files.",
+                    " ".join(
+                        part
+                        for part in [f"Applied to {count} files.", recipe_message]
+                        if part
+                    ),
                 )
             else:
                 QMessageBox.warning(
@@ -451,6 +458,21 @@ class DatasetActionHandler:
         except Exception as e:
             logger.error("Import label error: %s", e, exc_info=True)
             QMessageBox.critical(self.panel, "Error", f"Failed: {e}")
+
+    def _offer_label_recipe_save(self, result) -> str:
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if not bool(diagnostics.get("recipe_updated")):
+            return ""
+        reply = QMessageBox.question(
+            self.panel,
+            "Save Updated Recipe",
+            "External labels were added to the current data interpretation "
+            "recipe. Save the updated recipe now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            return self._save_interpretation_recipe()
+        return "Interpretation recipe trace updated."
 
     def _analyze_label_map(self, label_map):
         """Classify imported labels and infer a safe smart-filter target count."""

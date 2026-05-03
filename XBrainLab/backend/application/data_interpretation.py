@@ -152,6 +152,7 @@ class AppliedInterpretation:
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
+    label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -171,6 +172,7 @@ class ImportRecipe:
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
+    label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)
 
@@ -212,6 +214,11 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
             payload.get("validation_decision", InterpretationDecision.SAFE.value),
         ),
         confirmations=[str(item) for item in payload.get("confirmations", [])],
+        label_imports=[
+            dict(item)
+            for item in payload.get("label_imports", [])
+            if isinstance(item, dict)
+        ],
         warnings=[str(item) for item in payload.get("warnings", [])],
         recipe_trace=[str(item) for item in payload.get("recipe_trace", [])],
     )
@@ -445,6 +452,7 @@ def build_import_recipe(
         metadata=list(applied.metadata),
         validation_decision=applied.validation_decision,
         confirmations=list(applied.confirmations),
+        label_imports=[dict(item) for item in applied.label_imports],
         warnings=list(warnings),
         recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
     )

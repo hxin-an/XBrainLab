@@ -592,8 +592,39 @@ replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agen
   - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
   - `0 errors, 0 warnings, 0 notes`
 
-這批 evidence 支撐 UI import flow 的 recipe save option。舊 label import 目前是
-`Add Labels to Loaded Data` compatibility path，仍未整合進 Data Interpretation recipe。
+這批 evidence 支撐 UI import flow 的 recipe save option。後續 label import trace integration
+已補；舊 label import 仍是 `Add Labels to Loaded Data` compatibility UI，尚未成為完整 import
+wizard label/recipe editor。
+
+2026-05-04 label import recipe trace integration：
+
+- `ImportRecipe` / `AppliedInterpretation` 新增 `label_imports`，並在成功
+  `ImportLabelsCommand` 後保存：
+  - label carriers。
+  - target files / file mapping。
+  - selected event names。
+  - class map。
+  - success count。
+- `ApplicationStateSnapshot.interpretation` 現在暴露 `label_carriers`、`label_import_count` 和
+  `label_imports`，供 UI / agent / MCP / scorer 讀同一份 recipe trace。
+- Dataset panel 的 `Add Labels to Loaded Data` 成功後，若 backend 回報 recipe trace 更新，UI 會
+  用使用者語言提示並可保存更新後 recipe。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_import_labels_updates_applied_interpretation_recipe_trace tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe -q`
+  - `2 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `74 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q`
+  - `36 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+  - `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py -q`
+  - `66 passed`
+  - targeted `ruff` / `basedpyright` clean。
+
+這批 evidence 支撐 label import 不再只停在 raw controller label mutation，而會進入 Data
+Interpretation recipe trace。它仍不支撐成熟 import wizard label editor、UI screenshot replay
+或真人 click-through。
 
 ## Automated Evidence vs Product Evidence
 
