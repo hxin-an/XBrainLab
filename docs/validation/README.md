@@ -26,7 +26,7 @@ closure。
 
 目前 fast engineering artifact 狀態是：
 
-- generated at: `2026-05-02 20:35:07 UTC+08:00`
+- generated at: `2026-05-04 04:07:48 UTC+08:00`
 - workspace: `/mnt/d/workspace_v2/projects/lab/XBrainLab`
 - overall: `PASS`
 
@@ -46,7 +46,7 @@ UI baseline capture 結果：
 - Startup Smoke：`PASS`
 - UI Baseline Capture：`PASS`
 - UI Dialog Acceptance：`PASS`
-- UI Unit Suite：`814 passed`
+- UI Unit Suite：`831 passed`
 - Real-Data IO Integration：`31 passed, 8 warnings`
 
 同輪或 supervisor final closure 已通過：
@@ -78,7 +78,8 @@ UI baseline capture 結果：
 
 - Windows Desktop launcher 人工 click-through。
 - true local LLM ChatPanel 長時間 walkthrough。
-- local LLM primary / fallback tool-call accuracy run、score report、failure taxonomy。
+- local LLM primary / fallback tool-call runner 已有 score report 和 failure taxonomy；目前
+  pass rate 仍低，尚未形成 thesis-grade accuracy claim。
 - external EEG dataset experiment / statistical reporting 只是 pipeline support，不是 thesis 主評分。
 
 data pipeline 文件驗證時也重跑：
@@ -265,7 +266,7 @@ EEG dataset experiment 屬於 pipeline support，不是 thesis 主評分。
   - `70 passed, 4 warnings`
 - UI unit:
   - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui -q`
-  - latest fast dashboard UI Unit Suite：`814 passed`
+  - latest fast dashboard UI Unit Suite：`831 passed`
 - LLM unit:
   - LLM / local settings / script unit gate：`674 passed`
 - local model preflight:
@@ -298,8 +299,8 @@ EEG dataset experiment 屬於 pipeline support，不是 thesis 主評分。
   - intent / tool selection / argument / state-aware / blocked / recovery /
     trajectory / runtime safety accuracy：`100%`
 
-這是 deterministic scripted baseline，不是 local LLM performance claim。local model primary /
-fallback 真實 tool-call success rate 仍需在下一輪用相同 case schema 接 model runner 後再量測。
+這是 deterministic scripted baseline，不是 local LLM performance claim。Goal 1 後續已新增
+local model runner，見下方 `2026-05-04 Local LLM tool-call runner and schema gate`。
 
 2026-05-04 Data Interpretation backend command baseline：
 
@@ -437,6 +438,61 @@ accuracy 仍未完成。
 tool-call baseline。它仍不支撐「MCP server 已完成」、「local LLM 真實 tool-call accuracy 已驗證」、
 或「UI-observable replay 已完成」。
 
+2026-05-04 Local LLM tool-call runner and schema gate：
+
+- 新增 `scripts/agent/evals/run_local_tool_call_eval.py`：
+  - 使用同一份 `scripts/agent/evals/run_tool_call_eval.py` case schema / scorer。
+  - 接真 local model raw output，不執行 workflow command。
+  - 每個 case 保存 prompt-derived state、raw output、parsed tool calls、schema verification、
+    score breakdown 和 failure taxonomy。
+  - `repeat_count < 3` 或 cases `< 50` 時標成 exploratory；本次 primary / fallback full run
+    都是 `54` cases x `3` repeats，非 exploratory。
+- `CommandParser` 現在可解析：
+  - `parameters`
+  - `arguments`
+  - top-level `name`
+  - `tool_calls` list
+- `VerificationLayer` 現在可用 registered tool schema 檢查：
+  - unknown / unregistered tool。
+  - required parameter。
+  - JSON-like type。
+  - enum value。
+  `LLMController` 會用 real `ToolRegistry` schema 建立 verifier，因此可在 execution 前攔下
+  可解析但不可執行的 tool JSON。
+- local runtime preflight：
+  - primary / fallback cache 都已存在，不需下載。
+  - cache usage：`15.34 GB`，低於 `20 GB` 上限。
+  - classification：`gpu-ready`。
+- primary run：
+  - command：`timeout 3600s poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role primary --repeat-count 3 --max-new-tokens 128 --output-dir artifacts/agent_evals/local_primary`
+  - artifact：
+    - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.json`
+    - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+  - result：`18 / 54` pass，pass rate `33.33%`。
+  - schema-invalid tool outputs：`9`。
+- fallback run：
+  - command：`timeout 3600s poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --max-new-tokens 128 --output-dir artifacts/agent_evals/local_fallback`
+  - artifact：
+    - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.json`
+    - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+  - result：`20 / 54` pass，pass rate `37.04%`。
+  - schema-invalid tool outputs：`6`。
+- targeted validation:
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py -q`
+  - `44 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_controller_integration.py tests/integration/agent/test_product_flow.py tests/integration/agent/test_tool_call_eval.py -q`
+  - `98 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py -q`
+  - `383 passed`
+  - `poetry run ruff check XBrainLab/llm/agent/parser.py XBrainLab/llm/agent/verifier.py XBrainLab/llm/agent/controller.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/llm/agent/parser.py XBrainLab/llm/agent/verifier.py XBrainLab/llm/agent/controller.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐「真 local LLM runner / parser / schema gate 已建立」。它明確不支撐
+「local LLM tool-call accuracy thesis-ready」、「真 ChatPanel 長時間 workflow 已通過」或
+「agent 可無監督完成多步 workflow」。
+
 2026-05-04 Data Interpretation non-mocked backend workflow：
 
 - 新增 `tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked`。
@@ -522,6 +578,7 @@ replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agen
 | local prompt smoke | local backend 能對最小 prompt 回文字 | UI chat flow 已接上、streaming 不被吃掉、錯誤可見 |
 | structured-output smoke | 模型可按 prompt 產出 tool JSON | agent 在真 UI 中能穩定選 tool、解釋 blocked reason |
 | deterministic eval | case schema / scoring / scripted policy 正確 | local LLM 真實 tool-call 成功率 |
+| local tool-call eval | 真 primary / fallback local model raw output 能被 parser / verifier / scorer 審計 | thesis-ready accuracy、真 UI ChatPanel 長時間 workflow |
 | UI baseline | approved screenshots 沒有大幅 pixel drift | UI 是否產品級、是否能互動、是否 no-response |
 | product walkthrough smoke | assistant layout / panel navigation / synthetic EEG button path 可重跑 | 真 launcher 人工體驗、完整訓練品質、所有 dialog / query action |
 | split artifact audit | train/validation/test indices 和 subject/session leakage 可審計 | classification quality 或 thesis conclusion |

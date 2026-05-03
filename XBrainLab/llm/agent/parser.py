@@ -14,8 +14,8 @@ class CommandParser:
     """Parses LLM output to extract structured tool commands.
 
     Scans response text for JSON objects containing ``tool_name`` (or
-    ``command``) and ``parameters`` keys, handling both raw JSON and
-    fenced code blocks.
+    ``command``) and ``parameters`` / ``arguments`` keys, handling both
+    raw JSON and fenced code blocks.
     """
 
     @staticmethod
@@ -62,12 +62,9 @@ class CommandParser:
                     # data is the JSON object, end_idx is length relative to start_idx
 
                     if isinstance(data, dict):
-                        # Check if it's a valid tool command
-                        cmd = data.get("tool_name") or data.get("command")
-                        params = data.get("parameters")
-
-                        if cmd and params is not None:
-                            found_commands.append((cmd, params))
+                        found_commands.extend(
+                            CommandParser._extract_commands_from_object(data),
+                        )
 
                     # Move cursor past this object
                     cursor = start_idx + end_idx
@@ -87,3 +84,31 @@ class CommandParser:
             # I should change simple_bench first or return a list and fix simple_bench.
             return found_commands  # Return List[Tuple]
         return None
+
+    @staticmethod
+    def _extract_commands_from_object(
+        data: dict[str, Any],
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Extract one or more tool calls from a decoded JSON object."""
+        tool_calls = data.get("tool_calls")
+        if isinstance(tool_calls, list):
+            commands: list[tuple[str, dict[str, Any]]] = []
+            for item in tool_calls:
+                if isinstance(item, dict):
+                    commands.extend(CommandParser._extract_single_command(item))
+            return commands
+
+        return CommandParser._extract_single_command(data)
+
+    @staticmethod
+    def _extract_single_command(
+        data: dict[str, Any],
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Extract one tool call from a decoded JSON object."""
+        cmd = data.get("tool_name") or data.get("command") or data.get("name")
+        params = data.get("parameters")
+        if params is None:
+            params = data.get("arguments")
+        if isinstance(cmd, str) and isinstance(params, dict):
+            return [(cmd, params)]
+        return []

@@ -1,10 +1,18 @@
+from typing import Any, cast
+
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
     PathExistsValidator,
+    ToolSchemaValidator,
     TrainingParamValidator,
     VerificationLayer,
     VerificationResult,
 )
+
+
+def _error_message(result: VerificationResult) -> str:
+    assert result.error_message is not None
+    return result.error_message
 
 
 def test_verification_script_syntax():
@@ -24,7 +32,7 @@ def test_verification_script_syntax():
     # Let's test confidence first
     result = verifier.verify_tool_call(valid_call, confidence=0.1)
     assert not result.is_valid
-    assert "Confidence too low" in result.error_message
+    assert "Confidence too low" in _error_message(result)
 
 
 def test_verification_result_structure():
@@ -45,7 +53,7 @@ def test_script_validation_logic():
 
     # Malformed tool call (not a tuple of (name, dict))
     # Should return invalid VerificationResult (not raise)
-    result = verifier.verify_tool_call(("not a tuple",), 0.9)
+    result = verifier.verify_tool_call(cast(Any, ("not a tuple",)), 0.9)
     assert not result.is_valid
 
     # Valid structure
@@ -68,7 +76,7 @@ class TestFrequencyRangeValidator:
         v = FrequencyRangeValidator()
         r = v.validate("apply_bandpass_filter", {"low_freq": 50.0, "high_freq": 10.0})
         assert not r.is_valid
-        assert "must be <" in r.error_message
+        assert "must be <" in _error_message(r)
 
     def test_equal_rejected(self):
         v = FrequencyRangeValidator()
@@ -79,13 +87,13 @@ class TestFrequencyRangeValidator:
         v = FrequencyRangeValidator()
         r = v.validate("apply_bandpass_filter", {"low_freq": -1, "high_freq": 40})
         assert not r.is_valid
-        assert "positive" in r.error_message
+        assert "positive" in _error_message(r)
 
     def test_non_numeric_rejected(self):
         v = FrequencyRangeValidator()
         r = v.validate("apply_bandpass_filter", {"low_freq": "abc", "high_freq": 40})
         assert not r.is_valid
-        assert "numeric" in r.error_message
+        assert "numeric" in _error_message(r)
 
     def test_standard_preprocess_uses_l_h_freq(self):
         v = FrequencyRangeValidator()
@@ -131,7 +139,7 @@ class TestTrainingParamValidator:
         v = TrainingParamValidator()
         r = v.validate("configure_training", {"epoch": 99999})
         assert not r.is_valid
-        assert "suspiciously large" in r.error_message
+        assert "suspiciously large" in _error_message(r)
 
     def test_epoch_non_numeric(self):
         v = TrainingParamValidator()
@@ -160,6 +168,81 @@ class TestTrainingParamValidator:
 
 
 # ---------------------------------------------------------------------------
+# Tool Schema Validator
+# ---------------------------------------------------------------------------
+
+
+class TestToolSchemaValidator:
+    def test_missing_required_param_rejected(self):
+        v = ToolSchemaValidator(
+            {
+                "scan_source": {
+                    "type": "object",
+                    "properties": {"source_path": {"type": "string"}},
+                    "required": ["source_path"],
+                }
+            }
+        )
+        r = v.validate("scan_source", {})
+        assert not r.is_valid
+        assert "Missing required" in _error_message(r)
+
+    def test_type_mismatch_rejected(self):
+        v = ToolSchemaValidator(
+            {
+                "epoch_data": {
+                    "type": "object",
+                    "properties": {"event_id": {"type": "array"}},
+                }
+            }
+        )
+        r = v.validate("epoch_data", {"event_id": 769})
+        assert not r.is_valid
+        assert "event_id must be array" in _error_message(r)
+
+    def test_enum_mismatch_rejected(self):
+        v = ToolSchemaValidator(
+            {
+                "generate_dataset": {
+                    "type": "object",
+                    "properties": {
+                        "split_strategy": {
+                            "type": "string",
+                            "enum": ["trial", "session", "subject"],
+                        }
+                    },
+                }
+            }
+        )
+        r = v.validate("generate_dataset", {"split_strategy": "individual"})
+        assert not r.is_valid
+        assert "split_strategy must be one of" in _error_message(r)
+
+    def test_enum_accepts_case_variants(self):
+        v = ToolSchemaValidator(
+            {
+                "set_model": {
+                    "type": "object",
+                    "properties": {
+                        "model_name": {
+                            "type": "string",
+                            "enum": ["EEGNet", "ShallowConvNet", "SCCNet"],
+                        }
+                    },
+                }
+            }
+        )
+        r = v.validate("set_model", {"model_name": "eegnet"})
+        assert r.is_valid
+
+    def test_unknown_tool_rejected(self):
+        v = ToolSchemaValidator({"scan_source": {"type": "object"}})
+        r = v.validate("create_epoch", {})
+        assert not r.is_valid
+        assert "not registered" in _error_message(r)
+
+
+# ---------------------------------------------------------------------------
 # Path Exists Validator
 # ---------------------------------------------------------------------------
 
@@ -174,7 +257,7 @@ class TestPathExistsValidator:
         v = PathExistsValidator()
         r = v.validate("load_data", {"file_path": "/nonexistent/path/xyz"})
         assert not r.is_valid
-        assert "does not exist" in r.error_message
+        assert "does not exist" in _error_message(r)
 
     def test_directory_param(self, tmp_path):
         v = PathExistsValidator()
@@ -204,7 +287,7 @@ class TestVerificationLayerWithValidators:
             ("apply_bandpass_filter", {"low_freq": 50, "high_freq": 10})
         )
         assert not r.is_valid
-        assert "must be <" in r.error_message
+        assert "must be <" in _error_message(r)
 
     def test_custom_validators(self):
         v = VerificationLayer(validators=[FrequencyRangeValidator()])
@@ -217,3 +300,18 @@ class TestVerificationLayerWithValidators:
         v = VerificationLayer(validators=[])
         r = v.verify_tool_call(("anything", {"epoch": -999}))
         assert r.is_valid  # no validators = no parameter rejection
+
+    def test_tool_schema_validation_runs_before_execution_validators(self):
+        v = VerificationLayer(
+            validators=[],
+            tool_schemas={
+                "scan_source": {
+                    "type": "object",
+                    "properties": {"source_path": {"type": "string"}},
+                    "required": ["source_path"],
+                }
+            },
+        )
+        r = v.verify_tool_call(("scan_source", {}))
+        assert not r.is_valid
+        assert "Missing required" in _error_message(r)

@@ -42,6 +42,13 @@
   payload 轉回 typed `ApplicationService` command。
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
+- 真 local LLM tool-call runner 已新增，使用同一份 `54` cases / scorer 接 primary /
+  fallback 模型 raw output 並各重跑 `3` 次：
+  - primary `microsoft/Phi-4-mini-instruct`：`18 / 54` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`20 / 54` pass。
+  這是 engineering evidence，不是 thesis-ready accuracy。
+- `VerificationLayer` 已補 registered tool schema / required / type / enum 檢查，controller
+  會在 execution 前攔可解析但不可執行的 tool JSON。
 - Data Interpretation System 仍未完成；目前尚缺 label import recipe integration、完整 MCP server
   和更完整的 UI replay coverage。（MCP-ready schema / headless adapter 已有；backend
   non-mocked source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有；
@@ -134,7 +141,10 @@ Goal 1 至少要包含：
 9. **Evaluation baseline**
    - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
-     （目前 deterministic baseline 為 `54` cases；仍不是 local LLM 真實能力證明。）
+     （目前 deterministic baseline 為 `54 / 54` pass。）
+   - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
+     目前 primary `18 / 54` pass、fallback `20 / 54` pass，只能作為 engineering baseline
+     和 failure taxonomy，不能當 thesis-grade accuracy claim。
    - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計。
@@ -244,7 +254,9 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 Data Interpretation System 已完成，除非 source path 到 recipe 的流程真的可用。
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
-- 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy。
+- 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
+  真模型 `54` case runner 已有 evidence，但 pass rate 仍只有 `33.33%` / `37.04%`，不能宣稱
+  thesis-ready。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。

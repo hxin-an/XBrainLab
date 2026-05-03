@@ -37,6 +37,42 @@
 
 ## 2026-05-04
 
+### 03:50 Local LLM tool-call runner and schema verifier
+
+- 做了什麼：
+  - 新增 `scripts/agent/evals/run_local_tool_call_eval.py`，用同一份 `54` cases / scorer 接真
+    local model raw output，並保存 parsed tool calls、schema verification、score breakdown 和
+    failure taxonomy。
+  - `CommandParser` 補 `arguments`、top-level `name` 和 `tool_calls` list 解析。
+  - `VerificationLayer` 補 registered tool schema / required / type / enum 檢查，並讓
+    `LLMController` 用 real `ToolRegistry` schema 初始化 verifier。
+  - verifier rejection 改成 user-facing repair prompt + structured history，不再讓使用者看到
+    schema/debug wording 或空白回覆。
+  - 跑 primary / fallback full local eval，各 `54` cases x `3` repeats。
+- 結果：
+  - primary `microsoft/Phi-4-mini-instruct`：`18 / 54` pass，schema-invalid outputs `9`。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`20 / 54` pass，schema-invalid outputs `6`。
+  - local LLM tool-call runner / evidence 已建立；目前 pass rate 明確不能宣稱 thesis-ready。
+- 證據：
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.json`
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.json`
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py -q` -> `44 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_controller_integration.py tests/integration/agent/test_product_flow.py tests/integration/agent/test_tool_call_eval.py -q` -> `98 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py -q` -> `383 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `35 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q` -> `34 passed, 8 warnings`
+  - pipeline smoke -> `2 passed`
+  - `poetry run python scripts/dev/update_quality_dashboard.py` -> overall `PASS`
+  - targeted `ruff` / `basedpyright` clean。
+  - final `ruff` / `basedpyright` / `mkdocs build --strict` / `architecture_compliance` / `git diff --check`
+    clean。
+- 接續 / 本輪剩餘：
+  - 真 ChatPanel 長時間 workflow、完整 MCP server、label import recipe integration 尚未完成。
+  - local LLM accuracy 需要 prompt / tool taxonomy / verifier feedback 後續改善，不能把這輪 report
+    當 thesis-grade result。
+
 ### 03:22 Label import compatibility wording
 
 - 做了什麼：

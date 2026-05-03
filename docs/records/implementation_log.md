@@ -28,6 +28,65 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Local LLM tool-call runner and schema verifier
+
+### 背景
+
+Goal 1 不能只用 deterministic scorer 宣稱 agent tool-call evidence。既有
+`run_tool_call_eval.py` 已有 `54` 個 cases，但仍是 scripted baseline；同時 local model output
+可能是可解析 JSON，卻使用未註冊 tool name、缺 required parameter 或不合法 enum，不能等到 backend
+execution 才發現。
+
+### 變更
+
+- 新增 `scripts/agent/evals/run_local_tool_call_eval.py`：
+  - 共用 deterministic eval 的 cases、state fixtures 和 scoring dimensions。
+  - 接真 local model raw output，保存 per-repeat raw output、parsed tool calls、schema verification
+    和 score breakdown。
+  - 支援 `--model-role primary|fallback`、`--repeat-count`、`--case-id`、`--case-limit` 和
+    `--max-new-tokens`。
+- `CommandParser` 可解析 `parameters` / `arguments`、top-level `name`，以及 `tool_calls` list。
+- `VerificationLayer` 增加 `ToolSchemaValidator`，可檢查 unknown tool、required input、JSON-like
+  type 和 enum。
+- `LLMController` 用目前 real `ToolRegistry` schema 建立 `VerificationLayer`，因此可在 tool
+  execution 前攔下 schema-invalid JSON。
+- verifier rejection 會轉成 user-facing repair prompt 並寫入 structured `Tool Output`
+  diagnostics，不再裸露 schema wording 或進入無限 retry。
+
+### 影響範圍
+
+- Agent parser / verifier / controller。
+- Local tool-call eval artifacts。
+- Validation docs。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py -q` -> `44 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_controller_integration.py tests/integration/agent/test_product_flow.py tests/integration/agent/test_tool_call_eval.py -q` -> `98 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py -q` -> `383 passed`
+- `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `35 passed`
+- `poetry run pytest --capture=sys tests/integration/backend tests/integration/io/test_io_integration.py -q` -> `34 passed, 8 warnings`
+- pipeline smoke -> `2 passed`
+- `poetry run python scripts/dev/update_quality_dashboard.py` -> overall `PASS`
+- final `ruff` / `basedpyright` / `mkdocs build --strict` / `architecture_compliance` / `git diff --check`
+  clean。
+- primary full local eval：
+  - `54` cases x `3` repeats。
+  - `18 / 54` pass，pass rate `33.33%`。
+  - schema-invalid outputs `9`。
+- fallback full local eval：
+  - `54` cases x `3` repeats。
+  - `20 / 54` pass，pass rate `37.04%`。
+  - schema-invalid outputs `6`。
+
+### 剩餘風險
+
+- 這是 local LLM raw-output evidence，不是真 ChatPanel 長時間 walkthrough。
+- 目前 pass rate 只支撐 failure taxonomy 和 engineering baseline，不能宣稱 thesis-ready
+  tool-call accuracy。
+- VerificationLayer 現在有 schema gate，但 self-correction / prompt feedback 還需要後續改善，
+  否則 schema-invalid output 只會被攔下，不代表模型會自動修好。
+
 ## 2026-05-04 Label import compatibility wording
 
 ### 背景

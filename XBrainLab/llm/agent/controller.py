@@ -139,7 +139,11 @@ class LLMController(QObject):
             self.registry.register(tool)
 
         self.assembler = ContextAssembler(self.registry, self.study)
-        self.verifier = VerificationLayer()  # Default confidence threshold
+        self.verifier = VerificationLayer(
+            tool_schemas={
+                tool.name: tool.parameters for tool in self.registry.get_all_tools()
+            },
+        )
 
         # Initialize RAG Retriever
         self.rag_retriever = RAGRetriever()
@@ -570,14 +574,11 @@ class LLMController(QObject):
                     "Tool rejected by Verifier: %s",
                     validation.error_message,
                 )
-                self.status_update.emit(f"Blocked: {validation.error_message}")
-                self._append_history(
-                    "user",
-                    f"System: Tool call REJECTED: {validation.error_message}",
+                self._handle_verification_failure(
+                    cmd,
+                    validation.error_message or "Tool call did not pass validation.",
                 )
-                has_failure = True  # Treat as failure to trigger retry loop
-                # Do not execute remaining commands — let LLM fix.
-                break
+                return
 
             availability = self._check_tool_availability(cmd)
             if availability is not None:
@@ -714,6 +715,39 @@ class LLMController(QObject):
         self.status_update.emit("Ready")
         self.is_processing = False
         self.processing_finished.emit()
+
+    def _handle_verification_failure(self, command_name: str, message: str) -> None:
+        """Stop on verifier rejection with a user-facing repair prompt."""
+        mapped_command = TOOL_TO_COMMAND.get(command_name)
+        result = ToolCommandResult.failure(
+            command_name,
+            self._verification_failure_message(command_name, message),
+            command_name=mapped_command.value if mapped_command is not None else None,
+            state=self._application_state_payload(),
+            raw_result=message,
+            error_type="input",
+            recoverable=True,
+        )
+        user_message = self._summarize_tool_result(command_name, False, result)
+        self.status_update.emit(f"Blocked: {user_message}")
+        self.response_ready.emit("System", user_message)
+        self._visible_response_sent = True
+        self._last_tool_summary = user_message
+        self._append_history(
+            "user",
+            f"Tool Output: {self._format_tool_output(command_name, False, result)}",
+        )
+        self._finalize_turn_after_tool()
+
+    @staticmethod
+    def _verification_failure_message(command_name: str, message: str) -> str:
+        """Convert verifier diagnostics into stable internal tool output text."""
+        lower = message.lower()
+        if command_name == "list_files" and "directory" in lower:
+            return "directory is required"
+        if "missing required parameter" in lower:
+            return message.replace("Missing required parameter(s)", "Required input")
+        return message
 
     def on_user_confirmed(self, approved: bool):
         """Resume tool execution after a HITL confirmation dialog.

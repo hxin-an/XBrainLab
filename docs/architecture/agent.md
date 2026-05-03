@@ -1,6 +1,6 @@
 # Agent Architecture
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-04`
 
 ## 範圍
 
@@ -95,7 +95,8 @@ Study / cached controllers
 - 組 prompt：conversation history、workflow state、RAG examples、ApplicationService policy 可用工具與 blocked reason。
 - 讓 `AgentWorker` 在 background thread 生成回覆。
 - 用 `CommandParser` 從 LLM 文字輸出中找 tool call JSON。
-- 用 `VerificationLayer` 檢查參數、confidence、部分資料範圍。
+- 用 `VerificationLayer` 檢查 registered tool schema、required parameter、JSON-like type、
+  enum、confidence 和部分資料範圍。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 對 mapped workflow tools 優先透過 `execute_application_tool_command(...)` 執行
   ApplicationService command，直接取得 `CommandResult` payload。
@@ -165,6 +166,9 @@ XBrainLab/llm/core/models
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
 目前 primary / fallback local LLM 已通過 GPU prompt smoke 和 structured-output smoke。
+Goal 1 後續也新增真 local LLM tool-call runner，使用同一份 `54` cases / scorer 對 primary /
+fallback raw output 各重跑 `3` 次；目前 primary `18 / 54` pass、fallback `20 / 54` pass。
+這是可重跑 evidence 和 failure taxonomy，不是 thesis-ready accuracy claim。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端

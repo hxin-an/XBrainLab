@@ -11,7 +11,9 @@ def test_valid_json_command():
     }
     ```
     """
-    cmd, params = CommandParser.parse(text)[0]
+    parsed = CommandParser.parse(text)
+    assert parsed is not None
+    cmd, params = parsed[0]
     assert cmd == "load_data"
     assert params == {"file_paths": ["/data/A.gdf"]}
 
@@ -43,6 +45,31 @@ def test_json_without_markdown():
     assert result is None
 
 
+def test_parse_arguments_alias():
+    text = '{"tool_name":"scan_source","arguments":{"source_path":"/data"}}'
+    parsed = CommandParser.parse(text)
+    assert parsed is not None
+    cmd, params = parsed[0]
+    assert cmd == "scan_source"
+    assert params == {"source_path": "/data"}
+
+
+def test_parse_tool_calls_list():
+    text = """
+    {
+      "tool_calls": [
+        {"tool_name": "scan_source", "arguments": {"source_path": "/data"}},
+        {"tool_name": "preview_interpretation", "parameters": {}}
+      ]
+    }
+    """
+    result = CommandParser.parse(text)
+    assert result == [
+        ("scan_source", {"source_path": "/data"}),
+        ("preview_interpretation", {}),
+    ]
+
+
 def test_parse_relaxed_json_block():
     # Case 1: Uppercase JSON
     text_caps = """
@@ -54,7 +81,9 @@ def test_parse_relaxed_json_block():
     }
     ```
     """
-    cmd, params = CommandParser.parse(text_caps)[0]
+    parsed = CommandParser.parse(text_caps)
+    assert parsed is not None
+    cmd, params = parsed[0]
     assert cmd == "test_cmd"
     assert params == {"k": "v"}
 
@@ -67,6 +96,8 @@ def test_parse_relaxed_json_block():
     }
     ```
     """
-    cmd2, params2 = CommandParser.parse(text_no_lang)[0]
+    parsed2 = CommandParser.parse(text_no_lang)
+    assert parsed2 is not None
+    cmd2, params2 = parsed2[0]
     assert cmd2 == "test_cmd_2"
     assert params2 == {"x": 1}

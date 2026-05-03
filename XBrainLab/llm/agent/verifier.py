@@ -158,6 +158,85 @@ class TrainingParamValidator(ValidatorStrategy):
         return VerificationResult(is_valid=True)
 
 
+class ToolSchemaValidator(ValidatorStrategy):
+    """Validate tool parameters against the registered JSON-like schema."""
+
+    def __init__(self, tool_schemas: dict[str, dict[str, Any]]):
+        self.tool_schemas = tool_schemas
+
+    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
+        schema = self.tool_schemas.get(name)
+        if schema is None:
+            return VerificationResult(
+                is_valid=False,
+                error_message=f"Tool is not registered: {name}",
+            )
+
+        required = schema.get("required", [])
+        if isinstance(required, list):
+            missing = [field for field in required if field not in params]
+            if missing:
+                return VerificationResult(
+                    is_valid=False,
+                    error_message=(
+                        f"Missing required parameter(s) for {name}: "
+                        f"{', '.join(str(field) for field in missing)}"
+                    ),
+                )
+
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            return VerificationResult(is_valid=True)
+
+        for param_name, value in params.items():
+            property_schema = properties.get(param_name)
+            if not isinstance(property_schema, dict):
+                continue
+
+            enum_values = property_schema.get("enum")
+            if isinstance(enum_values, list) and not _json_enum_matches(
+                value,
+                enum_values,
+            ):
+                return VerificationResult(
+                    is_valid=False,
+                    error_message=(
+                        f"{param_name} must be one of {enum_values}, got {value!r}"
+                    ),
+                )
+
+            expected_type = property_schema.get("type")
+            type_result = self._validate_type(param_name, value, expected_type)
+            if not type_result.is_valid:
+                return type_result
+
+        return VerificationResult(is_valid=True)
+
+    @staticmethod
+    def _validate_type(
+        param_name: str,
+        value: Any,
+        expected_type: Any,
+    ) -> VerificationResult:
+        if expected_type is None:
+            return VerificationResult(is_valid=True)
+
+        expected = (
+            [str(item) for item in expected_type]
+            if isinstance(expected_type, list)
+            else [str(expected_type)]
+        )
+        if any(_json_type_matches(value, item) for item in expected):
+            return VerificationResult(is_valid=True)
+        return VerificationResult(
+            is_valid=False,
+            error_message=(
+                f"{param_name} must be {', '.join(expected)}, "
+                f"got {type(value).__name__}"
+            ),
+        )
+
+
 class PathExistsValidator(ValidatorStrategy):
     """Reject file/directory tool calls where path does not exist."""
 
@@ -196,6 +275,37 @@ DEFAULT_VALIDATORS: list[ValidatorStrategy] = [
 ]
 
 
+def _json_type_matches(value: Any, expected_type: str) -> bool:
+    """Return whether a Python value matches a JSON-schema primitive type."""
+    if expected_type == "string":
+        return isinstance(value, str)
+    if expected_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected_type == "boolean":
+        return isinstance(value, bool)
+    if expected_type == "array":
+        return isinstance(value, list)
+    if expected_type == "object":
+        return isinstance(value, dict)
+    if expected_type == "null":
+        return value is None
+    return True
+
+
+def _json_enum_matches(value: Any, enum_values: list[Any]) -> bool:
+    """Return whether a value matches an enum, accepting case variants."""
+    if value in enum_values:
+        return True
+    if isinstance(value, str):
+        lowered = value.lower()
+        return any(
+            isinstance(item, str) and item.lower() == lowered for item in enum_values
+        )
+    return False
+
+
 class VerificationLayer:
     """Safety guard between LLM output and tool execution.
 
@@ -215,6 +325,7 @@ class VerificationLayer:
         self,
         confidence_threshold: float = 0.5,
         validators: list[ValidatorStrategy] | None = None,
+        tool_schemas: dict[str, dict[str, Any]] | None = None,
     ):
         """Initializes the VerificationLayer.
 
@@ -223,10 +334,16 @@ class VerificationLayer:
                 tool call to be considered valid. Defaults to ``0.5``.
             validators: Optional list of ``ValidatorStrategy``
                 instances.  Defaults to :data:`DEFAULT_VALIDATORS`.
+            tool_schemas: Optional registered tool schemas used to validate
+                required fields, JSON-like parameter types, enums, and
+                unknown tool names before execution.
 
         """
         self.confidence_threshold = confidence_threshold
-        self.validators = (
+        self.validators = []
+        if tool_schemas is not None:
+            self.validators.append(ToolSchemaValidator(tool_schemas))
+        self.validators.extend(
             validators if validators is not None else list(DEFAULT_VALIDATORS)
         )
 

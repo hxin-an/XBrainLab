@@ -281,8 +281,10 @@ class TestProcessToolCalls:
             is_valid=False, error_message="bad call"
         )
         ctrl._generate_response = MagicMock()
+        ctrl._handle_verification_failure = MagicMock()
         ctrl._process_tool_calls([("cmd", {})], "json")
-        ctrl._generate_response.assert_called_once()
+        ctrl._handle_verification_failure.assert_called_once_with("cmd", "bad call")
+        ctrl._generate_response.assert_not_called()
 
 
 # --- close ---

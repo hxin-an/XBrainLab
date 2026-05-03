@@ -63,14 +63,18 @@ def test_controller_verification_flow_rejection(qapp):
         controller._process_tool_calls([command], response_text)
 
         # Assertions
-        # 1. Status updated with Blocked message
-        status_mock.assert_any_call("Blocked: Safety Violation")
+        # 1. Status updated with a user-facing blocked message.
+        assert any(
+            "Blocked:" in str(call.args[0]) and "Safety Violation" in str(call.args[0])
+            for call in status_mock.call_args_list
+        )
 
-        # 2. History updated with rejection feedback
+        # 2. History updated with structured tool-output feedback
         last_msg = controller.history[-1]
         assert (
             last_msg["role"] == "user"
         )  # Feedback is user role (System message simulation)
-        assert "Tool call REJECTED: Safety Violation" in last_msg["content"]
+        assert "Tool Output:" in last_msg["content"]
+        assert "Safety Violation" in last_msg["content"]
 
         controller.close()
