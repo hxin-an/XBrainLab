@@ -1,6 +1,6 @@
 # XBrainLab Thesis Context
 
-最後更新：`2026-05-01`
+最後更新：`2026-05-03`
 
 ## 這份文件的用途
 
@@ -23,6 +23,10 @@ XBrainLab 目前支撐三條互相關聯的工作：
 2. 重設 app 內 tool-call agent 架構。
 3. 建立足以支撐論文主張的驗證證據。
 
+論文要仔細驗證的是 agent tool-call accuracy，不是 EEG model training accuracy。EEG
+training / evaluation 是產品 workflow 的任務環境與 sanity check，用來確認 agent 操作的是
+真實可用的科學軟體流程；它不能取代 tool-call scoring。
+
 ## 目前研究問題雛形
 
 待整理成正式文字：
@@ -30,6 +34,16 @@ XBrainLab 目前支撐三條互相關聯的工作：
 - 如何在既有科學桌面軟體中引入 workflow-aware tool-calling agent？
 - 如何讓 agent 操作軟體能力面，而不是只成為聊天介面？
 - 如何用可重現的工程驗證支撐 agent reliability / workflow success 的論文 claim？
+
+目前主要 metrics 應圍繞：
+
+- intent accuracy
+- tool selection accuracy
+- parameter accuracy
+- state-transition accuracy
+- blocked-command handling accuracy
+- error-recovery / self-correction success rate
+- invalid / unsafe call rate
 
 ## 工程和論文的邊界
 

@@ -78,7 +78,8 @@ UI baseline capture 結果：
 
 - Windows Desktop launcher 人工 click-through。
 - true local LLM ChatPanel 長時間 walkthrough。
-- external thesis dataset experiment / statistical reporting。
+- local LLM primary / fallback tool-call accuracy run、score report、failure taxonomy。
+- external EEG dataset experiment / statistical reporting 只是 pipeline support，不是 thesis 主評分。
 
 data pipeline 文件驗證時也重跑：
 
@@ -212,7 +213,8 @@ launcher click-through，也不是真 local model 長時間 UI walkthrough。
 
 這批 evidence 支撐 first-run consent、disabled / cache status UI 邏輯、service-backed
 evaluation / visualization / saliency summary query、split artifact schema 與 leakage audit。
-它仍不是真 local model 長時間 UI walkthrough，也不是 external thesis dataset experiment。
+它仍不是真 local model 長時間 UI walkthrough，也不是 local LLM tool-call accuracy run。external
+EEG dataset experiment 屬於 pipeline support，不是 thesis 主評分。
 
 本輪 validation closure：
 
@@ -375,7 +377,8 @@ fast quality dashboard 的 clean 判定不是只看 script 有沒有跑完。
 - 真實 Qt event timing / thread race。
 - 真實 LLM local runtime、GPU、model cache、tool-call output。
 - controller -> manager -> data pipeline 的完整 side effect。
-- 長時間訓練、真實資料集 reproducibility、thesis-grade validation。
+- 長時間訓練、真實資料集 reproducibility。
+- thesis-grade tool-call validation。
 
 所以 test health 的判讀是：
 
@@ -453,14 +456,28 @@ docs/validation/thesis_protocol.md
 docs/validation/split_artifact_schema.json
 ```
 
-核心要求：
+核心定位：
+
+- 論文要仔細驗證的是 agent tool-call accuracy，不是 EEG 訓練準確率。
+- EEG data / split / training / evaluation 驗證只支撐產品 workflow 和 domain task sanity。
+- 不可把 train/evaluate accuracy、split audit 或 external dataset runner 當作 agent thesis
+  主結果。
+
+tool-call thesis evidence 核心要求：
+
+- 固定 benchmark cases。
+- 同一 cases 接 deterministic baseline 與 local LLM primary / fallback runner。
+- 比對 intent、tool selection、parameters、state transition、blocked-command handling、
+  error recovery 和 user-visible response。
+- 產生 machine-readable report 和 human-readable summary。
+
+EEG pipeline support 要求：
 
 - dataset source 分層：checked-in fixtures、public fixtures、external thesis datasets。
 - split protocol 明確標記 `trial-wise`、`session-wise` 或 `subject-wise`。
 - train / validation / test indices 必須保存，且 validation 必須從 test 之外的 remaining data 產生。
-- metrics 至少包含 accuracy、balanced accuracy、macro F1、AUC、confusion matrix。
+- 若報告 EEG model sanity，metrics 至少包含 accuracy、balanced accuracy、macro F1、AUC、confusion matrix。
 - baseline、config、logs、model summary、environment info 必須和 split artifact 一起保存。
-- agent tool-call accuracy eval 獨立於 EEG classification metrics。
 
 目前 code support：
 
@@ -472,8 +489,9 @@ poetry run pytest --capture=sys \
 poetry run python scripts/dev/validate_split_artifact.py artifacts/thesis/splits.json
 ```
 
-這只代表 protocol 與 artifact audit 能重跑；正式 thesis evidence 還需要 external dataset
-runner、repeat runs、baseline comparison 和 statistical reporting。
+這只代表 EEG split protocol 與 artifact audit 能重跑；正式 thesis evidence 還需要 local
+LLM tool-call runner、repeat runs、score report 和 failure taxonomy。external dataset runner、
+baseline comparison 和 statistical reporting 是 pipeline support，不是 tool-call thesis 主指標。
 
 ## Agent Runtime Validation
 
@@ -534,8 +552,8 @@ thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
 3. Local LLM runtime 需要 health check、prompt smoke、structured-output / tool-call smoke 和 fallback evidence。
 4. Desktop launcher 需要 startup smoke 與 missing local LLM 不閃退證據。
 5. Tool-call eval / thesis evidence 只在產品主線穩定後開始。
-6. Split artifact / thesis protocol 已建立；下一步才是 external thesis dataset runner 和 repeat runs。
-7. scoring system 可重跑後，再收集 thesis validation evidence matrix。
+6. Split artifact protocol 已建立，但它是 EEG pipeline support，不是 thesis 主評分。
+7. scoring system 可重跑後，再收集 tool-call thesis validation evidence matrix。
 8. Local LLM validation 只驗證符合選型限制的非中國模型；Qwen、DeepSeek、Yi、GLM、Baichuan、InternLM、MiniCPM 等不作為候選。
 
 ## 注意事項

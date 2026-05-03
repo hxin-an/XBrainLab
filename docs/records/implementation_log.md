@@ -28,6 +28,41 @@
 ### 剩餘風險
 ```
 
+## 2026-05-03 Thesis evidence positioning correction
+
+### 背景
+
+使用者指出論文要仔細驗證的是 agent tool-call 準確率，而不是 EEG 訓練準確率。既有文件雖然有
+寫 agent tool-call eval 要獨立於 EEG classification metrics，但 `thesis_protocol` 和部分
+validation wording 仍容易把 external dataset / training metrics 誤讀成 thesis 主線。
+
+### 變更
+
+- 將 `docs/validation/thesis_protocol.md` 改成 Thesis Tool-Call Evaluation Protocol。
+- 明確寫下 thesis 主指標：intent、tool selection、parameter、state-transition、
+  blocked-command handling、error recovery、invalid call rate、parser / verifier failure。
+- 將 EEG split、training / evaluation metrics、external dataset runner 降格為 product
+  pipeline support / domain task sanity。
+- 更新 `docs/validation/README.md`、`docs/architecture/validation.md`、`docs/current.md`、
+  `.agents/context/thesis.md` 和 backend goal runbook，避免後續 runner 被帶去優先做
+  training accuracy thesis。
+
+### 影響範圍
+
+- 文件定位與 agent 發包指令。
+- 不改 source code、不改測試、不改既有 split audit helper。
+
+### 驗證
+
+- `git diff --check`
+- `poetry run mkdocs build --strict`
+
+### 剩餘風險
+
+- records 裡的歷史紀錄仍保留當時 wording；current truth 已改到 validation / architecture /
+  thesis context。若後續要寫正式論文章節，還需要把 benchmark case schema 和 report format
+  落成程式碼。
+
 ## 2026-05-03 Supervisor delivery gate, window fallback, backend rollback boundary
 
 ### 背景

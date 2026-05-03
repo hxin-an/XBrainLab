@@ -84,9 +84,11 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
 
 - Dataset split command 要保存可審計 split protocol：seed、protocol、ratios、unit、expected train/val/test policy。
 - split audit blocking issue 必須 fail command 並 rollback，不可留下半成功狀態。
-- Empty validation/test 不可默默進 thesis path；若允許 exploratory mode，要明確標記。
-- Training / evaluation 不能在 thesis evidence path 默默 fallback 到 train loader 當 test。
+- Empty validation/test 不可默默進 formal pipeline evidence；若允許 exploratory mode，要明確標記。
+- Training / evaluation 不能在 formal pipeline evidence path 默默 fallback 到 train loader 當 test。
 - 每次 real training/evaluation smoke 要能產出 JSON/Markdown evidence。
+- 注意：EEG training/evaluation accuracy 不是目前 thesis 主評分。這一段只是在確保產品資料流程
+  可靠，讓後續 tool-call eval 有可信 workflow 環境。
 
 ### 3. Real UI Product E2E
 
@@ -98,7 +100,7 @@ blocked reason、success/failure、state refresh，都應該來自 `ApplicationS
 - 若完整 real UI test 太慢，建立 resource-safe profile，並清楚標出：
   - fast synthetic UI smoke 是什麼
   - real product E2E 是什麼
-  - thesis-grade validation 是什麼
+  - thesis-grade tool-call validation 是什麼
 - 不可再讓 `tests/integration/ui/test_product_walkthrough.py` 的 patched training 被文件描述成完整產品 E2E。
 
 ### 4. Agent Surface Alignment

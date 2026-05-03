@@ -37,6 +37,24 @@
 
 ## 2026-05-03
 
+### 17:10 Thesis evidence 主線校正
+
+- 做了什麼：
+  - 使用者指出論文要仔細驗證的是 tool-call 準確率，不是訓練準確率。
+  - 更新 thesis protocol、validation README、validation architecture、current docs、
+    `.agents/context/thesis.md` 和 backend goal runbook。
+- 結果：
+  - current truth 改成：agent tool-call accuracy 是 thesis 主線；EEG split / training /
+    evaluation metrics 是 product pipeline support，不可取代 tool-call scoring。
+  - 後續 goal runner 不應把 external EEG dataset experiment / training accuracy 當成主要
+    thesis milestone。
+- 證據：
+  - `git diff --check`
+  - `poetry run mkdocs build --strict`
+- 接續 / 本輪剩餘：
+  - 產品主線穩定後，才建立 local LLM primary / fallback tool-call accuracy run、score report
+    和 failure taxonomy。
+
 ### 00:40 Supervisor rule / window fallback / backend hardening review
 
 - 做了什麼：

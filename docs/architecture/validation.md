@@ -1,6 +1,6 @@
 # Validation Architecture
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-03`
 
 ## 範圍
 
@@ -15,9 +15,9 @@
   normal chat response、visible error、local unavailable、blocked-command feedback 必須有專門 gate。
 - local agent runtime 已有 2026-05-02 standalone smoke evidence，但尚未納入 fast dashboard
   預設 profile；product runtime 現在已是 local-only。
-- thesis-grade EEG validation 另有固定 protocol：split indices、config、metrics、logs、
-  model summary、environment info 都要成 artifact，且 agent tool-call eval 必須和 EEG
-  classification metrics 分開。
+- thesis-grade validation 的主指標是 agent tool-call accuracy。EEG split、training metrics、
+  model summary 和 environment artifact 只支撐 product pipeline / domain task sanity，不能取代
+  tool-call scoring。
 
 ## 驗證分層
 
@@ -37,17 +37,19 @@ tiny pipeline smoke
 quality dashboard
   |
   v
-scientific validation / thesis evidence mapping
+pipeline support / thesis evidence mapping
 ```
 
-這個順序不是執行頻率，而是可信度邊界。日常開發先看 dashboard；論文主張必須另外對應固定 protocol、baseline、statistics 和 threat analysis。
+這個順序不是執行頻率，而是可信度邊界。日常開發先看 dashboard；論文主張必須另外對應固定
+tool-call benchmark cases、scorer、repeat runs、artifact 和 threat analysis。EEG pipeline
+protocol 是支撐工作流可信度，不是主要 thesis accuracy。
 
 ## 主要位置
 
 | 位置 | 用途 |
 | --- | --- |
 | `docs/validation/README.md` | 現行驗證狀態與 evidence 邊界。 |
-| `docs/validation/thesis_protocol.md` | thesis-grade split、metrics、artifact、rerun / audit protocol。 |
+| `docs/validation/thesis_protocol.md` | thesis-grade tool-call scoring protocol；包含 EEG split artifact 作為 pipeline support。 |
 | `XBrainLab/backend/dataset/split_audit.py` | split indices artifact helper 與 leakage audit。 |
 | `scripts/dev/validate_split_artifact.py` | split artifact schema / leakage audit CLI。 |
 | `scripts/dev/update_quality_dashboard.py` | fast dashboard 產生器。 |
@@ -268,7 +270,7 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
   - `31 passed, 8 warnings`
   - selected pipeline smoke：`2 passed`
 
-2026-05-02 thesis validation protocol slice：
+2026-05-02 pipeline support protocol slice：
 
 - `docs/validation/thesis_protocol.md`
 - `docs/validation/split_artifact_schema.json`
@@ -279,7 +281,7 @@ poetry run python scripts/dev/inspect_local_assistant_runtime.py \
   - `tests/unit/scripts/test_validate_split_artifact.py`
 
 這批 evidence 只證明 split artifact schema、index mutual exclusion、subject/session leakage
-audit 和 validator CLI 可用。它不能取代 external thesis dataset experiment。
+audit 和 validator CLI 可用。它不能取代 local LLM tool-call accuracy run。
 
 這些是 `2026-05-02` 的工程 evidence。引用到論文時，還需要 thesis validation layer。
 dashboard `PASS` 仍不能取代真人 launcher click-through 或真 local model chat walkthrough。
