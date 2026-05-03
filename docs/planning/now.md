@@ -30,13 +30,17 @@
 目前實作狀態要保守判斷：
 
 - `ApplicationService / Command API` baseline 已存在，可作為後續重構骨架。
-- Data Interpretation 的 backend command baseline 已新增，但 UI / agent / headless 還沒完成遷移。
-- UI / agent 已有第一批 capability policy / typed result 對齊，但仍受舊資料入口影響。
-- 目前 agent 實際 tool surface 仍有 `load_data / attach_labels` 舊心智模型。
-- Data Interpretation System 仍未完成；目前只有 backend scan / preview / validate / apply /
-  recipe command baseline。
-- command-specific autonomy policy / decision boundary 仍是 target design，還不是實作完成。
-- subject / session / task / run metadata resolution 尚未成為資料入口核心流程。
+- Data Interpretation 的 backend command baseline 已新增。
+- agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
+  boundary。
+- Dataset panel 的主要資料入口已從 `Import Data` 改為 `Interpret Data Source`，並走
+  scan -> preview -> validate -> confirm/apply；但 label import、headless / MCP、eval case
+  taxonomy 尚未完成遷移。
+- Data Interpretation System 仍未完成；目前尚缺 recipe save UI、headless / MCP adapter、
+  UI-observable replay artifact 和完整 source -> recipe -> preprocess -> epoch -> dataset
+  non-mocked evidence。
+- subject / session / task / run metadata resolution 已可在 preview dialog 呈現，但 override /
+  recipe UI 尚未完成。
 
 ## 下一個 Goal
 
@@ -107,14 +111,14 @@ Goal 1 至少要包含：
 
 7. **UI import entry redesign**
    - 使用者給 file / folder / BIDS root / recipe。
-   - UI 顯示 scan / preview / validation / confirmation。
-   - 不再以 `Imported` / `Labels attached` 作為資料可信主語言。
+   - UI 顯示 scan / preview / validation / confirmation。（preview dialog 已完成第一版。）
+   - 不再以 `Imported` / `Labels attached` 作為資料可信主語言。（主 import entry 已改；
+     label import messaging 仍待收斂。）
    - 使用者已允許為新 Data Interpretation / load data 機制修改資料入口 UI；不能因為 UI
      會大改就只做 backend 或把新流程塞回舊 import 外殼。
 
 8. **Agent alignment**
-   - Context Assembler 暴露 Data Interpretation tools。（agent surface slice 已完成；UI flow
-     仍未完成。）
+   - Context Assembler 暴露 Data Interpretation tools。（agent surface slice 已完成。）
    - Verification Layer 檢查 capability policy、Data Interpretation decision 和 autonomy policy。
      （目前已檢查 backend capability / dynamic confirmation boundary；完整 Data Interpretation
      decision-aware planner / eval cases 仍未完成。）

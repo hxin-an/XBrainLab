@@ -7,6 +7,12 @@ from typing import Any
 from XBrainLab.backend.application import CommandName
 
 COMMAND_LABELS: dict[str, str] = {
+    CommandName.SCAN_SOURCE.value: "Scan data source",
+    CommandName.PREVIEW_INTERPRETATION.value: "Preview data interpretation",
+    CommandName.VALIDATE_INTERPRETATION.value: "Validate data interpretation",
+    CommandName.APPLY_INTERPRETATION.value: "Apply data interpretation",
+    CommandName.SAVE_INTERPRETATION_RECIPE.value: "Save interpretation recipe",
+    CommandName.RELOAD_INTERPRETATION_RECIPE.value: "Reload interpretation recipe",
     CommandName.LOAD_DATA.value: "Load EEG data",
     CommandName.ATTACH_LABELS.value: "Attach labels",
     CommandName.PREPROCESS.value: "Preprocess data",
@@ -26,6 +32,12 @@ TOOL_ACTION_LABELS: dict[str, str] = {
     "start_training": "Start training",
     "stop_training": "Stop training",
     "clear_dataset": "Clear dataset",
+    "scan_source": "Scan data source",
+    "preview_interpretation": "Preview data interpretation",
+    "validate_interpretation": "Validate data interpretation",
+    "apply_interpretation": "Apply data interpretation",
+    "save_interpretation_recipe": "Save interpretation recipe",
+    "reload_interpretation_recipe": "Reload interpretation recipe",
     "load_data": "Load EEG data",
     "preprocess_data": "Preprocess data",
     "create_epochs": "Create epochs",

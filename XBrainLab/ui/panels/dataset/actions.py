@@ -4,17 +4,23 @@ Provides logic for importing EEG data files, applying labels,
 running smart parse, and managing event filtering.
 """
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
 
 from XBrainLab.backend.application import (
+    ApplyInterpretationCommand,
     ApplySmartParseCommand,
     CommandName,
     ImportLabelsCommand,
     LabelImportPlan,
     LoadDataCommand,
     MetadataUpdate,
+    PreviewInterpretationCommand,
     RemoveFilesCommand,
+    ScanSourceCommand,
     UpdateMetadataCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
@@ -23,6 +29,7 @@ from XBrainLab.ui.application_capabilities import (
     get_command_capability,
 )
 from XBrainLab.ui.dialogs.dataset import (
+    DataInterpretationPreviewDialog,
     EventFilterDialog,
     ImportLabelDialog,
     LabelMappingDialog,
@@ -61,15 +68,15 @@ class DatasetActionHandler:
         return getattr(self.panel, "main_window", None)
 
     def import_data(self):
-        """Opens a file dialog to select and import EEG data files."""
-        load_capability = get_command_capability(self.panel, CommandName.LOAD_DATA)
-        if load_capability is not None and not load_capability.enabled:
+        """Scan, preview, validate, and apply an EEG data interpretation."""
+        scan_capability = get_command_capability(self.panel, CommandName.SCAN_SOURCE)
+        if scan_capability is not None and not scan_capability.enabled:
             QMessageBox.warning(
                 self.panel,
-                "Import Blocked",
+                "Interpretation Blocked",
                 blocked_reason(
-                    load_capability,
-                    "Dataset is locked. Please clear or reset before importing.",
+                    scan_capability,
+                    "Data interpretation is not available right now.",
                 ),
             )
             return
@@ -84,8 +91,8 @@ class DatasetActionHandler:
         if controller.is_locked():
             QMessageBox.warning(
                 self.panel,
-                "Import Blocked",
-                "Dataset is locked. Please 'Clear Dataset' before importing.",
+                "Interpretation Blocked",
+                "Dataset is locked. Please clear or reset before importing.",
             )
             return
 
@@ -96,29 +103,153 @@ class DatasetActionHandler:
         )
         filepaths, _ = QFileDialog.getOpenFileNames(
             self.panel,
-            "Open EEG Data",
+            "Choose EEG Source for Interpretation",
             "",
             filter_str,
         )
         if filepaths:
             try:
-                result = execute_application_command(
-                    self.panel,
-                    LoadDataCommand(paths=list(filepaths)),
-                )
-                if result is None:
+                handled = self._run_data_interpretation_import(list(filepaths))
+                if not handled:
+                    result = execute_application_command(
+                        self.panel,
+                        LoadDataCommand(paths=list(filepaths)),
+                    )
+                    if result is not None and result.failed:
+                        QMessageBox.critical(
+                            self.panel,
+                            "Import failed",
+                            result.message,
+                        )
+                        return
                     controller.import_files(filepaths)
                     return
-                if result.ok:
-                    self.panel.update_panel()
-                else:
-                    QMessageBox.critical(
-                        self.panel,
-                        "Import failed",
-                        result.message,
-                    )
             except Exception as e:
                 QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
+
+    def _run_data_interpretation_import(self, filepaths: list[str]) -> bool:
+        """Run the Data Interpretation command sequence for selected files."""
+        source_path, choices = self._interpretation_source_and_choices(filepaths)
+        scan_result = execute_application_command(
+            self.panel,
+            ScanSourceCommand(source_path=source_path),
+        )
+        if scan_result is None:
+            return False
+        if scan_result.failed:
+            QMessageBox.critical(self.panel, "Source scan failed", scan_result.message)
+            return True
+
+        preview_result = execute_application_command(
+            self.panel,
+            PreviewInterpretationCommand(choices=choices),
+        )
+        if preview_result is None:
+            return False
+        if preview_result.failed:
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation preview failed",
+                preview_result.message,
+            )
+            return True
+
+        candidate = self._diagnostic_payload(preview_result, "candidate")
+        candidate_id = self._optional_payload_id(candidate, "candidate_id")
+        validation_result = execute_application_command(
+            self.panel,
+            ValidateInterpretationCommand(candidate_id=candidate_id),
+        )
+        if validation_result is None:
+            return False
+        if validation_result.failed:
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation validation failed",
+                validation_result.message,
+            )
+            return True
+
+        scan = self._diagnostic_payload(scan_result, "scan_result")
+        preview = self._diagnostic_payload(preview_result, "preview")
+        decision = self._diagnostic_payload(
+            validation_result,
+            "validation_decision",
+        )
+        dialog = DataInterpretationPreviewDialog(
+            self.panel,
+            scan_result=scan,
+            preview=preview,
+            validation_decision=decision,
+        )
+        if not dialog.exec():
+            return True
+
+        if str(decision.get("decision")) == "blocked":
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation blocked",
+                self._decision_reason(decision),
+            )
+            return True
+
+        confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
+            dialog.get_result().get("confirmed"),
+        )
+        apply_result = execute_application_command(
+            self.panel,
+            ApplyInterpretationCommand(
+                candidate_id=self._optional_payload_id(decision, "candidate_id")
+                or candidate_id,
+                confirmed=confirmed,
+            ),
+        )
+        if apply_result is None:
+            return False
+        if apply_result.failed:
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation apply failed",
+                apply_result.message,
+            )
+            return True
+
+        self.panel.update_panel()
+        QMessageBox.information(
+            self.panel,
+            "Data interpreted",
+            apply_result.message,
+        )
+        return True
+
+    @staticmethod
+    def _interpretation_source_and_choices(
+        filepaths: list[str],
+    ) -> tuple[str, dict[str, list[str]]]:
+        if len(filepaths) == 1:
+            return filepaths[0], {}
+
+        parents = [str(Path(path).expanduser().parent) for path in filepaths]
+        unique_parents = sorted(set(parents))
+        source_path = unique_parents[0] if len(unique_parents) == 1 else filepaths[0]
+        return source_path, {"selected_eeg_files": list(filepaths)}
+
+    @staticmethod
+    def _diagnostic_payload(result, key: str) -> dict:
+        value = result.diagnostics.get(key, {})
+        return dict(value) if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _optional_payload_id(payload: dict, key: str) -> str | None:
+        value = payload.get(key)
+        return str(value) if value else None
+
+    @staticmethod
+    def _decision_reason(decision: dict) -> str:
+        reasons = decision.get("blocked_reasons") or decision.get("reasons") or []
+        if reasons:
+            return "\n".join(str(reason) for reason in reasons)
+        return "This data interpretation cannot be applied."
 
     def on_import_finished(self, success_count, errors):
         """Handle the import-finished callback from the controller.

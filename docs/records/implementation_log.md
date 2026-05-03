@@ -2484,3 +2484,61 @@ backend command baseline 完成後，agent 仍只註冊舊 `load_data / attach_l
 - headless / MCP adapter 仍未暴露新 command taxonomy。
 - deterministic / local LLM eval case set 尚未以 Data Interpretation 作為主要資料入口。
 - 尚未有完整 non-mocked synthetic workflow evidence。
+
+## 2026-05-04 Goal 1 Dataset panel Data Interpretation entry
+
+### 背景
+
+backend 和 agent surface 都有 Data Interpretation taxonomy 後，Dataset panel 仍用
+`Import Data` 直接載入 raw files。這會讓使用者可見的產品心智模型繼續停在舊
+`load_data` 路徑。
+
+### 變更
+
+- Dataset sidebar 主按鈕改為 `Interpret Data Source`。
+- `DatasetActionHandler.import_data()` 改為執行：
+  - `ScanSourceCommand`
+  - `PreviewInterpretationCommand`
+  - `ValidateInterpretationCommand`
+  - `ApplyInterpretationCommand`
+- 新增 `DataInterpretationPreviewDialog`：
+  - 顯示 source path。
+  - 顯示 preview summary。
+  - 顯示 validation decision。
+  - 顯示 subject / session / task / run metadata preview。
+  - 顯示 warnings / confirmation items / blocked reasons。
+  - `blocked` decision disable apply。
+- `needs_confirmation` decision 只有在使用者接受 preview dialog 後才帶 `confirmed=True`。
+- mock / unsupported panel path 保留 fallback 到 `LoadDataCommand` / legacy controller import，
+  以避免既有 mock-heavy tests 失去 compatibility。
+- 多檔跨資料夾選取不再使用 common filesystem root 作為 scan source，避免掃描過大的上層路徑。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q`
+  - `50 passed`
+- `poetry run pytest --capture=sys tests/unit/ui/dataset tests/unit/ui/dialogs/dataset tests/unit/ui/test_ui_misc.py tests/unit/ui/test_application_capabilities.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `166 passed`
+- `poetry run pytest --capture=sys tests/integration/agent/test_product_flow.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py -q`
+  - `76 passed`
+- `poetry run ruff check <ui data interpretation slice files>`
+  - pass
+- `poetry run basedpyright <ui data interpretation source files>`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run ruff check .`
+  - pass
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run mkdocs build --strict`
+  - pass
+- `poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant`
+- `git diff --check`
+  - pass
+
+### 不能宣稱完成
+
+- recipe save UI 尚未接上。
+- label import 仍是舊入口。
+- headless / MCP adapter 尚未暴露新 taxonomy。
+- 尚未有完整 non-mocked synthetic workflow evidence。

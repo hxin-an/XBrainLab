@@ -371,6 +371,34 @@ compatibility。它不支撐「UI import flow 已重做」、「agent tool taxon
 「UI import flow 已重做」、「headless / MCP adapter 已完成」或「local LLM 真實 tool-call
 accuracy 已驗證」。
 
+2026-05-04 Dataset panel Data Interpretation entry slice：
+
+- Dataset sidebar 主按鈕改為 `Interpret Data Source`。
+- UI import action 走 `scan_source` -> `preview_interpretation` ->
+  `validate_interpretation` -> `apply_interpretation`。
+- 新增 preview dialog，顯示 source、metadata preview、warnings、confirmation items、
+  validation decision 和 blocked reasons。
+- product walkthrough synthetic `.fif` import 已通過新 dialog / apply path。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q`
+  - `50 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/dataset tests/unit/ui/dialogs/dataset tests/unit/ui/test_ui_misc.py tests/unit/ui/test_application_capabilities.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `166 passed`
+  - `poetry run pytest --capture=sys tests/integration/agent/test_product_flow.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py -q`
+  - `76 passed`
+  - `poetry run ruff check <ui data interpretation slice files>` -> `PASS`
+  - `poetry run basedpyright <ui data interpretation source files>` ->
+    `0 errors, 0 warnings, 0 notes`
+  - broader gates:
+    - `poetry run ruff check .` -> `PASS`
+    - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+    - `poetry run mkdocs build --strict` -> `PASS`
+    - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
+    - `git diff --check` -> `PASS`
+
+這批 evidence 支撐 Dataset panel main import entry 的新心智模型。它仍不支撐 recipe save UI、
+label import migration、headless / MCP adapter 或 local LLM 真實 tool-call accuracy。
+
 ## Automated Evidence vs Product Evidence
 
 | Evidence | 目前能證明 | 不能證明 |

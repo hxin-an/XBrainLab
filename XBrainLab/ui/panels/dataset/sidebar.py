@@ -91,8 +91,8 @@ class DatasetSidebar(QWidget):
         ops_layout = QVBoxLayout(ops_group)
         ops_layout.setContentsMargins(0, 10, 0, 0)
 
-        self.import_btn = QPushButton("Import Data")
-        self.import_btn.setToolTip("Load .set or .gdf files")
+        self.import_btn = QPushButton("Interpret Data Source")
+        self.import_btn.setToolTip("Scan, preview, validate, and apply EEG data")
         self.import_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         ops_layout.addWidget(self.import_btn)

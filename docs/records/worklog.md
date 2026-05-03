@@ -1865,3 +1865,37 @@
   - deterministic / local LLM tool-call cases 尚未改以 Data Interpretation 作為主要資料入口。
   - 尚未有 source -> scan -> preview -> validate -> apply -> recipe -> preprocess -> epoch ->
     dataset 的 non-mocked synthetic workflow evidence。
+
+### 2026-05-04 Goal 1 Dataset panel Data Interpretation entry
+
+- 做了什麼：
+  - Dataset sidebar 主按鈕從 `Import Data` 改為 `Interpret Data Source`。
+  - `DatasetActionHandler.import_data()` 改走 `ScanSourceCommand` ->
+    `PreviewInterpretationCommand` -> `ValidateInterpretationCommand` ->
+    `ApplyInterpretationCommand`。
+  - 新增 `DataInterpretationPreviewDialog`，顯示 source、validation decision、metadata preview、
+    warnings、confirmation items 和 blocked reasons；`blocked` decision 不能按 apply。
+  - `needs_confirmation` decision 只有在 preview dialog 接受後才對 apply command 帶
+    `confirmed=True`。
+  - 多檔跨不同資料夾選取時，不用 filesystem common root 做 scan，避免意外掃描過大的上層路徑。
+  - product walkthrough 的 synthetic `.fif` import 已改成通過新 preview / apply path。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q`
+    -> `50 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/dataset tests/unit/ui/dialogs/dataset tests/unit/ui/test_ui_misc.py tests/unit/ui/test_application_capabilities.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `166 passed`
+  - `poetry run pytest --capture=sys tests/integration/agent/test_product_flow.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py -q`
+    -> `76 passed`
+  - `poetry run ruff check <ui data interpretation slice files>` -> pass
+  - `poetry run basedpyright <ui data interpretation source files>` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
+  - `git diff --check` -> pass
+- 後續：
+  - recipe save UI 尚未接上。
+  - label import 仍是舊入口，尚未納入 Data Interpretation preview / recipe。
+  - headless / MCP adapter 尚未暴露新 command taxonomy。
+  - 尚未有 source -> scan -> preview -> validate -> apply -> recipe -> preprocess -> epoch ->
+    dataset 的 non-mocked synthetic workflow evidence。

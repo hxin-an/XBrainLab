@@ -244,10 +244,20 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     """Drive import -> preprocess -> epoch -> split -> configure -> dry-run train."""
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
-    with patch(
-        "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
-        return_value=([str(fif_path)], ""),
+    with (
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.QFileDialog.getOpenFileNames",
+            return_value=([str(fif_path)], ""),
+        ),
+        patch(
+            "XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog",
+        ) as PreviewDialog,
     ):
+        PreviewDialog.return_value.exec.return_value = True
+        PreviewDialog.return_value.get_result.return_value = {"confirmed": True}
+        assert test_app.dataset_panel.sidebar.import_btn.text() == (
+            "Interpret Data Source"
+        )
         _click(qtbot, test_app.dataset_panel.sidebar.import_btn)
 
     assert test_app.study.loaded_data_list
