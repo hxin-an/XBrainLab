@@ -114,6 +114,17 @@ class TestHandleUserInput:
         ctrl.error_occurred.emit.assert_called()
         assert not ctrl.is_processing
 
+    def test_adds_latest_intent_context(self, ctrl):
+        ctrl.rag_retriever.get_similar_examples.return_value = []
+        ctrl._generate_response = MagicMock()
+        ctrl.handle_user_input("Preview the interpretation.")
+        added = [call.args[0] for call in ctrl.assembler.add_context.call_args_list]
+        assert any("Latest user intent inferred" in item for item in added)
+        assert any("preview_interpretation" in item for item in added)
+
+    def test_latest_intent_context_ignores_unknown(self, ctrl):
+        assert ctrl._latest_intent_context("maybe later") == ""
+
 
 # --- _on_chunk_received ---
 class TestOnChunkReceived:

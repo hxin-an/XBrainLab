@@ -301,6 +301,9 @@ class LLMController(QObject):
             self.assembler.clear_context()
             if features:
                 self.assembler.add_context(features)
+            intent_context = self._latest_intent_context(text)
+            if intent_context:
+                self.assembler.add_context(intent_context)
 
             # 3. Start Generation Loop
             self._generate_response()
@@ -341,6 +344,20 @@ class LLMController(QObject):
         self.status_update.emit("Ready")
         self.processing_finished.emit()
         return True
+
+    @staticmethod
+    def _latest_intent_context(text: str) -> str:
+        """Return prompt context that makes the latest requested step explicit."""
+        intent = infer_user_intent(text)
+        command = command_for_intent(intent)
+        if command is None:
+            return ""
+        return (
+            "Latest user intent inferred by XBrainLab: "
+            f"{intent}. Prefer the direct workflow command {command.value} when "
+            "it is available. If that command is blocked, explain the blocked "
+            "reason instead of choosing a substitute tool."
+        )
 
     def _generate_response(self):
         """Triggers LLM generation based on the current history.

@@ -29,6 +29,8 @@ def test_prompt_includes_available_tools_and_blocked_reasons():
     assert "do not call a different tool" in messages[0]["content"]
     assert "apply_standard_preprocess for" in messages[0]["content"]
     assert "training_mode values" in messages[0]["content"]
+    assert "Inferred latest user intent: scan_source" in prompt
+    assert "Direct workflow command for latest intent: scan_source" in prompt
 
 
 def test_scores_local_tool_call_output():

@@ -46,6 +46,8 @@ artifact 把 raw tool JSON 當成 visible response。
   path label 對應。
 - `LLMController` 新增 requested-intent boundary：最新使用者要求的 workflow command 若被
   `ApplicationService` capability policy 擋下，agent 不能改叫其他 tool 來 substitute。
+- `LLMController` 會把 inferred latest intent 加進 prompt context，讓 local model 在多輪
+  workflow 中知道最新要求的 direct command。
 - local eval runner 套用同一 guardrail：
   - blocked requested intent 轉成 blocked prediction。
   - placeholder path 轉成 missing input。
@@ -72,7 +74,7 @@ artifact 把 raw tool JSON 當成 visible response。
   - no download。
 - exploratory local smoke：
   - `artifacts/agent_evals/local_primary_guardrail_smoke/local_microsoft_phi_4_mini_instruct.md`
-    -> `5 / 6` pass。
+    -> `6 / 6` pass。
   - `artifacts/agent_evals/local_fallback_guardrail_smoke/local_microsoft_phi_3.5_mini_instruct.md`
     -> `6 / 6` pass。
 - `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_controller.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_assembler_stage.py -q`
@@ -80,7 +82,7 @@ artifact 把 raw tool JSON 當成 visible response。
 - `poetry run pytest --capture=sys tests/unit/llm/agent/test_assembler_stage.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_definitions.py -q`
   - `150 passed`
 - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q`
-  - `424 passed`
+  - `426 passed`
 - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_eval_guardrails`
   - temp deterministic report written。
 - `poetry run ruff check .`
@@ -97,8 +99,8 @@ artifact 把 raw tool JSON 當成 visible response。
 ### 剩餘風險
 
 - 正式 `54` cases x `3` primary / fallback local eval 尚未重跑；不能宣稱 thesis-ready。
-- Primary smoke 仍在 `multi-turn-scan-preview` 重複 scan，顯示 prompt / state snapshot 對多輪
-  continuation 仍需加強。
+- Smoke subset 已清掉 `multi-turn-scan-preview` 重複 scan；正式 full eval 仍可能暴露更多
+  prompt / state snapshot / verifier 問題。
 - 這不是 ChatPanel 長時間 walkthrough，也不是 Windows launcher click-through evidence。
 
 ## 2026-05-04 label import recipe trace integration

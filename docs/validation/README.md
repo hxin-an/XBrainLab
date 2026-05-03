@@ -526,6 +526,8 @@ config、HTTP transport、或 product completion。
     source / file / recipe path。
   - `LLMController` 新增 requested-intent boundary：最新使用者要求的 workflow command 若被
     `ApplicationService` capability policy 擋下，agent 不能改叫其他 tool 來替代。
+  - `LLMController` 也把 inferred latest intent 放入 prompt context，讓 local model 不必從多輪
+    history 猜下一個 workflow step。
   - local eval runner 使用同一 guardrail 語意，且成功 tool-call 的 `visible_response` 不再保存
     raw JSON tool syntax。
   - prompt / schema 補 standard preprocess、dataset split 和 state-authoritative latest-turn
@@ -537,7 +539,7 @@ config、HTTP transport、或 product completion。
 - exploratory smoke artifacts：
   - primary：
     `artifacts/agent_evals/local_primary_guardrail_smoke/local_microsoft_phi_4_mini_instruct.md`
-    -> `5 / 6` pass，唯一失敗是 `multi-turn-scan-preview` 仍重複 scan。
+    -> `6 / 6` pass。
   - fallback：
     `artifacts/agent_evals/local_fallback_guardrail_smoke/local_microsoft_phi_3.5_mini_instruct.md`
     -> `6 / 6` pass。
@@ -547,7 +549,7 @@ config、HTTP transport、或 product completion。
   - `poetry run pytest --capture=sys tests/unit/llm/agent/test_assembler_stage.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_definitions.py -q`
   - `150 passed`
   - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q`
-  - `424 passed`
+  - `426 passed`
   - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_eval_guardrails`
   - temp deterministic report written。
   - `poetry run ruff check .`

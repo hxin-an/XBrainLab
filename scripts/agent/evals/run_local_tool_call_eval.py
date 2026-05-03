@@ -73,6 +73,9 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
     available_tools = _available_tool_schemas(case.state_name)
     blocked_commands = _blocked_command_summary(case.state_name)
     turns = "\n".join(f"- user: {turn}" for turn in case.user_turns)
+    inferred_intent = _inferred_case_intent(case)
+    direct_command = command_for_intent(inferred_intent)
+    direct_command_text = direct_command.value if direct_command else "none"
     system = (
         "You are the XBrainLab local assistant tool-call planner. "
         "Choose at most one tool for the next step. If a required input is "
@@ -102,6 +105,11 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         f"Available tools:\n{json.dumps(available_tools, ensure_ascii=False)}\n\n"
         f"Blocked commands and reasons:\n"
         f"{json.dumps(blocked_commands, ensure_ascii=False)}\n\n"
+        f"Inferred latest user intent: {inferred_intent}\n"
+        f"Direct workflow command for latest intent: {direct_command_text}\n"
+        "If the direct workflow command is available, use that command's tool. "
+        "If it is blocked, do not substitute another tool; explain the blocked "
+        "reason.\n\n"
         f"Conversation:\n{turns}\n\n"
         "Return the next assistant response now."
     )
@@ -478,6 +486,13 @@ def _normalized_prediction_arguments(
     if tool_name == "generate_dataset":
         normalized.setdefault("val_ratio", 0.2)
     return normalized
+
+
+def _inferred_case_intent(case: EvalCase) -> str:
+    latest = infer_intent(case.user_turns[-1].lower()) if case.user_turns else "unknown"
+    if latest != "unknown":
+        return latest
+    return infer_intent(" ".join(case.user_turns).lower())
 
 
 def _intent_adjusted_verification_message(intent: str, message: str) -> str:

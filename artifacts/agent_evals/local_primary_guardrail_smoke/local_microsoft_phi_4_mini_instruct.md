@@ -9,10 +9,7 @@
 
 ## Failure Taxonomy
 
-- intent: `1`
-- state delta mismatch: `1`
-- tool selection mismatch: `1`
-- trajectory mismatch: `1`
+- None.
 
 ## Scoring Detail
 
@@ -20,24 +17,24 @@
 
 - runner: `local-llm`
 - total cases: `6`
-- passed: `5`
-- failed: `1`
-- pass rate: `83.33%`
+- passed: `6`
+- failed: `0`
+- pass rate: `100.00%`
 
 ## Metrics
 
 | Metric | Accuracy |
 | --- | ---: |
-| intent | 83.33% |
-| tool selection | 83.33% |
+| intent | 100.00% |
+| tool selection | 100.00% |
 | argument correctness | 100.00% |
 | state aware | 100.00% |
 | verification result match | 100.00% |
-| state delta | 83.33% |
+| state delta | 100.00% |
 | blocked command | 100.00% |
 | recovery | 100.00% |
 | tool result interpretation | 100.00% |
-| trajectory quality | 83.33% |
+| trajectory quality | 100.00% |
 | runtime safety | 100.00% |
 | local llm reliability | 100.00% |
 
@@ -49,4 +46,4 @@
 
 ## Failed Cases
 
-- `multi-turn-scan-preview`: intent expected preview_interpretation, got scan_source, tool selection mismatch, state delta mismatch, trajectory mismatch
+- None.

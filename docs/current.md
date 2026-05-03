@@ -97,7 +97,7 @@ registered tool schema / required / type / enum 檢查，controller 會在 tool 
 使用者意圖和 `ApplicationService` capability policy 擋下「使用者要求的 workflow step 已
 blocked，模型卻改叫別的工具硬補」的 substitute tool call。產品 prompt / local eval prompt /
 tool schema 也補上 standard preprocess、dataset split、latest-turn/state-authoritative 規則。
-探索性 guardrail smoke artifact 顯示 primary `5 / 6`、fallback `6 / 6`，但 full `54` cases
+探索性 guardrail smoke artifact 顯示 primary `6 / 6`、fallback `6 / 6`，但 full `54` cases
 primary / fallback x `3` 尚未重跑；舊 full result `18 / 54`、`20 / 54` 仍是目前 thesis
 accuracy blocker。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的

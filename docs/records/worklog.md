@@ -46,6 +46,8 @@
   - 新增 user intent helper，`LLMController` 會在 tool execution 前檢查最新使用者要求的
     workflow command；若該 command 被 `ApplicationService` capability policy 擋下，就拒絕
     模型改叫其他 tool 的 substitute call。
+  - `LLMController` 會把 inferred latest intent 加進 prompt context，讓 local model 在多輪
+    workflow 中知道最新要求的 direct command。
   - 產品 prompt / local eval prompt / tool schema 補 standard preprocess、dataset split 和
     state-authoritative latest-turn 規則。
   - local eval artifact 的 successful tool-call visible response 不再保存 raw JSON tool syntax。
@@ -53,8 +55,7 @@
   - 既有 raw outputs 用新 guardrail/scorer 投影：primary 可從 `18 / 54` 到 `30 / 54`，
     fallback 可到 `34 / 54`；這只是重算舊 raw output，不是新 full eval。
   - 真模型探索性 smoke：
-    - primary `microsoft/Phi-4-mini-instruct`：`5 / 6` pass，仍失敗
-      `multi-turn-scan-preview`。
+    - primary `microsoft/Phi-4-mini-instruct`：`6 / 6` pass。
     - fallback `microsoft/Phi-3.5-mini-instruct`：`6 / 6` pass。
   - preflight 顯示兩個模型都是 `gpu-ready`、cache `15.34 GB`、沒有下載。
 - 證據：
@@ -62,7 +63,7 @@
   - `artifacts/agent_evals/local_fallback_guardrail_smoke/local_microsoft_phi_3.5_mini_instruct.md`
   - `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_controller.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_assembler_stage.py -q` -> `125 passed`
   - `poetry run pytest --capture=sys tests/unit/llm/agent/test_assembler_stage.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_definitions.py -q` -> `150 passed`
-  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q` -> `424 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q` -> `426 passed`
   - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_eval_guardrails` -> wrote temp deterministic report。
   - `poetry run ruff check .` -> pass
   - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
@@ -72,8 +73,8 @@
 - 接續 / 本輪剩餘：
   - 正式 `54` cases x `3` primary / fallback full local eval 尚未重跑，不能宣稱
     thesis-ready accuracy。
-  - primary 仍有多輪 scanned -> preview 重複 scan 失敗，需要繼續調 state snapshot / prompt /
-    verifier。
+  - smoke subset 已清掉多輪 scanned -> preview 重複 scan；正式 full eval 仍可能暴露更多
+    state snapshot / prompt / verifier 問題。
   - true ChatPanel local-model walkthrough 仍未驗證。
 
 ### 05:52 label import recipe trace integration
