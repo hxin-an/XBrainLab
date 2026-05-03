@@ -37,6 +37,28 @@
 
 ## 2026-05-04
 
+### 03:04 Data Interpretation non-mocked workflow
+
+- 做了什麼：
+  - 新增 backend integration test，使用 real synthetic MNE `.fif` file 走 Data Interpretation
+    source -> preview -> validation -> confirmation -> apply -> recipe -> reload review ->
+    preprocess -> epoch -> dataset。
+  - 驗證未確認 apply 會被 `confirmation_required` 擋下，confirmed apply 才會載入 raw data。
+  - 驗證 recipe reload 在新的 `ApplicationService` session 只重建 scan / preview / validation，
+    不直接套用資料。
+  - 驗證 dataset split audit 和 train / val / test counts。
+- 結果：
+  - Goal 1 的 backend non-mocked source -> recipe -> preprocess -> epoch -> dataset evidence
+    已有一條可重跑 test。
+- 證據：
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q` -> `1 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py -q` -> `38 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` -> `3 passed`
+  - targeted `ruff` / `basedpyright` clean。
+- 接續 / 本輪剩餘：
+  - 這仍不是 UI-observable replay；後續要用 screenshot / visible state / transcript artifact
+    驗證人看得到的 import flow。
+
 ### 02:53 Goal 1 automation adapter / eval baseline
 
 - 做了什麼：

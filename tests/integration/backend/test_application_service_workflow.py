@@ -7,6 +7,7 @@ import numpy as np
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyInterpretationCommand,
     CommandName,
     ConfigureTrainingCommand,
     CreateEpochCommand,
@@ -15,10 +16,15 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    ReloadInterpretationRecipeCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    SaveInterpretationRecipeCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
     VisualizeCommand,
 )
 
@@ -177,6 +183,89 @@ def test_application_service_load_epoch_dataset_workflow(tmp_path):
     assert reset_result.state.last_error is None
     assert reset_result.changed_state.error_changed is True
     assert service.get_capabilities().get(CommandName.LOAD_DATA).available is True
+
+
+def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
+    service = ApplicationService()
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    recipe_path = tmp_path / "synthetic_import_recipe.json"
+
+    scan_result = service.execute(ScanSourceCommand(source_path=str(fif_path)))
+    preview_result = service.execute(PreviewInterpretationCommand())
+    validation_result = service.execute(ValidateInterpretationCommand())
+
+    assert scan_result.ok is True
+    assert scan_result.diagnostics["payload_type"] == "scan_result"
+    assert preview_result.ok is True
+    assert preview_result.diagnostics["payload_type"] == "interpretation_preview"
+    assert validation_result.ok is True
+    assert validation_result.state.interpretation.validation_decision == (
+        "needs_confirmation"
+    )
+
+    apply_without_confirmation = service.execute(ApplyInterpretationCommand())
+    assert apply_without_confirmation.failed is True
+    assert (
+        apply_without_confirmation.state.last_error.error_type
+        == "confirmation_required"
+    )
+
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    save_recipe_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert apply_result.ok is True
+    assert apply_result.changed_state.raw_changed is True
+    assert apply_result.changed_state.interpretation_changed is True
+    assert apply_result.state.raw.loaded is True
+    assert apply_result.state.interpretation.has_applied_interpretation is True
+    assert save_recipe_result.ok is True
+    assert save_recipe_result.state.interpretation.has_recipe is True
+    assert recipe_path.exists()
+
+    reload_service = ApplicationService()
+    reload_result = reload_service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert reload_result.ok is True
+    assert reload_result.diagnostics["payload_type"] == "recipe_reload_preview"
+    assert reload_result.state.raw.loaded is False
+    assert reload_result.state.interpretation.has_preview is True
+    assert reload_result.state.interpretation.has_validation_decision is True
+
+    preprocess_result = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
+        ),
+    )
+    epoch_result = service.execute(
+        CreateEpochCommand(
+            t_min=0.0,
+            t_max=0.25,
+            event_ids=["left", "right"],
+        ),
+    )
+    dataset_result = service.execute(
+        GenerateDatasetCommand(
+            test_ratio=0.25,
+            val_ratio=0.25,
+            split_strategy="trial",
+            training_mode="individual",
+        ),
+    )
+
+    assert preprocess_result.ok is True
+    assert epoch_result.ok is True
+    assert epoch_result.state.epoch.epoch_count == 6
+    assert dataset_result.ok is True
+    assert dataset_result.diagnostics["split_audit"]["ok"] is True
+    assert dataset_result.state.dataset.available is True
+    assert dataset_result.state.dataset.split_summary["train_count"] == 4
+    assert dataset_result.state.dataset.split_summary["val_count"] == 1
+    assert dataset_result.state.dataset.split_summary["test_count"] == 1
 
 
 def test_application_service_failed_command_sets_and_clears_last_error(tmp_path):

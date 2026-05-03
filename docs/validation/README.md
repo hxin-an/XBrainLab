@@ -435,6 +435,36 @@ label import migration、headless / MCP adapter 或 local LLM 真實 tool-call a
 tool-call baseline。它仍不支撐「MCP server 已完成」、「local LLM 真實 tool-call accuracy 已驗證」、
 或「UI-observable replay 已完成」。
 
+2026-05-04 Data Interpretation non-mocked backend workflow：
+
+- 新增 `tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked`。
+- 這條 test 會：
+  - 產生 real synthetic MNE `.fif` source。
+  - 跑 `scan_source` -> `preview_interpretation` -> `validate_interpretation`。
+  - 驗證缺 subject / session / task / run metadata 時 decision 是 `needs_confirmation`。
+  - 驗證未確認的 `apply_interpretation` 會被 `confirmation_required` 擋下。
+  - 用 `confirmed=True` apply，並確認 raw state / interpretation state 更新。
+  - `save_interpretation_recipe` 寫出 recipe。
+  - 在新的 `ApplicationService` session 用 `reload_interpretation_recipe` 重新 scan / preview /
+    validate，但不直接 apply。
+  - 接續跑 normalize preprocess、epoch 和 trial-wise dataset generation，並檢查 split audit 與
+    train / val / test counts。
+- commands:
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `1 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py -q`
+  - `38 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q`
+  - `3 passed`
+  - `poetry run ruff check tests/integration/backend/test_application_service_workflow.py`
+  - `PASS`
+  - `poetry run basedpyright tests/integration/backend/test_application_service_workflow.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 backend non-mocked source -> recipe -> preprocess -> epoch -> dataset
+workflow。它仍不等於 UI wizard / ChatPanel 可見行為；UI-observable replay 仍需 screenshot /
+visible state / transcript artifact。
+
 ## Automated Evidence vs Product Evidence
 
 | Evidence | 目前能證明 | 不能證明 |

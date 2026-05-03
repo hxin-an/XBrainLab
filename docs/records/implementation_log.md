@@ -28,6 +28,50 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation non-mocked workflow evidence
+
+### 背景
+
+Goal 1 不允許只用 backend command unit tests 或 deterministic eval 宣稱資料入口可交付；至少要有
+一條 source -> recipe -> preprocess -> epoch -> dataset 的 non-mocked workflow evidence。
+
+### 變更
+
+- 在 `tests/integration/backend/test_application_service_workflow.py` 新增
+  `test_data_interpretation_to_dataset_workflow_is_non_mocked`。
+- test 使用 real synthetic MNE `.fif` file，不 mock loader / preprocessor / dataset generator。
+- workflow：
+  - `scan_source`
+  - `preview_interpretation`
+  - `validate_interpretation`
+  - unconfirmed `apply_interpretation` blocked by `confirmation_required`
+  - confirmed `apply_interpretation`
+  - `save_interpretation_recipe`
+  - new service `reload_interpretation_recipe`
+  - normalize preprocess
+  - epoch
+  - trial-wise dataset generation
+- assertions 包含 interpretation state、recipe file existence、reload 不直接 apply、epoch count、
+  split audit 和 train / val / test counts。
+
+### 影響範圍
+
+- Backend integration coverage only。
+- 不新增產品 UI；不改 ApplicationService behavior。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q` -> `1 passed`
+- `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py -q` -> `38 passed`
+- `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py -q` -> `3 passed`
+- `poetry run ruff check tests/integration/backend/test_application_service_workflow.py` -> `PASS`
+- `poetry run basedpyright tests/integration/backend/test_application_service_workflow.py` -> `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是 backend-visible workflow evidence，不是 UI-observable replay。
+- UI recipe save entry、label import migration 和完整 MCP server 仍未完成。
+
 ## 2026-05-04 Goal 1 automation adapter and eval baseline
 
 ### 背景
