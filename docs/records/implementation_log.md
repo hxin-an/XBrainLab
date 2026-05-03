@@ -28,6 +28,54 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 stdio MCP server baseline
+
+### 背景
+
+Goal 1 已有 `mcp_tool_specs()` 和 headless JSON adapter，但那只是 MCP-shaped schema，
+不是可由 external agent client 啟動並呼叫的 server。產品完成路線要求 MCP 作為 external
+agent adapter，且 MCP calls 不能變成第三套 workflow truth 或繞過 ApplicationService。
+
+### 變更
+
+- 新增 `XBrainLab.mcp.server`：
+  - 實作 stdio JSON-RPC loop。
+  - 支援 MCP `initialize` lifecycle，宣告 `tools` capability。
+  - 支援 `tools/list`，直接暴露 `backend.application.automation.mcp_tool_specs()`。
+  - 支援 `tools/call`，將 tool name / arguments 轉成 `execute_automation_payload()`，並在同一個
+    `ApplicationService` session 中執行。
+  - unknown tool 回 protocol error；tool schema / business failure 回 MCP tool result
+    `isError: true`，並保留 structured execution payload。
+- 新增 `scripts/dev/run_mcp_server.py` 作為 prepared XBrainLab runtime 中的 stdio server
+  entrypoint。
+- `mcp_tool_specs()` 補 `title` 和 `outputSchema`，讓 external agent 能看到 input 與 execution
+  envelope schema。
+- 新增 `tests/unit/mcp/test_server.py` 和 `tests/integration/mcp/test_stdio_server.py`，覆蓋
+  lifecycle、tool listing、同 session scan -> preview、schema repair result 和 stdio subprocess
+  smoke。
+
+### 影響範圍
+
+- MCP adapter layer。
+- Application automation schema metadata。
+- Dev server entrypoint。
+- Validation / current truth / planning docs。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q` -> `6 passed`
+- `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp tests/unit/backend/application/test_automation.py -q` -> `13 passed`
+- `poetry run ruff check XBrainLab/mcp XBrainLab/backend/application/automation.py scripts/dev/run_mcp_server.py tests/unit/mcp tests/integration/mcp` -> `PASS`
+- `poetry run basedpyright XBrainLab/mcp XBrainLab/backend/application/automation.py scripts/dev/run_mcp_server.py tests/unit/mcp tests/integration/mcp` -> `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是 stdio MCP server baseline，不是 external MCP client / Inspector walkthrough。
+- 尚未補 Windows launcher / packaged config 讓使用者一鍵註冊 MCP server。
+- 尚未驗證 long-running training tool through MCP、external agent recovery UX 或 HTTP transport。
+- 產品 completion 仍受 label import recipe integration、true local LLM ChatPanel walkthrough、
+  Windows launcher click-through 和 local LLM tool-call accuracy 影響。
+
 ## 2026-05-04 Local LLM tool-call runner and schema verifier
 
 ### 背景

@@ -180,8 +180,10 @@ def mcp_tool_specs(
     return [
         {
             "name": spec.name,
+            "title": _tool_title(spec.name),
             "description": spec.description,
             "inputSchema": spec.input_schema,
+            "outputSchema": _automation_execution_output_schema(),
             "x_xbrainlab": {
                 "taxonomy": spec.taxonomy,
                 "capability": spec.capability,
@@ -343,6 +345,35 @@ def _json_schema_for_type(annotation: Any) -> dict[str, Any]:
 
 def _command_description(command_type: type[Any]) -> str:
     return (command_type.__doc__ or "").strip().splitlines()[0]
+
+
+def _tool_title(name: str) -> str:
+    return name.replace("_", " ").title()
+
+
+def _automation_execution_output_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "properties": {
+            "accepted": {"type": "boolean"},
+            "command_name": {"type": "string", "nullable": True},
+            "verification": {"type": "object"},
+            "autonomy": {"type": "object"},
+            "capability": {"type": "object", "nullable": True},
+            "result": {"type": "object", "nullable": True},
+            "state": {"type": "object"},
+        },
+        "required": [
+            "accepted",
+            "command_name",
+            "verification",
+            "autonomy",
+            "capability",
+            "result",
+            "state",
+        ],
+    }
 
 
 def _payload_command_name(payload: dict[str, Any]) -> CommandName | None:

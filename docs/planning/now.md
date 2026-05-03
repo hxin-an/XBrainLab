@@ -40,6 +40,9 @@
 - headless / MCP-ready automation adapter 已新增：
   `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
   payload 轉回 typed `ApplicationService` command。
+- stdio MCP server baseline 已新增：
+  `XBrainLab.mcp.server` / `scripts/dev/run_mcp_server.py` 支援 MCP `initialize`、
+  `tools/list`、`tools/call`，並在同一個 `ApplicationService` session 中執行工具。
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
 - 真 local LLM tool-call runner 已新增，使用同一份 `54` cases / scorer 接 primary /
@@ -53,7 +56,8 @@
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
 - 剩餘非 Goal 1 closure blockers：label import compatibility path 尚未整合進 Data Interpretation
-  recipe UI、完整 MCP server 尚未新增、UI replay coverage 還不是完整真人 walkthrough。
+  recipe UI、MCP external-client / Inspector walkthrough 尚未完成、UI replay coverage 還不是完整
+  真人 walkthrough。
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現並進入 recipe trace；
   更完整的 override UI 仍是下一輪 hardening。
 
@@ -64,7 +68,7 @@
 ```text
 True local LLM ChatPanel workflow
   + label/recipe UI hardening
-  + optional full MCP server
+  + MCP external-client walkthrough / release config
   + Windows launcher click-through
 ```
 
@@ -155,7 +159,7 @@ Goal 1 至少要包含：
     - CLI / headless runner 保留給 CI、eval、batch 和 artifact generation。
       （`scripts/dev/run_application_command.py` 已新增。）
     - MCP server 作為 external agent adapter，使用同一套 command taxonomy。
-      （目前已有 MCP-shaped tool specs；完整 MCP server 尚未新增。）
+      （目前已有 stdio MCP server baseline：`scripts/dev/run_mcp_server.py`。）
     - MCP client 不應需要安裝 XBrainLab 的 EEG / PyQt / PyTorch 依賴；MCP server 跑在 prepared
       XBrainLab runtime。
     - MCP calls 不能繞過 ApplicationService、capability policy 或 autonomy policy。

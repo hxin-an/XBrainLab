@@ -169,8 +169,9 @@ UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完
 `XBrainLab.backend.application.automation` 是新的 headless / MCP-ready adapter。它輸出
 `ApplicationService` command schema、MCP-shaped tool specs 和 live capability / autonomy
 policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `ApplicationService.execute()`。
-這個 adapter 不應直接呼叫 controller 或重寫 business logic；若未來新增 MCP server，server
-應包這層，而不是繞過 command layer。
+`XBrainLab.mcp.server` 是目前的 stdio MCP server baseline；它只處理 MCP lifecycle / tool
+transport，實際 tool call 仍包這層 automation adapter，而不是繞過 command layer 或直接碰
+controller internals。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

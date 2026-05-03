@@ -37,6 +37,28 @@
 
 ## 2026-05-04
 
+### 05:43 stdio MCP server baseline
+
+- 做了什麼：
+  - 新增 `XBrainLab.mcp.server`，支援 MCP `initialize`、`tools/list`、`tools/call`。
+  - 新增 `scripts/dev/run_mcp_server.py` 作為 stdio entrypoint。
+  - `mcp_tool_specs()` 補 `title` 和 `outputSchema`，讓 MCP tools 有同一份 command input /
+    execution output schema。
+  - MCP `tools/call` 只轉成 `execute_automation_payload()`，並在同一個 `ApplicationService`
+    session 中執行，不直接碰 controller。
+- 結果：
+  - 現在不只是 MCP-shaped schema；已有可用的 stdio MCP server baseline。
+  - schema / business failure 會以 MCP tool result `isError: true` 和 user-readable text 回傳，
+    structured diagnostics 保留在 `structuredContent`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q` -> `6 passed`
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp tests/unit/backend/application/test_automation.py -q` -> `13 passed`
+  - targeted `ruff` / `basedpyright` clean。
+- 接續 / 本輪剩餘：
+  - 尚未跑外部 MCP client / Inspector walkthrough，也未補 Windows release config。
+  - label import recipe integration、true local LLM ChatPanel walkthrough、Windows launcher
+    click-through 和 local LLM tool-call accuracy 改善仍是 product blockers。
+
 ### 03:50 Local LLM tool-call runner and schema verifier
 
 - 做了什麼：

@@ -399,8 +399,8 @@ accuracy 已驗證」。
 
 這批 evidence 支撐 Dataset panel main import entry 的新心智模型。後續 recipe save option
 和 headless / MCP-ready adapter 已補；label import 已降為 service-backed compatibility path，
-但尚未整合進 Data Interpretation recipe。完整 MCP server 和 local LLM 真實 tool-call
-accuracy 仍未完成。
+但尚未整合進 Data Interpretation recipe。stdio MCP server baseline 已補；external MCP client /
+Inspector walkthrough 和 local LLM 真實 tool-call accuracy 仍未完成。
 
 2026-05-04 MCP-ready automation adapter + deterministic eval expansion：
 
@@ -437,6 +437,31 @@ accuracy 仍未完成。
 這批 evidence 支撐 headless / MCP-ready command schema 和 deterministic engineering
 tool-call baseline。它仍不支撐「MCP server 已完成」、「local LLM 真實 tool-call accuracy 已驗證」、
 或「UI-observable replay 已完成」。
+
+2026-05-04 stdio MCP server baseline：
+
+- 新增 `XBrainLab.mcp.server`：
+  - 支援 MCP `initialize` lifecycle，回傳 `tools` capability。
+  - 支援 `tools/list`，直接使用 `mcp_tool_specs(service)` 暴露同一組 command schema、
+    output schema、taxonomy 和 live capability / autonomy metadata。
+  - 支援 `tools/call`，在同一個 server session 中將 MCP arguments 轉成
+    `execute_automation_payload()`，並只透過 `ApplicationService.execute()` 執行。
+  - tool result 同時回傳 MCP `content` 和 `structuredContent`；schema / business failure 以
+    `isError: true` 表達，方便 external agent self-correction。
+- 新增 `scripts/dev/run_mcp_server.py` 作為 stdio server entrypoint。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+  - `6 passed`
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp tests/unit/backend/application/test_automation.py -q`
+  - `13 passed`
+  - `poetry run ruff check XBrainLab/mcp XBrainLab/backend/application/automation.py scripts/dev/run_mcp_server.py tests/unit/mcp tests/integration/mcp`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/mcp XBrainLab/backend/application/automation.py scripts/dev/run_mcp_server.py tests/unit/mcp tests/integration/mcp`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐「已有可啟動的 stdio MCP server baseline，且 MCP calls 不繞過
+ApplicationService」。它仍不支撐外部 MCP client / Inspector walkthrough、Windows release
+config、HTTP transport、或 product completion。
 
 2026-05-04 Local LLM tool-call runner and schema gate：
 
