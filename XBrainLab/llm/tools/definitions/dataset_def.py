@@ -110,7 +110,8 @@ class BasePreviewInterpretationTool(BaseTool):
                     "type": "object",
                     "description": (
                         "Optional overrides such as selected_eeg_files, event roles, "
-                        "class map, or recipe id."
+                        "class map, recipe id, or metadata choices like subject, "
+                        "session, task, and run."
                     ),
                 },
             },
@@ -378,8 +379,16 @@ class BaseGenerateDatasetTool(BaseTool):
                 "split_strategy": {
                     "type": "string",
                     "enum": ["trial", "session", "subject"],
+                    "description": (
+                        "How to split examples: trial, session, or subject. "
+                        "Do not use individual or group here."
+                    ),
                 },
-                "training_mode": {"type": "string", "enum": ["individual", "group"]},
+                "training_mode": {
+                    "type": "string",
+                    "enum": ["individual", "group"],
+                    "description": "Training mode: individual or group.",
+                },
             },
             "required": ["split_strategy", "training_mode"],
         }

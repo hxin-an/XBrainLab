@@ -27,8 +27,9 @@ from scripts.agent.evals.run_tool_call_eval import (
 )
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.backend.application.capabilities import build_capability_policy
+from XBrainLab.llm.agent.intent import command_for_intent, path_label_for_intent
 from XBrainLab.llm.agent.parser import CommandParser
-from XBrainLab.llm.agent.verifier import VerificationLayer
+from XBrainLab.llm.agent.verifier import PlaceholderArgumentValidator, VerificationLayer
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.model_catalog import (
@@ -78,6 +79,19 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "missing, or the requested step is blocked, do not call a tool; reply "
         "with one concise user-facing sentence. If a tool is appropriate, "
         "output only one compact JSON object with keys tool_name and parameters. "
+        "Never invent placeholder paths, recipe paths, ids, labels, or file names; "
+        "ask for the actual value instead. If the user asks for a blocked workflow "
+        "command, do not call a different tool to prepare or substitute for it; "
+        "explain the blocked reason. The latest user turn is the next requested "
+        "action; earlier turns are context and should not be repeated. "
+        "The initial workflow state is authoritative: if the state is already "
+        "scanned, previewed, validated, or applied, continue from that state "
+        "instead of repeating an earlier scan or load step. Use "
+        "apply_standard_preprocess for standard preprocessing or general "
+        "preprocess requests, even when bandpass frequencies are included; use "
+        "apply_bandpass_filter only for a bandpass-only operation. For "
+        "generate_dataset, split_strategy must be trial, session, or subject; "
+        "individual and group are training_mode values, not split_strategy values. "
         "Prefer the direct workflow tool named by the user request. Do not use "
         "list_files or get_dataset_info as a substitute for scan_source, "
         "preview_interpretation, validate_interpretation, apply_interpretation, "
@@ -106,7 +120,10 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
     """Convert one raw local-model response into the shared scorer prediction."""
     parsed = CommandParser.parse(raw_output) or []
     tool_calls = [
-        PredictedToolCall(tool_name=name, arguments=dict(params))
+        PredictedToolCall(
+            tool_name=name,
+            arguments=_normalized_prediction_arguments(name, params),
+        )
         for name, params in parsed
     ]
     if not tool_calls:
@@ -117,16 +134,15 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
             for marker in (
                 "provide",
                 "missing",
-                "need",
                 "which",
-                "path",
                 "confirm",
             )
-        )
-        blocked = asks_clarification or any(
+        ) or ("need" in lower and "path" in lower)
+        blocked = any(
             marker in lower
-            for marker in ("blocked", "cannot", "can't", "before", "not available")
-        )
+            for marker in ("blocked", "cannot", "can't", "not available")
+        ) or ("before" in lower and not asks_clarification)
+        blocked = blocked or asks_clarification
         return Prediction(
             intent=infer_intent(" ".join(case.user_turns).lower()),
             tool_calls=[],
@@ -137,6 +153,43 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
         )
 
     first_tool = tool_calls[0].tool_name
+    first_params = tool_calls[0].arguments
+    requested_intent = infer_intent(" ".join(case.user_turns).lower())
+    blocked_intent_reason = _blocked_requested_intent_reason(
+        case.state_name,
+        requested_intent,
+    )
+    if blocked_intent_reason:
+        return Prediction(
+            intent=requested_intent,
+            tool_calls=[],
+            blocked=True,
+            blocked_reason=blocked_intent_reason,
+            final_message=blocked_intent_reason,
+        )
+
+    validation = _prediction_verifier().verify_tool_call((first_tool, first_params))
+    if not validation.is_valid:
+        message = validation.error_message or "Tool call did not pass verification."
+        message = _intent_adjusted_verification_message(requested_intent, message)
+        lower = message.lower()
+        asks_clarification = any(
+            marker in lower
+            for marker in (
+                "actual path",
+                "missing required parameter",
+                "required input",
+            )
+        )
+        return Prediction(
+            intent=infer_intent(" ".join(case.user_turns).lower()),
+            tool_calls=[],
+            blocked=True,
+            asks_clarification=asks_clarification,
+            blocked_reason=message,
+            final_message=message,
+        )
+
     intent = TOOL_INTENTS.get(first_tool, "unknown")
     blocked_reason = _blocked_reason_for_tool(case.state_name, first_tool)
     confirmation_required = _confirmation_required_for_tool(case.state_name, first_tool)
@@ -146,7 +199,7 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
         blocked=bool(blocked_reason),
         confirmation_required=confirmation_required,
         blocked_reason=blocked_reason,
-        final_message=raw_output.strip(),
+        final_message="",
         state_delta=state_delta_for(case)
         if not blocked_reason
         and tool_selection_matches(case.expected_tools, tool_calls)
@@ -172,10 +225,7 @@ def run_local_eval(
     runtime = _artifact_runtime(classify_runtime(config))
 
     local_generator = generator or _build_engine_generator(config)
-    schema_verifier = VerificationLayer(
-        validators=[],
-        tool_schemas=_tool_schema_map(),
-    )
+    schema_verifier = _prediction_verifier()
     case_runs: list[dict[str, Any]] = []
     scores = []
     for case in cases:
@@ -410,6 +460,41 @@ def _available_tool_schemas(state_name: str) -> list[dict[str, Any]]:
 
 def _tool_schema_map() -> dict[str, dict[str, Any]]:
     return {tool.name: tool.parameters for tool in get_all_tools(mode="mock")}
+
+
+def _prediction_verifier() -> VerificationLayer:
+    """Return local-eval verification without host filesystem path checks."""
+    return VerificationLayer(
+        validators=[PlaceholderArgumentValidator()],
+        tool_schemas=_tool_schema_map(),
+    )
+
+
+def _normalized_prediction_arguments(
+    tool_name: str,
+    params: dict[str, Any],
+) -> dict[str, Any]:
+    normalized = dict(params)
+    if tool_name == "generate_dataset":
+        normalized.setdefault("val_ratio", 0.2)
+    return normalized
+
+
+def _intent_adjusted_verification_message(intent: str, message: str) -> str:
+    label = path_label_for_intent(intent)
+    if label is None or "actual path" not in message.lower():
+        return message
+    return f"Required {label} must be an actual path provided by the user."
+
+
+def _blocked_requested_intent_reason(state_name: str, intent: str) -> str:
+    command_name = command_for_intent(intent)
+    if command_name is None:
+        return ""
+    capability = build_capability_policy(make_state(state_name)).get(command_name)
+    if capability.enabled:
+        return ""
+    return "; ".join(capability.reasons)
 
 
 def _schema_verification(

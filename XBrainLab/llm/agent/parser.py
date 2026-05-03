@@ -61,10 +61,9 @@ class CommandParser:
                     data, end_idx = decoder.raw_decode(cleaned_text[start_idx:])
                     # data is the JSON object, end_idx is length relative to start_idx
 
-                    if isinstance(data, dict):
-                        found_commands.extend(
-                            CommandParser._extract_commands_from_object(data),
-                        )
+                    found_commands.extend(
+                        CommandParser._extract_commands_from_decoded(data),
+                    )
 
                     # Move cursor past this object
                     cursor = start_idx + end_idx
@@ -90,15 +89,38 @@ class CommandParser:
         data: dict[str, Any],
     ) -> list[tuple[str, dict[str, Any]]]:
         """Extract one or more tool calls from a decoded JSON object."""
+        function_call = data.get("function")
+        if isinstance(function_call, dict):
+            return CommandParser._extract_single_command(function_call)
+
+        tool_call = data.get("tool_call")
+        if isinstance(tool_call, dict):
+            return CommandParser._extract_commands_from_object(tool_call)
+
         tool_calls = data.get("tool_calls")
         if isinstance(tool_calls, list):
             commands: list[tuple[str, dict[str, Any]]] = []
             for item in tool_calls:
                 if isinstance(item, dict):
-                    commands.extend(CommandParser._extract_single_command(item))
+                    commands.extend(CommandParser._extract_commands_from_object(item))
             return commands
 
         return CommandParser._extract_single_command(data)
+
+    @staticmethod
+    def _extract_commands_from_decoded(
+        data: Any,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Extract commands from a decoded JSON value."""
+        if isinstance(data, dict):
+            return CommandParser._extract_commands_from_object(data)
+        if isinstance(data, list):
+            commands: list[tuple[str, dict[str, Any]]] = []
+            for item in data:
+                if isinstance(item, dict):
+                    commands.extend(CommandParser._extract_commands_from_object(item))
+            return commands
+        return []
 
     @staticmethod
     def _extract_single_command(
@@ -109,6 +131,13 @@ class CommandParser:
         params = data.get("parameters")
         if params is None:
             params = data.get("arguments")
+        if isinstance(params, str):
+            try:
+                decoded_params = json.loads(params)
+            except json.JSONDecodeError:
+                decoded_params = None
+            if isinstance(decoded_params, dict):
+                params = decoded_params
         if isinstance(cmd, str) and isinstance(params, dict):
             return [(cmd, params)]
         return []

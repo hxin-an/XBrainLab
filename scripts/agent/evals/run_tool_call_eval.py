@@ -30,6 +30,7 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from XBrainLab.llm.agent.intent import infer_user_intent
 
 METHOD_REFERENCES = [
     {
@@ -1379,51 +1380,7 @@ def make_interpretation_state(name: str) -> InterpretationStateSnapshot:
 
 def infer_intent(text: str) -> str:
     """Infer intent from simple deterministic patterns."""
-    has_it = re.search(r"\bit\b", text) is not None
-    if "reset" in text or "clear the dataset" in text:
-        return "reset_session"
-    if "workflow state" in text or "current workflow" in text or "what changed" in text:
-        return "query_state"
-    if "validate" in text and ("interpret" in text or "candidate" in text or has_it):
-        return "validate_interpretation"
-    if "check whether" in text and "interpretation" in text:
-        return "validate_interpretation"
-    if "reload recipe" in text or "reload the interpretation recipe" in text:
-        return "reload_interpretation_recipe"
-    if "save" in text and "recipe" in text:
-        return "save_interpretation_recipe"
-    if "apply" in text and ("interpret" in text or has_it):
-        return "apply_interpretation"
-    if "preview" in text and (
-        "interpret" in text or "candidate" in text or "subject" in text or has_it
-    ):
-        return "preview_interpretation"
-    if (
-        "interpret data source" in text
-        or "interpret my eeg dataset" in text
-        or "scan the bids dataset" in text
-        or "scan the source" in text
-    ):
-        return "scan_source"
-    if "saliency" in text:
-        return "saliency"
-    if "visualize" in text or "visualise" in text:
-        return "visualize"
-    if "preprocess" in text or "bandpass" in text or "filter" in text:
-        return "preprocess"
-    if "generate" in text and "dataset" in text:
-        return "generate_dataset"
-    if "create epoch" in text or "epochs from" in text or "epoch data" in text:
-        return "create_epoch"
-    if "configure training" in text or "epochs" in text or "batch size" in text:
-        return "configure_training"
-    if "train" in text or "training" in text:
-        return "train"
-    if "eegnet" in text or ("model" in text and "use" in text):
-        return "configure_training"
-    if "load" in text:
-        return "load_data"
-    return "unknown"
+    return infer_user_intent(text)
 
 
 def block_from_policy(policy: Any, command_name: CommandName) -> str:

@@ -40,6 +40,7 @@ from XBrainLab.llm.tools.tool_registry import ToolRegistry
 from .assembler import ContextAssembler
 from .confidence import estimate_confidence
 from .conversation import ConversationHistory
+from .intent import command_for_intent, infer_user_intent, path_label_for_intent
 from .metrics import AgentMetricsTracker
 from .parser import CommandParser
 from .verifier import VerificationLayer
@@ -563,6 +564,28 @@ class LLMController(QObject):
                 self._handle_loop_detected(cmd)
                 return
 
+            intent_block_result = self._check_requested_intent_boundary(cmd)
+            if intent_block_result is not None:
+                user_message = self._summarize_tool_result(
+                    cmd,
+                    False,
+                    intent_block_result,
+                )
+                logger.warning(
+                    "Tool rejected by requested intent boundary: %s",
+                    intent_block_result.message,
+                )
+                self.status_update.emit(f"Blocked: {user_message}")
+                self.response_ready.emit("System", user_message)
+                self._visible_response_sent = True
+                self._append_history(
+                    "user",
+                    f"System: Tool call REJECTED: {intent_block_result.message}",
+                )
+                self._last_tool_summary = user_message
+                self._finalize_turn_after_tool()
+                return
+
             # --- Verification Layer ---
             validation = self.verifier.verify_tool_call(
                 (cmd, params),
@@ -739,9 +762,12 @@ class LLMController(QObject):
         )
         self._finalize_turn_after_tool()
 
-    @staticmethod
-    def _verification_failure_message(command_name: str, message: str) -> str:
+    def _verification_failure_message(self, command_name: str, message: str) -> str:
         """Convert verifier diagnostics into stable internal tool output text."""
+        intent = infer_user_intent(self._latest_user_request_text())
+        path_label = path_label_for_intent(intent)
+        if path_label and "actual path" in message.lower():
+            return f"Required {path_label} must be an actual path provided by the user."
         lower = message.lower()
         if command_name == "list_files" and "directory" in lower:
             return "directory is required"
@@ -973,6 +999,69 @@ class LLMController(QObject):
         if availability.enabled:
             return None
         return availability
+
+    def _check_requested_intent_boundary(
+        self,
+        tool_name: str,
+    ) -> ToolCommandResult | None:
+        """Reject substitute tool calls when the requested workflow step is blocked."""
+        latest_request = self._latest_user_request_text()
+        if not latest_request:
+            return None
+
+        requested_command = command_for_intent(infer_user_intent(latest_request))
+        if requested_command is None:
+            return None
+
+        chosen_command = TOOL_TO_COMMAND.get(tool_name)
+        if chosen_command == requested_command:
+            return None
+
+        try:
+            capability = (
+                BackendFacade(self.study)
+                .get_capabilities()
+                .get(
+                    requested_command,
+                )
+            )
+        except Exception:
+            logger.debug("Requested-intent boundary check failed", exc_info=True)
+            return None
+
+        if capability.enabled:
+            return None
+
+        reason = "; ".join(capability.reasons) or (
+            "The requested workflow step is not available yet."
+        )
+        return ToolCommandResult(
+            ok=False,
+            tool_name=tool_name,
+            command_name=requested_command.value,
+            message=(
+                f"Requested workflow step '{requested_command.value}' is not "
+                f"available: {reason}"
+            ),
+            error_type="precondition",
+            recoverable=True,
+            blocked_reason=reason,
+            state=self._application_state_payload(),
+            capability=capability.to_dict(),
+        )
+
+    def _latest_user_request_text(self) -> str:
+        """Return the most recent human request, excluding tool/system feedback."""
+        for message in reversed(self.history):
+            if message.get("role") != "user":
+                continue
+            content = str(message.get("content", "")).strip()
+            if not content:
+                continue
+            if content.startswith(("System:", "Tool Output:")):
+                continue
+            return content
+        return ""
 
     def _dynamic_confirmation_boundary(
         self,

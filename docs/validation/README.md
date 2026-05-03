@@ -518,6 +518,53 @@ config、HTTP transport、或 product completion。
 「local LLM tool-call accuracy thesis-ready」、「真 ChatPanel 長時間 workflow 已通過」或
 「agent 可無監督完成多步 workflow」。
 
+2026-05-04 Local assistant tool-call guardrail smoke：
+
+- 變更範圍：
+  - `CommandParser` 支援 top-level tool-call array 和 OpenAI-style function tool call。
+  - `VerificationLayer` 新增 `PlaceholderArgumentValidator`，拒絕模型自造的 placeholder
+    source / file / recipe path。
+  - `LLMController` 新增 requested-intent boundary：最新使用者要求的 workflow command 若被
+    `ApplicationService` capability policy 擋下，agent 不能改叫其他 tool 來替代。
+  - local eval runner 使用同一 guardrail 語意，且成功 tool-call 的 `visible_response` 不再保存
+    raw JSON tool syntax。
+  - prompt / schema 補 standard preprocess、dataset split 和 state-authoritative latest-turn
+    規則。
+- preflight：
+  - primary / fallback classification：`gpu-ready`。
+  - cache usage：`15.34 GB`，低於 `20 GB` 上限。
+  - no download；沒有 disallowed cache candidates。
+- exploratory smoke artifacts：
+  - primary：
+    `artifacts/agent_evals/local_primary_guardrail_smoke/local_microsoft_phi_4_mini_instruct.md`
+    -> `5 / 6` pass，唯一失敗是 `multi-turn-scan-preview` 仍重複 scan。
+  - fallback：
+    `artifacts/agent_evals/local_fallback_guardrail_smoke/local_microsoft_phi_3.5_mini_instruct.md`
+    -> `6 / 6` pass。
+- targeted validation:
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_controller.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_assembler_stage.py -q`
+  - `125 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_assembler_stage.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_definitions.py -q`
+  - `150 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q`
+  - `424 passed`
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_eval_guardrails`
+  - temp deterministic report written。
+  - `poetry run ruff check .`
+  - pass
+  - `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict`
+  - pass
+  - `poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant`
+  - `git diff --check`
+  - pass
+
+這批 evidence 支撐「local assistant tool-call guardrails 方向有效，且不再把 raw tool syntax
+當作 visible response」。它仍不支撐 thesis-ready accuracy，因為正式 `54` cases x `3`
+primary / fallback full local eval 尚未重跑。
+
 2026-05-04 Data Interpretation non-mocked backend workflow：
 
 - 新增 `tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked`。

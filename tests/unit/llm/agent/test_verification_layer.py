@@ -3,6 +3,7 @@ from typing import Any, cast
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
     PathExistsValidator,
+    PlaceholderArgumentValidator,
     ToolSchemaValidator,
     TrainingParamValidator,
     VerificationLayer,
@@ -276,6 +277,46 @@ class TestPathExistsValidator:
 
 
 # ---------------------------------------------------------------------------
+# Placeholder Argument Validator
+# ---------------------------------------------------------------------------
+
+
+class TestPlaceholderArgumentValidator:
+    def test_rejects_placeholder_scan_source_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate("scan_source", {"source_path": "path_to_eeg_dataset"})
+        assert not r.is_valid
+        assert "actual path" in _error_message(r)
+
+    def test_rejects_placeholder_load_data_path_list(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate(
+            "load_data",
+            {"paths": ["/path/to/your/eeg/file.gdf"]},
+        )
+        assert not r.is_valid
+        assert "actual path" in _error_message(r)
+
+    def test_rejects_placeholder_recipe_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate(
+            "reload_interpretation_recipe",
+            {"recipe_path": "path_to_recipe.json"},
+        )
+        assert not r.is_valid
+
+    def test_allows_realistic_absolute_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate("scan_source", {"source_path": "/data/S01.gdf"})
+        assert r.is_valid
+
+    def test_ignores_non_path_values(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate("epoch_data", {"event_id": ["BAD_EVENT"]})
+        assert r.is_valid
+
+
+# ---------------------------------------------------------------------------
 # VerificationLayer integration with validators
 # ---------------------------------------------------------------------------
 
@@ -315,3 +356,9 @@ class TestVerificationLayerWithValidators:
         r = v.verify_tool_call(("scan_source", {}))
         assert not r.is_valid
         assert "Missing required" in _error_message(r)
+
+    def test_default_validators_reject_placeholder_paths(self):
+        v = VerificationLayer()
+        r = v.verify_tool_call(("scan_source", {"source_path": "/path/to/eeg/data"}))
+        assert not r.is_valid
+        assert "actual path" in _error_message(r)

@@ -70,6 +70,32 @@ def test_parse_tool_calls_list():
     ]
 
 
+def test_parse_top_level_tool_call_array():
+    text = '[{"tool_name":"get_dataset_info","parameters":{}}]'
+    result = CommandParser.parse(text)
+    assert result == [("get_dataset_info", {})]
+
+
+def test_parse_openai_function_tool_call_shape():
+    text = """
+    {
+      "tool_calls": [
+        {
+          "type": "function",
+          "function": {
+            "name": "scan_source",
+            "arguments": "{\\"source_path\\":\\"/data/bids_mi\\",\\"source_hint\\":\\"bids\\"}"
+          }
+        }
+      ]
+    }
+    """
+    result = CommandParser.parse(text)
+    assert result == [
+        ("scan_source", {"source_path": "/data/bids_mi", "source_hint": "bids"})
+    ]
+
+
 def test_parse_relaxed_json_block():
     # Case 1: Uppercase JSON
     text_caps = """

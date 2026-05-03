@@ -28,6 +28,79 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Local assistant tool-call guardrails
+
+### 背景
+
+真 local LLM tool-call runner 已證明 primary / fallback 可以穩定產生 raw output，但 full run
+只有 `18 / 54` 和 `20 / 54` pass。失敗主要集中在 placeholder path、blocked command
+substitution、工具格式變體、standard preprocess / dataset split argument drift，以及 eval
+artifact 把 raw tool JSON 當成 visible response。
+
+### 變更
+
+- `CommandParser` 支援 top-level tool-call array 和 OpenAI-style function tool call。
+- `VerificationLayer` 新增 `PlaceholderArgumentValidator`，拒絕模型自造的 placeholder
+  source / file / recipe path。
+- 新增 `XBrainLab.llm.agent.intent`，集中 infer user intent、intent -> `CommandName` 和
+  path label 對應。
+- `LLMController` 新增 requested-intent boundary：最新使用者要求的 workflow command 若被
+  `ApplicationService` capability policy 擋下，agent 不能改叫其他 tool 來 substitute。
+- local eval runner 套用同一 guardrail：
+  - blocked requested intent 轉成 blocked prediction。
+  - placeholder path 轉成 missing input。
+  - `generate_dataset.val_ratio` 依 backend default 補 `0.2`。
+  - successful tool-call 的 `visible_response` 不保存 raw JSON tool syntax。
+- prompt / schema 補強：
+  - standard preprocess 應使用 `apply_standard_preprocess`。
+  - `generate_dataset.split_strategy` 只能是 `trial` / `session` / `subject`。
+  - `individual` / `group` 是 `training_mode`。
+  - current state 比 chat history 中較早的 scan / load request 更權威。
+
+### 影響範圍
+
+- Agent parser / verifier / controller。
+- Local tool-call eval runner / deterministic eval intent helper。
+- Tool definitions 的 prompt-facing descriptions。
+- Local guardrail smoke artifacts。
+
+### 驗證
+
+- runtime preflight：
+  - primary / fallback `gpu-ready`。
+  - cache usage `15.34 GB`，低於 `20 GB` 上限。
+  - no download。
+- exploratory local smoke：
+  - `artifacts/agent_evals/local_primary_guardrail_smoke/local_microsoft_phi_4_mini_instruct.md`
+    -> `5 / 6` pass。
+  - `artifacts/agent_evals/local_fallback_guardrail_smoke/local_microsoft_phi_3.5_mini_instruct.md`
+    -> `6 / 6` pass。
+- `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_controller.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_assembler_stage.py -q`
+  - `125 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/agent/test_assembler_stage.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_definitions.py -q`
+  - `150 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q`
+  - `424 passed`
+- `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir /tmp/xbrainlab_eval_guardrails`
+  - temp deterministic report written。
+- `poetry run ruff check .`
+  - pass
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run mkdocs build --strict`
+  - pass
+- `poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant`
+- `git diff --check`
+  - pass
+
+### 剩餘風險
+
+- 正式 `54` cases x `3` primary / fallback local eval 尚未重跑；不能宣稱 thesis-ready。
+- Primary smoke 仍在 `multi-turn-scan-preview` 重複 scan，顯示 prompt / state snapshot 對多輪
+  continuation 仍需加強。
+- 這不是 ChatPanel 長時間 walkthrough，也不是 Windows launcher click-through evidence。
+
 ## 2026-05-04 label import recipe trace integration
 
 ### 背景

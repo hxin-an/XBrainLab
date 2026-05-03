@@ -91,6 +91,15 @@ fallback 本地模型 raw output，且每個 case 重跑 `3` 次。最新 artifa
 目前 local LLM tool-call accuracy 不能宣稱 thesis-ready。`VerificationLayer` 也補上
 registered tool schema / required / type / enum 檢查，controller 會在 tool execution 前攔下
 可解析但不可執行的 tool JSON。
+同日後續 guardrail slice 進一步把 local assistant tool-call failure 轉成產品可用的安全邊界：
+`CommandParser` 可解析 top-level tool-call array 和 OpenAI-style function tool call；
+`PlaceholderArgumentValidator` 會拒絕模型自造的 placeholder path；`LLMController` 會用最新
+使用者意圖和 `ApplicationService` capability policy 擋下「使用者要求的 workflow step 已
+blocked，模型卻改叫別的工具硬補」的 substitute tool call。產品 prompt / local eval prompt /
+tool schema 也補上 standard preprocess、dataset split、latest-turn/state-authoritative 規則。
+探索性 guardrail smoke artifact 顯示 primary `5 / 6`、fallback `6 / 6`，但 full `54` cases
+primary / fallback x `3` 尚未重跑；舊 full result `18 / 54`、`20 / 54` 仍是目前 thesis
+accuracy blocker。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 長時間
 UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release closure。

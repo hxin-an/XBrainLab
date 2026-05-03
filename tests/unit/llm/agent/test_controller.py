@@ -7,6 +7,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application.capabilities import CommandCapability
+from XBrainLab.llm.tools.application_surface import ToolCommandResult
+
 
 @pytest.fixture
 def _mock_qt():
@@ -310,6 +314,65 @@ class TestProcessToolCalls:
         ctrl._process_tool_calls([("cmd", {})], "json")
         ctrl._handle_verification_failure.assert_called_once_with("cmd", "bad call")
         ctrl._generate_response.assert_not_called()
+
+    def test_requested_intent_boundary_rejects_before_verification(self, ctrl):
+        ctrl._detect_loop = MagicMock(return_value=False)
+        ctrl._check_requested_intent_boundary = MagicMock(
+            return_value=ToolCommandResult(
+                ok=False,
+                tool_name="set_model",
+                command_name=CommandName.TRAIN.value,
+                message=(
+                    "Requested workflow step 'train' is not available: "
+                    "Generate datasets before training"
+                ),
+                error_type="precondition",
+                recoverable=True,
+                blocked_reason="Generate datasets before training",
+            )
+        )
+        ctrl._finalize_turn_after_tool = MagicMock()
+
+        ctrl._process_tool_calls(
+            [("set_model", {"model_name": "EEGNet"})],
+            '{"tool_name":"set_model","parameters":{"model_name":"EEGNet"}}',
+        )
+
+        ctrl.verifier.verify_tool_call.assert_not_called()
+        ctrl.response_ready.emit.assert_called()
+        ctrl._finalize_turn_after_tool.assert_called_once()
+
+    def test_requested_intent_boundary_reads_application_policy(self, ctrl):
+        ctrl.history = [{"role": "user", "content": "Train an EEGNet model now."}]
+        capability = CommandCapability(
+            command_name=CommandName.TRAIN.value,
+            enabled=False,
+            reasons=["Generate datasets before training"],
+        )
+        policy = MagicMock()
+        policy.get.return_value = capability
+
+        with patch("XBrainLab.llm.agent.controller.BackendFacade") as facade:
+            facade.return_value.get_capabilities.return_value = policy
+            facade.return_value.get_state.side_effect = RuntimeError("state unused")
+            result = ctrl._check_requested_intent_boundary("set_model")
+
+        assert result is not None
+        assert result.command_name == CommandName.TRAIN.value
+        assert result.error_type == "precondition"
+        assert "Generate datasets before training" in result.message
+
+    def test_verification_failure_uses_requested_path_label(self, ctrl):
+        ctrl.history = [{"role": "user", "content": "Load my EEG file."}]
+
+        message = ctrl._verification_failure_message(
+            "scan_source",
+            "Required source path must be an actual path provided by the user.",
+        )
+
+        assert (
+            message == "Required file path must be an actual path provided by the user."
+        )
 
 
 # --- close ---

@@ -54,6 +54,12 @@
   這是 engineering evidence，不是 thesis-ready accuracy。
 - `VerificationLayer` 已補 registered tool schema / required / type / enum 檢查，controller
   會在 execution 前攔可解析但不可執行的 tool JSON。
+- local assistant guardrail slice 已補 placeholder path rejection、requested-intent boundary、
+  parser 對 top-level array / OpenAI function-call shape 的支援、以及 standard preprocess /
+  dataset split prompt/schema 規則。探索性 smoke artifact：
+  - primary guardrail smoke：`5 / 6` pass。
+  - fallback guardrail smoke：`6 / 6` pass。
+  這只證明 guardrail 方向有效；正式 `54` cases x `3` primary / fallback 尚未重跑。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

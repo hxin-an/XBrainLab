@@ -267,10 +267,107 @@ class PathExistsValidator(ValidatorStrategy):
         return VerificationResult(is_valid=True)
 
 
+class PlaceholderArgumentValidator(ValidatorStrategy):
+    """Reject tool calls where the model invented a placeholder path."""
+
+    PATH_KEYS: ClassVar[set[str]] = {
+        "directory",
+        "file_path",
+        "path",
+        "paths",
+        "recipe_path",
+        "source_path",
+    }
+    PATH_TOOLS: ClassVar[set[str]] = {
+        "attach_labels",
+        "list_files",
+        "load_data",
+        "reload_interpretation_recipe",
+        "scan_source",
+    }
+    PLACEHOLDER_MARKERS: ClassVar[tuple[str, ...]] = (
+        "/path/to/",
+        "path_to_",
+        "<path",
+        "{path",
+        "your/eeg",
+        "your_eeg",
+        "placeholder",
+        "replace_with",
+        "replace/",
+    )
+    PLACEHOLDER_EXACT: ClassVar[set[str]] = {
+        "empty",
+        "path",
+        "path_to_dataset",
+        "path_to_eeg_dataset",
+        "path_to_recipe.json",
+    }
+
+    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
+        if name not in self.PATH_TOOLS:
+            return VerificationResult(is_valid=True)
+
+        for param_name, value in params.items():
+            if param_name in self.PATH_KEYS:
+                placeholder = self._first_placeholder(value)
+                if placeholder:
+                    label = self._path_label(param_name)
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(
+                            f"Required {label} must be an actual path provided "
+                            f"by the user, got placeholder {placeholder!r}."
+                        ),
+                    )
+            elif name == "attach_labels" and param_name == "mapping":
+                placeholder = self._first_placeholder(value)
+                if placeholder:
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(
+                            "Label mapping must use actual paths provided by "
+                            f"the user, got placeholder {placeholder!r}."
+                        ),
+                    )
+
+        return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _first_placeholder(cls, value: Any) -> str | None:
+        if isinstance(value, str):
+            return value if cls._looks_like_placeholder_path(value) else None
+        if isinstance(value, list):
+            for item in value:
+                found = cls._first_placeholder(item)
+                if found:
+                    return found
+        if isinstance(value, dict):
+            for item in value.values():
+                found = cls._first_placeholder(item)
+                if found:
+                    return found
+        return None
+
+    @classmethod
+    def _looks_like_placeholder_path(cls, value: str) -> bool:
+        text = value.strip().strip("\"'").lower()
+        if text in cls.PLACEHOLDER_EXACT:
+            return True
+        return any(marker in text for marker in cls.PLACEHOLDER_MARKERS)
+
+    @staticmethod
+    def _path_label(param_name: str) -> str:
+        if param_name == "paths":
+            return "file path"
+        return param_name.replace("_", " ")
+
+
 # Default validators applied to every tool call
 DEFAULT_VALIDATORS: list[ValidatorStrategy] = [
     FrequencyRangeValidator(),
     TrainingParamValidator(),
+    PlaceholderArgumentValidator(),
     PathExistsValidator(),
 ]
 

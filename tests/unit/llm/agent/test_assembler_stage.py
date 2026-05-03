@@ -111,6 +111,16 @@ class TestStageBasedFiltering:
         prompt = self._build(PipelineStage.EMPTY, [])
         assert "No tools currently available" in prompt
 
+    def test_prompt_blocks_placeholder_paths_and_tool_substitution(self):
+        prompt = self._build(
+            PipelineStage.EMPTY,
+            ["scan_source", "preview_interpretation", "set_model"],
+        )
+        assert "Never invent placeholder paths" in prompt
+        assert "do not call a different tool" in prompt
+        assert "apply_standard_preprocess for" in prompt
+        assert "individual and group are training_mode" in prompt
+
 
 class TestPromptContent:
     """System prompt includes stage name and guidance."""

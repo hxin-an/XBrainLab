@@ -41,22 +41,35 @@ Available Tools:
 Blocked Commands:
 {blocked_str}
 
-To use a tool, you MUST output a JSON object in the following format:
-```json
-{{
-    "tool_name": "tool_name",
-    "parameters": {{
-        "param_name": "value"
-    }}
-}}
-```
+To use a tool, output exactly one compact JSON object in this format:
+{{"tool_name":"tool_name","parameters":{{"param_name":"value"}}}}
 
 Rules:
-1. If you need to use a tool, output ONLY the JSON block.
+1. If you need to use a tool, output ONLY the JSON object.
 2. Do NOT output any introductory text (like 'Sure', 'I will') before the JSON.
 3. Do NOT output the JSON block if you are not using a tool.
 4. If no tool is needed, just reply normally.
 5. You can ONLY use the tools listed above. Do NOT attempt to call unlisted tools.
+6. Never invent placeholder paths, recipe paths, ids, labels, or file names.
+   If a required value is missing, ask for it in one concise sentence.
+7. If the user asks for a blocked workflow command, do not call a different tool
+   to prepare or substitute for it. Explain the blocked reason in user-facing
+   language.
+8. The latest user message is the next requested action. Earlier messages are
+   context; do not repeat an earlier tool step unless the latest message asks
+   for it.
+9. Use at most one tool call per assistant turn.
+
+Workflow tool choices:
+- The current application state is authoritative. If the state already has a
+  scan, preview, validation, or applied interpretation, continue from that
+  state instead of repeating an earlier scan/load step from the chat history.
+- Use apply_standard_preprocess for "standard preprocessing" or general
+  preprocess requests, even when the user includes bandpass frequencies. Use
+  the single bandpass filter tool only when it is listed and the user asks for a
+  bandpass-only operation.
+- For generate_dataset, split_strategy must be trial, session, or subject.
+  individual and group are training_mode values, not split_strategy values.
 """
 
     def __init__(self, tool_registry: ToolRegistry, study_state: Any):
