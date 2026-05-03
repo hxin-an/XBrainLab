@@ -10,12 +10,12 @@
 - current truth：目前完整狀態看 `docs/current.md`。
 - worklog：流水帳看 `docs/records/worklog.md`。
 
-目前 `now.md` 的用途是：在設定下一個 Codex goal 前，明確定義第一個大 goal 的範圍、停止條件、
-驗收門檻，以及不能宣稱的事。
+目前 `now.md` 的用途是：記錄 Goal 1 engineering baseline 的 closure 狀態、剩餘不能宣稱的事，
+以及下一輪應優先處理的產品硬化方向。
 
 ## 目前位置
 
-文件設計已進入可發包狀態：
+文件設計與 Goal 1 baseline 已進入可交接狀態：
 
 - `docs/planning/roadmap.md` 已重寫為成品主線。
 - `docs/target/data_interpretation_system.md` 已定義資料解讀終局設計。
@@ -49,25 +49,27 @@
   這是 engineering evidence，不是 thesis-ready accuracy。
 - `VerificationLayer` 已補 registered tool schema / required / type / enum 檢查，controller
   會在 execution 前攔可解析但不可執行的 tool JSON。
-- Data Interpretation System 仍未完成；目前尚缺 label import recipe integration、完整 MCP server
-  和更完整的 UI replay coverage。（MCP-ready schema / headless adapter 已有；backend
-  non-mocked source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有；
-  Data Interpretation preview / applied dataset panel 的 UI-observable replay artifact 已有第一版。）
-- subject / session / task / run metadata resolution 已可在 preview dialog 呈現，但 override /
-  recipe UI 尚未完成。
+- Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
+  confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
+  dataset workflow evidence 和 UI-observable preview / applied artifact。
+- 剩餘非 Goal 1 closure blockers：label import compatibility path 尚未整合進 Data Interpretation
+  recipe UI、完整 MCP server 尚未新增、UI replay coverage 還不是完整真人 walkthrough。
+- subject / session / task / run metadata resolution 已可在 preview dialog 呈現並進入 recipe trace；
+  更完整的 override UI 仍是下一輪 hardening。
 
 ## 下一個 Goal
 
-下一個 goal 應聚焦在：
+下一個 goal 應聚焦在產品硬化，而不是重做 Goal 1 baseline：
 
 ```text
-Backend Command Spine
-  + Data Interpretation System
-  + Agent Tool Surface Migration
+True local LLM ChatPanel workflow
+  + label/recipe UI hardening
+  + optional full MCP server
+  + Windows launcher click-through
 ```
 
-這不是小修 UI，也不是單純讓 agent prompt 更聰明。這個 goal 的目的，是把 XBrainLab 的資料入口、
-backend command、UI、agent tools、verification 和 scorer 基準打通成同一套 workflow truth。
+這不是單純讓 deterministic eval 分數漂亮。下一輪要把真 UI、真 local model、可見 blocked
+reason、recipe editing 和 external-agent adapter 邊界一起驗證。
 
 MCP 也應納入設計，但 Goal 1 的最低要求是 **MCP-ready command surface**：先確保 command
 taxonomy、capability policy、autonomy policy、result schema 足以支撐 MCP server。若 runner
