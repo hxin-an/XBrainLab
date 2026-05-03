@@ -34,11 +34,15 @@
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
 - Dataset panel 的主要資料入口已從 `Import Data` 改為 `Interpret Data Source`，並走
-  scan -> preview -> validate -> confirm/apply；但 label import、headless / MCP、eval case
-  taxonomy 尚未完成遷移。
-- Data Interpretation System 仍未完成；目前尚缺 recipe save UI、headless / MCP adapter、
+  scan -> preview -> validate -> confirm/apply；但 label import 和 recipe save UI 尚未完成遷移。
+- headless / MCP-ready automation adapter 已新增：
+  `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
+  payload 轉回 typed `ApplicationService` command。
+- deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
+  `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
+- Data Interpretation System 仍未完成；目前尚缺 recipe save UI、完整 MCP server、
   UI-observable replay artifact 和完整 source -> recipe -> preprocess -> epoch -> dataset
-  non-mocked evidence。
+  non-mocked evidence。（MCP-ready schema / headless adapter 已有。）
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現，但 override /
   recipe UI 尚未完成。
 
@@ -120,20 +124,23 @@ Goal 1 至少要包含：
 8. **Agent alignment**
    - Context Assembler 暴露 Data Interpretation tools。（agent surface slice 已完成。）
    - Verification Layer 檢查 capability policy、Data Interpretation decision 和 autonomy policy。
-     （目前已檢查 backend capability / dynamic confirmation boundary；完整 Data Interpretation
-     decision-aware planner / eval cases 仍未完成。）
+     （目前已檢查 backend capability / dynamic confirmation boundary；deterministic eval cases
+     已納入 Data Interpretation decision / blocked / confirmation / recovery。）
    - visible response 不暴露 raw schema、snake_case command、traceback 或 debug payload。
 
 9. **Evaluation baseline**
    - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
+     （目前 deterministic baseline 為 `54` cases；仍不是 local LLM 真實能力證明。）
    - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計。
 
 10. **MCP-ready automation surface**
     - CLI / headless runner 保留給 CI、eval、batch 和 artifact generation。
+      （`scripts/dev/run_application_command.py` 已新增。）
     - MCP server 作為 external agent adapter，使用同一套 command taxonomy。
+      （目前已有 MCP-shaped tool specs；完整 MCP server 尚未新增。）
     - MCP client 不應需要安裝 XBrainLab 的 EEG / PyQt / PyTorch 依賴；MCP server 跑在 prepared
       XBrainLab runtime。
     - MCP calls 不能繞過 ApplicationService、capability policy 或 autonomy policy。

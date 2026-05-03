@@ -139,6 +139,10 @@ adapter：
 
 MCP server 應該跑在 XBrainLab 已準備好的 runtime 裡，對外暴露穩定 tool schema。外部 agent
 透過 MCP 呼叫 tools；MCP server 再把 calls 轉成 `ApplicationService / Command API`。
+目前 Goal 1 的最低 MCP-ready adapter 是 `XBrainLab.backend.application.automation`：
+它從同一組 typed command dataclass 產生 JSON schema / MCP-shaped tool specs，並把 JSON
+payload 轉回 `ApplicationService.execute()` 可執行的 command；adapter 本身不得直接碰
+controller internals。
 
 MCP 不應該：
 

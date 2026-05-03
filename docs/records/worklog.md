@@ -37,6 +37,34 @@
 
 ## 2026-05-04
 
+### 02:53 Goal 1 automation adapter / eval baseline
+
+- 做了什麼：
+  - 新增 `XBrainLab.backend.application.automation`，從 typed command dataclass 產生
+    command schema、workflow taxonomy、live capability / autonomy policy 和 MCP-shaped tool
+    specs。
+  - 新增 `scripts/dev/run_application_command.py`，可 headless 列 schema、列 MCP tool specs，
+    或在同一個 `ApplicationService` session 中執行 JSON command payload。
+  - deterministic tool-call eval 從 `21` cases 擴成 `54` cases，納入 Data Interpretation
+    scan / preview / validate / apply / recipe、metadata choice、confirmation boundary、blocked、
+    missing-input、recovery 和 `15` 個 multi-turn cases。
+  - 刷新 `artifacts/agent_evals/latest.json`、`artifacts/agent_evals/latest.md`。
+- 結果：
+  - headless / MCP-ready path 不再需要第三套 workflow truth；JSON payload 會轉回
+    `ApplicationService.execute()`。
+  - deterministic engineering baseline 達到 Goal 1 的最低 `50` cases 與 multi-turn / negative
+    比例要求。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py -q` -> `7 passed`
+  - `poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py -q` -> `1 passed`
+  - targeted `ruff check` -> `PASS`
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+- 接續 / 本輪剩餘：
+  - 還不能宣稱 MCP server、local LLM 真實 tool-call accuracy 或 UI-observable replay 完成。
+  - 下一步要補 source -> recipe -> preprocess -> epoch -> dataset 的 non-mocked walkthrough /
+    replay evidence，並視範圍處理 recipe save UI / label import migration。
+
 ### 01:32 Goal 1 runbook 準備
 
 - 做了什麼：

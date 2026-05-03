@@ -1,5 +1,14 @@
 """Application service API for command-driven backend orchestration."""
 
+from .automation import (
+    AutomationCommandSpec,
+    AutomationExecution,
+    AutomationPayloadError,
+    build_command_from_payload,
+    command_specs,
+    execute_automation_payload,
+    mcp_tool_specs,
+)
 from .capabilities import (
     CapabilityPolicy,
     CommandCapability,
@@ -86,6 +95,9 @@ __all__ = [
     "ApplyMontageCommand",
     "ApplySmartParseCommand",
     "AttachLabelsCommand",
+    "AutomationCommandSpec",
+    "AutomationExecution",
+    "AutomationPayloadError",
     "CapabilityPolicy",
     "ChangedState",
     "ClearDatasetsCommand",
@@ -141,6 +153,10 @@ __all__ = [
     "VisualizationStateSnapshot",
     "VisualizeCommand",
     "build_capability_policy",
+    "build_command_from_payload",
     "command_name",
+    "command_specs",
+    "execute_automation_payload",
     "map_exception",
+    "mcp_tool_specs",
 ]

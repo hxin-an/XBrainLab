@@ -1,8 +1,8 @@
 # XBrainLab Tool-Call Eval
 
 - runner: `deterministic-scripted-baseline`
-- total cases: `21`
-- passed: `21`
+- total cases: `54`
+- passed: `54`
 - failed: `0`
 - pass rate: `100.00%`
 
@@ -14,6 +14,8 @@
 | tool selection | 100.00% |
 | argument correctness | 100.00% |
 | state aware | 100.00% |
+| verification result match | 100.00% |
+| state delta | 100.00% |
 | blocked command | 100.00% |
 | recovery | 100.00% |
 | tool result interpretation | 100.00% |

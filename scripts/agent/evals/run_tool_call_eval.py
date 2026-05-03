@@ -68,6 +68,8 @@ class EvalCase:
     user_turns: list[str]
     expected_intent: str
     expected_tools: list[ExpectedToolCall] = field(default_factory=list)
+    expected_verification_result: str | None = None
+    expected_state_delta: dict[str, bool] = field(default_factory=dict)
     expected_blocked: bool = False
     expected_confirmation_required: bool = False
     expected_reason_terms: list[str] = field(default_factory=list)
@@ -96,6 +98,7 @@ class Prediction:
     asks_clarification: bool = False
     final_message: str = ""
     result_interpretation: str | None = None
+    state_delta: dict[str, bool] = field(default_factory=dict)
 
     def trajectory_signature(self) -> dict[str, Any]:
         """Return stable fields used for reliability comparison."""
@@ -106,7 +109,9 @@ class Prediction:
             "confirmation_required": self.confirmation_required,
             "blocked_reason": self.blocked_reason,
             "asks_clarification": self.asks_clarification,
+            "final_message": self.final_message,
             "result_interpretation": self.result_interpretation,
+            "state_delta": self.state_delta,
         }
 
 
@@ -116,10 +121,23 @@ class CaseScore:
 
     case_id: str
     passed: bool
+    user_command: list[str]
+    initial_state: str
+    available_command_summary: dict[str, Any]
+    expected_verification_result: str
+    expected_state_delta: dict[str, bool]
+    actual_model_output: str
+    parsed_tool_calls: list[dict[str, Any]]
+    verification_result: str
+    backend_result: dict[str, Any]
+    visible_response: str
+    score_breakdown: dict[str, bool]
     intent: bool
     tool_selection: bool
     argument_correctness: bool
     state_aware: bool
+    verification_result_match: bool
+    state_delta: bool
     blocked_command: bool
     recovery: bool
     tool_result_interpretation: bool
@@ -350,6 +368,379 @@ def build_eval_cases() -> list[EvalCase]:
             [ExpectedToolCall("load_data", {"paths": ["/data/S03.fif"]})],
             expected_result_interpretation="success_summary",
         ),
+        EvalCase(
+            "empty-scan-source-folder",
+            "Empty state scans a dataset folder",
+            "empty",
+            ["Interpret data source /datasets/bci_iv_2a"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/datasets/bci_iv_2a"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-bids-folder",
+            "BIDS folder scan preserves source hint",
+            "empty",
+            ["Scan the BIDS dataset at /data/bids_mi"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/data/bids_mi", "source_hint": "bids"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-missing-path",
+            "Scan request without source asks for path",
+            "empty",
+            ["Interpret my EEG dataset."],
+            "scan_source",
+            expected_blocked=True,
+            expected_reason_terms=["source path"],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "multi-turn-scan-source-recovery",
+            "Missing scan source recovers in second turn",
+            "empty",
+            ["Interpret my EEG dataset.", "Use /datasets/physionet/eegmmi"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/datasets/physionet/eegmmi"},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-preview-before-scan-block",
+            "Preview before scan is blocked",
+            "empty",
+            ["Preview the data interpretation."],
+            "preview_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Scan a data source before previewing"],
+        ),
+        EvalCase(
+            "scanned-preview-auto",
+            "Scanned source can preview interpretation",
+            "scanned",
+            ["Preview the interpretation candidate."],
+            "preview_interpretation",
+            [ExpectedToolCall("preview_interpretation", {})],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "scanned-preview-subject-override",
+            "Preview accepts subject metadata choice",
+            "scanned",
+            ["Preview with subject S01 override."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"subject": "S01"}},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-validate-before-preview-block",
+            "Validate before candidate is blocked",
+            "empty",
+            ["Validate the interpretation."],
+            "validate_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=[
+                "Preview an interpretation candidate before validation"
+            ],
+        ),
+        EvalCase(
+            "previewed-safe-validate",
+            "Previewed candidate can be validated",
+            "previewed_safe",
+            ["Validate this interpretation candidate."],
+            "validate_interpretation",
+            [ExpectedToolCall("validate_interpretation", {})],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "previewed-confirmation-validate",
+            "Ambiguous label candidate validates to confirmation boundary",
+            "previewed_confirmation",
+            ["Check whether this ambiguous GDF label interpretation is safe."],
+            "validate_interpretation",
+            [ExpectedToolCall("validate_interpretation", {})],
+            expected_result_interpretation="confirmation_boundary",
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "validated-safe-apply",
+            "Safe validation can apply interpretation",
+            "validated_safe",
+            ["Apply the interpretation."],
+            "apply_interpretation",
+            [ExpectedToolCall("apply_interpretation", {})],
+            expected_state_delta={
+                "raw_changed": True,
+                "interpretation_changed": True,
+            },
+        ),
+        EvalCase(
+            "empty-apply-before-validation-block",
+            "Apply before validation is blocked",
+            "empty",
+            ["Apply the interpretation now."],
+            "apply_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Validate an interpretation before applying"],
+        ),
+        EvalCase(
+            "validated-confirmation-apply-requires-confirmation",
+            "Needs-confirmation validation stops before apply",
+            "validated_confirmation",
+            ["Apply the interpretation."],
+            "apply_interpretation",
+            [ExpectedToolCall("apply_interpretation", {})],
+            expected_confirmation_required=True,
+            expected_reason_terms=["requires confirmation"],
+        ),
+        EvalCase(
+            "multi-turn-confirmed-apply",
+            "User confirmation permits apply with confirmed flag",
+            "validated_confirmation",
+            ["Apply the interpretation.", "I confirm the GDF labels are correct."],
+            "apply_interpretation",
+            [ExpectedToolCall("apply_interpretation", {"confirmed": True})],
+            expected_confirmation_required=True,
+            expected_state_delta={
+                "raw_changed": True,
+                "interpretation_changed": True,
+            },
+        ),
+        EvalCase(
+            "validated-blocked-apply-block",
+            "Blocked interpretation cannot be applied",
+            "validated_blocked",
+            ["Apply this blocked interpretation anyway."],
+            "apply_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Interpretation is blocked", "label carrier"],
+        ),
+        EvalCase(
+            "applied-save-recipe-default",
+            "Applied interpretation can save recipe",
+            "applied_interpretation",
+            ["Save the interpretation recipe."],
+            "save_interpretation_recipe",
+            [ExpectedToolCall("save_interpretation_recipe", {})],
+        ),
+        EvalCase(
+            "applied-save-recipe-path",
+            "Applied interpretation can save recipe to explicit path",
+            "applied_interpretation",
+            ["Save the recipe to /recipes/import_recipe.json"],
+            "save_interpretation_recipe",
+            [
+                ExpectedToolCall(
+                    "save_interpretation_recipe",
+                    {"recipe_path": "/recipes/import_recipe.json"},
+                )
+            ],
+        ),
+        EvalCase(
+            "empty-save-recipe-before-apply-block",
+            "Recipe save before apply is blocked",
+            "empty",
+            ["Save the interpretation recipe."],
+            "save_interpretation_recipe",
+            expected_blocked=True,
+            expected_reason_terms=["Apply an interpretation before saving a recipe"],
+        ),
+        EvalCase(
+            "empty-reload-recipe-path",
+            "Recipe reload uses explicit path",
+            "empty",
+            ["Reload recipe /recipes/import_recipe.json"],
+            "reload_interpretation_recipe",
+            [
+                ExpectedToolCall(
+                    "reload_interpretation_recipe",
+                    {"recipe_path": "/recipes/import_recipe.json"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-reload-recipe-missing-path",
+            "Recipe reload without path asks for path",
+            "empty",
+            ["Reload the interpretation recipe."],
+            "reload_interpretation_recipe",
+            expected_blocked=True,
+            expected_reason_terms=["recipe path"],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "multi-turn-reload-recipe-recovery",
+            "Missing recipe path recovers in second turn",
+            "empty",
+            ["Reload the interpretation recipe.", "Use /recipes/import_recipe.json"],
+            "reload_interpretation_recipe",
+            [
+                ExpectedToolCall(
+                    "reload_interpretation_recipe",
+                    {"recipe_path": "/recipes/import_recipe.json"},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-scan-preview",
+            "Scan then preview trajectory ends with preview tool",
+            "scanned",
+            ["Scan /data/bids_mi.", "Now preview the interpretation."],
+            "preview_interpretation",
+            [ExpectedToolCall("preview_interpretation", {})],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-preview-validate",
+            "Preview then validate trajectory ends with validation tool",
+            "previewed_safe",
+            ["Preview the candidate.", "Validate it now."],
+            "validate_interpretation",
+            [ExpectedToolCall("validate_interpretation", {})],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-validate-apply-safe",
+            "Validation then apply safe interpretation",
+            "validated_safe",
+            ["Validate the candidate.", "Apply it."],
+            "apply_interpretation",
+            [ExpectedToolCall("apply_interpretation", {})],
+            expected_recovery=True,
+            expected_state_delta={
+                "raw_changed": True,
+                "interpretation_changed": True,
+            },
+        ),
+        EvalCase(
+            "multi-turn-apply-save-recipe",
+            "Apply then save recipe trajectory ends with recipe save",
+            "applied_interpretation",
+            ["Apply the validated interpretation.", "Save its recipe."],
+            "save_interpretation_recipe",
+            [ExpectedToolCall("save_interpretation_recipe", {})],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "multi-turn-scan-missing-preview-block",
+            "Preview request still blocks if scan never occurred",
+            "empty",
+            ["Interpret my dataset.", "Preview it now."],
+            "preview_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Scan a data source before previewing"],
+        ),
+        EvalCase(
+            "multi-turn-apply-blocked-after-validation",
+            "Blocked validation remains blocked across turns",
+            "validated_blocked",
+            ["Validate the candidate.", "Apply it anyway."],
+            "apply_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Interpretation is blocked", "label carrier"],
+        ),
+        EvalCase(
+            "multi-turn-recipe-reload-validate",
+            "Reloaded recipe can move to validation",
+            "previewed_confirmation",
+            [
+                "Reload recipe /recipes/import_recipe.json.",
+                "Validate the reloaded candidate.",
+            ],
+            "validate_interpretation",
+            [ExpectedToolCall("validate_interpretation", {})],
+            expected_recovery=True,
+            expected_result_interpretation="confirmation_boundary",
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-source-then-scan",
+            "Clarified source path scans after user provides folder",
+            "empty",
+            ["Scan the source.", "The folder is /data/bids_mi"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/data/bids_mi"},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-preview-metadata-choice",
+            "Metadata choice in second turn previews candidate",
+            "scanned",
+            ["Preview the candidate.", "Use subject S02 and preview again."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"subject": "S02"}},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-loaded-preprocess",
+            "Loaded state accepts preprocessing in second turn",
+            "loaded",
+            ["The raw file is loaded.", "Apply 8 to 30 Hz bandpass."],
+            "preprocess",
+            [
+                ExpectedToolCall(
+                    "apply_standard_preprocess",
+                    {"l_freq": 8.0, "h_freq": 30.0},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"preprocessed_changed": True},
+        ),
+        EvalCase(
+            "query-state-empty",
+            "State query is read-only",
+            "empty",
+            ["What is the current workflow state?"],
+            "query_state",
+            [ExpectedToolCall("query_state", {"query": "state"})],
+        ),
+        EvalCase(
+            "multi-turn-query-after-apply",
+            "State query after apply remains read-only",
+            "applied_interpretation",
+            ["Apply the interpretation.", "What changed in the state?"],
+            "query_state",
+            [ExpectedToolCall("query_state", {"query": "state"})],
+            expected_recovery=True,
+        ),
     ]
 
 
@@ -392,7 +783,136 @@ def predict_case(case: EvalCase) -> Prediction:
     policy = build_capability_policy(state)
     last_turn = case.user_turns[-1]
     text = " ".join(case.user_turns).lower()
-    intent = infer_intent(text)
+    intent = infer_intent(last_turn.lower())
+    if intent == "unknown":
+        intent = infer_intent(text)
+
+    if intent == "scan_source":
+        paths = extract_paths(last_turn)
+        if not paths:
+            return Prediction(
+                intent=intent,
+                tool_calls=[],
+                blocked=True,
+                asks_clarification=True,
+                blocked_reason=(
+                    "Missing required source path; ask the user for a source path."
+                ),
+                final_message="Please provide the data source path before scanning.",
+            )
+        blocked = block_from_policy(policy, CommandName.SCAN_SOURCE)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        args = {"source_path": paths[0]}
+        if "bids" in last_turn.lower():
+            args["source_hint"] = "bids"
+        return Prediction(
+            intent=intent,
+            tool_calls=[PredictedToolCall("scan_source", args)],
+            final_message="I can scan the source and summarize EEG files.",
+            state_delta=state_delta_for(case),
+        )
+
+    if intent == "preview_interpretation":
+        blocked = block_from_policy(policy, CommandName.PREVIEW_INTERPRETATION)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        choices = extract_interpretation_choices(last_turn)
+        args = {"choices": choices} if choices else {}
+        return Prediction(
+            intent=intent,
+            tool_calls=[PredictedToolCall("preview_interpretation", args)],
+            final_message="Previewing the candidate interpretation.",
+            state_delta=state_delta_for(case),
+        )
+
+    if intent == "validate_interpretation":
+        blocked = block_from_policy(policy, CommandName.VALIDATE_INTERPRETATION)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        return Prediction(
+            intent=intent,
+            tool_calls=[PredictedToolCall("validate_interpretation", {})],
+            final_message="Validating the interpretation candidate.",
+            result_interpretation=result_interpretation_for(case),
+            state_delta=state_delta_for(case),
+        )
+
+    if intent == "apply_interpretation":
+        blocked = block_from_policy(policy, CommandName.APPLY_INTERPRETATION)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        capability = policy.get(CommandName.APPLY_INTERPRETATION)
+        confirmed = user_confirmed(text)
+        args = {"confirmed": True} if confirmed else {}
+        return Prediction(
+            intent=intent,
+            tool_calls=[PredictedToolCall("apply_interpretation", args)],
+            confirmation_required=(
+                capability.confirmation_required or capability.requires_confirmation
+            ),
+            final_message=(
+                "Applying requires confirmation."
+                if capability.requires_confirmation and not confirmed
+                else "Applying the validated interpretation."
+            ),
+            blocked_reason=(
+                "apply_interpretation requires confirmation."
+                if capability.requires_confirmation and not confirmed
+                else ""
+            ),
+            state_delta=state_delta_for(case)
+            if confirmed or not capability.requires_confirmation
+            else {},
+        )
+
+    if intent == "save_interpretation_recipe":
+        blocked = block_from_policy(policy, CommandName.SAVE_INTERPRETATION_RECIPE)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        paths = extract_paths(last_turn)
+        args = {"recipe_path": paths[0]} if paths else {}
+        return Prediction(
+            intent=intent,
+            tool_calls=[PredictedToolCall("save_interpretation_recipe", args)],
+            final_message="Saving the import recipe.",
+            state_delta=state_delta_for(case),
+        )
+
+    if intent == "reload_interpretation_recipe":
+        paths = extract_paths(last_turn)
+        if not paths:
+            return Prediction(
+                intent=intent,
+                tool_calls=[],
+                blocked=True,
+                asks_clarification=True,
+                blocked_reason=(
+                    "Missing required recipe path; ask the user for a recipe path."
+                ),
+                final_message="Please provide the recipe path before reloading.",
+            )
+        blocked = block_from_policy(policy, CommandName.RELOAD_INTERPRETATION_RECIPE)
+        if blocked:
+            return blocked_prediction(intent, [], blocked)
+        return Prediction(
+            intent=intent,
+            tool_calls=[
+                PredictedToolCall(
+                    "reload_interpretation_recipe",
+                    {"recipe_path": paths[0]},
+                )
+            ],
+            final_message="Reloading the recipe for scan, preview, and validation.",
+            state_delta=state_delta_for(case),
+        )
+
+    if intent == "query_state":
+        return Prediction(
+            intent=intent,
+            tool_calls=[PredictedToolCall("query_state", {"query": "state"})],
+            final_message="Current workflow state is available.",
+        )
 
     if intent == "load_data":
         paths = extract_paths(last_turn)
@@ -412,6 +932,7 @@ def predict_case(case: EvalCase) -> Prediction:
             intent=intent,
             tool_calls=[PredictedToolCall("load_data", {"paths": paths})],
             result_interpretation=result_interpretation_for(case),
+            state_delta=state_delta_for(case),
         )
 
     if intent == "preprocess":
@@ -426,6 +947,7 @@ def predict_case(case: EvalCase) -> Prediction:
                     extract_filter_args(text),
                 )
             ],
+            state_delta=state_delta_for(case),
         )
 
     if intent == "create_epoch":
@@ -437,6 +959,7 @@ def predict_case(case: EvalCase) -> Prediction:
             intent=intent,
             tool_calls=[PredictedToolCall("epoch_data", args)],
             result_interpretation=result_interpretation_for(case),
+            state_delta=state_delta_for(case),
         )
 
     if intent == "generate_dataset":
@@ -455,6 +978,7 @@ def predict_case(case: EvalCase) -> Prediction:
                     },
                 )
             ],
+            state_delta=state_delta_for(case),
         )
 
     if intent == "configure_training":
@@ -517,6 +1041,9 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
     """Score one case over repeated deterministic predictions."""
     prediction = predictions[0]
     failures: list[str] = []
+    expected_verification = expected_verification_result_for(case)
+    predicted_verification = verification_result_for(prediction)
+    available = available_command_summary(case.state_name)
 
     intent_ok = prediction.intent == case.expected_intent
     if not intent_ok:
@@ -537,6 +1064,17 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
     )
     if not state_ok:
         failures.append("state-aware decision mismatch")
+
+    verification_ok = predicted_verification == expected_verification
+    if not verification_ok:
+        failures.append(
+            "verification result expected "
+            f"{expected_verification}, got {predicted_verification}"
+        )
+
+    state_delta_ok = state_delta_matches(case, prediction)
+    if not state_delta_ok:
+        failures.append("state delta mismatch")
 
     blocked_ok = blocked_matches(case, prediction)
     if not blocked_ok:
@@ -576,6 +1114,8 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
             tool_ok,
             args_ok,
             state_ok,
+            verification_ok,
+            state_delta_ok,
             blocked_ok,
             recovery_ok,
             result_ok,
@@ -587,10 +1127,36 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
     return CaseScore(
         case_id=case.case_id,
         passed=passed,
+        user_command=case.user_turns,
+        initial_state=case.state_name,
+        available_command_summary=available,
+        expected_verification_result=expected_verification,
+        expected_state_delta=case.expected_state_delta,
+        actual_model_output=render_actual_model_output(prediction),
+        parsed_tool_calls=[asdict(call) for call in prediction.tool_calls],
+        verification_result=predicted_verification,
+        backend_result=simulated_backend_result(case, prediction),
+        visible_response=visible_response_for(prediction),
+        score_breakdown={
+            "intent": intent_ok,
+            "tool_selection": tool_ok,
+            "argument_correctness": args_ok,
+            "state_aware": state_ok,
+            "verification_result": verification_ok,
+            "state_delta": state_delta_ok,
+            "blocked_command": blocked_ok,
+            "recovery": recovery_ok,
+            "tool_result_interpretation": result_ok,
+            "trajectory_quality": trajectory_ok,
+            "runtime_safety": safety_ok,
+            "local_llm_reliability": reliability_ok,
+        },
         intent=intent_ok,
         tool_selection=tool_ok,
         argument_correctness=args_ok,
         state_aware=state_ok,
+        verification_result_match=verification_ok,
+        state_delta=state_delta_ok,
         blocked_command=blocked_ok,
         recovery=recovery_ok,
         tool_result_interpretation=result_ok,
@@ -609,6 +1175,8 @@ def summarize_scores(scores: list[CaseScore]) -> dict[str, Any]:
         "tool_selection",
         "argument_correctness",
         "state_aware",
+        "verification_result_match",
+        "state_delta",
         "blocked_command",
         "recovery",
         "tool_result_interpretation",
@@ -675,6 +1243,8 @@ def make_state(name: str) -> ApplicationStateSnapshot:
         "dataset_without_training_config",
         "training_ready",
         "trained",
+        "applied_interpretation",
+        "recipe_saved",
     }
     preprocessed = name in {
         "preprocessed",
@@ -694,6 +1264,7 @@ def make_state(name: str) -> ApplicationStateSnapshot:
     has_training_option = name in {"training_ready", "trained"}
     has_trainer = name in {"trained"}
     finished_runs = 1 if name == "trained" else 0
+    interpretation = make_interpretation_state(name)
     return ApplicationStateSnapshot(
         pipeline_stage=name,
         raw=RawStateSnapshot(loaded=raw, count=1 if raw else 0),
@@ -719,7 +1290,7 @@ def make_state(name: str) -> ApplicationStateSnapshot:
             saliency_configured=False,
             saliency_available=finished_runs > 0,
         ),
-        interpretation=InterpretationStateSnapshot(),
+        interpretation=interpretation,
         active_dataset=ActiveDatasetSnapshot(
             has_raw_data=raw,
             has_preprocessed_data=preprocessed,
@@ -735,10 +1306,105 @@ def make_state(name: str) -> ApplicationStateSnapshot:
     )
 
 
+def make_interpretation_state(name: str) -> InterpretationStateSnapshot:
+    """Build Data Interpretation lifecycle state for eval scenarios."""
+    if name == "scanned":
+        return InterpretationStateSnapshot(
+            has_scan_result=True,
+            latest_scan_id="scan-1",
+            source_path="/data/source",
+            source_kind="folder",
+        )
+    if name in {"previewed_safe", "previewed_confirmation"}:
+        return InterpretationStateSnapshot(
+            has_scan_result=True,
+            has_candidate=True,
+            has_preview=True,
+            latest_scan_id="scan-1",
+            latest_candidate_id="candidate-1",
+            latest_preview_id="preview-1",
+            source_path="/data/source",
+            source_kind="folder",
+            warnings=["External label semantics need review"]
+            if name == "previewed_confirmation"
+            else [],
+        )
+    if name in {"validated_safe", "validated_confirmation", "validated_blocked"}:
+        decision = {
+            "validated_safe": "safe",
+            "validated_confirmation": "needs_confirmation",
+            "validated_blocked": "blocked",
+        }[name]
+        blocked_reasons = (
+            ["Missing label carrier for selected EEG files."]
+            if decision == "blocked"
+            else []
+        )
+        return InterpretationStateSnapshot(
+            has_scan_result=True,
+            has_candidate=True,
+            has_preview=True,
+            has_validation_decision=True,
+            latest_scan_id="scan-1",
+            latest_candidate_id="candidate-1",
+            latest_preview_id="preview-1",
+            source_path="/data/source",
+            source_kind="folder",
+            validation_decision=decision,
+            pending_confirmation=decision == "needs_confirmation",
+            blocked_reasons=blocked_reasons,
+        )
+    if name in {"applied_interpretation", "recipe_saved"}:
+        return InterpretationStateSnapshot(
+            has_scan_result=True,
+            has_candidate=True,
+            has_preview=True,
+            has_validation_decision=True,
+            has_applied_interpretation=True,
+            has_recipe=name == "recipe_saved",
+            latest_scan_id="scan-1",
+            latest_candidate_id="candidate-1",
+            latest_preview_id="preview-1",
+            latest_interpretation_id="interpretation-1",
+            latest_recipe_id="recipe-1" if name == "recipe_saved" else None,
+            source_path="/data/source",
+            source_kind="folder",
+            validation_decision="safe",
+            recipe_path=(
+                "/recipes/import_recipe.json" if name == "recipe_saved" else None
+            ),
+        )
+    return InterpretationStateSnapshot()
+
+
 def infer_intent(text: str) -> str:
     """Infer intent from simple deterministic patterns."""
+    has_it = re.search(r"\bit\b", text) is not None
     if "reset" in text or "clear the dataset" in text:
         return "reset_session"
+    if "workflow state" in text or "current workflow" in text or "what changed" in text:
+        return "query_state"
+    if "validate" in text and ("interpret" in text or "candidate" in text or has_it):
+        return "validate_interpretation"
+    if "check whether" in text and "interpretation" in text:
+        return "validate_interpretation"
+    if "reload recipe" in text or "reload the interpretation recipe" in text:
+        return "reload_interpretation_recipe"
+    if "save" in text and "recipe" in text:
+        return "save_interpretation_recipe"
+    if "apply" in text and ("interpret" in text or has_it):
+        return "apply_interpretation"
+    if "preview" in text and (
+        "interpret" in text or "candidate" in text or "subject" in text or has_it
+    ):
+        return "preview_interpretation"
+    if (
+        "interpret data source" in text
+        or "interpret my eeg dataset" in text
+        or "scan the bids dataset" in text
+        or "scan the source" in text
+    ):
+        return "scan_source"
     if "saliency" in text:
         return "saliency"
     if "visualize" in text or "visualise" in text:
@@ -809,6 +1475,35 @@ def extract_epoch_args(text: str) -> dict[str, Any]:
     return args
 
 
+def extract_interpretation_choices(text: str) -> dict[str, Any]:
+    """Extract simple Data Interpretation metadata choices."""
+    choices: dict[str, Any] = {}
+    subject = re.search(r"subject\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
+    if subject:
+        choices["subject"] = subject.group(1)
+    session = re.search(r"session\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
+    if session:
+        choices["session"] = session.group(1)
+    task = re.search(r"task\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
+    if task:
+        choices["task"] = task.group(1)
+    return choices
+
+
+def user_confirmed(text: str) -> bool:
+    """Return whether the user explicitly confirmed a boundary."""
+    return any(
+        marker in text
+        for marker in (
+            "i confirm",
+            "confirmed",
+            "yes, apply",
+            "yes apply",
+            "labels are correct",
+        )
+    )
+
+
 def training_tool_call(text: str) -> tuple[str, dict[str, Any]]:
     """Return deterministic training config/model tool call."""
     if "eegnet" in text:
@@ -831,6 +1526,107 @@ def result_interpretation_for(case: EvalCase) -> str | None:
     if case.expected_result_interpretation:
         return case.expected_result_interpretation
     return None
+
+
+def state_delta_for(case: EvalCase) -> dict[str, bool]:
+    """Return expected state delta for deterministic success predictions."""
+    return dict(case.expected_state_delta)
+
+
+def expected_verification_result_for(case: EvalCase) -> str:
+    """Return expected verification label for a case."""
+    if case.expected_verification_result:
+        return case.expected_verification_result
+    if case.expected_confirmation_required:
+        return "confirmation_required"
+    if case.expected_blocked:
+        if case.expected_recovery:
+            return "missing_input" if "missing" in case.case_id else "blocked"
+        return "blocked"
+    if case.expected_result_interpretation == "recoverable_failure":
+        return "recoverable_failure"
+    return "allowed"
+
+
+def verification_result_for(prediction: Prediction) -> str:
+    """Return predicted verification label."""
+    if prediction.asks_clarification:
+        return "missing_input"
+    if prediction.confirmation_required:
+        return "confirmation_required"
+    if prediction.blocked:
+        return "blocked"
+    if prediction.result_interpretation == "recoverable_failure":
+        return "recoverable_failure"
+    return "allowed"
+
+
+def available_command_summary(state_name: str) -> dict[str, Any]:
+    """Return command availability summary stored in eval artifacts."""
+    state = make_state(state_name)
+    policy = build_capability_policy(state)
+    enabled = [
+        capability.command_name
+        for capability in policy.capabilities.values()
+        if capability.enabled
+    ]
+    blocked = [
+        {
+            "command": capability.command_name,
+            "reasons": capability.reasons,
+        }
+        for capability in policy.capabilities.values()
+        if not capability.enabled and capability.reasons
+    ]
+    confirmation = [
+        {
+            "command": capability.command_name,
+            "decision_boundary": capability.decision_boundary,
+        }
+        for capability in policy.capabilities.values()
+        if capability.confirmation_required or capability.requires_confirmation
+    ]
+    return {
+        "enabled": enabled,
+        "blocked": blocked,
+        "confirmation": confirmation,
+    }
+
+
+def render_actual_model_output(prediction: Prediction) -> str:
+    """Render the deterministic baseline as model-like output."""
+    if prediction.tool_calls:
+        calls = [asdict(call) for call in prediction.tool_calls]
+        return json.dumps({"tool_calls": calls}, ensure_ascii=False)
+    return prediction.final_message or prediction.blocked_reason
+
+
+def simulated_backend_result(
+    case: EvalCase,
+    prediction: Prediction,
+) -> dict[str, Any]:
+    """Return deterministic backend-result placeholder for scorer artifacts."""
+    return {
+        "simulated": True,
+        "status": "failed" if prediction.blocked else "ok",
+        "command_name": prediction.tool_calls[0].tool_name
+        if prediction.tool_calls
+        else None,
+        "verification_result": verification_result_for(prediction),
+        "result_interpretation": prediction.result_interpretation,
+        "expected_state_delta": case.expected_state_delta,
+    }
+
+
+def visible_response_for(prediction: Prediction) -> str:
+    """Return user-visible response without raw schema/debug wording."""
+    if prediction.final_message:
+        return prediction.final_message
+    if prediction.blocked_reason:
+        return prediction.blocked_reason
+    if prediction.tool_calls:
+        return "The requested workflow step is ready."
+    return "No tool call is needed."
 
 
 def tool_selection_matches(
@@ -872,6 +1668,14 @@ def blocked_matches(case: EvalCase, prediction: Prediction) -> bool:
             term.lower() in prediction.blocked_reason.lower()
             for term in case.expected_reason_terms
         )
+    return True
+
+
+def state_delta_matches(case: EvalCase, prediction: Prediction) -> bool:
+    """Return whether predicted state delta includes expected changes."""
+    for key, value in case.expected_state_delta.items():
+        if prediction.state_delta.get(key) != value:
+            return False
     return True
 
 

@@ -399,6 +399,42 @@ accuracy 已驗證」。
 這批 evidence 支撐 Dataset panel main import entry 的新心智模型。它仍不支撐 recipe save UI、
 label import migration、headless / MCP adapter 或 local LLM 真實 tool-call accuracy。
 
+2026-05-04 MCP-ready automation adapter + deterministic eval expansion：
+
+- 新增 `XBrainLab.backend.application.automation`：
+  - `command_specs(service)` 產生所有 `ApplicationService` command 的 JSON schema、
+    workflow taxonomy 和 live capability / autonomy policy。
+  - `mcp_tool_specs(service)` 使用同一份 command schema 產生 MCP-shaped tool specs。
+  - `execute_automation_payload(service, payload)` 將 JSON payload 轉 typed command，並只透過
+    `ApplicationService.execute()` 執行；adapter 本身不新增 controller business logic。
+- 新增 `scripts/dev/run_application_command.py`：
+  - `--list-schemas` 輸出 headless command schema。
+  - `--mcp-tools` 輸出 MCP-ready tool schema。
+  - `--payload` / `--payload-file` 在同一個 headless `ApplicationService` session 中跑一個或多個
+    command payload。
+- deterministic tool-call eval：
+  - cases：`54 / 54` pass。
+  - multi-turn cases：`15`。
+  - negative / blocked / confirmation / missing-input / recovery cases：`34 / 54`。
+  - case artifact 現在保存 user command、initial state、available command summary、expected /
+    actual verification result、expected state delta、parsed tool call、simulated backend result、
+    visible response 和 score breakdown。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py -q`
+  - `7 passed`
+  - `poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py -q`
+  - `1 passed`
+  - `poetry run ruff check XBrainLab/backend/application/automation.py scripts/dev/run_application_command.py scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_automation.py tests/integration/agent/test_tool_call_eval.py`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/backend/application/automation.py scripts/dev/run_application_command.py scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_automation.py tests/integration/agent/test_tool_call_eval.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+  - refreshed `artifacts/agent_evals/latest.json` and `artifacts/agent_evals/latest.md`
+
+這批 evidence 支撐 headless / MCP-ready command schema 和 deterministic engineering
+tool-call baseline。它仍不支撐「MCP server 已完成」、「local LLM 真實 tool-call accuracy 已驗證」、
+或「UI-observable replay 已完成」。
+
 ## Automated Evidence vs Product Evidence
 
 | Evidence | 目前能證明 | 不能證明 |

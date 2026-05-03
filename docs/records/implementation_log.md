@@ -28,6 +28,59 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Goal 1 automation adapter and eval baseline
+
+### 背景
+
+Goal 1 要求 UI、agent、headless runner 和 MCP external agent 共用同一套
+`ApplicationService / Command API` truth。前面 slices 已完成 Data Interpretation backend、
+agent surface 和 Dataset panel 主要 import entry，但 headless / MCP-ready schema 仍缺一個薄
+adapter，deterministic eval 也仍停在舊 `21` cases，無法代表新的 Data Interpretation workflow。
+
+### 變更
+
+- 新增 `XBrainLab/backend/application/automation.py`。
+  - `command_specs(service)` 從 typed command dataclass 產生 JSON schema、taxonomy 和 live
+    capability / autonomy policy。
+  - `mcp_tool_specs(service)` 使用同一份 schema 產生 MCP-shaped tool specs。
+  - `execute_automation_payload(service, payload)` 驗證 JSON payload，轉 typed command，並只經
+    `ApplicationService.execute()` 執行。
+- 新增 `scripts/dev/run_application_command.py`，提供 headless schema listing、MCP-shaped tool
+  listing 和 JSON payload execution。
+- 擴充 `scripts/agent/evals/run_tool_call_eval.py`：
+  - `54` cases。
+  - `15` multi-turn cases。
+  - `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
+  - Data Interpretation / recipe / metadata choice cases 成為 engineering baseline。
+  - artifact schema 保存 user command、initial state、available commands、expected / actual
+    verification result、state delta、parsed tool call、simulated backend result、visible response
+    和 score breakdown。
+- 更新 `tests/integration/agent/test_tool_call_eval.py` 和新增
+  `tests/unit/backend/application/test_automation.py`。
+
+### 影響範圍
+
+- Backend ApplicationService adapter layer。
+- Headless dev script。
+- Agent deterministic eval runner / artifact shape。
+- Validation、current truth、planning 和 target architecture docs。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py -q` -> `7 passed`
+- `poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py -q` -> `1 passed`
+- `poetry run ruff check XBrainLab/backend/application/automation.py scripts/dev/run_application_command.py scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_automation.py tests/integration/agent/test_tool_call_eval.py` -> `PASS`
+- `poetry run basedpyright XBrainLab/backend/application/automation.py scripts/dev/run_application_command.py scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_automation.py tests/integration/agent/test_tool_call_eval.py` -> `0 errors, 0 warnings, 0 notes`
+- `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals`
+
+### 剩餘風險
+
+- `mcp_tool_specs()` 是 MCP-ready schema，不是已啟動的 MCP server。
+- deterministic eval 仍是 scripted engineering baseline，不是 local LLM 真實 tool-call accuracy。
+- backend/headless evidence 仍不能替代 UI-observable replay；wizard screenshot / visible state /
+  transcript artifact 尚未完成。
+- source -> recipe -> preprocess -> epoch -> dataset 的 non-mocked product walkthrough 尚未補齊。
+
 ## 2026-05-04 Goal 1 runbook prepared
 
 ### 背景

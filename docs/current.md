@@ -57,9 +57,15 @@ mock / real tools、`application_surface.py` 和 `ContextAssembler` 可見工具
 controller 現在會讀 backend autonomy policy 的 dynamic confirmation boundary，且
 `BackendFacade(study)` 會重用同一個 `ApplicationService`，避免 scan / preview / validate
 lifecycle 在連續 tool calls 間遺失。Dataset panel 主要資料入口也已改為
-`Interpret Data Source`，會走 scan -> preview dialog -> validate -> confirm/apply；但 recipe
-save UI、label import、headless / MCP adapter 和 eval cases 尚未全面遷移，舊
-`load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
+`Interpret Data Source`，會走 scan -> preview dialog -> validate -> confirm/apply。
+同日下一個 slice 新增 `backend.application.automation` 和
+`scripts/dev/run_application_command.py`，讓 headless / MCP-ready adapter 以 JSON payload
+轉 typed command，並回傳 live capability / autonomy / result schema；deterministic
+tool-call eval 也已從舊 `21` cases 擴到 `54` cases，包含 Data Interpretation、recipe、
+metadata choice、confirmation、blocked、missing-input 和 `15` 個 multi-turn cases。這仍不是
+local LLM 真實 tool-call accuracy，也不是完整 MCP server；recipe save UI、label import
+migration、UI-observable replay 和 source -> recipe -> preprocess -> epoch -> dataset
+non-mocked walkthrough 尚未完成，舊 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 長時間
 UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release closure。
