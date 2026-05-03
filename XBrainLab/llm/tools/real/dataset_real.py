@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from XBrainLab.backend.application import (
+    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     SaveInterpretationRecipeCommand,
 )
@@ -24,6 +25,7 @@ from ..definitions.dataset_def import (
     BaseListFilesTool,
     BaseLoadDataTool,
     BasePreviewInterpretationTool,
+    BaseQueryStateTool,
     BaseReloadInterpretationRecipeTool,
     BaseSaveInterpretationRecipeTool,
     BaseScanSourceTool,
@@ -381,6 +383,16 @@ class RealGetDatasetInfoTool(BaseGetDatasetInfoTool):
                 )
 
         return "\n".join(info)
+
+
+class RealQueryStateTool(BaseQueryStateTool):
+    """Real implementation of :class:`BaseQueryStateTool`."""
+
+    def execute(self, study: Any, **kwargs) -> str:
+        result = BackendFacade(study).service.execute(
+            QueryStateCommand(query=str(kwargs.get("query", "state"))),
+        )
+        return str(result.message)
 
 
 class RealGenerateDatasetTool(BaseGenerateDatasetTool):

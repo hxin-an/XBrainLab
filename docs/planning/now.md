@@ -48,18 +48,25 @@
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
 - 真 local LLM tool-call runner 已新增，使用同一份 `54` cases / scorer 接 primary /
-  fallback 模型 raw output 並各重跑 `3` 次：
-  - primary `microsoft/Phi-4-mini-instruct`：`18 / 54` pass。
-  - fallback `microsoft/Phi-3.5-mini-instruct`：`20 / 54` pass。
-  這是 engineering evidence，不是 thesis-ready accuracy。
+  fallback 模型 raw output 並各重跑 `3` 次。最新 full rerun：
+  - primary `microsoft/Phi-4-mini-instruct`：`51 / 54` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`50 / 54` pass。
+  這是 engineering evidence，不是 thesis-ready accuracy；case 數仍不足 `100`，且仍有
+  saliency / visualization、invalid event、preprocess 語意 failure。
 - `VerificationLayer` 已補 registered tool schema / required / type / enum 檢查，controller
   會在 execution 前攔可解析但不可執行的 tool JSON。
 - local assistant guardrail slice 已補 placeholder path rejection、requested-intent boundary、
   parser 對 top-level array / OpenAI function-call shape 的支援、以及 standard preprocess /
-  dataset split prompt/schema 規則。探索性 smoke artifact：
+  dataset split prompt/schema 規則。後續 normalizer slice 已把 command-only JSON、bare tool
+  name、latest-turn substitute、query_state、BIDS hint、subject override、placeholder prose path
+  和 result interpretation 接到 verifier / ApplicationService 語意。探索性 smoke artifact：
   - primary guardrail smoke：`6 / 6` pass。
   - fallback guardrail smoke：`6 / 6` pass。
-  這只證明 guardrail 方向有效；正式 `54` cases x `3` primary / fallback 尚未重跑。
+  正式 `54` cases x `3` full rerun：
+  - primary `microsoft/Phi-4-mini-instruct`：`51 / 54` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`50 / 54` pass。
+  這仍不是 thesis-ready；case 數不足 `100`，且剩餘 saliency / visualization、invalid event、
+  preprocess 語意 failure。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
@@ -157,8 +164,8 @@ Goal 1 至少要包含：
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
      （目前 deterministic baseline 為 `54 / 54` pass。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
-     目前 primary `18 / 54` pass、fallback `20 / 54` pass，只能作為 engineering baseline
-     和 failure taxonomy，不能當 thesis-grade accuracy claim。
+     目前 primary `51 / 54` pass、fallback `50 / 54` pass，只能作為 engineering baseline，
+     不能當 thesis-grade accuracy claim，因為 case 數仍不足 `100` 且仍有剩餘 failure。
    - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計。
@@ -269,8 +276,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型 `54` case runner 已有 evidence，但 pass rate 仍只有 `33.33%` / `37.04%`，不能宣稱
-  thesis-ready。
+  真模型 `54` case runner 已有 evidence，且最新 pass rate 已到 `94.44%` / `92.59%`，但
+  case 數仍不足 `100` thesis candidate 要求，不能宣稱 thesis-ready。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。

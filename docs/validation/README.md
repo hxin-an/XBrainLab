@@ -564,8 +564,55 @@ config、HTTP transport、或 product completion。
   - pass
 
 這批 evidence 支撐「local assistant tool-call guardrails 方向有效，且不再把 raw tool syntax
-當作 visible response」。它仍不支撐 thesis-ready accuracy，因為正式 `54` cases x `3`
-primary / fallback full local eval 尚未重跑。
+當作 visible response」。此段為 guardrail smoke 當時的結論；正式 full rerun 已由下方
+normalization slice 更新。
+
+2026-05-04 Local assistant tool-call normalization full rerun：
+
+- 變更範圍：
+  - `CommandParser` 進一步支援 command-only JSON 和 bare tool name 輸出。
+  - 新增 `tool_call_normalizer`，在 verifier 前處理 local model 常見但可安全歸一的 tool
+    variants：`create_epoch` -> `epoch_data`、`train` -> `start_training`、
+    `get_dataset_info` -> typed `query_state`、latest-turn scan / preview / validate / apply
+    substitute、BIDS source hint、subject override、dataset split defaults 和 recipe save default。
+  - `query_state` agent tool 走 `ApplicationService` / `QueryStateCommand`，不再只依賴
+    legacy `get_dataset_info` 心智模型。
+  - placeholder validator 擋下 prose path，例如 `Please provide the absolute path...`。
+  - local eval 將 backend result interpretation 納入 scoring，讓 successful load、
+    confirmation-boundary validation、recoverable backend failure 不被誤判成 raw tool 成功。
+- full local eval artifacts：
+  - primary：
+    `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+    -> `51 / 54` pass (`94.44%`)。
+  - fallback：
+    `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+    -> `50 / 54` pass (`92.59%`)。
+  - runtime classification：primary / fallback 都是 `gpu-ready`。
+  - cache usage：`15.34 GB`，低於 `20 GB` 上限。
+  - no download。
+- targeted validation：
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_intent.py -q`
+  - `153 passed`
+  - targeted `poetry run ruff check ...`
+  - pass
+  - targeted `poetry run basedpyright ...`
+  - `0 errors, 0 warnings, 0 notes`
+- regression / docs gates：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `461 passed`
+  - `poetry run ruff check .`
+  - pass
+  - `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict`
+  - pass
+  - `git diff --check`
+  - pass
+
+這批 evidence 支撐 local assistant tool-call guardrail 已從不可用的 `33%` / `37%` 區間提升到
+工程 baseline 可用區間；它仍不支撐 thesis-ready claim，因為 benchmark 仍只有 `54` cases、
+不是要求的 `100` thesis candidate cases，且仍有 saliency / visualization UI-route substitute、
+fallback invalid event recovery、bandpass-vs-standard preprocess 語意 failure。
 
 2026-05-04 Data Interpretation non-mocked backend workflow：
 

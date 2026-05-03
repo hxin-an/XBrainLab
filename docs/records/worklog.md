@@ -37,6 +37,39 @@
 
 ## 2026-05-04
 
+### 07:40 local assistant full eval normalization rerun
+
+- 做了什麼：
+  - `CommandParser` 支援 command-only JSON 和 bare tool name。
+  - 新增 tool-call normalizer，將常見 local model variants 對齊 registered tools /
+    ApplicationService command：`create_epoch`、`train`、`get_dataset_info`、latest-turn
+    scan / preview / validate / apply substitute、BIDS hint、subject override、dataset defaults、
+    recipe save default。
+  - 新增 typed `query_state` agent tool，走 `ApplicationService` `QueryStateCommand`。
+  - placeholder validator 擋 prose path / `path/to/your/...`。
+  - local eval scoring 納入 backend result interpretation。
+- 結果：
+  - primary full local eval：`51 / 54` pass (`94.44%`)。
+  - fallback full local eval：`50 / 54` pass (`92.59%`)。
+  - 兩者都是 `gpu-ready`，cache `15.34 GB`，no download。
+- 證據：
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_intent.py -q` -> `153 passed`
+  - targeted `poetry run ruff check ...` -> pass
+  - targeted `poetry run basedpyright ...` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q` -> `461 passed`
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+- 接續 / 本輪剩餘：
+  - 仍不是 thesis-ready：只有 `54` cases，不是要求的 `100` thesis candidate cases。
+  - 剩餘 failing cases：saliency / visualization UI-route substitute、fallback invalid event
+    recovery、bandpass-vs-standard preprocess 語意。
+  - true ChatPanel local-model walkthrough、Windows launcher click-through、完整 UI product
+    validation 仍未完成。
+
 ### 06:21 local assistant tool-call guardrail smoke
 
 - 做了什麼：
@@ -71,10 +104,10 @@
   - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
   - `git diff --check` -> pass
 - 接續 / 本輪剩餘：
-  - 正式 `54` cases x `3` primary / fallback full local eval 尚未重跑，不能宣稱
-    thesis-ready accuracy。
-  - smoke subset 已清掉多輪 scanned -> preview 重複 scan；正式 full eval 仍可能暴露更多
-    state snapshot / prompt / verifier 問題。
+  - 此段為 guardrail smoke 當時風險；正式 full rerun 已由 07:40 normalization slice 更新，
+    但仍不能宣稱 thesis-ready。
+  - smoke subset 已清掉多輪 scanned -> preview 重複 scan；full rerun 仍暴露 saliency /
+    visualization、invalid event、preprocess 語意 failure。
   - true ChatPanel local-model walkthrough 仍未驗證。
 
 ### 05:52 label import recipe trace integration

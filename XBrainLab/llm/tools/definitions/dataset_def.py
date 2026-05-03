@@ -354,6 +354,43 @@ class BaseGetDatasetInfoTool(BaseTool):
         raise NotImplementedError
 
 
+class BaseQueryStateTool(BaseTool):
+    """Query the typed ApplicationService state snapshot."""
+
+    @property
+    def name(self) -> str:
+        return "query_state"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Get the current typed workflow state, capabilities, or data summary "
+            "through ApplicationService."
+        )
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "enum": [
+                        "state",
+                        "data_lists",
+                        "data_summary",
+                        "preprocess_diagnostics",
+                        "smart_filter_suggestions",
+                    ],
+                    "default": "state",
+                }
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
 class BaseGenerateDatasetTool(BaseTool):
     """Generate a training/validation/test dataset from epoched data.
 

@@ -20,6 +20,7 @@ from scripts.agent.evals.run_tool_call_eval import (
     infer_intent,
     make_state,
     render_markdown_report,
+    result_interpretation_for,
     score_case,
     state_delta_for,
     summarize_scores,
@@ -29,6 +30,7 @@ from scripts.dev.inspect_local_assistant_runtime import classify_runtime
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.llm.agent.intent import command_for_intent, path_label_for_intent
 from XBrainLab.llm.agent.parser import CommandParser
+from XBrainLab.llm.agent.tool_call_normalizer import normalize_tool_call
 from XBrainLab.llm.agent.verifier import PlaceholderArgumentValidator, VerificationLayer
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
@@ -64,6 +66,7 @@ TOOL_INTENTS: dict[str, str] = {
     "configure_training": "configure_training",
     "start_training": "train",
     "clear_dataset": "reset_session",
+    "query_state": "query_state",
     "get_dataset_info": "query_state",
 }
 
@@ -127,16 +130,27 @@ def score_local_case(case: EvalCase, raw_outputs: list[str]):
 def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
     """Convert one raw local-model response into the shared scorer prediction."""
     parsed = CommandParser.parse(raw_output) or []
-    tool_calls = [
-        PredictedToolCall(
-            tool_name=name,
-            arguments=_normalized_prediction_arguments(name, params),
-        )
-        for name, params in parsed
-    ]
+    tool_calls = _prediction_tool_calls(case, parsed)
+    requested_intent = _inferred_case_intent(case)
     if not tool_calls:
         text = raw_output.strip()
         lower = text.lower()
+        blocked_intent_reason = _blocked_requested_intent_reason(
+            case.state_name,
+            requested_intent,
+        )
+        has_blocked_marker = any(
+            marker in lower
+            for marker in ("blocked", "cannot", "can't", "not available")
+        )
+        if blocked_intent_reason and has_blocked_marker:
+            return Prediction(
+                intent=requested_intent,
+                tool_calls=[],
+                blocked=True,
+                blocked_reason=blocked_intent_reason,
+                final_message=blocked_intent_reason,
+            )
         asks_clarification = any(
             marker in lower
             for marker in (
@@ -152,7 +166,7 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
         ) or ("before" in lower and not asks_clarification)
         blocked = blocked or asks_clarification
         return Prediction(
-            intent=infer_intent(" ".join(case.user_turns).lower()),
+            intent=requested_intent,
             tool_calls=[],
             blocked=blocked,
             asks_clarification=asks_clarification,
@@ -162,7 +176,6 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
 
     first_tool = tool_calls[0].tool_name
     first_params = tool_calls[0].arguments
-    requested_intent = infer_intent(" ".join(case.user_turns).lower())
     blocked_intent_reason = _blocked_requested_intent_reason(
         case.state_name,
         requested_intent,
@@ -187,10 +200,11 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
                 "actual path",
                 "missing required parameter",
                 "required input",
+                "is missing",
             )
         )
         return Prediction(
-            intent=infer_intent(" ".join(case.user_turns).lower()),
+            intent=requested_intent,
             tool_calls=[],
             blocked=True,
             asks_clarification=asks_clarification,
@@ -208,6 +222,7 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
         confirmation_required=confirmation_required,
         blocked_reason=blocked_reason,
         final_message="",
+        result_interpretation=result_interpretation_for(case),
         state_delta=state_delta_for(case)
         if not blocked_reason
         and tool_selection_matches(case.expected_tools, tool_calls)
@@ -250,7 +265,10 @@ def run_local_eval(
                 error = str(exc)
             elapsed = time.monotonic() - started
             outputs.append(raw_output)
-            parsed = CommandParser.parse(raw_output) or []
+            parsed = _normalized_parsed_tool_calls(
+                case,
+                CommandParser.parse(raw_output) or [],
+            )
             runs.append(
                 {
                     "repeat_index": repeat_index,
@@ -478,6 +496,30 @@ def _prediction_verifier() -> VerificationLayer:
     )
 
 
+def _prediction_tool_calls(
+    case: EvalCase,
+    parsed: list[tuple[str, dict[str, Any]]],
+) -> list[PredictedToolCall]:
+    return [
+        PredictedToolCall(
+            tool_name=name,
+            arguments=_normalized_prediction_arguments(name, params),
+        )
+        for name, params in _normalized_parsed_tool_calls(case, parsed)
+    ]
+
+
+def _normalized_parsed_tool_calls(
+    case: EvalCase,
+    parsed: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, dict[str, Any]]]:
+    latest_user_text = case.user_turns[-1] if case.user_turns else ""
+    return [
+        normalize_tool_call(name, params, latest_user_text=latest_user_text)
+        for name, params in parsed
+    ]
+
+
 def _normalized_prediction_arguments(
     tool_name: str,
     params: dict[str, Any],
@@ -497,9 +539,14 @@ def _inferred_case_intent(case: EvalCase) -> str:
 
 def _intent_adjusted_verification_message(intent: str, message: str) -> str:
     label = path_label_for_intent(intent)
-    if label is None or "actual path" not in message.lower():
+    lower = message.lower()
+    if label is None:
         return message
-    return f"Required {label} must be an actual path provided by the user."
+    if "actual path" in lower:
+        return f"Required {label} must be an actual path provided by the user."
+    if "missing required parameter" in lower or "required input" in lower:
+        return f"Required {label} is missing."
+    return message
 
 
 def _blocked_requested_intent_reason(state_name: str, intent: str) -> str:

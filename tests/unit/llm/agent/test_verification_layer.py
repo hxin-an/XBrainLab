@@ -305,6 +305,22 @@ class TestPlaceholderArgumentValidator:
         )
         assert not r.is_valid
 
+    def test_rejects_path_to_your_recipe(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate(
+            "reload_interpretation_recipe",
+            {"recipe_path": "path/to/your/recipe.json"},
+        )
+        assert not r.is_valid
+
+    def test_rejects_instruction_text_in_path_field(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate(
+            "scan_source",
+            {"source_path": "Please provide the absolute path to your EEG dataset."},
+        )
+        assert not r.is_valid
+
     def test_allows_realistic_absolute_path(self):
         v = PlaceholderArgumentValidator()
         r = v.validate("scan_source", {"source_path": "/data/S01.gdf"})

@@ -43,6 +43,7 @@ from .conversation import ConversationHistory
 from .intent import command_for_intent, infer_user_intent, path_label_for_intent
 from .metrics import AgentMetricsTracker
 from .parser import CommandParser
+from .tool_call_normalizer import normalize_tool_call
 from .verifier import VerificationLayer
 from .worker import AgentWorker
 
@@ -52,6 +53,7 @@ logger = logging.getLogger(__name__)
 TOOL_ACTION_LABELS = {
     "list_files": "File browser",
     "get_dataset_info": "Dataset summary",
+    "query_state": "State query",
     "scan_source": "Data source scan",
     "preview_interpretation": "Import preview",
     "validate_interpretation": "Import validation",
@@ -551,6 +553,11 @@ class LLMController(QObject):
         commands = (
             command_result if isinstance(command_result, list) else [command_result]
         )
+        latest_user_text = self._latest_user_request_text()
+        commands = [
+            normalize_tool_call(cmd, params, latest_user_text=latest_user_text)
+            for cmd, params in commands
+        ]
 
         # Hide the raw JSON from the UI now that we've parsed it
         self.remove_content.emit(response_text)
@@ -783,9 +790,13 @@ class LLMController(QObject):
         """Convert verifier diagnostics into stable internal tool output text."""
         intent = infer_user_intent(self._latest_user_request_text())
         path_label = path_label_for_intent(intent)
-        if path_label and "actual path" in message.lower():
-            return f"Required {path_label} must be an actual path provided by the user."
         lower = message.lower()
+        if path_label and "actual path" in lower:
+            return f"Required {path_label} must be an actual path provided by the user."
+        if path_label and (
+            "missing required parameter" in lower or "required input" in lower
+        ):
+            return f"Required {path_label} is missing."
         if command_name == "list_files" and "directory" in lower:
             return "directory is required"
         if "missing required parameter" in lower:

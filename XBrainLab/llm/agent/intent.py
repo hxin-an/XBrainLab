@@ -62,6 +62,8 @@ def infer_user_intent(text: str) -> str:
     if (
         "interpret data source" in normalized
         or "interpret my eeg dataset" in normalized
+        or "scan a data source" in normalized
+        or "scan data source" in normalized
         or "scan the bids dataset" in normalized
         or "scan the source" in normalized
     ):

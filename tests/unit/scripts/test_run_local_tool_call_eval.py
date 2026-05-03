@@ -114,6 +114,61 @@ def test_generate_dataset_default_val_ratio_is_counted():
     assert score.parsed_tool_calls[0]["arguments"]["val_ratio"] == 0.2
 
 
+def test_scores_command_only_json_as_tool_call_when_available():
+    case = _case("previewed-safe-validate")
+    raw_output = '{"command": "validate_interpretation", "reasons": []}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == [
+        {"tool_name": "validate_interpretation", "arguments": {}}
+    ]
+
+
+def test_scores_latest_turn_intent_not_joined_history():
+    case = _case("multi-turn-validate-apply-safe")
+    raw_output = '{"tool_name":"apply_interpretation","parameters":{}}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.prediction["intent"] == "apply_interpretation"
+
+
+def test_scores_backend_result_interpretation_for_success_summary():
+    case = _case("successful-load-summary")
+    raw_output = '{"tool_name":"load_data","parameters":{"paths":["/data/S03.fif"]}}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.prediction["result_interpretation"] == "success_summary"
+
+
+def test_scores_blocked_text_with_backend_policy_reason():
+    case = _case("validated-blocked-apply-block")
+    raw_output = (
+        'The command "apply_interpretation" is blocked due to missing label '
+        "carriers. Please load raw data first."
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert "Interpretation is blocked" in score.visible_response
+
+
+def test_scores_missing_recipe_path_with_path_label():
+    case = _case("empty-reload-recipe-missing-path")
+    raw_output = '{"tool_name":"reload_interpretation_recipe","parameters":{}}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert "recipe path" in score.visible_response
+
+
 def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path):
     def fake_generator(messages: list[dict[str, str]]) -> str:
         assert messages

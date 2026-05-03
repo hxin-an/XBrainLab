@@ -28,6 +28,62 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Local assistant tool-call normalization full rerun
+
+### 背景
+
+Guardrail smoke 清掉了 placeholder / blocked substitute 的小樣本問題，但正式 full eval 仍需
+把真 local model raw output 對齊產品 verifier / ApplicationService 語意。
+
+### 變更
+
+- `CommandParser` 支援 command-only JSON 和 bare tool name 輸出。
+- 新增 `XBrainLab.llm.agent.tool_call_normalizer`：
+  - aliases：`create_epoch` -> `epoch_data`、`train` -> `start_training`、
+    `get_dataset_info` -> typed `query_state`。
+  - latest-turn substitute：scan / preview / validate / apply request 不再被前一輪 tool call
+    重複覆蓋。
+  - argument normalization：BIDS source hint、subject override、epoch event id stringification、
+    dataset split defaults、recipe save default。
+- 新增 `query_state` mock / real agent tool，並映射到 `ApplicationService`
+  `QueryStateCommand`。
+- placeholder validator 擋下 prose path / `path/to/your/...`。
+- local eval 使用 backend result interpretation，避免把 successful load / confirmation boundary /
+  recoverable failure 當成 raw tool 成功。
+
+### 驗證
+
+- full local eval：
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+    -> `51 / 54` pass (`94.44%`)。
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+    -> `50 / 54` pass (`92.59%`)。
+  - primary / fallback 都是 `gpu-ready`，cache `15.34 GB`，no download。
+- `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_intent.py -q`
+  - `153 passed`
+- targeted `poetry run ruff check ...`
+  - pass
+- targeted `poetry run basedpyright ...`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `461 passed`
+- `poetry run ruff check .`
+  - pass
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run mkdocs build --strict`
+  - pass
+- `git diff --check`
+  - pass
+
+### 剩餘風險
+
+- 仍不是 thesis-ready：只有 `54` cases，不是 `100` thesis candidate cases。
+- 剩餘 failing cases 包含 saliency / visualization UI-route substitute、fallback invalid event
+  recovery、bandpass-vs-standard preprocess 語意。
+- 這仍不是 ChatPanel 長時間 walkthrough、Windows launcher click-through 或完整 UI product
+  validation。
+
 ## 2026-05-04 Local assistant tool-call guardrails
 
 ### 背景
@@ -98,9 +154,10 @@ artifact 把 raw tool JSON 當成 visible response。
 
 ### 剩餘風險
 
-- 正式 `54` cases x `3` primary / fallback local eval 尚未重跑；不能宣稱 thesis-ready。
-- Smoke subset 已清掉 `multi-turn-scan-preview` 重複 scan；正式 full eval 仍可能暴露更多
-  prompt / state snapshot / verifier 問題。
+- 此段為 guardrail smoke 當時風險；正式 `54` cases x `3` primary / fallback full rerun 已由
+  normalization slice 更新，但仍不能宣稱 thesis-ready。
+- Smoke subset 已清掉 `multi-turn-scan-preview` 重複 scan；full rerun 仍暴露 saliency /
+  visualization、invalid event、preprocess 語意 failure。
 - 這不是 ChatPanel 長時間 walkthrough，也不是 Windows launcher click-through evidence。
 
 ## 2026-05-04 label import recipe trace integration

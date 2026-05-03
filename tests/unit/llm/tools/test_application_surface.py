@@ -71,21 +71,29 @@ def test_data_interpretation_surface_preserves_autonomy_policy(tmp_path):
     assert scan_source.can_auto_execute is True
     assert scan_source.decision_boundary == "read_only_discovery"
 
-    assert execute_application_tool_command(
+    scan_result = execute_application_tool_command(
         study,
         "scan_source",
         {"source_path": str(source)},
-    ).ok
-    assert execute_application_tool_command(
+    )
+    assert scan_result is not None
+    assert scan_result.ok
+
+    preview_result = execute_application_tool_command(
         study,
         "preview_interpretation",
         {},
-    ).ok
-    assert execute_application_tool_command(
+    )
+    assert preview_result is not None
+    assert preview_result.ok
+
+    validate_result = execute_application_tool_command(
         study,
         "validate_interpretation",
         {},
-    ).ok
+    )
+    assert validate_result is not None
+    assert validate_result.ok
 
     apply_interpretation = build_agent_tool_policy(study)["apply_interpretation"]
 
@@ -120,21 +128,29 @@ def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path)
     source = tmp_path / "sub-01_task-mi_run-1.gdf"
     source.write_bytes(b"placeholder")
 
-    assert execute_application_tool_command(
+    scan_result = execute_application_tool_command(
         study,
         "scan_source",
         {"source_path": str(source)},
-    ).ok
-    assert execute_application_tool_command(
+    )
+    assert scan_result is not None
+    assert scan_result.ok
+
+    preview_result = execute_application_tool_command(
         study,
         "preview_interpretation",
         {},
-    ).ok
-    assert execute_application_tool_command(
+    )
+    assert preview_result is not None
+    assert preview_result.ok
+
+    validate_result = execute_application_tool_command(
         study,
         "validate_interpretation",
         {},
-    ).ok
+    )
+    assert validate_result is not None
+    assert validate_result.ok
 
     result = execute_application_tool_command(study, "apply_interpretation", {})
 
@@ -181,7 +197,10 @@ def test_application_tool_command_returns_structured_result_for_model_config():
     assert result.ok is True
     assert result.command_name == CommandName.CONFIGURE_TRAINING.value
     assert result.raw_result["status"] == "ok"
-    assert study.model_holder.target_model.__name__ == "EEGNet"
+    model_holder = study.model_holder
+    assert model_holder is not None
+    assert model_holder.target_model is not None
+    assert model_holder.target_model.__name__ == "EEGNet"
 
 
 def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
@@ -198,6 +217,25 @@ def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
     assert result.ok is False
     assert result.command_name == CommandName.LOAD_DATA.value
     assert result.raw_result["status"] == "failed"
+
+
+def test_query_state_tool_uses_application_command_surface():
+    study = Study()
+
+    policy = build_agent_tool_policy(study)
+    assert policy["query_state"].enabled is True
+    assert policy["query_state"].command_name == CommandName.QUERY_STATE.value
+
+    result = execute_application_tool_command(
+        study,
+        "query_state",
+        {"query": "state"},
+    )
+
+    assert result is not None
+    assert result.ok is True
+    assert result.command_name == CommandName.QUERY_STATE.value
+    assert result.raw_result["status"] == "ok"
 
 
 def test_application_tool_command_leaves_ui_request_tools_on_legacy_path():

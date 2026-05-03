@@ -11,6 +11,7 @@ def test_infers_blocked_workflow_intents():
     assert infer_user_intent("Preview the data interpretation.") == (
         "preview_interpretation"
     )
+    assert infer_user_intent("Scan a data source.") == "scan_source"
     assert infer_user_intent("Apply a 1 to 30 Hz bandpass filter.") == "preprocess"
 
 

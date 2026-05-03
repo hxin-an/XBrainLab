@@ -5,9 +5,34 @@ tool commands embedded within free-form text or code blocks.
 """
 
 import json
+import re
 from typing import Any
 
 from XBrainLab.backend.utils.logger import logger
+
+_BARE_COMMANDS = frozenset(
+    {
+        "scan_source",
+        "preview_interpretation",
+        "validate_interpretation",
+        "apply_interpretation",
+        "save_interpretation_recipe",
+        "reload_interpretation_recipe",
+        "load_data",
+        "attach_labels",
+        "apply_standard_preprocess",
+        "apply_bandpass_filter",
+        "epoch_data",
+        "create_epoch",
+        "generate_dataset",
+        "configure_training",
+        "start_training",
+        "train",
+        "clear_dataset",
+        "query_state",
+        "get_dataset_info",
+    }
+)
 
 
 class CommandParser:
@@ -82,6 +107,9 @@ class CommandParser:
             # But simple_bench expects a tuple.
             # I should change simple_bench first or return a list and fix simple_bench.
             return found_commands  # Return List[Tuple]
+        bare_command = CommandParser._extract_bare_command(cleaned_text)
+        if bare_command is not None:
+            return [bare_command]
         return None
 
     @staticmethod
@@ -131,6 +159,10 @@ class CommandParser:
         params = data.get("parameters")
         if params is None:
             params = data.get("arguments")
+        if params is None and any(
+            key in data for key in ("reason", "reasons", "blocked_reason")
+        ):
+            params = {}
         if isinstance(params, str):
             try:
                 decoded_params = json.loads(params)
@@ -141,3 +173,14 @@ class CommandParser:
         if isinstance(cmd, str) and isinstance(params, dict):
             return [(cmd, params)]
         return []
+
+    @staticmethod
+    def _extract_bare_command(text: str) -> tuple[str, dict[str, Any]] | None:
+        """Extract a bare tool name when the model emits command syntax text."""
+        stripped = text.strip()
+        if not stripped:
+            return None
+        command = re.split(r"[\s:]+", stripped, maxsplit=1)[0]
+        if command in _BARE_COMMANDS:
+            return command, {}
+        return None

@@ -34,15 +34,21 @@ def test_malformed_json():
     assert result is None
 
 
-def test_json_without_markdown():
-    # Some models might output raw JSON without markdown code blocks
-    # By upgrading the parser, we now support finding JSON anywhere!
-    # But since parameters are missing in this example, it should still return None?
-    # Or should we update the test to be a valid raw command?
-    # Original test expected None. Let's keep it assuming params missing.
+def test_json_without_command_payload():
     text = '{"command": "test"}'
     result = CommandParser.parse(text)
     assert result is None
+
+
+def test_parse_command_only_json_with_reason_as_empty_parameters():
+    text = '{"command": "validate_interpretation", "reasons": []}'
+    result = CommandParser.parse(text)
+    assert result == [("validate_interpretation", {})]
+
+
+def test_parse_bare_tool_name_at_start():
+    result = CommandParser.parse("save_interpretation_recipe\nBlocked reasons: None.")
+    assert result == [("save_interpretation_recipe", {})]
 
 
 def test_parse_arguments_alias():

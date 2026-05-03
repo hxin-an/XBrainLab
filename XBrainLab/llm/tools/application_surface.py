@@ -20,6 +20,7 @@ from XBrainLab.backend.application import (
     PreprocessCommand,
     PreprocessOperation,
     PreviewInterpretationCommand,
+    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     ResetSessionCommand,
     SaveInterpretationRecipeCommand,
@@ -62,6 +63,7 @@ TOOL_TO_COMMAND: dict[str, CommandName] = {
     "configure_training": CommandName.CONFIGURE_TRAINING,
     "start_training": CommandName.TRAIN,
     "clear_dataset": CommandName.RESET_SESSION,
+    "query_state": CommandName.QUERY_STATE,
 }
 
 READ_ONLY_TOOLS = frozenset({"list_files", "get_dataset_info", "switch_panel"})
@@ -593,6 +595,15 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
 
     if tool_name == "clear_dataset":
         return ResetSessionCommand(confirmed=True)
+
+    if tool_name == "query_state":
+        return QueryStateCommand(
+            query=str(params.get("query", "state")),
+            params=dict(params.get("params", {}))
+            if isinstance(params.get("params"), dict)
+            else {},
+            include_objects=bool(params.get("include_objects", False)),
+        )
 
     return None
 

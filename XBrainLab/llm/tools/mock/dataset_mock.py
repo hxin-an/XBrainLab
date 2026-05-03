@@ -15,6 +15,7 @@ from ..definitions.dataset_def import (
     BaseListFilesTool,
     BaseLoadDataTool,
     BasePreviewInterpretationTool,
+    BaseQueryStateTool,
     BaseReloadInterpretationRecipeTool,
     BaseSaveInterpretationRecipeTool,
     BaseScanSourceTool,
@@ -212,6 +213,13 @@ class MockGetDatasetInfoTool(BaseGetDatasetInfoTool):
 
         """
         return "Dataset Info: 2 files loaded, 250Hz, 22 channels."
+
+
+class MockQueryStateTool(BaseQueryStateTool):
+    """Mock implementation of :class:`BaseQueryStateTool`."""
+
+    def execute(self, study: Any, **kwargs) -> str:
+        return "Application state snapshot ready."
 
 
 class MockGenerateDatasetTool(BaseGenerateDatasetTool):

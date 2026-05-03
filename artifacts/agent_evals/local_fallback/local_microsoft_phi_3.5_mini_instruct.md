@@ -9,16 +9,14 @@
 
 ## Failure Taxonomy
 
-- argument mismatch: `29`
-- blocked-command handling mismatch: `12`
-- intent: `20`
-- runtime safety mismatch: `1`
-- state delta mismatch: `3`
-- state-aware decision mismatch: `11`
-- tool result interpretation mismatch: `7`
-- tool selection mismatch: `28`
-- trajectory mismatch: `28`
-- verification result: `13`
+- argument mismatch: `4`
+- blocked-command handling mismatch: `1`
+- intent: `3`
+- state delta mismatch: `1`
+- state-aware decision mismatch: `1`
+- tool selection mismatch: `4`
+- trajectory mismatch: `4`
+- verification result: `1`
 
 ## Scoring Detail
 
@@ -26,25 +24,25 @@
 
 - runner: `local-llm`
 - total cases: `54`
-- passed: `20`
-- failed: `34`
-- pass rate: `37.04%`
+- passed: `50`
+- failed: `4`
+- pass rate: `92.59%`
 
 ## Metrics
 
 | Metric | Accuracy |
 | --- | ---: |
-| intent | 62.96% |
-| tool selection | 48.15% |
-| argument correctness | 46.30% |
-| state aware | 79.63% |
-| verification result match | 75.93% |
-| state delta | 94.44% |
-| blocked command | 77.78% |
+| intent | 94.44% |
+| tool selection | 92.59% |
+| argument correctness | 92.59% |
+| state aware | 98.15% |
+| verification result match | 98.15% |
+| state delta | 98.15% |
+| blocked command | 98.15% |
 | recovery | 100.00% |
-| tool result interpretation | 87.04% |
-| trajectory quality | 48.15% |
-| runtime safety | 98.15% |
+| tool result interpretation | 100.00% |
+| trajectory quality | 92.59% |
+| runtime safety | 100.00% |
 | local llm reliability | 100.00% |
 
 ## Method Notes
@@ -55,37 +53,7 @@
 
 ## Failed Cases
 
-- `empty-train-block`: intent expected train, got configure_training, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `empty-load-path`: intent expected load_data, got scan_source, tool selection mismatch, argument mismatch, trajectory mismatch
-- `empty-load-missing-path`: intent expected load_data, got scan_source, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected missing_input, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `multi-turn-load-recovery`: intent expected load_data, got scan_source, tool selection mismatch, argument mismatch, trajectory mismatch
-- `loaded-preprocess`: tool selection mismatch, argument mismatch, trajectory mismatch
-- `empty-preprocess-block`: intent expected preprocess, got unknown, tool selection mismatch, argument mismatch, blocked-command handling mismatch, trajectory mismatch
-- `loaded-create-epoch-block`: intent expected create_epoch, got load_data, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `epoched-generate-dataset`: argument mismatch
-- `loaded-generate-dataset-block`: tool selection mismatch, argument mismatch, trajectory mismatch
-- `dataset-train-missing-config`: intent expected train, got configure_training, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `epoched-load-new-data-block`: intent expected load_data, got scan_source, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch, runtime safety mismatch
-- `saliency-before-trained-block`: intent expected saliency, got unknown, tool selection mismatch, argument mismatch, tool result interpretation mismatch, trajectory mismatch
-- `visualize-before-trained-block`: intent expected visualize, got unknown, tool selection mismatch, argument mismatch, tool result interpretation mismatch, trajectory mismatch
-- `invalid-event-id`: verification result expected recoverable_failure, got allowed, tool result interpretation mismatch
-- `bad-load-path`: intent expected load_data, got scan_source, tool selection mismatch, argument mismatch, verification result expected recoverable_failure, got allowed, tool result interpretation mismatch, trajectory mismatch
-- `successful-load-summary`: tool result interpretation mismatch
-- `empty-scan-source-missing-path`: tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected missing_input, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `empty-preview-before-scan-block`: intent expected preview_interpretation, got scan_source, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `scanned-preview-subject-override`: argument mismatch
-- `empty-validate-before-preview-block`: tool selection mismatch, argument mismatch, trajectory mismatch
-- `previewed-confirmation-validate`: tool result interpretation mismatch
-- `empty-apply-before-validation-block`: tool selection mismatch, argument mismatch, trajectory mismatch
-- `validated-blocked-apply-block`: intent expected apply_interpretation, got load_data, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `empty-save-recipe-before-apply-block`: tool selection mismatch, argument mismatch, trajectory mismatch
-- `empty-reload-recipe-missing-path`: tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected missing_input, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `multi-turn-validate-apply-safe`: intent expected apply_interpretation, got validate_interpretation, tool selection mismatch, state delta mismatch, trajectory mismatch
-- `multi-turn-apply-save-recipe`: intent expected save_interpretation_recipe, got apply_interpretation, tool selection mismatch, argument mismatch, trajectory mismatch
-- `multi-turn-scan-missing-preview-block`: intent expected preview_interpretation, got scan_source, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `multi-turn-apply-blocked-after-validation`: intent expected apply_interpretation, got validate_interpretation, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected blocked, got allowed, blocked-command handling mismatch, trajectory mismatch
-- `multi-turn-recipe-reload-validate`: intent expected validate_interpretation, got reload_interpretation_recipe, tool selection mismatch, state delta mismatch, tool result interpretation mismatch, trajectory mismatch
-- `multi-turn-preview-metadata-choice`: argument mismatch
+- `saliency-before-trained-block`: intent expected saliency, got unknown, tool selection mismatch, argument mismatch, trajectory mismatch
+- `visualize-before-trained-block`: intent expected visualize, got unknown, tool selection mismatch, argument mismatch, trajectory mismatch
+- `invalid-event-id`: intent expected create_epoch, got generate_dataset, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected recoverable_failure, got blocked, blocked-command handling mismatch, trajectory mismatch
 - `multi-turn-loaded-preprocess`: tool selection mismatch, argument mismatch, state delta mismatch, trajectory mismatch
-- `query-state-empty`: intent expected query_state, got reset_session, tool selection mismatch, argument mismatch, trajectory mismatch
-- `multi-turn-query-after-apply`: intent expected query_state, got apply_interpretation, tool selection mismatch, argument mismatch, trajectory mismatch

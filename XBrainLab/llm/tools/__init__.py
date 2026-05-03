@@ -20,6 +20,7 @@ from .mock.dataset_mock import (
     MockListFilesTool,
     MockLoadDataTool,
     MockPreviewInterpretationTool,
+    MockQueryStateTool,
     MockReloadInterpretationRecipeTool,
     MockSaveInterpretationRecipeTool,
     MockScanSourceTool,
@@ -55,6 +56,7 @@ def _build_real_tools() -> list[BaseTool]:
         RealListFilesTool,
         RealLoadDataTool,
         RealPreviewInterpretationTool,
+        RealQueryStateTool,
         RealReloadInterpretationRecipeTool,
         RealSaveInterpretationRecipeTool,
         RealScanSourceTool,
@@ -90,6 +92,7 @@ def _build_real_tools() -> list[BaseTool]:
         RealLoadDataTool(),
         RealAttachLabelsTool(),
         RealClearDatasetTool(),
+        RealQueryStateTool(),
         RealGetDatasetInfoTool(),
         RealGenerateDatasetTool(),
         # Preprocess
@@ -139,6 +142,7 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             MockLoadDataTool(),
             MockAttachLabelsTool(),
             MockClearDatasetTool(),
+            MockQueryStateTool(),
             MockGetDatasetInfoTool(),
             MockGenerateDatasetTool(),
             # Preprocess
