@@ -1,3 +1,8 @@
+---
+name: tdd-guard
+description: Use when making XBrainLab bug fixes, refactor slices, or core workflow changes with a test-first loop that proves expected behavior before implementation.
+---
+
 # tdd-guard
 
 ## 用途

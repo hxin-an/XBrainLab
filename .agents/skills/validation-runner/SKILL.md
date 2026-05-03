@@ -1,3 +1,8 @@
+---
+name: validation-runner
+description: Use when choosing and interpreting XBrainLab validation commands, quality dashboard checks, pytest gates, mkdocs builds, real-data IO smoke tests, and claim boundaries.
+---
+
 # validation-runner
 
 ## 用途

@@ -1,3 +1,8 @@
+---
+name: refactor-slicer
+description: Use when slicing XBrainLab backend, UI, or agent refactors into validated implementation steps with scope, call sites, target command shape, tests, and rollback boundaries.
+---
+
 # refactor-slicer
 
 ## 用途

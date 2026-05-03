@@ -1,3 +1,8 @@
+---
+name: software-design-reviewer
+description: Use when evaluating XBrainLab software design decisions such as Application Service, Command API, State Manager, Verification Layer, and tool-call scoring without immediately editing code.
+---
+
 # software-design-reviewer
 
 ## 用途

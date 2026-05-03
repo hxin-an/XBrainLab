@@ -1,3 +1,8 @@
+---
+name: agent-toolcall-designer
+description: Use when designing or reviewing XBrainLab agent state snapshots, backend-controlled tool availability, tool-call verification, command contracts, and tool-call scoring/evaluation workflows.
+---
+
 # agent-toolcall-designer
 
 ## 用途

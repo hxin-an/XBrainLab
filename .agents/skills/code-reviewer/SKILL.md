@@ -1,3 +1,8 @@
+---
+name: code-reviewer
+description: Use when reviewing XBrainLab code changes for behavioral regressions, state lifecycle bugs, UI refresh/threading risks, data pipeline correctness, missing tests, and architecture drift.
+---
+
 # code-reviewer
 
 ## 用途

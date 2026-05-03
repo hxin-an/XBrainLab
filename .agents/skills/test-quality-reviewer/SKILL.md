@@ -1,3 +1,8 @@
+---
+name: test-quality-reviewer
+description: Use when judging whether XBrainLab tests can actually catch product or backend problems, especially mock-heavy tests, implementation-detail assertions, and weak validation claims.
+---
+
 # test-quality-reviewer
 
 ## 用途

@@ -1,3 +1,8 @@
+---
+name: architecture-reviewer
+description: Use when reviewing XBrainLab current versus target architecture across UI, backend, data pipeline, agent, validation, and documentation before proposing or accepting implementation work.
+---
+
 # architecture-reviewer
 
 ## 用途

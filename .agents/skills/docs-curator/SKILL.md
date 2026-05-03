@@ -1,3 +1,8 @@
+---
+name: docs-curator
+description: Use when organizing, consolidating, or updating XBrainLab documentation so current truth, target design, planning, decisions, validation, and records remain separated and trustworthy.
+---
+
 # docs-curator
 
 ## 用途
