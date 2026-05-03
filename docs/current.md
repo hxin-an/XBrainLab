@@ -52,8 +52,12 @@ rollback dataset / generator / trainer state，避免半成功後仍可 train。
 `InterpretationCandidate`、`InterpretationPreview`、`ValidationDecision`、
 `AppliedInterpretation`、`ImportRecipe` lifecycle object、state snapshot、capability /
 autonomy policy 欄位和 recipe reload review flow。這仍只是 backend contract baseline；
-資料入口 UI 和 agent tool taxonomy 尚未遷移，舊 `load_data / attach_labels` 仍不能宣稱已退出
-產品心智模型。
+2026-05-04 下一個 slice 已把 Data Interpretation command 暴露到 agent tool definitions /
+mock / real tools、`application_surface.py` 和 `ContextAssembler` 可見工具集合。agent
+controller 現在會讀 backend autonomy policy 的 dynamic confirmation boundary，且
+`BackendFacade(study)` 會重用同一個 `ApplicationService`，避免 scan / preview / validate
+lifecycle 在連續 tool calls 間遺失。資料入口 UI 尚未遷移，舊 `load_data / attach_labels`
+仍不能宣稱已退出產品心智模型。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 長時間
 UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release closure。

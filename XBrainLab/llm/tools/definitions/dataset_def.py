@@ -45,6 +45,201 @@ class BaseListFilesTool(BaseTool):
         raise NotImplementedError
 
 
+class BaseScanSourceTool(BaseTool):
+    """Scan a data source before importing it into the active session."""
+
+    @property
+    def name(self) -> str:
+        return "scan_source"
+
+    @property
+    def description(self) -> str:
+        return "Scan an EEG file, folder, BIDS root, or import recipe."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "source_path": {
+                    "type": "string",
+                    "description": "Absolute path to the EEG source or recipe.",
+                },
+                "source_hint": {
+                    "type": "string",
+                    "enum": [
+                        "auto",
+                        "file",
+                        "folder",
+                        "bids",
+                        "device_export",
+                        "recipe",
+                    ],
+                    "default": "auto",
+                    "description": "Optional source type hint.",
+                },
+            },
+            "required": ["source_path"],
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BasePreviewInterpretationTool(BaseTool):
+    """Preview a candidate interpretation from the latest source scan."""
+
+    @property
+    def name(self) -> str:
+        return "preview_interpretation"
+
+    @property
+    def description(self) -> str:
+        return "Preview file, label/event, and metadata choices before import."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "scan_id": {
+                    "type": "string",
+                    "description": "Optional scan id. Defaults to the latest scan.",
+                },
+                "choices": {
+                    "type": "object",
+                    "description": (
+                        "Optional overrides such as selected_eeg_files, event roles, "
+                        "class map, or recipe id."
+                    ),
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseValidateInterpretationTool(BaseTool):
+    """Validate a candidate interpretation before apply."""
+
+    @property
+    def name(self) -> str:
+        return "validate_interpretation"
+
+    @property
+    def description(self) -> str:
+        return "Validate whether an interpretation is safe, blocked, or needs review."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "candidate_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional candidate id. Defaults to the latest candidate."
+                    ),
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseApplyInterpretationTool(BaseTool):
+    """Apply a validated interpretation to the active backend session."""
+
+    @property
+    def name(self) -> str:
+        return "apply_interpretation"
+
+    @property
+    def description(self) -> str:
+        return "Apply a validated data interpretation and load selected EEG files."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "candidate_id": {
+                    "type": "string",
+                    "description": (
+                        "Optional candidate id. Defaults to the latest candidate."
+                    ),
+                },
+                "confirmed": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "True only after the user confirms reviewable semantics."
+                    ),
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseSaveInterpretationRecipeTool(BaseTool):
+    """Save the applied interpretation as a replayable import recipe."""
+
+    @property
+    def name(self) -> str:
+        return "save_interpretation_recipe"
+
+    @property
+    def description(self) -> str:
+        return "Save the current applied interpretation as an import recipe."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "recipe_path": {
+                    "type": "string",
+                    "description": "Optional absolute path for the recipe JSON file.",
+                },
+            },
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
+class BaseReloadInterpretationRecipeTool(BaseTool):
+    """Reload an import recipe for preview and validation without auto-apply."""
+
+    @property
+    def name(self) -> str:
+        return "reload_interpretation_recipe"
+
+    @property
+    def description(self) -> str:
+        return "Reload an import recipe and preview the replayed interpretation."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "recipe_path": {
+                    "type": "string",
+                    "description": "Absolute path to a saved import recipe JSON file.",
+                },
+            },
+            "required": ["recipe_path"],
+        }
+
+    def execute(self, study: Any, **kwargs) -> str:
+        raise NotImplementedError
+
+
 class BaseLoadDataTool(BaseTool):
     """Load raw EEG/GDF data files into the Study.
 

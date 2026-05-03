@@ -58,6 +58,92 @@ def test_clear_dataset_surface_preserves_reset_confirmation_boundary():
     assert clear_dataset.confirmation_required is True
 
 
+def test_data_interpretation_surface_preserves_autonomy_policy(tmp_path):
+    study = Study()
+    source = tmp_path / "sub-01_task-mi_run-1.gdf"
+    source.write_bytes(b"placeholder")
+
+    policy = build_agent_tool_policy(study)
+    scan_source = policy["scan_source"]
+
+    assert scan_source.enabled is True
+    assert scan_source.command_name == CommandName.SCAN_SOURCE.value
+    assert scan_source.can_auto_execute is True
+    assert scan_source.decision_boundary == "read_only_discovery"
+
+    assert execute_application_tool_command(
+        study,
+        "scan_source",
+        {"source_path": str(source)},
+    ).ok
+    assert execute_application_tool_command(
+        study,
+        "preview_interpretation",
+        {},
+    ).ok
+    assert execute_application_tool_command(
+        study,
+        "validate_interpretation",
+        {},
+    ).ok
+
+    apply_interpretation = build_agent_tool_policy(study)["apply_interpretation"]
+
+    assert apply_interpretation.enabled is True
+    assert apply_interpretation.command_name == CommandName.APPLY_INTERPRETATION.value
+    assert apply_interpretation.confirmation_required is True
+    assert apply_interpretation.requires_confirmation is True
+    assert apply_interpretation.can_auto_execute is False
+    assert apply_interpretation.stop_after_success is True
+    assert apply_interpretation.blocks_downstream_until_confirmed is True
+    assert apply_interpretation.to_dict()["decision_boundary"] == "semantic_apply"
+
+
+def test_application_tool_command_routes_data_interpretation_scan(tmp_path):
+    source = tmp_path / "sample.fif"
+    source.write_bytes(b"placeholder")
+
+    result = execute_application_tool_command(
+        Study(),
+        "scan_source",
+        {"source_path": str(source), "source_hint": "file"},
+    )
+
+    assert result is not None
+    assert result.ok is True
+    assert result.command_name == CommandName.SCAN_SOURCE.value
+    assert result.raw_result["diagnostics"]["payload_type"] == "scan_result"
+
+
+def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path):
+    study = Study()
+    source = tmp_path / "sub-01_task-mi_run-1.gdf"
+    source.write_bytes(b"placeholder")
+
+    assert execute_application_tool_command(
+        study,
+        "scan_source",
+        {"source_path": str(source)},
+    ).ok
+    assert execute_application_tool_command(
+        study,
+        "preview_interpretation",
+        {},
+    ).ok
+    assert execute_application_tool_command(
+        study,
+        "validate_interpretation",
+        {},
+    ).ok
+
+    result = execute_application_tool_command(study, "apply_interpretation", {})
+
+    assert result is not None
+    assert result.ok is False
+    assert result.command_name == CommandName.APPLY_INTERPRETATION.value
+    assert result.error_type == "confirmation_required"
+
+
 def test_application_surface_requires_real_study():
     with pytest.raises(CapabilityPolicyUnavailable):
         build_agent_tool_policy(MagicMock())

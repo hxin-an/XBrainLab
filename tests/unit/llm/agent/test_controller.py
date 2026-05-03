@@ -379,6 +379,23 @@ class TestOnUserConfirmed:
         assert ctrl._pending_confirmation is None
         assert ctrl._tool_failure_count == 0
 
+    def test_approved_data_interpretation_apply_adds_confirmed_param(self, ctrl):
+        ctrl._pending_confirmation = (
+            "apply_interpretation",
+            {"candidate_id": "candidate-1"},
+            [],
+        )
+        ctrl._execute_tool_no_loop = MagicMock(return_value=(True, "Applied."))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl.metrics.finish_turn = MagicMock()
+
+        ctrl.on_user_confirmed(True)
+
+        ctrl._execute_tool_no_loop.assert_called_once_with(
+            "apply_interpretation",
+            {"candidate_id": "candidate-1", "confirmed": True},
+        )
+
     def test_rejected_appends_rejection(self, ctrl):
         """When user rejects, no execution should happen."""
         ctrl._pending_confirmation = ("clear_dataset", {}, [])
@@ -441,6 +458,43 @@ class TestProcessToolCallsConfirmation:
         ctrl.request_user_interaction.emit.assert_called_once()
         call_args = ctrl.request_user_interaction.emit.call_args[0]
         assert call_args[0] == "confirm_action"
+
+    def test_backend_confirmation_boundary_pauses_execution(self, ctrl):
+        """ApplicationService autonomy policy can require HITL dynamically."""
+        from XBrainLab.llm.tools.application_surface import ToolAvailability
+
+        mock_tool = MagicMock()
+        mock_tool.requires_confirmation = False
+        mock_tool.description = "Apply data interpretation"
+        ctrl.registry.get_tool.return_value = mock_tool
+
+        availability = ToolAvailability(
+            tool_name="apply_interpretation",
+            enabled=True,
+            command_name="apply_interpretation",
+            confirmation_required=True,
+            requires_confirmation=True,
+            decision_boundary="semantic_apply",
+        )
+        with (
+            patch(
+                "XBrainLab.llm.agent.controller.get_tool_availability",
+                return_value=availability,
+            ),
+            patch(
+                "XBrainLab.llm.agent.controller.estimate_confidence",
+                return_value=0.9,
+            ),
+        ):
+            ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+            ctrl._process_tool_calls(
+                [("apply_interpretation", {})],
+                '{"tool_name": "apply_interpretation"}',
+            )
+
+        assert ctrl._pending_confirmation is not None
+        assert ctrl._pending_confirmation[0] == "apply_interpretation"
+        ctrl.request_user_interaction.emit.assert_called_once()
 
     def test_no_confirmation_executes_directly(self, ctrl):
         """Tool without requires_confirmation should execute normally."""

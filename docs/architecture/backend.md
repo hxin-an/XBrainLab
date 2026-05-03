@@ -309,6 +309,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 
 - command 目前仍透過既有 controllers 執行，以保留 observer event 與 UI refresh 行為。
 - `BackendFacade` 是 wrapper；它不應再承載新的 workflow business logic。
+- `BackendFacade(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是 Data
+  Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
+  `preview_interpretation` tool call 因重新建立 service 而遺失。
 - `application_surface.py` 是 agent tool-name 與 ApplicationService command-name 的 adapter；
   read-only / legacy tools 可以保留在 facade path，但 visible output 必須經 typed formatter，
   不可讓 facade/string result 直接進 transcript。

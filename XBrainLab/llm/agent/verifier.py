@@ -161,14 +161,25 @@ class TrainingParamValidator(ValidatorStrategy):
 class PathExistsValidator(ValidatorStrategy):
     """Reject file/directory tool calls where path does not exist."""
 
-    TOOLS: ClassVar[set[str]] = {"load_data", "list_files"}
+    TOOLS: ClassVar[set[str]] = {
+        "load_data",
+        "list_files",
+        "scan_source",
+        "reload_interpretation_recipe",
+    }
 
     def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
         if name not in self.TOOLS:
             return VerificationResult(is_valid=True)
 
         # Try common parameter names for paths
-        path = params.get("file_path") or params.get("directory") or params.get("path")
+        path = (
+            params.get("file_path")
+            or params.get("directory")
+            or params.get("path")
+            or params.get("source_path")
+            or params.get("recipe_path")
+        )
         if path and isinstance(path, str) and not os.path.exists(path):
             return VerificationResult(
                 is_valid=False,

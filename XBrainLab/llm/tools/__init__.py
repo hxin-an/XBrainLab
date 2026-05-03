@@ -12,12 +12,18 @@ from .base import BaseTool
 
 # Mock tools are lightweight — import eagerly for type checking
 from .mock.dataset_mock import (
+    MockApplyInterpretationTool,
     MockAttachLabelsTool,
     MockClearDatasetTool,
     MockGenerateDatasetTool,
     MockGetDatasetInfoTool,
     MockListFilesTool,
     MockLoadDataTool,
+    MockPreviewInterpretationTool,
+    MockReloadInterpretationRecipeTool,
+    MockSaveInterpretationRecipeTool,
+    MockScanSourceTool,
+    MockValidateInterpretationTool,
 )
 from .mock.preprocess_mock import (
     MockBandPassFilterTool,
@@ -41,12 +47,18 @@ from .mock.ui_control_mock import MockSwitchPanelTool
 def _build_real_tools() -> list[BaseTool]:
     """Lazily import and instantiate real tool classes."""
     from .real.dataset_real import (
+        RealApplyInterpretationTool,
         RealAttachLabelsTool,
         RealClearDatasetTool,
         RealGenerateDatasetTool,
         RealGetDatasetInfoTool,
         RealListFilesTool,
         RealLoadDataTool,
+        RealPreviewInterpretationTool,
+        RealReloadInterpretationRecipeTool,
+        RealSaveInterpretationRecipeTool,
+        RealScanSourceTool,
+        RealValidateInterpretationTool,
     )
     from .real.preprocess_real import (
         RealBandPassFilterTool,
@@ -69,6 +81,12 @@ def _build_real_tools() -> list[BaseTool]:
     return [
         # Dataset
         RealListFilesTool(),
+        RealScanSourceTool(),
+        RealPreviewInterpretationTool(),
+        RealValidateInterpretationTool(),
+        RealApplyInterpretationTool(),
+        RealSaveInterpretationRecipeTool(),
+        RealReloadInterpretationRecipeTool(),
         RealLoadDataTool(),
         RealAttachLabelsTool(),
         RealClearDatasetTool(),
@@ -112,6 +130,12 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
         return [
             # Dataset
             MockListFilesTool(),
+            MockScanSourceTool(),
+            MockPreviewInterpretationTool(),
+            MockValidateInterpretationTool(),
+            MockApplyInterpretationTool(),
+            MockSaveInterpretationRecipeTool(),
+            MockReloadInterpretationRecipeTool(),
             MockLoadDataTool(),
             MockAttachLabelsTool(),
             MockClearDatasetTool(),

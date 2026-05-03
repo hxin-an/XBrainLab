@@ -51,6 +51,12 @@ logger = logging.getLogger(__name__)
 TOOL_ACTION_LABELS = {
     "list_files": "File browser",
     "get_dataset_info": "Dataset summary",
+    "scan_source": "Data source scan",
+    "preview_interpretation": "Import preview",
+    "validate_interpretation": "Import validation",
+    "apply_interpretation": "Import apply",
+    "save_interpretation_recipe": "Recipe save",
+    "reload_interpretation_recipe": "Recipe reload",
     "load_data": "Load EEG data",
     "attach_labels": "Attach labels",
     "apply_standard_preprocess": "Preprocessing",
@@ -600,7 +606,8 @@ class LLMController(QObject):
 
             # --- HITL: Dangerous Action Confirmation ---
             tool = self.registry.get_tool(cmd)
-            if tool and tool.requires_confirmation:
+            dynamic_confirmation = self._dynamic_confirmation_boundary(cmd)
+            if dynamic_confirmation or (tool and tool.requires_confirmation):
                 # Store remaining commands for resumption after confirmation.
                 # Use enumerate index to correctly slice remaining commands,
                 # avoiding the first-match bug of list.index() on duplicates.
@@ -612,7 +619,11 @@ class LLMController(QObject):
                     {
                         "tool_name": cmd,
                         "params": params,
-                        "description": tool.description,
+                        "description": (
+                            tool.description
+                            if tool
+                            else "ApplicationService requires confirmation."
+                        ),
                     },
                 )
                 return  # Pause — wait for user response
@@ -726,7 +737,8 @@ class LLMController(QObject):
             logger.info("User confirmed dangerous action: %s", cmd)
             self.status_update.emit(f"Executing confirmed: {cmd}...")
 
-            _success, result = self._execute_tool_no_loop(cmd, params)
+            confirmed_params = self._confirmed_tool_params(cmd, params)
+            _success, result = self._execute_tool_no_loop(cmd, confirmed_params)
             self._last_tool_summary = self._summarize_tool_result(
                 cmd,
                 _success,
@@ -927,6 +939,31 @@ class LLMController(QObject):
         if availability.enabled:
             return None
         return availability
+
+    def _dynamic_confirmation_boundary(
+        self,
+        command_name: str,
+    ) -> ToolAvailability | None:
+        """Return enabled backend policy that requires user confirmation."""
+        try:
+            availability = get_tool_availability(self.study, command_name)
+        except Exception:
+            return None
+        if not availability.enabled:
+            return None
+        if availability.requires_confirmation or availability.confirmation_required:
+            return availability
+        return None
+
+    def _confirmed_tool_params(
+        self,
+        command_name: str,
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Inject backend confirmation fields after the user approves."""
+        if command_name == "apply_interpretation":
+            return {**params, "confirmed": True}
+        return params
 
     def _tool_block_result(
         self,

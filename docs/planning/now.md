@@ -113,8 +113,11 @@ Goal 1 至少要包含：
      會大改就只做 backend 或把新流程塞回舊 import 外殼。
 
 8. **Agent alignment**
-   - Context Assembler 暴露 Data Interpretation tools。
+   - Context Assembler 暴露 Data Interpretation tools。（agent surface slice 已完成；UI flow
+     仍未完成。）
    - Verification Layer 檢查 capability policy、Data Interpretation decision 和 autonomy policy。
+     （目前已檢查 backend capability / dynamic confirmation boundary；完整 Data Interpretation
+     decision-aware planner / eval cases 仍未完成。）
    - visible response 不暴露 raw schema、snake_case command、traceback 或 debug payload。
 
 9. **Evaluation baseline**

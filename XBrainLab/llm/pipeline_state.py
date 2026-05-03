@@ -108,6 +108,15 @@ _PREPROCESS_TOOLS: list[str] = [
     "epoch_data",
 ]
 
+_DATA_INTERPRETATION_TOOLS: list[str] = [
+    "scan_source",
+    "preview_interpretation",
+    "validate_interpretation",
+    "apply_interpretation",
+    "save_interpretation_recipe",
+    "reload_interpretation_recipe",
+]
+
 _TRAINING_TOOLS: list[str] = [
     "set_model",
     "configure_training",
@@ -123,6 +132,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     PipelineStage.EMPTY: {
         "tools": [
             "list_files",
+            *_DATA_INTERPRETATION_TOOLS,
             "load_data",
             "switch_panel",
         ],
@@ -139,8 +149,11 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "located.\n"
             "- Use 'list_files' to browse the file system and show available "
             "files.\n"
-            "- Use 'load_data' once the user has confirmed which files to "
-            "load.\n"
+            "- Use 'scan_source' once the user has provided a source path, "
+            "then preview, validate, and apply the interpretation before "
+            "preprocessing.\n"
+            "- Use 'reload_interpretation_recipe' when the user provides a "
+            "saved import recipe, then review the preview before apply.\n"
             "- If the user seems unfamiliar, briefly explain what EEG file "
             "formats XBrainLab supports.\n"
             "\n"
@@ -152,6 +165,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATA_LOADED: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
             "attach_labels",
             "get_dataset_info",
@@ -184,6 +198,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.PREPROCESSED: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
             "attach_labels",
             "generate_dataset",
@@ -216,6 +231,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.DATASET_READY: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_TRAINING_TOOLS,
             "get_dataset_info",
             "clear_dataset",
@@ -269,6 +285,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
     },
     PipelineStage.TRAINED: {
         "tools": [
+            *_DATA_INTERPRETATION_TOOLS,
             *_TRAINING_TOOLS,
             "get_dataset_info",
             "clear_dataset",

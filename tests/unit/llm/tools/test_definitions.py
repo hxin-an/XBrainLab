@@ -3,12 +3,18 @@
 import pytest
 
 from XBrainLab.llm.tools.definitions.dataset_def import (
+    BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
     BaseClearDatasetTool,
     BaseGenerateDatasetTool,
     BaseGetDatasetInfoTool,
     BaseListFilesTool,
     BaseLoadDataTool,
+    BasePreviewInterpretationTool,
+    BaseReloadInterpretationRecipeTool,
+    BaseSaveInterpretationRecipeTool,
+    BaseScanSourceTool,
+    BaseValidateInterpretationTool,
 )
 from XBrainLab.llm.tools.definitions.preprocess_def import (
     BaseBandPassFilterTool,
@@ -33,6 +39,12 @@ def _get_all_def_classes():
     """Return all abstract tool definition classes."""
     return [
         BaseListFilesTool,
+        BaseScanSourceTool,
+        BasePreviewInterpretationTool,
+        BaseValidateInterpretationTool,
+        BaseApplyInterpretationTool,
+        BaseSaveInterpretationRecipeTool,
+        BaseReloadInterpretationRecipeTool,
         BaseLoadDataTool,
         BaseAttachLabelsTool,
         BaseClearDatasetTool,
@@ -120,6 +132,20 @@ class TestGenerateDatasetEnums:
         assert "training_mode" in params["required"]
 
 
+class TestDataInterpretationDefinitions:
+    def test_scan_source_requires_source_path(self):
+        params = BaseScanSourceTool.parameters.fget(None)
+        assert "source_path" in params["required"]
+
+    def test_reload_recipe_requires_recipe_path(self):
+        params = BaseReloadInterpretationRecipeTool.parameters.fget(None)
+        assert "recipe_path" in params["required"]
+
+    def test_apply_interpretation_uses_dynamic_confirmation_policy(self):
+        val = BaseApplyInterpretationTool.requires_confirmation.fget(None)
+        assert val is False
+
+
 class TestRequiresConfirmation:
     """Verify that dangerous tools require user confirmation."""
 
@@ -135,6 +161,12 @@ class TestRequiresConfirmation:
         "tool_cls",
         [
             BaseListFilesTool,
+            BaseScanSourceTool,
+            BasePreviewInterpretationTool,
+            BaseValidateInterpretationTool,
+            BaseApplyInterpretationTool,
+            BaseSaveInterpretationRecipeTool,
+            BaseReloadInterpretationRecipeTool,
             BaseLoadDataTool,
             BaseAttachLabelsTool,
             BaseGetDatasetInfoTool,

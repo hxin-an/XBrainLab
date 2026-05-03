@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .controller.dataset_controller import DatasetController
 from .controller.evaluation_controller import EvaluationController
@@ -54,6 +54,7 @@ class Study:
 
         # Controller cache for singleton-like access
         self._controllers: dict = {}
+        self._application_service: Any | None = None
 
         logger.info("Study initialized (with DataManager + TrainingManager)")
 

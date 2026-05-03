@@ -1826,3 +1826,42 @@
   - agent tool taxonomy 尚未遷移到 Data Interpretation tools。
   - headless / MCP-ready adapters 尚未暴露新 command taxonomy。
   - non-mocked synthetic workflow 目前只到 backend command baseline，尚未走 preprocess -> epoch -> dataset。
+
+### 2026-05-04 Goal 1 Data Interpretation agent tool surface
+
+- 做了什麼：
+  - 新增 Data Interpretation agent tool definitions、mock tools、real tools，並註冊到
+    `get_all_tools(mode="mock" / "real")`。
+  - `application_surface.py` 將 `scan_source`、`preview_interpretation`、
+    `validate_interpretation`、`apply_interpretation`、`save_interpretation_recipe`、
+    `reload_interpretation_recipe` 映射到 ApplicationService commands。
+  - `ToolAvailability` payload 補齊 backend autonomy policy 欄位，讓 agent history /
+    diagnostics 能看到 `can_auto_execute`、`requires_confirmation`、`decision_boundary`、
+    retry / stop / downstream confirmation boundary。
+  - `LLMController` 新增 dynamic confirmation boundary：backend policy 若要求 confirmation，
+    即使 static tool 不標記 dangerous，也會暫停等 UI confirmation；確認後
+    `apply_interpretation` 會帶 `confirmed=True`。
+  - `BackendFacade(study)` 會重用同一個 `ApplicationService`，避免 Data Interpretation scan /
+    candidate / validation state 在連續 agent tool calls 間遺失。
+  - `PathExistsValidator` 補 `scan_source.source_path` 和
+    `reload_interpretation_recipe.recipe_path`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_mock_tools.py tests/unit/llm/agent/test_controller.py -q`
+    -> `219 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_mock_tools.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/agent/test_verification_layer.py tests/integration/agent/test_product_flow.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `286 passed`
+  - `poetry run ruff check <slice files>` -> pass
+  - `poetry run basedpyright <slice source files>` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals_tmp_goal1_agent_surface`
+    -> pass；temporary artifact directory removed。
+  - `git diff --check` -> pass
+- 後續：
+  - UI import entry 尚未重做。
+  - headless / MCP adapter 尚未暴露新 command taxonomy。
+  - deterministic / local LLM tool-call cases 尚未改以 Data Interpretation 作為主要資料入口。
+  - 尚未有 source -> scan -> preview -> validate -> apply -> recipe -> preprocess -> epoch ->
+    dataset 的 non-mocked synthetic workflow evidence。

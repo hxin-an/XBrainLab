@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from XBrainLab.backend.application import (
+    ApplyInterpretationCommand,
     AttachLabelsCommand,
     Command,
     CommandName,
@@ -18,8 +19,13 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
+    ReloadInterpretationRecipeCommand,
     ResetSessionCommand,
+    SaveInterpretationRecipeCommand,
+    ScanSourceCommand,
     TrainCommand,
+    ValidateInterpretationCommand,
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
@@ -34,6 +40,12 @@ CapabilityPolicyUnavailable = CapabilityPolicyUnavailableError
 
 
 TOOL_TO_COMMAND: dict[str, CommandName] = {
+    "scan_source": CommandName.SCAN_SOURCE,
+    "preview_interpretation": CommandName.PREVIEW_INTERPRETATION,
+    "validate_interpretation": CommandName.VALIDATE_INTERPRETATION,
+    "apply_interpretation": CommandName.APPLY_INTERPRETATION,
+    "save_interpretation_recipe": CommandName.SAVE_INTERPRETATION_RECIPE,
+    "reload_interpretation_recipe": CommandName.RELOAD_INTERPRETATION_RECIPE,
     "load_data": CommandName.LOAD_DATA,
     "attach_labels": CommandName.ATTACH_LABELS,
     "apply_standard_preprocess": CommandName.PREPROCESS,
@@ -67,6 +79,13 @@ class ToolAvailability:
     destructive: bool = False
     long_running: bool = False
     read_only: bool = False
+    can_auto_execute: bool = True
+    requires_confirmation: bool = False
+    decision_boundary: str | None = None
+    continue_allowed_after_success: bool = True
+    retry_limit: int = 2
+    stop_after_success: bool = False
+    blocks_downstream_until_confirmed: bool = False
 
     @property
     def reason_text(self) -> str:
@@ -82,6 +101,15 @@ class ToolAvailability:
             "destructive": self.destructive,
             "long_running": self.long_running,
             "read_only": self.read_only,
+            "can_auto_execute": self.can_auto_execute,
+            "requires_confirmation": self.requires_confirmation,
+            "decision_boundary": self.decision_boundary,
+            "continue_allowed_after_success": self.continue_allowed_after_success,
+            "retry_limit": self.retry_limit,
+            "stop_after_success": self.stop_after_success,
+            "blocks_downstream_until_confirmed": (
+                self.blocks_downstream_until_confirmed
+            ),
         }
 
 
@@ -414,6 +442,44 @@ def legacy_tool_error_type(message: str) -> str:
 
 def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
     """Build an ApplicationService command for a supported agent tool."""
+    if tool_name == "scan_source":
+        source_path = params.get("source_path")
+        if not source_path:
+            return None
+        return ScanSourceCommand(
+            source_path=str(source_path),
+            source_hint=str(params.get("source_hint", "auto")),
+        )
+
+    if tool_name == "preview_interpretation":
+        choices = params.get("choices")
+        return PreviewInterpretationCommand(
+            scan_id=_optional_str(params.get("scan_id")),
+            choices=dict(choices) if isinstance(choices, dict) else {},
+        )
+
+    if tool_name == "validate_interpretation":
+        return ValidateInterpretationCommand(
+            candidate_id=_optional_str(params.get("candidate_id")),
+        )
+
+    if tool_name == "apply_interpretation":
+        return ApplyInterpretationCommand(
+            candidate_id=_optional_str(params.get("candidate_id")),
+            confirmed=bool(params.get("confirmed", False)),
+        )
+
+    if tool_name == "save_interpretation_recipe":
+        return SaveInterpretationRecipeCommand(
+            recipe_path=_optional_str(params.get("recipe_path")),
+        )
+
+    if tool_name == "reload_interpretation_recipe":
+        recipe_path = params.get("recipe_path")
+        if not recipe_path:
+            return None
+        return ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
+
     if tool_name == "load_data":
         paths = params.get("paths")
         if not isinstance(paths, list) or not paths:
@@ -548,6 +614,13 @@ def _expand_load_paths(paths: list[str]) -> list[str]:
     return expanded_paths
 
 
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text or None
+
+
 def enabled_tool_names(study: Any) -> list[str]:
     """Return tool names that are currently available to the agent."""
     return [
@@ -579,6 +652,15 @@ def _from_capability(
         confirmation_required=capability.confirmation_required,
         destructive=capability.destructive,
         long_running=capability.long_running,
+        can_auto_execute=capability.can_auto_execute,
+        requires_confirmation=capability.requires_confirmation,
+        decision_boundary=capability.decision_boundary,
+        continue_allowed_after_success=capability.continue_allowed_after_success,
+        retry_limit=capability.retry_limit,
+        stop_after_success=capability.stop_after_success,
+        blocks_downstream_until_confirmed=(
+            capability.blocks_downstream_until_confirmed
+        ),
     )
 
 

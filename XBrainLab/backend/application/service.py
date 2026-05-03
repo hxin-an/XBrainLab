@@ -108,6 +108,7 @@ class ApplicationService:
 
     def __init__(self, study: Study | None = None):
         self.study = study if study is not None else Study()
+        self.study._application_service = self
         self.dataset = self.study.get_controller("dataset")
         self.preprocess = self.study.get_controller("preprocess")
         self.training = self.study.get_controller("training")
