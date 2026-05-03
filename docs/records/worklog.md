@@ -37,6 +37,24 @@
 
 ## 2026-05-04
 
+### 03:18 Data Interpretation recipe save UI
+
+- 做了什麼：
+  - `DataInterpretationPreviewDialog` 新增 `Save recipe after applying` checkbox。
+  - Dataset panel apply 成功後，若使用者勾選，會走 `SaveInterpretationRecipeCommand`。
+  - 若使用者選擇 JSON path，recipe 寫入檔案；若取消 save dialog，recipe 仍保留在 backend
+    session。
+  - 補 unit / walkthrough regression，並重跑 UI replay artifact。
+- 結果：
+  - 主 import flow 現在有 scan -> preview -> validate -> confirm/apply -> recipe path。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q` -> `46 passed`
+  - targeted `ruff` clean。
+  - targeted source/dialog `basedpyright` clean。
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+- 接續 / 本輪剩餘：
+  - label import 仍是舊入口；完整 MCP server 和 local LLM 真實 tool-call eval 尚未完成。
+
 ### 03:10 Data Interpretation UI replay artifact
 
 - 做了什麼：

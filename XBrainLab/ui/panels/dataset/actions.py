@@ -18,6 +18,7 @@ from XBrainLab.backend.application import (
     MetadataUpdate,
     PreviewInterpretationCommand,
     RemoveFilesCommand,
+    SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     UpdateMetadataCommand,
     ValidateInterpretationCommand,
@@ -193,8 +194,12 @@ class DatasetActionHandler:
             )
             return True
 
+        raw_dialog_result = dialog.get_result()
+        dialog_result = (
+            dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
+        )
         confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
-            dialog.get_result().get("confirmed"),
+            dialog_result.get("confirmed"),
         )
         apply_result = execute_application_command(
             self.panel,
@@ -215,12 +220,40 @@ class DatasetActionHandler:
             return True
 
         self.panel.update_panel()
+        recipe_message = ""
+        if bool(dialog_result.get("save_recipe", False)):
+            recipe_message = self._save_interpretation_recipe()
         QMessageBox.information(
             self.panel,
             "Data interpreted",
-            apply_result.message,
+            " ".join(part for part in [apply_result.message, recipe_message] if part),
         )
         return True
+
+    def _save_interpretation_recipe(self) -> str:
+        """Persist the latest applied interpretation recipe if requested."""
+        recipe_path, _ = QFileDialog.getSaveFileName(
+            self.panel,
+            "Save Interpretation Recipe",
+            "import_recipe.json",
+            "JSON (*.json)",
+        )
+        result = execute_application_command(
+            self.panel,
+            SaveInterpretationRecipeCommand(recipe_path=recipe_path or None),
+        )
+        if result is None:
+            return ""
+        if result.failed:
+            QMessageBox.warning(
+                self.panel,
+                "Recipe not saved",
+                result.message,
+            )
+            return ""
+        if recipe_path:
+            return "Recipe saved."
+        return "Recipe kept in this session."
 
     @staticmethod
     def _interpretation_source_and_choices(

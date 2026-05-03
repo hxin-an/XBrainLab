@@ -1186,6 +1186,7 @@
         ]
       ],
       "apply_button_enabled": true,
+      "save_recipe_checked": true,
       "screenshot": "data-interpretation-preview.png"
     },
     "dataset_panel": {

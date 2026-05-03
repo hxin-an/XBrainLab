@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDialogButtonBox,
     QLabel,
     QPlainTextEdit,
@@ -33,6 +34,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.summary_label: QLabel
         self.decision_label: QLabel
         self.confirmation_label: QLabel
+        self.save_recipe_check: QCheckBox
         self.file_tree: QTreeWidget
         super().__init__(
             parent=parent,
@@ -81,6 +83,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.confirmation_label.setWordWrap(True)
         layout.addWidget(self.confirmation_label)
 
+        self.save_recipe_check = QCheckBox("Save recipe after applying")
+        self.save_recipe_check.setChecked(self.decision != "blocked")
+        self.save_recipe_check.setEnabled(self.decision != "blocked")
+        layout.addWidget(self.save_recipe_check)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
@@ -93,7 +100,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(buttons)
 
     def get_result(self) -> dict[str, Any]:
-        return {"confirmed": self.decision == "needs_confirmation"}
+        return {
+            "confirmed": self.decision == "needs_confirmation",
+            "save_recipe": self.save_recipe_check.isChecked(),
+        }
 
     def _populate_files(self) -> None:
         metadata_preview = self.preview.get("metadata_preview") or []

@@ -39,3 +39,4 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     assert dialog.file_tree.topLevelItemCount() == 1
     assert "Found 1 EEG file" in dialog.summary_label.text()
     assert "Confirm session metadata." in dialog.confirmation_label.text()
+    assert dialog.get_result() == {"confirmed": True, "save_recipe": True}

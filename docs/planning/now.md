@@ -34,14 +34,15 @@
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
 - Dataset panel 的主要資料入口已從 `Import Data` 改為 `Interpret Data Source`，並走
-  scan -> preview -> validate -> confirm/apply；但 label import 和 recipe save UI 尚未完成遷移。
+  scan -> preview -> validate -> confirm/apply；preview dialog 現在提供 apply 後保存 recipe
+  的選項，並透過 `SaveInterpretationRecipeCommand` 寫入 recipe。label import 尚未完成遷移。
 - headless / MCP-ready automation adapter 已新增：
   `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
   payload 轉回 typed `ApplicationService` command。
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
-- Data Interpretation System 仍未完成；目前尚缺 recipe save UI、完整 MCP server 和更完整的
-  UI replay coverage。（MCP-ready schema / headless adapter 已有；backend non-mocked
+- Data Interpretation System 仍未完成；目前尚缺 label import migration、完整 MCP server 和
+  更完整的 UI replay coverage。（MCP-ready schema / headless adapter 已有；backend non-mocked
   source -> recipe -> preprocess -> epoch -> dataset workflow evidence 已有；Data Interpretation
   preview / applied dataset panel 的 UI-observable replay artifact 已有第一版。）
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現，但 override /

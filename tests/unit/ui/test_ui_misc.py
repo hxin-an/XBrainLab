@@ -146,6 +146,10 @@ class TestDatasetActionHandler:
         handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
         mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
         commands = []
 
         def fake_execute(_panel, command):
@@ -210,6 +214,10 @@ class TestDatasetActionHandler:
         handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
         mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+        }
         applied: list[ApplyInterpretationCommand] = []
 
         def fake_execute(_panel, command):
@@ -246,6 +254,70 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_saves_recipe_when_requested(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            SaveInterpretationRecipeCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+        mock_fd.getSaveFileName.return_value = ("/recipes/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": True,
+        }
+        saved: list[SaveInterpretationRecipeCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                        "required_confirmations": [],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            if isinstance(command, SaveInterpretationRecipeCommand):
+                saved.append(command)
+                return _command_result(import_recipe={"recipe_id": "recipe-1"})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert saved
+        assert saved[0].recipe_path == "/recipes/import_recipe.json"
+        mock_mb.information.assert_called_once()
+        assert "Recipe saved." in mock_mb.information.call_args.args[2]
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_blocked_preview_does_not_apply(
         self,
         mock_mb,
@@ -264,6 +336,10 @@ class TestDatasetActionHandler:
         handler.panel.controller.is_locked.return_value = False
         mock_fd.getOpenFileNames.return_value = (["/tmp/no-labels.txt"], "")
         mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
 
         def fake_execute(_panel, command):
             if isinstance(command, ScanSourceCommand):

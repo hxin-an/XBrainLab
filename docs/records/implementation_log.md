@@ -28,6 +28,44 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation recipe save UI path
+
+### 背景
+
+Dataset panel main import entry 已經走 scan / preview / validate / apply，但 UI 還沒有讓使用者在
+apply 後保存 Data Interpretation recipe。這讓產品流程仍缺 `apply -> recipe` 的 UI-visible step。
+
+### 變更
+
+- `DataInterpretationPreviewDialog` 新增 `Save recipe after applying` checkbox。
+- `DatasetActionHandler._run_data_interpretation_import()` 讀取 dialog result：
+  - `confirmed` 繼續控制 `ApplyInterpretationCommand.confirmed`。
+  - `save_recipe` 會在 apply 成功後觸發 `_save_interpretation_recipe()`。
+- `_save_interpretation_recipe()` 使用 `QFileDialog.getSaveFileName()` 取得 JSON path，並只透過
+  `SaveInterpretationRecipeCommand` 保存 recipe。
+- 若使用者取消路徑選擇，仍會用無 path 的 `SaveInterpretationRecipeCommand` 將 recipe 保留在
+  backend session。
+- 更新 Dataset action tests、preview dialog test 和 UI replay artifact。
+
+### 影響範圍
+
+- Dataset import action。
+- Data Interpretation preview dialog。
+- UI replay artifact。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q` -> `46 passed`
+- `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/ui/test_product_walkthrough.py` -> `PASS`
+- `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py` -> `0 errors, 0 warnings, 0 notes`
+- `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+
+### 剩餘風險
+
+- label import migration 仍未完成；舊 label dialog 尚未納入 Data Interpretation recipe。
+- save dialog click-through 有 unit coverage，UI replay artifact 顯示 checkbox state，但不等於真人
+  file save dialog 操作。
+
 ## 2026-05-04 Data Interpretation UI replay artifact
 
 ### 背景

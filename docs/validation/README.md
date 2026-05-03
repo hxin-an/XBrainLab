@@ -396,8 +396,9 @@ accuracy 已驗證」。
     - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
     - `git diff --check` -> `PASS`
 
-這批 evidence 支撐 Dataset panel main import entry 的新心智模型。它仍不支撐 recipe save UI、
-label import migration、headless / MCP adapter 或 local LLM 真實 tool-call accuracy。
+這批 evidence 支撐 Dataset panel main import entry 的新心智模型。後續 recipe save option
+和 headless / MCP-ready adapter 已補；label import migration、完整 MCP server 和 local LLM
+真實 tool-call accuracy 仍未完成。
 
 2026-05-04 MCP-ready automation adapter + deterministic eval expansion：
 
@@ -484,6 +485,7 @@ visible state / transcript artifact。
   - screenshot filenames。
 - observed result：
   - dialog decision：`needs_confirmation`。
+  - save recipe checkbox：`checked`。
   - unconfirmed apply：`failed / confirmation_required`。
   - confirmed apply：`ok`。
   - dataset table rows：`1`。
@@ -493,6 +495,23 @@ visible state / transcript artifact。
 
 這批 evidence 支撐 Data Interpretation preview dialog 和 applied Dataset panel 的 UI-observable
 replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agent transcript。
+
+2026-05-04 Data Interpretation recipe save UI path：
+
+- Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。
+- Dataset panel apply 成功後，若使用者勾選保存 recipe，UI 會呼叫
+  `SaveInterpretationRecipeCommand`；若使用者選擇路徑，recipe 寫入該 JSON 檔，否則保留在
+  backend session。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/ui/test_product_walkthrough.py::test_pipeline_product_walkthrough_uses_user_facing_actions -q`
+  - `46 passed`
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/ui/test_product_walkthrough.py`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 UI import flow 的 recipe save option。它仍不表示舊 label import 已完成
+Data Interpretation migration。
 
 ## Automated Evidence vs Product Evidence
 
