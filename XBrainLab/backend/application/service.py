@@ -28,6 +28,7 @@ from XBrainLab.backend.utils.logger import logger
 
 from .capabilities import CapabilityPolicy, build_capability_policy
 from .commands import (
+    ApplyInterpretationCommand,
     ApplyMontageCommand,
     ApplySmartParseCommand,
     AttachLabelsCommand,
@@ -46,16 +47,36 @@ from .commands import (
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    ReloadInterpretationRecipeCommand,
     RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    SaveInterpretationRecipeCommand,
+    ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
     UpdateMetadataCommand,
+    ValidateInterpretationCommand,
     VisualizeCommand,
     command_name,
+)
+from .data_interpretation import (
+    AppliedInterpretation,
+    ImportRecipe,
+    InterpretationCandidate,
+    InterpretationDecision,
+    InterpretationPreview,
+    ScanResult,
+    ValidationDecision,
+    build_import_recipe,
+    build_interpretation_candidate,
+    build_interpretation_preview,
+    load_import_recipe,
+    scan_source_path,
+    validate_interpretation_candidate,
 )
 from .errors import (
     ApplicationError,
@@ -72,6 +93,7 @@ from .state import (
     EpochStateSnapshot,
     ErrorSnapshot,
     EvaluationStateSnapshot,
+    InterpretationStateSnapshot,
     PreprocessedStateSnapshot,
     RawStateSnapshot,
     TrainingStateSnapshot,
@@ -92,6 +114,19 @@ class ApplicationService:
         self.evaluation = self.study.get_controller("evaluation")
         self.visualization = self.study.get_controller("visualization")
         self._last_error: ErrorSnapshot | None = None
+        self._scan_results: dict[str, ScanResult] = {}
+        self._candidates: dict[str, InterpretationCandidate] = {}
+        self._previews: dict[str, InterpretationPreview] = {}
+        self._validation_decisions: dict[str, ValidationDecision] = {}
+        self._applied_interpretations: dict[str, AppliedInterpretation] = {}
+        self._recipes: dict[str, ImportRecipe] = {}
+        self._latest_scan_id: str | None = None
+        self._latest_candidate_id: str | None = None
+        self._latest_preview_id: str | None = None
+        self._latest_interpretation_id: str | None = None
+        self._latest_recipe_id: str | None = None
+        self._latest_recipe_path: str | None = None
+        self._interpretation_counter = 0
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
@@ -176,6 +211,7 @@ class ApplicationService:
             channel_positions_available=self._channel_positions_available(epoch_data),
             channel_count=len(epoch.channel_names),
         )
+        interpretation = self._interpretation_snapshot()
         active_dataset = ActiveDatasetSnapshot(
             has_raw_data=raw.count > 0,
             has_preprocessed_data=preprocessed_state.count > 0,
@@ -198,6 +234,7 @@ class ApplicationService:
             training=training,
             evaluation=evaluation,
             visualization=visualization,
+            interpretation=interpretation,
             active_dataset=active_dataset,
             active_training=active_training,
             last_error=self._last_error,
@@ -249,6 +286,16 @@ class ApplicationService:
 
     def _execute_allowed(self, command: Command, name: CommandName) -> HandlerResult:
         handlers: dict[CommandName, Callable[[Command], HandlerResult]] = {
+            CommandName.SCAN_SOURCE: self._handle_scan_source,
+            CommandName.PREVIEW_INTERPRETATION: self._handle_preview_interpretation,
+            CommandName.VALIDATE_INTERPRETATION: self._handle_validate_interpretation,
+            CommandName.APPLY_INTERPRETATION: self._handle_apply_interpretation,
+            CommandName.SAVE_INTERPRETATION_RECIPE: (
+                self._handle_save_interpretation_recipe
+            ),
+            CommandName.RELOAD_INTERPRETATION_RECIPE: (
+                self._handle_reload_interpretation_recipe
+            ),
             CommandName.LOAD_DATA: self._handle_load_data,
             CommandName.ATTACH_LABELS: self._handle_attach_labels,
             CommandName.IMPORT_LABELS: self._handle_import_labels,
@@ -291,6 +338,49 @@ class ApplicationService:
     def attach_labels(self, mapping: dict[str, str]) -> CommandResult:
         """Execute an attach-labels command."""
         return self.execute(AttachLabelsCommand(mapping=mapping))
+
+    def scan_source(
+        self,
+        source_path: str,
+        source_hint: str = "auto",
+    ) -> CommandResult:
+        """Scan a source path for a data interpretation."""
+        return self.execute(
+            ScanSourceCommand(source_path=source_path, source_hint=source_hint),
+        )
+
+    def preview_interpretation(
+        self,
+        scan_id: str | None = None,
+        choices: dict[str, Any] | None = None,
+    ) -> CommandResult:
+        """Preview a candidate data interpretation."""
+        return self.execute(
+            PreviewInterpretationCommand(
+                scan_id=scan_id,
+                choices=dict(choices or {}),
+            ),
+        )
+
+    def validate_interpretation(
+        self,
+        candidate_id: str | None = None,
+    ) -> CommandResult:
+        """Validate a candidate data interpretation."""
+        return self.execute(ValidateInterpretationCommand(candidate_id=candidate_id))
+
+    def apply_interpretation(
+        self,
+        candidate_id: str | None = None,
+        confirmed: bool = False,
+    ) -> CommandResult:
+        """Apply a validated data interpretation."""
+        return self.execute(
+            ApplyInterpretationCommand(
+                candidate_id=candidate_id,
+                confirmed=confirmed,
+            ),
+        )
 
     def import_labels(self, plan: LabelImportPlan) -> CommandResult:
         """Execute a label import plan command."""
@@ -405,6 +495,7 @@ class ApplicationService:
         if (
             name
             in (
+                CommandName.APPLY_INTERPRETATION,
                 CommandName.CLEAR_DATASETS,
                 CommandName.CLEAR_TRAINING_HISTORY,
                 CommandName.RESET_PREPROCESS,
@@ -417,6 +508,7 @@ class ApplicationService:
                 (
                     ClearDatasetsCommand,
                     ClearTrainingHistoryCommand,
+                    ApplyInterpretationCommand,
                     ResetPreprocessCommand,
                     ResetSessionCommand,
                     NewSessionCommand,
@@ -427,6 +519,195 @@ class ApplicationService:
             raise ConfirmationRequiredError(f"{name.value} requires confirmation.")
         if not capability.enabled:
             raise PreconditionError("; ".join(capability.reasons))
+
+    def _handle_scan_source(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ScanSourceCommand):
+            raise TypeError("Invalid command for scan_source")
+        scan_id = self._next_interpretation_id("scan")
+        scan = scan_source_path(
+            scan_id=scan_id,
+            source_path=command.source_path,
+            source_hint=command.source_hint,
+        )
+        self._scan_results[scan_id] = scan
+        self._latest_scan_id = scan_id
+        self._latest_candidate_id = None
+        self._latest_preview_id = None
+        return (
+            f"Scanned source and found {len(scan.eeg_files)} EEG file(s).",
+            {
+                "payload_type": "scan_result",
+                "scan_result": scan.to_dict(),
+            },
+        )
+
+    def _handle_preview_interpretation(self, command: Command) -> HandlerResult:
+        if not isinstance(command, PreviewInterpretationCommand):
+            raise TypeError("Invalid command for preview_interpretation")
+        scan = self._resolve_scan(command.scan_id)
+        candidate_id = self._next_interpretation_id("candidate")
+        preview_id = self._next_interpretation_id("preview")
+        candidate = build_interpretation_candidate(
+            candidate_id=candidate_id,
+            scan=scan,
+            choices=command.choices,
+        )
+        preview = build_interpretation_preview(
+            preview_id=preview_id,
+            candidate=candidate,
+        )
+        self._candidates[candidate_id] = candidate
+        self._previews[preview_id] = preview
+        self._latest_candidate_id = candidate_id
+        self._latest_preview_id = preview_id
+        return (
+            "Interpretation preview ready.",
+            {
+                "payload_type": "interpretation_preview",
+                "candidate": candidate.to_dict(),
+                "preview": preview.to_dict(),
+            },
+        )
+
+    def _handle_validate_interpretation(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ValidateInterpretationCommand):
+            raise TypeError("Invalid command for validate_interpretation")
+        candidate = self._resolve_candidate(command.candidate_id)
+        decision = validate_interpretation_candidate(candidate)
+        self._validation_decisions[candidate.candidate_id] = decision
+        return (
+            f"Interpretation validation: {decision.decision}.",
+            {
+                "payload_type": "validation_decision",
+                "validation_decision": decision.to_dict(),
+            },
+        )
+
+    def _handle_apply_interpretation(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ApplyInterpretationCommand):
+            raise TypeError("Invalid command for apply_interpretation")
+        candidate = self._resolve_candidate(command.candidate_id)
+        decision = self._validation_decisions.get(candidate.candidate_id)
+        if decision is None:
+            raise PreconditionError("Validate an interpretation before applying it.")
+        if decision.decision == InterpretationDecision.BLOCKED.value:
+            blocked = (
+                "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
+            )
+            raise PreconditionError(blocked)
+        count, errors = self.dataset.import_files(candidate.selected_eeg_files)
+        if count == 0 and errors:
+            raise ApplicationError(
+                message=f"Failed to apply interpretation: {errors}",
+                error_type=ErrorType.RUNTIME,
+                recoverable=True,
+                diagnostics={"errors": errors},
+            )
+        interpretation_id = self._next_interpretation_id("interpretation")
+        confirmations = (
+            list(decision.required_confirmations)
+            if decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
+            else []
+        )
+        applied = AppliedInterpretation(
+            interpretation_id=interpretation_id,
+            candidate_id=candidate.candidate_id,
+            source_path=candidate.source_path,
+            source_kind=candidate.source_kind,
+            loaded_files=list(candidate.selected_eeg_files),
+            label_carriers=list(candidate.label_carriers),
+            metadata=list(candidate.metadata),
+            validation_decision=decision.decision,
+            confirmations=confirmations,
+            recipe_trace=[
+                *candidate.recipe_trace,
+                f"validation:{decision.decision}",
+                f"applied:{interpretation_id}",
+            ],
+        )
+        self._applied_interpretations[interpretation_id] = applied
+        self._latest_interpretation_id = interpretation_id
+        return (
+            f"Applied interpretation and loaded {count} file(s).",
+            {
+                "payload_type": "applied_interpretation",
+                "success_count": count,
+                "errors": errors,
+                "applied_interpretation": applied.to_dict(),
+                "label_carriers_pending": list(candidate.label_carriers),
+            },
+        )
+
+    def _handle_save_interpretation_recipe(self, command: Command) -> HandlerResult:
+        if not isinstance(command, SaveInterpretationRecipeCommand):
+            raise TypeError("Invalid command for save_interpretation_recipe")
+        applied = self._resolve_applied_interpretation()
+        candidate = self._candidates[applied.candidate_id]
+        recipe_id = self._next_interpretation_id("recipe")
+        recipe = build_import_recipe(
+            recipe_id=recipe_id,
+            applied=applied,
+            warnings=list(candidate.warnings),
+        )
+        if command.recipe_path:
+            recipe.write_json(command.recipe_path)
+            self._latest_recipe_path = command.recipe_path
+        self._recipes[recipe_id] = recipe
+        self._latest_recipe_id = recipe_id
+        return (
+            "Interpretation recipe saved.",
+            {
+                "payload_type": "import_recipe",
+                "recipe": recipe.to_dict(),
+                "recipe_path": command.recipe_path,
+            },
+        )
+
+    def _handle_reload_interpretation_recipe(self, command: Command) -> HandlerResult:
+        if not isinstance(command, ReloadInterpretationRecipeCommand):
+            raise TypeError("Invalid command for reload_interpretation_recipe")
+        if not command.recipe_path:
+            raise PreconditionError("recipe_path is required.")
+        recipe = load_import_recipe(command.recipe_path)
+        scan_id = self._next_interpretation_id("scan")
+        scan = scan_source_path(
+            scan_id=scan_id,
+            source_path=recipe.source_path,
+            source_hint=recipe.source_kind or "recipe",
+        )
+        candidate_id = self._next_interpretation_id("candidate")
+        candidate = build_interpretation_candidate(
+            candidate_id=candidate_id,
+            scan=scan,
+            choices={"recipe_id": recipe.recipe_id},
+        )
+        preview_id = self._next_interpretation_id("preview")
+        preview = build_interpretation_preview(
+            preview_id=preview_id,
+            candidate=candidate,
+        )
+        decision = validate_interpretation_candidate(candidate)
+        self._scan_results[scan_id] = scan
+        self._candidates[candidate_id] = candidate
+        self._previews[preview_id] = preview
+        self._validation_decisions[candidate_id] = decision
+        self._recipes[recipe.recipe_id] = recipe
+        self._latest_scan_id = scan_id
+        self._latest_candidate_id = candidate_id
+        self._latest_preview_id = preview_id
+        self._latest_recipe_id = recipe.recipe_id
+        self._latest_recipe_path = command.recipe_path
+        return (
+            "Interpretation recipe reloaded for review.",
+            {
+                "payload_type": "recipe_reload_preview",
+                "recipe": recipe.to_dict(),
+                "scan_result": scan.to_dict(),
+                "candidate": candidate.to_dict(),
+                "preview": preview.to_dict(),
+                "validation_decision": decision.to_dict(),
+            },
+        )
 
     def _handle_load_data(self, command: Command) -> HandlerResult:
         if not isinstance(command, LoadDataCommand):
@@ -932,6 +1213,7 @@ class ApplicationService:
             raise TypeError("Invalid command for reset_session")
         self.dataset.clean_dataset()
         self._clear_training_configuration()
+        self._clear_interpretation_state()
         return "Session reset."
 
     def _handle_new_session(self, command: Command) -> HandlerResult:
@@ -939,6 +1221,7 @@ class ApplicationService:
             raise TypeError("Invalid command for new_session")
         self.dataset.clean_dataset()
         self._clear_training_configuration()
+        self._clear_interpretation_state()
         return "New session started.", {"single_session_backend": True}
 
     def _handle_evaluate(self, command: Command) -> HandlerResult:
@@ -1026,6 +1309,17 @@ class ApplicationService:
         if command.method:
             params.setdefault("method", command.method)
         if params:
+            state = self.get_state()
+            if not (
+                state.active_training.has_trainer
+                or (
+                    state.active_training.has_model
+                    and state.active_training.has_training_option
+                )
+            ):
+                raise PreconditionError(
+                    "Select a model and training settings before configuring saliency.",
+                )
             self.visualization.set_saliency_params(params)
             return (
                 "Saliency parameters configured.",
@@ -1127,6 +1421,100 @@ class ApplicationService:
             )
         raise ValueError(f"Unknown query_state request: {command.query}")
 
+    def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
+        scan = (
+            self._scan_results.get(self._latest_scan_id)
+            if self._latest_scan_id
+            else None
+        )
+        candidate = (
+            self._candidates.get(self._latest_candidate_id)
+            if self._latest_candidate_id
+            else None
+        )
+        preview = (
+            self._previews.get(self._latest_preview_id)
+            if self._latest_preview_id
+            else None
+        )
+        decision = (
+            self._validation_decisions.get(self._latest_candidate_id)
+            if self._latest_candidate_id
+            else None
+        )
+        applied = (
+            self._applied_interpretations.get(self._latest_interpretation_id)
+            if self._latest_interpretation_id
+            else None
+        )
+        source_path = None
+        source_kind = None
+        if candidate is not None:
+            source_path = candidate.source_path
+            source_kind = candidate.source_kind
+        elif scan is not None:
+            source_path = scan.source_path
+            source_kind = scan.source_kind
+        warnings = []
+        if preview is not None:
+            warnings = list(preview.warnings)
+        elif scan is not None:
+            warnings = list(scan.warnings)
+        return InterpretationStateSnapshot(
+            has_scan_result=scan is not None,
+            has_candidate=candidate is not None,
+            has_preview=preview is not None,
+            has_validation_decision=decision is not None,
+            has_applied_interpretation=applied is not None,
+            has_recipe=self._latest_recipe_id is not None,
+            latest_scan_id=self._latest_scan_id,
+            latest_candidate_id=self._latest_candidate_id,
+            latest_preview_id=self._latest_preview_id,
+            latest_interpretation_id=self._latest_interpretation_id,
+            latest_recipe_id=self._latest_recipe_id,
+            source_path=source_path,
+            source_kind=source_kind,
+            validation_decision=decision.decision if decision else None,
+            pending_confirmation=(
+                decision is not None
+                and decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
+            ),
+            blocked_reasons=list(decision.blocked_reasons if decision else []),
+            warnings=warnings,
+            summary=preview.summary if preview else None,
+            metadata_preview=list(preview.metadata_preview if preview else []),
+            recipe_path=self._latest_recipe_path,
+        )
+
+    def _next_interpretation_id(self, prefix: str) -> str:
+        self._interpretation_counter += 1
+        return f"{prefix}-{self._interpretation_counter}"
+
+    def _resolve_scan(self, scan_id: str | None) -> ScanResult:
+        target_id = scan_id or self._latest_scan_id
+        if not target_id or target_id not in self._scan_results:
+            raise PreconditionError(
+                "Scan a data source before previewing interpretation.",
+            )
+        return self._scan_results[target_id]
+
+    def _resolve_candidate(
+        self,
+        candidate_id: str | None,
+    ) -> InterpretationCandidate:
+        target_id = candidate_id or self._latest_candidate_id
+        if not target_id or target_id not in self._candidates:
+            raise PreconditionError("Preview an interpretation candidate first.")
+        return self._candidates[target_id]
+
+    def _resolve_applied_interpretation(self) -> AppliedInterpretation:
+        if (
+            not self._latest_interpretation_id
+            or self._latest_interpretation_id not in self._applied_interpretations
+        ):
+            raise PreconditionError("Apply an interpretation before saving a recipe.")
+        return self._applied_interpretations[self._latest_interpretation_id]
+
     def _clear_training_configuration(self) -> None:
         """Clear training config that belongs to the previous active dataset."""
         training_manager = getattr(self.study, "training_manager", None)
@@ -1139,6 +1527,20 @@ class ApplicationService:
             self.training.notify("config_changed")
         except Exception:
             logger.debug("Training config reset notification failed", exc_info=True)
+
+    def _clear_interpretation_state(self) -> None:
+        self._scan_results.clear()
+        self._candidates.clear()
+        self._previews.clear()
+        self._validation_decisions.clear()
+        self._applied_interpretations.clear()
+        self._recipes.clear()
+        self._latest_scan_id = None
+        self._latest_candidate_id = None
+        self._latest_preview_id = None
+        self._latest_interpretation_id = None
+        self._latest_recipe_id = None
+        self._latest_recipe_path = None
 
     @staticmethod
     def _normalize_handler_result(result: HandlerResult) -> tuple[str, dict[str, Any]]:
@@ -1750,6 +2152,9 @@ class ApplicationService:
             evaluation_changed=before_dict["evaluation"] != after_dict["evaluation"],
             visualization_changed=(
                 before_dict["visualization"] != after_dict["visualization"]
+            ),
+            interpretation_changed=(
+                before_dict["interpretation"] != after_dict["interpretation"]
             ),
             error_changed=before_dict["last_error"] != after_dict["last_error"],
         )

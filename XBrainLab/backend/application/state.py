@@ -101,6 +101,32 @@ class VisualizationStateSnapshot:
 
 
 @dataclass(frozen=True)
+class InterpretationStateSnapshot:
+    """Snapshot of Data Interpretation lifecycle state."""
+
+    has_scan_result: bool = False
+    has_candidate: bool = False
+    has_preview: bool = False
+    has_validation_decision: bool = False
+    has_applied_interpretation: bool = False
+    has_recipe: bool = False
+    latest_scan_id: str | None = None
+    latest_candidate_id: str | None = None
+    latest_preview_id: str | None = None
+    latest_interpretation_id: str | None = None
+    latest_recipe_id: str | None = None
+    source_path: str | None = None
+    source_kind: str | None = None
+    validation_decision: str | None = None
+    pending_confirmation: bool = False
+    blocked_reasons: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    summary: str | None = None
+    metadata_preview: list[dict[str, Any]] = field(default_factory=list)
+    recipe_path: str | None = None
+
+
+@dataclass(frozen=True)
 class ActiveDatasetSnapshot:
     """Compact active-dataset view for command policy decisions."""
 
@@ -142,6 +168,7 @@ class ApplicationStateSnapshot:
     training: TrainingStateSnapshot
     evaluation: EvaluationStateSnapshot
     visualization: VisualizationStateSnapshot
+    interpretation: InterpretationStateSnapshot
     active_dataset: ActiveDatasetSnapshot
     active_training: ActiveTrainingSnapshot
     last_error: ErrorSnapshot | None = None

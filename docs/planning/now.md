@@ -30,9 +30,11 @@
 目前實作狀態要保守判斷：
 
 - `ApplicationService / Command API` baseline 已存在，可作為後續重構骨架。
+- Data Interpretation 的 backend command baseline 已新增，但 UI / agent / headless 還沒完成遷移。
 - UI / agent 已有第一批 capability policy / typed result 對齊，但仍受舊資料入口影響。
 - 目前 agent 實際 tool surface 仍有 `load_data / attach_labels` 舊心智模型。
-- Data Interpretation System 仍是 target design，還不是實作完成。
+- Data Interpretation System 仍未完成；目前只有 backend scan / preview / validate / apply /
+  recipe command baseline。
 - command-specific autonomy policy / decision boundary 仍是 target design，還不是實作完成。
 - subject / session / task / run metadata resolution 尚未成為資料入口核心流程。
 

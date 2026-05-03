@@ -1,6 +1,6 @@
 # XBrainLab Validation
 
-最後更新：`2026-05-02`
+最後更新：`2026-05-04`
 
 ## 這份文件的用途
 
@@ -300,6 +300,40 @@ EEG dataset experiment 屬於 pipeline support，不是 thesis 主評分。
 
 這是 deterministic scripted baseline，不是 local LLM performance claim。local model primary /
 fallback 真實 tool-call success rate 仍需在下一輪用相同 case schema 接 model runner 後再量測。
+
+2026-05-04 Data Interpretation backend command baseline：
+
+- 新增 backend command contract：
+  - `scan_source`
+  - `preview_interpretation`
+  - `validate_interpretation`
+  - `apply_interpretation`
+  - `save_interpretation_recipe`
+  - `reload_interpretation_recipe`
+- validation coverage：
+  - GDF + external label carrier scan / preview / `needs_confirmation` validation /
+    confirmed apply。
+  - labels-only source -> `blocked` validation，apply 不會呼叫 dataset import。
+  - recipe save / reload -> reload 只重新 scan / preview / validate，不會自動 apply。
+  - capability policy 覆蓋新 commands，並暴露 autonomy policy 欄位。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py -q`
+  - `28 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/integration/backend/test_application_service_workflow.py tests/integration/agent/test_tool_call_eval.py -q`
+  - `92 passed`
+  - `poetry run ruff check XBrainLab/backend/application tests/unit/backend/application/test_application_service.py scripts/agent/evals/run_tool_call_eval.py`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/backend/application scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_application_service.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - broader gates：
+    - `poetry run ruff check .` -> `PASS`
+    - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+    - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
+    - `poetry run mkdocs build --strict` -> `PASS`
+
+這批 evidence 只支撐 backend Data Interpretation command baseline 和 deterministic scorer
+compatibility。它不支撐「UI import flow 已重做」、「agent tool taxonomy 已遷移」或
+「local LLM 真實 tool-call accuracy 已驗證」。
 
 ## Automated Evidence vs Product Evidence
 

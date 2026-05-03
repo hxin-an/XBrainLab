@@ -8,6 +8,7 @@ import numpy as np
 
 from XBrainLab.backend.application import (
     ApplicationService,
+    ApplyInterpretationCommand,
     ApplyMontageCommand,
     ApplySmartParseCommand,
     AttachLabelsCommand,
@@ -25,14 +26,19 @@ from XBrainLab.backend.application import (
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
+    PreviewInterpretationCommand,
     QueryStateCommand,
+    ReloadInterpretationRecipeCommand,
     RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
+    SaveInterpretationRecipeCommand,
+    ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
     UpdateMetadataCommand,
+    ValidateInterpretationCommand,
     VisualizeCommand,
 )
 from XBrainLab.backend.dataset import SplitByType
@@ -51,9 +57,15 @@ def test_empty_state_snapshot_and_policy():
     assert state.epoch.available is False
     assert state.dataset.available is False
     assert state.training.has_trainer is False
+    assert state.interpretation.has_scan_result is False
+    assert state.interpretation.has_applied_interpretation is False
     assert policy.get(CommandName.LOAD_DATA).available is True
+    assert policy.get(CommandName.SCAN_SOURCE).available is True
+    assert policy.get(CommandName.PREVIEW_INTERPRETATION).available is False
     assert policy.get(CommandName.PREPROCESS).available is False
     assert policy.get(CommandName.TRAIN).available is False
+    assert policy.get(CommandName.TRAIN).requires_confirmation is True
+    assert policy.get(CommandName.TRAIN).can_auto_execute is False
     assert policy.get(CommandName.RESET_SESSION).confirmation_required is False
 
 
@@ -68,8 +80,115 @@ def test_capability_policy_covers_all_declared_commands():
     assert policy.get(CommandName.RESET_PREPROCESS).available is False
     assert policy.get(CommandName.CLEAR_DATASETS).available is False
     assert policy.get(CommandName.CLEAR_TRAINING_HISTORY).available is False
+    assert policy.get(CommandName.SCAN_SOURCE).available is True
+    assert policy.get(CommandName.PREVIEW_INTERPRETATION).available is False
+    assert policy.get(CommandName.VALIDATE_INTERPRETATION).available is False
+    assert policy.get(CommandName.APPLY_INTERPRETATION).available is False
+    assert policy.get(CommandName.SAVE_INTERPRETATION_RECIPE).available is False
+    assert policy.get(CommandName.RELOAD_INTERPRETATION_RECIPE).available is True
     assert policy.get(CommandName.QUERY_STATE).available is True
     assert policy.get(CommandName.NEW_SESSION).available is True
+
+
+def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_path):
+    source_dir = tmp_path / "gdf_with_external_labels"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    label_path.write_bytes(b"not loaded during scan")
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    scan = service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    preview = service.execute(PreviewInterpretationCommand())
+    validation = service.execute(ValidateInterpretationCommand())
+    unconfirmed_apply = service.execute(ApplyInterpretationCommand())
+    confirmed_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert scan.ok is True
+    assert scan.command_name == CommandName.SCAN_SOURCE.value
+    assert scan.changed_state.interpretation_changed is True
+    assert scan.state.raw.loaded is False
+    assert scan.diagnostics["scan_result"]["source_kind"] == "folder"
+    assert scan.diagnostics["scan_result"]["eeg_files"] == [str(eeg_path)]
+    assert scan.diagnostics["scan_result"]["label_carriers"] == [str(label_path)]
+
+    assert preview.ok is True
+    assert preview.diagnostics["preview"]["label_carrier_count"] == 1
+    assert "class map" in " ".join(preview.diagnostics["preview"]["confirmation_items"])
+    assert validation.ok is True
+    assert validation.diagnostics["validation_decision"]["decision"] == (
+        "needs_confirmation"
+    )
+    assert validation.state.interpretation.validation_decision == "needs_confirmation"
+
+    assert unconfirmed_apply.failed is True
+    assert unconfirmed_apply.error_type == ErrorType.CONFIRMATION_REQUIRED
+    assert service.dataset.import_files.call_count == 1
+    assert confirmed_apply.ok is True
+    assert confirmed_apply.diagnostics["applied_interpretation"]["loaded_files"] == [
+        str(eeg_path),
+    ]
+    assert confirmed_apply.state.interpretation.has_applied_interpretation is True
+
+
+def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
+    source_dir = tmp_path / "labels_only"
+    source_dir.mkdir()
+    (source_dir / "labels.csv").write_text("label\n1\n2\n", encoding="utf-8")
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    scan = service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    preview = service.execute(PreviewInterpretationCommand())
+    validation = service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert scan.ok is True
+    assert preview.ok is True
+    assert validation.ok is True
+    assert validation.diagnostics["validation_decision"]["decision"] == "blocked"
+    assert apply_result.failed is True
+    assert apply_result.error_type == ErrorType.PRECONDITION
+    assert "blocked" in apply_result.message.lower()
+    service.dataset.import_files.assert_not_called()
+
+
+def test_data_interpretation_recipe_save_and_reload_rescans_without_apply(tmp_path):
+    source_dir = tmp_path / "simple_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    recipe_path = tmp_path / "recipe.json"
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(PreviewInterpretationCommand())
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    save_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert apply_result.ok is True
+    assert save_result.ok is True
+    assert recipe_path.exists()
+    assert save_result.state.interpretation.has_recipe is True
+
+    fresh_service = ApplicationService(Study())
+    fresh_service.dataset.import_files = MagicMock(return_value=(1, []))
+    reload_result = fresh_service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert reload_result.ok is True
+    assert reload_result.diagnostics["recipe"]["source_path"] == str(source_dir)
+    assert reload_result.diagnostics["scan_result"]["eeg_files"] == [str(eeg_path)]
+    assert reload_result.state.interpretation.has_recipe is True
+    assert reload_result.state.interpretation.has_applied_interpretation is False
+    fresh_service.dataset.import_files.assert_not_called()
 
 
 def test_preprocess_capability_requires_raw_data_not_existing_preprocessed_copy():
@@ -209,6 +328,12 @@ def test_every_declared_command_returns_result_envelope():
         SaliencyCommand(),
         StopTrainingCommand(),
         ClearTrainingHistoryCommand(),
+        ScanSourceCommand(source_path=""),
+        PreviewInterpretationCommand(),
+        ValidateInterpretationCommand(),
+        ApplyInterpretationCommand(),
+        SaveInterpretationRecipeCommand(recipe_path=""),
+        ReloadInterpretationRecipeCommand(recipe_path=""),
         ApplyMontageCommand(channels=["Cz"], positions=[(0.0, 0.0, 0.0)]),
         QueryStateCommand(),
         ResetPreprocessCommand(),

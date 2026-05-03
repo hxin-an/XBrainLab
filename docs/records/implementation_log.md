@@ -2352,3 +2352,77 @@ mutating/lifecycle bypass，並讓 thesis evidence path 不會把 invalid split 
 - combined assistant UI + backend workflow contract gate：
   - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
   - `poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py tests/unit/backend/test_facade_headless.py tests/integration/pipeline/test_public_cross_source_training_smoke.py -q` -> `80 passed, 3 warnings`
+
+## 2026-05-04 Data Interpretation backend command baseline
+
+### 背景
+
+Goal 1 的第一個核心缺口是資料入口仍受舊 `load_data / attach_labels` 心智模型影響。
+本切片先不改 UI layout，而是建立 backend command contract，讓 UI / agent / headless /
+MCP adapter 後續可以共用同一套 Data Interpretation lifecycle。
+
+### 變更
+
+- 新增 `XBrainLab/backend/application/data_interpretation.py`。
+- 新增 lifecycle objects：
+  - `ScanResult`
+  - `InterpretationCandidate`
+  - `InterpretationPreview`
+  - `ValidationDecision`
+  - `AppliedInterpretation`
+  - `ImportRecipe`
+- 新增 ApplicationService commands：
+  - `ScanSourceCommand`
+  - `PreviewInterpretationCommand`
+  - `ValidateInterpretationCommand`
+  - `ApplyInterpretationCommand`
+  - `SaveInterpretationRecipeCommand`
+  - `ReloadInterpretationRecipeCommand`
+- `ApplicationStateSnapshot` 新增 `interpretation` snapshot。
+- `CommandCapability` 新增 autonomy policy 欄位：
+  - `can_auto_execute`
+  - `requires_confirmation`
+  - `decision_boundary`
+  - `continue_allowed_after_success`
+  - `retry_limit`
+  - `stop_after_success`
+  - `blocks_downstream_until_confirmed`
+- `scan_source` 可掃描 file / folder / BIDS-like root / recipe source，並記錄 EEG files、
+  label carriers、BIDS summary、subject / session / task / run metadata source / decision /
+  reason / recipe trace。
+- `validate_interpretation` 只產生 `safe`、`needs_confirmation`、`blocked`。
+- `apply_interpretation` 對 `needs_confirmation` enforce confirmation boundary；`blocked`
+  不會觸發 dataset import side effect。
+- `reload_interpretation_recipe` 重新 scan / preview / validate，不直接 apply。
+- deterministic eval state builder 補 `InterpretationStateSnapshot`，避免 scorer 使用過期 state
+  shape。
+
+### 驗證
+
+- `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py -q`
+  - `28 passed`
+- `poetry run ruff check XBrainLab/backend/application tests/unit/backend/application/test_application_service.py scripts/agent/evals/run_tool_call_eval.py`
+  - pass
+- `poetry run basedpyright XBrainLab/backend/application scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_application_service.py`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/integration/backend/test_application_service_workflow.py tests/integration/agent/test_tool_call_eval.py -q`
+  - `92 passed`
+- `git diff --check`
+  - pass
+- `poetry run mkdocs build --strict`
+  - pass
+- `poetry run ruff check .`
+  - pass
+- `poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+- `poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant`
+
+### 不能宣稱完成
+
+- UI import entry 尚未重做，使用者仍會看到舊 Dataset panel import / label flow。
+- agent tool definitions / Context Assembler 尚未暴露 mature Data Interpretation taxonomy。
+- headless / MCP adapter 尚未包裝新 command surface。
+- 尚未有 UI-observable replay artifact 或 screenshot 證明新 import workflow。
+- 尚未有 source -> scan -> preview -> validate -> apply -> recipe -> preprocess -> epoch ->
+  dataset 的 non-mocked synthetic workflow evidence。

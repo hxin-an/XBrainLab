@@ -19,6 +19,13 @@ class CommandCapability:
     long_running: bool = False
     destructive: bool = False
     confirmation_required: bool = False
+    can_auto_execute: bool = True
+    requires_confirmation: bool = False
+    decision_boundary: str | None = None
+    continue_allowed_after_success: bool = True
+    retry_limit: int = 2
+    stop_after_success: bool = False
+    blocks_downstream_until_confirmed: bool = False
 
     @property
     def command(self) -> str:
@@ -67,6 +74,78 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
 
     capabilities: dict[str, CommandCapability] = {}
+
+    interpretation = state.interpretation
+    capabilities[CommandName.SCAN_SOURCE.value] = CommandCapability(
+        command_name=CommandName.SCAN_SOURCE.value,
+        enabled=True,
+        reasons=[],
+        can_auto_execute=True,
+        decision_boundary="read_only_discovery",
+        continue_allowed_after_success=True,
+    )
+    capabilities[CommandName.PREVIEW_INTERPRETATION.value] = CommandCapability(
+        command_name=CommandName.PREVIEW_INTERPRETATION.value,
+        enabled=interpretation.has_scan_result,
+        reasons=[]
+        if interpretation.has_scan_result
+        else ["Scan a data source before previewing interpretation."],
+        can_auto_execute=True,
+        decision_boundary="semantic_preview",
+        continue_allowed_after_success=True,
+    )
+    capabilities[CommandName.VALIDATE_INTERPRETATION.value] = CommandCapability(
+        command_name=CommandName.VALIDATE_INTERPRETATION.value,
+        enabled=interpretation.has_candidate,
+        reasons=[]
+        if interpretation.has_candidate
+        else ["Preview an interpretation candidate before validation."],
+        can_auto_execute=True,
+        decision_boundary="semantic_validation",
+        continue_allowed_after_success=True,
+    )
+    apply_reasons: list[str] = []
+    if not interpretation.has_validation_decision:
+        apply_reasons.append("Validate an interpretation before applying it.")
+    if interpretation.validation_decision == "blocked":
+        apply_reasons.append("Interpretation is blocked.")
+        apply_reasons.extend(interpretation.blocked_reasons)
+    apply_needs_confirmation = (
+        interpretation.validation_decision == "needs_confirmation"
+    )
+    capabilities[CommandName.APPLY_INTERPRETATION.value] = CommandCapability(
+        command_name=CommandName.APPLY_INTERPRETATION.value,
+        enabled=not apply_reasons,
+        reasons=apply_reasons,
+        confirmation_required=apply_needs_confirmation,
+        can_auto_execute=not apply_needs_confirmation,
+        requires_confirmation=apply_needs_confirmation,
+        decision_boundary="semantic_apply"
+        if apply_needs_confirmation
+        else "data_apply",
+        continue_allowed_after_success=False,
+        retry_limit=0,
+        stop_after_success=True,
+        blocks_downstream_until_confirmed=apply_needs_confirmation,
+    )
+    capabilities[CommandName.SAVE_INTERPRETATION_RECIPE.value] = CommandCapability(
+        command_name=CommandName.SAVE_INTERPRETATION_RECIPE.value,
+        enabled=interpretation.has_applied_interpretation,
+        reasons=[]
+        if interpretation.has_applied_interpretation
+        else ["Apply an interpretation before saving a recipe."],
+        can_auto_execute=True,
+        decision_boundary="write_recipe",
+        continue_allowed_after_success=True,
+    )
+    capabilities[CommandName.RELOAD_INTERPRETATION_RECIPE.value] = CommandCapability(
+        command_name=CommandName.RELOAD_INTERPRETATION_RECIPE.value,
+        enabled=True,
+        reasons=[],
+        can_auto_execute=True,
+        decision_boundary="recipe_reload_preview",
+        continue_allowed_after_success=True,
+    )
 
     load_reasons = []
     if (
@@ -188,6 +267,12 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
         CommandName.TRAIN,
         train_reasons,
         long_running=True,
+        can_auto_execute=False,
+        requires_confirmation=True,
+        decision_boundary="long_running",
+        continue_allowed_after_success=False,
+        retry_limit=0,
+        stop_after_success=True,
     )
 
     stop_reasons = []
@@ -236,12 +321,14 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
 
     saliency_reasons = []
     if not (
-        active_training.has_trainer
+        active_dataset.has_epoch_data
+        or active_dataset.has_datasets
+        or active_training.has_trainer
         or (active_training.has_model and active_training.has_training_option)
     ):
         saliency_reasons.append(
-            "Select a model and training settings before configuring saliency. "
-            "Saliency views remain unavailable until evaluation finishes."
+            "Create epochs, generate datasets, or select a model and training "
+            "settings before querying saliency readiness."
         )
     capabilities[CommandName.SALIENCY.value] = _cap(
         CommandName.SALIENCY,
@@ -300,12 +387,26 @@ def _cap(
     command_name: CommandName,
     reasons: list[str],
     long_running: bool = False,
+    can_auto_execute: bool = True,
+    requires_confirmation: bool = False,
+    decision_boundary: str | None = None,
+    continue_allowed_after_success: bool = True,
+    retry_limit: int = 2,
+    stop_after_success: bool = False,
+    blocks_downstream_until_confirmed: bool = False,
 ) -> CommandCapability:
     return CommandCapability(
         command_name=command_name.value,
         enabled=not reasons,
         reasons=reasons,
         long_running=long_running,
+        can_auto_execute=can_auto_execute,
+        requires_confirmation=requires_confirmation,
+        decision_boundary=decision_boundary,
+        continue_allowed_after_success=continue_allowed_after_success,
+        retry_limit=retry_limit,
+        stop_after_success=stop_after_success,
+        blocks_downstream_until_confirmed=blocks_downstream_until_confirmed,
     )
 
 

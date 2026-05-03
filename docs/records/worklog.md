@@ -1784,3 +1784,45 @@
   - `poetry run pytest --capture=sys tests/unit/ui/chat tests/integration/ui/test_product_walkthrough.py -q` -> `50 passed`
   - combined assistant UI + backend workflow contract gate -> `80 passed, 3 warnings`
   - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+
+### 2026-05-04 Goal 1 Data Interpretation backend command baseline
+
+- 做了什麼：
+  - 依 `artifacts/goal/goal-1-product-autopilot.md` 啟動 Goal 1 第一個可驗證 slice。
+  - 先讀 `AGENTS.md`、`.agents/README.md`、autopilot / backend runbook、
+    `docs/current.md`、`docs/planning/roadmap.md`、`docs/planning/now.md`、target /
+    architecture / validation 文件，確認 Data Interpretation 仍是主要未實作缺口。
+  - 新增 `XBrainLab/backend/application/data_interpretation.py`，定義 `ScanResult`、
+    `InterpretationCandidate`、`InterpretationPreview`、`ValidationDecision`、
+    `AppliedInterpretation`、`ImportRecipe`。
+  - 新增 `scan_source`、`preview_interpretation`、`validate_interpretation`、
+    `apply_interpretation`、`save_interpretation_recipe`、`reload_interpretation_recipe`
+    command。
+  - `ApplicationStateSnapshot` 新增 `interpretation` section，`CommandCapability` 新增
+    `can_auto_execute`、`requires_confirmation`、`decision_boundary`、
+    `continue_allowed_after_success`、`retry_limit`、`stop_after_success`、
+    `blocks_downstream_until_confirmed`。
+  - recipe reload 走重新 scan / preview / validate，不會自動 apply。
+  - deterministic eval lightweight state builder 補 `InterpretationStateSnapshot`，避免 scorer
+    使用舊 state contract。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py -q`
+    -> `28 passed`
+  - `poetry run ruff check XBrainLab/backend/application tests/unit/backend/application/test_application_service.py scripts/agent/evals/run_tool_call_eval.py`
+    -> `PASS`
+  - `poetry run basedpyright XBrainLab/backend/application scripts/agent/evals/run_tool_call_eval.py tests/unit/backend/application/test_application_service.py`
+    -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/integration/backend/test_application_service_workflow.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `92 passed`
+  - `poetry run mkdocs build --strict` -> pass
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant`
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals_tmp_goal1`
+    -> temporary artifact `21 / 21` after saliency query policy alignment；temporary directory removed。
+  - `git diff --check` -> pass
+- 後續：
+  - UI import entry 尚未改成 scan -> preview -> validate -> confirm -> apply -> recipe。
+  - agent tool taxonomy 尚未遷移到 Data Interpretation tools。
+  - headless / MCP-ready adapters 尚未暴露新 command taxonomy。
+  - non-mocked synthetic workflow 目前只到 backend command baseline，尚未走 preprocess -> epoch -> dataset。

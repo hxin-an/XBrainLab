@@ -10,6 +10,12 @@ from typing import Any
 class CommandName(str, Enum):
     """Names understood by :class:`ApplicationService`."""
 
+    SCAN_SOURCE = "scan_source"
+    PREVIEW_INTERPRETATION = "preview_interpretation"
+    VALIDATE_INTERPRETATION = "validate_interpretation"
+    APPLY_INTERPRETATION = "apply_interpretation"
+    SAVE_INTERPRETATION_RECIPE = "save_interpretation_recipe"
+    RELOAD_INTERPRETATION_RECIPE = "reload_interpretation_recipe"
     LOAD_DATA = "load_data"
     ATTACH_LABELS = "attach_labels"
     IMPORT_LABELS = "import_labels"
@@ -70,6 +76,75 @@ class AttachLabelsCommand:
     @property
     def name(self) -> CommandName:
         return CommandName.ATTACH_LABELS
+
+
+@dataclass(frozen=True)
+class ScanSourceCommand:
+    """Scan a source path for EEG files, label carriers, and metadata."""
+
+    source_path: str
+    source_hint: str = "auto"
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.SCAN_SOURCE
+
+
+@dataclass(frozen=True)
+class PreviewInterpretationCommand:
+    """Build and preview a candidate data interpretation."""
+
+    scan_id: str | None = None
+    choices: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.PREVIEW_INTERPRETATION
+
+
+@dataclass(frozen=True)
+class ValidateInterpretationCommand:
+    """Validate an interpretation candidate."""
+
+    candidate_id: str | None = None
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.VALIDATE_INTERPRETATION
+
+
+@dataclass(frozen=True)
+class ApplyInterpretationCommand:
+    """Apply a validated interpretation to the active backend session."""
+
+    candidate_id: str | None = None
+    confirmed: bool = False
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.APPLY_INTERPRETATION
+
+
+@dataclass(frozen=True)
+class SaveInterpretationRecipeCommand:
+    """Save the applied interpretation as a replayable recipe."""
+
+    recipe_path: str | None = None
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.SAVE_INTERPRETATION_RECIPE
+
+
+@dataclass(frozen=True)
+class ReloadInterpretationRecipeCommand:
+    """Reload a recipe and re-run scan/preview/validation without applying."""
+
+    recipe_path: str
+
+    @property
+    def name(self) -> CommandName:
+        return CommandName.RELOAD_INTERPRETATION_RECIPE
 
 
 @dataclass(frozen=True)
@@ -349,7 +424,13 @@ class NewSessionCommand:
 
 
 Command = (
-    LoadDataCommand
+    ScanSourceCommand
+    | PreviewInterpretationCommand
+    | ValidateInterpretationCommand
+    | ApplyInterpretationCommand
+    | SaveInterpretationRecipeCommand
+    | ReloadInterpretationRecipeCommand
+    | LoadDataCommand
     | AttachLabelsCommand
     | ImportLabelsCommand
     | UpdateMetadataCommand

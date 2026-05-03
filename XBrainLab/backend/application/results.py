@@ -44,6 +44,7 @@ class ChangedState:
     training_changed: bool = False
     evaluation_changed: bool = False
     visualization_changed: bool = False
+    interpretation_changed: bool = False
     error_changed: bool = False
 
     def any_changed(self) -> bool:

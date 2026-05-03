@@ -24,6 +24,7 @@ from XBrainLab.backend.application.state import (
     DatasetStateSnapshot,
     EpochStateSnapshot,
     EvaluationStateSnapshot,
+    InterpretationStateSnapshot,
     PreprocessedStateSnapshot,
     RawStateSnapshot,
     TrainingStateSnapshot,
@@ -718,6 +719,7 @@ def make_state(name: str) -> ApplicationStateSnapshot:
             saliency_configured=False,
             saliency_available=finished_runs > 0,
         ),
+        interpretation=InterpretationStateSnapshot(),
         active_dataset=ActiveDatasetSnapshot(
             has_raw_data=raw,
             has_preprocessed_data=preprocessed,
