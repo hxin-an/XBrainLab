@@ -40,13 +40,15 @@ Interpretation lifecycle state 和 scan / preview / validate / apply / recipe ha
 `ApplicationService` 拆到 `DataInterpretationCommandService`，並把 reviewed metadata / label
 carrier side effects 再拆到 `DataInterpretationApplyService`；`ApplicationService` 現在只保留
 command dispatch、capability / confirmation gate、state/result envelope，以及對 focused service
-的窄委派。這是 god-object 收斂的連續切片，不代表 dataset generation、reset lifecycle 或
-legacy label import handlers 都已完成拆分。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency` 和
+的窄委派。這是 god-object 收斂的連續切片，不代表 reset lifecycle 或 legacy label import
+handlers 都已完成拆分。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency` 和
 confirmed `apply_montage` 拆到 `AnalysisCommandService`；analysis / visualization readiness
 現在也有 focused handler boundary。最新 cleanup slice 又把 `configure_training`、`train`、
 `stop_training`、`clear_training_history` 和 reset-time training config clear 拆到
 `TrainingCommandService`；model / optimizer / device / training-option snapshot 不再直接留在
-`ApplicationService`。`ApplicationService` 仍只 dispatch / gate / wrap result。
+`ApplicationService`。最新 dataset cleanup slice 又把 `generate_dataset`、`clear_datasets`、
+split config、split audit、rollback 和 split summary 拆到 `DatasetGenerationCommandService`。
+`ApplicationService` 仍只 dispatch / gate / wrap result。
 
 ## 一句話架構
 
@@ -103,7 +105,10 @@ ApplicationService / Command API
   |       +--> evaluation summary / visualization readiness / saliency setup / montage apply
   |
   +--> TrainingCommandService
-          +--> model config / training option config / train-stop lifecycle / history cleanup
+  |       +--> model config / training option config / train-stop lifecycle / history cleanup
+  |
+  +--> DatasetGenerationCommandService
+          +--> split config / dataset generation / split audit / rollback / dataset cleanup
   |
   v
 same cached controllers from Study
@@ -340,6 +345,10 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   holder 建立、optimizer / device / evaluation option resolve、training option snapshot 和
   training lifecycle notification；`ApplicationService` 只做 dispatch、policy gate 和 result
   envelope。
+- `generate_dataset`、`clear_datasets`、split config、split audit、rollback 和
+  `DatasetStateSnapshot.split_summary` 的實作位置現在是 `DatasetGenerationCommandService`。
+  `ApplicationService` 的 reset preprocess rollback 只委派到這個 service 的 state restore
+  helper，不再自己操作 dataset generator / trainer rollback 細節。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed

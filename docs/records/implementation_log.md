@@ -47,9 +47,9 @@
 ### 狀態
 
 Backend command spine 持續從 `ApplicationService` god object 收斂成 focused command services。
-Data Interpretation、analysis / visualization、training config / train-stop lifecycle 現在都有各自
-service boundary，`ApplicationService` 回到 dispatch、capability / confirmation gate 和
-state/result envelope。
+Data Interpretation、analysis / visualization、training config / train-stop lifecycle、dataset
+generation / split audit 現在都有各自 service boundary，`ApplicationService` 回到 dispatch、
+capability / confirmation gate 和 state/result envelope。
 
 ### 已可宣稱
 
@@ -58,6 +58,8 @@ state/result envelope。
 - Evaluation / visualization / saliency / montage apply 由 `AnalysisCommandService` 承接。
 - Model configuration、training option、train / stop、history cleanup 和 reset-time training config
   clear 由 `TrainingCommandService` 承接。
+- Dataset generation、split config、split audit、rollback、split summary 和 dataset cleanup 由
+  `DatasetGenerationCommandService` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 
@@ -69,14 +71,14 @@ state/result envelope。
 
 ### 不能宣稱完成
 
-- `ApplicationService` 仍保留 dataset generation、reset lifecycle、query state 和 legacy data /
-  label compatibility handlers。
+- `ApplicationService` 仍保留 reset lifecycle、query state 和 legacy data / label compatibility
+  handlers。
 - Legacy `load_data / attach_labels / import_labels` 尚未完全退出產品心智模型。
 - 這是 backend architecture cleanup，不是 UI / Windows / MCP / thesis final closure。
 
 ### 下一手重點
 
-1. 拆 dataset generation / reset lifecycle 或隔離 legacy compatibility path。
+1. 拆 reset lifecycle 或隔離 legacy compatibility path。
 2. 確認 UI / agent / MCP 沒有重新引入 controller-private fallback 作為產品主路徑。
 3. 維持每個 slice 有 focused tests、non-mocked workflow regression 和文件同步。
 
@@ -223,5 +225,5 @@ services / handlers，同時保持 UI、agent、headless、MCP 只走同一套 c
 
 ### 下一手重點
 
-下一輪 backend work 應優先拆 dataset generation / reset lifecycle 邊界，或先隔離 legacy data /
-label compatibility handlers，避免新 UI / agent 心智模型回到舊 `load_data / attach_labels`。
+下一輪 backend work 應優先拆 reset lifecycle 邊界，或先隔離 legacy data / label compatibility
+handlers，避免新 UI / agent 心智模型回到舊 `load_data / attach_labels`。
