@@ -307,6 +307,36 @@ def test_saliency_command_can_configure_params():
     assert result.diagnostics["action"] == "configure"
     assert result.diagnostics["saliency_configured"] is True
     assert result.diagnostics["saliency_available"] is False
+    assert set(result.diagnostics["params"]) == {
+        "SmoothGrad",
+        "SmoothGrad_Squared",
+        "VarGrad",
+    }
+
+
+def test_saliency_command_normalizes_flat_method_params():
+    service = ApplicationService(Study())
+    service.study.training_manager.model_holder = MagicMock()
+    service.study.training_manager.training_option = MagicMock()
+
+    result = service.execute(
+        SaliencyCommand(
+            method="Gradient",
+            params={
+                "nt_samples": 2,
+                "nt_samples_batch_size": 1,
+                "stdevs": 1.0,
+            },
+        ),
+    )
+
+    assert result.ok is True
+    assert result.diagnostics["requested_method"] == "Gradient"
+    params = result.diagnostics["params"]
+    for method in ("SmoothGrad", "SmoothGrad_Squared", "VarGrad"):
+        assert params[method]["nt_samples"] == 2
+        assert params[method]["nt_samples_batch_size"] == 1
+        assert params[method]["stdevs"] == 1.0
 
 
 def test_command_result_classifies_unsupported_load(tmp_path):

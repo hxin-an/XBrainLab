@@ -103,6 +103,13 @@ from .state import (
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 
+_DEFAULT_SALIENCY_PARAMS: dict[str, Any] = {
+    "nt_samples": 5,
+    "nt_samples_batch_size": None,
+    "stdevs": 1.0,
+}
+_SUPPORTED_SALIENCY_PARAM_KEYS = ("SmoothGrad", "SmoothGrad_Squared", "VarGrad")
+
 
 class ApplicationService:
     """Command-oriented application layer over the existing backend controllers."""
@@ -1326,10 +1333,12 @@ class ApplicationService:
     def _handle_saliency(self, command: Command) -> HandlerResult:
         if not isinstance(command, SaliencyCommand):
             raise TypeError("Invalid command for saliency")
-        params = dict(command.params or {})
-        if command.method:
-            params.setdefault("method", command.method)
-        if params:
+        configure_requested = bool(command.params) or bool(command.method)
+        if configure_requested:
+            params, requested_method = self._normalize_saliency_params(
+                command.method,
+                command.params,
+            )
             state = self.get_state()
             if not (
                 state.active_training.has_trainer
@@ -1351,6 +1360,7 @@ class ApplicationService:
                     "saliency_available": (
                         self.get_state().visualization.saliency_available
                     ),
+                    "requested_method": requested_method,
                     "params": self._json_safe(params),
                 },
             )
@@ -1372,6 +1382,29 @@ class ApplicationService:
                 "finished_run_count": state.evaluation.finished_runs,
             },
         )
+
+    @staticmethod
+    def _normalize_saliency_params(
+        method: str | None,
+        params: dict[str, Any] | None,
+    ) -> tuple[dict[str, dict[str, Any]], str | None]:
+        """Normalize agent-friendly saliency args to evaluator-required keys."""
+        raw = dict(params or {})
+        requested_method = str(raw.pop("method", method or "") or "").strip() or None
+        flat_params: dict[str, Any] = {}
+        normalized = {
+            key: dict(_DEFAULT_SALIENCY_PARAMS)
+            for key in _SUPPORTED_SALIENCY_PARAM_KEYS
+        }
+        for key, value in raw.items():
+            if key in _SUPPORTED_SALIENCY_PARAM_KEYS and isinstance(value, dict):
+                normalized[key].update(value)
+            elif key not in _SUPPORTED_SALIENCY_PARAM_KEYS:
+                flat_params[key] = value
+        if flat_params:
+            for method_params in normalized.values():
+                method_params.update(flat_params)
+        return normalized, requested_method
 
     def _handle_apply_montage(self, command: Command) -> HandlerResult:
         if not isinstance(command, ApplyMontageCommand):

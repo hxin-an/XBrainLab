@@ -326,3 +326,14 @@ def test_model_selection_promotes_empty_configure_training_to_set_model():
 
     assert tool_name == "set_model"
     assert params == {"model_name": "EEGNet"}
+
+
+def test_saliency_readiness_query_drops_stale_configuration_params():
+    tool_name, params = normalize_tool_call(
+        "saliency",
+        {"method": "Gradient", "params": {"nt_samples": 2}},
+        latest_user_text="Query saliency readiness for the trained model.",
+    )
+
+    assert tool_name == "saliency"
+    assert params == {}

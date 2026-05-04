@@ -156,7 +156,13 @@ class MetricsBarChartWidget(QWidget):
                 color=Theme.TEXT_MUTED,
             )
 
-            self.fig.tight_layout()
+            try:
+                self.fig.tight_layout()
+            except Exception as layout_error:
+                logger.warning(
+                    "Skipping metrics bar chart tight_layout: %s",
+                    layout_error,
+                )
             self.canvas.draw()
 
         except Exception as e:

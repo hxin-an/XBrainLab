@@ -2583,3 +2583,42 @@
   - 這只解除 controlled training artifact 的 output path gap。
   - 還沒有 actual ChatPanel training completion、evaluation metrics、visualization render 或
     saliency render evidence。
+
+### 2026-05-04 13:30 ChatPanel controlled tiny training completion
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py`。
+  - 使用 training-safe synthetic FIF（14s raw、1.5s epochs）避免 EEGNet minimum epoch duration
+    guardrail。
+  - 真 MainWindow / ChatPanel / local primary model visible turns：
+    `set_model` -> `configure_training` with temp `output_dir` -> observed/approved
+    `start_training` confirmation -> wait for 1 epoch CPU training completion -> `evaluate` ->
+    `saliency` configure -> `visualize` -> saliency readiness query。
+  - 新增 `tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py`。
+  - 修正產品缺口：
+    - saliency command 將 flat `method` / `params` normalize 成 backend-required
+      `SmoothGrad` / `SmoothGrad_Squared` / `VarGrad` params。
+    - `infer_user_intent()` 認得 `visualization` / `visualisation`。
+    - saliency readiness query 會清掉上一輪 stale saliency config params。
+    - evaluation metrics bar chart `tight_layout` failure 降級為 warning。
+    - missing `torchinfo` model summary 回可理解 unavailable message，不再打 traceback。
+- artifact：
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.md`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.json`
+  - ready / trained / turn 1-7 screenshots。
+- 驗證：
+  - true local ChatPanel run：
+    `timeout 1200s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py --output-dir artifacts/ui/chatpanel-local-training-completion --timeout-seconds 1080`
+    -> passed；primary `microsoft/Phi-4-mini-instruct`、`gpu-ready`、cache `15.34 GB`、no download。
+  - final state：finished runs `1`、evaluation metrics available `True`、saliency configured /
+    available `True`、ChatPanel idle。
+  - targeted regression：`48 passed`。
+  - UI fallback tests：`3 passed`。
+  - broader agent suite：`235 passed`。
+  - targeted `ruff` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - deterministic tool-call eval -> `100 / 100` pass。
+- 不能宣稱：
+  - 這支撐 controlled tiny training completion 和 analysis readiness summary。
+  - 還不是完整 saliency / visualization canvas render、真人 Windows launcher click-through、
+    MCP Inspector GUI、mature import wizard label editor 或 external thesis experiment package。

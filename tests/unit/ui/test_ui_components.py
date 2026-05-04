@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 from PyQt6.QtWidgets import QMainWindow, QWidget
 
@@ -93,6 +94,26 @@ class TestMetricsBarChart:
         w = MetricsBarChartWidget()
         qtbot.addWidget(w)
         w.update_plot(None)
+
+    def test_update_plot_layout_failure_is_not_logged_as_error(self, qtbot):
+        from XBrainLab.ui.panels.evaluation import metrics_bar_chart
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+
+        w = MetricsBarChartWidget()
+        qtbot.addWidget(w)
+        w.fig.tight_layout = MagicMock(side_effect=np.linalg.LinAlgError("singular"))
+
+        with patch.object(metrics_bar_chart.logger, "error") as error_logger:
+            w.update_plot(
+                {
+                    0: {"precision": 0.0, "recall": 0.0, "f1-score": 0.0},
+                    1: {"precision": 0.0, "recall": 0.0, "f1-score": 0.0},
+                },
+            )
+
+        error_logger.assert_not_called()
 
 
 # ============ History Table ============

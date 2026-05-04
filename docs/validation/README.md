@@ -807,6 +807,60 @@ ChatPanel dataset -> training -> evaluation / visualization / saliency 長鏈完
 這批 evidence 支撐 high-impact training confirmation boundary 與 analysis-readiness tools 的 true
 ChatPanel path。它仍不支撐 actual training completion、evaluation metrics 或 saliency render。
 
+2026-05-04 ChatPanel local controlled tiny training-completion walkthrough：
+
+- script：`scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py`
+- artifact：
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-ready.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-trained.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-1.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-2.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-3.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-4.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-5.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-6.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-training-completion-turn-7.png`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.md`
+- command：
+  - `timeout 1200s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py --output-dir artifacts/ui/chatpanel-local-training-completion --timeout-seconds 1080`
+- result：
+  - status：`passed`
+  - runtime：primary `microsoft/Phi-4-mini-instruct`，`gpu-ready`
+  - cache usage：`15.34 GB`，no download
+  - dataset preparation：`scan_source` -> `preview_interpretation` -> `validate_interpretation`
+    -> `apply_interpretation` -> `preprocess` -> `create_epoch` -> `generate_dataset` all `ok`
+  - ChatPanel turns：`set_model` ok、`configure_training` ok with controlled temp `output_dir`、
+    `start_training` confirmation observed and approved、training completion observed、
+    `evaluate` ok、`saliency` configure ok、`visualize` ok、saliency readiness query ok。
+  - final state：dataset available `True`、model `EEGNet`、training option present、trainer
+    `True`、training running `False`、finished runs `1`、evaluation metrics available `True`、
+    saliency configured / available `True`。
+  - UI state：ChatPanel returned idle; visible assistant text stayed product-facing.
+- supporting fixes validated in the same slice：
+  - `configure_training` tool schema / ApplicationService mapping preserves `output_dir`。
+  - saliency command normalizes flat `method` / `params` into backend-required
+    `SmoothGrad` / `SmoothGrad_Squared` / `VarGrad` parameter keys。
+  - `visualization` text maps to visualize intent, and saliency readiness queries drop stale
+    configuration params from previous turns。
+  - evaluation bar chart `tight_layout` failure degrades to warning, and missing `torchinfo`
+    returns a model-summary unavailable message without logging traceback。
+- unit/static/regression:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params tests/unit/backend/application/test_application_service.py::test_saliency_command_normalizes_flat_method_params tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py tests/unit/backend/controller/test_evaluation_controller.py -q`
+  - `48 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_ui_components.py::TestMetricsBarChart -q`
+  - `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent -q`
+  - `235 passed`
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - deterministic tool-call eval refresh -> `100 / 100` pass
+
+這批 evidence 支撐 true local ChatPanel controlled tiny training completion、post-training metrics
+query 和 saliency / visualization readiness summary。它仍不等於完整 saliency / visualization
+canvas render、真人 Windows launcher click-through、MCP Inspector GUI 或 mature import wizard label
+editor 完成。
+
 2026-05-04 ChatPanel true local-model one-turn walkthrough：
 
 - 新增 `scripts/dev/capture_chatpanel_local_walkthrough.py`：

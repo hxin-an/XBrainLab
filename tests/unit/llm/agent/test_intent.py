@@ -9,6 +9,9 @@ from XBrainLab.llm.agent.intent import (
 def test_infers_blocked_workflow_intents():
     assert infer_user_intent("Train an EEGNet model now.") == "train"
     assert infer_user_intent("Evaluate the trained model.") == "evaluate"
+    assert infer_user_intent("Show visualization readiness after training.") == (
+        "visualize"
+    )
     assert infer_user_intent("Preview the data interpretation.") == (
         "preview_interpretation"
     )

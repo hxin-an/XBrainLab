@@ -78,6 +78,9 @@ def normalize_tool_call(
         normalized_name = "start_training"
         normalized_params = {}
 
+    if normalized_name == "saliency":
+        _normalize_saliency_args(normalized_params, latest_user_text)
+
     if normalized_name == "query_state":
         normalized_params.setdefault("query", "state")
 
@@ -344,6 +347,19 @@ def _should_promote_to_start_training(
     return "train" in text and not any(
         marker in text for marker in ("configure", "set option", "training option")
     )
+
+
+def _normalize_saliency_args(params: dict[str, Any], latest_user_text: str) -> None:
+    text = latest_user_text.lower()
+    asks_for_readiness = any(
+        marker in text for marker in ("query", "readiness", "summary", "current")
+    )
+    asks_to_configure = any(
+        marker in text
+        for marker in ("configure", "set ", "params", "nt_samples", "stdevs")
+    )
+    if asks_for_readiness and not asks_to_configure:
+        params.clear()
 
 
 def _extract_path(text: str) -> str | None:

@@ -123,3 +123,19 @@ def test_get_model_summary_error(controller):
         s = controller.get_model_summary_str(plan)
     assert "Error generating summary" in s
     assert "Shape error" in s
+
+
+def test_get_model_summary_missing_torchinfo_returns_guidance(controller):
+    plan = MagicMock()
+
+    with (
+        patch.dict(sys.modules, {"torchinfo": None}),
+        patch(
+            "XBrainLab.backend.controller.evaluation_controller.logger.error",
+        ) as error_logger,
+    ):
+        summary = controller.get_model_summary_str(plan)
+
+    assert "Model summary unavailable" in summary
+    assert "torchinfo" in summary
+    error_logger.assert_not_called()

@@ -182,6 +182,22 @@ definitions / mock / real tools，註冊進 ChatPanel controller 的 tool regist
 reason。artifact 顯示 UI 回到 idle、training 沒有被啟動、visible assistant text 沒有 raw debug
 syntax。這支撐 high-impact training confirmation boundary 和 analysis-readiness tool path；仍不支撐
 真 training completion、evaluation metrics 或 saliency view render 完成。
+下一個 completion slice 已補上 controlled tiny training artifact：
+`scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py` 使用 training-safe
+synthetic FIF 和 1.5s epochs，透過真 MainWindow / ChatPanel / local primary model 依序執行
+`set_model`、`configure_training`（含 controlled `output_dir`）、觀察並核准 `start_training`
+confirmation、等待 1 epoch CPU training 完成，再執行 `evaluate`、`saliency` configure、
+`visualize` 和 saliency query。artifact
+`artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.json` /
+`.md` 顯示 status `passed`、finished runs `1`、evaluation metrics available `True`、saliency
+configured / available `True`、UI 回到 idle，visible transcript 沒有 raw tool/debug syntax。這支撐真
+local ChatPanel controlled tiny training completion 與 post-training analysis-readiness summary；
+仍不等於真人 Windows launcher click-through、完整互動式 saliency/visualization canvas render、
+MCP Inspector 或成熟 import wizard label editor 完成。同 slice 修正了 saliency `method` /
+flat params 到 backend-required `SmoothGrad` / `SmoothGrad_Squared` / `VarGrad` params 的
+normalization，`visualization` intent 判斷，saliency readiness query 的 stale params 清理，以及
+evaluation panel tiny metrics fallback：chart `tight_layout` failure 只降級為 warning，缺
+`torchinfo` 時回傳可理解的 model-summary unavailable message，不再打 traceback。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
 `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
@@ -425,9 +441,10 @@ release closure。
   單步 `query_state` tool-command walkthrough、兩 turn workflow walkthrough artifact，以及
   Data Interpretation `scan_source` -> `preview_interpretation` -> `validate_interpretation`
   短鏈 tool-command artifact，並已有 confirm/apply -> standard preprocess -> epoch -> dataset
-  pipeline-chain artifact 和 dataset-ready -> model / training settings / analysis-readiness
-  boundary artifact。這仍不是 true training completion / evaluation metrics / saliency render
-  驗收，也不是真人 Windows Desktop click-through。
+  pipeline-chain artifact、dataset-ready -> model / training settings / analysis-readiness
+  boundary artifact，以及 controlled tiny training completion -> evaluation metrics ->
+  saliency/visualization readiness artifact。這仍不是真人 Windows Desktop click-through，也不是完整
+  saliency / visualization canvas render 的 UI 驗收。
 - Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
   fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
 - `tests/integration/ui/test_product_walkthrough.py` 仍是 synthetic / patched training
@@ -455,10 +472,10 @@ release closure。
 ## 目前執行中
 
 1. 等待真 Windows Desktop launcher click-through。
-2. 補真正 UI button-click 到 training completion、evaluation metrics 和 visualization /
-   saliency render 的 E2E；不要讓 assistant 自行越過高影響確認邊界。
-3. 擴 true local LLM ChatPanel walkthrough 到可控 tiny training completion 後的 evaluate /
-   visualize / saliency，或明確記錄環境限制下不能安全跑訓練的原因。
+2. 補真正 UI button-click 到 visualization / saliency canvas render 的 E2E；不要把 readiness
+   summary 包裝成完整 render。
+3. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
+   import 不再是主要使用心智模型。
 4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。
 5. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis

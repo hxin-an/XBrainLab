@@ -179,6 +179,22 @@
     training not running、evaluation unavailable。
   - 這支撐 training high-impact confirmation boundary 和 analysis-readiness tools；仍不代表真
     training completion、evaluation metrics 或 saliency render 完成。
+- ChatPanel true local-model controlled tiny training-completion walkthrough 已新增：
+  - script：`scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py`。
+  - artifact：`artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.json` /
+    `.md`，含 ready / trained / 7 turn screenshots。
+  - flow：ApplicationService 準備 training-safe synthetic dataset-ready state -> visible ChatPanel
+    `set_model` -> `configure_training` with controlled temp `output_dir` -> observed/approved
+    `start_training` confirmation -> wait for 1 epoch CPU training completion -> `evaluate` ->
+    `saliency` configure -> `visualize` -> saliency readiness query。
+  - final state：dataset available、model `EEGNet`、training option present、trainer present、
+    training not running、finished run count `1`、evaluation metrics available、saliency configured /
+    available。
+  - 同 slice 修正 saliency flat params normalization、`visualization` intent 判斷、saliency
+    readiness query stale params cleanup，以及 tiny metrics / missing `torchinfo` UI fallback。
+  - 這支撐 true local ChatPanel controlled tiny training completion 和 post-training analysis
+    readiness summary；仍不代表完整 saliency / visualization canvas render、真人 Windows launcher
+    click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

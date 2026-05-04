@@ -77,7 +77,12 @@ def infer_user_intent(text: str) -> str:
         return "saliency"
     if "evaluate" in normalized or "evaluation" in normalized:
         return "evaluate"
-    if "visualize" in normalized or "visualise" in normalized:
+    if (
+        "visualize" in normalized
+        or "visualise" in normalized
+        or "visualization" in normalized
+        or "visualisation" in normalized
+    ):
         return "visualize"
     if "preprocess" in normalized or "bandpass" in normalized or "filter" in normalized:
         return "preprocess"
