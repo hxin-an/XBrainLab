@@ -3204,3 +3204,35 @@
   - 這只是交接記錄，不是產品完成。
   - 仍不能宣稱 Inspector GUI、Windows launcher click-through、interactive desktop 3D、
     raw-event-anchor label alignment、external thesis experiment 或完整 product completion。
+
+### 2026-05-04 Data Interpretation format capability matrix artifact
+
+- 做了什麼：
+  - 新增 `scripts/dev/report_data_interpretation_format_matrix.py`，用 live
+    `ApplicationService` 的 `scan_source -> preview_interpretation -> validate_interpretation`
+    command path 產生 format capability matrix。
+  - 產出 `artifacts/data_interpretation/format-capability-matrix.json` / `.md`。
+  - matrix 覆蓋 GDF、EDF、BDF、EEGLAB、BrainVision VHDR / VMRK、MNE FIF、MAT、CSV、TSV、
+    BIDS events、TXT、XDF / LSL，並保留 supported / needs_review / context / blocked 與
+    safe / needs_confirmation / blocked validation boundary。
+- TDD：
+  - 初跑 focused test failed，因 reporter module 尚不存在。
+  - 後續 CLI JSON test failed，因 `Study initialized` log 污染 stdout；reporter 已把
+    ApplicationService info logs 壓到 warning 以上。
+- 驗證：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_report_data_interpretation_format_matrix.py -q`
+    -> `3 passed`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_report_data_interpretation_format_matrix.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+    -> `4 passed`。
+  - targeted `ruff check` / `ruff format --check` -> pass。
+  - `poetry run basedpyright scripts/dev/report_data_interpretation_format_matrix.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --write-artifacts`
+    -> wrote JSON / Markdown artifacts。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐 generated capability-boundary matrix。
+  - 仍不是 XDF / LSL stream parser、raw-event-anchor-specific MAT/GDF alignment、real-data manual
+    certification 或完整 product completion。

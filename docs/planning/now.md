@@ -241,6 +241,12 @@
   - scan / preview 現在會列出 format capability boundaries，覆蓋 GDF、EDF / BDF、EEGLAB、
     BrainVision、MNE FIF、MAT labels、CSV / TSV / BIDS events、TXT labels 和 XDF / LSL；dialog
     review notes 會顯示 XDF / LSL stream selection 尚未在 wizard 內可用的 blocked reason。
+  - Generated Data Interpretation format capability matrix 已新增：
+    `scripts/dev/report_data_interpretation_format_matrix.py` 透過 live `ApplicationService`
+    command path 產生 `artifacts/data_interpretation/format-capability-matrix.json` / `.md`，
+    覆蓋 GDF、EDF、BDF、EEGLAB、BrainVision VHDR / VMRK、MNE FIF、MAT、CSV、TSV、
+    BIDS events、TXT 和 XDF / LSL 的 supported / needs-review / context / blocked matrix。
+    這是 capability-boundary evidence，不是 XDF parser 或 real-data manual certification。
   - `apply_interpretation` 現在會在單一 EEG + 單一 reviewed timestamp CSV / TSV / BIDS events
     carrier、已確認且 time model 為 seconds / relative time 時，自動套用 external labels，並保存
     `label_apply` diagnostics / `label_import:timestamp:<n>` recipe trace；UI replay JSON 已顯示
@@ -265,9 +271,9 @@
   - Post-load `Add Labels to Loaded Data` dialog 現在會顯示 target EEG files 和 recipe trace
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、all-format
-  manual compatibility matrix、MCP Inspector GUI click-through、Windows launcher 真人驗收尚未完成，
-  UI replay coverage 還不是完整真人 walkthrough。
+  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、full real-data
+  manual compatibility certification、MCP Inspector GUI click-through、Windows launcher 真人驗收
+  尚未完成，UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 

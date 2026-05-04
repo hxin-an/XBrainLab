@@ -1,0 +1,523 @@
+{
+  "cases": [
+    {
+      "blocked_reasons": [],
+      "case_id": "gdf_with_mat_labels",
+      "eeg_files": [
+        "sub-01_ses-01_task-mi_run-1.gdf"
+      ],
+      "label_carriers": [
+        "sub-01_ses-01_task-mi_run-1.mat"
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+      "source_entry": ".",
+      "source_files": [
+        "sub-01_ses-01_task-mi_run-1.gdf",
+        "sub-01_ses-01_task-mi_run-1.mat"
+      ],
+      "source_hint": "auto",
+      "source_kind": "bids",
+      "title": "GDF recording with external MAT labels",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 2
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "edf_recording",
+      "eeg_files": [
+        "sub-01_ses-01_task-rest_run-1.edf"
+      ],
+      "label_carriers": [],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "source_entry": "sub-01_ses-01_task-rest_run-1.edf",
+      "source_files": [
+        "sub-01_ses-01_task-rest_run-1.edf"
+      ],
+      "source_hint": "file",
+      "source_kind": "file",
+      "title": "EDF recording with annotation review boundary",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 0
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "bdf_recording",
+      "eeg_files": [
+        "sub-01_ses-01_task-rest_run-2.bdf"
+      ],
+      "label_carriers": [],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "source_entry": "sub-01_ses-01_task-rest_run-2.bdf",
+      "source_files": [
+        "sub-01_ses-01_task-rest_run-2.bdf"
+      ],
+      "source_hint": "file",
+      "source_kind": "file",
+      "title": "BDF recording with annotation review boundary",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 0
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "eeglab_set",
+      "eeg_files": [
+        "sub-01_ses-01_task-mi_run-1.set"
+      ],
+      "label_carriers": [],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "source_entry": "sub-01_ses-01_task-mi_run-1.set",
+      "source_files": [
+        "sub-01_ses-01_task-mi_run-1.set"
+      ],
+      "source_hint": "file",
+      "source_kind": "file",
+      "title": "EEGLAB SET with boundary-marker review",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 0
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "brainvision_recording",
+      "eeg_files": [
+        "sub-01_ses-01_task-mi_run-1.vhdr"
+      ],
+      "label_carriers": [],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "source_entry": ".",
+      "source_files": [
+        "sub-01_ses-01_task-mi_run-1.vhdr",
+        "sub-01_ses-01_task-mi_run-1.vmrk",
+        "sub-01_ses-01_task-mi_run-1.eeg"
+      ],
+      "source_hint": "folder",
+      "source_kind": "folder",
+      "title": "BrainVision header plus marker sidecar",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 0
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "mne_fif_recording",
+      "eeg_files": [
+        "sub-01_ses-01_task-rest_run-1_raw.fif"
+      ],
+      "label_carriers": [],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "source_entry": "sub-01_ses-01_task-rest_run-1_raw.fif",
+      "source_files": [
+        "sub-01_ses-01_task-rest_run-1_raw.fif"
+      ],
+      "source_hint": "file",
+      "source_kind": "file",
+      "title": "MNE FIF recording with complete filename metadata",
+      "validation_decision": "safe",
+      "warning_count": 0
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "bids_events_root",
+      "eeg_files": [
+        "sub-01_ses-01_task-mi_run-1_raw.fif"
+      ],
+      "label_carriers": [
+        "sub-01_ses-01_task-mi_run-1_events.tsv"
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+      "source_entry": ".",
+      "source_files": [
+        "dataset_description.json",
+        "sub-01/ses-01/eeg/sub-01_ses-01_task-mi_run-1_raw.fif",
+        "sub-01/ses-01/eeg/sub-01_ses-01_task-mi_run-1_events.tsv"
+      ],
+      "source_hint": "auto",
+      "source_kind": "bids",
+      "title": "BIDS-like root with events.tsv",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 1
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "tabular_and_text_labels",
+      "eeg_files": [
+        "sub-01_ses-01_task-mi_run-1_raw.fif"
+      ],
+      "label_carriers": [
+        "labels.csv",
+        "labels.tsv",
+        "labels.txt"
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
+      "source_entry": ".",
+      "source_files": [
+        "sub-01_ses-01_task-mi_run-1_raw.fif",
+        "labels.csv",
+        "labels.tsv",
+        "labels.txt"
+      ],
+      "source_hint": "folder",
+      "source_kind": "folder",
+      "title": "Generic CSV, TSV, and TXT label carriers",
+      "validation_decision": "needs_confirmation",
+      "warning_count": 1
+    },
+    {
+      "blocked_reasons": [
+        "XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+      ],
+      "case_id": "xdf_lsl_device_export",
+      "eeg_files": [],
+      "label_carriers": [],
+      "preview_summary": "Found 0 EEG file(s) and 0 label/event carrier(s).",
+      "source_entry": "session01_streams.xdf",
+      "source_files": [
+        "session01_streams.xdf"
+      ],
+      "source_hint": "device_export",
+      "source_kind": "device_export",
+      "title": "XDF / LSL stream export blocked until stream selection exists",
+      "validation_decision": "blocked",
+      "warning_count": 0
+    }
+  ],
+  "claim_boundary": {
+    "does_not_support": "This matrix does not implement an XDF / LSL stream parser, raw-event-anchor-specific GDF / MAT alignment, or a full manual compatibility certification across real public datasets.",
+    "supports": "Data Interpretation scan, preview, and validation expose user-facing format capability boundaries for representative EEG recordings, label carriers, BIDS events, and blocked XDF / LSL stream exports."
+  },
+  "command_path": [
+    "ApplicationService.execute(ScanSourceCommand)",
+    "ApplicationService.execute(PreviewInterpretationCommand)",
+    "ApplicationService.execute(ValidateInterpretationCommand)"
+  ],
+  "generator": "scripts/dev/report_data_interpretation_format_matrix.py",
+  "rows": [
+    {
+      "blocked_reasons": [],
+      "case_id": "gdf_with_mat_labels",
+      "coverage_label": "GDF recording",
+      "format": "GDF",
+      "matches_expected": true,
+      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "role": "eeg",
+      "source_fixture": "sub-01_ses-01_task-mi_run-1.gdf",
+      "source_hint": "auto",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "gdf_with_mat_labels",
+      "coverage_label": "MAT labels",
+      "format": "MAT labels",
+      "matches_expected": true,
+      "message": "MAT labels require variable selection, anchor alignment, and class map confirmation.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "role": "external_labels",
+      "source_fixture": "sub-01_ses-01_task-mi_run-1.mat",
+      "source_hint": "auto",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "edf_recording",
+      "coverage_label": "EDF recording",
+      "format": "EDF",
+      "matches_expected": true,
+      "message": "EDF / BDF annotations can describe events or intervals; review annotation roles, time units, and class map before supervised training.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "role": "eeg",
+      "source_fixture": "sub-01_ses-01_task-rest_run-1.edf",
+      "source_hint": "file",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "bdf_recording",
+      "coverage_label": "BDF recording",
+      "format": "EDF",
+      "matches_expected": true,
+      "message": "EDF / BDF annotations can describe events or intervals; review annotation roles, time units, and class map before supervised training.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "role": "eeg",
+      "source_fixture": "sub-01_ses-01_task-rest_run-2.bdf",
+      "source_hint": "file",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "eeglab_set",
+      "coverage_label": "EEGLAB SET",
+      "format": "EEGLAB",
+      "matches_expected": true,
+      "message": "EEGLAB events, urevents, and boundary markers require review; boundary must not be treated as a class label.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "role": "eeg",
+      "source_fixture": "sub-01_ses-01_task-mi_run-1.set",
+      "source_hint": "file",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "brainvision_recording",
+      "coverage_label": "BrainVision VHDR",
+      "format": "BrainVision",
+      "matches_expected": true,
+      "message": "BrainVision marker sidecars can include stimulus, response, sync, and new segment markers; review event roles before apply.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "role": "eeg",
+      "source_fixture": "sub-01_ses-01_task-mi_run-1.vhdr",
+      "source_hint": "folder",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "brainvision_recording",
+      "coverage_label": "BrainVision VMRK",
+      "format": "BrainVision markers",
+      "matches_expected": true,
+      "message": "BrainVision marker sidecar detected; use the associated .vhdr source and review marker roles.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm which events are trial anchors, class cues, responses, artifacts, or boundaries."
+      ],
+      "role": "sidecar",
+      "source_fixture": "sub-01_ses-01_task-mi_run-1.vmrk",
+      "source_hint": "folder",
+      "source_kind_validation": "needs_confirmation",
+      "status": "context",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "mne_fif_recording",
+      "coverage_label": "MNE FIF",
+      "format": "MNE FIF",
+      "matches_expected": true,
+      "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [],
+      "preview_summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [],
+      "role": "eeg",
+      "source_fixture": "sub-01_ses-01_task-rest_run-1_raw.fif",
+      "source_hint": "file",
+      "source_kind_validation": "safe",
+      "status": "supported",
+      "validation_decision": "safe"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "bids_events_root",
+      "coverage_label": "BIDS events.tsv",
+      "format": "BIDS events",
+      "matches_expected": true,
+      "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "role": "external_labels",
+      "source_fixture": "sub-01_ses-01_task-mi_run-1_events.tsv",
+      "source_hint": "auto",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "tabular_and_text_labels",
+      "coverage_label": "CSV labels",
+      "format": "CSV / TSV labels",
+      "matches_expected": true,
+      "message": "CSV / TSV labels require label column, anchor, time model, and granularity confirmation.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "role": "external_labels",
+      "source_fixture": "labels.csv",
+      "source_hint": "folder",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "tabular_and_text_labels",
+      "coverage_label": "TSV labels",
+      "format": "CSV / TSV labels",
+      "matches_expected": true,
+      "message": "CSV / TSV labels require label column, anchor, time model, and granularity confirmation.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "role": "external_labels",
+      "source_fixture": "labels.tsv",
+      "source_hint": "folder",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [],
+      "case_id": "tabular_and_text_labels",
+      "coverage_label": "TXT labels",
+      "format": "TXT labels",
+      "matches_expected": true,
+      "message": "Text label sequences require trial-order or anchor alignment confirmation.",
+      "observed": true,
+      "preview_blocked_reasons": [],
+      "preview_confirmation_items": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "preview_summary": "Found 1 EEG file(s) and 3 label/event carrier(s).",
+      "required_confirmations": [
+        "Confirm label carrier alignment, anchor event, and class map before applying."
+      ],
+      "role": "external_labels",
+      "source_fixture": "labels.txt",
+      "source_hint": "folder",
+      "source_kind_validation": "needs_confirmation",
+      "status": "needs_review",
+      "validation_decision": "needs_confirmation"
+    },
+    {
+      "blocked_reasons": [
+        "No EEG files were selected for interpretation.",
+        "XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+      ],
+      "case_id": "xdf_lsl_device_export",
+      "coverage_label": "XDF / LSL stream export",
+      "format": "XDF / LSL",
+      "matches_expected": true,
+      "message": "XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe.",
+      "observed": true,
+      "preview_blocked_reasons": [
+        "No EEG files were selected for interpretation.",
+        "XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+      ],
+      "preview_confirmation_items": [],
+      "preview_summary": "Found 0 EEG file(s) and 0 label/event carrier(s).",
+      "required_confirmations": [],
+      "role": "device_export",
+      "source_fixture": "session01_streams.xdf",
+      "source_hint": "device_export",
+      "source_kind_validation": "blocked",
+      "status": "blocked",
+      "validation_decision": "blocked"
+    }
+  ],
+  "summary": {
+    "all_expected_capabilities_match": true,
+    "all_expected_capabilities_observed": true,
+    "case_count": 9,
+    "coverage_labels": [
+      "GDF recording",
+      "MAT labels",
+      "EDF recording",
+      "BDF recording",
+      "EEGLAB SET",
+      "BrainVision VHDR",
+      "BrainVision VMRK",
+      "MNE FIF",
+      "BIDS events.tsv",
+      "CSV labels",
+      "TSV labels",
+      "TXT labels",
+      "XDF / LSL stream export"
+    ],
+    "row_count": 13,
+    "statuses": [
+      "blocked",
+      "context",
+      "needs_review",
+      "supported"
+    ],
+    "validation_decisions": [
+      "blocked",
+      "needs_confirmation",
+      "safe"
+    ]
+  }
+}

@@ -1332,6 +1332,44 @@ compatibility matrix 或真人 click-through。
 哪些格式已可載入但需要語意確認，哪些格式目前 blocked。它仍不是 full manual compatibility
 matrix 或 XDF stream parser implementation。
 
+2026-05-04 Data Interpretation generated format capability matrix：
+
+- artifacts:
+  - `artifacts/data_interpretation/format-capability-matrix.json`
+  - `artifacts/data_interpretation/format-capability-matrix.md`
+- generator:
+  - `scripts/dev/report_data_interpretation_format_matrix.py`
+  - 透過 live `ApplicationService.execute(ScanSourceCommand)`、
+    `PreviewInterpretationCommand`、`ValidateInterpretationCommand` 產生 matrix，而不是從 docs
+    hard-code 產品 claim。
+- coverage:
+  - `13` rows across `9` synthetic scan fixtures。
+  - 覆蓋 GDF、EDF、BDF、EEGLAB SET、BrainVision VHDR、BrainVision VMRK、MNE FIF、MAT labels、
+    CSV labels、TSV labels、BIDS `events.tsv`、TXT labels、XDF / LSL stream export。
+  - statuses 覆蓋 `supported`、`needs_review`、`context`、`blocked`。
+  - validation decisions 覆蓋 `safe`、`needs_confirmation`、`blocked`。
+- tests / commands:
+  - TDD failure: initial focused test failed with
+    `ModuleNotFoundError: No module named 'scripts.dev.report_data_interpretation_format_matrix'`。
+  - CLI JSON purity failure: initial CLI test failed because `Study initialized` logs polluted
+    stdout before JSON。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_report_data_interpretation_format_matrix.py -q`
+  - `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_report_data_interpretation_format_matrix.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+  - `4 passed`
+  - targeted `ruff check` / `ruff format --check` for the reporter and tests -> pass.
+  - `poetry run basedpyright scripts/dev/report_data_interpretation_format_matrix.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run python scripts/dev/report_data_interpretation_format_matrix.py --write-artifacts`
+  - wrote both matrix artifacts.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant.
+  - `git diff --check` -> pass.
+
+這批 evidence 支撐 Data Interpretation format capability boundary 已有可重跑 artifact，並證明
+XDF / LSL 目前是 blocked user-facing boundary。它仍不支撐 XDF / LSL stream parser、
+raw-event-anchor-specific MAT/GDF alignment、或全格式 real-data manual certification。
+
 2026-05-04 Data Interpretation timestamp label apply slice：
 
 - backend:
