@@ -72,8 +72,13 @@ MCP-shaped schema；後續又新增 stdlib-only MCP stdio client walkthrough art
 `scripts/dev/capture_mcp_stdio_walkthrough.py` 會從 client process 啟動 prepared XBrainLab
 MCP server，完成 `initialize`、`tools/list`、`scan_source`、`preview_interpretation`、
 `validate_interpretation`，並保存 `artifacts/mcp/stdio-walkthrough.json` /
-`stdio-walkthrough.md`。這支撐外部 stdio client path，但尚未完成 Inspector GUI
-click-through、Windows launcher 整合或 release config。另已新增 non-mocked backend
+`stdio-walkthrough.md`。後續 release config slice 又新增
+`scripts/dev/run_mcp_server_for_client.sh`、`scripts/dev/write_mcp_client_config.py` 和
+`artifacts/mcp/xbrainlab-mcp.json` / `.md`；committed config 以 Inspector `mcpServers`
+stdio 格式啟動 prepared XBrainLab runtime，並有 integration test 透過該 config command
+重跑 `initialize` / `tools/list` / `tools/call` walkthrough。這支撐外部 stdio client path
+和 release config baseline，但尚未完成 Inspector GUI click-through 或 Windows launcher
+整合。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
 confirmation-blocked apply -> confirmed apply -> save recipe -> reload recipe review ->
 preprocess -> epoch -> dataset，並檢查 split audit / train-val-test counts。UI-observable
@@ -128,7 +133,7 @@ compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未
 Post-load `Add Labels to Loaded Data` dialog 已補上 target context：dialog 會顯示 labels 將套用到
 哪些 loaded EEG files，並提示成功後會更新目前 import recipe trace。這改善 compatibility label
 flow 的使用者語意，但它仍不是完整 Data Interpretation 內嵌 label editor。MCP Inspector /
-Windows release config 驗收尚未完成，舊
+GUI click-through 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：
 `scripts/agent/evals/run_local_tool_call_eval.py` 會用同一份 `54` cases / scorer 接 primary /
@@ -518,8 +523,9 @@ release closure。
   import entry、recipe save option、headless/MCP-ready command schema、stdio MCP server
   baseline、deterministic eval cases、第一版 UI-observable replay artifact 和 wizard review
   hardening 已進入新心智模型；label import 目前仍是 service-backed compatibility UI，但成功結果
-  已會寫入 Data Interpretation recipe trace；MCP stdio external-client artifact 已完成，但 Inspector GUI
-  walkthrough、Windows release config、HTTP transport 和 long-running training through MCP 尚未完成。
+  已會寫入 Data Interpretation recipe trace；MCP stdio external-client artifact 和 committed
+  Inspector-style `mcp.json` release config baseline 已完成，但 Inspector GUI walkthrough、HTTP
+  transport 和 long-running training through MCP 尚未完成。
 
 ## 目前執行中
 

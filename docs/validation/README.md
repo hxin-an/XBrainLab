@@ -527,6 +527,37 @@ dependencies，並透過 prepared XBrainLab MCP server 走同一套 ApplicationS
 它仍不支撐 MCP Inspector GUI click-through、Windows release registration / config、HTTP transport、
 long-running training tool through MCP、或 product completion。
 
+2026-05-04 MCP Inspector-style release config baseline：
+
+- 新增 `scripts/dev/run_mcp_server_for_client.sh`：
+  - 外部 MCP client / Inspector 只需要啟動這個 prepared runtime wrapper。
+  - wrapper 會切回 active repo，再用 `poetry run python scripts/dev/run_mcp_server.py`
+    啟動真正 server。
+- 新增 `scripts/dev/write_mcp_client_config.py`：
+  - 產生 `artifacts/mcp/xbrainlab-mcp.json` 和 `artifacts/mcp/xbrainlab-mcp.md`。
+  - config 使用 Inspector 支援的 `mcpServers` / `type: "stdio"` / `command` / `args` 格式。
+  - `default-server` 用 `bash <wrapper>`，`xbrainlab-windows-wsl` 用
+    `wsl.exe bash <wrapper>`。
+  - validator 明確拒絕直接把 client config 指到 client-side Python，避免把 EEG / PyQt /
+    PyTorch dependencies 推給 external client。
+- 新增 `tests/unit/scripts/test_write_mcp_client_config.py` 和
+  `tests/integration/mcp/test_client_config.py`：
+  - unit tests 驗證 config shape、server command extraction、committed artifact contract 和
+    CLI regeneration。
+  - integration test 讀 committed config，透過 config command 啟動 prepared runtime wrapper，
+    再重跑 stdio `initialize`、`tools/list`、`scan_source`、`preview_interpretation`
+    walkthrough。
+- commands:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py -q`
+  - `6 passed`
+  - manual config walkthrough:
+    `poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir /tmp/xbrainlab-mcp-config-walkthrough --server-command bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+  - wrote `/tmp/xbrainlab-mcp-config-walkthrough/stdio-walkthrough.json` and `.md`
+
+這批 evidence 支撐 Inspector-style release config baseline 和 prepared-runtime launch path。
+它仍不支撐 Inspector GUI 人工 click-through、Windows Desktop 真人啟動、HTTP transport、
+long-running training through MCP 或 product completion。
+
 2026-05-04 Local LLM tool-call runner and schema gate：
 
 - 新增 `scripts/agent/evals/run_local_tool_call_eval.py`：

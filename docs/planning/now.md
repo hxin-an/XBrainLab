@@ -84,6 +84,16 @@
     surface。
   - 這支撐 external stdio client path，不代表 MCP Inspector GUI click-through、Windows release
     config、HTTP transport 或 long-running training through MCP 已完成。
+- MCP Inspector-style release config baseline 已新增：
+  - `artifacts/mcp/xbrainlab-mcp.json` 是標準 `mcpServers` / `stdio` config，含
+    `default-server` 和 `xbrainlab-windows-wsl` entries。
+  - `scripts/dev/run_mcp_server_for_client.sh` 會切回 prepared repo runtime，再啟動
+    `scripts/dev/run_mcp_server.py`。
+  - `scripts/dev/write_mcp_client_config.py` 可重生 config / Markdown，並驗證 client config
+    沒有把 Python / EEG / PyQt / PyTorch dependencies 放到 client side。
+  - integration test 會用 committed config command 重跑 stdio walkthrough。
+  - 這支撐 Inspector / external client release config baseline；仍不是 Inspector GUI 人工
+    click-through、HTTP transport 或 long-running training through MCP。
 - Windows launcher automated command walkthrough 已新增：
   - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
     `XBrainLab.cmd` smoke，確認它指向 active repo。
@@ -250,7 +260,7 @@
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、all-format
-  manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
+  manual compatibility matrix、MCP Inspector GUI click-through、Windows launcher 真人驗收尚未完成，
   UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
@@ -260,7 +270,7 @@
 ```text
 True local LLM ChatPanel long-running tool-command workflow
   + label/recipe wizard hardening
-  + MCP Inspector / release config
+  + MCP Inspector GUI click-through
   + Windows launcher click-through
 ```
 

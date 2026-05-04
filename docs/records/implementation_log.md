@@ -4639,3 +4639,72 @@ render 3D 的 runtime，UI 應該顯示 blocked reason，而不是 crash。
 
 - 這只是 usage refresh handoff，不是產品 closure。
 - Goal 不能標 complete。
+
+## 2026-05-04 MCP Inspector-style release config baseline
+
+### 背景
+
+MCP server baseline 和 stdio external-client walkthrough 已存在，但外部 client / Inspector 還缺一份
+可交付、可重生、可驗證的 launch config。目標不是新增第二套 MCP tool schema，而是讓 external
+client 用標準 `mcp.json` 啟動 prepared XBrainLab runtime，MCP calls 仍走
+`ApplicationService` automation surface。
+
+### 變更
+
+- 新增 `scripts/dev/run_mcp_server_for_client.sh`：
+  - 從任意 client cwd 啟動時，先切回 repo root。
+  - 以 `poetry run python scripts/dev/run_mcp_server.py` 啟動 stdio MCP server。
+  - 這把 EEG / PyQt / PyTorch / local runtime dependencies 留在 prepared server runtime。
+- 新增 `scripts/dev/write_mcp_client_config.py`：
+  - 產生 `artifacts/mcp/xbrainlab-mcp.json`。
+  - 產生 `artifacts/mcp/xbrainlab-mcp.md`。
+  - config 使用官方 Inspector 支援的 `mcpServers` / `stdio` / `command` / `args` 格式。
+  - `default-server` 用 `bash <wrapper>`；`xbrainlab-windows-wsl` 用
+    `wsl.exe bash <wrapper>`。
+  - validator 會拒絕直接把 config 指到 client-side Python，避免違反 dependency boundary。
+- 新增 `tests/unit/scripts/test_write_mcp_client_config.py`：
+  - 驗證 config shape、client boundary、server command extraction、committed artifact contract 和
+    CLI regeneration。
+- 新增 `tests/integration/mcp/test_client_config.py`：
+  - 讀 committed `artifacts/mcp/xbrainlab-mcp.json`。
+  - 透過 config command 啟動 wrapper。
+  - 使用既有 stdio walkthrough 驗證 `initialize`、`tools/list`、`scan_source`、
+    `preview_interpretation`。
+
+### 驗證
+
+- TDD failure：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py -q`
+  - 初跑因 `scripts.dev.write_mcp_client_config` module 不存在而 collection failed。
+- Unit:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py -q`
+  - `5 passed`
+- True config command walkthrough:
+  - `poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir /tmp/xbrainlab-mcp-config-walkthrough --server-command bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+  - wrote `/tmp/xbrainlab-mcp-config-walkthrough/stdio-walkthrough.json` and `.md`
+- Unit + integration:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py -q`
+  - `6 passed`
+- Targeted MCP regression:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/unit/mcp tests/integration/mcp -q`
+  - `13 passed`
+- Static / docs:
+  - `poetry run ruff check scripts/dev/write_mcp_client_config.py tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py`
+  - `PASS`
+  - `poetry run ruff format --check scripts/dev/write_mcp_client_config.py tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py`
+  - `PASS` after formatting `tests/unit/scripts/test_write_mcp_client_config.py`
+  - `poetry run basedpyright scripts/dev/write_mcp_client_config.py tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run python tests/architecture_compliance.py`
+  - Architecture compliant
+  - `poetry run mkdocs build --strict`
+  - pass with existing MkDocs Material warning
+  - `git diff --check`
+  - pass
+
+### 不能宣稱完成
+
+- 這支撐 Inspector-style `mcp.json` release config baseline。
+- 這不支撐 Inspector GUI 人工 click-through、HTTP transport、Windows Desktop 真人啟動或
+  long-running training through MCP。
+- Goal 不能標 complete。

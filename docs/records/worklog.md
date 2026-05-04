@@ -3058,3 +3058,42 @@
   propagation、多檔安全 label mapping、matched EEG UI 或 post-load label target context。
 - 預期未提交的 dirty worktree 只應剩 `.vscode/settings.json` 和 root `settings.json`，兩者不可碰。
 - Goal 仍不可標 complete。
+
+### 2026-05-04 19:18 MCP Inspector-style release config baseline
+
+- 做了什麼：
+  - 新增 `scripts/dev/run_mcp_server_for_client.sh`，讓外部 MCP client / Inspector 啟動 prepared
+    XBrainLab runtime wrapper，而不是在 client side 安裝 EEG / PyQt / PyTorch stack。
+  - 新增 `scripts/dev/write_mcp_client_config.py`，可重生並驗證
+    `artifacts/mcp/xbrainlab-mcp.json` / `.md`。
+  - `xbrainlab-mcp.json` 使用 Inspector 支援的 `mcpServers` / `type: "stdio"` config：
+    `default-server` 走 `bash <wrapper>`，`xbrainlab-windows-wsl` 走
+    `wsl.exe bash <wrapper>`。
+  - 新增 unit / integration tests；integration test 會讀 committed config，再用 config command
+    啟動 prepared runtime wrapper 重跑 MCP stdio walkthrough。
+- TDD：
+  - 初跑 `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py -q`
+    因 `scripts.dev.write_mcp_client_config` 不存在而 collection failed。
+- 驗證：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py -q`
+    -> `5 passed`。
+  - `poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir /tmp/xbrainlab-mcp-config-walkthrough --server-command bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+    -> wrote walkthrough artifact in `/tmp/xbrainlab-mcp-config-walkthrough`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py -q`
+    -> `6 passed`。
+  - `poetry run ruff check scripts/dev/write_mcp_client_config.py tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py`
+    -> pass。
+  - `poetry run ruff format --check scripts/dev/write_mcp_client_config.py tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py`
+    -> pass after formatting `tests/unit/scripts/test_write_mcp_client_config.py`。
+  - `poetry run basedpyright scripts/dev/write_mcp_client_config.py tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/unit/mcp tests/integration/mcp -q`
+    -> `13 passed`。
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐 MCP Inspector-style `mcp.json` release config baseline 和 prepared-runtime launch path。
+  - 還不是 Inspector GUI 人工 click-through、HTTP transport、Windows Desktop 真人啟動或
+    long-running training through MCP。
+  - Goal 仍不可標 complete。
