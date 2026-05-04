@@ -106,11 +106,15 @@ UI baseline capture 結果：
   `clear_training_history` 和 reset-time training config clear。
 - `DatasetGenerationCommandService` 承接 `generate_dataset`、`clear_datasets`、split config、
   split audit、rollback、split summary 和 dataset cleanup。
+- `LifecycleCommandService` 承接 `reset_preprocess`、`reset_session`、`new_session`、
+  downstream rollback 和 reset-time dependent-state clear。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
-  `XBrainLab.backend.application.dataset_generation_service`，再以 service unit tests 驗證 model
-  holder、training option snapshot、start / stop、history cleanup diagnostics、config reset
-  notification、dataset split config、audit blocking、rollback 和 cleanup diagnostics。
+  `XBrainLab.backend.application.dataset_generation_service` /
+  `XBrainLab.backend.application.lifecycle_service`，再以 service unit tests 驗證 model holder、
+  training option snapshot、start / stop、history cleanup diagnostics、config reset notification、
+  dataset split config、audit blocking、rollback、cleanup diagnostics、reset notification 和
+  dependent-state clearing。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - 這支撐 backend handler boundary cleanup；不能擴張成 product-complete、Windows human
@@ -194,8 +198,8 @@ agent 架構文件整理時也跑：
 這組 gate 支撐「Data Interpretation lifecycle 已從 `ApplicationService` 拆到 focused service，
 reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
 沒有回歸」。它不能支撐整個 backend architecture closure；後續 cleanup 已另外拆出
-analysis、training 和 dataset generation handlers，但 reset lifecycle 和 legacy compatibility
-handlers 仍需要後續拆分。
+analysis、training、dataset generation 和 lifecycle handlers，但 legacy compatibility handlers
+仍需要後續拆分。
 
 2026-05-05 Analysis command boundary cleanup 新增一組 architecture gate：
 

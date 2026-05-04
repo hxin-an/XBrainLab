@@ -56,6 +56,7 @@ from .errors import (
     PreconditionError,
     map_exception,
 )
+from .lifecycle_service import LifecycleCommandService
 from .results import ChangedState, CommandResult, ErrorType
 from .state import (
     ActiveDatasetSnapshot,
@@ -105,6 +106,16 @@ class ApplicationService:
         )
         self.training_commands = TrainingCommandService(
             training=self.training,
+            get_state=self.get_state,
+        )
+        self.lifecycle = LifecycleCommandService(
+            study=self.study,
+            dataset=self.dataset,
+            preprocess=self.preprocess,
+            training=self.training,
+            dataset_generation=self.dataset_generation,
+            training_commands=self.training_commands,
+            interpretation=self.interpretation,
             get_state=self.get_state,
         )
 
@@ -309,9 +320,9 @@ class ApplicationService:
             CommandName.SALIENCY: self.analysis.handle_saliency,
             CommandName.APPLY_MONTAGE: self.analysis.handle_apply_montage,
             CommandName.QUERY_STATE: self._handle_query_state,
-            CommandName.RESET_PREPROCESS: self._handle_reset_preprocess,
-            CommandName.RESET_SESSION: self._handle_reset_session,
-            CommandName.NEW_SESSION: self._handle_new_session,
+            CommandName.RESET_PREPROCESS: self.lifecycle.handle_reset_preprocess,
+            CommandName.RESET_SESSION: self.lifecycle.handle_reset_session,
+            CommandName.NEW_SESSION: self.lifecycle.handle_new_session,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -795,64 +806,6 @@ class ApplicationService:
         )
         return f"Created epochs from {command.t_min}s to {command.t_max}s."
 
-    def _handle_reset_preprocess(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ResetPreprocessCommand):
-            raise TypeError("Invalid command for reset_preprocess")
-        before = self.get_state()
-        previous_preprocessed = list(getattr(self.study, "preprocessed_data_list", []))
-        previous_epoch = getattr(self.study, "epoch_data", None)
-        previous_datasets = list(getattr(self.study, "datasets", []) or [])
-        previous_generator = getattr(self.study, "dataset_generator", None)
-        previous_trainer = getattr(self.study, "trainer", None)
-        try:
-            self.study.reset_preprocess(force_update=True)
-            self.training.clean_datasets(force_update=True)
-        except Exception:
-            data_manager = getattr(self.study, "data_manager", None)
-            if data_manager is not None:
-                data_manager.preprocessed_data_list = previous_preprocessed
-                data_manager.epoch_data = previous_epoch
-            else:
-                self.study.preprocessed_data_list = previous_preprocessed
-                self.study.epoch_data = previous_epoch
-            self.dataset_generation.restore_generation_state(
-                datasets=previous_datasets,
-                generator=previous_generator,
-                trainer=previous_trainer,
-            )
-            raise
-        try:
-            self.preprocess.notify("preprocess_changed")
-            self.dataset.notify("data_changed")
-            self.dataset.notify("dataset_locked", False)
-        except Exception:
-            logger.debug("Preprocess reset notification failed", exc_info=True)
-        return (
-            "Preprocessing reset to loaded raw data.",
-            {
-                "preprocess_operations_before": before.preprocessed.operations,
-                "had_epoch_data": before.epoch.exists,
-                "dataset_count_before": before.dataset.count,
-                "trainer_cleared": before.training.has_trainer,
-            },
-        )
-
-    def _handle_reset_session(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ResetSessionCommand):
-            raise TypeError("Invalid command for reset_session")
-        self.dataset.clean_dataset()
-        self._clear_training_configuration()
-        self._clear_interpretation_state()
-        return "Session reset."
-
-    def _handle_new_session(self, command: Command) -> HandlerResult:
-        if not isinstance(command, NewSessionCommand):
-            raise TypeError("Invalid command for new_session")
-        self.dataset.clean_dataset()
-        self._clear_training_configuration()
-        self._clear_interpretation_state()
-        return "New session started.", {"single_session_backend": True}
-
     def _handle_query_state(self, command: Command) -> HandlerResult:
         if not isinstance(command, QueryStateCommand):
             raise TypeError("Invalid command for query_state")
@@ -899,15 +852,6 @@ class ApplicationService:
 
     def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
         return self.interpretation.snapshot()
-
-    def _clear_training_configuration(self) -> None:
-        """Clear training config that belongs to the previous active dataset."""
-        self.training_commands.clear_configuration(
-            getattr(self.study, "training_manager", None),
-        )
-
-    def _clear_interpretation_state(self) -> None:
-        self.interpretation.clear()
 
     @staticmethod
     def _normalize_handler_result(result: HandlerResult) -> tuple[str, dict[str, Any]]:

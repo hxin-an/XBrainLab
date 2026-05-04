@@ -37,6 +37,56 @@
 
 ## 2026-05-05
 
+### 11:05 Lifecycle command service boundary cleanup
+
+- 做了什麼：
+  - 延續 backend cleanup，選 `reset_preprocess` / `reset_session` / `new_session` 作為 focused
+    slice，不碰 legacy data / label compatibility。
+  - 先新增 focused test，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.lifecycle_service`。
+  - 新增 `LifecycleCommandService`，承接 reset preprocess、reset session、new session、
+    downstream rollback、reset-time training config clear 和 interpretation state clear。
+  - `ApplicationService` 的 handler map 改成窄委派到 lifecycle service；reset preprocess 的
+    dataset generator / trainer rollback 仍委派給 `DatasetGenerationCommandService`，避免重建
+    第二套 rollback truth。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `ApplicationService` 從 `1352` 行降到 `1296` 行。
+  - `LifecycleCommandService` 為 `109` 行。
+  - 對外 command names、confirmation policy、rollback diagnostics 和 `CommandResult` contract
+    沒變。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_lifecycle_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/lifecycle_service.py tests/unit/backend/application/test_lifecycle_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/lifecycle_service.py tests/unit/backend/application/test_lifecycle_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_lifecycle_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `47 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `65 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 接續 / 本輪剩餘：
+  - 這支撐 lifecycle reset handler boundary，不是 product completion。
+  - 下一輪 backend cleanup 仍應處理 legacy data / label compatibility handlers；`query_state`
+    也仍在 `ApplicationService`，但目前屬 cross-cutting query。
+
 ### 10:25 Dataset generation command service boundary cleanup
 
 - 做了什麼：
