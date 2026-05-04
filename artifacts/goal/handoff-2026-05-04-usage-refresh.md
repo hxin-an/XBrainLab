@@ -114,14 +114,10 @@ Do not claim product completion yet.
 
 - No true ChatPanel dataset -> model selection -> training settings -> train ->
   evaluate / visualize / saliency readiness long-chain walkthrough.
-- Evaluation / visualization / saliency are backend typed command concepts, but
-  they still need an agent-tool exposure audit. The latest quick check found:
-  - `CommandName.VISUALIZE` and `CommandName.SALIENCY` exist in
-    `XBrainLab/llm/agent/intent.py`.
-  - `evaluate`, `visualize`, and `saliency` are not registered in
-    `XBrainLab/llm/tools/application_surface.py` `TOOL_TO_COMMAND`.
-  - `evaluate`, `visualize`, and `saliency` are not in
-    `XBrainLab/llm/agent/parser.py` `_BARE_COMMANDS`.
+- Post-handoff update: evaluation / visualization / saliency agent-tool exposure
+  has been completed. `evaluate`, `visualize`, and `saliency` are registered
+  tools and route through ApplicationService. The remaining blocker is the true
+  ChatPanel dataset -> training -> analysis-readiness walkthrough.
 - Windows Desktop launcher human click-through / WSLg multi-monitor behavior has
   not been manually verified. There is automated command-path evidence only.
 - MCP stdio server and stdlib client walkthrough exist, but MCP Inspector GUI /
@@ -144,21 +140,7 @@ Start with the smallest product slice that unlocks the next visible workflow:
 
    Only `.vscode/settings.json` and root `settings.json` should be dirty.
 
-2. Expose evaluation / visualization / saliency as ApplicationService-backed
-   agent tools if the audit still confirms the gap:
-
-   - Add tool definitions / mocks / real wrappers following existing tool
-     structure.
-   - Add `evaluate`, `visualize`, and `saliency` to
-     `XBrainLab/llm/tools/application_surface.py` and route them to typed
-     backend commands.
-   - Add parser / intent / prompt-stage support as needed.
-   - Add unit tests for definitions, mock tools, ApplicationService routing,
-     parser / normalizer behavior, and blocked / missing-state responses.
-   - Keep legacy UI control tools separate from backend evaluation / saliency
-     commands.
-
-3. Capture the next UI-observable local-model artifact:
+2. Capture the next UI-observable local-model artifact:
 
    ```text
    dataset ready -> set model -> configure training -> explicit confirmation -> train or readiness boundary -> evaluate / visualize / saliency readiness
@@ -168,7 +150,7 @@ Start with the smallest product slice that unlocks the next visible workflow:
    confirmation / readiness boundary and document exactly what it does not
    prove. Do not let the assistant auto-train without explicit confirmation.
 
-4. Run targeted validation for that slice, at minimum:
+3. Run targeted validation for that slice, at minimum:
 
    ```bash
    git diff --check
@@ -178,7 +160,7 @@ Start with the smallest product slice that unlocks the next visible workflow:
    poetry run mkdocs build --strict
    ```
 
-5. Commit the verified slice locally.
+4. Commit the verified slice locally.
 
 ## Do Not Redo Without Reason
 

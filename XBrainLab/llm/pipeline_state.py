@@ -123,6 +123,12 @@ _TRAINING_TOOLS: list[str] = [
     "start_training",
 ]
 
+_ANALYSIS_TOOLS: list[str] = [
+    "evaluate",
+    "visualize",
+    "saliency",
+]
+
 
 # ---------------------------------------------------------------------------
 # Stage configuration — tools + system prompt
@@ -233,6 +239,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
             *_TRAINING_TOOLS,
+            *_ANALYSIS_TOOLS,
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
@@ -301,10 +308,11 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "different parameters.\n"
             "\n"
             "### What you should do\n"
-            "- Suggest 'switch_panel' to the Evaluation panel to view "
-            "accuracy, confusion matrix, and metrics.\n"
-            "- Suggest 'switch_panel' to the Visualization panel to view "
-            "saliency maps (gradient-based feature attribution).\n"
+            "- Use 'evaluate' to summarize evaluation readiness, completed "
+            "runs, and metrics before opening result views.\n"
+            "- Use 'visualize' to summarize available visualization views.\n"
+            "- Use 'saliency' to query or configure saliency readiness before "
+            "opening saliency maps.\n"
             "- If the user wants to re-train with different settings, "
             "use 'set_model' / 'configure_training' / 'start_training'.\n"
             "- If the user wants to start completely over, use "

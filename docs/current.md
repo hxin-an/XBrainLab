@@ -168,6 +168,12 @@ placeholder 會移除讓 ApplicationService 使用目前 state。修正後 artif
 available `True`、dataset count `1`，UI 回到 idle。這支撐真 local ChatPanel 可走
 Data Interpretation apply -> preprocess -> epoch -> dataset 的資料管線；仍不支撐 training /
 evaluation / saliency 長鏈、自動正式訓練策略或 Windows launcher 人工 click-through。
+同日下一個 agent analysis-tool slice 已把 `evaluate`、`visualize`、`saliency` 補成
+definitions / mock / real tools，註冊進 ChatPanel controller 的 tool registry，並由
+`application_surface.py` 直接轉成 `EvaluateCommand`、`VisualizeCommand`、`SaliencyCommand`。
+`CommandParser` 現在接受三個 bare tool names，`infer_user_intent()` 也會把 evaluation request
+映射到 `CommandName.EVALUATE`。這解除「backend 有 typed command，但 agent 不能直接使用」的
+架構旁路；它仍不等於 ChatPanel 已完成 dataset -> train -> evaluate / saliency 長鏈。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
 `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
@@ -421,8 +427,8 @@ release closure。
 仍存在的非阻塞架構風險：
 
 - `evaluate` / `visualize` / `saliency` / `new_session` 已是 service-backed query / lifecycle
-  command；它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow
-  已完成。
+  command；`evaluate` / `visualize` / `saliency` 也已暴露成 ApplicationService-backed agent
+  tools。它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow 已完成。
 - tool-call eval 已有 deterministic baseline 和 primary / fallback 真 local model runner；最新
   primary / fallback `100` thesis-candidate cases x `3` 都是 `100 / 100` pass。這解除
   先前 `54` case 數不足和 bandpass-vs-standard preprocess failure。ChatPanel true local
@@ -440,8 +446,9 @@ release closure。
 ## 目前執行中
 
 1. 等待真 Windows Desktop launcher click-through。
-2. 擴 true local LLM ChatPanel walkthrough 到 dataset -> model / training settings -> train ->
-   evaluation / saliency readiness；不要讓 assistant 自行越過高影響確認邊界。
+2. 擴 true local LLM ChatPanel walkthrough 到 dataset -> model / training settings ->
+   explicit training boundary -> evaluate / visualize / saliency readiness；不要讓 assistant
+   自行越過高影響確認邊界。
 3. 補真正 UI button-click 到 training / evaluation / visualization completion 的 E2E。
 4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。

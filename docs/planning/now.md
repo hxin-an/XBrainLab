@@ -159,6 +159,15 @@
     available `True`、dataset count `1`、UI 回到 idle。
   - 這支撐真 local ChatPanel 可以走到 dataset ready；仍不代表 model selection / training /
     evaluation / saliency 長鏈完成，也不是真人 Windows launcher click-through。
+- Agent analysis-tool exposure 已補齊：
+  - `evaluate`、`visualize`、`saliency` 現在有 definitions / mock / real tools，並會註冊到
+    ChatPanel controller 的 tool registry。
+  - `application_surface.py` 會把三個 tool 直接建成 `EvaluateCommand`、`VisualizeCommand`、
+    `SaliencyCommand`，回傳 typed `ToolCommandResult`，並受 ApplicationService capability
+    policy 控制。
+  - `CommandParser` 支援三個 bare tool names；intent mapping 也補上 `evaluate`。
+  - 這解除 analysis commands 的 agent 旁路，但仍不代表 ChatPanel dataset -> train ->
+    evaluate / visualize / saliency 長鏈已完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
@@ -255,6 +264,8 @@ Goal 1 至少要包含：
 
 8. **Agent alignment**
    - Context Assembler 暴露 Data Interpretation tools。（agent surface slice 已完成。）
+   - Agent registry 暴露 `evaluate` / `visualize` / `saliency` analysis-readiness tools。（analysis
+     tool exposure slice 已完成。）
    - Verification Layer 檢查 capability policy、Data Interpretation decision 和 autonomy policy。
      （目前已檢查 backend capability / dynamic confirmation boundary；deterministic eval cases
      已納入 Data Interpretation decision / blocked / confirmation / recovery。）

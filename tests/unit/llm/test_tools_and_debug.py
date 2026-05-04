@@ -13,14 +13,18 @@ class TestGetAllTools:
         from XBrainLab.llm.tools import get_all_tools
 
         tools = get_all_tools("mock")
+        names = {tool.name for tool in tools}
         assert len(tools) > 0
         assert all(hasattr(t, "name") for t in tools)
+        assert {"evaluate", "visualize", "saliency"}.issubset(names)
 
     def test_real_mode(self):
         from XBrainLab.llm.tools import get_all_tools
 
         tools = get_all_tools("real")
+        names = {tool.name for tool in tools}
         assert len(tools) > 0
+        assert {"evaluate", "visualize", "saliency"}.issubset(names)
 
     def test_unknown_mode_raises(self):
         from XBrainLab.llm.tools import get_all_tools

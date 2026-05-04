@@ -261,6 +261,43 @@ def test_query_state_tool_uses_application_command_surface():
     assert result.raw_result["status"] == "ok"
 
 
+def test_analysis_tools_are_application_service_backed():
+    study = Study()
+
+    policy = build_agent_tool_policy(study)
+    assert policy["evaluate"].command_name == CommandName.EVALUATE.value
+    assert policy["visualize"].command_name == CommandName.VISUALIZE.value
+    assert policy["saliency"].command_name == CommandName.SALIENCY.value
+
+    evaluate = execute_application_tool_command(study, "evaluate", {})
+    visualize = execute_application_tool_command(
+        study, "visualize", {"view": "summary"}
+    )
+    saliency = execute_application_tool_command(
+        study,
+        "saliency",
+        {"method": "Gradient", "params": {"absolute": True}},
+    )
+
+    assert evaluate is not None
+    assert evaluate.command_name == CommandName.EVALUATE.value
+    assert evaluate.error_type == "precondition"
+    assert evaluate.blocked_reason is not None
+    assert "training plan" in evaluate.blocked_reason
+
+    assert visualize is not None
+    assert visualize.command_name == CommandName.VISUALIZE.value
+    assert visualize.error_type == "precondition"
+    assert visualize.blocked_reason is not None
+    assert "epochs" in visualize.blocked_reason
+
+    assert saliency is not None
+    assert saliency.command_name == CommandName.SALIENCY.value
+    assert saliency.error_type == "precondition"
+    assert saliency.blocked_reason is not None
+    assert "training settings" in saliency.blocked_reason
+
+
 def test_application_tool_command_leaves_ui_request_tools_on_legacy_path():
     assert (
         execute_application_tool_command(

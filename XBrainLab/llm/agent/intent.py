@@ -19,6 +19,7 @@ INTENT_TO_COMMAND: dict[str, CommandName] = {
     "generate_dataset": CommandName.GENERATE_DATASET,
     "configure_training": CommandName.CONFIGURE_TRAINING,
     "train": CommandName.TRAIN,
+    "evaluate": CommandName.EVALUATE,
     "reset_session": CommandName.RESET_SESSION,
     "query_state": CommandName.QUERY_STATE,
     "visualize": CommandName.VISUALIZE,
@@ -74,6 +75,8 @@ def infer_user_intent(text: str) -> str:
         return "scan_source"
     if "saliency" in normalized:
         return "saliency"
+    if "evaluate" in normalized or "evaluation" in normalized:
+        return "evaluate"
     if "visualize" in normalized or "visualise" in normalized:
         return "visualize"
     if "preprocess" in normalized or "bandpass" in normalized or "filter" in normalized:

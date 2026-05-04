@@ -2,6 +2,11 @@
 
 import pytest
 
+from XBrainLab.llm.tools.definitions.analysis_def import (
+    BaseEvaluateTool,
+    BaseSaliencyTool,
+    BaseVisualizeTool,
+)
 from XBrainLab.llm.tools.definitions.dataset_def import (
     BaseApplyInterpretationTool,
     BaseAttachLabelsTool,
@@ -50,6 +55,9 @@ def _get_all_def_classes():
         BaseClearDatasetTool,
         BaseGetDatasetInfoTool,
         BaseGenerateDatasetTool,
+        BaseEvaluateTool,
+        BaseVisualizeTool,
+        BaseSaliencyTool,
         BaseStandardPreprocessTool,
         BaseBandPassFilterTool,
         BaseNotchFilterTool,
@@ -132,6 +140,24 @@ class TestGenerateDatasetEnums:
         assert "training_mode" in params["required"]
 
 
+class TestAnalysisDefinitions:
+    def test_evaluate_target_is_optional(self):
+        params = BaseEvaluateTool.parameters.fget(None)
+        assert "target" in params["properties"]
+        assert "target" not in params.get("required", [])
+
+    def test_visualize_view_is_optional(self):
+        params = BaseVisualizeTool.parameters.fget(None)
+        assert "view" in params["properties"]
+        assert "view" not in params.get("required", [])
+
+    def test_saliency_can_query_or_configure_method(self):
+        params = BaseSaliencyTool.parameters.fget(None)
+        assert "method" in params["properties"]
+        assert "params" in params["properties"]
+        assert params["properties"]["params"]["type"] == "object"
+
+
 class TestDataInterpretationDefinitions:
     def test_scan_source_requires_source_path(self):
         params = BaseScanSourceTool.parameters.fget(None)
@@ -171,6 +197,9 @@ class TestRequiresConfirmation:
             BaseAttachLabelsTool,
             BaseGetDatasetInfoTool,
             BaseGenerateDatasetTool,
+            BaseEvaluateTool,
+            BaseVisualizeTool,
+            BaseSaliencyTool,
             BaseStandardPreprocessTool,
             BaseBandPassFilterTool,
             BaseNotchFilterTool,

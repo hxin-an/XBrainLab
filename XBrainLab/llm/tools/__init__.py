@@ -9,6 +9,11 @@ avoid pulling in heavy backend dependencies at package import time.
 """
 
 from .base import BaseTool
+from .mock.analysis_mock import (
+    MockEvaluateTool,
+    MockSaliencyTool,
+    MockVisualizeTool,
+)
 
 # Mock tools are lightweight — import eagerly for type checking
 from .mock.dataset_mock import (
@@ -47,6 +52,11 @@ from .mock.ui_control_mock import MockSwitchPanelTool
 
 def _build_real_tools() -> list[BaseTool]:
     """Lazily import and instantiate real tool classes."""
+    from .real.analysis_real import (
+        RealEvaluateTool,
+        RealSaliencyTool,
+        RealVisualizeTool,
+    )
     from .real.dataset_real import (
         RealApplyInterpretationTool,
         RealAttachLabelsTool,
@@ -95,6 +105,10 @@ def _build_real_tools() -> list[BaseTool]:
         RealQueryStateTool(),
         RealGetDatasetInfoTool(),
         RealGenerateDatasetTool(),
+        # Analysis
+        RealEvaluateTool(),
+        RealVisualizeTool(),
+        RealSaliencyTool(),
         # Preprocess
         RealStandardPreprocessTool(),
         RealBandPassFilterTool(),
@@ -145,6 +159,10 @@ def get_all_tools(mode: str = "mock") -> list[BaseTool]:
             MockQueryStateTool(),
             MockGetDatasetInfoTool(),
             MockGenerateDatasetTool(),
+            # Analysis
+            MockEvaluateTool(),
+            MockVisualizeTool(),
+            MockSaliencyTool(),
             # Preprocess
             MockStandardPreprocessTool(),
             MockBandPassFilterTool(),

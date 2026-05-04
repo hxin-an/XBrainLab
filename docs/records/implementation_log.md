@@ -3675,3 +3675,66 @@ epoch 和 dataset，而不是停在 backend JSON 或 deterministic eval。
 - Windows Desktop launcher 真人 click-through、MCP Inspector GUI、完整 import wizard label editor
   仍未完成。
 - Goal 不能標 complete。
+
+## 2026-05-04 Agent analysis-tool exposure
+
+### 背景
+
+交接後第一個產品缺口是：backend 已有 `EvaluateCommand`、`VisualizeCommand`、`SaliencyCommand`
+typed command，但 agent tool registry / parser / ApplicationService tool mapping 尚未把它們當成
+一等 workflow tools。這會讓 ChatPanel 的 evaluation / visualization / saliency request 落回
+UI routing 或 substitute tool 心智模型。
+
+### 變更
+
+- 新增 `XBrainLab/llm/tools/definitions/analysis_def.py`：
+  - `BaseEvaluateTool`
+  - `BaseVisualizeTool`
+  - `BaseSaliencyTool`
+- 新增 `XBrainLab/llm/tools/mock/analysis_mock.py` 和
+  `XBrainLab/llm/tools/real/analysis_real.py`。
+- 更新 `XBrainLab/llm/tools/__init__.py`，讓 mock / real registry 會載入三個 tools。
+- 更新 `XBrainLab/llm/tools/application_surface.py`：
+  - `evaluate` -> `EvaluateCommand`
+  - `visualize` -> `VisualizeCommand`
+  - `saliency` -> `SaliencyCommand`
+- 更新 `XBrainLab/llm/agent/parser.py`，支援三個 bare tool names。
+- 更新 `XBrainLab/llm/agent/intent.py`，將 evaluation request 映射到
+  `CommandName.EVALUATE`。
+- 更新 `XBrainLab/llm/pipeline_state.py`，trained stage prompt 直接引導使用
+  `evaluate` / `visualize` / `saliency` readiness tools，而不是只建議切 panel。
+
+### 驗證
+
+- TDD failure：
+  - 新測試初跑因缺 `XBrainLab.llm.tools.definitions.analysis_def` 和
+    `XBrainLab.llm.tools.mock.analysis_mock` collection error 而失敗。
+- Targeted unit：
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_mock_tools.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py -q`
+  - `293 passed`
+- Broader agent/tools:
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/llm/test_parser.py tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py -q`
+  - `516 passed`
+- Deterministic eval:
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2`
+  - `100 / 100` pass。
+- Affected-case local LLM smoke:
+  - primary `microsoft/Phi-4-mini-instruct`：`5 / 5` pass，`gpu-ready`，no download。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`5 / 5` pass，`gpu-ready`，no download。
+  - artifacts:
+    - `artifacts/agent_evals/local_primary_analysis_tools/`
+    - `artifacts/agent_evals/local_fallback_analysis_tools/`
+- Static / docs gates:
+  - targeted `ruff` -> pass
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+
+### 不能宣稱完成
+
+- 這支撐 analysis commands 已成為 ApplicationService-backed agent tools。
+- 仍沒有真 ChatPanel dataset -> model / training settings -> train -> evaluate / visualize /
+  saliency readiness 長鏈 artifact。
+- Goal 不能標 complete。

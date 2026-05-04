@@ -102,10 +102,21 @@ class TestStageBasedFiltering:
     def test_trained_allows_retraining(self):
         prompt = self._build(
             PipelineStage.TRAINED,
-            ["set_model", "configure_training", "start_training", "switch_panel"],
+            [
+                "set_model",
+                "configure_training",
+                "start_training",
+                "evaluate",
+                "visualize",
+                "saliency",
+                "switch_panel",
+            ],
         )
         assert "set_model" in prompt
         assert "start_training" in prompt
+        assert "evaluate" in prompt
+        assert "visualize" in prompt
+        assert "saliency" in prompt
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])

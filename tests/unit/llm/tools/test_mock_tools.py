@@ -4,6 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from XBrainLab.llm.tools.mock.analysis_mock import (
+    MockEvaluateTool,
+    MockSaliencyTool,
+    MockVisualizeTool,
+)
 from XBrainLab.llm.tools.mock.dataset_mock import (
     MockApplyInterpretationTool,
     MockAttachLabelsTool,
@@ -145,6 +150,22 @@ class TestTrainingMocks:
     def test_start_training(self, study):
         result = MockStartTrainingTool().execute(study)
         assert isinstance(result, str)
+
+
+class TestAnalysisMocks:
+    def test_evaluate(self, study):
+        result = MockEvaluateTool().execute(study)
+        assert "Evaluation" in result
+
+    def test_visualize(self, study):
+        result = MockVisualizeTool().execute(study, view="summary")
+        assert "Visualization" in result
+        assert "summary" in result
+
+    def test_saliency(self, study):
+        result = MockSaliencyTool().execute(study, method="Gradient")
+        assert "Saliency" in result
+        assert "Gradient" in result
 
 
 class TestUIControlMock:

@@ -738,6 +738,39 @@ baseline、primary local model 和 fallback local model 各自以可重跑 artif
 true ChatPanel multi-turn walkthrough、Windows launcher click-through、
 MCP Inspector / release config、完整 import wizard UI 驗收或論文最終統計報告。
 
+2026-05-04 agent analysis-tool exposure validation：
+
+- 變更範圍：
+  - `evaluate` / `visualize` / `saliency` 新增 tool definitions、mock tools、real tools 和
+    `get_all_tools()` registration。
+  - `application_surface.py` 直接轉成 `EvaluateCommand`、`VisualizeCommand`、
+    `SaliencyCommand`，因此 execution / blocked reason 走 `ApplicationService` capability
+    policy。
+  - `CommandParser` 支援三個 bare tool names；intent mapping 補上 `evaluate`。
+- deterministic eval refresh：
+  - command：`poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2`
+  - artifact：`artifacts/agent_evals/latest.json` / `latest.md`
+  - result：`100 / 100` pass (`100.00%`)。
+- affected-case local LLM smoke：
+  - primary command：`timeout 1200s poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role primary --repeat-count 3 --max-new-tokens 128 --case-id saliency-before-trained-block --case-id visualize-before-trained-block --case-id trained-visualize-ready-summary --case-id trained-saliency-ready-summary --case-id dataset-saliency-readiness-summary --output-dir artifacts/agent_evals/local_primary_analysis_tools`
+  - primary result：`5 / 5` pass (`100.00%`)，runtime `gpu-ready`，cache `15.34 GB`，no download。
+  - fallback command：`timeout 1200s poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --max-new-tokens 128 --case-id saliency-before-trained-block --case-id visualize-before-trained-block --case-id trained-visualize-ready-summary --case-id trained-saliency-ready-summary --case-id dataset-saliency-readiness-summary --output-dir artifacts/agent_evals/local_fallback_analysis_tools`
+  - fallback result：`5 / 5` pass (`100.00%`)，runtime `gpu-ready`，cache `15.34 GB`，no download。
+- regression gates:
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_mock_tools.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/test_parser.py tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py -q`
+  - `293 passed`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/llm/test_parser.py tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py -q`
+  - `516 passed`
+  - targeted `ruff` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run ruff check .` -> pass
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+
+這批 evidence 支撐 analysis commands 已成為 ApplicationService-backed agent tools。它仍不支撐
+ChatPanel dataset -> training -> evaluation / visualization / saliency 長鏈完成。
+
 2026-05-04 ChatPanel true local-model one-turn walkthrough：
 
 - 新增 `scripts/dev/capture_chatpanel_local_walkthrough.py`：

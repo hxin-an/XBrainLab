@@ -2,6 +2,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.llm.tools.real.analysis_real import (
+    RealEvaluateTool,
+    RealSaliencyTool,
+    RealVisualizeTool,
+)
 from XBrainLab.llm.tools.real.dataset_real import (
     RealAttachLabelsTool,
     RealClearDatasetTool,
@@ -88,6 +93,33 @@ class TestRealTrainingTools:
             res2 = start_tool.execute(mock_study)
             assert "started successfully" in res2
             mock_facade.run_training.assert_called()
+
+
+class TestRealAnalysisTools:
+    def test_evaluate_visualize_and_saliency_route_to_service(self, mock_study):
+        evaluate = RealEvaluateTool()
+        visualize = RealVisualizeTool()
+        saliency = RealSaliencyTool()
+
+        with patch("XBrainLab.llm.tools.real.analysis_real.BackendFacade") as facade:
+            service = facade.return_value.service
+            service.evaluate.return_value.message = "Evaluation summary ready."
+            service.visualize.return_value.message = "Visualization summary ready."
+            service.saliency.return_value.message = "Saliency summary ready."
+
+            assert "Evaluation" in evaluate.execute(mock_study, target="latest")
+            assert "Visualization" in visualize.execute(mock_study, view="summary")
+            assert "Saliency" in saliency.execute(
+                mock_study,
+                method="Gradient",
+                params={"absolute": True},
+            )
+
+            assert service.evaluate.call_args.args[0].target == "latest"
+            assert service.visualize.call_args.args[0].view == "summary"
+            saliency_command = service.saliency.call_args.args[0]
+            assert saliency_command.method == "Gradient"
+            assert saliency_command.params == {"absolute": True}
 
 
 class TestRealDatasetTools:

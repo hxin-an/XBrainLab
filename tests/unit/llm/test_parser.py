@@ -72,6 +72,14 @@ def test_parse_bare_tool_name_at_start():
     assert result == [("save_interpretation_recipe", {})]
 
 
+def test_parse_analysis_bare_tool_names():
+    assert CommandParser.parse("evaluate\nBlocked reasons: None.") == [("evaluate", {})]
+    assert CommandParser.parse("visualize\nBlocked reasons: None.") == [
+        ("visualize", {})
+    ]
+    assert CommandParser.parse("saliency\nBlocked reasons: None.") == [("saliency", {})]
+
+
 def test_parse_arguments_alias():
     text = '{"tool_name":"scan_source","arguments":{"source_path":"/data"}}'
     parsed = CommandParser.parse(text)

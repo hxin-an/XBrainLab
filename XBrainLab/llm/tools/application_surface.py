@@ -15,6 +15,7 @@ from XBrainLab.backend.application import (
     CommandResult,
     ConfigureTrainingCommand,
     CreateEpochCommand,
+    EvaluateCommand,
     GenerateDatasetCommand,
     LoadDataCommand,
     PreprocessCommand,
@@ -23,10 +24,12 @@ from XBrainLab.backend.application import (
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     ResetSessionCommand,
+    SaliencyCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     TrainCommand,
     ValidateInterpretationCommand,
+    VisualizeCommand,
 )
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
@@ -62,6 +65,9 @@ TOOL_TO_COMMAND: dict[str, CommandName] = {
     "set_model": CommandName.CONFIGURE_TRAINING,
     "configure_training": CommandName.CONFIGURE_TRAINING,
     "start_training": CommandName.TRAIN,
+    "evaluate": CommandName.EVALUATE,
+    "visualize": CommandName.VISUALIZE,
+    "saliency": CommandName.SALIENCY,
     "clear_dataset": CommandName.RESET_SESSION,
     "query_state": CommandName.QUERY_STATE,
 }
@@ -602,6 +608,19 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
 
     if tool_name == "start_training":
         return TrainCommand()
+
+    if tool_name == "evaluate":
+        return EvaluateCommand(target=_optional_str(params.get("target")))
+
+    if tool_name == "visualize":
+        return VisualizeCommand(view=_optional_str(params.get("view")))
+
+    if tool_name == "saliency":
+        saliency_params = params.get("params")
+        return SaliencyCommand(
+            method=_optional_str(params.get("method")),
+            params=dict(saliency_params) if isinstance(saliency_params, dict) else None,
+        )
 
     if tool_name == "clear_dataset":
         return ResetSessionCommand(confirmed=True)

@@ -2483,3 +2483,30 @@
   - 下一輪最高優先級：補 evaluation / visualization / saliency 的 agent tool exposure，然後做
     dataset -> train/evaluate/saliency readiness 的 ChatPanel local-model walkthrough。
 - Goal 仍不可標 complete。
+
+### 2026-05-04 12:37 Agent analysis-tool exposure
+
+- 做了什麼：
+  - 新增 `evaluate` / `visualize` / `saliency` 的 definitions、mock tools、real tools。
+  - `get_all_tools("mock")` / `get_all_tools("real")` 現在會註冊三個 analysis-readiness tools。
+  - `application_surface.py` 直接將三個 tool route 到 `EvaluateCommand`、
+    `VisualizeCommand`、`SaliencyCommand`，回 typed `ToolCommandResult`。
+  - `CommandParser` 支援三個 bare tool names，`infer_user_intent()` 補上 evaluation intent。
+  - `PipelineStage.TRAINED` prompt stage 現在明確列出 analysis tools。
+- 驗證：
+  - 先寫測試並確認 initial failure：缺 `analysis_def` / `analysis_mock`。
+  - 目標測試：`293 passed`。
+  - broader agent/tools regression：`516 passed`。
+  - deterministic eval refresh：`artifacts/agent_evals/latest.json` / `.md`，`100 / 100` pass。
+  - primary affected-case local smoke：`artifacts/agent_evals/local_primary_analysis_tools/`，
+    `5 / 5` pass，`gpu-ready`，no download。
+  - fallback affected-case local smoke：`artifacts/agent_evals/local_fallback_analysis_tools/`，
+    `5 / 5` pass，`gpu-ready`，no download。
+  - targeted `ruff` -> pass；`poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass；`git diff --check` -> pass。
+- 不能宣稱：
+  - 這只解除 analysis command 的 agent exposure gap。
+  - 還沒有真 ChatPanel dataset -> model / training settings -> train -> evaluation /
+    visualization / saliency readiness 長鏈 walkthrough。

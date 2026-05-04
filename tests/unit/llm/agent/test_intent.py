@@ -8,6 +8,7 @@ from XBrainLab.llm.agent.intent import (
 
 def test_infers_blocked_workflow_intents():
     assert infer_user_intent("Train an EEGNet model now.") == "train"
+    assert infer_user_intent("Evaluate the trained model.") == "evaluate"
     assert infer_user_intent("Preview the data interpretation.") == (
         "preview_interpretation"
     )
@@ -29,6 +30,7 @@ def test_infers_preview_metadata_intents():
 
 def test_maps_intent_to_application_command():
     assert command_for_intent("train") == CommandName.TRAIN
+    assert command_for_intent("evaluate") == CommandName.EVALUATE
     assert command_for_intent("scan_source") == CommandName.SCAN_SOURCE
     assert command_for_intent("unknown") is None
 
