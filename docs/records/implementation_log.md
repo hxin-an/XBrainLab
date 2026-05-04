@@ -28,6 +28,58 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 MCP stdio external-client walkthrough
+
+### 背景
+
+前一個 slice 已把 MCP 從 schema-only 推到可啟動的 stdio server，但仍沒有 external-client
+walkthrough artifact。產品完成要求 MCP client 不需要安裝 XBrainLab EEG / PyQt / PyTorch stack，
+且 MCP calls 不能繞過 ApplicationService。
+
+### 變更
+
+- 新增 `scripts/dev/capture_mcp_stdio_walkthrough.py`：
+  - client 端只使用 Python standard library。
+  - 透過 subprocess 啟動 prepared XBrainLab runtime 中的 `scripts/dev/run_mcp_server.py`。
+  - 用 MCP stdio JSON-RPC 跑 `initialize`、`tools/list`、`scan_source`、
+    `preview_interpretation`、`validate_interpretation`。
+  - 保存 client-observable transcript summary 到 `artifacts/mcp/stdio-walkthrough.json` 和
+    `artifacts/mcp/stdio-walkthrough.md`。
+- 新增 `tests/integration/mcp/test_stdio_walkthrough_artifact.py`，讓 walkthrough artifact 可在 CI /
+  local gate 中重生並檢查 dependency boundary、tool listing、taxonomy 和 command statuses。
+
+### 影響範圍
+
+- MCP validation / evidence scripts。
+- Integration MCP test suite。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- `poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir artifacts/mcp`
+  - wrote `artifacts/mcp/stdio-walkthrough.json`
+  - wrote `artifacts/mcp/stdio-walkthrough.md`
+- artifact summary：
+  - initialized `True`
+  - tool count `28`
+  - `scan_source` taxonomy `data_interpretation`
+  - `scan_source` / `preview_interpretation` / `validate_interpretation` status `ok`
+  - validation visible text `Interpretation validation: needs_confirmation.`
+- `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+  - `7 passed`
+- `poetry run ruff check scripts/dev/capture_mcp_stdio_walkthrough.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+  - pass
+- `poetry run basedpyright scripts/dev/capture_mcp_stdio_walkthrough.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是 stdio external-client walkthrough，不是 MCP Inspector GUI click-through。
+- 尚未補 Windows release registration / config、HTTP transport、long-running training through MCP
+  或 external agent recovery UX。
+- 產品 completion 仍受 true ChatPanel local-model walkthrough、Windows launcher click-through 和成熟
+  import wizard UI 驗收影響。
+
 ## 2026-05-04 Local tool-call thesis-candidate 100-case rerun
 
 ### 背景
@@ -93,8 +145,8 @@
 ### 剩餘風險
 
 - 這支撐 thesis-candidate tool-call benchmark evidence，但不等於整個 thesis package closure。
-- true ChatPanel local-model walkthrough、Windows launcher click-through、MCP external-client
-  walkthrough、完整 import wizard UI 驗收仍未完成。
+- true ChatPanel local-model walkthrough、Windows launcher click-through、MCP Inspector / release
+  config、完整 import wizard UI 驗收仍未完成。
 
 ## 2026-05-04 Local assistant tool-call normalization full rerun
 

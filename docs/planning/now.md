@@ -74,13 +74,22 @@
   - fallback `microsoft/Phi-3.5-mini-instruct`：`100 / 100` pass。
   - runtime classification：primary / fallback 都是 `gpu-ready`；cache `15.34 GB`；no download。
   這支撐 thesis-candidate tool-call benchmark evidence；仍不能取代 ChatPanel walkthrough、
-  Windows launcher click-through、MCP external-client walkthrough 或成熟 import wizard 驗收。
+  Windows launcher click-through、MCP Inspector / release config 或成熟 import wizard 驗收。
+- MCP stdio external-client walkthrough 已新增：
+  - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
+  - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
+    `artifacts/mcp/stdio-walkthrough.json` / `.md`。
+  - evidence 覆蓋 `initialize`、`tools/list`、`scan_source`、`preview_interpretation`、
+    `validate_interpretation`；tool schema taxonomy 仍來自 ApplicationService automation
+    surface。
+  - 這支撐 external stdio client path，不代表 MCP Inspector GUI click-through、Windows release
+    config、HTTP transport 或 long-running training through MCP 已完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內的 label/recipe editor；MCP external-client / Inspector walkthrough 尚未完成、UI replay
-  coverage 還不是完整真人 walkthrough。
+  wizard 內的 label/recipe editor；MCP Inspector / Windows release config 尚未完成、UI replay coverage
+  還不是完整真人 walkthrough。
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現並進入 recipe trace；
   更完整的 override UI 仍是下一輪 hardening。
 
@@ -91,7 +100,7 @@
 ```text
 True local LLM ChatPanel workflow
   + label/recipe wizard hardening
-  + MCP external-client walkthrough / release config
+  + MCP Inspector / release config
   + Windows launcher click-through
 ```
 

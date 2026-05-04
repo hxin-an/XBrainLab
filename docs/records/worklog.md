@@ -37,6 +37,33 @@
 
 ## 2026-05-04
 
+### 10:25 MCP stdio external-client walkthrough
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_mcp_stdio_walkthrough.py`，用只依賴 Python standard library 的
+    client process 啟動 prepared XBrainLab MCP stdio server。
+  - client 透過 JSON-RPC 跑 `initialize`、`tools/list`、`scan_source`、
+    `preview_interpretation`、`validate_interpretation`。
+  - 新增 `tests/integration/mcp/test_stdio_walkthrough_artifact.py`，確認 artifact 可重生且 summary
+    保留 external-client dependency boundary、tool listing 和 Data Interpretation taxonomy。
+- 結果：
+  - `artifacts/mcp/stdio-walkthrough.json` / `.md` 已保存 client-observable transcript summary。
+  - tool count `28`；`scan_source` taxonomy 是 `data_interpretation`。
+  - `scan_source` / `preview_interpretation` / `validate_interpretation` 都回 `ok`；validation visible
+    text 是 `Interpretation validation: needs_confirmation.`。
+- 證據：
+  - `poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir artifacts/mcp` -> wrote
+    artifacts。
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q` -> `7 passed`
+  - `poetry run ruff check scripts/dev/capture_mcp_stdio_walkthrough.py tests/integration/mcp/test_stdio_walkthrough_artifact.py` -> pass
+  - `poetry run basedpyright scripts/dev/capture_mcp_stdio_walkthrough.py tests/integration/mcp/test_stdio_walkthrough_artifact.py` -> `0 errors, 0 warnings, 0 notes`
+- 接續 / 本輪剩餘：
+  - 這解除「沒有外部 stdio client artifact」的缺口。
+  - 仍不能宣稱 MCP product complete：Inspector GUI click-through、Windows release config、
+    HTTP transport、long-running training through MCP 和 external agent recovery UX 未完成。
+  - true ChatPanel local-model walkthrough、Windows launcher click-through、成熟 import wizard UI
+    驗收仍是 product blockers。
+
 ### 10:10 local tool-call thesis-candidate 100-case rerun
 
 - 做了什麼：
@@ -68,7 +95,7 @@
 - 接續 / 本輪剩餘：
   - 這解除 local tool-call eval case 數不足和 33% / 37% / 54-case failure blocker。
   - 仍不能宣稱 product complete：true ChatPanel local-model walkthrough、Windows launcher
-    click-through、MCP external-client walkthrough 和成熟 import wizard UI 驗收仍未完成。
+    click-through、MCP Inspector / release config 和成熟 import wizard UI 驗收仍未完成。
 
 ### 07:40 local assistant full eval normalization rerun
 
