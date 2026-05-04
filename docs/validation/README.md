@@ -844,6 +844,48 @@ Desktop launcher click-through 或完整 release closure。
 bloat timeout。它仍不支撐長時間 autonomous tool-command chain、完整資料到訓練操作或真人
 Windows walkthrough。
 
+2026-05-04 ChatPanel local Data Interpretation tool-chain walkthrough：
+
+- root cause fixed:
+  - 首次真 local-model run 中，turn 1 `scan_source` 成功，但 turn 2
+    `preview_interpretation` failed with `Scan a data source before previewing interpretation.`
+  - artifact final state 顯示 backend 已有 `latest_scan_id=scan-1`，所以 failure 不是
+    ApplicationService lifecycle 遺失，而是 local model 傳入 schema-derived placeholder
+    `scan_id`，覆蓋了 backend latest-state fallback。
+  - `tool_call_normalizer` 現在只保留 backend 會真生成的 `scan-<n>` / `candidate-<n>` id；
+    `latest_scan_id`、`current_candidate` 等 generated placeholder 會移除，讓
+    ApplicationService 使用目前 state。
+- artifact：
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-ready.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-turn-1.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-turn-2.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-turn-3.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-local-tool-chain-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-local-tool-chain-walkthrough.md`
+- artifact summary：
+  - status：`passed`
+  - runtime classification：`gpu-ready`
+  - model：`microsoft/Phi-4-mini-instruct`
+  - expected tools：`scan_source` -> `preview_interpretation` -> `validate_interpretation`
+  - executed tools：all `ok`
+  - final interpretation state：scan / candidate / preview / validation decision present
+  - validation decision：`needs_confirmation`
+  - visible transcript has no raw `Tool Output`、schema、traceback or debug payload
+  - UI returned idle
+- commands:
+  - `timeout 620s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool-chain --timeout-seconds 580`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py -q`
+  - `30 passed`
+  - `poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`
+  - pass
+  - `poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐真 local ChatPanel 可以做一段 Data Interpretation tool chain，且每 turn
+只執行一個 verified ApplicationService-backed command。它仍不支撐 confirm/apply、
+preprocess、epoch、dataset、training 的長鏈 autonomous workflow，也不支撐 Windows
+Desktop launcher 真人 click-through。
+
 2026-05-04 Data Interpretation non-mocked backend workflow：
 
 - 新增 `tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked`。

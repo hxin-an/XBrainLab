@@ -118,7 +118,7 @@ def test_latest_intent_apply_turn_rejects_repeat_validate():
     )
 
     assert tool_name == "apply_interpretation"
-    assert params == {"candidate_id": "latest"}
+    assert params == {}
 
 
 def test_latest_intent_validate_turn_rejects_repeat_reload():
@@ -218,6 +218,39 @@ def test_preview_normalizes_flat_metadata_choices():
             "run": "02",
         }
     }
+
+
+def test_preview_drops_placeholder_scan_id_for_latest_state():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {"scan_id": "latest_scan_id"},
+        latest_user_text="Preview the latest Data Interpretation candidate.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {}
+
+
+def test_preview_keeps_backend_generated_scan_id():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {"scan_id": "scan-2"},
+        latest_user_text="Preview scan-2.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {"scan_id": "scan-2"}
+
+
+def test_validate_drops_placeholder_candidate_id_for_latest_state():
+    tool_name, params = normalize_tool_call(
+        "validate_interpretation",
+        {"candidate_id": "current_candidate"},
+        latest_user_text="Validate the latest Data Interpretation candidate.",
+    )
+
+    assert tool_name == "validate_interpretation"
+    assert params == {}
 
 
 def test_generate_dataset_normalizes_split_and_training_mode_from_text():

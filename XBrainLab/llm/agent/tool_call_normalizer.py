@@ -57,6 +57,9 @@ def normalize_tool_call(
     if normalized_name == "preview_interpretation":
         _normalize_preview_args(normalized_params, latest_user_text)
 
+    if normalized_name == "validate_interpretation":
+        _normalize_candidate_id_args(normalized_params)
+
     if normalized_name == "apply_interpretation":
         _normalize_apply_args(normalized_params, latest_user_text)
 
@@ -190,6 +193,8 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
     ):
         normalized_choices.setdefault("subject", scan_id)
         params.pop("scan_id", None)
+    elif _is_invalid_generated_id(scan_id, "scan"):
+        params.pop("scan_id", None)
     for key in ("subject", "session", "task", "run"):
         value = _extract_named_value(latest_user_text, key)
         if value:
@@ -202,9 +207,23 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
 
 
 def _normalize_apply_args(params: dict[str, Any], latest_user_text: str) -> None:
+    if _is_invalid_generated_id(params.get("candidate_id"), "candidate"):
+        params.pop("candidate_id", None)
     text = latest_user_text.lower()
     if any(marker in text for marker in ("i confirm", "yes, apply", "yes apply")):
         params["confirmed"] = True
+
+
+def _normalize_candidate_id_args(params: dict[str, Any]) -> None:
+    if _is_invalid_generated_id(params.get("candidate_id"), "candidate"):
+        params.pop("candidate_id", None)
+
+
+def _is_invalid_generated_id(value: Any, prefix: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    candidate = value.strip()
+    return re.fullmatch(rf"{re.escape(prefix)}-\d+", candidate) is None
 
 
 def _normalize_epoch_args(params: dict[str, Any], latest_user_text: str) -> None:

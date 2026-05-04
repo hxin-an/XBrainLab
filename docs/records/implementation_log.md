@@ -3530,3 +3530,61 @@ backend 和 agent surface 都有 Data Interpretation taxonomy 後，Dataset pane
 - label import 仍是舊入口。
 - headless / MCP adapter 尚未暴露新 taxonomy。
 - 尚未有完整 non-mocked synthetic workflow evidence。
+
+## 2026-05-04 ChatPanel Data Interpretation tool-chain handoff
+
+### 背景
+
+先前已有 true local ChatPanel one-turn 回覆、單步 `query_state` tool-command，以及 two-turn
+workflow continuity artifact。但仍缺一條「真 local model 經可見 ChatPanel 連續執行多個
+Data Interpretation command」的 evidence。
+
+### 變更
+
+- 新增 `scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py`：
+  - 建立 deterministic synthetic FIF。
+  - 打開真 `MainWindow` / `ChatPanel`。
+  - 使用 offline HF / Transformers local runtime。
+  - 透過 visible composer 送出三個 turns。
+  - 要求 local model 依序執行 `scan_source`、`preview_interpretation`、
+    `validate_interpretation`。
+  - 保存 ready / per-turn screenshots、visible transcript、executed tools 和 final
+    interpretation state。
+- 新增 `tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`。
+- 修 `XBrainLab/llm/agent/tool_call_normalizer.py`：
+  - `preview_interpretation.scan_id` 只保留 backend 真 id 格式 `scan-<n>`。
+  - `validate_interpretation.candidate_id` / `apply_interpretation.candidate_id` 只保留
+    `candidate-<n>`。
+  - local model 自造或 schema-derived 的 `latest_scan_id`、`current_candidate` 等 id 會被移除，
+    讓 ApplicationService 使用目前 latest state。
+
+### 驗證
+
+- 首次真 local-model run 失敗並定位 root cause：
+  - `scan_source` 成功。
+  - `preview_interpretation` 失敗為 `Scan a data source before previewing interpretation.`
+  - final state 已有 `latest_scan_id=scan-1`，證明 failure 是 generated placeholder id 覆蓋
+    backend latest-state fallback。
+- 修正後真 local-model run：
+  - `timeout 620s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool-chain --timeout-seconds 580`
+  - artifact status：`passed`
+  - runtime：primary `microsoft/Phi-4-mini-instruct`，`gpu-ready`
+  - executed tools：`scan_source`、`preview_interpretation`、`validate_interpretation` 全部 `ok`
+  - final interpretation state：scan / candidate / preview / validation decision present；
+    `validation_decision=needs_confirmation`
+- Targeted gates：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py -q`
+    - `30 passed`
+  - targeted `ruff`
+    - pass
+  - targeted `basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+
+### 不能宣稱完成
+
+- 這支撐短鏈 Data Interpretation tool-command workflow，不是完整 autonomous workflow。
+- 還沒有 ChatPanel confirm/apply -> preprocess -> epoch -> dataset -> train/eval/saliency 長鏈
+  walkthrough。
+- Windows Desktop launcher 真人 click-through、MCP Inspector GUI、label import 內嵌 wizard /
+  format-specific anchor editor 仍未完成。
+- Goal 不能標 complete。

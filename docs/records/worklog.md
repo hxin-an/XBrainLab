@@ -2391,3 +2391,44 @@
   - headless / MCP adapter 尚未暴露新 command taxonomy。
   - 尚未有 source -> scan -> preview -> validate -> apply -> recipe -> preprocess -> epoch ->
     dataset 的 non-mocked synthetic workflow evidence。
+
+### 2026-05-04 12:08 ChatPanel Data Interpretation tool-chain handoff
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py`，用真 MainWindow /
+    ChatPanel / AgentManager / LLMController / AgentWorker / LLMEngine local backend，在
+    `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` 下建立 synthetic FIF，經可見 composer
+    要求 local model 依序執行 Data Interpretation `scan_source`、`preview_interpretation`、
+    `validate_interpretation`。
+  - 新增 `tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`。
+  - 首次真跑揭露 blocker：`scan_source` 成功後，`preview_interpretation` 仍失敗為
+    `Scan a data source before previewing interpretation.`；final state 顯示 scan state 存在，
+    因此不是 `ApplicationService` lifecycle 遺失，而是 local model 帶了 generated
+    placeholder id，覆蓋 backend latest-state fallback。
+  - 修 `XBrainLab/llm/agent/tool_call_normalizer.py`：`preview_interpretation` 只保留
+    `scan-<n>`，`validate_interpretation` / `apply_interpretation` 只保留 `candidate-<n>`；
+    `latest_scan_id` / current-style placeholder 會被移除。
+  - 更新 current / now / validation，並新增 continuation prompt：
+    `artifacts/goal/continuation-2026-05-04-product-completion.md`。
+- artifact：
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-local-tool-chain-walkthrough.md`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-local-tool-chain-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-ready.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-turn-1.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-turn-2.png`
+  - `artifacts/ui/chatpanel-local-tool-chain/chatpanel-tool-chain-turn-3.png`
+- 驗證：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py -q`
+    -> `30 passed`
+  - `poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`
+    -> pass
+  - `poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`
+  - `timeout 620s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool-chain --timeout-seconds 580`
+    -> passed；primary `microsoft/Phi-4-mini-instruct`、`gpu-ready`、cache `15.34 GB`、三個
+    expected tools 全部 `ok`。
+- 不能宣稱：
+  - 這只支撐短鏈 Data Interpretation tool-command workflow。
+  - 還不能宣稱 confirm/apply、preprocess、epoch、dataset、training 長鏈 autonomous workflow。
+  - 還不能宣稱 Windows Desktop launcher 真人 click-through、MCP Inspector GUI 或完整 import
+    wizard / label editor 完成。

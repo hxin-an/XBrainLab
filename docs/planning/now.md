@@ -126,6 +126,22 @@
     follow-up，UI idle，visible transcript 無 raw tool/debug syntax。
   - 這支撐 basic multi-turn local ChatPanel continuity；仍不是長時間 tool-command chain、完整
     workflow 自動操作或人工 release walkthrough。
+- ChatPanel true local-model Data Interpretation tool-chain walkthrough 已新增：
+  - script：`scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py`。
+  - artifact：`artifacts/ui/chatpanel-local-tool-chain/chatpanel-local-tool-chain-walkthrough.json` /
+    `.md`，含 ready / turn screenshots。
+  - flow：synthetic FIF -> visible ChatPanel prompt -> local model -> `scan_source` ->
+    `preview_interpretation` -> `validate_interpretation`，每個 turn 一個 verified
+    ApplicationService-backed tool。
+  - 首次真跑暴露 blocker：local model 會輸出 `latest_scan_id` / current-style placeholder id，
+    使 backend 不能使用 latest scan/candidate state；`tool_call_normalizer` 現在只保留
+    backend 真 id 格式 `scan-<n>` / `candidate-<n>`，其他 generated id 移除。
+  - 最新 artifact：primary `microsoft/Phi-4-mini-instruct` `gpu-ready`、cache `15.34 GB`、
+    三個 expected tools 都是 `ok`，final interpretation state 有 validation decision
+    `needs_confirmation`，UI 回到 idle。
+  - 這支撐短鏈 Data Interpretation tool-command workflow；仍不是 confirm/apply、preprocess、
+    epoch、dataset、training 的長鏈 autonomous workflow，也不是 Windows launcher
+    click-through。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
