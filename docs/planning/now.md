@@ -62,6 +62,8 @@
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
+- 最新 Data Interpretation boundary cleanup 已把 format capability taxonomy 抽到
+  `data_interpretation_formats.py`，讓 scanner / candidate lifecycle 與 format matrix 邊界分離。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。

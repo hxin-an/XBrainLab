@@ -122,6 +122,9 @@ UI baseline capture 結果：
 - Training sidebar bypass cleanup 覆蓋 destructive dataset cleanup 和 Clear History：
   successful `ClearDatasetsCommand` / `ClearTrainingHistoryCommand` 不再落回 training controller
   mutation，Clear History 現在也有 user confirmation。
+- Data Interpretation format boundary cleanup 覆蓋 focused `data_interpretation_formats.py`
+  module；GDF / BIDS events / XDF-LSL capability 行為有直接 unit coverage，既有 scan capability
+  boundary regression 仍通過。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
@@ -137,7 +140,8 @@ UI baseline capture 結果：
   standard preprocess batching、core preprocessing operations、epoch creation、montage boundary、
   state snapshot construction、query diagnostics、smart-filter suggestions、Dataset direct import
   service-success no-fallback、Preprocess reset service-success no-fallback、Training re-split
-  cleanup service-success no-fallback 和 Clear History service-success no-fallback。
+  cleanup service-success no-fallback、Clear History service-success no-fallback 和 format
+  capability module boundary。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - UI runtime bypass slice gate 另通過：
@@ -149,6 +153,13 @@ UI baseline capture 結果：
 - Training sidebar cleanup slice gate 另通過：
   `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
   (`40 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
+  (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
+  (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
+  `git diff --check`。
+- Data Interpretation format boundary slice gate 另通過：
+  `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+  (`5 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`
+  (`80 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
   (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
   (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
   `git diff --check`。

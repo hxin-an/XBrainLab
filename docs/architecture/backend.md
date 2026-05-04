@@ -63,6 +63,9 @@ mock / legacy adapter 回傳 `None` 的相容情境。
 後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 接回
 `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`；successful service result 不再落回
 training controller mutation。
+最新 Data Interpretation boundary cleanup 把 format capability taxonomy 抽到
+`data_interpretation_formats.py`；Data Interpretation lifecycle module 現在呼叫 focused format
+boundary helper，而不是同時承接 scanner / candidate / format matrix 細節。
 
 ## 一句話架構
 
@@ -348,6 +351,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/data_compatibility_service.py`
 - `XBrainLab/backend/application/data_interpretation.py`
 - `XBrainLab/backend/application/data_interpretation_apply.py`
+- `XBrainLab/backend/application/data_interpretation_formats.py`
 - `XBrainLab/backend/application/data_interpretation_service.py`
 - `XBrainLab/backend/application/data_table_service.py`
 - `XBrainLab/backend/application/dataset_generation_service.py`
@@ -420,6 +424,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed
   label carrier apply 則在 `DataInterpretationApplyService`。`ApplicationService` 不再直接承接
   這些 workflow 細節。
+- Data Interpretation format capability matrix 實作位置現在是
+  `data_interpretation_formats.py`。它 owns GDF、EDF / BDF、EEGLAB、BrainVision、FIF、MAT、
+  CSV / TSV、TXT、BIDS events 和 XDF / LSL 的 supported / needs-review / blocked 邊界。
 
 2026-05-02 product blocker 盤點結論：
 

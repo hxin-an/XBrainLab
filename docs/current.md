@@ -182,6 +182,10 @@ file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；P
 重新 split 前清 datasets 走 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先要求
 使用者確認，再走 `ClearTrainingHistoryCommand(confirmed=True)`，successful service result 不再
 落回 controller mutation。
+最新 Data Interpretation boundary cleanup 把 GDF / EDF-BDF / EEGLAB / BrainVision / FIF /
+MAT / CSV-TSV / TXT / BIDS events / XDF-LSL format capability matrix 從大型
+`data_interpretation.py` 抽到 `DataInterpretationFormats` focused module，scanner /
+candidate lifecycle 不再直接承接 format taxonomy 細節。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed

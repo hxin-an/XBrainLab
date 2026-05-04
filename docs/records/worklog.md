@@ -4202,3 +4202,42 @@
     但 training UI 仍有 controller read-only checks 和 mock fallback。
   - 還不能宣稱所有 UI mutating controller paths 已清完，也不能替代 Windows human desktop
     acceptance。
+
+### 2026-05-05 Data Interpretation format boundary extraction
+
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_formats.py`，承接 GDF、EDF / BDF、
+    EEGLAB、BrainVision、MNE FIF、MAT、CSV / TSV、TXT、BIDS events 和 XDF / LSL 的
+    supported / needs-review / blocked capability taxonomy。
+  - `data_interpretation.py` 改為匯入 shared constants 和 `format_capabilities()`，不再直接承接
+    format matrix helper；檔案從 `1268` 行降到 `1131` 行。
+  - 新增 focused unit test，鎖住 GDF needs-review、BIDS events external label review 和
+    XDF / LSL blocked 邊界。
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_formats.py -q`
+    初始紅燈：`ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_formats`。
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+    -> `5 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run ruff format --check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_formats.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_formats.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `80 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 不能宣稱：
+  - 這是 Data Interpretation internal boundary cleanup，不是 mature import wizard completion。
+  - Scanner、candidate builder、preview builder、validator、recipe serialization 仍在
+    `data_interpretation.py`，後續還可繼續分割。

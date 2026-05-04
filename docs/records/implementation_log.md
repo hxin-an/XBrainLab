@@ -59,6 +59,8 @@ mutation 重做一次。
 後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 收回 typed
 command path；Clear History 現在有使用者確認，successful service result 不再落回 controller
 mutation。
+Data Interpretation format capability taxonomy 也已抽成 focused module，讓 lifecycle module 不再
+同時承接 scanner / candidate / format matrix 細節。
 
 ### 已可宣稱
 
@@ -81,6 +83,8 @@ mutation。
   controller mutation；controller fallback 僅保留給 mock / legacy `None` adapter 情境。
 - Training sidebar 的 re-split dataset cleanup 和 Clear History destructive action 走
   `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`，且 Clear History 有 confirmation。
+- GDF / EDF-BDF / EEGLAB / BrainVision / FIF / MAT / CSV-TSV / TXT / BIDS events /
+  XDF-LSL format capability boundary 由 `data_interpretation_formats.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 
