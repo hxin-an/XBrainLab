@@ -28,6 +28,61 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation multi-file timestamp label mapping
+
+### 背景
+
+Reviewed timestamp label apply 已支撐單一 EEG + 單一 CSV / TSV / BIDS events carrier，但
+`apply_interpretation` 遇到多個 reviewed carriers 或多個 loaded EEG files 會直接 skip。這使
+BIDS-style per-run `*_events.tsv` 無法在 Data Interpretation 主線中一次套到多個 raw files。
+
+### 變更
+
+- `_apply_interpretation_label_carriers()` 保留單檔 direct mapping 行為。
+- 多檔 timestamp mode 現在會建立 reviewed file mapping：
+  - 每個 loaded EEG file 取 normalized stem。
+  - 每個 reviewed CSV / TSV / BIDS events carrier 取 normalized stem。
+  - suffix normalization 會移除 `_events`、`_raw`、`_labels`、`_label`、`_eeg` 等常見尾綴。
+  - 每個 raw file 必須唯一對應一個 carrier，且所有 carriers 都要被使用。
+- mapping 成功時一次呼叫既有 `dataset.apply_labels_batch()`，並保留 `LabelImportPlan`
+  / recipe trace record。
+- ambiguous 多檔情境，例如兩個 raw files 只有一個 generic `events.tsv`，仍會 skipped 並
+  回傳 reason，不會自動把同一 labels 套到多個檔案。
+
+### 影響範圍
+
+- `ApplicationService.apply_interpretation` reviewed label apply path。
+- Data Interpretation recipe label import record。
+- Backend application tests。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- TDD red:
+  - `test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem` first failed with
+    `label_apply.status=skipped`.
+- focused:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier -q`
+  - `4 passed`
+- regression:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `63 passed`
+- static:
+  - targeted `ruff` -> pass
+  - targeted `ruff format --check` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass
+
+### 剩餘風險
+
+- This supports safe stem-matched timestamp carriers only.
+- It does not support generic folder-level events disambiguation, multi-file MAT / TXT sequence
+  mapping, raw-event-anchor-specific GDF / MAT alignment, embedded label wizard UI,
+  Windows launcher human click-through, interactive desktop 3D, MCP Inspector GUI, or
+  thesis-ready local LLM evidence.
+
 ## 2026-05-04 Data Interpretation shared state snapshot propagation
 
 ### 背景

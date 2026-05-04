@@ -114,7 +114,11 @@ carrier + confirmed class map 接到 legacy label import，recipe trace 會寫
 state snapshot：`ApplicationStateSnapshot.interpretation`、`query_state`、automation / MCP
 envelope 和 agent `query_state` tool surface 都會暴露 reviewed `label_carrier_plan`、
 `format_capabilities`、`event_roles` 和 `class_map`，避免 UI / recipe 和 agent / headless
-看到不同資料入口真相。raw-event-anchor-specific MAT/GDF alignment、多檔 label mapping、
+看到不同資料入口真相。最新 backend slice 又補了 reviewed timestamp label carriers 的多檔
+安全 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
+CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫
+`apply_labels_batch` 套用；如果只有 generic `events.tsv` 或無法唯一對應，會保持 skipped
+並回傳人可讀 reason，不會把同一 labels 亂套到多個檔案。raw-event-anchor-specific MAT/GDF alignment、
 all-format manual compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。

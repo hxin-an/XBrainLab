@@ -37,6 +37,40 @@
 
 ## 2026-05-04
 
+### 18:25 Data Interpretation multi-file timestamp label mapping
+
+- 做了什麼：
+  - 補 TDD 紅燈：兩個 loaded raw files 各自有 reviewed `_events.tsv` carrier 時，
+    `apply_interpretation` 應該用 file stem 建立 mapping 並一次 `apply_labels_batch`，
+    不能再因多 carrier / 多 loaded files 直接 skipped。
+  - `_apply_interpretation_label_carriers()` 保留既有單檔 direct mapping；多檔 timestamp mode
+    只在每個 loaded EEG file 都能唯一對應 reviewed carrier 時才自動套用。
+  - 新增 normalized stem matching，會移除 `_events`、`_raw`、`_labels` 等 suffix。
+  - 補 negative regression：兩個 raw files 只有 generic `events.tsv` 時必須 skipped，且不可呼叫
+    `apply_labels_batch`。
+- 結果：
+  - 初跑 positive test 先看到 `label_apply.status=skipped`，實作後 `applied`。
+  - BIDS-style per-run timestamp labels 現在可支撐安全多檔 mapping。
+  - ambiguous folder-level events 仍不猜測。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem -q`
+    -> first run failed as expected, then `1 passed`。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier -q`
+    -> `4 passed`。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+    -> `63 passed`。
+  - targeted `ruff` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 仍不能宣稱 generic folder-level events disambiguation、多檔 MAT / TXT sequence mapping、
+    raw-event-anchor-specific GDF/MAT alignment、embedded label wizard UI、真人 Windows
+    click-through、interactive desktop 3D、MCP Inspector / release config 或 thesis-ready local LLM
+    evidence。
+
 ### 18:15 Data Interpretation shared state snapshot propagation
 
 - 做了什麼：

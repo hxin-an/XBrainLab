@@ -238,9 +238,12 @@
   - shared state snapshot 已同步 import review truth：`ApplicationStateSnapshot.interpretation`、
     `query_state`、automation / MCP envelope 和 agent `query_state` tool surface 現在都會暴露
     `label_carrier_plan`、`format_capabilities`、`event_roles` 和 `class_map`。
+  - reviewed timestamp label carriers 已支援安全多檔 mapping：多個 loaded EEG file 若可用唯一
+    normalized stem 對應各自的 CSV / TSV / BIDS events carrier，會一次 batch apply；generic
+    `events.tsv` 或無法唯一對應時仍 skipped，不自動猜。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、多檔 label
-  mapping、all-format manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
+  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、sequence labels
+  多檔 mapping、all-format manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
   UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal

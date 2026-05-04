@@ -1362,11 +1362,38 @@ event anchor 的 GDF/MAT alignment、多檔 label mapping 或 full manual compat
   - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
   - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
   - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass.
 
 這批 evidence 支撐 UI / recipe 已確認的 import truth 不再停留在 backend JSON 或 wizard
 內部；agent、headless automation 和 MCP-shaped envelope 可讀到同一份狀態。它仍不支撐 mature
 embedded label import wizard、多檔 label mapping、raw-event-anchor-specific GDF/MAT alignment、
 真人 Windows click-through、interactive desktop 3D 或 MCP Inspector GUI。
+
+2026-05-04 Data Interpretation multi-file timestamp label mapping：
+
+- backend:
+  - Reviewed timestamp carriers can now auto-apply to multiple loaded EEG files when each raw
+    file has exactly one matching CSV / TSV / BIDS events carrier by normalized stem.
+  - Existing single-file behavior remains unchanged: one target and one reviewed carrier can
+    apply directly even when stems do not match.
+  - Ambiguous multi-file cases such as one generic `events.tsv` for two loaded files are skipped
+    with a reason instead of applying the same labels to multiple files.
+- TDD evidence:
+  - initial positive regression failed with `label_apply.status=skipped`.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier -q`
+  - `4 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `63 passed`
+  - targeted `ruff` clean.
+  - targeted `ruff format --check` clean.
+  - targeted `basedpyright` clean.
+
+這批 evidence 支撐 BIDS-style per-run timestamp labels 的 safe multi-file backend path。它仍不支撐
+generic folder-level `events.tsv` disambiguation、multi-file MAT / TXT sequence mapping、
+raw-event-anchor-specific GDF / MAT alignment、embedded label wizard UI 或真人 click-through。
 
 2026-05-04 Data Interpretation recipe save UI path：
 
