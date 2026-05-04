@@ -5063,3 +5063,26 @@ tab 會顯示 user-facing blocked reason。然而 interactive PyVistaQt 3D rende
 - 這支撐目前 runner session 無法驗證 interactive PyVistaQt。
 - 這不支撐 XBrainLab 3D saliency render、真人 OpenGL desktop walkthrough 或完整 product
   completion。
+
+## 2026-05-04 Usage refresh handoff
+
+### 背景
+
+使用量即將刷新，使用者要求先做交接紀錄並暫停。此紀錄收斂目前已提交 verified slices，
+避免下一個 runner 重做已完成的 evidence，也避免把已知 blocker 包裝成 complete。
+
+### 變更
+
+- `artifacts/goal/handoff-2026-05-04-usage-refresh.md`
+  - 更新 snapshot point 到 `26bed60 validation: probe pyvistaqt runtime`。
+  - 補上最近四個 product slices：format capability matrix、reviewed MAT sample-anchor apply、
+    Windows launcher geometry capture、PyVistaQt runtime probe。
+  - 更新 current evidence、do-not-redo list、known blockers 和 immediate resume plan。
+- `artifacts/goal/continuation-2026-05-04-product-completion.md`
+  - 更新最新 commit list、product state、recommended next slice 和 remaining blockers。
+  - 下一步建議聚焦 embedded Data Interpretation label editor。
+
+### 不能宣稱完成
+
+- 這只是交接紀錄，沒有改變產品 blocker。
+- Goal 仍不能標 complete。

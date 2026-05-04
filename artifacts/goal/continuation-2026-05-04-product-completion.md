@@ -26,134 +26,135 @@ artifacts/goal/handoff-2026-05-04-usage-refresh.md
 - Do local LLM disk / VRAM / cache preflight before any model download.
 - Commit each verified slice locally.
 
-## Latest Completed Product Slice
+## Resume Check
 
-Latest product commit:
-
-```text
-15002a1 ui: show label import target context
-```
-
-This slice makes the legacy compatibility label flow safer and clearer:
-
-- `Add Labels to Loaded Data` now shows the loaded EEG target files.
-- The dialog explains that successful label import updates the active Data
-  Interpretation recipe trace.
-- Dataset actions pass loaded target context into the dialog.
-- It remains compatibility UI, not the complete embedded label editor.
-
-Important product slices already completed:
-
-- `a26942a backend: propagate import review state`
-- `c9c79e2 backend: map reviewed timestamp labels by file stem`
-- `4c2ad99 backend: map reviewed sequence labels by file stem`
-- `7d0f92c ui: show matched eeg for label carriers`
-- `0da24db backend: apply reviewed sequence labels during import`
-- `626b606 backend: apply reviewed timestamp labels during import`
-- `15c242d backend: surface import format boundaries`
-- `f49af63 ui: add label carrier review to import wizard`
-- `3341d53 ui: guard headless 3d visualization`
-- `a41770f ui: capture visualization render walkthrough`
-- `f9f0956 assistant: capture training completion walkthrough`
-
-Validation is recorded in `docs/records/worklog.md`,
-`docs/records/implementation_log.md`, `docs/validation/README.md`, and the
-handoff file.
-
-## Do Not Redo Without Reason
-
-- ChatPanel Data Interpretation short-chain evidence is already done.
-- ChatPanel import-to-dataset pipeline-chain evidence is already done.
-- Agent exposure for `evaluate`, `visualize`, and `saliency` is already done.
-- ChatPanel training-readiness boundary evidence is already done.
-- Controlled tiny ChatPanel training-completion evidence is already done.
-- MainWindow VisualizationPanel Matplotlib render evidence is already done.
-- Headless/offscreen 3D blocked UX is already guarded and captured.
-- Label carrier review, format capability boundaries, timestamp label apply,
-  MAT / TXT sequence label apply, shared state propagation, and safe multi-file
-  label mapping are already implemented.
-
-Redo one only if the underlying parser, verifier, command surface, UI feedback,
-backend result contract, visualization render path, Data Interpretation recipe
-contract, or shared state schema changed.
-
-## Immediate Resume Steps
-
-1. Check worktree:
+Start with:
 
 ```bash
 git status --short
+git log --oneline -n 10
+sed -n '1,220p' artifacts/goal/handoff-2026-05-04-usage-refresh.md
+tail -n 120 docs/records/worklog.md
+tail -n 160 docs/records/implementation_log.md
 ```
 
-Only `.vscode/settings.json` and root `settings.json` should be unrelated
-protected dirty files. If this continuation / handoff docs update is not yet
-committed, commit only the docs / artifacts touched by the handoff.
-
-2. Read current truth and latest records:
-
-```bash
-sed -n '1,180p' docs/current.md
-sed -n '200,320p' docs/planning/now.md
-tail -n 140 docs/records/worklog.md
-tail -n 180 docs/records/implementation_log.md
-```
-
-3. Next highest-value product slice:
+Expected unrelated dirty files:
 
 ```text
-MCP Inspector / release config hardening
+ M .vscode/settings.json
+ M settings.json
 ```
 
-Suggested inspection:
+Do not stage or revert those files.
 
-```bash
-rg -n "MCP|mcp|Inspector|stdio|run_mcp|mcp_server|mcp_tool" XBrainLab scripts tests docs artifacts -S
-```
-
-Candidate implementation shape:
+## Latest Completed Product Commits
 
 ```text
-checked-in MCP external-client config or launch manifest
-  -> invokes prepared XBrainLab runtime
-  -> does not require client-side EEG / PyQt / PyTorch dependencies
-  -> shares tool schema with ApplicationService automation
-  -> proves tools/list and tools/call through focused test or stdio walkthrough
-  -> records artifact / docs
-  -> local commit
+26bed60 validation: probe pyvistaqt runtime
+ed4bec6 validation: capture launcher geometry
+dd9a653 backend: apply mat sample anchors
+94e77dd validation: add data interpretation format matrix
+b5f2c29 docs: refresh usage handoff
+3ffa73d mcp: verify inspector cli config
+4e9cdfc ui: select label carrier targets
+4f36615 ui: map generic label carriers manually
+eb04399 mcp: add client release config
 ```
 
-4. After MCP config, continue with remaining product gaps:
+Recent evidence is recorded in:
 
-- mature embedded label import wizard;
-- generic folder-level label carrier disambiguation UI;
-- raw-event-anchor-specific GDF / MAT alignment;
-- all-format manual compatibility matrix and XDF / LSL boundary / parser work;
-- Windows Desktop launcher human click-through / WSLg multi-monitor verification;
-- interactive desktop 3D / PyVista verification if a real OpenGL session exists;
-- external thesis experiment runner / statistical report;
-- final validation sweep and docs closure.
+- `artifacts/data_interpretation/format-capability-matrix.md`
+- `artifacts/launcher/windows-launcher-walkthrough.md`
+- `artifacts/ui/visualization-render/pyvistaqt-runtime-probe.md`
+- `artifacts/mcp/inspector-cli-tools-list.md`
+- `docs/current.md`
+- `docs/planning/now.md`
+- `docs/validation/README.md`
+- `docs/records/worklog.md`
+- `docs/records/implementation_log.md`
+
+## Product State
+
+- Data Interpretation has ApplicationService-backed
+  `scan -> preview -> validate -> confirm/apply -> recipe` baseline.
+- Import wizard supports metadata / class-map / label-carrier review, generic
+  carrier target selection, and narrow MAT sample-index anchor apply.
+- Full post-load label editing is still not a mature embedded Data
+  Interpretation recipe UI; old compatibility flow must not become the main
+  product mental model.
+- MCP server and external-client config exist; official Inspector CLI
+  `tools/list` works through Windows WSL config. Inspector GUI click-through is
+  still open.
+- Windows launcher automated command walkthrough and startup geometry diagnostics
+  pass. Human Desktop click-through / multi-monitor verification is still open.
+- Matplotlib saliency tabs render in MainWindow evidence. Headless/offscreen 3D
+  is guarded. Interactive PyVistaQt is blocked in the current runner with X
+  `BadWindow` and is still open.
+- Local tool-call thesis-candidate benchmark evidence exists for `100` cases,
+  primary / fallback x3. It does not by itself close product readiness.
+
+## Recommended Next Slice
+
+Highest-value next slice:
+
+```text
+Embedded Data Interpretation label editor
+```
+
+Target behavior:
+
+- Primary UI path lets the user resolve label/event carrier target, event role,
+  class map, anchor, and subject/session/task/run metadata inside the Data
+  Interpretation recipe flow.
+- Old `load_data` / `attach_labels` paths remain compatibility only.
+- UI text is user-facing, not schema/debug wording.
+- `ApplicationService` remains the only execution path for UI / agent /
+  headless / MCP.
+- Evidence includes UI-observable replay with visible text/button state plus
+  low-mock backend tests.
+
+Suggested starting files:
+
+```text
+XBrainLab/backend/application/data_interpretation.py
+XBrainLab/backend/application/service.py
+XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py
+XBrainLab/ui/handlers/dataset_action_handler.py
+scripts/dev/capture_data_interpretation_replay.py
+tests/unit/backend/application/test_application_service.py
+tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py
+docs/target/data_interpretation_system.md
+```
+
+Use TDD where behavior is concrete:
+
+1. Add failing backend test for the new recipe editor result contract.
+2. Add failing UI test for visible selector / confirmation state.
+3. Implement the smallest product-shaped editor changes.
+4. Run targeted tests and replay.
+5. Update docs/records.
+6. Commit only that verified slice.
 
 ## Remaining Product Blockers
 
-- Full embedded post-load label import wizard is incomplete.
-- Generic folder-level `events.tsv` / `labels.mat` disambiguation remains
-  skipped, with no interactive resolution surface yet.
+Goal must remain incomplete while these remain:
+
+- Full embedded Data Interpretation label editor is incomplete.
 - Raw-event-anchor-specific GDF / MAT alignment remains incomplete.
-- Full all-format manual compatibility matrix and XDF / LSL stream parser remain incomplete.
-- Windows Desktop launcher human click-through / WSLg multi-monitor behavior is not manually verified.
+- XDF / LSL stream parser remains incomplete.
+- Full real-data manual compatibility certification remains incomplete.
+- Windows Desktop launcher human click-through / WSLg multi-monitor behavior is
+  not manually verified.
 - Interactive desktop 3D / PyVista render is not verified.
-- MCP Inspector GUI / release config is not complete.
+- MCP Inspector GUI click-through is not done.
 - External thesis experiment runner / statistical report is not done.
-- Full product thesis-ready claim still depends on product validation beyond the
-  tool-call benchmark.
-- Goal must remain incomplete until these are fixed or explicitly documented as not done.
+- Final full validation sweep has not been rerun after all product slices.
 
-## Handoff Rule
-
-If another resource / context / GPU / WSL limit appears:
+## If Blocked Again
 
 - Do not mark complete.
 - Commit verified slices only.
 - Update `docs/records/worklog.md`.
 - Update `docs/records/implementation_log.md`.
-- Add or refresh a continuation prompt in `artifacts/goal/`.
+- Refresh `artifacts/goal/handoff-2026-05-04-usage-refresh.md`.
+- Refresh this continuation prompt.

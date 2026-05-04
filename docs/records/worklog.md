@@ -3295,3 +3295,18 @@
 - 不能宣稱：
   - 這支撐目前 session 的 interactive PyVistaQt runtime 被 blocked。
   - 仍不能宣稱 XBrainLab interactive 3D saliency render 或真人 OpenGL desktop walkthrough 完成。
+
+### 2026-05-04 Usage refresh handoff
+
+- 做了什麼：
+  - 因使用量即將刷新，刷新 `artifacts/goal/handoff-2026-05-04-usage-refresh.md`。
+  - 同步刷新 `artifacts/goal/continuation-2026-05-04-product-completion.md`。
+  - 交接點明確標在 product commit `26bed60 validation: probe pyvistaqt runtime` 之後。
+- 目前狀態：
+  - 最新 verified slices 包含 format capability matrix、reviewed MAT sample-anchor apply、
+    Windows launcher geometry capture、PyVistaQt runtime probe。
+  - 預期剩餘 dirty files 只有 protected `.vscode/settings.json` 和 root `settings.json`。
+- 不能宣稱：
+  - Goal 仍不能完成；embedded Data Interpretation label editor、Inspector GUI、真人 Windows
+    launcher click-through、interactive 3D、XDF / LSL、real-data certification、external thesis
+    experiment runner 仍是 blockers。
