@@ -187,6 +187,22 @@ class TestDataInterpretationDefinitions:
         val = _property_value(BaseApplyInterpretationTool.requires_confirmation)
         assert val is False
 
+    def test_preview_choices_are_structured_for_labels_and_metadata(self):
+        params = _property_value(BasePreviewInterpretationTool.parameters)
+        choices = params["properties"]["choices"]
+
+        assert choices["additionalProperties"] is False
+        assert "label_carrier" in choices["properties"]
+        assert "bids_events" in choices["properties"]["label_carrier"]["enum"]
+        assert "event_role" in choices["properties"]
+        assert "subject" in choices["properties"]
+
+    def test_legacy_data_tools_are_marked_in_descriptions(self):
+        assert "Legacy compatibility" in _property_value(BaseLoadDataTool.description)
+        assert "Legacy compatibility" in _property_value(
+            BaseAttachLabelsTool.description
+        )
+
 
 class TestRequiresConfirmation:
     """Verify that dangerous tools require user confirmation."""

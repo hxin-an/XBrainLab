@@ -172,17 +172,9 @@ class ToolSchemaValidator(ValidatorStrategy):
                 error_message=f"Tool is not registered: {name}",
             )
 
-        required = schema.get("required", [])
-        if isinstance(required, list):
-            missing = [field for field in required if field not in params]
-            if missing:
-                return VerificationResult(
-                    is_valid=False,
-                    error_message=(
-                        f"Missing required parameter(s) for {name}: "
-                        f"{', '.join(str(field) for field in missing)}"
-                    ),
-                )
+        missing_result = self._validate_required(name, params, schema)
+        if not missing_result.is_valid:
+            return missing_result
 
         properties = schema.get("properties", {})
         if not isinstance(properties, dict):
@@ -191,26 +183,141 @@ class ToolSchemaValidator(ValidatorStrategy):
         for param_name, value in params.items():
             property_schema = properties.get(param_name)
             if not isinstance(property_schema, dict):
+                if not self._additional_properties_allowed(schema):
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(f"Unknown parameter for {name}: {param_name}"),
+                    )
                 continue
 
-            enum_values = property_schema.get("enum")
-            if isinstance(enum_values, list) and not _json_enum_matches(
-                value,
-                enum_values,
-            ):
+            result = self._validate_value(param_name, value, property_schema)
+            if not result.is_valid:
+                return result
+
+        return VerificationResult(is_valid=True)
+
+    @staticmethod
+    def _validate_required(
+        name: str,
+        params: dict[str, Any],
+        schema: dict[str, Any],
+    ) -> VerificationResult:
+        required = schema.get("required", [])
+        if not isinstance(required, list):
+            return VerificationResult(is_valid=True)
+        missing = [field for field in required if field not in params]
+        if missing:
+            return VerificationResult(
+                is_valid=False,
+                error_message=(
+                    f"Missing required parameter(s) for {name}: "
+                    f"{', '.join(str(field) for field in missing)}"
+                ),
+            )
+        return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _validate_value(
+        cls,
+        param_name: str,
+        value: Any,
+        property_schema: dict[str, Any],
+    ) -> VerificationResult:
+        enum_values = property_schema.get("enum")
+        if isinstance(enum_values, list) and not _json_enum_matches(
+            value,
+            enum_values,
+        ):
+            return VerificationResult(
+                is_valid=False,
+                error_message=(
+                    f"{param_name} must be one of {enum_values}, got {value!r}"
+                ),
+            )
+
+        expected_type = property_schema.get("type")
+        type_result = cls._validate_type(param_name, value, expected_type)
+        if not type_result.is_valid:
+            return type_result
+
+        if isinstance(value, dict):
+            nested_result = cls._validate_object(param_name, value, property_schema)
+            if not nested_result.is_valid:
+                return nested_result
+
+        if isinstance(value, list):
+            item_schema = property_schema.get("items")
+            if isinstance(item_schema, dict):
+                for index, item in enumerate(value):
+                    item_result = cls._validate_value(
+                        f"{param_name}[{index}]",
+                        item,
+                        item_schema,
+                    )
+                    if not item_result.is_valid:
+                        return item_result
+
+        return VerificationResult(is_valid=True)
+
+    @classmethod
+    def _validate_object(
+        cls,
+        param_name: str,
+        value: dict[str, Any],
+        property_schema: dict[str, Any],
+    ) -> VerificationResult:
+        required = property_schema.get("required", [])
+        if isinstance(required, list):
+            missing = [field for field in required if field not in value]
+            if missing:
                 return VerificationResult(
                     is_valid=False,
                     error_message=(
-                        f"{param_name} must be one of {enum_values}, got {value!r}"
+                        f"Missing required parameter(s) for {param_name}: "
+                        f"{', '.join(str(field) for field in missing)}"
                     ),
                 )
 
-            expected_type = property_schema.get("type")
-            type_result = self._validate_type(param_name, value, expected_type)
-            if not type_result.is_valid:
-                return type_result
+        nested_properties = property_schema.get("properties", {})
+        if not isinstance(nested_properties, dict):
+            return VerificationResult(is_valid=True)
 
+        for key, nested_value in value.items():
+            nested_schema = nested_properties.get(key)
+            if not isinstance(nested_schema, dict):
+                additional = property_schema.get("additionalProperties")
+                if isinstance(additional, dict):
+                    extra_result = cls._validate_value(
+                        f"{param_name}.{key}",
+                        nested_value,
+                        additional,
+                    )
+                    if not extra_result.is_valid:
+                        return extra_result
+                    continue
+                if not cls._additional_properties_allowed(property_schema):
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(f"Unknown parameter for {param_name}: {key}"),
+                    )
+                continue
+            result = cls._validate_value(
+                f"{param_name}.{key}",
+                nested_value,
+                nested_schema,
+            )
+            if not result.is_valid:
+                return result
         return VerificationResult(is_valid=True)
+
+    @staticmethod
+    def _additional_properties_allowed(schema: dict[str, Any]) -> bool:
+        additional = schema.get("additionalProperties")
+        if isinstance(additional, bool):
+            return additional
+        if isinstance(additional, dict):
+            return True
+        return not isinstance(schema.get("properties"), dict)
 
     @staticmethod
     def _validate_type(

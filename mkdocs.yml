@@ -46,6 +46,7 @@ nav:
       - Validation Architecture: architecture/validation.md
   - Research:
       - BCI/EEG Import Label Source: research/bci_eeg_import_label_design_source.md
+      - Tool-Call Agent Best Practices: research/tool_call_agent_best_practices.md
   - Planning:
       - Now: planning/now.md
       - Roadmap: planning/roadmap.md

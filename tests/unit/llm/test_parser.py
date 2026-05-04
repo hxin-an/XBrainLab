@@ -67,9 +67,20 @@ def test_parse_command_only_json_with_decision_boundary_as_empty_parameters():
     assert result == [("apply_interpretation", {})]
 
 
+def test_parse_none_tool_name_as_no_call():
+    text = '{"tool_name": "none", "parameters": {}}'
+    result = CommandParser.parse(text)
+    assert result is None
+
+
 def test_parse_bare_tool_name_at_start():
     result = CommandParser.parse("save_interpretation_recipe\nBlocked reasons: None.")
     assert result == [("save_interpretation_recipe", {})]
+
+
+def test_does_not_parse_explanatory_sentence_starting_with_tool_name():
+    result = CommandParser.parse("epoch_data is used to create time windows.")
+    assert result is None
 
 
 def test_parse_analysis_bare_tool_names():
@@ -87,6 +98,12 @@ def test_parse_arguments_alias():
     cmd, params = parsed[0]
     assert cmd == "scan_source"
     assert params == {"source_path": "/data"}
+
+
+def test_parse_tool_alias():
+    text = '{"tool":"scan_source","parameters":{"source_path":"/data"}}'
+    parsed = CommandParser.parse(text)
+    assert parsed == [("scan_source", {"source_path": "/data"})]
 
 
 def test_parse_tool_calls_list():

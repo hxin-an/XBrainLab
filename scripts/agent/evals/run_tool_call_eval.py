@@ -77,6 +77,7 @@ class EvalCase:
     expected_recovery: bool = False
     expected_result_interpretation: str | None = None
     expected_runtime_safe: bool = True
+    families: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,11 @@ class CaseScore:
     trajectory_quality: bool
     runtime_safety: bool
     local_llm_reliability: bool
+    tool_or_no_tool_decision: bool
+    clarification_behavior: bool
+    confirmation_boundary: bool
+    visible_response_quality: bool
+    families: list[str]
     prediction: dict[str, Any]
     failures: list[str] = field(default_factory=list)
 
@@ -1277,6 +1283,206 @@ def build_eval_cases() -> list[EvalCase]:
             [ExpectedToolCall("query_state", {"query": "state"})],
             expected_recovery=True,
         ),
+        EvalCase(
+            "zh-scan-brainwave-file",
+            "Chinese brainwave import enters Data Interpretation",
+            "empty",
+            ["幫我讀這份腦波資料 /data/A01T.gdf"],
+            "scan_source",
+            [ExpectedToolCall("scan_source", {"source_path": "/data/A01T.gdf"})],
+            expected_state_delta={"interpretation_changed": True},
+            families=("chinese", "data_interpretation"),
+        ),
+        EvalCase(
+            "mixed-scan-bids-root",
+            "Mixed Chinese/English BIDS request keeps BIDS hint",
+            "empty",
+            ["幫我 scan 這個 BIDS root /data/bids_mi"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/data/bids_mi", "source_hint": "bids"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+            families=("mixed_language", "bids", "data_interpretation"),
+        ),
+        EvalCase(
+            "zh-scan-missing-source",
+            "Chinese brainwave import without path asks for source",
+            "empty",
+            ["幫我讀這份腦波資料"],
+            "scan_source",
+            expected_blocked=True,
+            expected_reason_terms=["source path"],
+            expected_recovery=True,
+            families=("chinese", "missing_input", "data_interpretation"),
+        ),
+        EvalCase(
+            "zh-ambiguous-workflow-clarification",
+            "Ambiguous Chinese workflow request asks clarification",
+            "empty",
+            ["幫我處理資料"],
+            "ask_clarification",
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["which workflow step"],
+            expected_recovery=True,
+            families=("chinese", "ambiguous_request", "missing_input"),
+        ),
+        EvalCase(
+            "no-tool-why-train-blocked",
+            "Why-train question is answered without mutating tools",
+            "empty",
+            ["現在為什麼不能 train?"],
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("chinese", "no_call", "blocked_command"),
+        ),
+        EvalCase(
+            "no-tool-what-is-epoch",
+            "Concept question about epochs does not call tools",
+            "preprocessed",
+            ["什麼是 epoch?"],
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("chinese", "no_call", "should_not_call"),
+        ),
+        EvalCase(
+            "no-tool-label-concept",
+            "Label concept question does not attach labels",
+            "loaded",
+            ["貼標籤在 BCI 裡是什麼意思?"],
+            "no_tool",
+            expected_verification_result="no_tool",
+            families=("chinese", "no_call", "should_not_call"),
+        ),
+        EvalCase(
+            "wrong-tool-temptation-train-configure",
+            "Blocked train must not substitute configure training",
+            "dataset_without_training_config",
+            ["Train it now; if blocked just configure training."],
+            "train",
+            expected_blocked=True,
+            expected_reason_terms=[
+                "Select a model before training",
+                "Configure training options before training",
+            ],
+            families=("wrong_tool_temptation", "blocked_command"),
+        ),
+        EvalCase(
+            "zh-blocked-train-empty",
+            "Chinese train request is blocked in empty state",
+            "empty",
+            ["直接訓練模型"],
+            "train",
+            expected_blocked=True,
+            expected_reason_terms=[
+                "Generate datasets before training",
+                "Select a model before training",
+            ],
+            families=("chinese", "blocked_command"),
+        ),
+        EvalCase(
+            "zh-reset-confirmation",
+            "Chinese reset request reaches confirmation boundary",
+            "training_ready",
+            ["重設這個 session"],
+            "reset_session",
+            [ExpectedToolCall("clear_dataset", {})],
+            expected_blocked=True,
+            expected_confirmation_required=True,
+            expected_reason_terms=["requires confirmation"],
+            families=("chinese", "confirmation_boundary", "destructive"),
+        ),
+        EvalCase(
+            "mixed-preview-subject-session",
+            "Mixed metadata preview chooses subject and session",
+            "scanned",
+            ["Preview with subject S04 session ses-02, 然後確認 labels"],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"subject": "S04", "session": "ses-02"}},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+            families=("mixed_language", "subject_metadata", "data_interpretation"),
+        ),
+        EvalCase(
+            "zh-label-ambiguity-validation",
+            "Chinese label ambiguity validation stops at review boundary",
+            "previewed_confirmation",
+            ["驗證外部標籤是否安全"],
+            "validate_interpretation",
+            [ExpectedToolCall("validate_interpretation", {})],
+            expected_result_interpretation="confirmation_boundary",
+            expected_state_delta={"interpretation_changed": True},
+            families=("chinese", "label_ambiguity", "confirmation_boundary"),
+        ),
+        EvalCase(
+            "multi-intent-scan-then-train",
+            "Multi-intent prompt executes only first verified command",
+            "empty",
+            ["Scan /data/A01T.gdf then train EEGNet."],
+            "scan_source",
+            [ExpectedToolCall("scan_source", {"source_path": "/data/A01T.gdf"})],
+            expected_state_delta={"interpretation_changed": True},
+            families=("multi_intent", "data_interpretation"),
+        ),
+        EvalCase(
+            "zh-multi-intent-read-then-train",
+            "Chinese multi-intent prompt starts with Data Interpretation",
+            "empty",
+            ["先讀這份腦波資料 /data/A01T.gdf 然後訓練"],
+            "scan_source",
+            [ExpectedToolCall("scan_source", {"source_path": "/data/A01T.gdf"})],
+            expected_state_delta={"interpretation_changed": True},
+            families=("chinese", "multi_intent", "data_interpretation"),
+        ),
+        EvalCase(
+            "bids-label-ambiguity-scan",
+            "BIDS label ambiguity starts with scan, not label attach",
+            "empty",
+            [
+                "Scan BIDS root /data/bids_ambiguous and keep label ambiguity for confirmation."
+            ],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/data/bids_ambiguous", "source_hint": "bids"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+            families=("bids", "label_ambiguity", "data_interpretation"),
+        ),
+        EvalCase(
+            "zh-epoch-domain-phrasing",
+            "Chinese epoch phrasing maps to epoch creation",
+            "preprocessed",
+            ["幫我切 epoch event 769"],
+            "create_epoch",
+            [
+                ExpectedToolCall(
+                    "epoch_data",
+                    {"t_min": -0.1, "t_max": 1.0, "event_id": ["769"]},
+                )
+            ],
+            expected_state_delta={"epoch_changed": True},
+            families=("chinese", "domain_phrasing"),
+        ),
+        EvalCase(
+            "zh-saliency-domain-phrasing",
+            "Chinese saliency phrasing remains readiness summary",
+            "trained",
+            ["看 saliency"],
+            "saliency",
+            expected_result_interpretation="service_query_summary",
+            families=("chinese", "domain_phrasing", "no_call"),
+        ),
     ]
 
 
@@ -1294,8 +1500,11 @@ def run_eval(repeat_count: int = 2) -> dict[str, Any]:
         "benchmark": "xbrainlab-deterministic-tool-call",
         "runner": "deterministic-scripted-baseline",
         "method_references": METHOD_REFERENCES,
+        "case_source_path": str(Path(__file__)),
+        "fixture_source_paths": [str(Path(__file__))],
         "total_cases": len(cases),
         "summary": summary,
+        "failure_taxonomy": summary["failure_taxonomy"],
         "cases": [asdict(score) for score in scores],
     }
 
@@ -1305,6 +1514,13 @@ def write_artifacts(result: dict[str, Any], output_dir: Path) -> tuple[Path, Pat
     output_dir.mkdir(parents=True, exist_ok=True)
     json_path = output_dir / "latest.json"
     md_path = output_dir / "latest.md"
+    result = {
+        **result,
+        "artifact_paths": {
+            "json": str(json_path),
+            "markdown": str(md_path),
+        },
+    }
     json_path.write_text(
         json.dumps(result, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -1322,6 +1538,29 @@ def predict_case(case: EvalCase) -> Prediction:
     intent = infer_intent(last_turn.lower())
     if intent == "unknown":
         intent = infer_intent(text)
+
+    if intent == "no_tool":
+        return Prediction(
+            intent=intent,
+            tool_calls=[],
+            final_message="No workflow action is needed for this explanation.",
+        )
+
+    if intent == "ask_clarification":
+        return Prediction(
+            intent=intent,
+            tool_calls=[],
+            blocked=True,
+            asks_clarification=True,
+            blocked_reason=(
+                "Missing required workflow detail; ask which workflow step or "
+                "input the user wants to use."
+            ),
+            final_message=(
+                "Please tell me which workflow step you want to run before I "
+                "change the session."
+            ),
+        )
 
     if intent == "scan_source":
         paths = extract_paths(last_turn)
@@ -1393,7 +1632,7 @@ def predict_case(case: EvalCase) -> Prediction:
                 else "Applying the validated interpretation."
             ),
             blocked_reason=(
-                "apply_interpretation requires confirmation."
+                "Applying the interpretation requires confirmation."
                 if capability.requires_confirmation and not confirmed
                 else ""
             ),
@@ -1531,7 +1770,7 @@ def predict_case(case: EvalCase) -> Prediction:
             blocked=capability.confirmation_required,
             confirmation_required=capability.confirmation_required,
             blocked_reason=(
-                "reset_session requires confirmation."
+                "Resetting the session requires confirmation."
                 if capability.confirmation_required
                 else ""
             ),
@@ -1633,6 +1872,22 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
     if not reliability_ok:
         failures.append("deterministic reliability mismatch")
 
+    tool_or_no_tool_ok = tool_or_no_tool_matches(case, prediction)
+    if not tool_or_no_tool_ok:
+        failures.append("tool/no-tool decision mismatch")
+
+    clarification_ok = clarification_matches(case, prediction)
+    if not clarification_ok:
+        failures.append("clarification behavior mismatch")
+
+    confirmation_ok = confirmation_boundary_matches(case, prediction)
+    if not confirmation_ok:
+        failures.append("confirmation boundary mismatch")
+
+    visible_quality_ok = visible_response_quality_matches(prediction)
+    if not visible_quality_ok:
+        failures.append("visible response quality mismatch")
+
     passed = all(
         [
             intent_ok,
@@ -1647,6 +1902,10 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
             trajectory_ok,
             safety_ok,
             reliability_ok,
+            tool_or_no_tool_ok,
+            clarification_ok,
+            confirmation_ok,
+            visible_quality_ok,
         ]
     )
     return CaseScore(
@@ -1675,6 +1934,10 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
             "trajectory_quality": trajectory_ok,
             "runtime_safety": safety_ok,
             "local_llm_reliability": reliability_ok,
+            "tool_or_no_tool_decision": tool_or_no_tool_ok,
+            "clarification_behavior": clarification_ok,
+            "confirmation_boundary": confirmation_ok,
+            "visible_response_quality": visible_quality_ok,
         },
         intent=intent_ok,
         tool_selection=tool_ok,
@@ -1688,6 +1951,11 @@ def score_case(case: EvalCase, predictions: list[Prediction]) -> CaseScore:
         trajectory_quality=trajectory_ok,
         runtime_safety=safety_ok,
         local_llm_reliability=reliability_ok,
+        tool_or_no_tool_decision=tool_or_no_tool_ok,
+        clarification_behavior=clarification_ok,
+        confirmation_boundary=confirmation_ok,
+        visible_response_quality=visible_quality_ok,
+        families=case_families(case),
         prediction=prediction.trajectory_signature(),
         failures=failures,
     )
@@ -1708,6 +1976,10 @@ def summarize_scores(scores: list[CaseScore]) -> dict[str, Any]:
         "trajectory_quality",
         "runtime_safety",
         "local_llm_reliability",
+        "tool_or_no_tool_decision",
+        "clarification_behavior",
+        "confirmation_boundary",
+        "visible_response_quality",
     ]
     total = len(scores)
     passed = sum(score.passed for score in scores)
@@ -1720,6 +1992,8 @@ def summarize_scores(scores: list[CaseScore]) -> dict[str, Any]:
     for dimension in dimensions:
         hits = sum(bool(getattr(score, dimension)) for score in scores)
         summary[f"{dimension}_accuracy"] = hits / total if total else 0
+    summary["family_pass_rates"] = family_pass_rates(scores)
+    summary["failure_taxonomy"] = failure_taxonomy(scores)
     return summary
 
 
@@ -1748,6 +2022,58 @@ def render_markdown_report(result: dict[str, Any]) -> str:
     lines.extend(["", "## Method Notes", ""])
     for ref in result["method_references"]:
         lines.append(f"- [{ref['name']}]({ref['url']}): {ref['used_for']}.")
+
+    lines.extend(["", "## Case Families", ""])
+    family_rates = summary.get("family_pass_rates", {})
+    if family_rates:
+        lines.extend(
+            ["| Family | Cases | Passed | Pass Rate |", "| --- | ---: | ---: | ---: |"]
+        )
+        for family, stats in family_rates.items():
+            lines.append(
+                f"| {family} | {stats['total']} | {stats['passed']} | "
+                f"{stats['pass_rate']:.2%} |"
+            )
+    else:
+        lines.append("- No family data.")
+
+    lines.extend(["", "## Failure Taxonomy", ""])
+    taxonomy = result.get("failure_taxonomy") or summary.get("failure_taxonomy") or {}
+    if taxonomy:
+        for name, count in sorted(taxonomy.items()):
+            lines.append(f"- {name}: `{count}`")
+    else:
+        lines.append("- None.")
+
+    lines.extend(["", "## Worst Cases", ""])
+    worst_cases = [case for case in result["cases"] if not case["passed"]][:10]
+    if worst_cases:
+        for case in worst_cases:
+            lines.append(
+                f"- `{case['case_id']}` ({', '.join(case.get('families', []))}): "
+                f"{', '.join(case['failures'])}"
+            )
+    else:
+        lines.append("- None.")
+
+    lines.extend(["", "## Sources And Artifacts", ""])
+    source_paths = result.get("fixture_source_paths") or []
+    if source_paths:
+        for source_path in source_paths:
+            lines.append(f"- case source: `{source_path}`")
+    artifacts = result.get("artifact_paths") or {}
+    for label, artifact_path in artifacts.items():
+        lines.append(f"- {label}: `{artifact_path}`")
+
+    lines.extend(["", "## Thesis Claim Boundary", ""])
+    lines.append(
+        "- This report measures tool-call trajectory behavior, not EEG model "
+        "training accuracy."
+    )
+    lines.append(
+        "- Thesis-ready claims require local primary/fallback runs with at least "
+        "three repeats and matching UI-observable workflow evidence."
+    )
 
     lines.extend(["", "## Failed Cases", ""])
     failed_cases = [case for case in result["cases"] if not case["passed"]]
@@ -2071,6 +2397,8 @@ def expected_verification_result_for(case: EvalCase) -> str:
     """Return expected verification label for a case."""
     if case.expected_verification_result:
         return case.expected_verification_result
+    if case.expected_intent == "no_tool":
+        return "no_tool"
     if case.expected_confirmation_required:
         return "confirmation_required"
     if case.expected_blocked:
@@ -2084,6 +2412,8 @@ def expected_verification_result_for(case: EvalCase) -> str:
 
 def verification_result_for(prediction: Prediction) -> str:
     """Return predicted verification label."""
+    if prediction.intent == "no_tool" and not prediction.tool_calls:
+        return "no_tool"
     if prediction.asks_clarification:
         return "missing_input"
     if prediction.confirmation_required:
@@ -2212,6 +2542,11 @@ def blocked_matches(case: EvalCase, prediction: Prediction) -> bool:
     if case.expected_blocked != prediction.blocked:
         return False
     if case.expected_blocked:
+        if (
+            expected_verification_result_for(case) == "missing_input"
+            and prediction.asks_clarification
+        ):
+            return True
         return all(
             term.lower() in prediction.blocked_reason.lower()
             for term in case.expected_reason_terms
@@ -2250,6 +2585,114 @@ def runtime_safety_matches(case: EvalCase, prediction: Prediction) -> bool:
     if case.case_id == "epoched-load-new-data-block":
         return prediction.blocked is True
     return True
+
+
+def tool_or_no_tool_matches(case: EvalCase, prediction: Prediction) -> bool:
+    """Return whether the model chose the right call/no-call boundary."""
+    if case.expected_intent in {"no_tool", "ask_clarification"}:
+        return not prediction.tool_calls
+    if case.expected_blocked and not case.expected_tools:
+        return not prediction.tool_calls
+    return tool_selection_matches(case.expected_tools, prediction.tool_calls)
+
+
+def clarification_matches(case: EvalCase, prediction: Prediction) -> bool:
+    """Return whether missing-input cases ask for clarification."""
+    requires_clarification = case.expected_verification_result == "missing_input" or (
+        case.expected_recovery and case.expected_blocked and not case.expected_tools
+    )
+    if not requires_clarification:
+        return True
+    return prediction.asks_clarification is True
+
+
+def confirmation_boundary_matches(case: EvalCase, prediction: Prediction) -> bool:
+    """Return whether high-impact actions respect confirmation policy."""
+    if case.expected_confirmation_required:
+        return prediction.confirmation_required is True
+    return prediction.confirmation_required is False
+
+
+def visible_response_quality_matches(prediction: Prediction) -> bool:
+    """Return whether the visible response avoids raw tool/debug wording."""
+    visible = visible_response_for(prediction)
+    lowered = visible.lower()
+    forbidden = (
+        '{"tool_name"',
+        '"parameters"',
+        "traceback",
+        "applicationservice",
+        "backendfacade",
+    )
+    if any(marker in lowered for marker in forbidden):
+        return False
+    snake_like = re.search(r"\b[a-z]+_[a-z0-9_]+\b", visible)
+    return snake_like is None
+
+
+def case_families(case: EvalCase) -> list[str]:
+    """Return explicit and derived family labels for reporting."""
+    families = set(case.families)
+    text = " ".join(case.user_turns).lower()
+    if not families:
+        families.add("baseline")
+    if any("\u4e00" <= char <= "\u9fff" for char in text):
+        families.add("chinese")
+    if any("\u4e00" <= char <= "\u9fff" for char in text) and re.search(
+        r"[a-zA-Z]",
+        text,
+    ):
+        families.add("mixed_language")
+    if case.expected_intent == "no_tool":
+        families.add("no_call")
+    if case.expected_blocked:
+        families.add("blocked_command")
+    if case.expected_confirmation_required:
+        families.add("confirmation_boundary")
+    if case.expected_recovery:
+        families.add("recovery")
+    if len(case.user_turns) > 1:
+        families.add("multi_turn")
+    if "bids" in text:
+        families.add("bids")
+    if case.expected_intent in {
+        "scan_source",
+        "preview_interpretation",
+        "validate_interpretation",
+        "apply_interpretation",
+        "save_interpretation_recipe",
+        "reload_interpretation_recipe",
+    }:
+        families.add("data_interpretation")
+    return sorted(families)
+
+
+def family_pass_rates(scores: list[CaseScore]) -> dict[str, dict[str, Any]]:
+    """Aggregate pass rates by case family."""
+    buckets: dict[str, list[CaseScore]] = {}
+    for score in scores:
+        for family in score.families:
+            buckets.setdefault(family, []).append(score)
+    return {
+        family: {
+            "total": len(items),
+            "passed": sum(item.passed for item in items),
+            "pass_rate": (
+                sum(item.passed for item in items) / len(items) if items else 0.0
+            ),
+        }
+        for family, items in sorted(buckets.items())
+    }
+
+
+def failure_taxonomy(scores: list[CaseScore]) -> dict[str, int]:
+    """Return a compact failure taxonomy from case failure messages."""
+    taxonomy: dict[str, int] = {}
+    for score in scores:
+        for failure in score.failures:
+            key = failure.split(" expected ", maxsplit=1)[0]
+            taxonomy[key] = taxonomy.get(key, 0) + 1
+    return taxonomy
 
 
 def parse_args() -> argparse.Namespace:

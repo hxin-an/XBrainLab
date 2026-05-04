@@ -242,6 +242,45 @@ class TestToolSchemaValidator:
         assert not r.is_valid
         assert "not registered" in _error_message(r)
 
+    def test_unknown_root_parameter_rejected_by_default(self):
+        v = ToolSchemaValidator(
+            {
+                "scan_source": {
+                    "type": "object",
+                    "properties": {"source_path": {"type": "string"}},
+                    "required": ["source_path"],
+                }
+            }
+        )
+        r = v.validate(
+            "scan_source",
+            {"source_path": "/data/A01T.gdf", "unexpected": True},
+        )
+        assert not r.is_valid
+        assert "Unknown parameter" in _error_message(r)
+
+    def test_nested_object_schema_rejects_unknown_preview_choice(self):
+        v = ToolSchemaValidator(
+            {
+                "preview_interpretation": {
+                    "type": "object",
+                    "properties": {
+                        "choices": {
+                            "type": "object",
+                            "properties": {"subject": {"type": "string"}},
+                            "additionalProperties": False,
+                        }
+                    },
+                }
+            }
+        )
+        r = v.validate(
+            "preview_interpretation",
+            {"choices": {"subject": "S01", "debug_trace": "x"}},
+        )
+        assert not r.is_valid
+        assert "choices" in _error_message(r)
+
 
 # ---------------------------------------------------------------------------
 # Path Exists Validator

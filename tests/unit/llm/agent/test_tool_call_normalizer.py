@@ -67,6 +67,75 @@ def test_normalizes_subject_override_into_preview_choices():
     assert params == {"choices": {"subject": "S01"}}
 
 
+def test_repairs_preview_task_misread_as_event_role():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {"event_role": "motor"},
+        latest_user_text="Preview with task motor override.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {"choices": {"task": "motor"}}
+
+
+def test_moves_preview_label_fields_into_choices_and_drops_empty_values():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "subject": "S04",
+            "session": "ses-02",
+            "task": "",
+            "label_carrier": "external_file",
+            "class_map": {},
+            "anchor": "onset_seconds",
+            "selected_eeg_files": [],
+        },
+        latest_user_text="Preview with subject S04 session ses-02.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {
+            "subject": "S04",
+            "session": "ses-02",
+            "label_carrier": "external_file",
+            "anchor": "onset_seconds",
+        }
+    }
+
+
+def test_drops_null_optional_parameters():
+    tool_name, params = normalize_tool_call(
+        "apply_standard_preprocess",
+        {"l_freq": 4.0, "h_freq": 40.0, "resample_rate": None},
+    )
+
+    assert tool_name == "apply_standard_preprocess"
+    assert params == {"l_freq": 4.0, "h_freq": 40.0}
+
+
+def test_latest_load_intent_keeps_legacy_load_tool_when_model_scans():
+    tool_name, params = normalize_tool_call(
+        "scan_source",
+        {"source_path": "/missing/file.gdf"},
+        latest_user_text="Load /missing/file.gdf",
+    )
+
+    assert tool_name == "load_data"
+    assert params == {"paths": ["/missing/file.gdf"]}
+
+
+def test_recipe_reload_uses_absolute_path_from_latest_turn():
+    tool_name, params = normalize_tool_call(
+        "reload_interpretation_recipe",
+        {"recipe_path": "recipes/import_recipe.json"},
+        latest_user_text="Reload recipe /recipes/import_recipe.json",
+    )
+
+    assert tool_name == "reload_interpretation_recipe"
+    assert params == {"recipe_path": "/recipes/import_recipe.json"}
+
+
 def test_normalizes_training_setup_substitute_when_user_requested_start():
     tool_name, params = normalize_tool_call(
         "configure_training",

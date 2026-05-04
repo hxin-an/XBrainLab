@@ -15,6 +15,7 @@ from ..tools.application_surface import (
     blocked_tool_reasons,
     enabled_tool_names,
 )
+from ..tools.schema_contract import tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
 
 
@@ -59,11 +60,18 @@ Rules:
    context; do not repeat an earlier tool step unless the latest message asks
    for it.
 9. Use at most one tool call per assistant turn.
+10. If the user asks a concept question, asks why a step is blocked, asks what
+    a term means, or is only discussing the workflow, do not call a mutating
+    tool. Answer in user-facing language.
 
 Workflow tool choices:
 - The current application state is authoritative. If the state already has a
   scan, preview, validation, or applied interpretation, continue from that
   state instead of repeating an earlier scan/load step from the chat history.
+- Data Interpretation is the primary data entry workflow. Prefer
+  scan_source -> preview_interpretation -> validate_interpretation ->
+  apply_interpretation for new file, folder, BIDS, recipe, and label/event
+  imports. Direct-load and label-attach paths are legacy compatibility only.
 - Use apply_standard_preprocess for "standard preprocessing" or general
   preprocess requests, even when the user includes bandpass frequencies. Use
   the single bandpass filter tool only when it is listed and the user asks for a
@@ -116,11 +124,7 @@ Workflow tool choices:
 
         tool_descs = []
         for tool in active_tools:
-            tool_def = {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.parameters,
-            }
+            tool_def = tool_contract_for_llm(tool)
             tool_descs.append(json.dumps(tool_def, indent=2))
 
         if not tool_descs:

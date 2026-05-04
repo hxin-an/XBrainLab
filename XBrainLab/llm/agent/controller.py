@@ -16,6 +16,7 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
+from XBrainLab.backend.application import CommandName
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.pipeline_state import (  # noqa: F401
@@ -280,6 +281,8 @@ class LLMController(QObject):
 
         if self._handle_product_shortcut(text):
             return
+        if self._handle_no_tool_shortcut(text):
+            return
 
         self.is_processing = True
         self.status_update.emit("Thinking...")
@@ -347,10 +350,86 @@ class LLMController(QObject):
         self.processing_finished.emit()
         return True
 
+    def _handle_no_tool_shortcut(self, text: str) -> bool:
+        """Answer no-call explanatory or clarification turns without tools."""
+        intent = infer_user_intent(text)
+        if intent not in {"no_tool", "ask_clarification"}:
+            return False
+
+        self._retry_count = 0
+        self._tool_failure_count = 0
+        self._loop_break_count = 0
+        self._successful_tool_count = 0
+        self._append_history("user", text)
+        message = self._no_tool_response(text, intent)
+        self._append_history("assistant", message)
+        self.response_ready.emit("Assistant", message)
+        self.status_update.emit("Ready")
+        self.processing_finished.emit()
+        return True
+
+    def _no_tool_response(self, text: str, intent: str) -> str:
+        """Build a concise user-facing no-tool response."""
+        normalized = text.lower()
+        if intent == "ask_clarification":
+            return (
+                "Tell me which step you want to do next: import data, preview "
+                "labels and metadata, preprocess, create epochs, build a "
+                "dataset, train, evaluate, or inspect saliency."
+            )
+
+        if "train" in normalized or "training" in normalized or "訓練" in normalized:
+            try:
+                capability = (
+                    BackendFacade(self.study)
+                    .get_capabilities()
+                    .get(
+                        CommandName.TRAIN,
+                    )
+                )
+            except Exception:
+                capability = None
+            if capability is not None and not capability.enabled:
+                reason = "; ".join(capability.reasons)
+                return f"Training is not ready yet: {self._clean_reason(reason)}"
+            return (
+                "Training can run only after the dataset, model, and training "
+                "options are ready; starting it still needs confirmation."
+            )
+
+        if "epoch" in normalized or "切片段" in normalized:
+            return (
+                "An epoch is a time window cut around an event marker, used to "
+                "turn continuous EEG into examples for training or analysis."
+            )
+
+        if "label" in normalized or "標籤" in normalized:
+            return (
+                "Labels describe event or class meaning. In XBrainLab, the "
+                "Data Interpretation flow previews the label carrier, event "
+                "role, class map, and metadata before anything is applied."
+            )
+
+        return (
+            "No workflow action is needed for that question. Ask for a concrete "
+            "step when you want me to operate on the session."
+        )
+
     @staticmethod
     def _latest_intent_context(text: str) -> str:
         """Return prompt context that makes the latest requested step explicit."""
         intent = infer_user_intent(text)
+        if intent == "no_tool":
+            return (
+                "Latest user intent inferred by XBrainLab: no_tool. Do not call "
+                "a tool; answer the explanatory question in user-facing language."
+            )
+        if intent == "ask_clarification":
+            return (
+                "Latest user intent inferred by XBrainLab: ask_clarification. "
+                "Do not call a tool; ask one concise question for the missing "
+                "workflow step or input."
+            )
         command = command_for_intent(intent)
         if command is None:
             return ""

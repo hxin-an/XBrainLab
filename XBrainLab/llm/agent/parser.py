@@ -161,7 +161,12 @@ class CommandParser:
         data: dict[str, Any],
     ) -> list[tuple[str, dict[str, Any]]]:
         """Extract one tool call from a decoded JSON object."""
-        cmd = data.get("tool_name") or data.get("command") or data.get("name")
+        cmd = (
+            data.get("tool_name")
+            or data.get("command")
+            or data.get("name")
+            or data.get("tool")
+        )
         params = data.get("parameters")
         if params is None:
             params = data.get("arguments")
@@ -183,6 +188,14 @@ class CommandParser:
                 decoded_params = None
             if isinstance(decoded_params, dict):
                 params = decoded_params
+        if isinstance(cmd, str) and cmd.strip().lower() in {
+            "ask_clarification",
+            "clarify",
+            "none",
+            "no_tool",
+            "null",
+        }:
+            return []
         if isinstance(cmd, str) and isinstance(params, dict):
             return [(cmd, params)]
         return []
@@ -194,7 +207,10 @@ class CommandParser:
         if not stripped:
             return None
         command = re.split(r"[\s:]+", stripped, maxsplit=1)[0]
-        if command in _BARE_COMMANDS:
+        rest = stripped[len(command) :]
+        if command in _BARE_COMMANDS and (
+            not rest or rest.startswith(("\n", "\r", ":", "(", "{"))
+        ):
             return command, {}
         return None
 

@@ -87,9 +87,11 @@ case 數量目標：
 - multi-turn workflow cases 至少 `15` 個。
 - local LLM primary / fallback runner 至少重跑 `3` 次；不足時只能標成 exploratory。
 
-目前 Goal 1 已有 engineering runner：primary / fallback 都已用同一份 `54` cases 重跑 `3` 次，
-但 pass rate 仍只有 `33.33%` / `37.04%`。這代表 runner 和 failure taxonomy 已建立，
-不代表 tool-call 準確率已達 thesis-ready。
+目前 Goal 1 已有 tool-call benchmark runner 和 dashboard：deterministic baseline、
+primary local model、fallback local model 都已用同一份 `117` cases 重跑，primary /
+fallback 各 `3` 次，artifact 顯示 `117 / 117`。這支撐目前 benchmark slice 的
+thesis-candidate tool-call claim；仍不代表 UI usability、Windows launcher、雙螢幕 /
+DPI、長時間桌面會話、EEG training quality 或 product completion 已完成。
 
 這套 scoring system 才是 thesis evidence 的核心之一；dashboard clean 只能證明工程健康，不能替代 tool-call 準確率評估。
 

@@ -95,7 +95,10 @@ class BasePreviewInterpretationTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Preview file, label/event, and metadata choices before import."
+        return (
+            "Preview file, label/event, class-map, anchor, and subject/session/"
+            "task/run metadata choices before import."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -108,6 +111,75 @@ class BasePreviewInterpretationTool(BaseTool):
                 },
                 "choices": {
                     "type": "object",
+                    "properties": {
+                        "selected_eeg_files": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Selected EEG files from the latest scan result."
+                            ),
+                        },
+                        "label_carrier": {
+                            "type": "string",
+                            "enum": [
+                                "embedded_events",
+                                "external_file",
+                                "bids_events",
+                                "edf_annotations",
+                                "xdf_stream",
+                                "none",
+                                "unknown",
+                            ],
+                            "description": (
+                                "Where labels/events come from for this import."
+                            ),
+                        },
+                        "event_role": {
+                            "type": "string",
+                            "enum": [
+                                "stimulus",
+                                "response",
+                                "trial",
+                                "annotation",
+                                "unknown",
+                            ],
+                            "description": "Role assigned to event markers.",
+                        },
+                        "class_map": {
+                            "type": "object",
+                            "description": (
+                                "Map raw event or label values to class names."
+                            ),
+                        },
+                        "anchor": {
+                            "type": "string",
+                            "enum": [
+                                "sample",
+                                "timestamp",
+                                "onset_seconds",
+                                "lsl_time",
+                                "unknown",
+                            ],
+                            "description": "Time anchor for labels/events.",
+                        },
+                        "subject": {
+                            "type": "string",
+                            "description": "Subject metadata override.",
+                        },
+                        "session": {
+                            "type": "string",
+                            "description": "Session metadata override.",
+                        },
+                        "task": {
+                            "type": "string",
+                            "description": "Task metadata override.",
+                        },
+                        "run": {
+                            "type": "string",
+                            "description": "Run metadata override.",
+                        },
+                    },
+                    "additionalProperties": False,
                     "description": (
                         "Optional overrides such as selected_eeg_files, event roles, "
                         "class map, recipe id, or metadata choices like subject, "
@@ -254,7 +326,10 @@ class BaseLoadDataTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Load raw EEG/GDF data from files or directories into the Study."
+        return (
+            "Legacy compatibility: directly load raw EEG files. Prefer Data "
+            "Interpretation scan/preview/validate/apply for new imports."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -288,7 +363,10 @@ class BaseAttachLabelsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Attach label files to loaded data files."
+        return (
+            "Legacy compatibility: attach label files to already-loaded data. "
+            "Prefer Data Interpretation preview choices for labels/events."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:

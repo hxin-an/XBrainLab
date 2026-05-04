@@ -67,14 +67,17 @@
   - fallback `microsoft/Phi-3.5-mini-instruct`：`53 / 54` pass。
   這仍不是 thesis-ready；case 數不足 `100`，且剩餘 bandpass-vs-standard preprocess 語意
   failure。
-- 最新 tool-call thesis-candidate slice 已把同一 scorer 擴到 `100` cases，並用 cached
-  primary / fallback local models 各重跑 `3` 次：
-  - deterministic baseline：`100 / 100` pass。
-  - primary `microsoft/Phi-4-mini-instruct`：`100 / 100` pass。
-  - fallback `microsoft/Phi-3.5-mini-instruct`：`100 / 100` pass。
+- 最新 tool-call best-practices / thesis-candidate slice 已把同一 scorer 擴到 `117` cases，
+  並用 cached primary / fallback local models 各重跑 `3` 次：
+  - deterministic baseline：`117 / 117` pass。
+  - primary `microsoft/Phi-4-mini-instruct`：`117 / 117` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`117 / 117` pass。
   - runtime classification：primary / fallback 都是 `gpu-ready`；cache `15.34 GB`；no download。
+  - dashboard：`artifacts/agent_evals/dashboard.md`，含 model comparison、case family pass
+    rate、metric pass rate、failure taxonomy、worst cases、artifact paths 和 thesis claim boundary。
   這支撐 thesis-candidate tool-call benchmark evidence；仍不能取代 ChatPanel walkthrough、
-  Windows launcher walkthrough、MCP HTTP / long-running tool calls 或成熟 import wizard 驗收。
+  Windows launcher walkthrough、MCP HTTP / long-running tool calls、human desktop acceptance 或成熟
+  import wizard 驗收。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
@@ -388,10 +391,13 @@ Goal 1 至少要包含：
 9. **Evaluation baseline**
    - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
-     （目前 deterministic baseline 已擴為 `100 / 100` pass。）
+     （目前 deterministic baseline 已擴為 `117 / 117` pass。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
-     目前 primary `100 / 100` pass、fallback `100 / 100` pass，可作為 thesis-candidate
+     目前 primary `117 / 117` pass、fallback `117 / 117` pass，可作為 thesis-candidate
      tool-call benchmark evidence，但仍不能替代 UI / launcher / ChatPanel 產品驗收。
+   - dashboard 必須能顯示 overall pass rate、case family、metric breakdown、failure taxonomy、
+     worst cases、model comparison、repeat stability、fixture / source path、artifact path 和
+     thesis claim boundary；目前入口是 `artifacts/agent_evals/dashboard.md`。
    - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計。
@@ -502,7 +508,7 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型 `100` case runner 已有 `100 / 100` x `3` evidence，但這只支撐 tool-call
+  真模型 `117` case runner 已有 `117 / 117` x `3` evidence，但這只支撐 tool-call
   thesis-candidate benchmark，不代表 ChatPanel / launcher / import wizard 產品驗收完成。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
@@ -516,7 +522,7 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 現在最應該做的是：
 
 ```text
-1. 建立 docs checkpoint
-2. 啟動 Codex goal
-3. 由 reviewer 依 runbook 驗收，不達標就打回 goal 繼續
+1. commit 最新 tool-call best-practices / 117-case dashboard slice
+2. 補最新要求的 UI-observable automated human-like walkthrough artifact
+3. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間 local model session
 ```

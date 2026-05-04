@@ -29,8 +29,15 @@ def test_prompt_includes_available_tools_and_blocked_reasons():
     assert "do not call a different tool" in messages[0]["content"]
     assert "apply_standard_preprocess for" in messages[0]["content"]
     assert "training_mode values" in messages[0]["content"]
+    assert (
+        "Data Interpretation is the primary data entry workflow"
+        in messages[0]["content"]
+    )
+    assert "legacy direct-load and label-attach paths" in messages[0]["content"]
     assert "Inferred latest user intent: scan_source" in prompt
     assert "Direct workflow command for latest intent: scan_source" in prompt
+    assert '"taxonomy": "Data Interpretation"' in prompt
+    assert '"additionalProperties": false' in prompt
 
 
 def test_scores_local_tool_call_output():
@@ -215,6 +222,41 @@ def test_scores_saliency_tool_name_as_service_summary():
     assert score.passed
     assert score.parsed_tool_calls == []
     assert score.prediction["result_interpretation"] == "service_query_summary"
+
+
+def test_scores_chinese_missing_input_and_no_call_cases():
+    missing = _case("zh-scan-missing-source")
+    missing_score = score_local_case(
+        missing,
+        ["請提供資料來源路徑後, 我才能掃描。"] * 3,
+    )
+
+    assert missing_score.passed
+    assert missing_score.score_breakdown["clarification_behavior"]
+
+    no_tool = _case("no-tool-what-is-epoch")
+    no_tool_score = score_local_case(
+        no_tool,
+        ["Epoch 是圍繞事件切出的 EEG 時間窗。"] * 3,
+    )
+
+    assert no_tool_score.passed
+    assert no_tool_score.score_breakdown["tool_or_no_tool_decision"]
+    assert no_tool_score.verification_result == "no_tool"
+
+
+def test_scores_json_clarification_as_missing_input_without_visible_syntax():
+    case = _case("zh-ambiguous-workflow-clarification")
+    raw_output = (
+        '{"tool_name": "ask_clarification", '
+        '"parameters": "Could you please specify the data step?"}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "missing_input"
+    assert "tool_name" not in score.visible_response
 
 
 def test_scores_only_first_tool_call():

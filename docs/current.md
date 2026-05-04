@@ -196,7 +196,15 @@ cached non-China local models 各重跑 `3` 次：primary
 `microsoft/Phi-3.5-mini-instruct` `100 / 100` pass；runtime classification 皆為 `gpu-ready`，
 cache usage `15.34 GB`，no download。這支撐 thesis-candidate tool-call benchmark evidence，
 但仍不等於 multi-turn / tool-command ChatPanel workflow、Windows launcher click-through、完整
-import wizard 或 MCP HTTP / long-running client workflow 驗收完成。後續 ChatPanel local-model UI
+import wizard 或 MCP HTTP / long-running client workflow 驗收完成。最新 tool-call
+best-practices slice 又把 prompt-facing schema、no-call / clarification policy、nested schema
+verification、parser / normalizer repair 和 scoring dashboard 對齊 OpenAI Structured Outputs、
+BFCL 與 LangSmith trajectory-eval 設計；deterministic baseline、primary local model 和 fallback
+local model 都已跑同一份 `117` cases，primary / fallback 各 `3` 次，artifact 顯示
+`117 / 117`，`artifacts/agent_evals/dashboard.md` 也列出 model comparison、case family、
+metric pass rates、failure taxonomy、worst cases、source path 和 thesis claim boundary。這支撐
+目前 benchmark slice 的 thesis-candidate tool-call claim；仍不等於 UI usability、Windows
+launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。後續 ChatPanel local-model UI
 walkthrough 已新增一輪真模型可見回覆 evidence：
 `scripts/dev/capture_chatpanel_local_walkthrough.py` 會在 `HF_HUB_OFFLINE=1` /
 `TRANSFORMERS_OFFLINE=1` 下打開真 MainWindow / ChatPanel，經 UI composer 送出 prompt，走
@@ -502,9 +510,9 @@ release closure。
   Google Gemini SDK。
 - thesis protocol 已建立 split artifact schema、split audit helper 和 validator script；正式
   external dataset runner、統計報告還沒完成。local LLM 真實 tool-call runner 已有
-  primary / fallback `100` thesis-candidate cases x `3` repeat evidence，兩個 local model
-  均為 `100 / 100` pass；這支撐 tool-call thesis-candidate benchmark，不支撐 UI / launcher
-  產品完成 claim。
+  primary / fallback `117` thesis-candidate cases x `3` repeat evidence，兩個 local model
+  均為 `117 / 117` pass，並有 dashboard breakdown；這支撐 tool-call thesis-candidate
+  benchmark，不支撐 UI / launcher 產品完成 claim。
 
 ## 目前 blocker / release risks
 
@@ -550,8 +558,9 @@ release closure。
   command；`evaluate` / `visualize` / `saliency` 也已暴露成 ApplicationService-backed agent
   tools。它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow 已完成。
 - tool-call eval 已有 deterministic baseline 和 primary / fallback 真 local model runner；最新
-  primary / fallback `100` thesis-candidate cases x `3` 都是 `100 / 100` pass。這解除
-  先前 `54` case 數不足和 bandpass-vs-standard preprocess failure。ChatPanel true local
+  primary / fallback `117` thesis-candidate cases x `3` 都是 `117 / 117` pass，且 dashboard
+  已列出 case family / metric / failure taxonomy / model comparison。這解除先前 `54` case 數不足、
+  bandpass-vs-standard preprocess failure，以及只測乾淨英文 prompt 的 coverage gap。ChatPanel true local
   model one-turn、單步 tool-command、兩 turn workflow walkthrough、Data Interpretation
   短鏈 tool-command walkthrough 和 import-to-dataset pipeline-chain walkthrough 也已通過，
   但這些仍不能替代真人 Windows launcher click-through、training / evaluation / saliency 長鏈
@@ -571,9 +580,13 @@ release closure。
    reason 或 Matplotlib 2D render 擴張成完整 visualization suite。
 3. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
    import 不再是主要使用心智模型。
-4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它
+4. 建立最新要求的單一 automated human-like walkthrough artifact：不能只靠 backend JSON，
+   需要 screenshots、visible text snapshot、button state、workflow state、tool transcript、
+   user-facing transcript、CommandResult / state snapshot，以及 reset / recovery / ChatPanel
+   open-close evidence。
+5. 將 primary / fallback `117` case tool-call dashboard 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。
-5. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
+6. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
    主評分。
 
 ## 相關文件

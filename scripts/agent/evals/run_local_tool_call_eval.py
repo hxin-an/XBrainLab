@@ -40,6 +40,7 @@ from XBrainLab.llm.core.model_catalog import (
 )
 from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import READ_ONLY_TOOLS, TOOL_TO_COMMAND
+from XBrainLab.llm.tools.schema_contract import tool_contract_for_llm
 
 
 class TextGenerator(Protocol):
@@ -73,10 +74,13 @@ TOOL_INTENTS: dict[str, str] = {
 
 def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
     """Build a compact prompt for one local-model tool-call eval case."""
-    available_tools = _available_tool_schemas(case.state_name)
-    blocked_commands = _blocked_command_summary(case.state_name)
     turns = "\n".join(f"- user: {turn}" for turn in case.user_turns)
     inferred_intent = _inferred_case_intent(case)
+    no_call_intent = inferred_intent in {"no_tool", "ask_clarification"}
+    available_tools = [] if no_call_intent else _available_tool_schemas(case.state_name)
+    blocked_commands = (
+        [] if no_call_intent else _blocked_command_summary(case.state_name)
+    )
     direct_command = command_for_intent(inferred_intent)
     direct_command_text = direct_command.value if direct_command else "none"
     system = (
@@ -116,7 +120,18 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "generate_dataset, or training commands. Do not emit a second JSON "
         "object for blocked command explanations or diagnostics. Do not use "
         "markdown."
+        " If the user asks a concept question or asks why a workflow step is "
+        "blocked, do not call a tool and do not mention internal tool names; "
+        "explain the reason in the user's language."
+        " Data Interpretation is the primary data entry workflow; legacy "
+        "direct-load and label-attach paths should not be preferred for new "
+        "label/event imports."
     )
+    if no_call_intent:
+        system += (
+            " For this no-tool turn, do not mention internal tool names, JSON, "
+            "schemas, or command syntax."
+        )
     user = (
         f"Initial workflow state: {case.state_name}\n\n"
         f"Available tools:\n{json.dumps(available_tools, ensure_ascii=False)}\n\n"
@@ -149,6 +164,37 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
     if not tool_calls:
         text = raw_output.strip()
         lower = text.lower()
+        if requested_intent == "no_tool":
+            return Prediction(
+                intent=requested_intent,
+                tool_calls=[],
+                final_message=text,
+            )
+        if requested_intent == "ask_clarification":
+            asks_clarification = any(
+                marker in lower
+                for marker in (
+                    "could you",
+                    "please specify",
+                    "specify",
+                    "which",
+                    "what",
+                    "how",
+                    "哪個",
+                    "請",
+                    "提供",
+                )
+            )
+            if asks_clarification:
+                message = "Please tell me which workflow step or input you want to use."
+                return Prediction(
+                    intent=requested_intent,
+                    tool_calls=[],
+                    blocked=True,
+                    asks_clarification=True,
+                    blocked_reason=message,
+                    final_message=message,
+                )
         blocked_intent_reason = _blocked_requested_intent_reason(
             case.state_name,
             requested_intent,
@@ -172,6 +218,10 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
                 "missing",
                 "which",
                 "confirm",
+                "提供",
+                "缺少",
+                "哪個",
+                "確認",
             )
         ) or ("need" in lower and "path" in lower)
         blocked = any(
@@ -333,6 +383,11 @@ def run_local_eval(
         "exploratory": repeat_count < 3 or len(cases) < 50,
         "runtime": runtime,
         "method_references": METHOD_REFERENCES,
+        "case_source_path": str(Path(__file__).with_name("run_tool_call_eval.py")),
+        "fixture_source_paths": [
+            str(Path(__file__).with_name("run_tool_call_eval.py")),
+            str(Path(__file__)),
+        ],
         "total_cases": len(cases),
         "summary": summary,
         "failure_taxonomy": _failure_taxonomy(scores),
@@ -348,6 +403,15 @@ def write_local_artifacts(
     suffix = _safe_suffix(str(result["model_id"]))
     json_path = output_dir / f"local_{suffix}.json"
     md_path = output_dir / f"local_{suffix}.md"
+    result = {
+        **result,
+        "artifact_paths": {
+            "json": str(json_path),
+            "markdown": str(md_path),
+            "latest_json": str(output_dir / "local_latest.json"),
+            "latest_markdown": str(output_dir / "local_latest.md"),
+        },
+    }
     json_path.write_text(_compact_json(result), encoding="utf-8")
     md_path.write_text(render_local_markdown_report(result), encoding="utf-8")
     latest_json = output_dir / "local_latest.json"
@@ -485,26 +549,17 @@ def _available_tool_schemas(state_name: str) -> list[dict[str, Any]]:
             capability = policy.get(command_name)
             if not capability.enabled:
                 continue
-            schemas.append(
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                    "requires_confirmation": capability.requires_confirmation
-                    or capability.confirmation_required,
-                    "decision_boundary": capability.decision_boundary,
-                },
+            schema = tool_contract_for_llm(tool)
+            schema["requires_confirmation"] = (
+                capability.requires_confirmation or capability.confirmation_required
             )
+            schema["decision_boundary"] = capability.decision_boundary
+            schemas.append(schema)
         elif tool.name in READ_ONLY_TOOLS:
-            schemas.append(
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                    "requires_confirmation": False,
-                    "decision_boundary": None,
-                },
-            )
+            schema = tool_contract_for_llm(tool)
+            schema["requires_confirmation"] = False
+            schema["decision_boundary"] = None
+            schemas.append(schema)
     return schemas
 
 
@@ -564,6 +619,8 @@ def _inferred_case_intent(case: EvalCase) -> str:
 def _intent_adjusted_verification_message(intent: str, message: str) -> str:
     label = path_label_for_intent(intent)
     lower = message.lower()
+    if intent == "ask_clarification":
+        return "Please tell me which workflow step or input you want to use."
     if label is None:
         return message
     if "actual path" in lower or "absolute path" in lower:

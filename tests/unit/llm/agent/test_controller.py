@@ -125,6 +125,21 @@ class TestHandleUserInput:
     def test_latest_intent_context_ignores_unknown(self, ctrl):
         assert ctrl._latest_intent_context("maybe later") == ""
 
+    def test_latest_intent_context_handles_no_tool(self, ctrl):
+        context = ctrl._latest_intent_context("現在為什麼不能 train?")
+        assert "no_tool" in context
+        assert "Do not call a tool" in context
+
+    def test_no_tool_shortcut_answers_without_generation(self, ctrl):
+        ctrl._generate_response = MagicMock()
+
+        ctrl.handle_user_input("什麼是 epoch?")
+
+        ctrl._generate_response.assert_not_called()
+        ctrl.response_ready.emit.assert_called_once()
+        assert "epoch" in ctrl.response_ready.emit.call_args.args[1].lower()
+        assert not ctrl.is_processing
+
 
 # --- _on_chunk_received ---
 class TestOnChunkReceived:

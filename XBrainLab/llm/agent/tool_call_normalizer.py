@@ -27,7 +27,7 @@ def normalize_tool_call(
 ) -> tuple[str, dict[str, Any]]:
     """Return a verifier-ready tool call without bypassing backend policy."""
     normalized_name = _TOOL_ALIASES.get(tool_name, tool_name)
-    normalized_params = dict(params)
+    normalized_params = _drop_none_values(dict(params))
     normalized_name, normalized_params = _apply_latest_intent_override(
         normalized_name,
         normalized_params,
@@ -74,6 +74,9 @@ def normalize_tool_call(
         if recipe_path is not None and not isinstance(recipe_path, str):
             normalized_params.pop("recipe_path", None)
 
+    if normalized_name == "reload_interpretation_recipe":
+        _normalize_recipe_reload_args(normalized_params, latest_user_text)
+
     if _should_promote_to_start_training(normalized_name, latest_user_text):
         normalized_name = "start_training"
         normalized_params = {}
@@ -85,6 +88,19 @@ def normalize_tool_call(
         normalized_params.setdefault("query", "state")
 
     return normalized_name, normalized_params
+
+
+def _drop_none_values(value: Any) -> Any:
+    """Drop null optional parameters commonly emitted by local models."""
+    if isinstance(value, dict):
+        return {
+            key: _drop_none_values(item)
+            for key, item in value.items()
+            if item is not None
+        }
+    if isinstance(value, list):
+        return [_drop_none_values(item) for item in value]
+    return value
 
 
 def _should_promote_to_standard_preprocess(
@@ -121,6 +137,12 @@ def _apply_latest_intent_override(
         return (
             "scan_source",
             {"source_path": source_path} if source_path else dict(params),
+        )
+    if intent == "load_data" and tool_name == "scan_source":
+        source_path = _extract_path(latest_user_text)
+        return (
+            "load_data",
+            {"paths": [source_path]} if source_path else dict(params),
         )
     if intent == "preview_interpretation" and tool_name == "scan_source":
         return "preview_interpretation", {}
@@ -183,11 +205,25 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
     for key, value in list(normalized_choices.items()):
         if isinstance(value, str):
             normalized_choices[key] = _clean_choice_value(key, value)
-    for key in ("subject", "session", "task", "run", "event_role"):
-        value = params.get(key)
-        if isinstance(value, str):
-            normalized_choices.setdefault(key, _clean_choice_value(key, value))
-            params.pop(key, None)
+    for key in (
+        "subject",
+        "session",
+        "task",
+        "run",
+        "event_role",
+        "label_carrier",
+        "class_map",
+        "anchor",
+        "selected_eeg_files",
+    ):
+        if key not in params:
+            continue
+        value = params.pop(key)
+        if _usable_choice_value(value):
+            normalized_choices.setdefault(
+                key,
+                _clean_choice_value(key, value) if isinstance(value, str) else value,
+            )
     scan_id = params.get("scan_id")
     if (
         isinstance(scan_id, str)
@@ -202,11 +238,45 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
         value = _extract_named_value(latest_user_text, key)
         if value:
             normalized_choices.setdefault(key, value)
+    _repair_preview_choice_confusions(normalized_choices, latest_user_text)
     event_role = _extract_event_role(latest_user_text)
     if event_role:
         normalized_choices.setdefault("event_role", event_role)
+    normalized_choices = {
+        key: value
+        for key, value in normalized_choices.items()
+        if _usable_choice_value(value)
+    }
     if normalized_choices:
         params["choices"] = normalized_choices
+
+
+def _usable_choice_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict)):
+        return bool(value)
+    return True
+
+
+def _repair_preview_choice_confusions(
+    choices: dict[str, Any],
+    latest_user_text: str,
+) -> None:
+    """Repair common local-model confusion between task and event role."""
+    event_role = choices.get("event_role")
+    if not isinstance(event_role, str):
+        return
+    if event_role in {"stimulus", "response", "trial", "annotation", "unknown"}:
+        return
+    task = _extract_named_value(latest_user_text, "task")
+    if task and event_role == task:
+        choices.setdefault("task", task)
+        choices.pop("event_role", None)
+        return
+    choices.pop("event_role", None)
 
 
 def _normalize_apply_args(params: dict[str, Any], latest_user_text: str) -> None:
@@ -215,6 +285,17 @@ def _normalize_apply_args(params: dict[str, Any], latest_user_text: str) -> None
     text = latest_user_text.lower()
     if any(marker in text for marker in ("i confirm", "yes, apply", "yes apply")):
         params["confirmed"] = True
+
+
+def _normalize_recipe_reload_args(
+    params: dict[str, Any],
+    latest_user_text: str,
+) -> None:
+    recipe_path = params.get("recipe_path")
+    if isinstance(recipe_path, str) and not _is_absolute_path(recipe_path):
+        extracted = _extract_path(latest_user_text)
+        if extracted:
+            params["recipe_path"] = extracted
 
 
 def _normalize_candidate_id_args(params: dict[str, Any]) -> None:
@@ -367,6 +448,10 @@ def _extract_path(text: str) -> str | None:
     if not match:
         return None
     return match.group(0).rstrip(".")
+
+
+def _is_absolute_path(value: str) -> bool:
+    return value.startswith("/") or bool(re.match(r"^[A-Za-z]:[\\/]", value))
 
 
 def _extract_named_value(text: str, key: str) -> str | None:

@@ -31,10 +31,21 @@ def test_infers_preview_metadata_intents():
     )
 
 
+def test_infers_multilingual_no_call_and_clarification_boundaries():
+    assert infer_user_intent("幫我讀這份腦波資料 /data/A01T.gdf") == "scan_source"
+    assert infer_user_intent("幫我 scan 這個 BIDS root /data/bids") == ("scan_source")
+    assert infer_user_intent("現在為什麼不能 train?") == "no_tool"
+    assert infer_user_intent("什麼是 epoch?") == "no_tool"
+    assert infer_user_intent("幫我處理資料") == "ask_clarification"
+    assert infer_user_intent("幫我切 epoch event 769") == "create_epoch"
+
+
 def test_maps_intent_to_application_command():
     assert command_for_intent("train") == CommandName.TRAIN
     assert command_for_intent("evaluate") == CommandName.EVALUATE
     assert command_for_intent("scan_source") == CommandName.SCAN_SOURCE
+    assert command_for_intent("no_tool") is None
+    assert command_for_intent("ask_clarification") is None
     assert command_for_intent("unknown") is None
 
 

@@ -3442,3 +3442,57 @@
 - 不能宣稱：
   - 這支撐 compatibility label action 的 state guard。
   - 仍不是完整 Data Interpretation embedded label editor。
+
+### 2026-05-04 Tool-call best-practices / 117-case dashboard
+
+- 做了什麼：
+  - 研究並落地 OpenAI Structured Outputs / function calling、Berkeley Function Calling
+    Leaderboard、LangSmith trajectory evaluation 的可執行設計重點。
+  - 新增 `XBrainLab/llm/tools/schema_contract.py`，用 prompt-facing taxonomy contract 統一
+    tool schema 呈現，Data Interpretation 標為資料入口主線，`load_data / attach_labels` 標為
+    legacy compatibility。
+  - `preview_interpretation.choices` 改成 structured fields：selected EEG files、label carrier、
+    event role、class map、anchor、subject / session / task / run。
+  - Context Assembler / local eval prompt 強化 no-call、ask-clarification、legacy compatibility
+    降權和 Data Interpretation primary path。
+  - Controller 對 no-tool / ask-clarification intent 加入短路回覆，避免概念問題或缺輸入時
+    執行 mutating tool。
+  - Parser 支援 `tool` alias、OpenAI-style function payload、no_tool / ask_clarification output；
+    normalizer 補 safe repair：drop optional null、preview fields 移進 `choices`、task/event role
+    confusion、relative recipe path、explicit legacy load request。
+  - Verifier 補 nested object required / type / enum / unknown-field checks。
+  - deterministic / local eval cases 擴到 `117`，新增中文、中英混雜、ambiguous / missing input、
+    no-call / should-not-call、wrong-tool temptation、blocked command、multi-intent、multi-turn
+    recovery、Data Interpretation confirmation boundary、BIDS / label ambiguity / subject metadata、
+    destructive / long-running confirmation 和 EEG/BCI domain phrasing。
+  - scorer 新增 tool-or-no-tool decision、clarification behavior、confirmation boundary、visible
+    response quality、family pass rate、failure taxonomy、worst cases 和 repeated-run stability。
+  - 新增 `scripts/agent/evals/write_tool_call_eval_dashboard.py`，產生
+    `artifacts/agent_evals/dashboard.md`。
+- local model resource boundary：
+  - primary / fallback 都已 cached，runtime classification `gpu-ready`。
+  - cache usage `15.34 GB`，本輪沒有下載模型。
+- evidence：
+  - deterministic baseline：`117 / 117` pass。
+  - primary `microsoft/Phi-4-mini-instruct`：`117 / 117` x `3` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`117 / 117` x `3` pass。
+  - dashboard：`artifacts/agent_evals/dashboard.md`，含 model comparison、metric pass rates、
+    family pass rates、failure taxonomy、worst cases、source / artifact paths 和 thesis claim boundary。
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_controller.py tests/unit/llm/tools/test_definitions.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/scripts/test_write_tool_call_eval_dashboard.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `343 passed`。
+  - targeted `ruff check` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+    -> wrote `artifacts/agent_evals/dashboard.md`。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐目前 benchmark slice 的 thesis-candidate tool-call claim。
+  - 仍不能宣稱 UI usability、Windows launcher、雙螢幕 / DPI、長時間 desktop session、human
+    desktop acceptance、EEG training quality 或 product completion。
+  - 最新要求的單一 UI-observable automated human-like walkthrough 尚未完成；現有 UI artifacts
+    是 sliced walkthrough，下一輪需產生完整 screenshots / visible text / button state / workflow
+    state / transcript / CommandResult / state snapshot artifact。
