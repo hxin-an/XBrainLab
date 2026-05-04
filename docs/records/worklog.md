@@ -2470,3 +2470,16 @@
     saliency 長鏈。
   - 仍未完成人工 Windows Desktop launcher click-through、MCP Inspector GUI、完整 import wizard
     label/anchor editor。
+
+### 2026-05-04 12:23 Usage-refresh handoff
+
+- 因用量即將刷新，新增交接紀錄：
+  - `artifacts/goal/handoff-2026-05-04-usage-refresh.md`
+  - 並在 `artifacts/goal/continuation-2026-05-04-product-completion.md` 加上索引。
+- 交接紀錄保存：
+  - 最新 commit：`0cb480e assistant: capture import to dataset chain`。
+  - expected dirty worktree：只應剩 `.vscode/settings.json` 和 root `settings.json`，兩者都不可碰。
+  - 已驗證的真 local ChatPanel import-to-dataset artifact 與 validation command。
+  - 下一輪最高優先級：補 evaluation / visualization / saliency 的 agent tool exposure，然後做
+    dataset -> train/evaluate/saliency readiness 的 ChatPanel local-model walkthrough。
+- Goal 仍不可標 complete。

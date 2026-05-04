@@ -3645,3 +3645,33 @@ epoch 和 dataset，而不是停在 backend JSON 或 deterministic eval。
 - MCP Inspector GUI / release config 還沒完成。
 - Label import 仍不是成熟 import wizard 內嵌 label/anchor editor。
 - Goal 不能標 complete。
+
+## 2026-05-04 Usage-refresh handoff
+
+### 背景
+
+目前 runner 因用量即將刷新而停止，不能把 product-completion goal 包裝成完成。需要讓下一輪
+可以直接接續已驗證 slice，不重跑已證明的 UI chain，也不誤碰受保護設定檔。
+
+### 變更
+
+- 新增 `artifacts/goal/handoff-2026-05-04-usage-refresh.md`：
+  - 記錄 active repo、硬性邊界、latest commits、expected dirty files。
+  - 摘要 `0cb480e assistant: capture import to dataset chain` 的可見 UI artifact、修正點和驗證。
+  - 明確列出仍不能宣稱完成的 product blockers。
+  - 指定下一輪優先切片：evaluation / visualization / saliency agent-tool exposure，再做
+    ChatPanel dataset -> training / evaluation readiness walkthrough。
+- 更新 `artifacts/goal/continuation-2026-05-04-product-completion.md`，加入 handoff 文件索引。
+
+### 驗證邊界
+
+這是交接文件切片，不新增產品 runtime 行為。下一輪仍需從 `git status --short` 開始，確認只剩
+`.vscode/settings.json` 和 root `settings.json` 是 dirty protected files。
+
+### 不能宣稱完成
+
+- 仍沒有 ChatPanel dataset -> model / training settings -> train -> evaluation / saliency 長鏈。
+- evaluation / visualization / saliency 仍需 agent tool exposure audit / implementation。
+- Windows Desktop launcher 真人 click-through、MCP Inspector GUI、完整 import wizard label editor
+  仍未完成。
+- Goal 不能標 complete。

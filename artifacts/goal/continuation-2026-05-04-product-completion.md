@@ -8,6 +8,12 @@ Use this after usage refresh. Continue from active repo:
 /mnt/d/workspace_v2/projects/lab/XBrainLab
 ```
 
+Latest usage-refresh handoff:
+
+```text
+artifacts/goal/handoff-2026-05-04-usage-refresh.md
+```
+
 ## Hard Boundaries
 
 - Do not push.
