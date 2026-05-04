@@ -20,23 +20,14 @@ Use this after usage refresh. Continue from active repo:
 - Do local LLM disk / VRAM / cache preflight before any model download.
 - Commit each verified slice locally.
 
-## Latest Completed Slice
+## Latest Completed Slices
 
-The latest product slice added a true local ChatPanel Data Interpretation tool-chain walkthrough.
+The latest product slices added true local ChatPanel tool-chain evidence.
 
-Files changed in that slice:
+### Data Interpretation short chain
 
-- `XBrainLab/llm/agent/tool_call_normalizer.py`
-- `tests/unit/llm/agent/test_tool_call_normalizer.py`
 - `scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py`
-- `tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py`
 - `artifacts/ui/chatpanel-local-tool-chain/*`
-- `docs/current.md`
-- `docs/planning/now.md`
-- `docs/validation/README.md`
-- `docs/records/worklog.md`
-- `docs/records/implementation_log.md`
-- this continuation prompt
 
 What it proves:
 
@@ -52,7 +43,7 @@ What it proves:
 - Validation decision is `needs_confirmation`.
 - UI returned idle and visible transcript did not expose raw tool syntax, schema, traceback, or debug payload.
 
-Important root cause fixed:
+Root cause fixed:
 
 - First real run showed `scan_source` succeeded, but `preview_interpretation`
   failed as if no scan existed.
@@ -64,18 +55,55 @@ Important root cause fixed:
   - `candidate-<n>` for `candidate_id`
 - Other generated/latest/current/id placeholders are removed so ApplicationService uses current state.
 
+Validated command:
+
+```bash
+timeout 620s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool-chain --timeout-seconds 580
+```
+
+### Import-to-dataset pipeline chain
+
+- `scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py`
+- `artifacts/ui/chatpanel-local-pipeline-chain/*`
+
+What it proves:
+
+- Real local ChatPanel can continue past Data Interpretation validation.
+- The script observes and approves the `apply_interpretation` confirmation dialog.
+- Tool sequence passed:
+  - `scan_source`
+  - `preview_interpretation`
+  - `validate_interpretation`
+  - `apply_interpretation`
+  - `apply_standard_preprocess`
+  - `epoch_data`
+  - `generate_dataset`
+- Final state:
+  - applied interpretation: `True`
+  - epoch count: `6`
+  - dataset available: `True`
+  - dataset count: `1`
+- UI returned idle and visible transcript did not expose raw tool syntax, schema, traceback, or debug payload.
+
+Root causes fixed:
+
+- `apply_standard_preprocess` now routes directly to `PreprocessCommand(operation=STANDARD)` in the agent application surface instead of legacy string fallback.
+- First pipeline-chain run hit split audit failure because only the `left` event was extracted, producing 3 epochs and an empty validation split.
+- The split audit guardrail was not relaxed.
+- `tool_call_normalizer` now extracts multiple event ids from prompts such as `events left and right`.
+
 Validated commands already run:
 
 ```bash
-poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py -q
-poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py
-poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_tool_chain_walkthrough.py
-timeout 620s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool-chain --timeout-seconds 580
+poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py::test_application_tool_command_routes_standard_preprocess tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py -q
+poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py
+poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py
+timeout 840s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-pipeline-chain --timeout-seconds 800
 ```
 
 Expected results:
 
-- pytest: `30 passed`
+- pytest: `32 passed`
 - ruff: pass
 - basedpyright: `0 errors, 0 warnings, 0 notes`
 - walkthrough artifact: `status=passed`
@@ -99,17 +127,17 @@ tail -n 160 docs/records/worklog.md
 tail -n 180 docs/records/implementation_log.md
 ```
 
-3. Do not redo the completed short chain. Next highest-value product slice:
+3. Do not redo completed ChatPanel short-chain or import-to-dataset pipeline-chain evidence. Next highest-value product slice:
 
 ```text
-ChatPanel confirm/apply -> preprocess -> epoch -> dataset workflow evidence
+ChatPanel dataset -> model / training settings -> train -> evaluation / saliency readiness evidence
 ```
 
 The next slice should still run one verified command per turn. It should not auto-train without explicit confirmation. If local model behavior is unstable, fix parser / normalizer / verifier / prompt / state snapshot instead of only documenting the failure.
 
 ## Remaining Product Blockers
 
-- No true ChatPanel confirm/apply -> preprocess -> epoch -> dataset -> train/eval/saliency long-chain walkthrough yet.
+- No true ChatPanel dataset -> train/eval/saliency long-chain walkthrough yet.
 - Windows Desktop launcher human click-through / WSLg multi-monitor behavior not manually verified.
 - MCP Inspector GUI / release config not completed.
 - Label import is recipe-trace compatible but not embedded as a mature import wizard label/anchor/MAT variable editor.

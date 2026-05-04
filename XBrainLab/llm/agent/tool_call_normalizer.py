@@ -245,9 +245,15 @@ def _normalize_epoch_args(params: dict[str, Any], latest_user_text: str) -> None
 
 def _extract_epoch_args(text: str) -> dict[str, Any]:
     args: dict[str, Any] = {}
-    event = re.search(r"\bevent\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
-    if event:
-        args["event_id"] = [event.group(1)]
+    events = re.search(
+        r"\bevents?\s+(.+?)(?=\s+from\b|\.|,?\s+reply\b|$)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if events:
+        event_ids = _split_event_ids(events.group(1))
+        if event_ids:
+            args["event_id"] = event_ids
     window = re.search(
         r"from\s+(-?\d+(?:\.\d+)?)\s+to\s+(-?\d+(?:\.\d+)?)",
         text,
@@ -257,6 +263,19 @@ def _extract_epoch_args(text: str) -> dict[str, Any]:
         args["t_min"] = float(window.group(1))
         args["t_max"] = float(window.group(2))
     return args
+
+
+def _split_event_ids(text: str) -> list[str]:
+    raw_items = re.split(r"\s*(?:,|/|&|\band\b|\bor\b)\s*", text.strip())
+    event_ids: list[str] = []
+    for item in raw_items:
+        cleaned = item.strip(" .;:")
+        if not cleaned:
+            continue
+        if cleaned.lower() in {"event", "events"}:
+            continue
+        event_ids.append(cleaned)
+    return event_ids
 
 
 def _fill_bandpass_args(params: dict[str, Any], latest_user_text: str) -> None:

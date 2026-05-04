@@ -160,6 +160,29 @@ def test_application_tool_command_apply_surfaces_confirmation_required(tmp_path)
     assert result.error_type == "confirmation_required"
 
 
+def test_application_tool_command_routes_standard_preprocess(tmp_path):
+    study = Study()
+    raw = MagicMock()
+    raw.get_filename.return_value = "sample.fif"
+    raw.get_filepath.return_value = str(tmp_path / "sample.fif")
+    study.loaded_data_list = [raw]
+    study.preprocessed_data_list = [raw]
+
+    result = execute_application_tool_command(
+        study,
+        "apply_standard_preprocess",
+        {
+            "l_freq": 4,
+            "h_freq": 40,
+            "notch_freq": 50,
+            "normalize_method": "z-score",
+        },
+    )
+
+    assert result is not None
+    assert result.command_name == CommandName.PREPROCESS.value
+
+
 def test_application_surface_requires_real_study():
     with pytest.raises(CapabilityPolicyUnavailable):
         build_agent_tool_policy(MagicMock())

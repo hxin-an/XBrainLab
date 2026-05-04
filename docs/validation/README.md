@@ -886,6 +886,54 @@ Windows walkthrough。
 preprocess、epoch、dataset、training 的長鏈 autonomous workflow，也不支撐 Windows
 Desktop launcher 真人 click-through。
 
+2026-05-04 ChatPanel local import-to-dataset pipeline-chain walkthrough：
+
+- root cause fixed:
+  - `apply_standard_preprocess` 已在 agent application surface 直接 route 到
+    `PreprocessCommand(operation=STANDARD)`，讓 agent path 回 `ToolCommandResult` / typed
+    ApplicationService state，而不是 real-tool legacy string fallback。
+  - 首次真 pipeline-chain run 在 `generate_dataset` 被 split audit 擋下：
+    `Generated dataset failed split audit; fix empty splits or leakage before training.`
+  - failure root cause 是 prompt 只讓 normalizer 抽出 `left` 單一 event，形成 3 epochs；trial
+    split 會出現 empty validation。這個 guardrail 沒有放寬。
+  - `tool_call_normalizer` 現在可從 `events left and right` 抽多個 event ids，讓 same source
+    建出 6 epochs 並通過 split audit。
+- artifact：
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-ready.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-1.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-2.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-3.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-4.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-5.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-6.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-7.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.md`
+- artifact summary：
+  - status：`passed`
+  - runtime classification：`gpu-ready`
+  - model：`microsoft/Phi-4-mini-instruct`
+  - expected tools：`scan_source` -> `preview_interpretation` -> `validate_interpretation` ->
+    `apply_interpretation` -> `apply_standard_preprocess` -> `epoch_data` -> `generate_dataset`
+  - executed tools：all `ok`
+  - confirmation dialogs observed：`1`
+  - final state：applied interpretation `True`、epoch available `True`、epoch count `6`、
+    dataset available `True`、dataset count `1`
+  - visible transcript has no raw `Tool Output`、schema、traceback or debug payload
+  - UI returned idle
+- commands:
+  - `timeout 840s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-pipeline-chain --timeout-seconds 800`
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py::test_application_tool_command_routes_standard_preprocess tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py -q`
+  - `32 passed`
+  - `poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py`
+  - pass
+  - `poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐真 local ChatPanel 可從 Data Interpretation apply confirmation 走到 dataset
+ready，且每 turn 只執行一個 verified tool。它仍不支撐 model selection、training settings、
+training、evaluation、saliency 的長鏈，也不支撐 Windows Desktop launcher 真人 click-through。
+
 2026-05-04 Data Interpretation non-mocked backend workflow：
 
 - 新增 `tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked`。

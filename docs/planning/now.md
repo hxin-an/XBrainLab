@@ -142,6 +142,23 @@
   - 這支撐短鏈 Data Interpretation tool-command workflow；仍不是 confirm/apply、preprocess、
     epoch、dataset、training 的長鏈 autonomous workflow，也不是 Windows launcher
     click-through。
+- ChatPanel true local-model import-to-dataset pipeline-chain walkthrough 已新增：
+  - script：`scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py`。
+  - artifact：`artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.json` /
+    `.md`，含 ready / 7 turn screenshots。
+  - flow：synthetic FIF -> `scan_source` -> `preview_interpretation` ->
+    `validate_interpretation` -> auto-observed `apply_interpretation` confirmation dialog ->
+    `apply_standard_preprocess` -> `epoch_data` -> `generate_dataset`。
+  - `apply_standard_preprocess` 現在會由 agent application surface 直接建
+    `PreprocessCommand(operation=STANDARD)`，不再落回 legacy real-tool string path。
+  - 首次真跑被 dataset split audit 擋下：只有 `left` 單一 event 時 3 epochs 會造成 empty
+    validation split；修正方式不是放寬 audit，而是讓 `tool_call_normalizer` 可從
+    `events left and right` 抽多個 event ids。
+  - 最新 artifact：primary `microsoft/Phi-4-mini-instruct` `gpu-ready`、cache `15.34 GB`、
+    expected tools 全部 `ok`、confirmation dialog observed `1`、epoch count `6`、dataset
+    available `True`、dataset count `1`、UI 回到 idle。
+  - 這支撐真 local ChatPanel 可以走到 dataset ready；仍不代表 model selection / training /
+    evaluation / saliency 長鏈完成，也不是真人 Windows launcher click-through。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

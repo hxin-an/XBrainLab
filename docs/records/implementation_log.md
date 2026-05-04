@@ -3588,3 +3588,60 @@ Data Interpretation command」的 evidence。
 - Windows Desktop launcher 真人 click-through、MCP Inspector GUI、label import 內嵌 wizard /
   format-specific anchor editor 仍未完成。
 - Goal 不能標 complete。
+
+## 2026-05-04 ChatPanel import-to-dataset pipeline chain
+
+### 背景
+
+short Data Interpretation chain 只證明 local ChatPanel 可走到 validation。下一個產品缺口是：
+同一可見 ChatPanel/local-model path 能否在 confirmation boundary 後繼續走 apply、preprocess、
+epoch 和 dataset，而不是停在 backend JSON 或 deterministic eval。
+
+### 變更
+
+- 新增 `scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py`：
+  - 產生 deterministic synthetic FIF。
+  - 打開真 `MainWindow` / `ChatPanel`。
+  - 以 offline local model 經 visible composer 送出 7 turns。
+  - 每個 turn 預期一個 tool：`scan_source`、`preview_interpretation`、
+    `validate_interpretation`、`apply_interpretation`、`apply_standard_preprocess`、
+    `epoch_data`、`generate_dataset`。
+  - 自動觀察並核准 `Confirm Action` QMessageBox，artifact 保存 confirmation record。
+  - 最後檢查 typed backend state：applied interpretation、epoch available、dataset available。
+- `XBrainLab/llm/tools/application_surface.py`：
+  - `apply_standard_preprocess` 直接建 `PreprocessCommand(operation=STANDARD)`，讓 agent path
+    回 typed `ToolCommandResult`。
+- `XBrainLab/llm/agent/tool_call_normalizer.py`：
+  - `_extract_epoch_args` 支援 `events left and right` 這類多 event prompt。
+- 新增 `tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py`。
+- 補 `tests/unit/llm/tools/test_application_surface.py` regression，確認 standard preprocess
+  route 到 `CommandName.PREPROCESS`。
+
+### 驗證
+
+- 首次真 local-model run：
+  - apply confirmation、standard preprocess、epoch 都成功。
+  - `generate_dataset` 被 split audit 擋下，原因是 single-event 3 epochs 造成 empty validation。
+  - guardrail 保持；沒有放寬 split audit。
+- 修正後真 local-model run：
+  - `timeout 840s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-pipeline-chain --timeout-seconds 800`
+  - artifact status：`passed`
+  - runtime：primary `microsoft/Phi-4-mini-instruct`，`gpu-ready`
+  - executed tools：七個 expected tools 全部 `ok`
+  - confirmation dialogs observed：`1`
+  - final state：epoch count `6`、dataset available `True`、dataset count `1`
+- Targeted gates：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py::test_application_tool_command_routes_standard_preprocess tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py -q`
+    - `32 passed`
+  - targeted `ruff`
+    - pass
+  - targeted `basedpyright`
+    - `0 errors, 0 warnings, 0 notes`
+
+### 不能宣稱完成
+
+- 這支撐 true local ChatPanel import-to-dataset path，不支撐 training / evaluation / saliency 長鏈。
+- 還沒有真人 Windows Desktop launcher click-through。
+- MCP Inspector GUI / release config 還沒完成。
+- Label import 仍不是成熟 import wizard 內嵌 label/anchor editor。
+- Goal 不能標 complete。

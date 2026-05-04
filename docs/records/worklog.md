@@ -2432,3 +2432,41 @@
   - 還不能宣稱 confirm/apply、preprocess、epoch、dataset、training 長鏈 autonomous workflow。
   - 還不能宣稱 Windows Desktop launcher 真人 click-through、MCP Inspector GUI 或完整 import
     wizard / label editor 完成。
+
+### 2026-05-04 12:20 ChatPanel import-to-dataset pipeline chain
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py`，用真 MainWindow /
+    ChatPanel / local model 走 `scan_source` -> `preview_interpretation` ->
+    `validate_interpretation` -> `apply_interpretation` -> `apply_standard_preprocess` ->
+    `epoch_data` -> `generate_dataset`。
+  - script 會觀察 `Confirm Action` QMessageBox 並按 Yes，artifact 會記錄 confirmation dialog。
+  - `apply_standard_preprocess` 現在由 `application_surface.py` 直接 route 到
+    `PreprocessCommand(operation=STANDARD)`，避免 real-tool legacy string fallback。
+  - 首次真跑在 `generate_dataset` 被 split audit 擋下，原因是 prompt 只形成 `left` 單一 event
+    和 3 epochs；修正 `tool_call_normalizer`，讓 `events left and right` 可抽出多個 event ids。
+  - 新增 `tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py`。
+- artifact：
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.md`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-ready.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-1.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-2.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-3.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-4.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-5.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-6.png`
+  - `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-pipeline-chain-turn-7.png`
+- 驗證：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py::test_application_tool_command_routes_standard_preprocess tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py -q`
+    -> `32 passed`
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `timeout 840s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-pipeline-chain --timeout-seconds 800`
+    -> passed；七個 expected tools 全部 `ok`，confirmation dialogs observed `1`，epoch count `6`，
+    dataset available `True`。
+- 不能宣稱：
+  - 這支撐 ChatPanel 到 dataset ready，不支撐 model / training settings / train / evaluation /
+    saliency 長鏈。
+  - 仍未完成人工 Windows Desktop launcher click-through、MCP Inspector GUI、完整 import wizard
+    label/anchor editor。

@@ -158,6 +158,17 @@ def test_epoch_without_window_uses_safe_defaults_from_latest_intent():
     assert params == {"event_id": ["770"], "t_min": -0.1, "t_max": 1.0}
 
 
+def test_epoch_extracts_multiple_event_ids_from_latest_intent():
+    tool_name, params = normalize_tool_call(
+        "epoch_data",
+        {},
+        latest_user_text="Create epochs for events left and right from 0.0 to 0.25 seconds.",
+    )
+
+    assert tool_name == "epoch_data"
+    assert params == {"event_id": ["left", "right"], "t_min": 0.0, "t_max": 0.25}
+
+
 def test_bandpass_without_arguments_extracts_frequency_range_from_text():
     tool_name, params = normalize_tool_call(
         "apply_bandpass_filter",

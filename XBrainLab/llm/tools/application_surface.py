@@ -497,6 +497,16 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
             return None
         return AttachLabelsCommand(mapping={str(k): str(v) for k, v in mapping.items()})
 
+    if tool_name == "apply_standard_preprocess":
+        return PreprocessCommand(
+            operation=PreprocessOperation.STANDARD,
+            low_freq=_optional_float(params.get("l_freq")),
+            high_freq=_optional_float(params.get("h_freq")),
+            notch_freq=_optional_float(params.get("notch_freq")),
+            rate=_optional_int(params.get("resample_rate")),
+            method=_optional_str(params.get("normalize_method")),
+        )
+
     if tool_name == "apply_bandpass_filter":
         low_freq = params.get("low_freq")
         high_freq = params.get("high_freq")
@@ -630,6 +640,18 @@ def _optional_str(value: Any) -> str | None:
         return None
     text = str(value)
     return text or None
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(value)
 
 
 def enabled_tool_names(study: Any) -> list[str]:
