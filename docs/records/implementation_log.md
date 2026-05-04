@@ -63,6 +63,8 @@ Data Interpretation format capability taxonomy 也已抽成 focused module，讓
 同時承接 scanner / candidate / format matrix 細節。
 Metadata resolution / BIDS summary / recipe metadata rehydration 也已抽成 focused module，讓
 Data Interpretation lifecycle module 的下一步拆分邊界更清楚。
+Recipe serialization / JSON load-write / applied-interpretation-to-recipe builder 也已抽成
+focused module，Data Interpretation lifecycle module 只保留 compatibility re-export。
 
 ### 已可宣稱
 
@@ -89,6 +91,8 @@ Data Interpretation lifecycle module 的下一步拆分邊界更清楚。
   XDF-LSL format capability boundary 由 `data_interpretation_formats.py` 承接。
 - Subject / session / task / run metadata resolution、BIDS entity summary 和 recipe metadata
   rehydration 由 `data_interpretation_metadata.py` 承接。
+- `ImportRecipe` serialization、recipe JSON load / write 和 applied interpretation recipe builder
+  由 `data_interpretation_recipe.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 

@@ -4292,3 +4292,53 @@
   - 這是 metadata parser / serializer boundary cleanup，不是 import wizard UX completion。
   - Recipe serialization, candidate / preview builder, validator, and label carrier planner still need
     future decomposition.
+
+### 2026-05-06 Data Interpretation recipe boundary extraction
+
+- scope：
+  - Backend-only Data Interpretation internal boundary cleanup.
+  - Public service imports remain compatible through `data_interpretation.py` re-exports.
+- current call sites：
+  - `DataInterpretationCommandService.save_interpretation_recipe()` builds recipes from applied
+    interpretation state.
+  - `reload_interpretation_recipe` loads recipe JSON and re-runs scan / preview / validation.
+  - `backend.application.__init__` re-exports `ImportRecipe` from `data_interpretation`.
+- target boundary：
+  - `data_interpretation_recipe.py` owns `ImportRecipe`, JSON write/load, from-dict rehydration,
+    and applied interpretation -> recipe conversion.
+  - `data_interpretation.py` keeps lifecycle orchestration and re-exports public recipe names.
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_recipe.py`。
+  - Moved `ImportRecipe`, `load_import_recipe`, `import_recipe_from_dict`, and `build_import_recipe`
+    out of `data_interpretation.py`.
+  - Added direct unit coverage for recipe from-dict mapping, write/load roundtrip, and JSON-ready
+    metadata serialization.
+  - `data_interpretation.py` reduced from about `928` lines to about `822` lines after this slice.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py -q`
+    initial failure: `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_recipe`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_recipe.py`
+    -> pass after import re-export cleanup.
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_recipe.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply tests/unit/backend/application/test_application_service.py::test_data_interpretation_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe -q`
+    -> `14 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `87 passed`.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 120s git diff --check`
+    -> pass.
+- 不能宣稱：
+  - This is recipe serialization boundary cleanup, not a product-complete Data Interpretation wizard.
+  - Scanner, candidate / preview builder, validator, and label carrier planner still remain in
+    `data_interpretation.py`.

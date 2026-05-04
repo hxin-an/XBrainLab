@@ -190,6 +190,10 @@ candidate lifecycle 不再直接承接 format taxonomy 細節。
 resolution、BIDS entity summary 和 recipe metadata rehydration 抽到
 `data_interpretation_metadata.py`；大型 lifecycle module 降到約 `928` 行，但 scanner /
 candidate / preview / validation / recipe flow 仍在同一 domain module，後續還可繼續拆。
+後續 recipe boundary cleanup 又把 `ImportRecipe` serialization、JSON load/write、recipe
+rehydration 和 applied interpretation -> recipe builder 抽到 `data_interpretation_recipe.py`；
+`data_interpretation.py` 目前降到約 `822` 行，仍保留 scanner、candidate / preview builder、
+validator 和 label carrier planner。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import json
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from enum import Enum
@@ -12,6 +11,7 @@ from typing import Any, cast
 
 from scipy.io import loadmat
 
+from . import data_interpretation_recipe as _recipe
 from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
@@ -27,11 +27,13 @@ from .data_interpretation_metadata import (
     bids_summary as _bids_summary,
 )
 from .data_interpretation_metadata import (
-    file_metadata_from_dict as _file_metadata_from_dict,
-)
-from .data_interpretation_metadata import (
     metadata_for_file as _metadata_for_file,
 )
+
+ImportRecipe = _recipe.ImportRecipe
+build_import_recipe = _recipe.build_import_recipe
+import_recipe_from_dict = _recipe.import_recipe_from_dict
+load_import_recipe = _recipe.load_import_recipe
 
 
 class InterpretationDecision(str, Enum):
@@ -150,87 +152,6 @@ class AppliedInterpretation:
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
-
-
-@dataclass(frozen=True)
-class ImportRecipe:
-    """Serializable recipe for replaying a data interpretation."""
-
-    recipe_id: str
-    interpretation_id: str
-    source_path: str
-    source_kind: str
-    selected_eeg_files: list[str] = dc_field(default_factory=list)
-    label_carriers: list[str] = dc_field(default_factory=list)
-    label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
-    metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
-    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
-    validation_decision: str = InterpretationDecision.SAFE.value
-    confirmations: list[str] = dc_field(default_factory=list)
-    event_roles: dict[str, str] = dc_field(default_factory=dict)
-    class_map: dict[str, str] = dc_field(default_factory=dict)
-    label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
-    warnings: list[str] = dc_field(default_factory=list)
-    recipe_trace: list[str] = dc_field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
-
-    def write_json(self, path: str) -> None:
-        target = Path(path).expanduser()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(self.to_dict(), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-
-
-def load_import_recipe(path: str) -> ImportRecipe:
-    """Load an import recipe from a JSON file."""
-    payload = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
-    return import_recipe_from_dict(payload)
-
-
-def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
-    """Build an :class:`ImportRecipe` from a serialized payload."""
-    metadata = [
-        _file_metadata_from_dict(item)
-        for item in cast(list[dict[str, Any]], payload.get("metadata", []))
-    ]
-    return ImportRecipe(
-        recipe_id=str(payload.get("recipe_id", "recipe-reloaded")),
-        interpretation_id=str(payload.get("interpretation_id", "")),
-        source_path=str(payload.get("source_path", "")),
-        source_kind=str(payload.get("source_kind", "unknown")),
-        selected_eeg_files=[
-            str(item) for item in payload.get("selected_eeg_files", [])
-        ],
-        label_carriers=[str(item) for item in payload.get("label_carriers", [])],
-        label_carrier_plan=[
-            dict(item)
-            for item in payload.get("label_carrier_plan", [])
-            if isinstance(item, dict)
-        ],
-        metadata=metadata,
-        format_capabilities=[
-            dict(item)
-            for item in payload.get("format_capabilities", [])
-            if isinstance(item, dict)
-        ],
-        validation_decision=str(
-            payload.get("validation_decision", InterpretationDecision.SAFE.value),
-        ),
-        confirmations=[str(item) for item in payload.get("confirmations", [])],
-        event_roles=_string_mapping(payload.get("event_roles")),
-        class_map=_string_mapping(payload.get("class_map")),
-        label_imports=[
-            dict(item)
-            for item in payload.get("label_imports", [])
-            if isinstance(item, dict)
-        ],
-        warnings=[str(item) for item in payload.get("warnings", [])],
-        recipe_trace=[str(item) for item in payload.get("recipe_trace", [])],
-    )
 
 
 def scan_source_path(
@@ -464,33 +385,6 @@ def validate_interpretation_candidate(
             "Applied interpretation becomes the source truth for preprocessing, "
             "epoching, dataset generation, training, and saliency.",
         ],
-    )
-
-
-def build_import_recipe(
-    *,
-    recipe_id: str,
-    applied: AppliedInterpretation,
-    warnings: list[str],
-) -> ImportRecipe:
-    """Build a recipe from an applied interpretation."""
-    return ImportRecipe(
-        recipe_id=recipe_id,
-        interpretation_id=applied.interpretation_id,
-        source_path=applied.source_path,
-        source_kind=applied.source_kind,
-        selected_eeg_files=list(applied.loaded_files),
-        label_carriers=list(applied.label_carriers),
-        label_carrier_plan=[dict(item) for item in applied.label_carrier_plan],
-        metadata=list(applied.metadata),
-        format_capabilities=[dict(item) for item in applied.format_capabilities],
-        validation_decision=applied.validation_decision,
-        confirmations=list(applied.confirmations),
-        event_roles=dict(applied.event_roles),
-        class_map=dict(applied.class_map),
-        label_imports=[dict(item) for item in applied.label_imports],
-        warnings=list(warnings),
-        recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
     )
 
 

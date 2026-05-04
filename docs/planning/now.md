@@ -67,6 +67,8 @@
 - 後續 Data Interpretation boundary cleanup 已把 metadata resolution / BIDS summary / recipe
   metadata rehydration 抽到 `data_interpretation_metadata.py`；下一步可繼續拆 recipe
   serialization 或 label carrier planner。
+- 最新 Data Interpretation boundary cleanup 已把 recipe serialization / rehydration 抽到
+  `data_interpretation_recipe.py`；下一步可聚焦 label carrier planner 或 preview / validator。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
