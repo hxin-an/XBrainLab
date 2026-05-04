@@ -2538,3 +2538,18 @@
 - 不能宣稱：
   - 這支撐 training confirmation boundary 和 analysis-readiness tool path。
   - 還不支撐 actual training completion、evaluation metrics 或 saliency render。
+
+### 2026-05-04 12:57 Usage-refresh handoff refresh
+
+- 因使用量即將刷新，刷新交接紀錄：
+  - `artifacts/goal/handoff-2026-05-04-usage-refresh.md`
+- 交接已更新到最新 commit：
+  - `a228a9d assistant: capture training readiness boundary`
+  - `84d9c66 agent: expose analysis tools`
+- 交接紀錄明確保存：
+  - expected dirty worktree 只應剩 `.vscode/settings.json` 和 root `settings.json`，兩者不可碰。
+  - 最新可驗證 evidence 是 true local ChatPanel training-readiness boundary，不是 actual training
+    completion。
+  - 下一手優先處理 `configure_training` tool schema / `output_dir` path，然後做 controlled tiny
+    training completion -> evaluation / visualization / saliency evidence。
+- Goal 仍不可標 complete。

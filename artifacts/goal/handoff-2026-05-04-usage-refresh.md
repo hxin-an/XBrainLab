@@ -1,6 +1,6 @@
 # XBrainLab Usage Refresh Handoff
 
-Date: `2026-05-04 12:23 UTC+08`
+Date: `2026-05-04 12:57 UTC+08`
 
 This handoff exists because the current runner is stopping for usage refresh.
 Resume in the active repo:
@@ -17,8 +17,10 @@ Resume in the active repo:
 - Do not run destructive git commands.
 - Do not mark the product goal complete while known blockers remain.
 - Keep API / Gemini / remote LLM out of the product execution path.
-- Do not use China-source models.
+- Do not use or download China-source models.
 - Do disk / VRAM / cache preflight before any model download.
+- Keep local model cache within the existing limits unless the user explicitly
+  approves otherwise.
 - Commit each verified slice locally.
 
 ## Worktree Snapshot
@@ -26,11 +28,11 @@ Resume in the active repo:
 Latest local commits at handoff:
 
 ```text
+a228a9d assistant: capture training readiness boundary
+84d9c66 agent: expose analysis tools
+9f26e4f docs: add usage refresh handoff
 0cb480e assistant: capture import to dataset chain
 9513dfa assistant: capture data interpretation tool chain
-2958fb9 assistant: compact tool history for workflow turns
-e46a35a launcher: capture windows startup walkthrough
-5117f9d ui: edit interpretation metadata choices
 ```
 
 Expected dirty files after the latest committed slice:
@@ -45,97 +47,98 @@ user explicitly asks otherwise.
 
 ## Latest Verified Product Slice
 
-The latest committed slice is `0cb480e assistant: capture import to dataset chain`.
+The latest committed slice is
+`a228a9d assistant: capture training readiness boundary`.
 
-It added true local ChatPanel evidence for the import-to-dataset path:
+It added true local ChatPanel evidence for the dataset-ready training boundary:
 
-- `scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py`
-- `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.json`
-- `artifacts/ui/chatpanel-local-pipeline-chain/chatpanel-local-pipeline-chain-walkthrough.md`
-- ready screenshot plus seven turn screenshots under
-  `artifacts/ui/chatpanel-local-pipeline-chain/`
+- `scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py`
+- `tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py`
+- `artifacts/ui/chatpanel-local-training-readiness/chatpanel-local-training-readiness-walkthrough.json`
+- `artifacts/ui/chatpanel-local-training-readiness/chatpanel-local-training-readiness-walkthrough.md`
+- ready screenshot plus six turn screenshots under
+  `artifacts/ui/chatpanel-local-training-readiness/`
 
 What the artifact proves:
 
-- Real `MainWindow` / `ChatPanel` / `AgentManager` / `LLMController` /
-  `AgentWorker` / `LLMEngine` path ran with the local primary model.
-- Runtime was cached local `microsoft/Phi-4-mini-instruct`, `gpu-ready`, with
-  cache usage around `15.34 GB`.
-- No model download was needed.
+- A real `MainWindow` / `ChatPanel` / `AgentManager` / `LLMController` /
+  `AgentWorker` / `LLMEngine` path ran with cached local primary model
+  `microsoft/Phi-4-mini-instruct`.
+- Runtime classification was `gpu-ready`; cache usage was about `15.34 GB`; no
+  model download was needed.
+- Synthetic dataset-ready state was prepared through `ApplicationService`.
 - The visible ChatPanel workflow executed one verified tool per turn:
-  - `scan_source`
-  - `preview_interpretation`
-  - `validate_interpretation`
-  - `apply_interpretation`
-  - `apply_standard_preprocess`
-  - `epoch_data`
-  - `generate_dataset`
-- The script observed the `apply_interpretation` confirmation dialog and
-  approved it as an explicit UI boundary.
-- Final backend state had:
-  - applied interpretation: `True`
-  - epoch count: `6`
-  - dataset available: `True`
-  - dataset count: `1`
-- Visible transcript was checked for raw tool / debug markers and stayed
-  product-facing.
-
-Important fixes in that slice:
-
-- `apply_standard_preprocess` now routes through
-  `PreprocessCommand(operation=STANDARD)` in
-  `XBrainLab/llm/tools/application_surface.py` instead of falling through a
-  legacy string path.
-- `XBrainLab/llm/agent/tool_call_normalizer.py` now extracts multiple event ids
-  from prompts like `events left and right`.
-- The dataset split audit was not weakened. The first real run failed because a
-  single-event, 3-epoch dataset produced an empty validation split; the fix was
-  to generate enough epochs through correct event extraction.
+  - `set_model`
+  - `configure_training`
+  - `start_training`
+  - `visualize`
+  - `saliency`
+  - `evaluate`
+- The script observed the high-impact training confirmation dialog and rejected
+  it deliberately. Training did not start.
+- Final state had dataset available, model `EEGNet`, training option present,
+  trainer not created, training not running, and evaluation unavailable.
+- The `evaluate` turn surfaced the user-facing blocked reason:
+  `Create a training plan before evaluating results.`
+- Visible assistant text was checked for raw tool syntax, traceback, schema, and
+  developer wording markers.
 
 Recorded validation for the latest slice:
 
 ```bash
-poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py -q
-poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py
-poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py
+poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py -q
+poetry run ruff check scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py
+poetry run basedpyright scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py
+timeout 900s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py --output-dir artifacts/ui/chatpanel-local-training-readiness --timeout-seconds 840
 poetry run mkdocs build --strict
 git diff --check
-timeout 840s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-pipeline-chain --timeout-seconds 800
 ```
 
-The compacted run state records the broader targeted pytest command as
-`45 passed`; the existing continuation file records the narrower targeted
-subset as `32 passed`. Treat the artifact and committed tests as the source of
-truth and rerun the broader command before building on this slice.
+Expected results:
+
+- unit: `4 passed`
+- targeted `ruff`: pass
+- targeted `basedpyright`: `0 errors, 0 warnings, 0 notes`
+- true local ChatPanel walkthrough: `status=passed`
+- mkdocs strict build: pass with the existing MkDocs Material warning
+- diff check: pass
+
+## Prior Slice To Keep In Mind
+
+`84d9c66 agent: expose analysis tools` closed the agent exposure gap for backend
+analysis commands:
+
+- `evaluate`, `visualize`, and `saliency` now have definitions / mock / real
+  tools.
+- `application_surface.py` maps them directly to `EvaluateCommand`,
+  `VisualizeCommand`, and `SaliencyCommand`.
+- Parser / intent / trained-stage prompt now recognize them as workflow tools.
+- Targeted tests passed (`293 passed`), broader agent/tools regression passed
+  (`516 passed`), deterministic eval was `100 / 100`, and affected-case local
+  primary / fallback smokes were each `5 / 5`.
+
+This means the next runner should not spend time re-adding analysis tools.
 
 ## Current Known Blockers
 
 Do not claim product completion yet.
 
-- No true ChatPanel dataset -> model selection -> training settings -> train ->
-  evaluate / visualize / saliency readiness long-chain walkthrough.
-- Post-handoff update: evaluation / visualization / saliency agent-tool exposure
-  has been completed. `evaluate`, `visualize`, and `saliency` are registered
-  tools and route through ApplicationService. The remaining blocker is the true
-  ChatPanel controlled tiny training completion -> metrics / render walkthrough.
-- Post-handoff update: the dataset-ready -> model / training settings ->
-  training-confirmation boundary -> visualization/saliency readiness artifact
-  has been completed under `artifacts/ui/chatpanel-local-training-readiness/`.
-  It intentionally rejects training confirmation and does not prove actual
-  training completion.
+- No true controlled tiny ChatPanel training completion has been captured.
+- No ChatPanel post-training `evaluate` metrics, visualization render, or
+  saliency render artifact exists.
+- Full UI button-click to real training / evaluation / visualization / saliency
+  completion is not done.
 - Windows Desktop launcher human click-through / WSLg multi-monitor behavior has
   not been manually verified. There is automated command-path evidence only.
 - MCP stdio server and stdlib client walkthrough exist, but MCP Inspector GUI /
   release config is not completed.
 - Label import is recipe-trace compatible but still not a mature import wizard
   embedded label / anchor / MAT variable editor.
-- Full UI button-click to real training, evaluation, visualization, and saliency
-  completion is not done.
 - External thesis experiment runner / statistical report is not done.
 
 ## Immediate Resume Plan
 
-Start with the smallest product slice that unlocks the next visible workflow:
+Start with the smallest product slice that unlocks the next visible workflow.
 
 1. Re-check worktree:
 
@@ -145,34 +148,57 @@ Start with the smallest product slice that unlocks the next visible workflow:
 
    Only `.vscode/settings.json` and root `settings.json` should be dirty.
 
-2. Capture the next UI-observable local-model artifact:
+2. Inspect the training command path before approving real training:
 
    ```text
-   dataset ready -> set model -> configure training -> explicit confirmation -> train or readiness boundary -> evaluate / visualize / saliency readiness
+   ConfigureTrainingCommand
+   BaseConfigureTrainingTool
+   XBrainLab/llm/tools/application_surface.py
+   start_training / train command tests
    ```
 
-   If training is too slow or unsafe in the current environment, capture the
-   confirmation / readiness boundary and document exactly what it does not
-   prove. Do not let the assistant auto-train without explicit confirmation.
+   Current known issue: `ConfigureTrainingCommand` supports `output_dir`, but
+   the agent-facing `configure_training` tool schema / application-surface
+   mapping did not expose `output_dir` when last inspected. Add tests first if
+   this is still true.
 
-3. Run targeted validation for that slice, at minimum:
+3. If still missing, add a focused slice:
 
-   ```bash
-   git diff --check
-   poetry run ruff check <changed files>
-   poetry run basedpyright <changed files>
-   poetry run pytest --capture=sys <targeted tests> -q
-   poetry run mkdocs build --strict
+   ```text
+   configure_training tool accepts output_dir
+     -> ApplicationService command receives it
+     -> training option/state records it
    ```
 
-4. Commit the verified slice locally.
+   Run targeted unit tests, targeted `ruff`, targeted `basedpyright`,
+   `mkdocs build --strict`, and `git diff --check`. Commit that slice.
+
+4. Then capture the next UI-observable local-model artifact:
+
+   ```text
+   dataset ready
+     -> set model
+     -> configure tiny training with temp/artifact output_dir
+     -> explicit training confirmation
+     -> controlled training completion if safe
+     -> evaluate metrics
+     -> visualization / saliency render or clear blocked reason
+   ```
+
+   The assistant must still execute one verified command per turn. Do not let it
+   auto-train without an observed confirmation boundary.
+
+5. If training is too slow, unsafe, or flaky in WSL/GPU context, capture the
+   blocker as evidence and do not mark the goal complete.
 
 ## Do Not Redo Without Reason
 
-- Do not redo the short ChatPanel Data Interpretation chain unless you changed
-  scan / preview / validate parsing, verification, or tool schema.
-- Do not redo the import-to-dataset chain unless you changed apply /
-  preprocess / epoch / dataset behavior.
+- Do not redo the short ChatPanel Data Interpretation chain unless scan /
+  preview / validate parsing, verification, or tool schema changed.
+- Do not redo the import-to-dataset chain unless apply / preprocess / epoch /
+  dataset behavior changed.
+- Do not redo analysis-tool exposure unless `evaluate` / `visualize` /
+  `saliency` registry or command mapping changed.
 - Do not rerun the full `100` case local LLM eval for documentation-only edits.
   Rerun targeted eval if prompt / schema / parser / verifier behavior changes,
   then rerun full primary / fallback x3 before making thesis-candidate claims.
@@ -186,7 +212,10 @@ Current evidence supports:
 - true local ChatPanel two-turn continuity after compact tool history;
 - true local ChatPanel Data Interpretation scan -> preview -> validate;
 - true local ChatPanel Data Interpretation apply -> preprocess -> epoch ->
-  dataset.
+  dataset;
+- ApplicationService-backed agent tools for evaluate / visualize / saliency;
+- true local ChatPanel dataset-ready training confirmation boundary and
+  analysis-readiness blocked-state handling.
 
 Current evidence does not support:
 

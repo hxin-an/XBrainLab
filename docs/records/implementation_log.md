@@ -3787,3 +3787,35 @@ analysis readiness，而不是只靠 backend JSON 或 deterministic eval。
 - 這支撐 high-impact training confirmation boundary 和 analysis-readiness tools。
 - 這不是 actual training completion，也沒有 evaluation metrics 或 saliency render。
 - Goal 不能標 complete。
+
+## 2026-05-04 Usage-refresh handoff refresh
+
+### 背景
+
+目前 runner 因使用量即將刷新而停止。先前 handoff 已存在，但頂部 latest commits / latest
+verified slice 還停在 import-to-dataset chain；需要更新到 analysis-tool exposure 和
+training-readiness boundary 後的實際狀態，避免下一輪重做已完成 slice 或誤判 goal complete。
+
+### 變更
+
+- 刷新 `artifacts/goal/handoff-2026-05-04-usage-refresh.md`：
+  - latest commits 更新到 `a228a9d` / `84d9c66` / `9f26e4f` / `0cb480e` / `9513dfa`。
+  - latest verified slice 改為
+    `a228a9d assistant: capture training readiness boundary`。
+  - 保留 protected dirty files 邊界：只應忽略 `.vscode/settings.json` 和 root `settings.json`。
+  - 明確列出 analysis-tool exposure 已完成，不要重做。
+  - 下一手 resume plan 指向 `configure_training` tool `output_dir` path 和 controlled tiny
+    training completion evidence。
+
+### 驗證邊界
+
+這是交接文件切片，不新增 product runtime behavior。下一輪仍需先跑 `git status --short`，
+並在任何產品切片後跑對應 targeted tests / static gates / UI artifact capture。
+
+### 不能宣稱完成
+
+- Actual ChatPanel training completion 未完成。
+- Post-training evaluate metrics、visualization render、saliency render artifact 未完成。
+- Windows Desktop human click-through、MCP Inspector / release config、mature import wizard label
+  editor 和 external thesis experiment package 仍未完成。
+- Goal 不能標 complete。
