@@ -76,8 +76,10 @@ MCP server，完成 `initialize`、`tools/list`、`scan_source`、`preview_inter
 `scripts/dev/run_mcp_server_for_client.sh`、`scripts/dev/write_mcp_client_config.py` 和
 `artifacts/mcp/xbrainlab-mcp.json` / `.md`；committed config 以 Inspector `mcpServers`
 stdio 格式啟動 prepared XBrainLab runtime，並有 integration test 透過該 config command
-重跑 `initialize` / `tools/list` / `tools/call` walkthrough。這支撐外部 stdio client path
-和 release config baseline，但尚未完成 Inspector GUI click-through 或 Windows launcher
+重跑 `initialize` / `tools/list` / `tools/call` walkthrough。Windows-side official Inspector CLI
+也已透過 `xbrainlab-windows-wsl` config 跑過 `tools/list`，保存
+`artifacts/mcp/inspector-cli-tools-list.json` / `.md`。這支撐外部 stdio client path
+和 Inspector CLI / release config baseline，但尚未完成 Inspector GUI click-through 或 Windows launcher
 整合。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
 confirmation-blocked apply -> confirmed apply -> save recipe -> reload recipe review ->

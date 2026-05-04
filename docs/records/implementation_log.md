@@ -4821,3 +4821,49 @@ developer table，不像成熟 wizard。Ambiguous `Matched EEG` row 應提供可
 - 這不支撐 post-load label import full editor、all-format manual compatibility matrix 或真人
   click-through。
 - Goal 不能標 complete。
+
+## 2026-05-04 MCP Inspector CLI smoke and WSL poetry fallback
+
+### 背景
+
+`artifacts/mcp/xbrainlab-mcp.json` 已可由 stdio client test 使用，但還沒有用 official Inspector
+CLI 讀取 committed config。第一次真跑 `xbrainlab-windows-wsl` entry 失敗，暴露 Windows-side
+`wsl.exe` 啟動非 login shell 時 `poetry` 不在 PATH。
+
+### 變更
+
+- `scripts/dev/run_mcp_server_for_client.sh`
+  - 新增 `POETRY_BIN` override。
+  - 若未設定，先用 `command -v poetry`。
+  - 若 PATH 找不到，fallback 到 `$HOME/.local/bin/poetry`。
+  - 找不到時回 stderr 並 exit `127`，不在 stdout 污染 MCP JSON。
+- `artifacts/mcp/inspector-cli-tools-list.json`
+  - official Inspector CLI `tools/list` raw JSON。
+- `artifacts/mcp/inspector-cli-tools-list.md`
+  - 簡短 summary，記錄 command、launch path、tool count 和 first tools。
+- `artifacts/mcp/xbrainlab-mcp.md`
+  - 補 Inspector CLI smoke command。
+
+### 驗證
+
+- Failed first attempt:
+  - `timeout 180s '/mnt/c/Program Files/nodejs/npx' -y @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list`
+  - failed with `Connection closed`。
+- Root cause smoke:
+  - `/mnt/c/Windows/System32/wsl.exe bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+  - stderr：`exec: poetry: not found`。
+- Fixed direct WSL smoke:
+  - same command with MCP initialize request -> valid JSON-RPC initialize response。
+- Official Inspector CLI:
+  - `timeout 180s '/mnt/c/Program Files/nodejs/npx' -y @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list`
+  - exit `0`
+  - `artifacts/mcp/inspector-cli-tools-list.json` lists `28` tools.
+  - First tools include `scan_source`, `preview_interpretation`, `validate_interpretation`,
+    `apply_interpretation`, `save_interpretation_recipe`, `reload_interpretation_recipe`.
+
+### 不能宣稱完成
+
+- 這支撐 official Inspector CLI `tools/list` through the Windows WSL config。
+- 這不支撐 Inspector GUI 人工 click-through、HTTP transport、long-running MCP training 或完整
+  product completion。
+- Goal 不能標 complete。

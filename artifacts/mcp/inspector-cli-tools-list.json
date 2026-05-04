@@ -1,0 +1,1787 @@
+{
+  "tools": [
+    {
+      "name": "scan_source",
+      "title": "Scan Source",
+      "description": "Scan a source path for EEG files, label carriers, and metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source_path": {
+            "type": "string"
+          },
+          "source_hint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_path"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "preview_interpretation",
+      "title": "Preview Interpretation",
+      "description": "Build and preview a candidate data interpretation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scan_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "choices": {
+            "type": "object"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "validate_interpretation",
+      "title": "Validate Interpretation",
+      "description": "Validate an interpretation candidate.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "apply_interpretation",
+      "title": "Apply Interpretation",
+      "description": "Apply a validated interpretation to the active backend session.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "save_interpretation_recipe",
+      "title": "Save Interpretation Recipe",
+      "description": "Save the applied interpretation as a replayable recipe.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recipe_path": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "reload_interpretation_recipe",
+      "title": "Reload Interpretation Recipe",
+      "description": "Reload a recipe and re-run scan/preview/validation without applying.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recipe_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipe_path"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "load_data",
+      "title": "Load Data",
+      "description": "Load raw EEG files into the active study.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allow_append": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "paths"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "attach_labels",
+      "title": "Attach Labels",
+      "description": "Attach label files to already-loaded raw files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mapping": {
+            "type": "object"
+          },
+          "label_format": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "mapping"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "import_labels",
+      "title": "Import Labels",
+      "description": "Apply an explicit label import plan to loaded raw data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "target_indices": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              },
+              "label_map": {
+                "type": "object"
+              },
+              "mapping": {
+                "type": "object"
+              },
+              "file_mapping": {
+                "type": "object"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "selected_event_names": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "force_import": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "required": [
+          "plan"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "update_metadata",
+      "title": "Update Metadata",
+      "description": "Update subject/session metadata for one or more loaded files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string",
+            "nullable": true
+          },
+          "session": {
+            "type": "string",
+            "nullable": true
+          },
+          "updates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "subject": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "session": {
+                  "type": "string",
+                  "nullable": true
+                }
+              },
+              "required": [
+                "index"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "apply_smart_parse",
+      "title": "Apply Smart Parse",
+      "description": "Apply filename parser results to loaded-file metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "remove_files",
+      "title": "Remove Files",
+      "description": "Remove loaded raw files by row/index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "indices": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "required": [
+          "indices"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "preprocess",
+      "title": "Preprocess",
+      "description": "Apply a preprocessing operation to the active study.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "bandpass",
+                  "notch",
+                  "resample",
+                  "normalize",
+                  "rereference",
+                  "select_channels",
+                  "channel_selection",
+                  "set_montage",
+                  "standard"
+                ]
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "low_freq": {
+            "type": "number",
+            "nullable": true
+          },
+          "high_freq": {
+            "type": "number",
+            "nullable": true
+          },
+          "notch_freq": {
+            "type": "number",
+            "nullable": true
+          },
+          "rate": {
+            "type": "integer",
+            "nullable": true
+          },
+          "method": {
+            "type": "string",
+            "nullable": true
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "montage_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "create_epoch",
+      "title": "Create Epoch",
+      "description": "Create epochs from preprocessed data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "t_min": {
+            "type": "number"
+          },
+          "t_max": {
+            "type": "number"
+          },
+          "baseline": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "nullable": true
+                }
+              }
+            ]
+          },
+          "event_ids": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "t_min",
+          "t_max"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "generate_dataset",
+      "title": "Generate Dataset",
+      "description": "Generate train/validation/test datasets from epoch data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "test_ratio": {
+            "type": "number"
+          },
+          "val_ratio": {
+            "type": "number"
+          },
+          "split_strategy": {
+            "type": "string"
+          },
+          "training_mode": {
+            "type": "string"
+          },
+          "generator": {
+            "type": "object",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "clear_datasets",
+      "title": "Clear Datasets",
+      "description": "Clear generated datasets and any training plan tied to them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "configure_training",
+      "title": "Configure Training",
+      "description": "Configure model and training hyperparameters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "epoch": {
+            "type": "integer",
+            "nullable": true
+          },
+          "batch_size": {
+            "type": "integer",
+            "nullable": true
+          },
+          "learning_rate": {
+            "type": "number",
+            "nullable": true
+          },
+          "repeat": {
+            "type": "integer"
+          },
+          "device": {
+            "type": "string"
+          },
+          "optimizer": {
+            "type": "string"
+          },
+          "optimizer_params": {
+            "type": "object"
+          },
+          "save_checkpoints_every": {
+            "type": "integer"
+          },
+          "output_dir": {
+            "type": "string"
+          },
+          "evaluation_option": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "model_params": {
+            "type": "object"
+          },
+          "pretrained_weight_path": {
+            "type": "string",
+            "nullable": true
+          },
+          "training_option": {
+            "type": "object",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "train",
+      "title": "Train",
+      "description": "Start model training.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "append": {
+            "type": "boolean"
+          },
+          "interactive": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "stop_training",
+      "title": "Stop Training",
+      "description": "Stop an active training run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "clear_training_history",
+      "title": "Clear Training History",
+      "description": "Clear training plan/run history while preserving current configuration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "evaluate",
+      "title": "Evaluate",
+      "description": "Read evaluation metrics and run summaries from the active backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "visualize",
+      "title": "Visualize",
+      "description": "Read visualization readiness and available view summaries.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "saliency",
+      "title": "Saliency",
+      "description": "Configure or query saliency readiness.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "nullable": true
+          },
+          "params": {
+            "type": "object",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "apply_montage",
+      "title": "Apply Montage",
+      "description": "Apply confirmed channel montage positions to epoch data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "montage_name": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "channels",
+          "positions"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "query_state",
+      "title": "Query State",
+      "description": "Read-only typed query through the application service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          },
+          "include_objects": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "reset_preprocess",
+      "title": "Reset Preprocess",
+      "description": "Reset preprocessing to loaded raw data and remove downstream artifacts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "reset_session",
+      "title": "Reset Session",
+      "description": "Clear loaded data and downstream state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    },
+    {
+      "name": "new_session",
+      "title": "New Session",
+      "description": "Start a new single-backend session by clearing current state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "command_name": {
+            "type": "string",
+            "nullable": true
+          },
+          "verification": {
+            "type": "object"
+          },
+          "autonomy": {
+            "type": "object"
+          },
+          "capability": {
+            "type": "object",
+            "nullable": true
+          },
+          "result": {
+            "type": "object",
+            "nullable": true
+          },
+          "state": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "accepted",
+          "command_name",
+          "verification",
+          "autonomy",
+          "capability",
+          "result",
+          "state"
+        ],
+        "additionalProperties": true
+      }
+    }
+  ]
+}

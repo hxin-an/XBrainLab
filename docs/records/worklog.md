@@ -3168,3 +3168,25 @@
   - 還不是 post-load label import full editor、all-format manual compatibility matrix 或真人
     click-through。
   - Goal 仍不可標 complete。
+
+### 2026-05-04 19:48 MCP Inspector CLI smoke and WSL poetry fallback
+
+- 做了什麼：
+  - 用官方 Inspector CLI 跑 committed `xbrainlab-windows-wsl` config 時，初次失敗：
+    `Failed to connect to MCP server: MCP error -32000: Connection closed`。
+  - direct WSL smoke 找到 root cause：Windows-side `wsl.exe` 啟動的是非 login shell，
+    `poetry` 不在 PATH。
+  - `scripts/dev/run_mcp_server_for_client.sh` 新增 `POETRY_BIN` / `command -v poetry` /
+    `$HOME/.local/bin/poetry` fallback。
+  - 保存 official Inspector CLI `tools/list` artifact：
+    `artifacts/mcp/inspector-cli-tools-list.json` / `.md`。
+- 驗證：
+  - `/mnt/c/Windows/System32/wsl.exe bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+    + MCP initialize request -> valid initialize JSON。
+  - `timeout 180s '/mnt/c/Program Files/nodejs/npx' -y @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list`
+    -> exit `0`。
+  - Inspector CLI artifact lists `28` tools and includes `scan_source` / `apply_interpretation`。
+- 不能宣稱：
+  - 這支撐 official Inspector CLI with Windows WSL config。
+  - 仍不是 Inspector GUI 人工 click-through、HTTP transport、long-running MCP training 或完整
+    product completion。

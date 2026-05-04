@@ -17,3 +17,9 @@ npx @modelcontextprotocol/inspector --config xbrainlab-mcp.json --server default
 ```
 
 The Windows entry is for MCP clients launched from Windows that need to start the prepared WSL runtime.
+
+CLI smoke used for validation in this workspace:
+
+```bash
+npx @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list
+```

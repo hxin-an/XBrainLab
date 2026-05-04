@@ -92,7 +92,9 @@
   - `scripts/dev/write_mcp_client_config.py` 可重生 config / Markdown，並驗證 client config
     沒有把 Python / EEG / PyQt / PyTorch dependencies 放到 client side。
   - integration test 會用 committed config command 重跑 stdio walkthrough。
-  - 這支撐 Inspector / external client release config baseline；仍不是 Inspector GUI 人工
+  - Windows-side official Inspector CLI 已用 `xbrainlab-windows-wsl` entry 跑過
+    `tools/list`，artifact 在 `artifacts/mcp/inspector-cli-tools-list.json` / `.md`。
+  - 這支撐 Inspector CLI / external client release config baseline；仍不是 Inspector GUI 人工
     click-through、HTTP transport 或 long-running training through MCP。
 - Windows launcher automated command walkthrough 已新增：
   - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop

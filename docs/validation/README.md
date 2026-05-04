@@ -553,9 +553,20 @@ long-running training tool through MCP、或 product completion。
   - manual config walkthrough:
     `poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir /tmp/xbrainlab-mcp-config-walkthrough --server-command bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
   - wrote `/tmp/xbrainlab-mcp-config-walkthrough/stdio-walkthrough.json` and `.md`
+  - first official Inspector CLI attempt failed with `Connection closed` because Windows-side
+    `wsl.exe` launched a non-login shell where `poetry` was not on PATH.
+  - wrapper now resolves `POETRY_BIN`, `command -v poetry`, or `$HOME/.local/bin/poetry`.
+  - Windows-side WSL stdio smoke:
+    `timeout 10s /mnt/c/Windows/System32/wsl.exe bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+    with MCP `initialize` request -> valid JSON-RPC initialize response.
+  - official Inspector CLI:
+    `timeout 180s '/mnt/c/Program Files/nodejs/npx' -y @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list`
+    -> exit `0`, `28` tools listed.
+  - artifact:
+    `artifacts/mcp/inspector-cli-tools-list.json` / `.md`
 
-這批 evidence 支撐 Inspector-style release config baseline 和 prepared-runtime launch path。
-它仍不支撐 Inspector GUI 人工 click-through、Windows Desktop 真人啟動、HTTP transport、
+這批 evidence 支撐 Inspector-style release config baseline、prepared-runtime launch path 和 official
+Inspector CLI `tools/list`。它仍不支撐 Inspector GUI 人工 click-through、Windows Desktop 真人啟動、HTTP transport、
 long-running training through MCP 或 product completion。
 
 2026-05-04 Local LLM tool-call runner and schema gate：
