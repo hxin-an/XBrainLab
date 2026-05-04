@@ -77,7 +77,16 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
     turns = "\n".join(f"- user: {turn}" for turn in case.user_turns)
     inferred_intent = _inferred_case_intent(case)
     no_call_intent = inferred_intent in {"no_tool", "ask_clarification"}
-    available_tools = [] if no_call_intent else _available_tool_schemas(case.state_name)
+    direct_blocked_reason = (
+        ""
+        if no_call_intent
+        else _blocked_requested_intent_reason(case.state_name, inferred_intent)
+    )
+    available_tools = (
+        []
+        if no_call_intent or direct_blocked_reason
+        else _available_tool_schemas(case.state_name)
+    )
     blocked_commands = (
         [] if no_call_intent else _blocked_command_summary(case.state_name)
     )
@@ -90,7 +99,11 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "with one concise user-facing sentence. If a tool is appropriate, "
         "output only one compact JSON object with keys tool_name and parameters. "
         "Never invent placeholder paths, recipe paths, ids, labels, or file names; "
-        "ask for the actual value instead. If the user asks for a blocked workflow "
+        "ask for the actual value instead. If the latest user turn contains an "
+        "explicit absolute path, treat it as provided input even if the path name "
+        "contains words like missing, bad, or unknown; call the direct tool and let "
+        "backend verification report recoverable path failures. If the user asks "
+        "for a blocked workflow "
         "command, do not call a different tool to prepare or substitute for it; "
         "explain the blocked reason. The latest user turn is the next requested "
         "action; earlier turns are context and should not be repeated. "
@@ -127,6 +140,12 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "direct-load and label-attach paths should not be preferred for new "
         "label/event imports."
     )
+    if direct_blocked_reason:
+        system += (
+            " The direct workflow command for this turn is blocked by the "
+            "backend capability policy. Do not output any tool call and do not "
+            "choose reset, scan, configure, or another substitute tool."
+        )
     if no_call_intent:
         system += (
             " For this no-tool turn, do not mention internal tool names, JSON, "
@@ -139,6 +158,7 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         f"{json.dumps(blocked_commands, ensure_ascii=False)}\n\n"
         f"Inferred latest user intent: {inferred_intent}\n"
         f"Direct workflow command for latest intent: {direct_command_text}\n"
+        f"Direct workflow command blocked reason: {direct_blocked_reason or 'none'}\n"
         "If the direct workflow command is available, use that command's tool. "
         "If it is blocked, do not substitute another tool; explain the blocked "
         "reason.\n\n"
@@ -254,9 +274,11 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
         requested_intent,
     )
     if blocked_intent_reason:
+        if TOOL_INTENTS.get(first_tool) == requested_intent:
+            tool_calls = []
         return Prediction(
             intent=requested_intent,
-            tool_calls=[],
+            tool_calls=tool_calls,
             blocked=True,
             blocked_reason=blocked_intent_reason,
             final_message=blocked_intent_reason,

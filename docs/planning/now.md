@@ -139,20 +139,21 @@
   - fallback `microsoft/Phi-3.5-mini-instruct`：`53 / 54` pass。
   這仍不是 thesis-ready；case 數不足 `100`，且剩餘 bandpass-vs-standard preprocess 語意
   failure。
-- 最新 tool-call best-practices / thesis-candidate slice 已把同一 scorer 擴到 `117` cases，
+- 最新 tool-call best-practices / thesis-candidate slice 已把同一 scorer 擴到 `118` cases，
   並用 cached primary / fallback local models 各重跑 `3` 次：
-  - deterministic baseline：`117 / 117` pass。
-  - primary `microsoft/Phi-4-mini-instruct`：`117 / 117` pass。
-  - fallback `microsoft/Phi-3.5-mini-instruct`：`117 / 117` pass。
+  - deterministic baseline：`118 / 118` pass。
+  - primary `microsoft/Phi-4-mini-instruct`：`118 / 118` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`118 / 118` pass。
   - runtime classification：primary / fallback 都是 `gpu-ready`；cache `15.34 GB`；no download。
   - dashboard：`artifacts/agent_evals/dashboard.md`，含 model comparison、case family pass
     rate、metric pass rate、failure taxonomy、worst cases、artifact paths 和 thesis claim boundary。
+  - scorer 已收緊 blocked-intent handling：direct blocked command 可被 verifier / capability
+    policy 擋下；blocked state 下改叫 scan / reset / configure 等替代 tool 會算 failure。
   這支撐 thesis-candidate tool-call benchmark evidence；仍不能取代 ChatPanel walkthrough、
   Windows launcher walkthrough、MCP HTTP / long-running tool calls、human desktop acceptance 或成熟
   import wizard 驗收。
-- 2026-05-05 follow-up deterministic eval 已刷新到 `118 / 118` pass，新增 downstream-locked
-  `apply_interpretation` wrong-tool temptation case；local primary / fallback artifacts 仍是上一輪
-  `117` cases x `3`，需要 rerun 才能把真 local model claim 擴到第 `118` case。
+- 2026-05-05 follow-up 已把 downstream-locked `apply_interpretation` wrong-tool temptation case
+  納入 deterministic、primary 和 fallback local rerun；dashboard 已同步刷新。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
@@ -469,8 +470,10 @@ Goal 1 至少要包含：
      （目前 deterministic baseline 已擴為 `118 / 118` pass；第 `118` case 是
      downstream-locked `apply_interpretation` wrong-tool temptation。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
-     目前 primary `117 / 117` pass、fallback `117 / 117` pass，可作為上一輪 thesis-candidate
-     tool-call benchmark evidence；新增第 `118` case 後，local model rerun 尚未更新。
+     目前 primary `118 / 118` pass、fallback `118 / 118` pass，可作為 thesis-candidate
+     tool-call benchmark evidence。apply-lock case 的 local raw output 仍可能提出 direct blocked
+     `apply_interpretation`，但 scorer / verifier 只把它當 capability-policy blocked response；
+     任何 scan / reset / configure 等替代工具會被計為 failure。
    - dashboard 必須能顯示 overall pass rate、case family、metric breakdown、failure taxonomy、
      worst cases、model comparison、repeat stability、fixture / source path、artifact path 和
      thesis claim boundary；目前入口是 `artifacts/agent_evals/dashboard.md`。
@@ -591,9 +594,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型 `117` case runner 已有 `117 / 117` x `3` evidence，但 deterministic suite 已新增到
-  `118` cases，local rerun 尚未覆蓋第 `118` case。這只支撐 tool-call benchmark，不代表
-  ChatPanel / launcher / import wizard 產品驗收完成。
+  真模型 `118` case runner 已有 `118 / 118` x `3` evidence。這只支撐 tool-call benchmark，
+  不代表 ChatPanel / launcher / import wizard 產品驗收完成。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。

@@ -16,8 +16,8 @@
 # XBrainLab Tool-Call Eval
 
 - runner: `local-llm`
-- total cases: `117`
-- passed: `117`
+- total cases: `118`
+- passed: `118`
 - failed: `0`
 - pass rate: `100.00%`
 
@@ -55,22 +55,22 @@
 | ambiguous_request | 1 | 1 | 100.00% |
 | baseline | 100 | 100 | 100.00% |
 | bids | 6 | 6 | 100.00% |
-| blocked_command | 31 | 31 | 100.00% |
-| chinese | 14 | 14 | 100.00% |
+| blocked_command | 32 | 32 | 100.00% |
+| chinese | 15 | 15 | 100.00% |
 | confirmation_boundary | 10 | 10 | 100.00% |
-| data_interpretation | 59 | 59 | 100.00% |
+| data_interpretation | 60 | 60 | 100.00% |
 | destructive | 1 | 1 | 100.00% |
 | domain_phrasing | 2 | 2 | 100.00% |
 | label_ambiguity | 2 | 2 | 100.00% |
 | missing_input | 2 | 2 | 100.00% |
-| mixed_language | 10 | 10 | 100.00% |
+| mixed_language | 11 | 11 | 100.00% |
 | multi_intent | 2 | 2 | 100.00% |
 | multi_turn | 24 | 24 | 100.00% |
 | no_call | 4 | 4 | 100.00% |
 | recovery | 27 | 27 | 100.00% |
 | should_not_call | 2 | 2 | 100.00% |
 | subject_metadata | 1 | 1 | 100.00% |
-| wrong_tool_temptation | 1 | 1 | 100.00% |
+| wrong_tool_temptation | 2 | 2 | 100.00% |
 
 ## Failure Taxonomy
 

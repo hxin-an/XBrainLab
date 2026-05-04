@@ -294,17 +294,16 @@ cache usage `15.34 GB`，no download。這支撐 thesis-candidate tool-call benc
 import wizard 或 MCP HTTP / long-running client workflow 驗收完成。最新 tool-call
 best-practices slice 又把 prompt-facing schema、no-call / clarification policy、nested schema
 verification、parser / normalizer repair 和 scoring dashboard 對齊 OpenAI Structured Outputs、
-BFCL 與 LangSmith trajectory-eval 設計；deterministic baseline、primary local model 和 fallback
-local model 都已跑同一份 `117` cases，primary / fallback 各 `3` 次，artifact 顯示
-`117 / 117`，`artifacts/agent_evals/dashboard.md` 也列出 model comparison、case family、
-metric pass rates、failure taxonomy、worst cases、source path 和 thesis claim boundary。這支撐
-目前 benchmark slice 的 thesis-candidate tool-call claim；仍不等於 UI usability、Windows
-launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。2026-05-05 follow-up
-又把 deterministic eval 擴到 `118` cases，新增「已有 epoch/downstream lock 時，使用者要求套用
-新 Data Interpretation 不可改叫 scan 或其他替代工具硬推」的 wrong-tool temptation case；
-`artifacts/agent_evals/latest.json` / `.md` 和 dashboard 已刷新為 deterministic `118 / 118`。
-local primary / fallback artifact 仍是上一輪 `117` cases x `3`，要把真 local model claim 擴到
-第 `118` case 前仍需 rerun。後續 ChatPanel local-model UI
+BFCL 與 LangSmith trajectory-eval 設計；2026-05-05 follow-up 把 eval 擴到 `118` cases，
+新增「已有 epoch/downstream lock 時，使用者要求套用
+新 Data Interpretation 不可改叫 scan 或其他替代工具硬推」的 wrong-tool temptation case。後續
+strict local rerun 也已用同一 `118` cases 跑 primary / fallback 各 `3` 次：
+`microsoft/Phi-4-mini-instruct` 和 `microsoft/Phi-3.5-mini-instruct` 都是 `118 / 118`，
+dashboard 已刷新。這輪同時修正 scorer，不再把 blocked intent 下的替代 tool
+（例如 reset / scan / configure）誤算成 pass；direct blocked command 只算 verifier-blocked
+response，不算已執行。這支撐目前 benchmark slice 的 thesis-candidate tool-call claim；仍不等於
+UI usability、Windows launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。後續
+ChatPanel local-model UI
 walkthrough 已新增一輪真模型可見回覆 evidence：
 `scripts/dev/capture_chatpanel_local_walkthrough.py` 會在 `HF_HUB_OFFLINE=1` /
 `TRANSFORMERS_OFFLINE=1` 下打開真 MainWindow / ChatPanel，經 UI composer 送出 prompt，走
@@ -626,9 +625,10 @@ true local model desktop session。
   Google Gemini SDK。
 - thesis protocol 已建立 split artifact schema、split audit helper 和 validator script；正式
   external dataset runner、統計報告還沒完成。local LLM 真實 tool-call runner 已有
-  primary / fallback `117` thesis-candidate cases x `3` repeat evidence，兩個 local model
-  均為 `117 / 117` pass，並有 dashboard breakdown；這支撐 tool-call thesis-candidate
-  benchmark，不支撐 UI / launcher 產品完成 claim。
+  primary / fallback `118` thesis-candidate cases x `3` repeat evidence，兩個 local model
+  均為 `118 / 118` pass，並有 dashboard breakdown。這輪 scorer 已收緊 blocked-intent
+  handling：direct blocked command 可由 verifier / capability policy 擋下；替代 tool 不再被誤算成
+  pass。這支撐 tool-call thesis-candidate benchmark，不支撐 UI / launcher 產品完成 claim。
 
 ## 目前 blocker / release risks
 
@@ -676,11 +676,11 @@ true local model desktop session。
   command；`evaluate` / `visualize` / `saliency` 也已暴露成 ApplicationService-backed agent
   tools。它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow 已完成。
 - tool-call eval 已有 deterministic baseline 和 primary / fallback 真 local model runner；最新
-  deterministic artifact 是 `118 / 118` pass，新增 downstream-locked
-  `apply_interpretation` wrong-tool temptation coverage；primary / fallback 真 local model runner
-  仍是上一輪 `117` thesis-candidate cases x `3`、`117 / 117` pass。dashboard 已列出 case
-  family / metric / failure taxonomy / model comparison，但第 `118` case 尚未納入真 local model
-  rerun。這解除先前 `54` case 數不足、bandpass-vs-standard preprocess failure，以及只測乾淨英文 prompt 的 coverage gap。ChatPanel true local
+  deterministic、primary、fallback 都是同一 `118` thesis-candidate cases：deterministic
+  `118 / 118`，primary / fallback 各 `118 / 118` x `3`。新增 downstream-locked
+  `apply_interpretation` wrong-tool temptation coverage，且 scorer 已收緊 substitute-tool
+  handling：direct blocked command 可以由 verifier/capability policy 擋下，但替代工具不再被誤算成 pass。
+  這解除先前 `54` case 數不足、bandpass-vs-standard preprocess failure，以及只測乾淨英文 prompt 的 coverage gap。ChatPanel true local
   model one-turn、單步 tool-command、兩 turn workflow walkthrough、Data Interpretation
   短鏈 tool-command walkthrough 和 import-to-dataset pipeline-chain walkthrough 也已通過，
   但這些仍不能替代真人 Windows launcher click-through、training / evaluation / saliency 長鏈
@@ -712,7 +712,7 @@ true local model desktop session。
    table density、Training plot readability / history header、Evaluation compact controls 和
    ChatPanel reset stale UI，仍要補 mature import wizard editing、assistant main-window narrow
    composition 和整體產品感。
-6. 將 primary / fallback `117` case tool-call dashboard 整理成 thesis evidence report；不要把它
+6. 將 primary / fallback `118` case tool-call dashboard 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。
 7. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
    主評分。

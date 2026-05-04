@@ -113,11 +113,60 @@ UI baseline capture 結果：
 - focused gate：`poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py::test_deterministic_tool_call_eval_passes_and_writes_artifacts -q`
   -> `1 passed`。
 - focused lint/type：`poetry run ruff check scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
-  -> pass；`poetry run basedpyright scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
+ -> pass；`poetry run basedpyright scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
   -> `0 errors, 0 warnings, 0 notes`。
-- Claim boundary：local primary / fallback artifacts in the dashboard remain the previous `117`-case
-  x `3` reruns. This slice extends deterministic coverage only; local model evidence must be rerun
-  before claiming the `118`th case for primary / fallback local LLM accuracy.
+- Claim boundary at the time of this deterministic-only slice：local primary / fallback artifacts
+  still needed rerun. This boundary is superseded by the next local 118-case rerun section, but the
+  product-completion boundary remains unchanged.
+
+2026-05-05 local 118-case rerun and stricter blocked-substitute scoring:
+
+- Resource preflight：
+  - model cache：`/mnt/d/workspace_v2/projects/lab/XBrainLab/XBrainLab/llm/core/models`
+  - cache usage：`15.34 GB`；cache limit：`20.00 GB`；free disk 約 `158.36 GB`。
+  - primary / fallback 已 cached，estimated download `0.00 GB`；沒有新增模型下載。
+  - local rerun 使用 `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`，sequential 執行；fallback
+    run 接近 16GB VRAM 上限，不能把這宣稱成長時間 parallel runtime capacity。
+- Scorer / prompt / normalizer hardening：
+  - blocked direct workflow command 可以由 verifier / capability policy 轉成 blocked response。
+  - blocked intent 下的替代 tool（例如 reset / scan / configure）會保留為 tool call 並評為 failure。
+  - prompt 會在 direct command blocked 時隱藏 substitute tools，只提供 blocked reason。
+  - bad-load-path 類 cases 加入 absolute-path 指示：若 prompt 內有 absolute path，應呼叫 direct
+    load / scan tool 並讓 backend 回 recoverable path failure，不可因路徑文字包含 `missing` /
+    `bad` / `unknown` 就 ask clarification。
+  - `reset_session` / `clear_session` local output variant 會 normalize 到 registered
+    `clear_dataset` tool，並丟棄多餘 params。
+- Focused validation：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py::test_normalizes_workflow_command_aliases_to_registered_tools tests/unit/scripts/test_run_local_tool_call_eval.py::test_blocked_requested_step_substitute_tool_fails_score tests/unit/scripts/test_run_local_tool_call_eval.py::test_blocked_requested_direct_tool_is_scored_as_blocked_response -q`
+    -> `3 passed`。
+  - `poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py tests/unit/llm/agent/test_tool_call_normalizer.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py tests/unit/llm/agent/test_tool_call_normalizer.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+- Full local reruns：
+  - `timeout 3600s env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role primary --repeat-count 3 --max-new-tokens 160 --output-dir artifacts/agent_evals/local_primary`
+    -> `microsoft/Phi-4-mini-instruct` `118 / 118`。
+  - `timeout 3600s env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --max-new-tokens 160 --output-dir artifacts/agent_evals/local_fallback`
+    -> `microsoft/Phi-3.5-mini-instruct` `118 / 118`。
+  - `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+    -> dashboard refreshed at `artifacts/agent_evals/dashboard.md`。
+- Post-change gates：
+  - `git diff --check` -> pass。
+  - `timeout 300s poetry run ruff check .` -> pass。
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q` ->
+    `100 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q`
+    -> `530 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`。
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+- Claim boundary：this supports the 118-case local tool-call benchmark claim for the saved suite.
+  It does not prove Windows human desktop acceptance, mature import wizard UX, MCP HTTP /
+  long-running automation, or full product completion. The apply-lock case may still parse as a
+  direct blocked `apply_interpretation` command; the supported claim is that verifier / capability
+  policy blocks it and unsafe substitute tools are no longer scored as pass.
 
 2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
 
@@ -286,8 +335,8 @@ UI baseline capture 結果：
   人工桌面驗收。
 - true local LLM ChatPanel 已有一輪真模型 UI 回覆 walkthrough、一輪單步 `query_state`
   tool-command walkthrough，以及兩 turn workflow walkthrough；長時間 tool-command chain 仍未完成。
-- local LLM primary / fallback tool-call runner 已有 `117` thesis-candidate cases x `3`
-  score report；primary / fallback 都是 `117 / 117` pass，dashboard 已列 model comparison、
+- local LLM primary / fallback tool-call runner 已有 `118` thesis-candidate cases x `3`
+  score report；primary / fallback 都是 `118 / 118` pass，dashboard 已列 model comparison、
   metric pass rate、case family pass rate 和 failure taxonomy。這支撐 tool-call benchmark
   evidence，但不代表 launcher / UI 產品 walkthrough 已完成。
 - external EEG dataset experiment / statistical reporting 只是 pipeline support，不是 thesis 主評分。
@@ -2433,8 +2482,8 @@ tool-call thesis evidence 核心要求：
 
 - deterministic cases：`118`
 - deterministic baseline：`118 / 118`
-- primary local model：`117 / 117` x `3`（尚未覆蓋第 `118` case）
-- fallback local model：`117 / 117` x `3`（尚未覆蓋第 `118` case）
+- primary local model：`118 / 118` x `3`
+- fallback local model：`118 / 118` x `3`
 - dashboard：`artifacts/agent_evals/dashboard.md`
 
 EEG pipeline support 要求：

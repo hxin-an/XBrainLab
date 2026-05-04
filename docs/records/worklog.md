@@ -37,6 +37,69 @@
 
 ## 2026-05-05
 
+### 18:40 Tool-call local 118-case scorer hardening
+
+- 做了什麼：
+  - 參考 `agent-toolcall-designer`、`thesis-evidence-reviewer`、`docs-curator` 和
+    `validation-runner`，檢查第 `118` 個 downstream-locked apply case 是否真的被 local model /
+    scorer 證明。
+  - 發現舊 local scorer 可能把 fallback 在 blocked apply 情境下改叫 `clear_dataset` 的 unsafe
+    substitute 算成 pass；先補 focused tests，把 substitute-tool path 改成 failure。
+  - 調整 local eval prompt / scorer：direct command blocked 時隱藏 substitute tools；direct blocked
+    command 可轉成 verifier-blocked response；scan / reset / configure 等替代工具保留為 tool call
+    並評為 failure。
+  - 補 absolute-path 指示，避免 `bad-load-path` 類 prompt 因路徑字面含 `missing` / `bad` /
+    `unknown` 被誤判成缺 input。
+  - 補 local output normalizer，將 `reset_session` / `clear_session` alias 對齊 registered
+    `clear_dataset`。
+  - resource preflight 確認 model cache `15.34 GB`、limit `20.00 GB`、free disk 約
+    `158.36 GB`、primary / fallback 都已 cached、estimated download `0.00 GB`；full rerun 使用
+    `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`。
+- 結果：
+  - Deterministic、primary、fallback 現在都使用同一 `118` thesis-candidate cases。
+  - primary `microsoft/Phi-4-mini-instruct`：`118 / 118` x `3` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`118 / 118` x `3` pass。
+  - Dashboard 已刷新：`artifacts/agent_evals/dashboard.md`。
+  - apply-lock local raw output 可被 parser 視為 direct blocked `apply_interpretation`，但不會被
+    當成執行成功；unsafe substitute tools 不再被 scorer 放過。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py::test_normalizes_workflow_command_aliases_to_registered_tools tests/unit/scripts/test_run_local_tool_call_eval.py::test_blocked_requested_step_substitute_tool_fails_score tests/unit/scripts/test_run_local_tool_call_eval.py::test_blocked_requested_direct_tool_is_scored_as_blocked_response -q`
+    -> `3 passed`。
+  - `poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py tests/unit/llm/agent/test_tool_call_normalizer.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py tests/unit/llm/agent/test_tool_call_normalizer.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 3600s env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role primary --repeat-count 3 --max-new-tokens 160 --output-dir artifacts/agent_evals/local_primary`
+    -> `118 / 118`。
+  - `timeout 3600s env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --max-new-tokens 160 --output-dir artifacts/agent_evals/local_fallback`
+    -> `118 / 118`。
+  - `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+    -> dashboard refreshed。
+  - `git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `100 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py -q`
+    -> `530 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - 仍不能宣稱 product-complete：Windows human acceptance、mature import wizard editing、
+    ChatPanel 長時間 tool-command chain、MCP HTTP / long-running boundary 仍是 product closure
+    gaps。
+  - 下一步要跑本 slice 的 focused/full validation 並提交，不包含 protected settings 或新 skill
+    檔案。
+
 ### 17:05 Tool-call apply-lock wrong-tool coverage
 
 - 做了什麼：

@@ -7,6 +7,11 @@ def test_normalizes_workflow_command_aliases_to_registered_tools():
         {"t_min": 0, "t_max": 1},
     )
     assert normalize_tool_call("train", {}) == ("start_training", {})
+    assert normalize_tool_call("reset_session", {"reason": "none"}) == (
+        "clear_dataset",
+        {},
+    )
+    assert normalize_tool_call("clear_session", {}) == ("clear_dataset", {})
 
 
 def test_normalizes_standard_preprocess_bandpass_arguments_from_user_intent():

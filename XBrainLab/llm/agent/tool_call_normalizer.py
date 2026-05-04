@@ -13,6 +13,8 @@ _TOOL_ALIASES: dict[str, str] = {
     "create_epochs": "epoch_data",
     "train": "start_training",
     "train_model": "start_training",
+    "reset_session": "clear_dataset",
+    "clear_session": "clear_dataset",
     "get_dataset_info": "query_state",
     "get_state": "query_state",
     "state_query": "query_state",
@@ -79,6 +81,9 @@ def normalize_tool_call(
 
     if _should_promote_to_start_training(normalized_name, latest_user_text):
         normalized_name = "start_training"
+        normalized_params = {}
+
+    if normalized_name == "clear_dataset":
         normalized_params = {}
 
     if normalized_name == "saliency":

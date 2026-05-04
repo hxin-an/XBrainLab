@@ -26,6 +26,10 @@ def test_prompt_includes_available_tools_and_blocked_reasons():
     assert "start_training" not in prompt
     assert "Generate datasets before training" in prompt
     assert "Never invent placeholder paths" in messages[0]["content"]
+    assert (
+        "If the latest user turn contains an explicit absolute path"
+        in (messages[0]["content"])
+    )
     assert "do not call a different tool" in messages[0]["content"]
     assert "apply_standard_preprocess for" in messages[0]["content"]
     assert "training_mode values" in messages[0]["content"]
@@ -38,6 +42,17 @@ def test_prompt_includes_available_tools_and_blocked_reasons():
     assert "Direct workflow command for latest intent: scan_source" in prompt
     assert '"taxonomy": "Data Interpretation"' in prompt
     assert '"additionalProperties": false' in prompt
+
+
+def test_prompt_hides_substitute_tools_when_direct_command_is_blocked():
+    case = _case("wrong-tool-temptation-apply-after-epoch")
+    messages = build_prompt_messages(case)
+
+    prompt = messages[-1]["content"]
+    assert "Direct workflow command for latest intent: apply_interpretation" in prompt
+    assert "Direct workflow command blocked reason:" in prompt
+    assert '"name": "scan_source"' not in prompt
+    assert '"name": "clear_dataset"' not in prompt
 
 
 def test_scores_local_tool_call_output():
@@ -96,15 +111,32 @@ def test_placeholder_tool_argument_is_scored_as_missing_input():
     assert "actual path" in prediction.blocked_reason
 
 
-def test_blocked_requested_step_rejects_substitute_tool():
+def test_blocked_requested_step_substitute_tool_fails_score():
     case = _case("empty-train-block")
     raw_output = '{"tool_name":"set_model","parameters":{"model_name":"EEGNet"}}'
 
     score = score_local_case(case, [raw_output, raw_output, raw_output])
 
+    assert not score.passed
+    assert score.parsed_tool_calls == [
+        {"tool_name": "set_model", "arguments": {"model_name": "EEGNet"}}
+    ]
+    assert "tool/no-tool decision mismatch" in score.failures
+    assert "Generate datasets before training" in score.visible_response
+
+
+def test_blocked_requested_direct_tool_is_scored_as_blocked_response():
+    case = _case("wrong-tool-temptation-apply-after-epoch")
+    raw_output = (
+        '{"command": "apply_interpretation", '
+        '"reasons": ["Reset the session before changing raw files"]}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
     assert score.passed
     assert score.parsed_tool_calls == []
-    assert "Generate datasets before training" in score.visible_response
+    assert "Reset the session before changing raw files" in score.visible_response
 
 
 def test_generate_dataset_default_val_ratio_is_counted():
