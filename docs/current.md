@@ -98,12 +98,18 @@ time model、granularity 候選；wizard 會顯示可編輯的 label carrier rev
 boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
 CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
 dialog review notes 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection 尚未在
-wizard 內可用。舊 label import 已降成「Add Labels to Loaded
-Data」的 service-backed compatibility path；label import 成功後會更新 applied interpretation
-的 `label_imports` / `label_carriers` / recipe trace，UI 也會提示使用者可保存更新後
+wizard 內可用。最新 slice 已把 reviewed timestamp label carrier apply 接進 Data Interpretation
+主線：`load_label_file()` 可使用 wizard 選定的 MAT variable / CSV-TSV-BIDS label column 和
+anchor；`apply_interpretation` 會在單一 EEG + 單一 reviewed timestamp CSV / TSV / BIDS events
+carrier、已確認且 time model 為 seconds / relative time 時，自動透過既有
+`apply_labels_batch` 套用 labels，並寫入 `label_apply` diagnostics、`label_imports` 和
+`label_import:timestamp:<n>` recipe trace。UI replay artifact 現在顯示
+`label_apply.status=applied`。舊 label import 已降成「Add Labels to Loaded Data」的
+service-backed compatibility path；label import 成功後會更新 applied interpretation 的
+`label_imports` / `label_carriers` / recipe trace，UI 也會提示使用者可保存更新後
 recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import wizard 內嵌 label
-import editor；all-format manual compatibility matrix、label import 內嵌 wizard 和真人
-click-through 仍未完成。
+import editor；MAT sequence auto-apply、多檔 label mapping、all-format manual compatibility
+matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：

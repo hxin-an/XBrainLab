@@ -293,6 +293,66 @@ def test_data_interpretation_scan_reports_format_capability_boundaries(tmp_path)
     )
 
 
+def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path):
+    source_dir = tmp_path / "reviewed_bids_events"
+    source_dir.mkdir()
+    eeg_path = source_dir / "sub-01_task-mi_raw.fif"
+    events_path = source_dir / "events.tsv"
+    eeg_path.write_bytes(b"not loaded during scan")
+    events_path.write_text(
+        "onset\tduration\ttrial_type\n0.5\t0.1\tleft\n1.5\t0.1\tright\n",
+        encoding="utf-8",
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "time_model": "seconds",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"left": "left hand", "right": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
+    label_map = service.dataset.apply_labels_batch.call_args.args[1]
+    assert list(label_map) == [str(events_path)]
+    assert label_map[str(events_path)] == [
+        {"onset": 0.5, "label": "left", "duration": 0.1},
+        {"onset": 1.5, "label": "right", "duration": 0.1},
+    ]
+    assert service.dataset.apply_labels_batch.call_args.args[2] == {
+        str(eeg_path): str(events_path)
+    }
+    assert service.dataset.apply_labels_batch.call_args.args[3] == {
+        "left": "left hand",
+        "right": "right hand",
+    }
+    assert apply_result.state.interpretation.label_import_count == 1
+    assert apply_result.state.interpretation.label_imports[0]["mode"] == "timestamp"
+    assert (
+        "label_import:timestamp:1"
+        in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
+    )
+
+
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir = tmp_path / "labels_only"
     source_dir.mkdir()

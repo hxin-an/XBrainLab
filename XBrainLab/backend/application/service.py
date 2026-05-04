@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import Callable, Iterable
 from dataclasses import replace
@@ -640,14 +641,28 @@ class ApplicationService:
         )
         self._applied_interpretations[interpretation_id] = applied
         self._latest_interpretation_id = interpretation_id
+        label_apply = self._apply_interpretation_label_carriers(candidate)
+        applied_payload = self._applied_interpretations[interpretation_id].to_dict()
+        label_message = ""
+        if label_apply.get("status") == "applied":
+            label_message = (
+                f" Imported reviewed labels for "
+                f"{label_apply.get('success_count', 0)} file(s)."
+            )
+        elif label_apply.get("status") == "failed":
+            label_message = (
+                f" Reviewed labels were not applied: "
+                f"{label_apply.get('reason', 'unknown error')}."
+            )
         return (
-            f"Applied interpretation and loaded {count} file(s).",
+            f"Applied interpretation and loaded {count} file(s).{label_message}",
             {
                 "payload_type": "applied_interpretation",
                 "success_count": count,
                 "errors": errors,
-                "applied_interpretation": applied.to_dict(),
+                "applied_interpretation": applied_payload,
                 "label_carriers_pending": list(candidate.label_carriers),
+                "label_apply": label_apply,
             },
         )
 
@@ -1690,6 +1705,134 @@ class ApplicationService:
         if selected_event_names is None:
             return None
         return {str(name) for name in selected_event_names}
+
+    def _apply_interpretation_label_carriers(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> dict[str, Any]:
+        """Apply reviewed timestamp label carriers after interpretation apply."""
+        if not candidate.label_carrier_plan:
+            return {"status": "not_applicable", "reason": "No label carrier plan."}
+
+        applicable = [
+            item
+            for item in candidate.label_carrier_plan
+            if self._is_auto_applicable_timestamp_label_plan(item)
+        ]
+        if not applicable:
+            return {
+                "status": "skipped",
+                "reason": (
+                    "No reviewed timestamp label carrier is safe to apply "
+                    "automatically."
+                ),
+            }
+        if len(applicable) != 1:
+            return {
+                "status": "skipped",
+                "reason": (
+                    "Automatic label application currently supports one reviewed "
+                    "timestamp label carrier at a time."
+                ),
+            }
+
+        target_files = list(self.dataset.get_loaded_data_list() or [])
+        if len(target_files) != 1:
+            return {
+                "status": "skipped",
+                "reason": (
+                    "Automatic label application currently supports one loaded EEG "
+                    "file at a time."
+                ),
+            }
+
+        carrier = applicable[0]
+        carrier_path = str(carrier.get("path") or "").strip()
+        label_field = str(carrier.get("selected_label_field") or "").strip()
+        anchor = str(carrier.get("selected_anchor") or "").strip()
+        if not carrier_path or not label_field or not anchor:
+            return {
+                "status": "skipped",
+                "reason": "Reviewed label carrier is missing label field or anchor.",
+            }
+
+        try:
+            labels = load_label_file(
+                carrier_path,
+                label_field=label_field,
+                anchor=anchor,
+            )
+            label_map = {carrier_path: labels}
+            target = target_files[0]
+            file_mapping = {self._data_filepath(target): carrier_path}
+            mapping = self._label_import_mapping_from_class_map(candidate.class_map)
+            count = self.dataset.apply_labels_batch(
+                target_files,
+                label_map,
+                file_mapping,
+                mapping,
+                None,
+            )
+            plan = LabelImportPlan(
+                target_indices=[0],
+                label_map=label_map,
+                mapping=mapping,
+                file_mapping=file_mapping,
+                mode="timestamp",
+            )
+            record = self._record_label_import_for_recipe(
+                plan=plan,
+                mode="timestamp",
+                target_files=target_files,
+                file_mapping=file_mapping,
+                selected_event_names=None,
+                success_count=count,
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to apply reviewed label carrier %s: %s",
+                carrier_path,
+                exc,
+                exc_info=True,
+            )
+            return {"status": "failed", "reason": str(exc), "success_count": 0}
+
+        if count <= 0:
+            return {
+                "status": "failed",
+                "reason": "Reviewed label carrier did not match any loaded EEG file.",
+                "success_count": 0,
+            }
+        return {
+            "status": "applied",
+            "success_count": int(count),
+            "mode": "timestamp",
+            "label_import": record or {},
+            "label_carrier": carrier_path,
+        }
+
+    @staticmethod
+    def _is_auto_applicable_timestamp_label_plan(plan: dict[str, Any]) -> bool:
+        carrier_format = str(plan.get("format") or "").strip()
+        time_model = str(plan.get("time_model") or "").strip().lower()
+        return (
+            carrier_format in {"BIDS events", "CSV", "TSV"}
+            and bool(str(plan.get("selected_label_field") or "").strip())
+            and bool(str(plan.get("selected_anchor") or "").strip())
+            and time_model in {"seconds", "relative_time"}
+        )
+
+    @staticmethod
+    def _label_import_mapping_from_class_map(
+        class_map: dict[str, str],
+    ) -> dict[Any, str]:
+        mapping: dict[Any, str] = {}
+        for key, value in class_map.items():
+            normalized_key: Any = key
+            with contextlib.suppress(ValueError):
+                normalized_key = int(key)
+            mapping[normalized_key] = str(value)
+        return mapping
 
     def _record_label_import_for_recipe(
         self,

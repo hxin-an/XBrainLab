@@ -70,16 +70,6 @@
                 }
             }
         ],
-        "./XBrainLab/backend/load_data/label_loader.py": [
-            {
-                "code": "reportReturnType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 38,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/backend/load_data/raw.py": [
             {
                 "code": "reportAttributeAccessIssue",

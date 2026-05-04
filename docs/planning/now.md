@@ -229,9 +229,14 @@
   - scan / preview 現在會列出 format capability boundaries，覆蓋 GDF、EDF / BDF、EEGLAB、
     BrainVision、MNE FIF、MAT labels、CSV / TSV / BIDS events、TXT labels 和 XDF / LSL；dialog
     review notes 會顯示 XDF / LSL stream selection 尚未在 wizard 內可用的 blocked reason。
+  - `apply_interpretation` 現在會在單一 EEG + 單一 reviewed timestamp CSV / TSV / BIDS events
+    carrier、已確認且 time model 為 seconds / relative time 時，自動套用 external labels，並保存
+    `label_apply` diagnostics / `label_import:timestamp:<n>` recipe trace；UI replay JSON 已顯示
+    labels applied。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label import editor；all-format manual compatibility matrix、MCP Inspector /
-  Windows release config 尚未完成，UI replay coverage 還不是完整真人 walkthrough。
+  wizard 內嵌 label import editor；MAT sequence auto-apply、多檔 label mapping、all-format manual
+  compatibility matrix、MCP Inspector / Windows release config 尚未完成，UI replay coverage 還不是
+  完整真人 walkthrough。
 
 ## 下一個 Goal
 

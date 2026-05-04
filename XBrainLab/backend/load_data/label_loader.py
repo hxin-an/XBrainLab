@@ -24,13 +24,20 @@ _MAT_LABEL_HINTS = (
 )
 
 
-def load_label_file(filepath: str) -> np.ndarray:
+def load_label_file(
+    filepath: str,
+    *,
+    label_field: str | None = None,
+    anchor: str | None = None,
+) -> Any:
     """Load label data from a file.
 
     Supports ``.txt``, ``.csv``, ``.tsv``, and ``.mat`` formats.
 
     Args:
         filepath: Path to the label file.
+        label_field: Optional reviewed label column or MAT variable.
+        anchor: Optional reviewed time/sample/anchor column for CSV/TSV.
 
     Returns:
         1D array of integer labels (Sequence Mode), or a list of dicts
@@ -47,9 +54,9 @@ def load_label_file(filepath: str) -> np.ndarray:
     if filepath.endswith(".txt"):
         return _load_txt(filepath)
     if filepath.endswith((".csv", ".tsv")):
-        return _load_csv_tsv(filepath)
+        return _load_csv_tsv(filepath, label_field=label_field, anchor=anchor)
     if filepath.endswith(".mat"):
-        return _load_mat(filepath)
+        return _load_mat(filepath, label_field=label_field)
     raise ValueError(f"Unsupported file format: {filepath}")
 
 
@@ -80,7 +87,7 @@ def _load_txt(path: str) -> np.ndarray:
         raise ValueError(f"Failed to load txt file: {e}") from e
 
 
-def _load_mat(path: str) -> np.ndarray:
+def _load_mat(path: str, *, label_field: str | None = None) -> np.ndarray:
     """Load labels from a MATLAB ``.mat`` file.
 
     Handles common shapes including ``(n,)``, ``(n, 1)``, ``(1, n)``,
@@ -104,8 +111,8 @@ def _load_mat(path: str) -> np.ndarray:
         if not variables:
             raise ValueError("No variables found in .mat file")  # noqa: TRY301
 
-        # Pick the most label-like variable rather than blindly taking the first.
-        var_name = _select_mat_variable(mat, variables)
+        # Pick the reviewed variable when provided, otherwise choose a label-like one.
+        var_name = _resolve_mat_variable(mat, variables, label_field)
         data = mat[var_name]
 
         # Robust shape handling (migrated from EventLoader)
@@ -133,6 +140,26 @@ def _load_mat(path: str) -> np.ndarray:
     except Exception as e:
         logger.error("Failed to load mat file %s: %s", path, e)
         raise ValueError(f"Invalid .mat file: {e}") from e
+
+
+def _resolve_mat_variable(
+    mat: dict[str, Any],
+    variables: list[str],
+    label_field: str | None,
+) -> str:
+    """Resolve a reviewed MAT variable or fall back to heuristic selection."""
+    if label_field is None or not str(label_field).strip():
+        return _select_mat_variable(mat, variables)
+
+    requested = str(label_field).strip()
+    for variable in variables:
+        if variable == requested:
+            return variable
+    normalized = requested.lower()
+    for variable in variables:
+        if variable.lower() == normalized:
+            return variable
+    raise ValueError(f"MAT variable not found: {requested}")
 
 
 def _select_mat_variable(mat: dict[str, Any], variables: list[str]) -> str:
@@ -174,7 +201,12 @@ def _select_mat_variable(mat: dict[str, Any], variables: list[str]) -> str:
     return max(variables, key=lambda name: score(name, mat[name]))
 
 
-def _load_csv_tsv(path: str):
+def _load_csv_tsv(
+    path: str,
+    *,
+    label_field: str | None = None,
+    anchor: str | None = None,
+):
     """Load labels from a CSV or TSV file.
 
     Detects whether the file contains timestamp data (columns like ``onset``,
@@ -204,8 +236,14 @@ def _load_csv_tsv(path: str):
         label_cols = ["label", "trial_type", "type"]
         duration_cols = ["duration"]
 
-        found_time = next((c for c in time_cols if c in df.columns), None)
-        found_label = next((c for c in label_cols if c in df.columns), None)
+        found_time = _resolve_column(df.columns, anchor) or next(
+            (c for c in time_cols if c in df.columns),
+            None,
+        )
+        found_label = _resolve_column(df.columns, label_field) or next(
+            (c for c in label_cols if c in df.columns),
+            None,
+        )
         found_duration = next((c for c in duration_cols if c in df.columns), None)
 
         if found_time and found_label:
@@ -232,3 +270,13 @@ def _load_csv_tsv(path: str):
     except Exception as e:
         logger.error("Failed to load csv/tsv file %s: %s", path, e)
         raise ValueError(f"Failed to load csv/tsv file: {e}") from e
+
+
+def _resolve_column(columns: Any, requested: str | None) -> str | None:
+    """Return a normalized DataFrame column selected by the wizard."""
+    if requested is None or not str(requested).strip():
+        return None
+    normalized = str(requested).strip().lower()
+    if normalized in columns:
+        return normalized
+    raise ValueError(f"Column not found: {requested}")

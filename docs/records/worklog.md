@@ -175,6 +175,44 @@
   - 仍缺完整 post-load label import 內嵌 wizard、真人 Windows launcher click-through、MCP
     Inspector GUI / release config。
 
+### 17:56 Data Interpretation reviewed timestamp label apply
+
+- 做了什麼：
+  - 先補 TDD 紅燈：
+    - `load_label_file()` 應接受 reviewed MAT variable、TSV label column 和 anchor column。
+    - `apply_interpretation` 在已確認 reviewed timestamp label carrier 時應自動套用 labels，
+      並更新 applied interpretation 的 `label_imports` / recipe trace。
+  - `load_label_file(filepath, label_field=..., anchor=...)` 支援：
+    - MAT selected variable。
+    - CSV / TSV / BIDS events selected label / anchor columns，輸出 timestamp-style label dicts。
+  - `ApplicationService._handle_apply_interpretation()` 現在會在 narrow safe path 自動套用
+    labels：
+    - 單一 loaded EEG file。
+    - 單一 reviewed timestamp CSV / TSV / BIDS events carrier。
+    - interpretation 已確認。
+    - time model 是 `seconds` 或 `relative_time`。
+  - 成功後會呼叫既有 `dataset.apply_labels_batch()`，再走
+    `_record_label_import_for_recipe()` 更新 `label_imports` 和 `label_import:timestamp:<n>` trace。
+  - UI replay artifact 已刷新並顯示 `label_apply.status=applied`。
+- 結果：
+  - TDD 紅燈確認過：
+    - loader tests 先因 `label_field` 參數不存在失敗。
+    - application test 先因缺 `label_apply` diagnostics 失敗。
+  - replay JSON 顯示 timestamp label carrier 成功套用到 synthetic FIF source。
+- 證據：
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`
+  - `poetry run pytest --capture=sys tests/unit/backend/load_data/test_label_loader.py tests/unit/backend/load_data/test_label_loader_coverage.py tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `60 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `51 passed`
+  - targeted `ruff` -> `PASS`
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- 接續 / 本輪剩餘：
+  - 這不是 MAT sequence auto-apply，也不是多檔 label mapping。
+  - 仍缺完整 post-load label import 內嵌 wizard、全格式人工 compatibility matrix、真人
+    Windows launcher click-through、MCP Inspector GUI / release config。
+
 ### 11:17 Data Interpretation metadata / class-map editor slice
 
 - 做了什麼：

@@ -1290,6 +1290,35 @@ compatibility matrix 或真人 click-through。
 哪些格式已可載入但需要語意確認，哪些格式目前 blocked。它仍不是 full manual compatibility
 matrix 或 XDF stream parser implementation。
 
+2026-05-04 Data Interpretation timestamp label apply slice：
+
+- backend:
+  - `load_label_file()` now accepts reviewed `label_field` and `anchor` selections.
+  - MAT loading can use a selected MAT variable instead of heuristic selection.
+  - CSV / TSV / BIDS events loading can use selected label and anchor columns to produce
+    timestamp-style labels.
+  - `apply_interpretation` now auto-applies labels only for the narrow safe path:
+    one loaded EEG file, one reviewed timestamp CSV / TSV / BIDS events carrier, confirmed
+    interpretation, and time model `seconds` / `relative_time`.
+  - Successful apply records `label_apply` diagnostics, updates applied interpretation
+    `label_imports`, and appends `label_import:timestamp:<n>` to recipe trace.
+- replay artifact refreshed:
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON shows `label_apply.status=applied`, one timestamp label import record, and
+    `label_import:timestamp:1` in recipe trace.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/load_data/test_label_loader.py tests/unit/backend/load_data/test_label_loader_coverage.py tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `60 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `51 passed`
+  - targeted `ruff` clean.
+  - targeted `basedpyright` clean; `.basedpyright/baseline.json` refreshed with one fewer baseline error.
+
+這批 evidence 支撐 reviewed timestamp label carrier 已從 recipe-only 進入 Data Interpretation
+apply path。它仍不支撐 MAT sequence auto-apply、多檔 label mapping、XDF stream parser 或完整
+post-load label import 內嵌 wizard。
+
 2026-05-04 Data Interpretation recipe save UI path：
 
 - Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。

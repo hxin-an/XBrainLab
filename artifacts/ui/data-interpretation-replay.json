@@ -1686,7 +1686,7 @@
     "apply_confirmed": {
       "status": "ok",
       "command_name": "apply_interpretation",
-      "message": "Applied interpretation and loaded 1 file(s).",
+      "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s).",
       "state": {
         "pipeline_stage": "data_loaded",
         "raw": {
@@ -1712,7 +1712,7 @@
               "session": "0"
             }
           ],
-          "event_total": 6,
+          "event_total": 4,
           "unique_events": [
             "left",
             "right"
@@ -1863,8 +1863,24 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
-          "label_import_count": 0,
-          "label_imports": [],
+          "label_import_count": 1,
+          "label_imports": [
+            {
+              "mode": "timestamp",
+              "label_carriers": [
+                "<replay_source>/product_replay_events.tsv"
+              ],
+              "target_files": [
+                "<replay_source>/product_replay_raw.fif"
+              ],
+              "file_mapping": {
+                "<replay_source>/product_replay_raw.fif": "<replay_source>/product_replay_events.tsv"
+              },
+              "selected_event_names": [],
+              "class_map": {},
+              "success_count": 1
+            }
+          ],
           "recipe_path": null
         },
         "active_dataset": {
@@ -2005,19 +2021,57 @@
             "label_carrier": "external label or event source"
           },
           "class_map": {},
-          "label_imports": [],
+          "label_imports": [
+            {
+              "mode": "timestamp",
+              "label_carriers": [
+                "<replay_source>/product_replay_events.tsv"
+              ],
+              "target_files": [
+                "<replay_source>/product_replay_raw.fif"
+              ],
+              "file_mapping": {
+                "<replay_source>/product_replay_raw.fif": "<replay_source>/product_replay_events.tsv"
+              },
+              "selected_event_names": [],
+              "class_map": {},
+              "success_count": 1
+            }
+          ],
           "recipe_trace": [
             "scan:scan-1",
             "candidate:candidate-4",
             "choices:metadata_overrides",
             "choices:label_carriers",
             "validation:needs_confirmation",
-            "applied:interpretation-6"
+            "applied:interpretation-6",
+            "label_import:timestamp:1"
           ]
         },
         "label_carriers_pending": [
           "<replay_source>/product_replay_events.tsv"
-        ]
+        ],
+        "label_apply": {
+          "status": "applied",
+          "success_count": 1,
+          "mode": "timestamp",
+          "label_import": {
+            "mode": "timestamp",
+            "label_carriers": [
+              "<replay_source>/product_replay_events.tsv"
+            ],
+            "target_files": [
+              "<replay_source>/product_replay_raw.fif"
+            ],
+            "file_mapping": {
+              "<replay_source>/product_replay_raw.fif": "<replay_source>/product_replay_events.tsv"
+            },
+            "selected_event_names": [],
+            "class_map": {},
+            "success_count": 1
+          },
+          "label_carrier": "<replay_source>/product_replay_events.tsv"
+        }
       }
     }
   },
