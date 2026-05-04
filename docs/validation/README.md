@@ -112,16 +112,20 @@ UI baseline capture 結果：
   label helper，並維持 Data Interpretation recipe trace update。
 - `DataTableCommandService` 承接 `update_metadata`、`apply_smart_parse` 和 `remove_files`，
   並維持 loaded-data table mutation diagnostics。
+- `PreprocessCommandService` 承接 preprocessing operations 和 `create_epoch`，並維持
+  `set_montage` UI confirmation boundary。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
   `XBrainLab.backend.application.lifecycle_service` /
   `XBrainLab.backend.application.data_compatibility_service` /
-  `XBrainLab.backend.application.data_table_service`，再以 service unit tests 驗證 model
+  `XBrainLab.backend.application.data_table_service` /
+  `XBrainLab.backend.application.preprocess_service`，再以 service unit tests 驗證 model
   holder、training option snapshot、start / stop、history cleanup diagnostics、config reset
   notification、dataset split config、audit blocking、rollback、cleanup diagnostics、reset
   notification、dependent-state clearing、legacy load failure mapping、attach labels、label import
-  recipe update、metadata skipped row reporting、smart parse normalization 和 remove-count delta。
+  recipe update、metadata skipped row reporting、smart parse normalization、remove-count delta、
+  standard preprocess batching、core preprocessing operations、epoch creation 和 montage boundary。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - 這支撐 backend handler boundary cleanup；不能擴張成 product-complete、Windows human
@@ -206,8 +210,8 @@ agent 架構文件整理時也跑：
 reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
 沒有回歸」。它不能支撐整個 backend architecture closure；後續 cleanup 已另外拆出
 analysis、training、dataset generation、lifecycle、data compatibility 和 data-table handlers。
-這仍不能支撐完整 backend architecture closure，因為 `query_state`、preprocess / epoch
-handlers 和 state snapshot helpers 仍在 `ApplicationService`。
+後續 cleanup 也拆出 preprocess / epoch handlers。這仍不能支撐完整 backend architecture
+closure，因為 `query_state` 和 state snapshot helpers 仍在 `ApplicationService`。
 
 2026-05-05 Analysis command boundary cleanup 新增一組 architecture gate：
 

@@ -51,6 +51,8 @@
   心智模型。
 - 最新 data-table cleanup slice 已把 `update_metadata`、`apply_smart_parse` 和 `remove_files`
   拆到 `DataTableCommandService`；loaded-data table mutation 不再直接堆在 `ApplicationService`。
+- 最新 preprocess cleanup slice 已把 preprocessing operations 和 `create_epoch` 拆到
+  `PreprocessCommandService`；preprocess / epoch handler 不再直接堆在 `ApplicationService`。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -551,7 +553,7 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 ```text
 1. 繼續 backend architecture cleanup：ApplicationService 已拆出 Data Interpretation、
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
-   services。下一步盤點 preprocess / epoch service 或 query/state snapshot service，並保持
+   services，以及 Preprocess command service。下一步盤點 query/state snapshot service，並保持
    legacy compatibility 不回到產品主心智模型。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。

@@ -37,6 +37,47 @@
 
 ## 2026-05-05
 
+### 12:35 Preprocess command service boundary cleanup
+
+- 做了什麼：
+  - 延續 backend cleanup，選 preprocessing operations / standard preprocess / `create_epoch`
+    作為 focused slice，不碰 `query_state` / state snapshot。
+  - 先新增 focused test，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.preprocess_service`。
+  - 新增 `PreprocessCommandService`，承接 bandpass / notch / resample / normalize /
+    rereference / channel selection / standard preprocess / create epoch。
+  - 保留 `set_montage` preprocess operation 的 UI confirmation boundary；真正 confirmed montage
+    apply 仍在 `AnalysisCommandService` 的 `apply_montage` command。
+  - `ApplicationService` 的 handler map 改成窄委派到 preprocess service；對外 command name、
+    capability policy 和 `CommandResult` contract 不變。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `ApplicationService` 從 `1021` 行降到 `945` 行。
+  - `PreprocessCommandService` 為 `107` 行。
+  - preprocess / epoch handler 不再直接堆在 `ApplicationService`；`query_state` 和 state
+    snapshot helpers 仍留在 `ApplicationService`。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_preprocess_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/preprocess_service.py tests/unit/backend/application/test_preprocess_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/preprocess_service.py tests/unit/backend/application/test_preprocess_service.py`
+    -> 初次發現 test fixture `rate` 應為 `int | None`，修正後為 `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_preprocess_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `48 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `76 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - 這支撐 preprocess / epoch handler isolation，不是 product completion。
+  - 下一個 backend cleanup slice 應評估 query/state snapshot boundary，或暫停 backend cleanup
+    轉回 UI / import wizard / human verification blocker。
+
 ### 12:05 Data table command service boundary cleanup
 
 - 做了什麼：

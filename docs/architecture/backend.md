@@ -53,6 +53,8 @@ downstream rollback 和 reset-time dependent-state clear 拆到 `LifecycleComman
 最新 compatibility cleanup slice 又把舊 `load_data`、`attach_labels`、`import_labels` 和
 label helper 拆到 `DataCompatibilityCommandService`。最新 data-table cleanup slice 又把
 `update_metadata`、`apply_smart_parse` 和 `remove_files` 拆到 `DataTableCommandService`。
+最新 preprocess cleanup slice 又把 preprocessing operations 和 `create_epoch` 拆到
+`PreprocessCommandService`。
 `ApplicationService` 仍只 dispatch / gate / wrap result。
 
 ## 一句話架構
@@ -122,7 +124,10 @@ ApplicationService / Command API
   |       +--> legacy load_data / attach_labels / import_labels compatibility
   |
   +--> DataTableCommandService
-          +--> metadata update / smart parse / remove files
+  |       +--> metadata update / smart parse / remove files
+  |
+  +--> PreprocessCommandService
+          +--> preprocessing operations / create_epoch
   |
   v
 same cached controllers from Study
@@ -330,6 +335,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/data_table_service.py`
 - `XBrainLab/backend/application/dataset_generation_service.py`
 - `XBrainLab/backend/application/lifecycle_service.py`
+- `XBrainLab/backend/application/preprocess_service.py`
 - `XBrainLab/backend/application/results.py`
 - `XBrainLab/backend/application/training_service.py`
 - `XBrainLab/backend/application/errors.py`
@@ -378,6 +384,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `update_metadata`、`apply_smart_parse` 和 `remove_files` 的實作位置現在是
   `DataTableCommandService`。它 owns loaded-data table mutation diagnostics；`ApplicationService`
   只做 dispatch、policy gate 和 result envelope。
+- Preprocessing operations 和 `create_epoch` 的實作位置現在是 `PreprocessCommandService`。
+  它 owns preprocess controller calls、standard batch preprocessing、channel selection delegate
+  和 `set_montage` UI confirmation boundary。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed

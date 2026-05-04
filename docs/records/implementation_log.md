@@ -49,7 +49,8 @@
 Backend command spine 持續從 `ApplicationService` god object 收斂成 focused command services。
 Data Interpretation、analysis / visualization、training config / train-stop lifecycle、dataset
 generation / split audit、reset lifecycle、legacy data / label compatibility 現在都有各自 service
-boundary；metadata update / smart parse / remove file 也已移到 focused data-table boundary。
+boundary；metadata update / smart parse / remove file 也已移到 focused data-table boundary；
+preprocessing operations 和 `create_epoch` 也已移到 focused preprocess boundary。
 `ApplicationService` 回到 dispatch、capability / confirmation gate 和 state/result envelope。
 
 ### 已可宣稱
@@ -66,6 +67,7 @@ boundary；metadata update / smart parse / remove file 也已移到 focused data
 - 舊 `load_data`、`attach_labels`、`import_labels` 和 label helper 由
   `DataCompatibilityCommandService` 承接，並明確定位為 compatibility boundary。
 - Metadata update、smart parse 和 remove files 由 `DataTableCommandService` 承接。
+- Preprocessing operations 和 create epoch 由 `PreprocessCommandService` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 
@@ -77,13 +79,13 @@ boundary；metadata update / smart parse / remove file 也已移到 focused data
 
 ### 不能宣稱完成
 
-- `ApplicationService` 仍保留 query state、preprocess / epoch handlers 和 state snapshot helpers。
+- `ApplicationService` 仍保留 query state 和 state snapshot helpers。
 - Legacy `load_data / attach_labels / import_labels` 尚未完全退出產品心智模型。
 - 這是 backend architecture cleanup，不是 UI / Windows / MCP / thesis final closure。
 
 ### 下一手重點
 
-1. 評估 preprocess / epoch command service 或 query/state snapshot service 的下一個低風險 slice。
+1. 評估 query/state snapshot service 的下一個低風險 slice。
 2. 確認 UI / agent / MCP 沒有重新引入 controller-private fallback 作為產品主路徑。
 3. 維持每個 slice 有 focused tests、non-mocked workflow regression 和文件同步。
 
@@ -231,4 +233,4 @@ services / handlers，同時保持 UI、agent、headless、MCP 只走同一套 c
 ### 下一手重點
 
 下一輪 backend work 應確認新 UI / agent 心智模型不回到舊 `load_data / attach_labels`，並評估
-remaining `ApplicationService` query/state snapshot 與 preprocess / epoch handlers 是否需要下一輪拆分。
+remaining `ApplicationService` query/state snapshot helpers 是否需要下一輪拆分。
