@@ -125,6 +125,9 @@ UI baseline capture 結果：
 - Data Interpretation format boundary cleanup 覆蓋 focused `data_interpretation_formats.py`
   module；GDF / BIDS events / XDF-LSL capability 行為有直接 unit coverage，既有 scan capability
   boundary regression 仍通過。
+- Data Interpretation metadata boundary cleanup 覆蓋 focused `data_interpretation_metadata.py`
+  module；BIDS metadata resolution、filename-rule needs-confirmation、BIDS summary 和 recipe
+  metadata rehydration 有直接 unit coverage，既有 scan / recipe reload regression 仍通過。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
@@ -141,7 +144,7 @@ UI baseline capture 結果：
   state snapshot construction、query diagnostics、smart-filter suggestions、Dataset direct import
   service-success no-fallback、Preprocess reset service-success no-fallback、Training re-split
   cleanup service-success no-fallback、Clear History service-success no-fallback 和 format
-  capability module boundary。
+  capability / metadata resolution module boundaries。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - UI runtime bypass slice gate 另通過：
@@ -160,6 +163,13 @@ UI baseline capture 結果：
   `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
   (`5 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`
   (`80 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
+  (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
+  (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
+  `git diff --check`。
+- Data Interpretation metadata boundary slice gate 另通過：
+  `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_preview_validate_requires_confirmation tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+  (`11 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`
+  (`84 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
   (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
   (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
   `git diff --check`。

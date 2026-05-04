@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import re
 from dataclasses import asdict, dataclass, is_dataclass
 from dataclasses import field as dc_field
 from enum import Enum
@@ -20,6 +19,19 @@ from .data_interpretation_formats import (
 from .data_interpretation_formats import (
     format_capabilities as _format_capabilities,
 )
+from .data_interpretation_metadata import (
+    FileMetadataResolution,
+    MetadataFieldResolution,
+)
+from .data_interpretation_metadata import (
+    bids_summary as _bids_summary,
+)
+from .data_interpretation_metadata import (
+    file_metadata_from_dict as _file_metadata_from_dict,
+)
+from .data_interpretation_metadata import (
+    metadata_for_file as _metadata_for_file,
+)
 
 
 class InterpretationDecision(str, Enum):
@@ -28,33 +40,6 @@ class InterpretationDecision(str, Enum):
     SAFE = "safe"
     NEEDS_CONFIRMATION = "needs_confirmation"
     BLOCKED = "blocked"
-
-
-@dataclass(frozen=True)
-class MetadataFieldResolution:
-    """Resolved value and provenance for one metadata field."""
-
-    field: str
-    value: str | None
-    source: str
-    decision: str
-    reason: str
-    override: str | None = None
-    recipe_trace: list[str] = dc_field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
-
-
-@dataclass(frozen=True)
-class FileMetadataResolution:
-    """Subject/session/task/run metadata preview for one source file."""
-
-    file: str
-    subject: MetadataFieldResolution
-    session: MetadataFieldResolution
-    task: MetadataFieldResolution
-    run: MetadataFieldResolution
 
 
 @dataclass(frozen=True)
@@ -881,151 +866,6 @@ def _looks_like_bids(path: Path) -> bool:
     return any(item.name.startswith("sub-") for item in path.iterdir())
 
 
-def _metadata_for_file(
-    path: Path,
-    scan_root: Path,
-    source_kind: str,
-) -> FileMetadataResolution:
-    rel_text = _relative_text(path, scan_root)
-    is_bids = source_kind == "bids" or "sub-" in rel_text
-    return FileMetadataResolution(
-        file=str(path),
-        subject=_field_resolution("subject", path, rel_text, is_bids),
-        session=_field_resolution("session", path, rel_text, is_bids),
-        task=_field_resolution("task", path, rel_text, is_bids),
-        run=_field_resolution("run", path, rel_text, is_bids),
-    )
-
-
-def _field_resolution(
-    field_name: str,
-    path: Path,
-    rel_text: str,
-    is_bids: bool,
-) -> MetadataFieldResolution:
-    bids_key = {
-        "subject": "sub",
-        "session": "ses",
-        "task": "task",
-        "run": "run",
-    }[field_name]
-    value = _extract_bids_entity(rel_text, bids_key)
-    if value is not None:
-        return MetadataFieldResolution(
-            field=field_name,
-            value=value,
-            source="bids_entity",
-            decision=InterpretationDecision.SAFE.value,
-            reason=f"{field_name} resolved from BIDS entity.",
-            recipe_trace=[f"bids:{bids_key}"],
-        )
-
-    value = _extract_filename_metadata(path.name, field_name)
-    if value is not None:
-        return MetadataFieldResolution(
-            field=field_name,
-            value=value,
-            source="filename_rule",
-            decision=InterpretationDecision.NEEDS_CONFIRMATION.value,
-            reason=f"{field_name} inferred from filename and should be confirmed.",
-            recipe_trace=[f"filename:{field_name}"],
-        )
-
-    decision = (
-        InterpretationDecision.NEEDS_CONFIRMATION.value
-        if field_name in {"subject", "session", "task", "run"}
-        else InterpretationDecision.SAFE.value
-    )
-    reason = (
-        f"{field_name} was not inferred from source path."
-        if not is_bids
-        else f"{field_name} BIDS entity is not present for this file."
-    )
-    return MetadataFieldResolution(
-        field=field_name,
-        value=None,
-        source="missing",
-        decision=decision,
-        reason=reason,
-        recipe_trace=[],
-    )
-
-
-def _extract_bids_entity(text: str, entity: str) -> str | None:
-    match = re.search(rf"(?:^|[/_]){entity}-([A-Za-z0-9]+)", text)
-    return match.group(1) if match else None
-
-
-def _extract_filename_metadata(filename: str, field_name: str) -> str | None:
-    patterns = {
-        "subject": [
-            r"(?:^|[_-])sub(?:ject)?[_-]?([A-Za-z0-9]+)",
-            r"(?:^|[_-])s([0-9]{1,3})(?:[_-]|$)",
-        ],
-        "session": [
-            r"(?:^|[_-])ses(?:sion)?[_-]?([A-Za-z0-9]+)",
-        ],
-        "task": [
-            r"(?:^|[_-])task[_-]?([A-Za-z0-9]+)",
-        ],
-        "run": [
-            r"(?:^|[_-])run[_-]?([A-Za-z0-9]+)",
-            r"(?:^|[_-])r([0-9]{1,3})(?:[_-]|$)",
-        ],
-    }
-    normalized = Path(filename).stem
-    for pattern in patterns[field_name]:
-        match = re.search(pattern, normalized, re.IGNORECASE)
-        if match:
-            return match.group(1)
-    return None
-
-
-def _bids_summary(
-    scan_root: Path,
-    source_kind: str,
-    eeg_files: list[str],
-    label_carriers: list[str],
-) -> dict[str, Any]:
-    is_bids = source_kind == "bids"
-    subjects = _bids_entity_values(eeg_files, scan_root, "sub")
-    sessions = _bids_entity_values(eeg_files, scan_root, "ses")
-    tasks = _bids_entity_values(eeg_files, scan_root, "task")
-    runs = _bids_entity_values(eeg_files, scan_root, "run")
-    events_files = [
-        item for item in label_carriers if item.endswith(("_events.tsv", "events.tsv"))
-    ]
-    return {
-        "is_bids": is_bids,
-        "subjects": subjects,
-        "sessions": sessions,
-        "tasks": tasks,
-        "runs": runs,
-        "events_files": events_files,
-        "dataset_description": str(scan_root / "dataset_description.json")
-        if (scan_root / "dataset_description.json").exists()
-        else None,
-    }
-
-
-def _bids_entity_values(
-    eeg_files: list[str],
-    scan_root: Path,
-    entity: str,
-) -> list[str]:
-    values = {
-        value
-        for file_path in eeg_files
-        if (
-            value := _extract_bids_entity(
-                _relative_text(Path(file_path), scan_root),
-                entity,
-            )
-        )
-    }
-    return sorted(values)
-
-
 def _scan_warnings(
     source_kind: str,
     eeg_files: list[str],
@@ -1074,49 +914,6 @@ def _scan_blocked_reasons(
     if blocked:
         return sorted(set(blocked))
     return ["No supported EEG data files were found."]
-
-
-def _relative_text(path: Path, root: Path) -> str:
-    try:
-        return path.relative_to(root).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _file_metadata_from_dict(payload: dict[str, Any]) -> FileMetadataResolution:
-    return FileMetadataResolution(
-        file=str(payload.get("file", "")),
-        subject=_field_from_dict(
-            cast(dict[str, Any], payload.get("subject", {})),
-            "subject",
-        ),
-        session=_field_from_dict(
-            cast(dict[str, Any], payload.get("session", {})),
-            "session",
-        ),
-        task=_field_from_dict(cast(dict[str, Any], payload.get("task", {})), "task"),
-        run=_field_from_dict(cast(dict[str, Any], payload.get("run", {})), "run"),
-    )
-
-
-def _field_from_dict(
-    payload: dict[str, Any],
-    field_name: str,
-) -> MetadataFieldResolution:
-    return MetadataFieldResolution(
-        field=str(payload.get("field", field_name)),
-        value=payload.get("value"),
-        source=str(payload.get("source", "unknown")),
-        decision=str(
-            payload.get(
-                "decision",
-                InterpretationDecision.NEEDS_CONFIRMATION.value,
-            ),
-        ),
-        reason=str(payload.get("reason", "")),
-        override=payload.get("override"),
-        recipe_trace=[str(item) for item in payload.get("recipe_trace", [])],
-    )
 
 
 def _serialize(value: Any) -> Any:

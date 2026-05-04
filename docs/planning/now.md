@@ -64,6 +64,9 @@
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
 - 最新 Data Interpretation boundary cleanup 已把 format capability taxonomy 抽到
   `data_interpretation_formats.py`，讓 scanner / candidate lifecycle 與 format matrix 邊界分離。
+- 後續 Data Interpretation boundary cleanup 已把 metadata resolution / BIDS summary / recipe
+  metadata rehydration 抽到 `data_interpretation_metadata.py`；下一步可繼續拆 recipe
+  serialization 或 label carrier planner。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。

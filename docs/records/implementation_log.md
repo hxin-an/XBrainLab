@@ -61,6 +61,8 @@ command path；Clear History 現在有使用者確認，successful service resul
 mutation。
 Data Interpretation format capability taxonomy 也已抽成 focused module，讓 lifecycle module 不再
 同時承接 scanner / candidate / format matrix 細節。
+Metadata resolution / BIDS summary / recipe metadata rehydration 也已抽成 focused module，讓
+Data Interpretation lifecycle module 的下一步拆分邊界更清楚。
 
 ### 已可宣稱
 
@@ -85,6 +87,8 @@ Data Interpretation format capability taxonomy 也已抽成 focused module，讓
   `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`，且 Clear History 有 confirmation。
 - GDF / EDF-BDF / EEGLAB / BrainVision / FIF / MAT / CSV-TSV / TXT / BIDS events /
   XDF-LSL format capability boundary 由 `data_interpretation_formats.py` 承接。
+- Subject / session / task / run metadata resolution、BIDS entity summary 和 recipe metadata
+  rehydration 由 `data_interpretation_metadata.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 

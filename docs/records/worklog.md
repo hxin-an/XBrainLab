@@ -4241,3 +4241,54 @@
   - 這是 Data Interpretation internal boundary cleanup，不是 mature import wizard completion。
   - Scanner、candidate builder、preview builder、validator、recipe serialization 仍在
     `data_interpretation.py`，後續還可繼續分割。
+
+### 2026-05-06 Data Interpretation metadata boundary extraction
+
+- scope：
+  - Backend-only Data Interpretation internal boundary cleanup。
+  - No UI / agent / MCP command shape changes.
+- current call sites：
+  - `scan_source_path()` builds per-file subject/session/task/run metadata.
+  - `import_recipe_from_dict()` rebuilds serialized metadata.
+  - `bids` summary is emitted in `ScanResult` and downstream state / automation envelopes.
+- target boundary：
+  - `data_interpretation_metadata.py` owns metadata dataclasses, BIDS entity resolution,
+    filename-rule needs-confirmation inference, BIDS summary, and recipe metadata rehydration.
+  - `data_interpretation.py` keeps lifecycle orchestration and imports the focused metadata helpers.
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_metadata.py`。
+  - Moved `MetadataFieldResolution` / `FileMetadataResolution` and metadata helper functions out of
+    `data_interpretation.py`.
+  - Added direct unit coverage for BIDS metadata, filename-rule confirmation, BIDS summary, and
+    serialized metadata rehydration.
+  - `data_interpretation.py` reduced from about `1131` lines to about `928` lines after this slice.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_metadata.py -q`
+    initial failure: `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_metadata`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_metadata.py -q`
+    -> `4 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_metadata.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_metadata.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_preview_validate_requires_confirmation tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+    -> `11 passed`。
+  - `timeout 300s poetry run ruff format --check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_metadata.py`
+    -> pass after formatting the new metadata test file.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `84 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 不能宣稱：
+  - 這是 metadata parser / serializer boundary cleanup，不是 import wizard UX completion。
+  - Recipe serialization, candidate / preview builder, validator, and label carrier planner still need
+    future decomposition.

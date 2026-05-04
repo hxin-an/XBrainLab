@@ -66,6 +66,9 @@ training controller mutation。
 最新 Data Interpretation boundary cleanup 把 format capability taxonomy 抽到
 `data_interpretation_formats.py`；Data Interpretation lifecycle module 現在呼叫 focused format
 boundary helper，而不是同時承接 scanner / candidate / format matrix 細節。
+後續 metadata boundary cleanup 又把 metadata resolution、BIDS summary 和 recipe metadata
+rehydration 抽到 `data_interpretation_metadata.py`，讓 Data Interpretation lifecycle module 不再
+同時承接 metadata parser 細節。
 
 ## 一句話架構
 
@@ -352,6 +355,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/data_interpretation.py`
 - `XBrainLab/backend/application/data_interpretation_apply.py`
 - `XBrainLab/backend/application/data_interpretation_formats.py`
+- `XBrainLab/backend/application/data_interpretation_metadata.py`
 - `XBrainLab/backend/application/data_interpretation_service.py`
 - `XBrainLab/backend/application/data_table_service.py`
 - `XBrainLab/backend/application/dataset_generation_service.py`
@@ -427,6 +431,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - Data Interpretation format capability matrix 實作位置現在是
   `data_interpretation_formats.py`。它 owns GDF、EDF / BDF、EEGLAB、BrainVision、FIF、MAT、
   CSV / TSV、TXT、BIDS events 和 XDF / LSL 的 supported / needs-review / blocked 邊界。
+- Data Interpretation metadata resolution 實作位置現在是
+  `data_interpretation_metadata.py`。它 owns subject / session / task / run field resolution、
+  BIDS entity aggregation、filename-rule confirmation boundary 和 recipe metadata rehydration。
 
 2026-05-02 product blocker 盤點結論：
 

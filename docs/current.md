@@ -186,6 +186,10 @@ file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；P
 MAT / CSV-TSV / TXT / BIDS events / XDF-LSL format capability matrix 從大型
 `data_interpretation.py` 抽到 `DataInterpretationFormats` focused module，scanner /
 candidate lifecycle 不再直接承接 format taxonomy 細節。
+下一個 Data Interpretation boundary cleanup 又把 subject / session / task / run metadata
+resolution、BIDS entity summary 和 recipe metadata rehydration 抽到
+`data_interpretation_metadata.py`；大型 lifecycle module 降到約 `928` 行，但 scanner /
+candidate / preview / validation / recipe flow 仍在同一 domain module，後續還可繼續拆。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
