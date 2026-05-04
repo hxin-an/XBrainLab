@@ -9,11 +9,10 @@
 
 ## Failure Taxonomy
 
-- argument mismatch: `3`
-- intent: `2`
+- argument mismatch: `1`
 - state delta mismatch: `1`
-- tool selection mismatch: `3`
-- trajectory mismatch: `3`
+- tool selection mismatch: `1`
+- trajectory mismatch: `1`
 
 ## Scoring Detail
 
@@ -21,24 +20,24 @@
 
 - runner: `local-llm`
 - total cases: `54`
-- passed: `51`
-- failed: `3`
-- pass rate: `94.44%`
+- passed: `53`
+- failed: `1`
+- pass rate: `98.15%`
 
 ## Metrics
 
 | Metric | Accuracy |
 | --- | ---: |
-| intent | 96.30% |
-| tool selection | 94.44% |
-| argument correctness | 94.44% |
+| intent | 100.00% |
+| tool selection | 98.15% |
+| argument correctness | 98.15% |
 | state aware | 100.00% |
 | verification result match | 100.00% |
 | state delta | 98.15% |
 | blocked command | 100.00% |
 | recovery | 100.00% |
 | tool result interpretation | 100.00% |
-| trajectory quality | 94.44% |
+| trajectory quality | 98.15% |
 | runtime safety | 100.00% |
 | local llm reliability | 100.00% |
 
@@ -50,6 +49,4 @@
 
 ## Failed Cases
 
-- `saliency-before-trained-block`: intent expected saliency, got unknown, tool selection mismatch, argument mismatch, trajectory mismatch
-- `visualize-before-trained-block`: intent expected visualize, got unknown, tool selection mismatch, argument mismatch, trajectory mismatch
 - `multi-turn-loaded-preprocess`: tool selection mismatch, argument mismatch, state delta mismatch, trajectory mismatch

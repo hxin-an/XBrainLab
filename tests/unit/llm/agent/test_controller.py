@@ -373,6 +373,24 @@ class TestProcessToolCalls:
         assert result.error_type == "precondition"
         assert "Generate datasets before training" in result.message
 
+    def test_requested_intent_boundary_rejects_visualization_ui_substitute(self, ctrl):
+        ctrl.history = [{"role": "user", "content": "Visualize the trained result."}]
+        capability = CommandCapability(
+            command_name=CommandName.VISUALIZE.value,
+            enabled=True,
+            reasons=[],
+        )
+        policy = MagicMock()
+        policy.get.return_value = capability
+
+        with patch("XBrainLab.llm.agent.controller.BackendFacade") as facade:
+            facade.return_value.get_capabilities.return_value = policy
+            result = ctrl._check_requested_intent_boundary("switch_panel")
+
+        assert result is not None
+        assert result.command_name == CommandName.VISUALIZE.value
+        assert "readiness summary" in result.message
+
     def test_verification_failure_uses_requested_path_label(self, ctrl):
         ctrl.history = [{"role": "user", "content": "Load my EEG file."}]
 

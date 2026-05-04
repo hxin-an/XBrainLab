@@ -130,3 +130,18 @@ def test_latest_intent_validate_turn_rejects_repeat_reload():
 
     assert tool_name == "validate_interpretation"
     assert params == {}
+
+
+def test_latest_intent_create_epoch_rejects_generate_dataset_substitute():
+    tool_name, params = normalize_tool_call(
+        "generate_dataset",
+        {"split_strategy": "trial"},
+        latest_user_text="Create epochs for event BAD_EVENT from -0.1 to 0.5 seconds.",
+    )
+
+    assert tool_name == "epoch_data"
+    assert params == {
+        "event_id": ["BAD_EVENT"],
+        "t_min": -0.1,
+        "t_max": 0.5,
+    }

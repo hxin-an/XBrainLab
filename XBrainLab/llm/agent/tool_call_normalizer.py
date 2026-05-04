@@ -1,5 +1,6 @@
 """Normalize common local-model tool-call variants before verification."""
 
+import re
 from typing import Any
 
 from XBrainLab.llm.agent.intent import infer_user_intent
@@ -101,6 +102,8 @@ def _apply_latest_intent_override(
         return "validate_interpretation", {}
     if intent == "apply_interpretation" and tool_name == "validate_interpretation":
         return "apply_interpretation", dict(params)
+    if intent == "create_epoch" and tool_name == "generate_dataset":
+        return "epoch_data", _extract_epoch_args(latest_user_text)
     return tool_name, params
 
 
@@ -140,6 +143,22 @@ def _normalize_epoch_args(params: dict[str, Any]) -> None:
         params["event_id"] = [str(item) for item in event_id]
     elif event_id is not None:
         params["event_id"] = [str(event_id)]
+
+
+def _extract_epoch_args(text: str) -> dict[str, Any]:
+    args: dict[str, Any] = {}
+    event = re.search(r"\bevent\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
+    if event:
+        args["event_id"] = [event.group(1)]
+    window = re.search(
+        r"from\s+(-?\d+(?:\.\d+)?)\s+to\s+(-?\d+(?:\.\d+)?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if window:
+        args["t_min"] = float(window.group(1))
+        args["t_max"] = float(window.group(2))
+    return args
 
 
 def _normalize_dataset_args(params: dict[str, Any]) -> None:

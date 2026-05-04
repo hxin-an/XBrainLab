@@ -169,6 +169,19 @@ def test_scores_missing_recipe_path_with_path_label():
     assert "recipe path" in score.visible_response
 
 
+def test_scores_visualization_ui_route_as_service_summary():
+    case = _case("visualize-before-trained-block")
+    raw_output = (
+        '{"tool_name":"switch_panel","parameters":{"panel_name":"visualization"}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == []
+    assert score.prediction["result_interpretation"] == "service_query_summary"
+
+
 def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path):
     def fake_generator(messages: list[dict[str, str]]) -> str:
         assert messages

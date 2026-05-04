@@ -55,18 +55,18 @@ Guardrail smoke 清掉了 placeholder / blocked substitute 的小樣本問題，
 
 - full local eval：
   - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
-    -> `51 / 54` pass (`94.44%`)。
+    -> `53 / 54` pass (`98.15%`)。
   - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
-    -> `50 / 54` pass (`92.59%`)。
+    -> `53 / 54` pass (`98.15%`)。
   - primary / fallback 都是 `gpu-ready`，cache `15.34 GB`，no download。
 - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_intent.py -q`
-  - `153 passed`
+  - `156 passed`
 - targeted `poetry run ruff check ...`
   - pass
 - targeted `poetry run basedpyright ...`
   - `0 errors, 0 warnings, 0 notes`
 - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q`
-  - `461 passed`
+  - `464 passed`
 - `poetry run ruff check .`
   - pass
 - `poetry run basedpyright`
@@ -79,8 +79,7 @@ Guardrail smoke 清掉了 placeholder / blocked substitute 的小樣本問題，
 ### 剩餘風險
 
 - 仍不是 thesis-ready：只有 `54` cases，不是 `100` thesis candidate cases。
-- 剩餘 failing cases 包含 saliency / visualization UI-route substitute、fallback invalid event
-  recovery、bandpass-vs-standard preprocess 語意。
+- 剩餘 failing case 是 bandpass-vs-standard preprocess 語意。
 - 這仍不是 ChatPanel 長時間 walkthrough、Windows launcher click-through 或完整 UI product
   validation。
 
@@ -156,8 +155,8 @@ artifact 把 raw tool JSON 當成 visible response。
 
 - 此段為 guardrail smoke 當時風險；正式 `54` cases x `3` primary / fallback full rerun 已由
   normalization slice 更新，但仍不能宣稱 thesis-ready。
-- Smoke subset 已清掉 `multi-turn-scan-preview` 重複 scan；full rerun 仍暴露 saliency /
-  visualization、invalid event、preprocess 語意 failure。
+- Smoke subset 已清掉 `multi-turn-scan-preview` 重複 scan；後續 full rerun 剩餘
+  bandpass-vs-standard preprocess 語意 failure。
 - 這不是 ChatPanel 長時間 walkthrough，也不是 Windows launcher click-through evidence。
 
 ## 2026-05-04 label import recipe trace integration

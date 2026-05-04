@@ -583,23 +583,23 @@ normalization slice 更新。
 - full local eval artifacts：
   - primary：
     `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
-    -> `51 / 54` pass (`94.44%`)。
+    -> `53 / 54` pass (`98.15%`)。
   - fallback：
     `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
-    -> `50 / 54` pass (`92.59%`)。
+    -> `53 / 54` pass (`98.15%`)。
   - runtime classification：primary / fallback 都是 `gpu-ready`。
   - cache usage：`15.34 GB`，低於 `20 GB` 上限。
   - no download。
 - targeted validation：
-  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_intent.py -q`
-  - `153 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_intent.py -q`
+  - `156 passed`
   - targeted `poetry run ruff check ...`
   - pass
   - targeted `poetry run basedpyright ...`
   - `0 errors, 0 warnings, 0 notes`
 - regression / docs gates：
-  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q`
-  - `461 passed`
+- `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `464 passed`
   - `poetry run ruff check .`
   - pass
   - `poetry run basedpyright`
@@ -611,8 +611,8 @@ normalization slice 更新。
 
 這批 evidence 支撐 local assistant tool-call guardrail 已從不可用的 `33%` / `37%` 區間提升到
 工程 baseline 可用區間；它仍不支撐 thesis-ready claim，因為 benchmark 仍只有 `54` cases、
-不是要求的 `100` thesis candidate cases，且仍有 saliency / visualization UI-route substitute、
-fallback invalid event recovery、bandpass-vs-standard preprocess 語意 failure。
+不是要求的 `100` thesis candidate cases，且仍有 bandpass-vs-standard preprocess 語意
+failure。
 
 2026-05-04 Data Interpretation non-mocked backend workflow：
 

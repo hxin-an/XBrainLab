@@ -1037,7 +1037,8 @@ class LLMController(QObject):
         if not latest_request:
             return None
 
-        requested_command = command_for_intent(infer_user_intent(latest_request))
+        requested_intent = infer_user_intent(latest_request)
+        requested_command = command_for_intent(requested_intent)
         if requested_command is None:
             return None
 
@@ -1056,6 +1057,27 @@ class LLMController(QObject):
         except Exception:
             logger.debug("Requested-intent boundary check failed", exc_info=True)
             return None
+
+        if (
+            requested_intent in {"visualize", "saliency"}
+            and tool_name == "switch_panel"
+        ):
+            reason = "; ".join(capability.reasons) or (
+                "Use an ApplicationService readiness summary before opening "
+                "visualization views."
+            )
+            return ToolCommandResult(
+                ok=False,
+                tool_name=tool_name,
+                command_name=requested_command.value,
+                message=(
+                    f"Requested workflow step '{requested_command.value}' needs a "
+                    f"readiness summary: {reason}"
+                ),
+                error_type="precondition",
+                recoverable=True,
+                blocked_reason=reason,
+            )
 
         if capability.enabled:
             return None

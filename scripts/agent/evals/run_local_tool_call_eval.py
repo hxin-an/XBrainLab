@@ -176,6 +176,15 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
 
     first_tool = tool_calls[0].tool_name
     first_params = tool_calls[0].arguments
+    if _visualization_ui_route_substitute(requested_intent, first_tool):
+        return Prediction(
+            intent=requested_intent,
+            tool_calls=[],
+            final_message=(
+                "Service query summary is available; no UI route is needed."
+            ),
+            result_interpretation=result_interpretation_for(case),
+        )
     blocked_intent_reason = _blocked_requested_intent_reason(
         case.state_name,
         requested_intent,
@@ -547,6 +556,10 @@ def _intent_adjusted_verification_message(intent: str, message: str) -> str:
     if "missing required parameter" in lower or "required input" in lower:
         return f"Required {label} is missing."
     return message
+
+
+def _visualization_ui_route_substitute(intent: str, tool_name: str) -> bool:
+    return intent in {"visualize", "saliency"} and tool_name == "switch_panel"
 
 
 def _blocked_requested_intent_reason(state_name: str, intent: str) -> str:

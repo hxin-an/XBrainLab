@@ -9,14 +9,10 @@
 
 ## Failure Taxonomy
 
-- argument mismatch: `4`
-- blocked-command handling mismatch: `1`
-- intent: `3`
+- argument mismatch: `1`
 - state delta mismatch: `1`
-- state-aware decision mismatch: `1`
-- tool selection mismatch: `4`
-- trajectory mismatch: `4`
-- verification result: `1`
+- tool selection mismatch: `1`
+- trajectory mismatch: `1`
 
 ## Scoring Detail
 
@@ -24,24 +20,24 @@
 
 - runner: `local-llm`
 - total cases: `54`
-- passed: `50`
-- failed: `4`
-- pass rate: `92.59%`
+- passed: `53`
+- failed: `1`
+- pass rate: `98.15%`
 
 ## Metrics
 
 | Metric | Accuracy |
 | --- | ---: |
-| intent | 94.44% |
-| tool selection | 92.59% |
-| argument correctness | 92.59% |
-| state aware | 98.15% |
-| verification result match | 98.15% |
+| intent | 100.00% |
+| tool selection | 98.15% |
+| argument correctness | 98.15% |
+| state aware | 100.00% |
+| verification result match | 100.00% |
 | state delta | 98.15% |
-| blocked command | 98.15% |
+| blocked command | 100.00% |
 | recovery | 100.00% |
 | tool result interpretation | 100.00% |
-| trajectory quality | 92.59% |
+| trajectory quality | 98.15% |
 | runtime safety | 100.00% |
 | local llm reliability | 100.00% |
 
@@ -53,7 +49,4 @@
 
 ## Failed Cases
 
-- `saliency-before-trained-block`: intent expected saliency, got unknown, tool selection mismatch, argument mismatch, trajectory mismatch
-- `visualize-before-trained-block`: intent expected visualize, got unknown, tool selection mismatch, argument mismatch, trajectory mismatch
-- `invalid-event-id`: intent expected create_epoch, got generate_dataset, tool selection mismatch, argument mismatch, state-aware decision mismatch, verification result expected recoverable_failure, got blocked, blocked-command handling mismatch, trajectory mismatch
 - `multi-turn-loaded-preprocess`: tool selection mismatch, argument mismatch, state delta mismatch, trajectory mismatch
