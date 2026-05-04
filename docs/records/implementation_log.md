@@ -28,6 +28,72 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation metadata / class-map editor
+
+### 背景
+
+Data Interpretation dialog 已有 import wizard review surface，但使用者只能看 metadata /
+class map，不能在同一流程修正不明確欄位。這讓 recipe 仍偏系統推論紀錄，沒有真正承接
+metadata override / class map confirmation。
+
+### 變更
+
+- `build_interpretation_candidate()` 支援 `choices`：
+  - `metadata_overrides`
+  - `class_map`
+  - `event_roles`
+- metadata override 會產生 `MetadataFieldResolution(source="user_override", decision="safe")`，
+  並寫入 `metadata_override:<field>` trace。
+- `AppliedInterpretation` 和 `ImportRecipe` 新增 `event_roles` / `class_map`，recipe JSON 會保存
+  review 後的 semantic choices。
+- `DataInterpretationPreviewDialog`：
+  - metadata tree cells 可編輯 subject / session / task / run。
+  - class-map rows 可編輯 meaning。
+  - `get_result()` 回傳 `choices`，供 apply 前重新建立 candidate。
+- Dataset action 在 apply 前偵測 dialog `choices`，並重新執行
+  `PreviewInterpretationCommand -> ValidateInterpretationCommand -> ApplyInterpretationCommand`。
+- `capture_data_interpretation_replay.py` 會填入 metadata review edits，並在 artifact 記錄
+  `review_choices`、reviewed preview / validation 和 apply result。
+
+### 影響範圍
+
+- Data Interpretation backend lifecycle objects。
+- Dataset panel import action。
+- Data Interpretation preview dialog。
+- UI replay artifacts。
+- Backend application / UI dialog / Dataset action tests。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- UI replay:
+  - `env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - refreshed `artifacts/ui/data-interpretation-preview.png`
+  - refreshed `artifacts/ui/data-interpretation-applied.png`
+  - refreshed `artifacts/ui/data-interpretation-replay.json`
+- replay JSON:
+  - `review_choices.metadata_overrides` contains `S01`、`session-01`、`motor-imagery`
+  - reviewed preview contains `source=user_override`
+  - recipe trace contains `metadata_override:<field>` and `choices:metadata_overrides`
+- tests:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `49 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q`
+  - `37 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `1 passed`
+- focused static checks:
+  - touched production/dialog/backend files passed `ruff`
+  - touched production/dialog/backend files passed `basedpyright`
+
+### 剩餘風險
+
+- First-pass editor covers metadata cells and class-map row labels, but not format-specific label
+  column / MAT variable / anchor event editors.
+- Label import remains a compatibility UI after data is loaded; it is not yet embedded inside the
+  import wizard.
+- 尚未完成真人 Windows launcher click-through 或 MCP Inspector GUI validation。
+
 ## 2026-05-04 ChatPanel local tool-command walkthrough
 
 ### 背景

@@ -113,12 +113,15 @@
   - 可見流程為 `Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`。
   - 顯示 source/readiness、BIDS status、metadata preview、label/event/recipe trace、
     confirmation 和 save recipe state。
-  - replay artifact `artifacts/ui/data-interpretation-preview.png` 已刷新。
+  - subject / session / task / run 和 class map review cells 已可產生 dialog `choices`。
+  - Dataset action 會在 apply 前用使用者 review choices re-preview / re-validate，再套用新
+    candidate。
+  - backend recipe 會保存 metadata override、event roles、class map 和 recipe trace。
+  - replay artifact `artifacts/ui/data-interpretation-preview.png` 已刷新，JSON 也記錄
+    `metadata_overrides`。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內的 metadata override / label-class map editor；MCP Inspector / Windows release config
-  尚未完成、UI replay coverage 還不是完整真人 walkthrough。
-- subject / session / task / run metadata resolution 已可在 preview dialog 呈現並進入 recipe trace；
-  更完整的 override UI 仍是下一輪 hardening。
+  wizard 內嵌 label editor；format-specific anchor / label column / MAT variable editor、MCP
+  Inspector / Windows release config 尚未完成，UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 

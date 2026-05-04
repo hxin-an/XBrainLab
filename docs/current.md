@@ -83,11 +83,16 @@ replay 也有第一份 artifact：`scripts/dev/capture_data_interpretation_repla
 result。Data Interpretation preview dialog 已硬化成第一版 import wizard review surface：
 可見 `Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe` 流程、source/readiness、
 BIDS status、metadata preview、label/event/recipe trace、confirmation 和 recipe save 選項；
-apply 後保存 recipe 仍透過 `SaveInterpretationRecipeCommand`。舊 label import 已降成「Add Labels to Loaded
-Data」的 service-backed compatibility path；下一個 slice 已讓 label import 成功後更新
-applied interpretation 的 `label_imports` / `label_carriers` / recipe trace，UI 也會提示使用者
-可保存更新後 recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import
-wizard label/recipe 編輯器；wizard 仍缺真正的 metadata override / label-class map editor。
+apply 後保存 recipe 仍透過 `SaveInterpretationRecipeCommand`。後續 slice 已把 metadata /
+class-map review edit 接進同一流程：dialog 的 subject / session / task / run 與 class map
+review cells 可產生 `choices`，Dataset action 會在 apply 前 re-preview / re-validate 新
+candidate，backend 會把 user override、class map、event roles 寫入 applied interpretation /
+recipe trace；UI replay artifact 也已顯示 `S01`、`session-01`、`motor-imagery` 這組
+metadata override。舊 label import 已降成「Add Labels to Loaded Data」的 service-backed
+compatibility path；label import 成功後會更新 applied interpretation 的 `label_imports` /
+`label_carriers` / recipe trace，UI 也會提示使用者可保存更新後 recipe。它仍是「對已載入資料
+加 label」的 compatibility UI，不是完整 import wizard 內嵌 label editor；format-specific
+label/anchor editors、label import 內嵌 wizard 和真人 click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：

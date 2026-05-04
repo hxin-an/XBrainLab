@@ -621,6 +621,8 @@ class ApplicationService:
             metadata=list(candidate.metadata),
             validation_decision=decision.decision,
             confirmations=confirmations,
+            event_roles=dict(candidate.event_roles),
+            class_map=dict(candidate.class_map),
             recipe_trace=[
                 *candidate.recipe_trace,
                 f"validation:{decision.decision}",

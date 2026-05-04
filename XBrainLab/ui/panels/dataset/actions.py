@@ -5,6 +5,7 @@ running smart parse, and managing event filtering.
 """
 
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
 
@@ -198,6 +199,57 @@ class DatasetActionHandler:
         dialog_result = (
             dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
         )
+        raw_dialog_choices = dialog_result.get("choices")
+        dialog_choices: dict[str, Any] = (
+            {str(key): value for key, value in raw_dialog_choices.items()}
+            if isinstance(raw_dialog_choices, dict)
+            else {}
+        )
+        if dialog_choices:
+            choices = self._merge_interpretation_choices(choices, dialog_choices)
+            preview_result = execute_application_command(
+                self.panel,
+                PreviewInterpretationCommand(
+                    scan_id=self._optional_payload_id(scan, "scan_id"),
+                    choices=choices,
+                ),
+            )
+            if preview_result is None:
+                return False
+            if preview_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation preview failed",
+                    preview_result.message,
+                )
+                return True
+            candidate = self._diagnostic_payload(preview_result, "candidate")
+            candidate_id = self._optional_payload_id(candidate, "candidate_id")
+            validation_result = execute_application_command(
+                self.panel,
+                ValidateInterpretationCommand(candidate_id=candidate_id),
+            )
+            if validation_result is None:
+                return False
+            if validation_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation validation failed",
+                    validation_result.message,
+                )
+                return True
+            decision = self._diagnostic_payload(
+                validation_result,
+                "validation_decision",
+            )
+            if str(decision.get("decision")) == "blocked":
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation blocked",
+                    self._decision_reason(decision),
+                )
+                return True
+
         confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
             dialog_result.get("confirmed"),
         )
@@ -258,7 +310,7 @@ class DatasetActionHandler:
     @staticmethod
     def _interpretation_source_and_choices(
         filepaths: list[str],
-    ) -> tuple[str, dict[str, list[str]]]:
+    ) -> tuple[str, dict[str, Any]]:
         if len(filepaths) == 1:
             return filepaths[0], {}
 
@@ -266,6 +318,27 @@ class DatasetActionHandler:
         unique_parents = sorted(set(parents))
         source_path = unique_parents[0] if len(unique_parents) == 1 else filepaths[0]
         return source_path, {"selected_eeg_files": list(filepaths)}
+
+    @staticmethod
+    def _merge_interpretation_choices(
+        base: dict[str, Any],
+        updates: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Merge dialog review choices into the preview command choices."""
+        merged = dict(base)
+        for key, value in updates.items():
+            if key in {"metadata_overrides", "class_map", "event_roles"} and isinstance(
+                value,
+                dict,
+            ):
+                previous = merged.get(key)
+                merged[key] = {
+                    **(previous if isinstance(previous, dict) else {}),
+                    **value,
+                }
+            else:
+                merged[key] = value
+        return merged
 
     @staticmethod
     def _diagnostic_payload(result, key: str) -> dict:

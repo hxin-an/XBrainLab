@@ -37,6 +37,37 @@
 
 ## 2026-05-04
 
+### 11:17 Data Interpretation metadata / class-map editor slice
+
+- 做了什麼：
+  - backend `PreviewInterpretationCommand(choices=...)` 接 `metadata_overrides`、`class_map` 和
+    `event_roles`。
+  - metadata override 會標成 `user_override` / `safe`，並寫入 `metadata_override:<field>` trace。
+  - `AppliedInterpretation` / `ImportRecipe` 會保存 event roles 和 class map。
+  - `DataInterpretationPreviewDialog` metadata review cells 可編輯 subject / session / task / run；
+    class-map rows 可編輯 meaning。
+  - Dataset action 會在 apply 前用 dialog choices re-preview / re-validate，然後 apply 新 candidate。
+  - replay helper 會在 screenshot 前填入 `S01`、`session-01`、`motor-imagery`，並保存
+    `review_choices`。
+- 結果：
+  - UI replay JSON 顯示 `metadata_overrides`，reviewed preview / apply path 保留
+    `metadata_override` recipe trace。
+  - recipe 現在可保存 metadata override 與 class map，不再只是 baseline preview。
+- 證據：
+  - `env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `49 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q` -> `37 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `1 passed`
+- 接續 / 本輪剩餘：
+  - 仍不是 format-specific label column / MAT variable / anchor editor。
+  - label import 仍未內嵌進 wizard；Windows launcher、MCP Inspector、真人 click-through 仍未完成。
+
 ### 11:03 ChatPanel local tool-command walkthrough
 
 - 做了什麼：

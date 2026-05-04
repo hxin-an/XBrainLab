@@ -867,8 +867,41 @@ replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agen
   - `0 errors, 0 warnings, 0 notes`
 
 這批 evidence 支撐 Data Interpretation UI 已比 baseline preview 更接近 import wizard review
-surface。它仍不支撐完整 metadata override editor、label-class map editor、all-format manual
-compatibility matrix、或真人 click-through。
+surface。下一個 slice 已補 first-pass metadata / class-map review editor；它仍不支撐
+format-specific label editor、all-format manual compatibility matrix 或真人 click-through。
+
+2026-05-04 Data Interpretation metadata / class-map editor slice：
+
+- backend:
+  - `PreviewInterpretationCommand(choices=...)` 現在可接
+    `metadata_overrides`、`class_map`、`event_roles`。
+  - metadata override 會把欄位標成 `source=user_override`、`decision=safe`，並寫入
+    `metadata_override:<field>` recipe trace。
+  - `AppliedInterpretation` / `ImportRecipe` 會保存 `event_roles` 和 `class_map`。
+- UI:
+  - `DataInterpretationPreviewDialog` 的 metadata review cells 可編輯 subject / session /
+    task / run。
+  - class map rows 可編輯 meaning。
+  - `get_result()` 回傳 review `choices`；Dataset action 會在 apply 前 re-preview /
+    re-validate，再套用新的 candidate。
+- replay artifact refreshed:
+  - `env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON 顯示 `review_choices.metadata_overrides`：`S01`、`session-01`、
+    `motor-imagery`，且 reviewed preview / apply path 保留 `metadata_override` recipe trace。
+- targeted gates:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `49 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application -q`
+  - `37 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `1 passed`
+
+這批 evidence 支撐 first-pass metadata override / class-map review editor 已進入 Data
+Interpretation recipe flow。它仍不支撐 format-specific label column / MAT variable / anchor
+editor、label import 內嵌 wizard、完整真人 click-through 或全格式 compatibility matrix。
 
 2026-05-04 Data Interpretation recipe save UI path：
 

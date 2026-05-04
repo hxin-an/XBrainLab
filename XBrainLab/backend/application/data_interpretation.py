@@ -152,6 +152,8 @@ class AppliedInterpretation:
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
+    event_roles: dict[str, str] = dc_field(default_factory=dict)
+    class_map: dict[str, str] = dc_field(default_factory=dict)
     label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)
 
@@ -172,6 +174,8 @@ class ImportRecipe:
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
+    event_roles: dict[str, str] = dc_field(default_factory=dict)
+    class_map: dict[str, str] = dc_field(default_factory=dict)
     label_imports: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
     recipe_trace: list[str] = dc_field(default_factory=list)
@@ -214,6 +218,8 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
             payload.get("validation_decision", InterpretationDecision.SAFE.value),
         ),
         confirmations=[str(item) for item in payload.get("confirmations", [])],
+        event_roles=_string_mapping(payload.get("event_roles")),
+        class_map=_string_mapping(payload.get("class_map")),
         label_imports=[
             dict(item)
             for item in payload.get("label_imports", [])
@@ -289,7 +295,11 @@ def build_interpretation_candidate(
     warnings = list(scan.warnings)
     confirmation_items: list[str] = []
     event_roles: dict[str, str] = {}
-    class_map: dict[str, str] = {}
+    class_map: dict[str, str] = _string_mapping(choices.get("class_map"))
+    metadata = _apply_metadata_overrides(
+        scan.metadata,
+        choices.get("metadata_overrides"),
+    )
 
     if scan.label_carriers:
         event_roles["label_carrier"] = "external label or event source"
@@ -316,7 +326,9 @@ def build_interpretation_candidate(
                 "artifacts, or boundaries.",
             )
 
-    for item in scan.metadata:
+    event_roles.update(_string_mapping(choices.get("event_roles")))
+
+    for item in metadata:
         fields = (item.subject, item.session, item.task, item.run)
         confirmation_items.extend(
             f"Confirm {field_value.field} metadata for {Path(item.file).name}."
@@ -341,7 +353,7 @@ def build_interpretation_candidate(
         if event_roles
         else "file_native_time",
         granularity="trial_or_event" if event_roles else "recording",
-        metadata=list(scan.metadata),
+        metadata=metadata,
         warnings=warnings,
         confirmation_items=confirmation_items,
         blocked_reasons=sorted(set(blocked_reasons)),
@@ -349,6 +361,7 @@ def build_interpretation_candidate(
         recipe_trace=[
             f"scan:{scan.scan_id}",
             f"candidate:{candidate_id}",
+            *_choice_recipe_trace(choices),
         ],
     )
 
@@ -452,10 +465,98 @@ def build_import_recipe(
         metadata=list(applied.metadata),
         validation_decision=applied.validation_decision,
         confirmations=list(applied.confirmations),
+        event_roles=dict(applied.event_roles),
+        class_map=dict(applied.class_map),
         label_imports=[dict(item) for item in applied.label_imports],
         warnings=list(warnings),
         recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
     )
+
+
+def _apply_metadata_overrides(
+    metadata: list[FileMetadataResolution],
+    overrides_payload: Any,
+) -> list[FileMetadataResolution]:
+    """Return metadata with user-confirmed wizard overrides applied."""
+    if not isinstance(overrides_payload, dict) or not overrides_payload:
+        return list(metadata)
+
+    normalized_overrides: dict[str, dict[str, str]] = {}
+    for key, fields in overrides_payload.items():
+        if not isinstance(fields, dict):
+            continue
+        cleaned_fields = {
+            str(field): str(value).strip()
+            for field, value in fields.items()
+            if str(value).strip()
+        }
+        if cleaned_fields:
+            normalized_overrides[str(key)] = cleaned_fields
+
+    if not normalized_overrides:
+        return list(metadata)
+
+    result: list[FileMetadataResolution] = []
+    for item in metadata:
+        file_path = Path(item.file)
+        field_overrides = normalized_overrides.get(item.file)
+        if field_overrides is None:
+            field_overrides = normalized_overrides.get(file_path.name, {})
+        if not field_overrides:
+            result.append(item)
+            continue
+        result.append(
+            FileMetadataResolution(
+                file=item.file,
+                subject=_override_field(item.subject, field_overrides),
+                session=_override_field(item.session, field_overrides),
+                task=_override_field(item.task, field_overrides),
+                run=_override_field(item.run, field_overrides),
+            )
+        )
+    return result
+
+
+def _override_field(
+    field: MetadataFieldResolution,
+    overrides: dict[str, str],
+) -> MetadataFieldResolution:
+    value = overrides.get(field.field)
+    if value is None:
+        return field
+    trace = [*field.recipe_trace, f"metadata_override:{field.field}"]
+    return MetadataFieldResolution(
+        field=field.field,
+        value=value,
+        source="user_override",
+        decision=InterpretationDecision.SAFE.value,
+        reason="User confirmed this value in the Data Interpretation wizard.",
+        override=value,
+        recipe_trace=trace,
+    )
+
+
+def _string_mapping(payload: Any) -> dict[str, str]:
+    """Return a cleaned string mapping from a user-choice payload."""
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(key): str(value).strip()
+        for key, value in payload.items()
+        if str(value).strip()
+    }
+
+
+def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
+    traces: list[str] = []
+    metadata_overrides = choices.get("metadata_overrides")
+    if isinstance(metadata_overrides, dict) and metadata_overrides:
+        traces.append("choices:metadata_overrides")
+    if _string_mapping(choices.get("class_map")):
+        traces.append("choices:class_map")
+    if _string_mapping(choices.get("event_roles")):
+        traces.append("choices:event_roles")
+    return traces
 
 
 def _source_kind(path: Path, source_hint: str) -> str:

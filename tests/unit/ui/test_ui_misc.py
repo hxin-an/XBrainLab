@@ -254,6 +254,86 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_repreviews_dialog_review_choices(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/tmp/sub-01_task-mi.fif"], "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+            "choices": {
+                "metadata_overrides": {"sub-01_task-mi.fif": {"session": "session-01"}},
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        }
+        previews: list[PreviewInterpretationCommand] = []
+        applied: list[ApplyInterpretationCommand] = []
+
+        def fake_execute(_panel, command):
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(
+                    scan_result={
+                        "scan_id": "scan-1",
+                        "source_path": command.source_path,
+                    }
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                previews.append(command)
+                candidate_id = f"candidate-{len(previews)}"
+                return _command_result(
+                    preview={"summary": "Found 1 EEG file(s)."},
+                    candidate={"candidate_id": candidate_id},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": command.candidate_id,
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm event roles."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                applied.append(command)
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_data()
+
+        assert len(previews) == 2
+        assert previews[1].scan_id == "scan-1"
+        assert previews[1].choices["metadata_overrides"] == {
+            "sub-01_task-mi.fif": {"session": "session-01"}
+        }
+        assert previews[1].choices["class_map"] == {
+            "1": "left hand",
+            "2": "right hand",
+        }
+        assert applied
+        assert applied[0].candidate_id == "candidate-2"
+        assert applied[0].confirmed is True
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_import_data_saves_recipe_when_requested(
         self,
         mock_mb,

@@ -167,6 +167,13 @@ def capture_replay(app: QApplication) -> int:
             )
             dialog.show()
             app.processEvents()
+            metadata_item = dialog.file_tree.topLevelItem(0)
+            if metadata_item is not None:
+                metadata_item.setText(1, "S01")
+                metadata_item.setText(2, "session-01")
+                metadata_item.setText(3, "motor-imagery")
+            dialog_result = dialog.get_result()
+            dialog_choices = dialog_result.get("choices", {})
             dialog.repaint()
             app.processEvents()
             capture_widget(dialog, PREVIEW_SCREENSHOT)
@@ -176,12 +183,20 @@ def capture_replay(app: QApplication) -> int:
                 "decision": dialog.decision,
                 "visible_text": visible_texts(dialog),
                 "metadata_rows": tree_rows(dialog.file_tree),
+                "review_choices": sanitized(dialog_choices),
                 "apply_button_enabled": dialog.decision != "blocked",
                 "save_recipe_checked": dialog.save_recipe_check.isChecked(),
                 "screenshot": PREVIEW_SCREENSHOT.name,
             }
             dialog.close()
 
+            reviewed_preview = service.execute(
+                PreviewInterpretationCommand(
+                    scan_id=scan.diagnostics["scan_result"]["scan_id"],
+                    choices=dialog_choices if isinstance(dialog_choices, dict) else {},
+                )
+            )
+            reviewed_validation = service.execute(ValidateInterpretationCommand())
             apply_without_confirmation = service.execute(ApplyInterpretationCommand())
             apply_confirmed = service.execute(
                 ApplyInterpretationCommand(confirmed=True),
@@ -208,6 +223,8 @@ def capture_replay(app: QApplication) -> int:
                     "scan_source": sanitized(scan.to_dict()),
                     "preview_interpretation": sanitized(preview.to_dict()),
                     "validate_interpretation": sanitized(validation.to_dict()),
+                    "reviewed_preview": sanitized(reviewed_preview.to_dict()),
+                    "reviewed_validation": sanitized(reviewed_validation.to_dict()),
                     "apply_without_confirmation": sanitized(
                         apply_without_confirmation.to_dict(),
                     ),

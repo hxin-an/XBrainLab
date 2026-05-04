@@ -133,6 +133,53 @@ def test_data_interpretation_scan_preview_validate_requires_confirmation(tmp_pat
     assert confirmed_apply.state.interpretation.has_applied_interpretation is True
 
 
+def test_data_interpretation_choices_flow_into_recipe(tmp_path):
+    source_dir = tmp_path / "reviewed_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    recipe_path = tmp_path / "reviewed_recipe.json"
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    "subject01_run1.fif": {
+                        "session": "session-01",
+                        "task": "motor-imagery",
+                    }
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            }
+        )
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    save_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    metadata_preview = preview.diagnostics["preview"]["metadata_preview"][0]
+    assert metadata_preview["session"]["value"] == "session-01"
+    assert metadata_preview["session"]["source"] == "user_override"
+    assert metadata_preview["task"]["value"] == "motor-imagery"
+    assert preview.diagnostics["preview"]["class_map"] == {
+        "1": "left hand",
+        "2": "right hand",
+    }
+    applied = apply_result.diagnostics["applied_interpretation"]
+    assert applied["class_map"] == {"1": "left hand", "2": "right hand"}
+    recipe = save_result.diagnostics["recipe"]
+    assert recipe["metadata"][0]["session"]["override"] == "session-01"
+    assert recipe["metadata"][0]["task"]["override"] == "motor-imagery"
+    assert recipe["class_map"] == {"1": "left hand", "2": "right hand"}
+    assert "choices:metadata_overrides" in recipe["recipe_trace"]
+    assert "choices:class_map" in recipe["recipe_trace"]
+
+
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir = tmp_path / "labels_only"
     source_dir.mkdir()

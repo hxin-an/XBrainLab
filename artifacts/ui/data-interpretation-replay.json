@@ -721,6 +721,539 @@
         }
       }
     },
+    "reviewed_preview": {
+      "status": "ok",
+      "command_name": "preview_interpretation",
+      "message": "Interpretation preview ready.",
+      "state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": [],
+          "formats": [],
+          "channels": [],
+          "metadata": [],
+          "event_total": 0,
+          "unique_events": [],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "files": [],
+          "is_epoched": false,
+          "channel_names": [],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": true,
+          "has_preview": true,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": "candidate-4",
+          "latest_preview_id": "preview-5",
+          "latest_interpretation_id": null,
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
+              },
+              "session": {
+                "field": "session",
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
+              },
+              "task": {
+                "field": "task",
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": false,
+          "has_preprocessed_data": false,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": null
+      },
+      "changed_state": {
+        "raw_changed": false,
+        "preprocessed_changed": false,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": true,
+        "error_changed": false
+      },
+      "error_type": "none",
+      "recoverable": true,
+      "error_message": null,
+      "diagnostics": {
+        "payload_type": "interpretation_preview",
+        "candidate": {
+          "candidate_id": "candidate-4",
+          "scan_id": "scan-1",
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "selected_eeg_files": [
+            "<replay_source>/product_replay_raw.fif"
+          ],
+          "label_carriers": [],
+          "event_roles": {},
+          "class_map": {},
+          "time_model": "file_native_time",
+          "granularity": "recording",
+          "metadata": [
+            {
+              "file": "<replay_source>/product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
+              },
+              "session": {
+                "field": "session",
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
+              },
+              "task": {
+                "field": "task",
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "warnings": [],
+          "confirmation_items": [
+            "Confirm run metadata for product_replay_raw.fif."
+          ],
+          "blocked_reasons": [],
+          "choices": {
+            "metadata_overrides": {
+              "product_replay_raw.fif": {
+                "subject": "S01",
+                "session": "session-01",
+                "task": "motor-imagery"
+              }
+            }
+          },
+          "recipe_trace": [
+            "scan:scan-1",
+            "candidate:candidate-4",
+            "choices:metadata_overrides"
+          ]
+        },
+        "preview": {
+          "preview_id": "preview-5",
+          "candidate_id": "candidate-4",
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "file_count": 1,
+          "label_carrier_count": 0,
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
+              },
+              "session": {
+                "field": "session",
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
+              },
+              "task": {
+                "field": "task",
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "warnings": [],
+          "confirmation_items": [
+            "Confirm run metadata for product_replay_raw.fif."
+          ],
+          "blocked_reasons": [],
+          "downstream_impacts": [
+            "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+          ],
+          "event_roles": {},
+          "class_map": {}
+        }
+      }
+    },
+    "reviewed_validation": {
+      "status": "ok",
+      "command_name": "validate_interpretation",
+      "message": "Interpretation validation: needs_confirmation.",
+      "state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": [],
+          "formats": [],
+          "channels": [],
+          "metadata": [],
+          "event_total": 0,
+          "unique_events": [],
+          "locked": false,
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "files": [],
+          "is_epoched": false,
+          "channel_names": [],
+          "operations": [],
+          "diagnostics": {
+            "runtime_signals": [],
+            "gdf_duplicate_channel_files": [],
+            "gdf_duplicate_channel_details": []
+          }
+        },
+        "epoch": {
+          "available": false,
+          "exists": false,
+          "epoch_count": null,
+          "n_channels": null,
+          "n_times": null,
+          "event_names": [],
+          "event_ids": null,
+          "channel_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0,
+          "names": [],
+          "locked": false,
+          "generator_exists": false,
+          "split_summary": {}
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "training_option": {},
+          "has_trainer": false,
+          "is_running": false,
+          "plan_count": 0,
+          "run_count": 0,
+          "finished_run_count": 0,
+          "missing_requirements": [
+            "Data Splitting",
+            "Model Selection",
+            "Training Settings"
+          ]
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_candidate": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "latest_scan_id": "scan-1",
+          "latest_candidate_id": "candidate-4",
+          "latest_preview_id": "preview-5",
+          "latest_interpretation_id": null,
+          "latest_recipe_id": null,
+          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_kind": "file",
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "blocked_reasons": [],
+          "warnings": [],
+          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "metadata_preview": [
+            {
+              "file": "product_replay_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
+              },
+              "session": {
+                "field": "session",
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
+              },
+              "task": {
+                "field": "task",
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": null,
+                "source": "missing",
+                "decision": "needs_confirmation",
+                "reason": "run was not inferred from source path.",
+                "override": null,
+                "recipe_trace": []
+              }
+            }
+          ],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
+          "recipe_path": null
+        },
+        "active_dataset": {
+          "has_raw_data": false,
+          "has_preprocessed_data": false,
+          "has_epoch_data": false,
+          "has_datasets": false,
+          "is_locked": false
+        },
+        "active_training": {
+          "has_model": false,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false
+        },
+        "last_error": null
+      },
+      "changed_state": {
+        "raw_changed": false,
+        "preprocessed_changed": false,
+        "epoch_changed": false,
+        "datasets_changed": false,
+        "training_changed": false,
+        "evaluation_changed": false,
+        "visualization_changed": false,
+        "interpretation_changed": true,
+        "error_changed": false
+      },
+      "error_type": "none",
+      "recoverable": true,
+      "error_message": null,
+      "diagnostics": {
+        "payload_type": "validation_decision",
+        "validation_decision": {
+          "candidate_id": "candidate-4",
+          "decision": "needs_confirmation",
+          "reasons": [
+            "Candidate has reviewable semantic choices."
+          ],
+          "warnings": [],
+          "required_confirmations": [
+            "Confirm run metadata for product_replay_raw.fif."
+          ],
+          "blocked_reasons": [],
+          "downstream_impacts": [
+            "Downstream workflow remains blocked until the interpretation is confirmed and applied."
+          ]
+        }
+      }
+    },
     "apply_without_confirmation": {
       "status": "failed",
       "command_name": "apply_interpretation",
@@ -812,8 +1345,8 @@
           "has_applied_interpretation": false,
           "has_recipe": false,
           "latest_scan_id": "scan-1",
-          "latest_candidate_id": "candidate-2",
-          "latest_preview_id": "preview-3",
+          "latest_candidate_id": "candidate-4",
+          "latest_preview_id": "preview-5",
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>/product_replay_raw.fif",
@@ -828,30 +1361,36 @@
               "file": "product_replay_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
               },
               "run": {
                 "field": "run",
@@ -1023,9 +1562,9 @@
           "has_applied_interpretation": true,
           "has_recipe": false,
           "latest_scan_id": "scan-1",
-          "latest_candidate_id": "candidate-2",
-          "latest_preview_id": "preview-3",
-          "latest_interpretation_id": "interpretation-4",
+          "latest_candidate_id": "candidate-4",
+          "latest_preview_id": "preview-5",
+          "latest_interpretation_id": "interpretation-6",
           "latest_recipe_id": null,
           "source_path": "<replay_source>/product_replay_raw.fif",
           "source_kind": "file",
@@ -1039,30 +1578,36 @@
               "file": "product_replay_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
               },
               "run": {
                 "field": "run",
@@ -1114,8 +1659,8 @@
         "success_count": 1,
         "errors": [],
         "applied_interpretation": {
-          "interpretation_id": "interpretation-4",
-          "candidate_id": "candidate-2",
+          "interpretation_id": "interpretation-6",
+          "candidate_id": "candidate-4",
           "source_path": "<replay_source>/product_replay_raw.fif",
           "source_kind": "file",
           "loaded_files": [
@@ -1127,30 +1672,36 @@
               "file": "<replay_source>/product_replay_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "S01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
+                "recipe_trace": [
+                  "metadata_override:subject"
+                ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
-                "override": null,
-                "recipe_trace": []
+                "value": "motor-imagery",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
+                "recipe_trace": [
+                  "metadata_override:task"
+                ]
               },
               "run": {
                 "field": "run",
@@ -1165,17 +1716,17 @@
           ],
           "validation_decision": "needs_confirmation",
           "confirmations": [
-            "Confirm run metadata for product_replay_raw.fif.",
-            "Confirm session metadata for product_replay_raw.fif.",
-            "Confirm subject metadata for product_replay_raw.fif.",
-            "Confirm task metadata for product_replay_raw.fif."
+            "Confirm run metadata for product_replay_raw.fif."
           ],
+          "event_roles": {},
+          "class_map": {},
           "label_imports": [],
           "recipe_trace": [
             "scan:scan-1",
-            "candidate:candidate-2",
+            "candidate:candidate-4",
+            "choices:metadata_overrides",
             "validation:needs_confirmation",
-            "applied:interpretation-4"
+            "applied:interpretation-6"
           ]
         },
         "label_carriers_pending": []
@@ -1205,12 +1756,21 @@
       "metadata_rows": [
         [
           "product_replay_raw.fif",
-          "needs_confirmation",
-          "needs_confirmation",
-          "needs_confirmation",
-          "needs_confirmation"
+          "S01",
+          "session-01",
+          "motor-imagery",
+          ""
         ]
       ],
+      "review_choices": {
+        "metadata_overrides": {
+          "product_replay_raw.fif": {
+            "subject": "S01",
+            "session": "session-01",
+            "task": "motor-imagery"
+          }
+        }
+      },
       "apply_button_enabled": true,
       "save_recipe_checked": true,
       "screenshot": "data-interpretation-preview.png"
