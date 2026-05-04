@@ -140,7 +140,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_layout = QVBoxLayout(label_group)
         self.label_carrier_tree = QTreeWidget()
         self.label_carrier_tree.setHeaderLabels(
-            ["Carrier", "Format", "Label field", "Anchor", "Time", "Granularity"],
+            [
+                "Carrier",
+                "Matched EEG",
+                "Format",
+                "Label field",
+                "Anchor",
+                "Time",
+                "Granularity",
+            ],
         )
         self.label_carrier_tree.setMinimumHeight(110)
         self.label_carrier_tree.setEditTriggers(
@@ -354,6 +362,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             item = QTreeWidgetItem(
                 [
                     str(carrier.get("name") or Path(str(carrier.get("path", ""))).name),
+                    self._label_carrier_match_text(carrier),
                     str(carrier.get("format") or "Unknown"),
                     str(carrier.get("selected_label_field") or ""),
                     str(carrier.get("selected_anchor") or ""),
@@ -362,10 +371,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 ],
             )
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-            item.setToolTip(2, self._candidate_tooltip(carrier, "label_candidates"))
-            item.setToolTip(3, self._candidate_tooltip(carrier, "anchor_candidates"))
-            item.setToolTip(4, "How label timing aligns to the EEG recording.")
-            item.setToolTip(5, "The data unit each label describes.")
+            item.setToolTip(1, "The EEG file this label carrier can be matched to.")
+            item.setToolTip(3, self._candidate_tooltip(carrier, "label_candidates"))
+            item.setToolTip(4, self._candidate_tooltip(carrier, "anchor_candidates"))
+            item.setToolTip(5, "How label timing aligns to the EEG recording.")
+            item.setToolTip(6, "The data unit each label describes.")
             self._label_carrier_items.append((item, dict(carrier)))
             self.label_carrier_tree.addTopLevelItem(item)
         if self.label_carrier_tree.topLevelItemCount() == 0:
@@ -374,6 +384,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     [
                         "No external label file",
                         "Recording",
+                        "",
                         "Use internal events",
                         "",
                         "",
@@ -459,10 +470,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _label_carrier_choices(self) -> dict[str, dict[str, str]]:
         choices: dict[str, dict[str, str]] = {}
         fields = (
-            ("label_field", "selected_label_field", 2),
-            ("anchor", "selected_anchor", 3),
-            ("time_model", "time_model", 4),
-            ("granularity", "granularity", 5),
+            ("label_field", "selected_label_field", 3),
+            ("anchor", "selected_anchor", 4),
+            ("time_model", "time_model", 5),
+            ("granularity", "granularity", 6),
         )
         for item, original in self._label_carrier_items:
             carrier_key = str(
@@ -483,6 +494,54 @@ class DataInterpretationPreviewDialog(BaseDialog):
                         changed[choice_key] = current
                 choices[carrier_key] = changed
         return choices
+
+    def _label_carrier_match_text(self, carrier: dict[str, Any]) -> str:
+        eeg_files = [
+            str(item)
+            for item in (self.scan_result.get("eeg_files") or [])
+            if str(item).strip()
+        ]
+        carrier_path = str(carrier.get("path") or carrier.get("name") or "").strip()
+        if not eeg_files:
+            return "Needs review"
+        if len(eeg_files) == 1:
+            return Path(eeg_files[0]).name
+
+        carrier_key = self._label_mapping_key(carrier_path)
+        matches = [
+            Path(eeg_file).name
+            for eeg_file in eeg_files
+            if self._label_mapping_key(eeg_file) == carrier_key
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return "Needs review"
+
+    @staticmethod
+    def _label_mapping_key(path: str) -> str:
+        name = Path(path).name
+        lowered = name.lower()
+        if lowered.endswith(".fif.gz"):
+            stem = name[: -len(".fif.gz")]
+        else:
+            stem = Path(name).stem
+        normalized = stem.lower()
+        for suffix in (
+            "_events",
+            "-events",
+            "_labels",
+            "-labels",
+            "_label",
+            "-label",
+            "_raw",
+            "-raw",
+            "_eeg",
+            "-eeg",
+        ):
+            if normalized.endswith(suffix):
+                normalized = normalized[: -len(suffix)]
+                break
+        return normalized.strip()
 
     @staticmethod
     def _candidate_tooltip(carrier: dict[str, Any], key: str) -> str:

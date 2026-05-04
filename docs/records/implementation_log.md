@@ -28,6 +28,65 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation label carrier matched-EEG UI
+
+### 背景
+
+Backend 已能用 reviewed label carrier plan 做安全多檔 mapping，但 import wizard 的 label
+carrier table 仍只顯示 carrier、format、label field、anchor、time model 和 granularity。
+使用者看不到每個 label carrier 實際會對到哪個 EEG file，這會讓多檔 import review 仍偏向
+backend JSON，而不是成熟使用者流程。
+
+### 變更
+
+- `DataInterpretationPreviewDialog` label carrier table 新增 `Matched EEG` 欄位。
+- match 顯示規則：
+  - 單一 EEG + 單一 carrier：顯示該 EEG 檔名，保留既有 backend direct apply 行為。
+  - 多 EEG：用 normalized stem 唯一 match 時顯示 EEG 檔名。
+  - 無法唯一 match：顯示 `Needs review`。
+- `_label_carrier_choices()` 欄位 index 已更新，新增欄位後仍正確回傳 label field、anchor、
+  time model 和 granularity。
+- `capture_data_interpretation_replay.py` 更新填欄 index，刷新 UI-observable replay artifact。
+
+### 影響範圍
+
+- Data Interpretation preview dialog。
+- Data Interpretation replay script / artifacts。
+- UI dialog tests。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- TDD red:
+  - `test_data_interpretation_preview_dialog_returns_label_carrier_review` first failed because
+    column 1 still showed `MAT` instead of matched EEG file.
+- UI tests:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `6 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `52 passed`
+- replay:
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - exit `0`
+  - `artifacts/ui/data-interpretation-replay.json` label carrier row shows
+    `product_replay_events.tsv -> product_replay_raw.fif`
+  - replay still records reviewed `trial_type` / `onset` / `seconds` / `trial` choices and
+    `label_apply.status=applied`.
+- static:
+  - targeted `ruff` -> pass
+  - targeted `ruff format --check` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass
+
+### 剩餘風險
+
+- This improves label carrier mapping visibility in the import wizard.
+- It is not a complete embedded post-load label import wizard and does not solve
+  raw-event-anchor-specific GDF / MAT alignment, Windows launcher human click-through,
+  interactive desktop 3D, MCP Inspector GUI, or thesis-ready local LLM evidence.
+
 ## 2026-05-04 Data Interpretation multi-file sequence label mapping
 
 ### 背景

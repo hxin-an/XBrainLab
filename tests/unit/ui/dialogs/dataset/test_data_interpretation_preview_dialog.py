@@ -107,6 +107,7 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
         parent=None,
         scan_result={
             "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
             "label_carriers": [label_path],
         },
         preview={
@@ -133,13 +134,14 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
     carrier_item = dialog.label_carrier_tree.topLevelItem(0)
     assert carrier_item is not None
     assert carrier_item.text(0) == "A01T.mat"
-    assert carrier_item.text(1) == "MAT"
-    assert "classlabel" in carrier_item.toolTip(2)
-    assert "cue_onset" in carrier_item.toolTip(3)
+    assert carrier_item.text(1) == "A01T.gdf"
+    assert carrier_item.text(2) == "MAT"
+    assert "classlabel" in carrier_item.toolTip(3)
+    assert "cue_onset" in carrier_item.toolTip(4)
 
-    carrier_item.setText(2, "classlabel")
-    carrier_item.setText(3, "cue_onset")
-    carrier_item.setText(4, "sample_index")
+    carrier_item.setText(3, "classlabel")
+    carrier_item.setText(4, "cue_onset")
+    carrier_item.setText(5, "sample_index")
 
     result = dialog.get_result()
 
@@ -151,6 +153,67 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
             "granularity": "trial",
         }
     }
+
+
+def test_data_interpretation_preview_dialog_shows_label_carrier_matches(qtbot):
+    events_1 = "/tmp/source/sub-01_task-mi_run-1_events.tsv"
+    events_2 = "/tmp/source/sub-01_task-mi_run-2_events.tsv"
+    generic_events = "/tmp/source/events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [
+                "/tmp/source/sub-01_task-mi_run-1_raw.fif",
+                "/tmp/source/sub-01_task-mi_run-2_raw.fif",
+            ],
+            "label_carriers": [events_1, events_2, generic_events],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": events_1,
+                    "name": "sub-01_task-mi_run-1_events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                },
+                {
+                    "path": events_2,
+                    "name": "sub-01_task-mi_run-2_events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                },
+                {
+                    "path": generic_events,
+                    "name": "events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    first = dialog.label_carrier_tree.topLevelItem(0)
+    second = dialog.label_carrier_tree.topLevelItem(1)
+    generic = dialog.label_carrier_tree.topLevelItem(2)
+
+    assert first is not None
+    assert first.text(1) == "sub-01_task-mi_run-1_raw.fif"
+    assert second is not None
+    assert second.text(1) == "sub-01_task-mi_run-2_raw.fif"
+    assert generic is not None
+    assert generic.text(1) == "Needs review"
 
 
 def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):

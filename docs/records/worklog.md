@@ -37,6 +37,41 @@
 
 ## 2026-05-04
 
+### 18:35 Data Interpretation label carrier matched-EEG UI
+
+- 做了什麼：
+  - 補 UI regression：label carrier review row 應顯示 matched EEG file。
+  - `DataInterpretationPreviewDialog` label carrier table 新增 `Matched EEG` 欄。
+  - 單檔 direct match 或多檔唯一 normalized stem match 顯示目標 EEG 檔名；無法唯一對應時顯示
+    `Needs review`。
+  - 更新 dialog choice extraction column index，避免新增欄位後把 label field / anchor 寫到錯欄。
+  - 更新 `capture_data_interpretation_replay.py`，讓 replay screenshot 前填入正確欄位。
+- 結果：
+  - 初跑 UI test 先因第 2 欄仍是 `MAT` 而失敗，實作後通過。
+  - Replay JSON 現在顯示 `product_replay_events.tsv` 對到 `product_replay_raw.fif`，且
+    reviewed label choices / `label_apply.status=applied` 仍正確。
+- 證據：
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_label_carrier_review -q`
+    -> first run failed as expected, then `1 passed`。
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `6 passed`。
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `52 passed`。
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`。
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - targeted `ruff` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 仍不能宣稱 full embedded post-load label import wizard、raw-event-anchor-specific GDF/MAT
+    alignment、真人 Windows click-through、interactive desktop 3D、MCP Inspector / release config
+    或 thesis-ready local LLM evidence。
+
 ### 18:32 Data Interpretation multi-file sequence label mapping
 
 - 做了什麼：

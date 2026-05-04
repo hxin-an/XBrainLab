@@ -120,7 +120,11 @@ CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `ap
 套用；MAT / TXT trial-order sequence carriers 也會逐檔呼叫既有 `apply_labels_legacy`。如果只有
 generic `events.tsv`、generic `labels.mat` 或無法唯一對應，會保持 skipped 並回傳人可讀
 reason，不會把同一 labels 亂套到多個檔案。raw-event-anchor-specific MAT/GDF alignment、
-all-format manual compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
+同日後續 UI slice 已讓 Data Interpretation wizard 的 label carrier table 顯示 `Matched EEG`
+欄位；單檔 direct match 或多檔唯一 stem match 會顯示對應 EEG 檔名，無法唯一對應則顯示
+`Needs review`。UI replay artifact 已刷新，顯示 `product_replay_events.tsv` 對到
+`product_replay_raw.fif`。raw-event-anchor-specific MAT/GDF alignment、all-format manual
+compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：

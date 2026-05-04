@@ -116,6 +116,27 @@
           "summary": null,
           "metadata_preview": [],
           "label_carriers": [],
+          "label_carrier_plan": [],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {},
+          "class_map": {},
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -387,6 +408,48 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "event",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
+          "class_map": {},
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -789,6 +852,48 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "event",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
+          "class_map": {},
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1001,6 +1106,48 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
+          "class_map": {},
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1433,6 +1580,48 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
+          "class_map": {},
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1642,6 +1831,48 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
+          "class_map": {},
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1863,6 +2094,48 @@
           "label_carriers": [
             "<replay_source>/product_replay_events.tsv"
           ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
+          "class_map": {},
           "label_import_count": 1,
           "label_imports": [
             {
@@ -2070,7 +2343,10 @@
             "class_map": {},
             "success_count": 1
           },
-          "label_carrier": "<replay_source>/product_replay_events.tsv"
+          "label_carrier": "<replay_source>/product_replay_events.tsv",
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ]
         }
       }
     }
@@ -2107,6 +2383,7 @@
       "label_carrier_rows": [
         [
           "product_replay_events.tsv",
+          "product_replay_raw.fif",
           "BIDS events",
           "trial_type",
           "onset",

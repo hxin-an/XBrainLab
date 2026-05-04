@@ -243,6 +243,9 @@
     `events.tsv` 或無法唯一對應時仍 skipped，不自動猜。
   - reviewed MAT / TXT trial-order sequence carriers 也支援安全多檔 stem mapping；每個 target file
     逐檔呼叫既有 `apply_labels_legacy`，generic `labels.mat` 或無法唯一對應時仍 skipped。
+  - Data Interpretation wizard label carrier table 現在有 `Matched EEG` 欄位；UI replay
+    artifact 顯示 `product_replay_events.tsv` 對到 `product_replay_raw.fif`，不再只讓使用者看
+    carrier 名稱和欄位設定。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、all-format
   manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
