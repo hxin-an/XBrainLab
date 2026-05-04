@@ -1,6 +1,6 @@
 # XBrainLab Usage Refresh Handoff
 
-Date: `2026-05-04 13:52 UTC+08`
+Date: `2026-05-04 18:06 UTC+08`
 
 This handoff exists because the current runner is stopping for usage refresh.
 Resume in the active repo:
@@ -28,11 +28,15 @@ Resume in the active repo:
 Latest local commits at handoff:
 
 ```text
+0da24db backend: apply reviewed sequence labels during import
+626b606 backend: apply reviewed timestamp labels during import
+15c242d backend: surface import format boundaries
+f49af63 ui: add label carrier review to import wizard
+3341d53 ui: guard headless 3d visualization
+a41770f ui: capture visualization render walkthrough
+c9ea93a docs: refresh usage handoff
 f9f0956 assistant: capture training completion walkthrough
 7936328 agent: preserve training output dir
-9984cc9 docs: refresh usage handoff
-a228a9d assistant: capture training readiness boundary
-84d9c66 agent: expose analysis tools
 ```
 
 Expected dirty files after the latest committed product slice:
@@ -43,124 +47,117 @@ Expected dirty files after the latest committed product slice:
 ```
 
 These two files are protected user / workspace settings. Ignore them unless the
-user explicitly asks otherwise.
+user explicitly asks otherwise. Do not stage them in the handoff commit.
 
 ## Latest Verified Product Slice
 
 The latest committed product slice is:
 
 ```text
-f9f0956 assistant: capture training completion walkthrough
+0da24db backend: apply reviewed sequence labels during import
 ```
 
-It added true local ChatPanel evidence for controlled tiny training completion:
+It extended Data Interpretation apply so reviewed external labels are no longer
+recipe-only in the narrow safe cases:
 
-- `scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py`
-- `tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py`
-- `artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.json`
-- `artifacts/ui/chatpanel-local-training-completion/chatpanel-local-training-completion-walkthrough.md`
-- ready / trained screenshots plus seven turn screenshots under
-  `artifacts/ui/chatpanel-local-training-completion/`
+- timestamp CSV / TSV / BIDS events carriers can be applied during
+  `apply_interpretation` when there is one loaded EEG file, one reviewed
+  carrier, selected label field and anchor, confirmed interpretation, and
+  `seconds` or `relative_time` time model;
+- reviewed MAT / TXT trial-order sequence carriers can be applied when there is
+  one loaded EEG file, one carrier, selected label field, confirmed class map,
+  `trial_order` time model, and trial granularity;
+- timestamp mode uses existing `dataset.apply_labels_batch()`;
+- sequence mode uses existing `dataset.apply_labels_legacy()`;
+- both paths update `AppliedInterpretation.label_imports`, `label_apply`
+  diagnostics, and recipe trace entries such as `label_import:timestamp:1` or
+  `label_import:legacy:1`;
+- unsafe cases still skip with a reason instead of guessing.
 
-What the artifact proves:
+Immediately preceding Data Interpretation slices:
 
-- A real `MainWindow` / `ChatPanel` / `AgentManager` / `LLMController` /
-  `AgentWorker` / `LLMEngine` path ran with cached local primary model
-  `microsoft/Phi-4-mini-instruct`.
-- Runtime classification was `gpu-ready`; cache usage was about `15.34 GB`; no
-  model download was needed.
-- Dataset-ready state was prepared through `ApplicationService`:
-  `scan_source` -> `preview_interpretation` -> `validate_interpretation` ->
-  `apply_interpretation` -> `preprocess` -> `create_epoch` -> `generate_dataset`.
-- The visible ChatPanel workflow executed one verified command per turn:
-  - `set_model`
-  - `configure_training` with controlled temp `output_dir`
-  - observed / approved `start_training` confirmation
-  - training completion wait
-  - `evaluate`
-  - `saliency` configure
-  - `visualize`
-  - saliency readiness query
-- Final state had dataset available, model `EEGNet`, training option present,
-  output dir `/tmp/xbrainlab-chatpanel-training-completion-output`, trainer
-  present, training not running, finished runs `1`, evaluation metrics
-  available, and saliency configured / available.
-- ChatPanel returned idle and visible assistant text stayed product-facing.
+- `f49af63` added editable label carrier review rows to the import wizard and
+  persisted `label_carrier_plan` through preview / apply / recipe.
+- `15c242d` surfaced format capability boundaries for GDF, EDF / BDF, EEGLAB,
+  BrainVision, MNE FIF, MAT labels, CSV / TSV / BIDS events, TXT, and blocked
+  XDF / LSL stream-selection cases.
+- `626b606` applied reviewed timestamp labels during import and refreshed the
+  UI replay artifact with `label_apply.status=applied`.
 
-Supporting fixes in the same slice:
-
-- `SaliencyCommand` normalizes flat `method` / `params` to evaluator-required
-  `SmoothGrad` / `SmoothGrad_Squared` / `VarGrad` params.
-- Intent detection recognizes `visualization` / `visualisation`.
-- Saliency readiness query drops stale saliency config params from previous
-  turns.
-- Metrics bar chart `tight_layout` singular-matrix failure is degraded to a
-  warning.
-- Missing optional `torchinfo` returns a user-facing unavailable message without
-  logging a traceback.
-
-Recorded validation for the latest slice:
+Latest validation already recorded:
 
 ```bash
-poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params tests/unit/backend/application/test_application_service.py::test_saliency_command_normalizes_flat_method_params tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py tests/unit/backend/controller/test_evaluation_controller.py -q
-scripts/dev/run_ui_pytest.sh tests/unit/ui/test_ui_components.py::TestMetricsBarChart -q
-poetry run pytest --capture=sys tests/unit/llm/agent -q
-poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2
-timeout 1200s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py --output-dir artifacts/ui/chatpanel-local-training-completion --timeout-seconds 1080
-poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/controller/evaluation_controller.py XBrainLab/llm/agent/intent.py XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/ui/panels/evaluation/metrics_bar_chart.py scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py tests/unit/backend/application/test_application_service.py tests/unit/backend/controller/test_evaluation_controller.py tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py tests/unit/ui/test_ui_components.py
-poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/controller/evaluation_controller.py XBrainLab/llm/agent/intent.py XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/ui/panels/evaluation/metrics_bar_chart.py scripts/dev/capture_chatpanel_local_training_completion_walkthrough.py tests/unit/backend/application/test_application_service.py tests/unit/backend/controller/test_evaluation_controller.py tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_capture_chatpanel_local_training_completion_walkthrough.py tests/unit/ui/test_ui_components.py
+poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier -q
+poetry run ruff check XBrainLab/backend/application/service.py tests/unit/backend/application/test_application_service.py
+poetry run basedpyright XBrainLab/backend/application/service.py tests/unit/backend/application/test_application_service.py
+poetry run ruff format --check XBrainLab/backend/application/service.py tests/unit/backend/application/test_application_service.py
 poetry run mkdocs build --strict
 git diff --check
 ```
 
 Expected results:
 
-- focused regression: `48 passed`
-- UI fallback regression: `3 passed`
-- broader agent suite: `235 passed`
-- deterministic tool-call eval refresh: `100 / 100`
-- true local ChatPanel walkthrough: `status=passed`
+- focused MAT / timestamp label apply tests: `2 passed`
 - targeted `ruff`: pass
 - targeted `basedpyright`: `0 errors, 0 warnings, 0 notes`
+- targeted format check: pass
 - mkdocs strict build: pass with the existing MkDocs Material warning
 - diff check: pass
 
+## Current Evidence Highlights
+
+- True local ChatPanel controlled tiny training completion evidence exists under
+  `artifacts/ui/chatpanel-local-training-completion/`.
+- Visualization render evidence exists under
+  `artifacts/ui/visualization-render/`; Saliency Map, Spectrogram, and
+  Topographic Map render in a true MainWindow walkthrough after a tiny CPU
+  training run.
+- Headless/offscreen `3D Plot` is guarded and shows a human-readable blocked
+  reason instead of creating a PyVista plotter and crashing.
+- Data Interpretation replay artifacts exist:
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+- The replay JSON now includes review notes, label carrier rows, reviewed
+  choices, timestamp label apply diagnostics, and recipe trace evidence.
+
 ## Do Not Redo Without Reason
 
-- Do not redo the short ChatPanel Data Interpretation chain unless scan /
-  preview / validate parsing, verification, or tool schema changed.
-- Do not redo the import-to-dataset chain unless apply / preprocess / epoch /
-  dataset behavior changed.
-- Do not redo analysis-tool exposure unless `evaluate` / `visualize` /
-  `saliency` registry or command mapping changed.
-- Do not redo the controlled tiny training-completion walkthrough unless the
-  local-model agent, training command surface, evaluation command, saliency
-  command, or visible ChatPanel feedback changed.
-- Do not rerun the full `100` case local LLM eval for documentation-only edits.
-  Rerun targeted eval if prompt / schema / parser / verifier behavior changes,
-  then rerun full primary / fallback x3 before making thesis-candidate claims.
+- Do not redo the true ChatPanel training-completion walkthrough unless local
+  model agent execution, training command surface, evaluation, saliency, or
+  visible ChatPanel feedback changed.
+- Do not redo the visualization render walkthrough unless visualization panel,
+  training state, saliency, or render contract changed.
+- Do not redo label carrier wizard review / format boundary work unless
+  `data_interpretation.py`, wizard result mapping, scan format detection, or
+  recipe serialization changed.
+- Do not rerun full local LLM x3 eval for documentation-only edits. Rerun
+  targeted eval if prompt / schema / parser / verifier behavior changes, then
+  rerun full primary / fallback x3 before thesis-candidate claims.
 
 ## Current Known Blockers
 
 Do not claim product completion yet.
 
-- Full saliency / visualization canvas render UI walkthrough is still missing.
-  The latest artifact proves readiness / summary tools, not actual rendered
-  saliency or visualization canvas evidence.
+- `ApplicationStateSnapshot.interpretation` may still omit the newest
+  `label_carrier_plan` and `format_capabilities` truth; agent / MCP /
+  `query_state` should expose the same import truth as UI / recipe.
+- Full embedded post-load label import wizard is still incomplete.
+- Multi-file label mapping is not automatic.
+- Raw-event-anchor-specific GDF / MAT alignment is not modeled; only the narrow
+  reviewed trial-order sequence path is applied.
+- Full all-format manual compatibility matrix and XDF / LSL stream parser remain
+  incomplete.
 - Windows Desktop launcher human click-through / WSLg multi-monitor behavior has
-  not been manually verified. There is automated command-path evidence only.
-- MCP stdio server and stdlib client walkthrough exist, but MCP Inspector GUI /
-  release config is not completed.
-- Label import is recipe-trace compatible but still not a mature import wizard
-  embedded label / anchor / MAT variable editor.
-- Full user-facing import wizard polish remains incomplete.
+  not been manually verified.
+- Interactive desktop 3D / PyVista render has not been verified; only headless
+  blocked UX is proven.
+- MCP Inspector GUI / release config is not completed.
 - External thesis experiment runner / statistical report is not done.
-- Primary / fallback local LLM x3 thesis-candidate eval report still needs
-  organizing before making thesis-readiness claims.
+- Thesis-candidate local LLM report still needs primary / fallback x3 evidence
+  organization before making thesis-ready claims.
 
 ## Immediate Resume Plan
-
-Start with the next visible product gap. Recommended order:
 
 1. Re-check worktree:
 
@@ -168,65 +165,65 @@ Start with the next visible product gap. Recommended order:
    git status --short
    ```
 
-   Only `.vscode/settings.json` and root `settings.json` should be dirty.
+   Only `.vscode/settings.json` and root `settings.json` should be dirty unless
+   the handoff docs have not yet been committed.
 
-2. Inspect the current visualization / saliency UI path:
+2. Inspect state snapshot propagation:
 
    ```text
+   XBrainLab/backend/application/state.py
    XBrainLab/backend/application/service.py
-   XBrainLab/ui/panels/evaluation/
-   XBrainLab/ui/panels/visualization/
-   XBrainLab/llm/tools/definitions/analysis_def.py
+   XBrainLab/backend/application/automation.py
    XBrainLab/llm/tools/application_surface.py
+   tests/unit/backend/application/test_application_service.py
    ```
 
-3. Build a UI-observable render slice:
+3. Recommended next product slice:
 
    ```text
-   dataset-ready or trained state
-     -> model/training/evaluation state available
-     -> user-visible visualization or saliency render command
-     -> canvas/panel actually updates
-     -> screenshot proves rendered result or human-readable blocked reason
+   Data Interpretation import truth in shared state snapshot
+     -> label_carrier_plan visible in ApplicationStateSnapshot.interpretation
+     -> format_capabilities visible in ApplicationStateSnapshot.interpretation
+     -> query_state / automation / agent / MCP see the same truth
+     -> focused backend tests
+     -> docs / records update
+     -> local commit
    ```
 
-   Keep the assistant to one verified command per turn. Do not package readiness
-   text as render evidence.
+4. After that, continue with product blockers in this order:
 
-4. If render requires broader UI refactor, take the smaller slice first:
-
-   ```text
-   ApplicationService result exposes enough render target/state
-     -> UI panel consumes same typed result/capability policy
-     -> focused UI test
-     -> screenshot artifact
-   ```
-
-5. If WSL/Qt/GPU limits block true render capture, write the blocker into
-   records and do not mark the goal complete.
+   - embedded label import wizard hardening;
+   - Windows Desktop launcher human click-through / WSLg multi-monitor
+     verification;
+   - MCP Inspector GUI / release config;
+   - interactive desktop 3D render verification if a real OpenGL desktop session
+     is available;
+   - external thesis experiment runner / statistical report;
+   - primary / fallback local LLM x3 thesis-candidate eval report.
 
 ## Claim Boundary
 
 Current evidence supports:
 
-- true local ChatPanel visible response;
-- true local ChatPanel single-tool execution;
-- true local ChatPanel two-turn continuity after compact tool history;
-- true local ChatPanel Data Interpretation scan -> preview -> validate;
-- true local ChatPanel Data Interpretation apply -> preprocess -> epoch ->
-  dataset;
-- ApplicationService-backed agent tools for evaluate / visualize / saliency;
-- true local ChatPanel dataset-ready training confirmation boundary;
-- true local ChatPanel controlled tiny training completion with post-training
-  evaluation metrics and saliency / visualization readiness summary.
+- ApplicationService-backed Data Interpretation scan -> preview -> validate ->
+  confirm/apply -> recipe baseline;
+- import wizard metadata / class-map / label carrier review;
+- format-specific supported / needs-review / blocked boundaries;
+- narrow reviewed timestamp and trial-order sequence label apply during import;
+- true local ChatPanel single-command-per-turn workflow through controlled tiny
+  training completion;
+- true MainWindow post-training Matplotlib visualization render evidence;
+- headless 3D blocked UX.
 
 Current evidence does not support:
 
 - completed desktop product;
-- completed saliency / visualization canvas render workflow;
-- completed Windows Desktop human click-through;
 - completed mature import wizard label editor;
+- completed multi-file or raw-event-anchor label alignment;
+- completed Windows Desktop human click-through;
+- completed interactive desktop 3D render;
 - completed MCP Inspector / release configuration;
-- completed external thesis experiment package.
+- completed external thesis experiment package;
+- thesis-ready local LLM evidence.
 
 Goal status must remain incomplete.

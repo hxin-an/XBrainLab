@@ -28,6 +28,49 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Usage-refresh handoff after import label apply
+
+### 背景
+
+使用者要求因用量即將刷新先建立交接紀錄。既有 usage-refresh handoff 仍停在
+`f9f0956 assistant: capture training completion walkthrough`，但 repo 已前進到 Data
+Interpretation label carrier review、format capability boundaries、timestamp label apply 和
+MAT / TXT sequence label apply。
+
+### 變更
+
+- 刷新 `artifacts/goal/handoff-2026-05-04-usage-refresh.md`：
+  - latest commits 更新到 `0da24db`。
+  - 保存 protected dirty files：`.vscode/settings.json` 和 root `settings.json`。
+  - 記錄最新 validation、evidence highlights、不要重做的 slices、仍不能宣稱完成的 blockers。
+- 刷新 `artifacts/goal/continuation-2026-05-04-product-completion.md`：
+  - latest completed product slice 改成 reviewed MAT / TXT sequence label apply。
+  - immediate resume plan 改成補 shared state snapshot 的 import truth。
+  - 建議下一手 TDD：`ApplicationStateSnapshot.interpretation` / automation / `query_state`
+    應包含 `label_carrier_plan` 和 `format_capabilities`。
+
+### 影響範圍
+
+- Handoff / continuation artifacts。
+- Records docs。
+- 沒有 product code change。
+
+### 驗證
+
+- `git status --short` 顯示當下既有 dirty files 只有：
+  - `.vscode/settings.json`
+  - root `settings.json`
+- `git diff --check` -> pass。
+- `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+
+### 剩餘風險
+
+- Goal 不能標 complete。
+- 下一輪仍需實作 shared state snapshot propagation，並繼續補 embedded label import wizard、
+  multi-file label mapping、raw-event-anchor-specific MAT / GDF alignment、Windows launcher
+  human click-through、interactive desktop 3D、MCP Inspector / release config 和 thesis-ready
+  local LLM evidence。
+
 ## 2026-05-04 ChatPanel multi-turn compact tool history
 
 ### 背景

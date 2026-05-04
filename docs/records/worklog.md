@@ -37,6 +37,34 @@
 
 ## 2026-05-04
 
+### 18:06 Usage-refresh handoff after import label apply
+
+- 做了什麼：
+  - 依使用者要求刷新 usage refresh 交接：
+    - `artifacts/goal/handoff-2026-05-04-usage-refresh.md`
+    - `artifacts/goal/continuation-2026-05-04-product-completion.md`
+  - 交接更新到最新 local product commit：
+    - `0da24db backend: apply reviewed sequence labels during import`
+    - `626b606 backend: apply reviewed timestamp labels during import`
+    - `15c242d backend: surface import format boundaries`
+    - `f49af63 ui: add label carrier review to import wizard`
+- 結果：
+  - 交接明確保存 protected dirty files 只應是 `.vscode/settings.json` 和 root `settings.json`。
+  - 交接明確保存不要重做已完成的 ChatPanel training completion、VisualizationPanel Matplotlib
+    render、headless 3D blocked UX、label carrier review、format boundaries 和 reviewed label apply。
+  - 下一手優先處理 Data Interpretation import truth 是否進入 shared
+    `ApplicationStateSnapshot.interpretation`，讓 agent / headless / MCP / `query_state` 看見
+    `label_carrier_plan` 和 `format_capabilities`。
+- 證據：
+  - `git status --short` 當下只顯示 protected workspace settings 兩檔在既有 dirty 狀態。
+  - `git diff --check` -> pass。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - Goal 仍不可標 complete。
+  - 不能宣稱 mature embedded label import wizard、多檔 label mapping、raw-event-anchor-specific
+    MAT/GDF alignment、真人 Windows launcher click-through、interactive desktop 3D、MCP Inspector /
+    release config 或 thesis-ready local LLM evidence。
+
 ### 11:44 ChatPanel multi-turn compact tool history
 
 - 做了什麼：
