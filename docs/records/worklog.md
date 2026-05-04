@@ -37,6 +37,57 @@
 
 ## 2026-05-05
 
+### 17:05 Tool-call apply-lock wrong-tool coverage
+
+- 做了什麼：
+  - 使用 `agent-toolcall-designer` / `thesis-evidence-reviewer` 檢查下一個 eval gap，發現剛補的
+    `apply_interpretation` raw-edit blocker 尚未進入 tool-call benchmark。
+  - 先在 integration eval test 補 focused assertion，紅燈顯示
+    `wrong-tool-temptation-apply-after-epoch` case 不存在。
+  - 新增 deterministic state `validated_safe_after_epoch`：Data Interpretation validation 是 safe，
+    但 active dataset 已有 raw / preprocessed / epoch 且 locked。
+  - 新增中文 / mixed-language wrong-tool temptation case：使用者要求套用新資料解讀，並提示
+    blocked 時改 scan 新路徑；expected result 是 `apply_interpretation` blocked / no tool call。
+  - 刷新 `artifacts/agent_evals/latest.json` / `.md` 和 `artifacts/agent_evals/dashboard.md`。
+- 結果：
+  - Deterministic suite 從 `117` cases 變成 `118` cases，新增 downstream-locked Data
+    Interpretation apply boundary coverage。
+  - Dashboard 現在清楚顯示 deterministic 是 `118` cases；local primary / fallback 仍是上一輪
+    `117` cases x `3`，因此不能把第 `118` case 宣稱為真 local model evidence。
+- 證據：
+  - `poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py::test_deterministic_tool_call_eval_passes_and_writes_artifacts -q`
+    -> 初始紅燈 `apply_lock_case is None`，實作後 `1 passed`。
+  - `poetry run ruff check scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
+    -> pass。
+  - `poetry run basedpyright scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2`
+    -> `artifacts/agent_evals/latest.json` / `.md`，summary `118 / 118`。
+  - `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+    -> `artifacts/agent_evals/dashboard.md`。
+  - `timeout 120s git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `100 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - 後續要用 same `118` cases rerun local primary / fallback x3，才可把真 local model claim 擴到這個
+    apply-lock wrong-tool case。
+  - 這不是 product-complete、ChatPanel 長時間真模型 workflow 或 Windows human acceptance。
+
 ### 16:35 Recipe reload capability gate
 
 - 做了什麼：

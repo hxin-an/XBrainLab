@@ -299,7 +299,12 @@ local model 都已跑同一份 `117` cases，primary / fallback 各 `3` 次，ar
 `117 / 117`，`artifacts/agent_evals/dashboard.md` 也列出 model comparison、case family、
 metric pass rates、failure taxonomy、worst cases、source path 和 thesis claim boundary。這支撐
 目前 benchmark slice 的 thesis-candidate tool-call claim；仍不等於 UI usability、Windows
-launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。後續 ChatPanel local-model UI
+launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。2026-05-05 follow-up
+又把 deterministic eval 擴到 `118` cases，新增「已有 epoch/downstream lock 時，使用者要求套用
+新 Data Interpretation 不可改叫 scan 或其他替代工具硬推」的 wrong-tool temptation case；
+`artifacts/agent_evals/latest.json` / `.md` 和 dashboard 已刷新為 deterministic `118 / 118`。
+local primary / fallback artifact 仍是上一輪 `117` cases x `3`，要把真 local model claim 擴到
+第 `118` case 前仍需 rerun。後續 ChatPanel local-model UI
 walkthrough 已新增一輪真模型可見回覆 evidence：
 `scripts/dev/capture_chatpanel_local_walkthrough.py` 會在 `HF_HUB_OFFLINE=1` /
 `TRANSFORMERS_OFFLINE=1` 下打開真 MainWindow / ChatPanel，經 UI composer 送出 prompt，走
@@ -671,9 +676,11 @@ true local model desktop session。
   command；`evaluate` / `visualize` / `saliency` 也已暴露成 ApplicationService-backed agent
   tools。它們目前回傳 summary / setup diagnostics，不等於完整互動式 analysis workflow 已完成。
 - tool-call eval 已有 deterministic baseline 和 primary / fallback 真 local model runner；最新
-  primary / fallback `117` thesis-candidate cases x `3` 都是 `117 / 117` pass，且 dashboard
-  已列出 case family / metric / failure taxonomy / model comparison。這解除先前 `54` case 數不足、
-  bandpass-vs-standard preprocess failure，以及只測乾淨英文 prompt 的 coverage gap。ChatPanel true local
+  deterministic artifact 是 `118 / 118` pass，新增 downstream-locked
+  `apply_interpretation` wrong-tool temptation coverage；primary / fallback 真 local model runner
+  仍是上一輪 `117` thesis-candidate cases x `3`、`117 / 117` pass。dashboard 已列出 case
+  family / metric / failure taxonomy / model comparison，但第 `118` case 尚未納入真 local model
+  rerun。這解除先前 `54` case 數不足、bandpass-vs-standard preprocess failure，以及只測乾淨英文 prompt 的 coverage gap。ChatPanel true local
   model one-turn、單步 tool-command、兩 turn workflow walkthrough、Data Interpretation
   短鏈 tool-command walkthrough 和 import-to-dataset pipeline-chain walkthrough 也已通過，
   但這些仍不能替代真人 Windows launcher click-through、training / evaluation / saliency 長鏈

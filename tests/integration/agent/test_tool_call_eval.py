@@ -43,6 +43,23 @@ def test_deterministic_tool_call_eval_passes_and_writes_artifacts(tmp_path: Path
         "bids",
         "label_ambiguity",
     }.issubset(families)
+    apply_lock_case = next(
+        (
+            case
+            for case in cases
+            if case.case_id == "wrong-tool-temptation-apply-after-epoch"
+        ),
+        None,
+    )
+    assert apply_lock_case is not None
+    assert apply_lock_case.expected_intent == "apply_interpretation"
+    assert apply_lock_case.expected_blocked
+    assert not apply_lock_case.expected_tools
+    assert {
+        "wrong_tool_temptation",
+        "blocked_command",
+        "data_interpretation",
+    }.issubset(set(apply_lock_case.families))
 
     result = run_eval(repeat_count=2)
     summary = result["summary"]

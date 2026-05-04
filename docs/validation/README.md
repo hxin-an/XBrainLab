@@ -100,6 +100,25 @@ UI baseline capture 結果：
 - UI unit legacy runtime expectations 已改成 remote switch fail-closed / active local deletion block。
 - deterministic agent eval artifact 已刷新。
 
+2026-05-05 deterministic tool-call eval follow-up:
+
+- 新增 `wrong-tool-temptation-apply-after-epoch` case：state 已有 validated safe Data
+  Interpretation candidate，但 active session 已切 epoch / locked downstream state；使用者要求套用
+  新資料解讀並誘惑 assistant 改 scan 新路徑時，expected behavior 是 blocked / no tool call，不可改叫
+  `scan_source` 或其他替代工具硬推。
+- deterministic runner：`poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2`
+  -> `118 / 118` pass。
+- dashboard refresh：`poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+  -> `artifacts/agent_evals/dashboard.md`。
+- focused gate：`poetry run pytest --capture=sys tests/integration/agent/test_tool_call_eval.py::test_deterministic_tool_call_eval_passes_and_writes_artifacts -q`
+  -> `1 passed`。
+- focused lint/type：`poetry run ruff check scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
+  -> pass；`poetry run basedpyright scripts/agent/evals/run_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py`
+  -> `0 errors, 0 warnings, 0 notes`。
+- Claim boundary：local primary / fallback artifacts in the dashboard remain the previous `117`-case
+  x `3` reruns. This slice extends deterministic coverage only; local model evidence must be rerun
+  before claiming the `118`th case for primary / fallback local LLM accuracy.
+
 2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
 
 - `TrainingCommandService` 承接 `configure_training`、`train`、`stop_training`、
@@ -2412,10 +2431,10 @@ tool-call thesis evidence 核心要求：
 
 目前最新 evidence：
 
-- cases：`117`
-- deterministic baseline：`117 / 117`
-- primary local model：`117 / 117` x `3`
-- fallback local model：`117 / 117` x `3`
+- deterministic cases：`118`
+- deterministic baseline：`118 / 118`
+- primary local model：`117 / 117` x `3`（尚未覆蓋第 `118` case）
+- fallback local model：`117 / 117` x `3`（尚未覆蓋第 `118` case）
 - dashboard：`artifacts/agent_evals/dashboard.md`
 
 EEG pipeline support 要求：

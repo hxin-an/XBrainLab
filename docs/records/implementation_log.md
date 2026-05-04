@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Tool-Call Apply Lock Eval Coverage
+
+### 狀態
+
+Tool-call eval suite 現在把剛補上的 `apply_interpretation` raw-edit boundary 納入 benchmark：
+當 session 已有 epoch / downstream lock，且使用者要求套用新 Data Interpretation 並誘惑 assistant
+改叫 scan 新路徑時，deterministic expectation 是 blocked / no tool call。
+
+### 已可宣稱
+
+- Deterministic scorer 會檢查 downstream-locked Data Interpretation apply 不可用替代工具硬推。
+- `artifacts/agent_evals/latest.*` 和 dashboard 已刷新為 deterministic `118 / 118`。
+
+### Evidence 入口
+
+- Source：`scripts/agent/evals/run_tool_call_eval.py`
+- Test：`tests/integration/agent/test_tool_call_eval.py`
+- Artifact：`artifacts/agent_evals/latest.md`
+- Dashboard：`artifacts/agent_evals/dashboard.md`
+
+### 不能宣稱完成
+
+- Local primary / fallback artifacts 仍是上一輪 `117` cases x `3`；第 `118` case 尚未跑真 local
+  model，不可把 deterministic refresh 擴張成 local model accuracy claim。
+- 這不是 ChatPanel human walkthrough、Windows acceptance 或 product-complete claim。
+
+### 下一手重點
+
+後續 local LLM eval rerun 應使用 `118` cases，確認 primary / fallback 對 apply-lock wrong-tool
+temptation 的真輸出仍穩定。
+
 ## 2026-05-05 Apply Interpretation Raw-Edit Boundary
 
 ### 狀態
