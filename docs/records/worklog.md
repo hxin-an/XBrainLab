@@ -4342,3 +4342,53 @@
   - This is recipe serialization boundary cleanup, not a product-complete Data Interpretation wizard.
   - Scanner, candidate / preview builder, validator, and label carrier planner still remain in
     `data_interpretation.py`.
+
+### 2026-05-06 Data Interpretation label carrier boundary extraction
+
+- scope：
+  - Backend-only Data Interpretation internal boundary cleanup.
+  - No command shape, UI, agent, MCP, or recipe schema changes.
+- current call sites：
+  - `build_interpretation_candidate()` builds `label_carrier_plan` from scan carriers and wizard
+    `label_carrier_choices`.
+  - `_choice_recipe_trace()` records whether label carrier choices were supplied.
+- target boundary：
+  - `data_interpretation_label_carriers.py` owns label carrier choice normalization, MAT variable
+    discovery, CSV / TSV / BIDS events column discovery, anchor candidates, time-model defaults,
+    granularity defaults, and user-facing review reasons.
+  - `data_interpretation.py` keeps lifecycle orchestration and imports the focused planner.
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_label_carriers.py`。
+  - Moved label carrier planner helpers and CSV / MAT parser helpers out of `data_interpretation.py`.
+  - Added direct unit coverage for BIDS events user choices and path/name choice-key normalization.
+  - `data_interpretation.py` reduced from about `822` lines to about `581` lines after this slice.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py -q`
+    initial failure: `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_label_carriers`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py -q`
+    -> `2 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py`
+    -> pass.
+  - `timeout 300s poetry run ruff format --check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_label_carriers.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_state_snapshot_preserves_import_review_truth -q`
+    -> `16 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `89 passed`.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 120s git diff --check`
+    -> pass.
+- 不能宣稱：
+  - This is label carrier planner boundary cleanup, not embedded label editor completion.
+  - Scanner, candidate / preview builder, validator, and metadata override helper still remain in
+    `data_interpretation.py`.

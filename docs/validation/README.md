@@ -131,6 +131,9 @@ UI baseline capture 結果：
 - Data Interpretation recipe boundary cleanup 覆蓋 focused `data_interpretation_recipe.py` module；
   `ImportRecipe` from-dict / write-load / applied interpretation builder 有直接 unit coverage，既有
   recipe save / reload regression 仍通過。
+- Data Interpretation label carrier boundary cleanup 覆蓋 focused
+  `data_interpretation_label_carriers.py` module；BIDS events user choices、choice-key
+  normalization 和 existing recipe/state label-carrier regressions 仍通過。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
@@ -147,7 +150,7 @@ UI baseline capture 結果：
   state snapshot construction、query diagnostics、smart-filter suggestions、Dataset direct import
   service-success no-fallback、Preprocess reset service-success no-fallback、Training re-split
   cleanup service-success no-fallback、Clear History service-success no-fallback 和 format
-  capability / metadata resolution / recipe serialization module boundaries。
+  capability / metadata resolution / recipe serialization / label carrier planner module boundaries。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - UI runtime bypass slice gate 另通過：
@@ -180,6 +183,13 @@ UI baseline capture 結果：
   `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply tests/unit/backend/application/test_application_service.py::test_data_interpretation_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe -q`
   (`14 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`
   (`87 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
+  (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
+  (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
+  `git diff --check`。
+- Data Interpretation label carrier boundary slice gate 另通過：
+  `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_state_snapshot_preserves_import_review_truth -q`
+  (`16 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`
+  (`89 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
   (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
   (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
   `git diff --check`。

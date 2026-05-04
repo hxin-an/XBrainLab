@@ -72,6 +72,9 @@ rehydration 抽到 `data_interpretation_metadata.py`，讓 Data Interpretation l
 最新 recipe boundary cleanup 又把 `ImportRecipe` serialization / rehydration 和 applied
 interpretation -> recipe builder 抽到 `data_interpretation_recipe.py`；lifecycle module 只 re-export
 public recipe names for compatibility。
+最新 label carrier boundary cleanup 又把 external label carrier planner 抽到
+`data_interpretation_label_carriers.py`；Data Interpretation lifecycle module 不再直接承接 CSV /
+MAT parser helper 或 label-anchor default selection。
 
 ## 一句話架構
 
@@ -358,6 +361,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/data_interpretation.py`
 - `XBrainLab/backend/application/data_interpretation_apply.py`
 - `XBrainLab/backend/application/data_interpretation_formats.py`
+- `XBrainLab/backend/application/data_interpretation_label_carriers.py`
 - `XBrainLab/backend/application/data_interpretation_metadata.py`
 - `XBrainLab/backend/application/data_interpretation_recipe.py`
 - `XBrainLab/backend/application/data_interpretation_service.py`
@@ -442,6 +446,10 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   `data_interpretation_recipe.py`。它 owns `ImportRecipe`、JSON load / write、serialized metadata
   rehydration 和 applied interpretation to recipe conversion；`data_interpretation.py` 只 re-export
   public names so existing service / application imports remain stable。
+- Data Interpretation label carrier planner 實作位置現在是
+  `data_interpretation_label_carriers.py`。它 owns label carrier choice normalization、MAT variable
+  discovery、CSV / TSV / BIDS events column discovery、anchor candidates、time model defaults、
+  granularity defaults 和 review reason generation。
 
 2026-05-02 product blocker 盤點結論：
 
