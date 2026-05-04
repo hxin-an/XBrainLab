@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from scripts.dev.capture_chatpanel_local_walkthrough import (
     VisibleMessage,
+    collect_executed_tools,
     has_raw_debug_text,
     render_markdown,
 )
@@ -40,6 +43,14 @@ def test_render_markdown_includes_visible_transcript() -> None:
                 "Preprocessing prepares EEG data for modeling.",
             ).__dict__,
         ],
+        "executed_tools": [
+            {
+                "name": "query_state",
+                "success": True,
+                "duration_ms": 1.2,
+                "error": None,
+            }
+        ],
         "ui_state": {
             "send_button_text": "Send",
             "send_button_enabled": True,
@@ -53,4 +64,31 @@ def test_render_markdown_includes_visible_transcript() -> None:
 
     assert "ChatPanel Local Model Walkthrough" in rendered
     assert "Preprocessing prepares EEG data for modeling." in rendered
+    assert "`query_state`: `ok`" in rendered
     assert "tool_name" not in rendered
+
+
+def test_collect_executed_tools_reads_completed_turn_metrics() -> None:
+    metrics = SimpleNamespace(
+        _completed_turns=[
+            SimpleNamespace(
+                tool_executions=[
+                    SimpleNamespace(
+                        name="query_state",
+                        success=True,
+                        duration_ms=1.23456,
+                        error=None,
+                    )
+                ]
+            )
+        ]
+    )
+
+    assert collect_executed_tools(metrics) == [
+        {
+            "name": "query_state",
+            "success": True,
+            "duration_ms": 1.235,
+            "error": None,
+        }
+    ]

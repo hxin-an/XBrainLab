@@ -118,6 +118,7 @@ def run_walkthrough(
         "ready_screenshot": "",
         "response_screenshot": "",
         "visible_messages": [],
+        "executed_tools": [],
         "send_button_text": "",
         "send_button_enabled": False,
         "input_enabled": False,
@@ -143,6 +144,8 @@ def run_walkthrough(
             state["send_button_text"] = panel.send_btn.text()
             state["send_button_enabled"] = panel.send_btn.isEnabled()
             state["input_enabled"] = panel.input_field.isEnabled()
+        if controller is not None:
+            state["executed_tools"] = collect_executed_tools(controller.metrics)
         state["chat_processing"] = bool(manager.chat_controller.is_processing)
         state["controller_processing"] = bool(
             controller and getattr(controller, "is_processing", False)
@@ -234,6 +237,7 @@ def run_walkthrough(
             "response": state["response_screenshot"],
         },
         "visible_messages": state["visible_messages"],
+        "executed_tools": state["executed_tools"],
         "ui_state": {
             "send_button_text": state["send_button_text"],
             "send_button_enabled": state["send_button_enabled"],
@@ -244,6 +248,25 @@ def run_walkthrough(
         "elapsed_seconds": state["elapsed_seconds"],
     }
     return payload
+
+
+def collect_executed_tools(metrics: Any) -> list[dict[str, Any]]:
+    """Collect completed tool executions from the controller metrics tracker."""
+    tools: list[dict[str, Any]] = []
+    for turn in getattr(metrics, "_completed_turns", []) or []:
+        for execution in getattr(turn, "tool_executions", []) or []:
+            tools.append(
+                {
+                    "name": str(getattr(execution, "name", "")),
+                    "success": bool(getattr(execution, "success", False)),
+                    "duration_ms": round(
+                        float(getattr(execution, "duration_ms", 0.0)),
+                        3,
+                    ),
+                    "error": getattr(execution, "error", None),
+                }
+            )
+    return tools
 
 
 def collect_visible_messages(panel: Any) -> list[VisibleMessage]:
@@ -316,6 +339,21 @@ def render_markdown(payload: dict[str, Any]) -> str:
                 "",
             ]
         )
+    tools = payload.get("executed_tools", [])
+    lines.extend(["## Executed Tools", ""])
+    if tools:
+        for tool in tools:
+            status = "ok" if tool.get("success") else "failed"
+            line = (
+                f"- `{tool.get('name', '')}`: `{status}` "
+                f"({tool.get('duration_ms', 0)} ms)"
+            )
+            if tool.get("error"):
+                line += f" - {tool['error']}"
+            lines.append(line)
+    else:
+        lines.append("- none")
+    lines.append("")
     ui = payload["ui_state"]
     lines.extend(
         [
@@ -386,6 +424,7 @@ def _blocked_payload(
         },
         "screenshots": {"ready": "", "response": ""},
         "visible_messages": [],
+        "executed_tools": [],
         "ui_state": {
             "send_button_text": "",
             "send_button_enabled": False,

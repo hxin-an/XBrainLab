@@ -28,6 +28,62 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 ChatPanel local tool-command walkthrough
+
+### 背景
+
+ChatPanel 已有真 local-model 一般回覆 walkthrough，但 tool-command prompt 暴露出產品缺口：
+local model 會正確呼叫 `query_state`，但 `AgentManager` 把所有 `Tool` sender 回覆都視為內部
+diagnostic，導致使用者看不到產品級 summary。stdout log 可以看到 tool execution，但 artifact
+沒有保存 executed tool summary，交接可信度不足。
+
+### 變更
+
+- `AgentManager._looks_like_internal_tool_output()` 改為只隱藏 raw/internal `Tool` output：
+  - `debug` sender 仍全部隱藏。
+  - `Tool` sender 只有在文字以 raw tool markers、JSON、`ApplicationService` 或 `BackendFacade`
+    開頭時才視為內部輸出。
+  - 已整理成使用者語言的 tool summary 會進入 visible transcript。
+- `tests/integration/ui/test_product_walkthrough.py` 補 regression：
+  - raw `Tool Output:` 仍不可見。
+  - safe tool summary `Workflow state ready...` 必須可見。
+- `scripts/dev/capture_chatpanel_local_walkthrough.py` 補 `executed_tools` artifact 欄位，從
+  controller metrics completed turns 收集 tool name / success / duration / error。
+- `tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py` 補 artifact rendering 和 metrics
+  collection coverage。
+
+### 影響範圍
+
+- ChatPanel / AgentManager visible transcript filtering。
+- Local ChatPanel walkthrough artifact。
+- UI product walkthrough regression。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- true local UI tool-command walkthrough：
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool --timeout-seconds 360 --prompt "Check what is ready in the current XBrainLab workflow. Use the state query tool if needed, then answer in one short sentence."`
+  - artifact status `passed`
+  - executed tool `query_state` `ok`
+  - visible assistant response `Application state snapshot ready.`
+  - UI idle：send button enabled、input enabled、chat / controller processing false
+- tests:
+  - `scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout -q`
+  - `1 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py -q`
+  - `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py -q`
+  - `3 passed`
+- static gates:
+  - focused `ruff` checks passed
+  - focused `basedpyright` checks passed with `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是單步 `query_state` tool-command walkthrough，不是 multi-turn workflow。
+- 尚未驗證 Windows Desktop launcher click-through、長時間 assistant 操作、完整 import wizard
+  metadata override / label-class map editor、MCP Inspector GUI 或 release config。
+
 ## 2026-05-04 Data Interpretation wizard review hardening
 
 ### 背景

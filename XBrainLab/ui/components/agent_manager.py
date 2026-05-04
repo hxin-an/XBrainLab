@@ -627,7 +627,7 @@ class AgentManager(QObject):
     def _looks_like_internal_tool_output(sender: str, text: str) -> bool:
         """Return whether a response is an implementation detail, not chat copy."""
         sender_key = str(sender or "").strip().lower()
-        if sender_key in {"tool", "debug"}:
+        if sender_key == "debug":
             return True
 
         normalized = " ".join(str(text or "").split()).lower()
@@ -637,9 +637,13 @@ class AgentManager(QObject):
             "tool ",
             "request:",
             "```json",
+            '{"',
+            "[{",
             "applicationservice",
             "backendfacade",
         )
+        if sender_key == "tool":
+            return normalized.startswith(internal_markers)
         return normalized.startswith(internal_markers)
 
     @staticmethod

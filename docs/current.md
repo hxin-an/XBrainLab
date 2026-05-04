@@ -129,7 +129,12 @@ AgentManager -> LLMController -> AgentWorker -> LLMEngine local backend，並保
 `chatpanel-local-walkthrough.json` 和 `.md`。artifact 顯示 primary
 `microsoft/Phi-4-mini-instruct` 為 `gpu-ready`、cache `15.34 GB`、visible transcript 無 raw
 tool / debug syntax，UI 回到 idle。這證明 true local model 能在 ChatPanel 產生使用者可見回覆；
-仍不證明多輪 tool execution workflow 或長時間 assistant 操作已驗收。
+後續 tool-command walkthrough 又證明同一 UI path 可執行單步 ApplicationService-backed tool：
+`artifacts/ui/chatpanel-local-tool/chatpanel-local-walkthrough.json` / `.md` 顯示 local model
+執行 `query_state`，executed tool 為 `ok`，visible assistant transcript 是
+`Application state snapshot ready.`，沒有 raw `Tool Output`、schema 或 traceback，UI 回到
+idle。這仍不證明多輪 tool execution workflow、長時間 assistant 操作或 Windows launcher
+click-through 已驗收。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 多輪
 tool-command UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release
@@ -362,8 +367,9 @@ closure。
   typed result。visible transcript 只顯示使用者語言；raw tool payload 保留在 diagnostics。
   `set_montage` 和 `switch_panel` 仍是 UI request path；真正 montage apply 在 confirmation
   後走 `ApplyMontageCommand`。
-- 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一輪 UI walkthrough artifact，
-  但還不是多輪 tool-command / 長時間 workflow 驗收。
+- 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一般回覆 walkthrough 和
+  單步 `query_state` tool-command walkthrough artifact，但還不是多輪 tool-command / 長時間
+  workflow 驗收。
 - Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
   fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
 - `tests/integration/ui/test_product_walkthrough.py` 仍是 synthetic / patched training

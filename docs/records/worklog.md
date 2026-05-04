@@ -37,6 +37,34 @@
 
 ## 2026-05-04
 
+### 11:03 ChatPanel local tool-command walkthrough
+
+- 做了什麼：
+  - 修正 `AgentManager` 對 `Tool` sender 的處理：raw/internal tool output 仍隱藏到低噪音 notice，
+    但已整理成使用者語言的 tool summary 會進入 visible transcript。
+  - `capture_chatpanel_local_walkthrough.py` 補寫 `executed_tools`，讓 walkthrough artifact 不只靠
+    stdout log 證明 tool call。
+  - 用真 local model 從 ChatPanel UI composer 送出 readiness prompt，要求使用 state query tool。
+- 結果：
+  - local model 實際執行 `query_state`，metrics 顯示 `tools=1/1`。
+  - artifact status `passed`，executed tool `query_state` `ok`。
+  - visible assistant transcript 是 `Application state snapshot ready.`；未出現 raw `Tool Output`、
+    schema 或 traceback。
+  - UI 回到 idle：send button `Send` / enabled，input enabled，chat / controller processing false。
+- 證據：
+  - `artifacts/ui/chatpanel-local-tool/chatpanel-local-ready.png`
+  - `artifacts/ui/chatpanel-local-tool/chatpanel-local-response.png`
+  - `artifacts/ui/chatpanel-local-tool/chatpanel-local-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-tool/chatpanel-local-walkthrough.md`
+  - `scripts/dev/run_ui_pytest.sh tests/integration/ui/test_product_walkthrough.py -q` -> `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py -q`
+    -> `3 passed`
+  - targeted `ruff` / `basedpyright` clean。
+- 接續 / 本輪剩餘：
+  - 這解除「真 ChatPanel tool-command 單步 evidence」缺口。
+  - 仍不是 multi-turn workflow、長時間 assistant 操作、Windows Desktop launcher click-through、
+    或完整 import wizard label/metadata editor 驗收。
+
 ### 10:49 Data Interpretation wizard review hardening
 
 - 做了什麼：

@@ -95,6 +95,16 @@
     不含 raw tool/debug syntax，UI 回到 idle。
   - 這支撐真 local model 能在 ChatPanel 產生可見回覆；仍不代表 multi-turn tool-command
     workflow、Windows launcher click-through 或長時間 assistant 操作已完成。
+- ChatPanel true local-model tool-command walkthrough 已新增：
+  - artifact：`artifacts/ui/chatpanel-local-tool/chatpanel-local-ready.png`、
+    `artifacts/ui/chatpanel-local-tool/chatpanel-local-response.png`、
+    `artifacts/ui/chatpanel-local-tool/chatpanel-local-walkthrough.json` / `.md`。
+  - prompt 從 UI composer 要求檢查目前 workflow readiness；local model 實際執行
+    `query_state`，artifact 的 `executed_tools` 記錄 `query_state` `ok`。
+  - visible transcript 只顯示使用者語言：assistant 回覆 `Application state snapshot ready.`；
+    artifact 未出現 raw `Tool Output`、schema 或 traceback，UI 回到 idle。
+  - 這支撐單步 tool execution 可以經 ChatPanel 以產品語言回覆；仍不代表 multi-turn
+    workflow、長時間 tool-command chain 或 Windows launcher click-through 已完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

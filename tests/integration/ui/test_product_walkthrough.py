@@ -204,6 +204,16 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert "Tool list_files completed" not in transcript_after_tool
     assert "could not complete" in panel.notice_label.text()
 
+    manager._handle_agent_response(
+        "Tool",
+        "Workflow state ready. Import EEG files to begin.",
+    )
+    transcript_after_safe_tool = "\n".join(
+        message["content"] for message in manager.chat_controller.messages
+    )
+    assert "Workflow state ready" in transcript_after_safe_tool
+    assert "Tool Output:" not in transcript_after_safe_tool
+
     for index, attr in [
         (0, "dataset_panel"),
         (1, "preprocess_panel"),
