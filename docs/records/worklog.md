@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-04`
+最後更新：`2026-05-05`
 
 ## 這份文件的用途
 
@@ -34,6 +34,56 @@
 - 證據：
 - 接續 / 本輪剩餘：
 ```
+
+## 2026-05-05
+
+### 09:20 Analysis command service boundary cleanup
+
+- 做了什麼：
+  - 依 refactor gate 選低風險 analysis / visualization slice，不同時碰 UI、agent runtime 或
+    training lifecycle。
+  - 先新增 focused test，紅燈為 `ModuleNotFoundError: XBrainLab.backend.application.analysis_service`。
+  - 新增 `AnalysisCommandService`，承接 `evaluate`、`visualize`、`saliency` 和 confirmed
+    `apply_montage` handler。
+  - `ApplicationService` 的 handler map 改成窄委派到 analysis service；`query_state` 仍留在
+    `ApplicationService`，避免 cross-cutting state/capability query 形成第二套 truth。
+  - 移出 saliency parameter normalization 和 analysis JSON-safe metric conversion。
+  - 更新 current / roadmap / now / architecture / implementation log。
+- 結果：
+  - `ApplicationService` 從 `1912` 行降到 `1719` 行。
+  - `AnalysisCommandService` 為 `268` 行。
+  - 對外 command names、capability policy 和 `CommandResult` contract 沒變。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/analysis_service.py tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/analysis_service.py tests/unit/backend/application/test_analysis_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `46 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `56 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 接續 / 本輪剩餘：
+  - 這支撐 analysis / visualization handler boundary，不是 product completion。
+  - 下一輪 backend cleanup 仍應處理 training / dataset generation / reset lifecycle / legacy
+    compatibility handlers。
 
 ## 2026-05-04
 

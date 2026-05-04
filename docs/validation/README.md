@@ -1,6 +1,6 @@
 # XBrainLab Validation
 
-最後更新：`2026-05-04`
+最後更新：`2026-05-05`
 
 ## 這份文件的用途
 
@@ -179,6 +179,45 @@ agent 架構文件整理時也跑：
 reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
 沒有回歸」。它不能支撐整個 backend architecture closure：training / visualization / legacy
 compatibility handlers 還需要後續拆分。
+
+2026-05-05 Analysis command boundary cleanup 新增一組 architecture gate：
+
+- test-first focused gate：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py -q`
+  - 初始紅燈 `ModuleNotFoundError: XBrainLab.backend.application.analysis_service`
+- analysis service focused/static gate：
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/analysis_service.py tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py`
+  - pass
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/analysis_service.py tests/unit/backend/application/test_analysis_service.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py -q`
+  - `46 passed`
+- backend command contract:
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+  - `56 passed`
+- backend / agent regression:
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+  - `3 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+  - `466 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+  - `7 passed`
+- static / docs / architecture:
+  - `timeout 300s poetry run ruff check .`
+  - pass
+  - `timeout 300s poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant!`
+  - `timeout 300s poetry run mkdocs build --strict`
+  - pass with existing MkDocs Material warning
+  - `timeout 120s git diff --check`
+  - pass
+
+這組 gate 支撐「`evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage` 已從
+`ApplicationService` 拆到 focused analysis service，且 UI / agent-facing command contract 沒有
+回歸」。它不能支撐 full visualization UI render、interactive 3D / PyVista desktop acceptance、
+training lifecycle closure 或 complete backend architecture closure。
 
 ### 2026-05-02 Chat product-flow blocker
 

@@ -1,6 +1,6 @@
 # Backend Architecture
 
-最後更新：`2026-05-04`
+最後更新：`2026-05-05`
 
 ## 可信度
 
@@ -41,7 +41,9 @@ Interpretation lifecycle state 和 scan / preview / validate / apply / recipe ha
 carrier side effects 再拆到 `DataInterpretationApplyService`；`ApplicationService` 現在只保留
 command dispatch、capability / confirmation gate、state/result envelope，以及對 focused service
 的窄委派。這是 god-object 收斂的第一刀，不代表 training / visualization / legacy label import
-handlers 都已完成拆分。
+handlers 都已完成拆分。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency` 和
+confirmed `apply_montage` 拆到 `AnalysisCommandService`；analysis / visualization readiness
+現在也有 focused handler boundary，`ApplicationService` 仍只 dispatch / gate / wrap result。
 
 ## 一句話架構
 
@@ -93,6 +95,9 @@ ApplicationService / Command API
   |       +--> scanner / candidate builder / preview builder / validator / recipe state
   |       +--> DataInterpretationApplyService
   |               +--> reviewed metadata apply / reviewed label carrier apply
+  |
+  +--> AnalysisCommandService
+          +--> evaluation summary / visualization readiness / saliency setup / montage apply
   |
   v
 same cached controllers from Study
@@ -290,6 +295,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 第一版位置：
 
 - `XBrainLab/backend/application/commands.py`
+- `XBrainLab/backend/application/analysis_service.py`
 - `XBrainLab/backend/application/state.py`
 - `XBrainLab/backend/application/capabilities.py`
 - `XBrainLab/backend/application/data_interpretation.py`
@@ -320,6 +326,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - service-backed query / setup commands：
   `evaluate`、`visualize`、`saliency`、`query_state`。它們回傳 typed summary diagnostics；
   `saliency` 也能設定 saliency params。
+- `evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage` 的 handler 實作位置現在是
+  `AnalysisCommandService`。`query_state` 仍留在 `ApplicationService`，因為它是 command
+  envelope / capability / state snapshot 的 cross-cutting query。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed
@@ -349,6 +358,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationCommandService`；UI、agent、
   automation 和 MCP 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
   interpretation state。
+- Analysis / visualization readiness truth 目前在 `AnalysisCommandService`，但 capability
+  exposure 仍由 `ApplicationService.get_capabilities()` 產生。
 - `BackendFacade` 是 wrapper；它不應再承載新的 workflow business logic。
 - `BackendFacade(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是 Data
   Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
@@ -522,6 +533,8 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 - `DataInterpretationCommandService` / `DataInterpretationApplyService` 已由 focused unit tests
   覆蓋 scan / preview / validate / clear，以及 apply 後 reviewed metadata / label-import recipe
   state 同步。
+- `AnalysisCommandService` 已由 focused unit tests 覆蓋 evaluation summary、visualization
+  readiness、saliency normalization / configuration 和 confirmed montage apply。
 - `Study` 已拆出 `DataManager` 和 `TrainingManager`，但還保留 backward-compatible delegation properties。
 - pipeline stage 是從 live `Study` state 計算，不是文件或 UI label 推導。
 - tiny Study training E2E smoke 已通過，證明 `Study -> TrainingManager` delegation 的代表性 train/evaluate path 目前可跑。
