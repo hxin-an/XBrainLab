@@ -74,7 +74,7 @@
   - fallback `microsoft/Phi-3.5-mini-instruct`：`100 / 100` pass。
   - runtime classification：primary / fallback 都是 `gpu-ready`；cache `15.34 GB`；no download。
   這支撐 thesis-candidate tool-call benchmark evidence；仍不能取代 ChatPanel walkthrough、
-  Windows launcher click-through、MCP Inspector / release config 或成熟 import wizard 驗收。
+  Windows launcher walkthrough、MCP Inspector / release config 或成熟 import wizard 驗收。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
@@ -84,6 +84,16 @@
     surface。
   - 這支撐 external stdio client path，不代表 MCP Inspector GUI click-through、Windows release
     config、HTTP transport 或 long-running training through MCP 已完成。
+- Windows launcher automated command walkthrough 已新增：
+  - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
+    `XBrainLab.cmd` smoke，確認它指向 active repo。
+  - 同一 artifact 會從 PowerShell launcher 進 WSL，驗證 stdout / stderr mirror 到 launcher
+    output/log。
+  - `startup` smoke 經 Windows launcher path 執行 bounded `run.py --model local`，artifact 顯示
+    `MainWindow initialized` 和 timeout 後正常收束。
+  - artifact：`artifacts/launcher/windows-launcher-walkthrough.json` / `.md`。
+  - 這支撐 Windows launcher command path，不代表真人 Desktop click-through、packaged release
+    approval 或多螢幕實際使用體驗已完成。
 - ChatPanel true local-model one-turn walkthrough 已新增：
   - `scripts/dev/capture_chatpanel_local_walkthrough.py` 在 `HF_HUB_OFFLINE=1` /
     `TRANSFORMERS_OFFLINE=1` 下打開真 MainWindow / ChatPanel。

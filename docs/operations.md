@@ -62,6 +62,16 @@ timeout 35s xvfb-run -a poetry run python run.py --model local
 
 `MainWindow initialized` 出現後因測試 timeout 結束屬於預期，代表 startup 未在初始化階段崩潰。
 
+Windows launcher command walkthrough：
+
+```bash
+poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher
+```
+
+這會從 Windows `cmd.exe` / PowerShell / `wsl.exe` 驗證 Desktop command、launcher log mirror
+和 bounded startup path，artifact 寫到 `artifacts/launcher/windows-launcher-walkthrough.*`。
+它不是真人桌面 click-through。
+
 ## Local LLM Runtime
 
 目前 product catalog 只允許非中國來源模型：

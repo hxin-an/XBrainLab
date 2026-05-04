@@ -96,6 +96,31 @@ if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "wsl") {
     exit $ExitCode
 }
 
+if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "startup") {
+    $StartupCommand = @"
+set -o pipefail
+cd '$Repo'
+export PYTHONUNBUFFERED=1
+echo "WSL repo: `$(pwd)"
+echo "Launcher startup smoke: running run.py through the Windows launcher path."
+if command -v xvfb-run >/dev/null 2>&1; then
+  echo "Launcher startup smoke: using xvfb-run for deterministic headless capture."
+  timeout 45s xvfb-run -a poetry run python run.py --model local
+else
+  echo "Launcher startup smoke: xvfb-run unavailable; using current display."
+  timeout 45s poetry run python run.py --model local
+fi
+status=`$?
+if [ "`$status" = "124" ]; then
+  echo "Launcher startup smoke: GUI kept running until timeout."
+  exit 0
+fi
+exit "`$status"
+"@
+    $ExitCode = Invoke-WslWithLiveLog -WslPath $Wsl.Source -Command $StartupCommand
+    exit $ExitCode
+}
+
 $Command = @"
 set -o pipefail
 cd '$Repo'

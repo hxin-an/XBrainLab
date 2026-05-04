@@ -76,7 +76,8 @@ UI baseline capture 結果：
 
 仍未完成的 evidence：
 
-- Windows Desktop launcher 人工 click-through。
+- Windows Desktop launcher 真人 click-through；目前已有 automated command walkthrough，不等於
+  人工桌面驗收。
 - true local LLM ChatPanel 已有一輪真模型 UI 回覆 walkthrough，以及一輪單步 `query_state`
   tool-command walkthrough；multi-turn tool-command / 長時間 workflow walkthrough 仍未完成。
 - local LLM primary / fallback tool-call runner 已有 `100` thesis-candidate cases x `3`
@@ -254,6 +255,33 @@ EEG dataset experiment 屬於 pipeline support，不是 thesis 主評分。
 
 - `timeout 45s xvfb-run -a poetry run python run.py --model local`
 - `MainWindow initialized` 出現後 timeout 結束，屬於 GUI smoke 預期結果。
+
+2026-05-04 Windows launcher automated command walkthrough：
+
+- 新增 `scripts/dev/capture_windows_launcher_walkthrough.py`：
+  - 從 Windows `cmd.exe` 執行 Desktop `C:\Users\Administrator\Desktop\XBrainLab.cmd` smoke。
+  - 從 PowerShell 執行 repo `xbrainlab_wsl_launcher.ps1` 的 `wsl` smoke，確認 stdout /
+    stderr 會 mirror 到 launcher output 和 log。
+  - 從同一 PowerShell launcher path 執行 `startup` smoke，經 `wsl.exe` 進 active repo 並跑
+    bounded `run.py --model local` startup。
+- artifact：
+  - `artifacts/launcher/windows-launcher-walkthrough.json`
+  - `artifacts/launcher/windows-launcher-walkthrough.md`
+- artifact summary：
+  - status：`passed`
+  - Desktop command points to `/mnt/d/workspace_v2/projects/lab/XBrainLab`
+  - `WSL_launcher_smoke_stdout` / `WSL_launcher_smoke_stderr` both observed
+  - launcher logs exist under `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/`
+  - startup smoke saw `MainWindow initialized`
+  - startup smoke was bounded by timeout and returned `0`
+- commands:
+  - `timeout 180s poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher --startup-timeout 150`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_windows_launcher_walkthrough.py -q`
+  - `2 passed`
+
+這批 evidence 支撐 Windows Desktop command、PowerShell launcher、WSL bridge、launcher log 和
+bounded startup path。它仍不是真人雙螢幕 Desktop click-through、packaged installer approval 或
+完整 release validation。
 
 2026-05-02 product-delivery final gate：
 

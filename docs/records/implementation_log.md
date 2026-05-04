@@ -28,6 +28,65 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Windows launcher automated command walkthrough
+
+### 背景
+
+Launcher 先前已有 `.cmd` / PowerShell baseline 和 WSL startup smoke，但缺少可重跑 artifact
+證明 Desktop `.cmd`、PowerShell launcher、`wsl.exe` bridge、launcher log 和 `run.py` startup
+確實串在同一條 Windows launcher path。真人 click-through 仍需要使用者在 Windows 桌面上執行，
+但 automated evidence 可以先縮小「是不是 stale shortcut / launcher 無法進 WSL」這類風險。
+
+### 變更
+
+- `scripts/launchers/xbrainlab_wsl_launcher.ps1` 新增
+  `XBRAINLAB_LAUNCHER_SMOKE=startup`：
+  - 透過原本 `Invoke-WslWithLiveLog` path 進 WSL。
+  - `cd` active repo。
+  - bounded 執行 `run.py --model local` startup smoke。
+  - `timeout` 後把 GUI keep-running 視為 bounded smoke success。
+- 新增 `scripts/dev/capture_windows_launcher_walkthrough.py`：
+  - Windows `cmd.exe` 執行 Desktop `XBrainLab.cmd` smoke。
+  - PowerShell 執行 `wsl` smoke，確認 stdout / stderr mirror。
+  - PowerShell 執行 `startup` smoke，確認 launcher path 看到 `MainWindow initialized`。
+  - 保存 JSON / Markdown artifact。
+- 新增 `tests/unit/scripts/test_capture_windows_launcher_walkthrough.py`，覆蓋 log path parsing 和
+  artifact claim boundary rendering。
+
+### 影響範圍
+
+- Windows launcher PowerShell script。
+- Dev validation artifact script。
+- Launcher artifacts。
+- Validation / current / planning / records docs。
+
+### 驗證
+
+- walkthrough:
+  - `timeout 180s poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher --startup-timeout 150`
+  - wrote `artifacts/launcher/windows-launcher-walkthrough.json`
+  - wrote `artifacts/launcher/windows-launcher-walkthrough.md`
+- artifact summary:
+  - status `passed`
+  - Desktop command points to active WSL repo
+  - WSL stdout / stderr markers observed
+  - startup smoke saw `MainWindow initialized`
+  - launcher log exists under `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/`
+- tests:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_windows_launcher_walkthrough.py -q`
+  - `2 passed`
+- focused static checks:
+  - `poetry run ruff check scripts/dev/capture_windows_launcher_walkthrough.py tests/unit/scripts/test_capture_windows_launcher_walkthrough.py`
+  - pass
+  - `poetry run basedpyright scripts/dev/capture_windows_launcher_walkthrough.py tests/unit/scripts/test_capture_windows_launcher_walkthrough.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這不是真人 Windows Desktop click-through。
+- 尚未驗證真 WSLg 多螢幕 placement、packaged installer behavior 或 release shortcut
+  registration。
+
 ## 2026-05-04 Data Interpretation metadata / class-map editor
 
 ### 背景

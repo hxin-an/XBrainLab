@@ -139,11 +139,17 @@ tool / debug syntax，UI 回到 idle。這證明 true local model 能在 ChatPan
 執行 `query_state`，executed tool 為 `ok`，visible assistant transcript 是
 `Application state snapshot ready.`，沒有 raw `Tool Output`、schema 或 traceback，UI 回到
 idle。這仍不證明多輪 tool execution workflow、長時間 assistant 操作或 Windows launcher
-click-through 已驗收。
+人工 click-through 已驗收。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
-跨螢幕置中當最後保護。真 Windows launcher 人工 click-through、真 local model 多輪
-tool-command UI walkthrough、external thesis experiment runner 仍未完成，不能宣稱完整 release
-closure。
+跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
+`scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
+`XBrainLab.cmd` smoke、從 PowerShell 執行 WSL stdout/stderr smoke，再透過同一 launcher path
+跑 bounded `run.py` startup smoke；`artifacts/launcher/windows-launcher-walkthrough.json` /
+`.md` 顯示 Desktop command 指向 active repo、PowerShell launcher 可進 WSL、log file 存在、
+stdout/stderr 被 mirror、且 startup 看到 `MainWindow initialized`。這仍不是真人 Windows
+Desktop click-through 或 release packaging approval。真 local model 多輪 tool-command UI
+walkthrough、MCP Inspector GUI、external thesis experiment runner 仍未完成，不能宣稱完整
+release closure。
 
 ## 可信狀態
 
@@ -175,6 +181,7 @@ closure。
   - repo source：`scripts/launchers/xbrainlab_wsl_launcher.cmd`
   - repo source：`scripts/launchers/xbrainlab_wsl_launcher.ps1`
   - Windows Desktop：`/mnt/c/Users/Administrator/Desktop/XBrainLab.cmd`
+  - automated walkthrough：`artifacts/launcher/windows-launcher-walkthrough.md`
 
 ## 品質門檻
 

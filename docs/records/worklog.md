@@ -37,6 +37,31 @@
 
 ## 2026-05-04
 
+### 11:26 Windows launcher automated command walkthrough
+
+- 做了什麼：
+  - `xbrainlab_wsl_launcher.ps1` 新增 `XBRAINLAB_LAUNCHER_SMOKE=startup` mode，透過 launcher
+    path 進 WSL，bounded 執行 `run.py --model local` startup smoke。
+  - 新增 `scripts/dev/capture_windows_launcher_walkthrough.py`，依序跑 Desktop `.cmd` smoke、
+    PowerShell WSL stdout/stderr smoke、PowerShell startup smoke，並保存 JSON / Markdown artifact。
+  - 新增 helper unit tests，保護 launcher log path parse 和 Markdown claim boundary。
+- 結果：
+  - artifact status `passed`。
+  - Desktop command 指向 active repo `/mnt/d/workspace_v2/projects/lab/XBrainLab`。
+  - PowerShell launcher 可透過 `wsl.exe` 進 WSL，stdout / stderr 都會 mirror。
+  - startup smoke 經 launcher path 看到 `MainWindow initialized`，並由 timeout 收束。
+- 證據：
+  - `artifacts/launcher/windows-launcher-walkthrough.json`
+  - `artifacts/launcher/windows-launcher-walkthrough.md`
+  - launcher log：`/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-112540.log`
+  - `timeout 180s poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher --startup-timeout 150`
+    -> exit `0`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_windows_launcher_walkthrough.py -q`
+    -> `2 passed`
+- 接續 / 本輪剩餘：
+  - 這是 automated command walkthrough，不是真人 Desktop click-through 或 packaged release approval。
+  - 真雙螢幕/WSLg 桌面點擊、MCP Inspector GUI、完整 release packaging 仍未完成。
+
 ### 11:17 Data Interpretation metadata / class-map editor slice
 
 - 做了什麼：

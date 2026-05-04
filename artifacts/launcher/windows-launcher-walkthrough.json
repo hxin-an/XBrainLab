@@ -1,0 +1,62 @@
+{
+  "status": "passed",
+  "claim_boundary": "Automated Windows launcher command walkthrough; not a human desktop click-through or packaging release approval.",
+  "desktop_cmd": "C:\\Users\\Administrator\\Desktop\\XBrainLab.cmd",
+  "powershell_launcher": "D:\\workspace_v2\\projects\\lab\\XBrainLab\\scripts\\launchers\\xbrainlab_wsl_launcher.ps1",
+  "active_wsl_repo": "/mnt/d/workspace_v2/projects/lab/XBrainLab",
+  "checks": {
+    "desktop_points_to_active_repo": true,
+    "desktop_smoke_skipped_wsl": true,
+    "wsl_stdout_mirrored": true,
+    "wsl_stderr_mirrored": true,
+    "startup_saw_main_window": true,
+    "startup_bounded": true,
+    "wsl_log_exists": true,
+    "startup_log_exists": true
+  },
+  "log_paths": {
+    "wsl": "/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-112540.log",
+    "startup": "/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-112540.log"
+  },
+  "commands": [
+    {
+      "name": "desktop_cmd_smoke",
+      "command": [
+        "cmd.exe",
+        "/c",
+        "set XBRAINLAB_LAUNCHER_SMOKE=1&& C:\\Users\\Administrator\\Desktop\\XBrainLab.cmd"
+      ],
+      "returncode": 0,
+      "stdout": "XBrainLab launcher bootstrap\nActive WSL repo: /mnt/d/workspace_v2/projects/lab/XBrainLab\nActive Windows repo: D:\\workspace_v2\\projects\\lab\\XBrainLab\nPowerShell launcher: D:\\workspace_v2\\projects\\lab\\XBrainLab\\scripts\\launchers\\xbrainlab_wsl_launcher.ps1\nStarting PowerShell launcher...\n\nLauncher smoke mode: PowerShell launcher exists; WSL launch skipped.\n",
+      "stderr": ""
+    },
+    {
+      "name": "powershell_wsl_smoke",
+      "command": [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$env:XBRAINLAB_LAUNCHER_SMOKE='wsl'; & 'D:\\workspace_v2\\projects\\lab\\XBrainLab\\scripts\\launchers\\xbrainlab_wsl_launcher.ps1'"
+      ],
+      "returncode": 0,
+      "stdout": "XBrainLab launcher\nStarting XBrainLab...\nWSL repo: /mnt/d/workspace_v2/projects/lab/XBrainLab\nLog: C:\\Users\\Administrator\\AppData\\Local\\XBrainLab\\logs\\launcher-20260504-112540.log\nOpen log: notepad \"C:\\Users\\Administrator\\AppData\\Local\\XBrainLab\\logs\\launcher-20260504-112540.log\"\nFollow log: powershell -NoProfile -Command \"Get-Content -Wait 'C:\\Users\\Administrator\\AppData\\Local\\XBrainLab\\logs\\launcher-20260504-112540.log'\"\nGeometry diagnostics: set XBRAINLAB_STARTUP_DIAGNOSTICS=1 before launch.\n\nWSL executable: C:\\WINDOWS\\system32\\wsl.exe\nWSL_launcher_smoke_stdout\nWSL_launcher_smoke_stderr\n",
+      "stderr": ""
+    },
+    {
+      "name": "powershell_startup_smoke",
+      "command": [
+        "powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$env:XBRAINLAB_LAUNCHER_SMOKE='startup'; & 'D:\\workspace_v2\\projects\\lab\\XBrainLab\\scripts\\launchers\\xbrainlab_wsl_launcher.ps1'"
+      ],
+      "returncode": 0,
+      "stdout": "XBrainLab launcher\nStarting XBrainLab...\nWSL repo: /mnt/d/workspace_v2/projects/lab/XBrainLab\nLog: C:\\Users\\Administrator\\AppData\\Local\\XBrainLab\\logs\\launcher-20260504-112540.log\nOpen log: notepad \"C:\\Users\\Administrator\\AppData\\Local\\XBrainLab\\logs\\launcher-20260504-112540.log\"\nFollow log: powershell -NoProfile -Command \"Get-Content -Wait 'C:\\Users\\Administrator\\AppData\\Local\\XBrainLab\\logs\\launcher-20260504-112540.log'\"\nGeometry diagnostics: set XBRAINLAB_STARTUP_DIAGNOSTICS=1 before launch.\n\nWSL executable: C:\\WINDOWS\\system32\\wsl.exe\nWSL repo: /mnt/d/workspace_v2/projects/lab/XBrainLab\nLauncher startup smoke: running run.py through the Windows launcher path.\nLauncher startup smoke: using xvfb-run for deterministic headless capture.\n2026-05-04 11:25:47 - XBrainLab - INFO - Starting XBrainLab (PyQt6)...\n2026-05-04 11:25:47 - XBrainLab - INFO - CLI override: inference mode set to 'local'\n2026-05-04 11:25:47 - XBrainLab - INFO - Study initialized (with DataManager + TrainingManager)\n2026-05-04 11:25:48 - XBrainLab - INFO - MainWindow initialized\nLauncher startup smoke: GUI kept running until timeout.\n",
+      "stderr": ""
+    }
+  ]
+}
