@@ -217,6 +217,11 @@ capability policy 與 stage allowlist 取交集，避免 backend compatibility p
 legacy tool 重新塞回主 prompt。`load_data` / `attach_labels` 仍在 schema taxonomy、parser /
 verification 和 `DataCompatibilityCommandService` 作為 legacy compatibility surface，但新
 agent 心智模型已改以 Data Interpretation scan / preview / validate / apply / recipe 為資料入口。
+最新 automation / MCP schema cleanup 也把 legacy data-entry boundary 寫進
+`AutomationCommandSpec` 和 MCP `tools/list` metadata：`load_data`、`attach_labels`、
+`import_labels` 會標成 `legacy_compatibility=True`、`primary_workflow=False`，並列出 Data
+Interpretation scan / preview / validate / apply / recipe preferred commands。MCP/headless client
+仍可呼叫相容工具，但 schema 不再把它們包成新資料入口主線。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
@@ -658,8 +663,9 @@ true local model desktop session。
   import entry、recipe save option、headless/MCP-ready command schema、stdio MCP server
   baseline、deterministic eval cases、第一版 UI-observable replay artifact 和 wizard review
   hardening 已進入新心智模型；label import 目前仍是 service-backed compatibility UI，但成功結果
-  已會寫入 Data Interpretation recipe trace；MCP stdio external-client artifact 和 committed
-  Inspector-style `mcp.json` release config baseline 已完成；MCP Inspector GUI click-through
+  已會寫入 Data Interpretation recipe trace；MCP/headless schema 已把 `load_data` /
+  `attach_labels` / `import_labels` 標成 legacy compatibility 並指向 Data Interpretation preferred
+  commands；MCP stdio external-client artifact 和 committed Inspector-style `mcp.json` release config baseline 已完成；MCP Inspector GUI click-through
   artifact 也已完成。HTTP transport 和 long-running training through MCP 尚未完成。
 
 ## 目前執行中
@@ -669,7 +675,8 @@ true local model desktop session。
    services、Preprocess command service，以及 State / Query services；下一輪應檢查是否還有
    UI / agent / MCP 旁路或 wrapper compatibility 心智模型，而不是再把 workflow 塞回 service。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
-   UI 和 MCP 是否也完全以 Data Interpretation 作為新資料入口語言。
+   UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
+   legacy commands 標成非 primary workflow。
 2. 等待真 Windows Desktop launcher click-through。
 3. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
    reason 或 Matplotlib 2D render 擴張成完整 visualization suite。

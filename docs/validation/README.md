@@ -152,6 +152,15 @@ UI baseline capture 結果：
   -> `46 passed`；broader agent/tool gate -> `468 passed`；agent integration -> `7 passed`；
   backend application regression -> `96 passed`；backend integration -> `3 passed`；
   ruff / basedpyright / architecture compliance / MkDocs strict / diff check also passed。
+- Automation / MCP legacy compatibility metadata cleanup 覆蓋
+  `AutomationCommandSpec` 和 MCP `tools/list` `x_xbrainlab` metadata；`load_data` /
+  `attach_labels` / `import_labels` 仍可相容呼叫，但 schema 會標示 `legacy_compatibility=True`、
+  `primary_workflow=False` 並列出 Data Interpretation preferred commands。Focused evidence：
+  `tests/unit/backend/application/test_automation.py` plus MCP stdio/client config regressions
+  -> `12 passed`；full backend application regression -> `97 passed`；backend integration ->
+  `3 passed`；agent/tool regression -> `468 passed`；agent integration -> `7 passed`；MCP
+  integration -> `3 passed`；ruff / basedpyright / architecture compliance / MkDocs strict /
+  diff check passed。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /

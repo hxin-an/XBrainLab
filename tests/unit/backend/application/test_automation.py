@@ -56,6 +56,30 @@ def test_mcp_tool_specs_use_same_command_schema():
     )
 
 
+def test_legacy_compatibility_commands_are_not_primary_mcp_workflow():
+    service = ApplicationService(Study())
+
+    specs = {spec.name: spec for spec in command_specs(service)}
+    tools = {tool["name"]: tool for tool in mcp_tool_specs(service)}
+
+    for command_name in (
+        CommandName.LOAD_DATA.value,
+        CommandName.ATTACH_LABELS.value,
+        CommandName.IMPORT_LABELS.value,
+    ):
+        spec = specs[command_name]
+        assert spec.taxonomy == "legacy_data_compatibility"
+        assert spec.legacy_compatibility is True
+        assert spec.primary_workflow is False
+        assert "Legacy compatibility" in spec.description
+        assert "scan_source" in spec.preferred_commands
+
+        metadata = tools[command_name]["x_xbrainlab"]
+        assert metadata["legacy_compatibility"] is True
+        assert metadata["primary_workflow"] is False
+        assert "scan_source" in metadata["preferred_commands"]
+
+
 def test_build_command_from_payload_validates_required_and_unknown_arguments():
     command = build_command_from_payload(
         {

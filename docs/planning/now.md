@@ -84,6 +84,10 @@
   capability policy 與 stage allowlist 取交集，避免 compatibility tool 被 policy 重新帶回主
   prompt。legacy tools 仍保留在 schema taxonomy / parser / verification 裡作 compatibility
   path，不是新 agent 資料入口主語言。
+- 最新 automation / MCP schema cleanup 已把 `load_data` / `attach_labels` / `import_labels`
+  在 `AutomationCommandSpec` 和 MCP `tools/list` metadata 中標為 legacy compatibility、非
+  primary workflow，並提供 Data Interpretation preferred commands；MCP/headless client 仍可呼叫
+  相容工具，但 schema 不再把它們包成新資料入口主線。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -458,8 +462,8 @@ Goal 1 至少要包含：
      snapshot 和 UI quality review；reset / new-session boundary 已不再顯示 stale chat bubbles
      或 stale workflow status。仍不能替代 human desktop acceptance。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
-     `load_data / attach_labels` 作為主設計；agent primary stage prompt 已先移除這兩個 legacy
-     tools，後續 UI / MCP language 仍要繼續盤點。
+     `load_data / attach_labels` 作為主設計；agent primary stage prompt 和 MCP/headless schema
+     已先降權 legacy tools，後續 UI language 仍要繼續盤點。
 
 10. **MCP-ready automation surface**
     - CLI / headless runner 保留給 CI、eval、batch 和 artifact generation。

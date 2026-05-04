@@ -85,6 +85,11 @@ source discovery。
 最新 candidate boundary cleanup 又把 candidate builder、metadata override、event/class choice
 mapping 和 candidate recipe trace 抽到 `data_interpretation_candidate.py`；大型 lifecycle module
 基本收斂成 shared enum、applied lifecycle dataclass 和 public compatibility re-export。
+最新 automation / MCP schema cleanup 又把 legacy data-entry 降權資訊寫進同一套
+`AutomationCommandSpec` truth：`load_data`、`attach_labels`、`import_labels` 的 command spec 和
+MCP `tools/list` `x_xbrainlab` metadata 都會標示 `legacy_compatibility=True`、
+`primary_workflow=False`，並列出 Data Interpretation scan / preview / validate / apply / recipe
+作為 preferred commands。這不移除相容工具，但避免 external MCP/headless client 把它們理解成新資料入口主線。
 
 ## 一句話架構
 
@@ -254,6 +259,9 @@ UI 測試中的 mock `Study` 仍走 legacy fallback，避免 unit test 用不完
 `XBrainLab.backend.application.automation` 是新的 headless / MCP-ready adapter。它輸出
 `ApplicationService` command schema、MCP-shaped tool specs 和 live capability / autonomy
 policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `ApplicationService.execute()`。
+同一個 schema 也會標出 legacy compatibility boundary：`load_data`、`attach_labels`、
+`import_labels` 仍可呼叫，但 metadata 明確標為非 primary workflow，並提供 Data Interpretation
+preferred commands。
 `XBrainLab.mcp.server` 是目前的 stdio MCP server baseline；它只處理 MCP lifecycle / tool
 transport，實際 tool call 仍包這層 automation adapter，而不是繞過 command layer 或直接碰
 controller internals。

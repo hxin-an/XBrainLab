@@ -4632,3 +4632,64 @@
   - This is an agent prompt/tool-exposure downgrade, not full removal of legacy compatibility paths.
   - UI post-load label compatibility and MCP/client-facing language still need continued audit.
   - No new UI screenshot or local LLM rerun was produced in this slice.
+
+### 2026-05-05 Automation / MCP legacy compatibility metadata
+
+- scope：
+  - Backend automation / MCP schema cleanup。
+  - No MCP transport change, command execution path change, UI change, or command name removal.
+- problem：
+  - `COMMAND_TAXONOMY` already marked `load_data` / `attach_labels` / `import_labels` as
+    `legacy_data_compatibility`, but command descriptions and MCP `tools/list` metadata did not
+    clearly state they were non-primary workflow tools.
+  - External MCP/headless clients could still see `Load Data` / `Attach Labels` as ordinary peer
+    tools without a preferred Data Interpretation path.
+- target boundary：
+  - `AutomationCommandSpec` owns client-facing workflow metadata alongside command schema and live
+    capability.
+  - Legacy data-entry commands remain callable but expose `legacy_compatibility=True`,
+    `primary_workflow=False`, and Data Interpretation preferred commands.
+  - MCP `tools/list` mirrors the same truth through `x_xbrainlab`.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_legacy_compatibility_commands_are_not_primary_mcp_workflow -q`
+    initially failed with `AttributeError: 'AutomationCommandSpec' object has no attribute
+    'legacy_compatibility'`.
+- 做了什麼：
+  - Added `legacy_compatibility`, `primary_workflow`, and `preferred_commands` to
+    `AutomationCommandSpec`.
+  - Added legacy command descriptions that explicitly say "Legacy compatibility" and prefer
+    Data Interpretation scan / preview / validate / apply / recipe.
+  - Added matching MCP `x_xbrainlab` metadata for external clients.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_legacy_compatibility_commands_are_not_primary_mcp_workflow -q`
+    -> `1 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/automation.py tests/unit/backend/application/test_automation.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/automation.py tests/unit/backend/application/test_automation.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py tests/integration/mcp/test_stdio_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py tests/integration/mcp/test_client_config.py -q`
+    -> `12 passed`.
+  - `timeout 120s git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `97 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/mcp -q`
+    -> `3 passed`.
+- 不能宣稱：
+  - This is schema/taxonomy cleanup, not HTTP MCP or long-running job support.
+  - It does not remove legacy commands from ApplicationService or UI compatibility flows.
+  - No new Inspector screenshot or external human MCP client session was produced in this slice.
