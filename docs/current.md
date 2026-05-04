@@ -104,7 +104,10 @@ time model、granularity 候選；wizard 會顯示可編輯的 label carrier rev
 會把 event role edit 寫成 `choices.event_roles`，也會把 label carrier role 寫進
 `label_carrier_choices`。UI replay artifact 現在可見 `class cue labels` 和
 `trial_type -> class cue`，backend unit test 也覆蓋 MAT `classlabel` / `cue_onset` / role /
-event role 寫入 recipe trace。後續 slice 又新增 format capability
+event role 寫入 recipe trace。再下一個 UI polish slice 已把 label carrier review cells 升級成
+selector controls：label field、anchor、time model、granularity 和 role 都可用 combo 選擇；
+UI replay 顯示人話 `Seconds`、`Trial`、`Class cue labels`，但 recipe choices 仍保存 backend
+需要的 `seconds`、`trial`、`class cue labels`。後續 slice 又新增 format capability
 boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
 CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
 dialog review notes 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection 尚未在

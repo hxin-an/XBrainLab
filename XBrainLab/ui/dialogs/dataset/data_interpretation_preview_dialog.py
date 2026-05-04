@@ -52,6 +52,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._metadata_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_target_widgets: dict[int, QComboBox] = {}
+        self._label_choice_widgets: dict[tuple[int, int], QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         super().__init__(
@@ -388,6 +389,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             item.setToolTip(7, "How this label carrier should be used in the recipe.")
             self._label_carrier_items.append((item, original))
             self.label_carrier_tree.addTopLevelItem(item)
+            self._install_label_carrier_selectors(item, carrier)
             if match_text == "Needs review" and self._file_count() > 1:
                 target_selector = self._label_target_selector()
                 self._label_target_widgets[id(item)] = target_selector
@@ -537,6 +539,112 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 choices[carrier_key] = changed
         return choices
 
+    def _install_label_carrier_selectors(
+        self,
+        item: QTreeWidgetItem,
+        carrier: dict[str, Any],
+    ) -> None:
+        self._set_label_choice_selector(
+            item,
+            3,
+            self._text_choices(carrier.get("label_candidates")),
+            str(carrier.get("selected_label_field") or ""),
+            "Choose the label or class column for this carrier.",
+        )
+        self._set_label_choice_selector(
+            item,
+            4,
+            self._text_choices(carrier.get("anchor_candidates")),
+            str(carrier.get("selected_anchor") or ""),
+            "Choose the time anchor that aligns labels to the EEG.",
+        )
+        self._set_label_choice_selector(
+            item,
+            5,
+            [
+                ("Trial order", "trial_order"),
+                ("Seconds", "seconds"),
+                ("Relative time", "relative_time"),
+                ("Sample index", "sample_index"),
+                ("Absolute timestamp", "absolute_timestamp"),
+            ],
+            str(carrier.get("time_model") or ""),
+            "Choose how label timing aligns to the EEG recording.",
+        )
+        self._set_label_choice_selector(
+            item,
+            6,
+            [
+                ("Trial", "trial"),
+                ("Event", "event"),
+                ("Epoch", "epoch"),
+                ("Segment", "segment"),
+                ("Session", "session"),
+                ("Subject", "subject"),
+                ("Sample", "sample"),
+            ],
+            str(carrier.get("granularity") or ""),
+            "Choose the data unit each label describes.",
+        )
+        self._set_label_choice_selector(
+            item,
+            7,
+            [
+                ("External labels", "external labels"),
+                ("Class cue labels", "class cue labels"),
+                ("Trial anchors", "trial anchors"),
+                ("Response labels", "response labels"),
+                ("Artifact markers", "artifact markers"),
+                ("Ignored markers", "ignored markers"),
+            ],
+            str(carrier.get("role") or "external labels"),
+            "Choose how this carrier should be used in the recipe.",
+        )
+
+    def _set_label_choice_selector(
+        self,
+        item: QTreeWidgetItem,
+        column: int,
+        choices: list[tuple[str, str]],
+        current_value: str,
+        tooltip: str,
+    ) -> None:
+        if not choices and not current_value:
+            return
+        selector = QComboBox(self.label_carrier_tree)
+        selector.setToolTip(tooltip)
+        if not current_value:
+            selector.addItem("Needs review", "")
+        seen_values: set[str] = {""} if not current_value else set()
+        for display, value in choices:
+            if value in seen_values:
+                continue
+            selector.addItem(display, value)
+            seen_values.add(value)
+        if current_value and current_value not in seen_values:
+            selector.addItem(self._label_choice_display(current_value), current_value)
+        current_index = selector.findData(current_value)
+        if current_index >= 0:
+            selector.setCurrentIndex(current_index)
+        self._label_choice_widgets[(id(item), column)] = selector
+        self.label_carrier_tree.setItemWidget(item, column, selector)
+
+    @staticmethod
+    def _text_choices(values: Any) -> list[tuple[str, str]]:
+        if not isinstance(values, list):
+            return []
+        choices: list[tuple[str, str]] = []
+        for value in values:
+            text = str(value).strip()
+            if text:
+                choices.append((text, text))
+        return choices
+
+    @staticmethod
+    def _label_choice_display(value: str) -> str:
+        cleaned = value.replace("_", " ").strip()
+        return cleaned[:1].upper() + cleaned[1:] if cleaned else value
+
     def _label_target_selector(self) -> QComboBox:
         selector = QComboBox(self.label_carrier_tree)
         selector.addItem("Needs review")
@@ -552,6 +660,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
             selector = self._label_target_widgets.get(id(item))
             if selector is not None:
                 return selector.currentText()
+        choice_selector = self._label_choice_widgets.get((id(item), column))
+        if choice_selector is not None:
+            value = choice_selector.currentData()
+            return str(value) if value is not None else choice_selector.currentText()
         return item.text(column)
 
     @staticmethod

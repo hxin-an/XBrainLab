@@ -155,6 +155,15 @@ def tree_rows(tree: QTreeWidget) -> list[list[str]]:
     return rows
 
 
+def set_tree_cell(tree: QTreeWidget, item: Any, column: int, text: str) -> None:
+    """Set a tree cell through its widget when the column has an editor."""
+    widget = tree.itemWidget(item, column)
+    if isinstance(widget, QComboBox):
+        widget.setCurrentText(text)
+    else:
+        item.setText(column, text)
+
+
 def sanitized(value: Any) -> Any:
     """Replace machine-local paths with stable replay tokens."""
     if isinstance(value, dict):
@@ -206,11 +215,16 @@ def capture_replay(app: QApplication) -> int:
                     target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
                 else:
                     label_item.setText(1, SECOND_SOURCE_PATH.name)
-                label_item.setText(3, "trial_type")
-                label_item.setText(4, "onset")
-                label_item.setText(5, "seconds")
-                label_item.setText(6, "trial")
-                label_item.setText(7, "class cue labels")
+                set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")
+                set_tree_cell(dialog.label_carrier_tree, label_item, 4, "onset")
+                set_tree_cell(dialog.label_carrier_tree, label_item, 5, "Seconds")
+                set_tree_cell(dialog.label_carrier_tree, label_item, 6, "Trial")
+                set_tree_cell(
+                    dialog.label_carrier_tree,
+                    label_item,
+                    7,
+                    "Class cue labels",
+                )
             for index in range(dialog.event_tree.topLevelItemCount()):
                 event_item = dialog.event_tree.topLevelItem(index)
                 if event_item is not None and event_item.text(0) == "trial_type":

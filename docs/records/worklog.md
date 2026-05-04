@@ -3336,3 +3336,27 @@
   - 這支撐 role review 已進 Data Interpretation recipe UI。
   - 仍不是完整 embedded post-load label editor、raw trigger selector、全格式 real-data
     certification 或真人 click-through。
+
+### 2026-05-04 Data Interpretation label carrier selectors
+
+- 做了什麼：
+  - label carrier review 的 label field、anchor、time model、granularity、role 欄位改用
+    `QComboBox` selectors。
+  - selector 顯示人話選項，例如 `Seconds`、`Trial`、`Class cue labels`。
+  - `get_result()` 從 combo `itemData` 讀 recipe value，保存 `seconds`、`trial` 等 backend 值。
+  - replay script 改用 selector 操作並刷新 screenshots / JSON。
+- TDD：
+  - selector-focused UI test 初跑失敗，因欄位沒有 combo widget。
+- 驗證：
+  - full dialog suite -> `9 passed`。
+  - DatasetActionHandler suite -> `47 passed`。
+  - focused ApplicationService recipe flow -> `1 passed`。
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`。
+  - replay JSON 顯示 visible row 使用 `Seconds` / `Trial` / `Class cue labels`，choices 使用
+    `seconds` / `trial` / `class cue labels`。
+  - targeted `ruff check` / `ruff format --check` clean。
+  - targeted `basedpyright` clean。
+- 不能宣稱：
+  - 這支撐 label carrier review selector UX。
+  - 仍不是完整 embedded post-load label editor、raw trigger selector、全格式 real-data
+    certification 或真人 click-through。

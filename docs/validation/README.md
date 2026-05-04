@@ -1380,6 +1380,41 @@ compatibility matrix 或真人 click-through。
 並把這些語意保存到 recipe choices / backend recipe。它仍不是完整 post-load label import
 內嵌 editor、raw trigger selector、全格式 real-data certification 或真人 click-through。
 
+2026-05-04 Data Interpretation label carrier selector UI：
+
+- UI:
+  - label carrier review columns for label field, anchor, time model, granularity, and role now use
+    `QComboBox` selectors instead of requiring free-form cell typing.
+  - selector display text is user-facing for controlled values, e.g. `Seconds`, `Trial`, and
+    `Class cue labels`.
+  - `get_result()` reads combo `itemData` so recipe choices still carry backend values such as
+    `seconds`, `trial`, and `class cue labels`.
+- TDD evidence:
+  - focused selector test first failed because label/anchor/time/granularity/role cells had no
+    combo widgets.
+- replay artifact refreshed:
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON visible row:
+    `events.tsv -> sub-01_task-mi_run-2_raw.fif -> BIDS events -> trial_type -> onset -> Seconds -> Trial -> Class cue labels`
+  - replay JSON recipe choices still use `time_model=seconds` and `granularity=trial`.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `9 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `47 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe -q`
+  - `1 passed`
+  - targeted `ruff check` / `ruff format --check` -> pass.
+  - `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 import wizard label carrier review 的使用性改善：使用者不再需要手打主要
+review 欄位。它仍不是完整 embedded post-load label import editor、raw trigger selector、
+全格式 real-data certification 或真人 click-through。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

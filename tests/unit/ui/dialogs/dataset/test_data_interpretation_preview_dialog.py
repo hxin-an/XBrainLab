@@ -167,10 +167,77 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
     assert "classlabel" in carrier_item.toolTip(3)
     assert "cue_onset" in carrier_item.toolTip(4)
 
-    carrier_item.setText(3, "classlabel")
-    carrier_item.setText(4, "cue_onset")
-    carrier_item.setText(5, "sample_index")
-    carrier_item.setText(7, "class cue labels")
+    label_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 3)
+    anchor_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 4)
+    time_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 5)
+    role_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 7)
+    assert isinstance(label_selector, QComboBox)
+    assert isinstance(anchor_selector, QComboBox)
+    assert isinstance(time_selector, QComboBox)
+    assert isinstance(role_selector, QComboBox)
+    label_selector.setCurrentText("classlabel")
+    anchor_selector.setCurrentText("cue_onset")
+    time_selector.setCurrentText("Sample index")
+    role_selector.setCurrentText("Class cue labels")
+
+    result = dialog.get_result()
+
+    assert result["choices"]["label_carrier_choices"] == {
+        label_path: {
+            "label_field": "classlabel",
+            "anchor": "cue_onset",
+            "time_model": "sample_index",
+            "granularity": "trial",
+            "role": "class cue labels",
+        }
+    }
+
+
+def test_data_interpretation_preview_dialog_uses_label_carrier_selectors(qtbot):
+    label_path = "/tmp/source/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [label_path],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "label_candidates": ["classlabel", "target"],
+                    "anchor_candidates": ["cue_onset", "trial"],
+                    "selected_label_field": "classlabel",
+                    "selected_anchor": "trial",
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "role": "external labels",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    carrier_item = dialog.label_carrier_tree.topLevelItem(0)
+    assert carrier_item is not None
+    label_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 3)
+    anchor_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 4)
+    time_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 5)
+    granularity_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 6)
+    role_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 7)
+    assert isinstance(label_selector, QComboBox)
+    assert isinstance(anchor_selector, QComboBox)
+    assert isinstance(time_selector, QComboBox)
+    assert isinstance(granularity_selector, QComboBox)
+    assert isinstance(role_selector, QComboBox)
+
+    anchor_selector.setCurrentText("cue_onset")
+    time_selector.setCurrentText("Sample index")
+    role_selector.setCurrentText("Class cue labels")
 
     result = dialog.get_result()
 

@@ -239,6 +239,8 @@
     roles、class map 和 recipe trace。
   - label carrier role 和 event role 現在也能在同一 wizard 裡編輯並回寫 recipe choices；
     replay JSON 顯示 `class cue labels` 與 `trial_type -> class cue`。
+  - label carrier review cells 已從手打文字升級成 selector controls；UI 顯示 `Seconds` /
+    `Trial` / `Class cue labels`，recipe choices 仍保存 backend value。
   - replay artifact `artifacts/ui/data-interpretation-preview.png` 已刷新，JSON 也記錄
     `metadata_overrides` 和 TSV / BIDS-events label carrier choices；backend unit test 也覆蓋
     MAT `classlabel` / `cue_onset` recipe trace。

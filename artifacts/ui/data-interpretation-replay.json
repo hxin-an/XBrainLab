@@ -3179,9 +3179,9 @@
           "BIDS events",
           "trial_type",
           "onset",
-          "seconds",
-          "trial",
-          "class cue labels"
+          "Seconds",
+          "Trial",
+          "Class cue labels"
         ]
       ],
       "review_notes": "Warnings:\n- Multiple EEG files were discovered; subject/session/run mapping should be reviewed.\n- External label/event carriers require preview before apply.\nConfirmations:\n- Confirm label carrier alignment, anchor event, and class map before applying.\n- Confirm session metadata for sub-01_task-mi_run-1_raw.fif.\n- Confirm session metadata for sub-01_task-mi_run-2_raw.fif.\nDownstream impact:\n- Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session.\nFormat capabilities:\n- BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
