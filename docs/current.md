@@ -138,8 +138,14 @@ tool / debug syntax，UI 回到 idle。這證明 true local model 能在 ChatPan
 `artifacts/ui/chatpanel-local-tool/chatpanel-local-walkthrough.json` / `.md` 顯示 local model
 執行 `query_state`，executed tool 為 `ok`，visible assistant transcript 是
 `Application state snapshot ready.`，沒有 raw `Tool Output`、schema 或 traceback，UI 回到
-idle。這仍不證明多輪 tool execution workflow、長時間 assistant 操作或 Windows launcher
-人工 click-through 已驗收。
+idle。下一個 multi-turn ChatPanel slice 暴露並修掉一個真多輪 blocker：第一 turn tool output
+曾把完整 state JSON 放回 conversation history，導致第二 turn prompt 膨脹到約 `10.7k` input
+tokens 並讓 local model timeout。`LLMController._format_tool_output()` 現在只把 compact
+tool feedback / `state_summary` / small diagnostics 放回下一輪；新 artifact
+`artifacts/ui/chatpanel-local-workflow/chatpanel-local-workflow-walkthrough.json` / `.md` 顯示
+兩個 UI turns：第一 turn 執行 `query_state`，第二 turn 在同一 conversation 中正常回覆
+preprocessing 說明，input tokens 降到約 `2.46k`，UI 回到 idle。這仍不是完整長時間
+tool-command chain 或 Windows launcher 人工 click-through。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
 `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
@@ -379,9 +385,9 @@ release closure。
   typed result。visible transcript 只顯示使用者語言；raw tool payload 保留在 diagnostics。
   `set_montage` 和 `switch_panel` 仍是 UI request path；真正 montage apply 在 confirmation
   後走 `ApplyMontageCommand`。
-- 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一般回覆 walkthrough 和
-  單步 `query_state` tool-command walkthrough artifact，但還不是多輪 tool-command / 長時間
-  workflow 驗收。
+- 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一般回覆 walkthrough、
+  單步 `query_state` tool-command walkthrough、以及兩 turn workflow walkthrough artifact，但還
+  不是長時間 tool-command chain 驗收。
 - Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
   fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
 - `tests/integration/ui/test_product_walkthrough.py` 仍是 synthetic / patched training
@@ -395,8 +401,9 @@ release closure。
 - tool-call eval 已有 deterministic baseline 和 primary / fallback 真 local model runner；最新
   primary / fallback `100` thesis-candidate cases x `3` 都是 `100 / 100` pass。這解除
   先前 `54` case 數不足和 bandpass-vs-standard preprocess failure。ChatPanel true local
-  model one-turn UI walkthrough 也已通過，但這些仍不能替代 Windows launcher click-through、
-  multi-turn tool-command ChatPanel workflow 或 UI import wizard 產品驗收。
+  model one-turn、單步 tool-command 和兩 turn workflow walkthrough 也已通過，但這些仍不能替代
+  真人 Windows launcher click-through、長時間 tool-command chain 或完整 UI import wizard
+  產品驗收。
 - Data Interpretation backend command baseline、agent tool exposure、Dataset panel main
   import entry、recipe save option、headless/MCP-ready command schema、stdio MCP server
   baseline、deterministic eval cases、第一版 UI-observable replay artifact 和 wizard review
@@ -407,7 +414,7 @@ release closure。
 ## 目前執行中
 
 1. 等待真 Windows Desktop launcher click-through。
-2. 補 true local LLM ChatPanel multi-turn / tool-command walkthrough。
+2. 擴 true local LLM ChatPanel walkthrough 到長時間 tool-command chain。
 3. 補真正 UI button-click 到 training / evaluation / visualization completion 的 E2E。
 4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。

@@ -115,6 +115,17 @@
     artifact 未出現 raw `Tool Output`、schema 或 traceback，UI 回到 idle。
   - 這支撐單步 tool execution 可以經 ChatPanel 以產品語言回覆；仍不代表 multi-turn
     workflow、長時間 tool-command chain 或 Windows launcher click-through 已完成。
+- ChatPanel true local-model two-turn workflow walkthrough 已新增：
+  - 首次嘗試暴露真 blocker：`query_state` 成功後，完整 state JSON 被寫回 conversation
+    history，第二 turn prompt 約 `10.7k` input tokens，local model timeout。
+  - controller 已改成 compact tool-history feedback：下一輪只保留 message、capability、
+    `state_summary` 和 small diagnostics，不再餵 full state / raw result。
+  - artifact：`artifacts/ui/chatpanel-local-workflow/chatpanel-local-workflow-walkthrough.json` /
+    `.md`，含 ready / turn screenshots。
+  - evidence 顯示 turn 1 執行 `query_state`，turn 2 在同一 conversation 正常回答 preprocessing
+    follow-up，UI idle，visible transcript 無 raw tool/debug syntax。
+  - 這支撐 basic multi-turn local ChatPanel continuity；仍不是長時間 tool-command chain、完整
+    workflow 自動操作或人工 release walkthrough。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
@@ -138,7 +149,7 @@
 下一個 goal 應聚焦在產品硬化，而不是重做 Goal 1 baseline：
 
 ```text
-True local LLM ChatPanel multi-turn / tool-command workflow
+True local LLM ChatPanel long-running tool-command workflow
   + label/recipe wizard hardening
   + MCP Inspector / release config
   + Windows launcher click-through

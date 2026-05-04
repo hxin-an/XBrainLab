@@ -37,6 +37,37 @@
 
 ## 2026-05-04
 
+### 11:44 ChatPanel multi-turn compact tool history
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_chatpanel_local_workflow_walkthrough.py`，用真 MainWindow /
+    ChatPanel / local model 連送兩個 prompts。
+  - 首次 run 暴露 blocker：turn 1 `query_state` 成功後，完整 state JSON 放進 conversation
+    history，turn 2 prompt 約 `10.7k` input tokens，Phi-4 mini generation timeout。
+  - 修改 `LLMController._format_tool_output()`，ToolCommandResult 給下一輪 LLM 的內容改成 compact
+    payload：message、capability、`state_summary`、small diagnostics；不再放 full state /
+    raw_result。
+  - 新增 controller regression，確保 tool history 不含 raw state / raw_result。
+- 結果：
+  - 重新跑 multi-turn walkthrough passed。
+  - turn 1 executed tool：`query_state` `ok`。
+  - turn 2 在同一 conversation 中正常回答 preprocessing follow-up，run log input tokens 約 `2.46k`，
+    duration 約 `945ms`。
+  - visible transcript 無 raw `Tool Output`、schema、traceback，UI 回到 idle。
+- 證據：
+  - `artifacts/ui/chatpanel-local-workflow/chatpanel-workflow-ready.png`
+  - `artifacts/ui/chatpanel-local-workflow/chatpanel-workflow-turn-1.png`
+  - `artifacts/ui/chatpanel-local-workflow/chatpanel-workflow-turn-2.png`
+  - `artifacts/ui/chatpanel-local-workflow/chatpanel-local-workflow-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-workflow/chatpanel-local-workflow-walkthrough.md`
+  - `timeout 520s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_workflow_walkthrough.py --output-dir artifacts/ui/chatpanel-local-workflow --timeout-seconds 480`
+    -> exit `0`
+  - targeted controller tests -> `2 passed`
+  - workflow script renderer test -> `1 passed`
+- 接續 / 本輪剩餘：
+  - 這是 basic two-turn continuity，不是長時間 autonomous tool-command chain。
+  - 真資料 import -> preprocess -> epoch -> train 的 ChatPanel 操作鏈仍未完成。
+
 ### 11:26 Windows launcher automated command walkthrough
 
 - 做了什麼：

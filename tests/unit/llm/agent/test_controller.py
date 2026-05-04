@@ -683,6 +683,41 @@ class TestPipelineGate:
         assert payload["ok"] is True
         assert payload["command_name"] == "preprocess"
 
+    def test_tool_output_history_uses_compact_state_summary(self, ctrl):
+        result = ToolCommandResult(
+            ok=True,
+            tool_name="query_state",
+            command_name="query_state",
+            message="Application state snapshot ready.",
+            state={
+                "pipeline_stage": "empty",
+                "raw": {
+                    "loaded": False,
+                    "count": 0,
+                    "metadata": [{"large": "payload"}],
+                    "diagnostics": {"verbose": "details"},
+                },
+                "training": {
+                    "has_model": False,
+                    "missing_requirements": ["Data Splitting"],
+                },
+            },
+            diagnostics={"payload_type": "state_snapshot", "state": {"too": "big"}},
+            raw_result={"status": "ok", "state": {"too": "big"}},
+        )
+
+        payload = json.loads(ctrl._format_tool_output("query_state", True, result))
+
+        assert payload["message"] == "Application state snapshot ready."
+        assert payload["state_summary"]["pipeline_stage"] == "empty"
+        assert payload["state_summary"]["raw"] == {"loaded": False, "count": 0}
+        assert payload["state_summary"]["training"]["missing_requirements"] == [
+            "Data Splitting"
+        ]
+        assert payload["diagnostics"] == {"payload_type": "state_snapshot"}
+        assert "raw_result" not in payload
+        assert "state" not in payload
+
     def test_train_blocked_until_backend_ready(self, ctrl):
         """Train is blocked until dataset/model/training options exist."""
         from XBrainLab.backend.study import Study

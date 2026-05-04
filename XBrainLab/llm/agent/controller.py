@@ -1417,7 +1417,8 @@ class LLMController(QObject):
     def _format_tool_output(command_name: str, success: bool, result: Any) -> str:
         """Serialize tool output so the next LLM turn sees structured state."""
         if isinstance(result, ToolCommandResult):
-            return json.dumps(result.to_payload(), ensure_ascii=False, default=str)
+            payload = LLMController._compact_tool_payload(result)
+            return json.dumps(payload, ensure_ascii=False, default=str)
 
         payload = {
             "ok": bool(success),
@@ -1430,6 +1431,115 @@ class LLMController(QObject):
         except (TypeError, ValueError):
             payload["raw_result"] = str(result)
             return json.dumps(payload, ensure_ascii=False)
+
+    @staticmethod
+    def _compact_tool_payload(result: ToolCommandResult) -> dict[str, Any]:
+        """Return tool feedback compact enough for the next local-model turn."""
+        payload: dict[str, Any] = {
+            "ok": result.ok,
+            "tool_name": result.tool_name,
+            "command_name": result.command_name,
+            "message": result.message,
+            "error_type": result.error_type,
+            "recoverable": result.recoverable,
+            "blocked_reason": result.blocked_reason,
+        }
+        if result.capability:
+            payload["capability"] = {
+                key: result.capability.get(key)
+                for key in (
+                    "command_name",
+                    "enabled",
+                    "reasons",
+                    "requires_confirmation",
+                    "decision_boundary",
+                    "continue_allowed_after_success",
+                )
+                if key in result.capability
+            }
+        state_summary = LLMController._compact_state_summary(result.state)
+        if state_summary:
+            payload["state_summary"] = state_summary
+        diagnostics = LLMController._compact_tool_diagnostics(result.diagnostics)
+        if diagnostics:
+            payload["diagnostics"] = diagnostics
+        return payload
+
+    @staticmethod
+    def _compact_state_summary(state: dict[str, Any] | None) -> dict[str, Any]:
+        """Keep only workflow readiness fields needed for follow-up turns."""
+        if not isinstance(state, dict):
+            return {}
+
+        def pick(section: str, keys: tuple[str, ...]) -> dict[str, Any]:
+            value = state.get(section)
+            if not isinstance(value, dict):
+                return {}
+            return {key: value.get(key) for key in keys if key in value}
+
+        summary: dict[str, Any] = {}
+        if "pipeline_stage" in state:
+            summary["pipeline_stage"] = state.get("pipeline_stage")
+        for section, keys in {
+            "raw": ("loaded", "count", "files", "formats", "event_total"),
+            "preprocessed": (
+                "available",
+                "count",
+                "is_epoched",
+                "operations",
+            ),
+            "epoch": ("available", "exists", "epoch_count", "event_names"),
+            "dataset": ("available", "count", "names", "locked"),
+            "training": (
+                "has_model",
+                "has_training_option",
+                "has_trainer",
+                "is_running",
+                "missing_requirements",
+            ),
+            "interpretation": (
+                "has_scan_result",
+                "has_candidate",
+                "has_preview",
+                "has_validation_decision",
+                "has_applied_interpretation",
+                "has_recipe",
+                "validation_decision",
+                "pending_confirmation",
+                "blocked_reasons",
+                "summary",
+            ),
+        }.items():
+            section_summary = pick(section, keys)
+            if section_summary:
+                summary[section] = section_summary
+        last_error = state.get("last_error")
+        if isinstance(last_error, dict):
+            summary["last_error"] = {
+                key: last_error.get(key)
+                for key in ("error_type", "message", "recoverable")
+                if key in last_error
+            }
+        return summary
+
+    @staticmethod
+    def _compact_tool_diagnostics(diagnostics: dict[str, Any]) -> dict[str, Any]:
+        """Keep small diagnostics fields while dropping full raw/state payloads."""
+        if not isinstance(diagnostics, dict):
+            return {}
+        compact: dict[str, Any] = {}
+        for key in (
+            "payload_type",
+            "success_count",
+            "errors",
+            "label_carriers_pending",
+            "recipe_updated",
+            "tool_name",
+            "command_name",
+        ):
+            if key in diagnostics:
+                compact[key] = diagnostics[key]
+        return compact
 
     def _on_worker_error(self, error_msg):
         """Handle a fatal worker error by notifying the UI.

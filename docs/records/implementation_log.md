@@ -28,6 +28,63 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 ChatPanel multi-turn compact tool history
+
+### 背景
+
+ChatPanel 已有 one-turn local response 和 one-turn `query_state` tool-command evidence，但
+multi-turn capture 暴露真產品問題：第一次 tool call 成功後，controller 把完整 ApplicationService
+state/raw result 寫回 conversation history。第二輪 prompt 膨脹到約 `10.7k` input tokens，
+Phi-4 mini local backend timeout，使用者只會看到 timeout error。
+
+### 變更
+
+- 新增 `scripts/dev/capture_chatpanel_local_workflow_walkthrough.py`：
+  - 強制 HF / Transformers offline。
+  - 開真 `MainWindow` / `ChatPanel`。
+  - turn 1 要求 state query tool。
+  - turn 2 在同一 conversation 中送 no-tool follow-up。
+  - 保存 ready / turn screenshots、visible transcript、executed tools、UI idle state。
+- `LLMController._format_tool_output()` 對 `ToolCommandResult` 改用 compact payload：
+  - 保留 `ok`、tool / command name、message、error type、blocked reason。
+  - 保留 compact capability。
+  - 保留 compact `state_summary`。
+  - 只保留 small diagnostics keys。
+  - 不再把 full `state` / `raw_result` 餵回下一輪 LLM。
+- 新增 controller regression，確保 compact tool history 不含 raw state/raw result。
+
+### 影響範圍
+
+- Local-model multi-turn ChatPanel behavior。
+- Agent controller conversation history。
+- UI workflow artifact scripts。
+- Validation / current / planning / records docs。
+
+### 驗證
+
+- failing diagnosis:
+  - first multi-turn attempt after `query_state` produced turn 2 timeout with about `10.7k` input tokens。
+- passing walkthrough:
+  - `timeout 520s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_workflow_walkthrough.py --output-dir artifacts/ui/chatpanel-local-workflow --timeout-seconds 480`
+  - status `passed`
+  - turn 1 executed `query_state`
+  - turn 2 completed in the same conversation with about `2.46k` input tokens
+  - visible transcript contains no raw tool/debug syntax
+  - UI returned idle
+- tests:
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_tool_output_history_uses_compact_state_summary tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_allowed_tool_executes -q`
+  - `2 passed`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_workflow_walkthrough.py -q`
+  - `1 passed`
+- focused static checks:
+  - touched controller / workflow script files passed `ruff`
+  - touched controller / workflow script files passed `basedpyright`
+
+### 剩餘風險
+
+- 這只證明 basic two-turn continuity，不是長時間 autonomous tool-command chain。
+- ChatPanel 仍需要真 import / preprocess / epoch / train 操作 walkthrough，才能支撐產品完成宣稱。
+
 ## 2026-05-04 Windows launcher automated command walkthrough
 
 ### 背景
