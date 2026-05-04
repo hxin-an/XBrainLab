@@ -37,6 +37,47 @@
 
 ## 2026-05-05
 
+### 07:23 Data Interpretation recipe reload rehydration
+
+- 做了什麼：
+  - 盤點 roadmap 的 recipe reload gap，發現 `ReloadInterpretationRecipeCommand` 雖然會重新
+    scan / preview / validate，但只把 `recipe_id` 傳給 candidate builder，saved metadata /
+    label carrier / event role / class map choices 都會流失。
+  - 先改 non-mocked backend workflow：保存含 metadata override、event role、class map 的
+    recipe，reload 後要求 candidate choices / event roles / class map / recipe trace 都保留。
+    測試先紅燈，確認舊 reload 只剩 `recipe_id`。
+  - 新增 `choices_from_import_recipe()`，把 saved selected EEG files、metadata overrides、
+    label carrier choices、event roles 和 class map rehydrated 回 candidate choices。
+  - `ReloadInterpretationRecipeCommand` 改用 rehydrated choices 後再 build candidate /
+    preview / validation。
+  - 補 `ImportRecipe.write_json()` trailing newline，避免 regenerated recipe artifact 只有 EOF diff。
+  - 刷新 consolidated human-like walkthrough artifact。
+- 結果：
+  - Human-like walkthrough reload command result 現在可見 `metadata_overrides`、
+    `label_carrier_choices`、`event_roles` 和 `selected_eeg_files`。
+  - Reload candidate recipe trace 現在含 `choices:metadata_overrides`、
+    `choices:event_roles` 和 `choices:label_carriers`。
+  - consolidated human-like walkthrough offscreen rerun 通過：`26 / 26` required phases、`20`
+    screenshots、`human_desktop_acceptance=not performed`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py::test_choices_from_import_recipe_recreates_review_choices -q`
+    -> 初始紅燈：`choices_from_import_recipe` 尚不存在。
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> 初始紅燈：reload candidate 沒有 `metadata_overrides`。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py::test_build_import_recipe_preserves_applied_trace_and_writes_json -q`
+    -> 初始紅燈：recipe JSON 沒有 trailing newline。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py -q`
+    -> `4 passed`。
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `1 passed`。
+  - focused `ruff check` / `basedpyright` for recipe/service/workflow files -> pass / `0 errors`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`，refreshed consolidated walkthrough artifacts。
+- 接續 / 本輪剩餘：
+  - 這是 backend recipe rehydration，不是 user-facing recipe diff UI；完整 diff / conflict
+    explanation、raw trigger selector、complex anchor reconciliation 和 Windows human acceptance
+    仍未完成。
+
 ### 07:07 Data Interpretation event role selector UI
 
 - 做了什麼：

@@ -24,6 +24,7 @@ ScanResult = _scan.ScanResult
 ValidationDecision = _review.ValidationDecision
 build_interpretation_candidate = _candidate.build_interpretation_candidate
 build_import_recipe = _recipe.build_import_recipe
+choices_from_import_recipe = _recipe.choices_from_import_recipe
 build_interpretation_preview = _review.build_interpretation_preview
 import_recipe_from_dict = _recipe.import_recipe_from_dict
 load_import_recipe = _recipe.load_import_recipe

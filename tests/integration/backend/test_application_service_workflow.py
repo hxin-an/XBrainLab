@@ -191,7 +191,19 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     recipe_path = tmp_path / "synthetic_import_recipe.json"
 
     scan_result = service.execute(ScanSourceCommand(source_path=str(fif_path)))
-    preview_result = service.execute(PreviewInterpretationCommand())
+    recipe_choices = {
+        "metadata_overrides": {
+            fif_path.name: {
+                "subject": "S01",
+                "task": "motor-imagery",
+            }
+        },
+        "event_roles": {"internal_events": "class cue"},
+        "class_map": {"1": "left", "2": "right"},
+    }
+    preview_result = service.execute(
+        PreviewInterpretationCommand(choices=recipe_choices),
+    )
     validation_result = service.execute(ValidateInterpretationCommand())
 
     assert scan_result.ok is True
@@ -234,6 +246,16 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert reload_result.state.raw.loaded is False
     assert reload_result.state.interpretation.has_preview is True
     assert reload_result.state.interpretation.has_validation_decision is True
+    reloaded_candidate = reload_result.diagnostics["candidate"]
+    assert (
+        reloaded_candidate["choices"]["metadata_overrides"]
+        == (recipe_choices["metadata_overrides"])
+    )
+    assert reloaded_candidate["event_roles"]["internal_events"] == "class cue"
+    assert reloaded_candidate["class_map"] == {"1": "left", "2": "right"}
+    assert "choices:metadata_overrides" in reloaded_candidate["recipe_trace"]
+    assert "choices:event_roles" in reloaded_candidate["recipe_trace"]
+    assert "choices:class_map" in reloaded_candidate["recipe_trace"]
 
     preprocess_result = service.execute(
         PreprocessCommand(

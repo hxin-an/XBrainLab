@@ -26,6 +26,7 @@ from .data_interpretation import (
     build_import_recipe,
     build_interpretation_candidate,
     build_interpretation_preview,
+    choices_from_import_recipe,
     load_import_recipe,
     scan_source_path,
     validate_interpretation_candidate,
@@ -240,7 +241,7 @@ class DataInterpretationCommandService:
         candidate = build_interpretation_candidate(
             candidate_id=candidate_id,
             scan=scan,
-            choices={"recipe_id": recipe.recipe_id},
+            choices=choices_from_import_recipe(recipe),
         )
         preview_id = self.state.next_id("preview")
         preview = build_interpretation_preview(

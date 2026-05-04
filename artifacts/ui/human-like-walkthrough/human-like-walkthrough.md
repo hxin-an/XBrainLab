@@ -3,7 +3,7 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `3.784`
+- elapsed seconds: `3.79`
 - source: `<walkthrough_source>`
 - recipe: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
@@ -118,9 +118,9 @@
 
 ## Resource Notes
 
-- start: threads `1`, qt active `0`, rss `835924` KB
-- before_close: threads `1`, qt active `0`, rss `1060612` KB
-- after_close: threads `1`, qt active `0`, rss `1060612` KB
+- start: threads `1`, qt active `0`, rss `836216` KB
+- before_close: threads `1`, qt active `0`, rss `1059376` KB
+- after_close: threads `1`, qt active `0`, rss `1059376` KB
 
 ## Remaining Human Verification
 

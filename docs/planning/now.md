@@ -112,6 +112,11 @@
   也把 event role rows 改成 selector，不再要求使用者手打 role text。Replay artifact 現在保存
   `event_rows`，可見 `trial_type -> Class cue`，recipe choices 仍保存 backend value
   `class cue`。
+- Recipe reload 現在不只重掃 source path：`ReloadInterpretationRecipeCommand` 會把 saved
+  selected files、metadata overrides、label carrier choices、event roles 和 class map rehydrated
+  回 candidate `choices` 後再 preview / validate。Human-like walkthrough reload command result
+  可見 `choices:event_roles` / `choices:label_carriers` trace；完整 user-facing recipe diff UI
+  仍未完成。
 - `apply_interpretation` capability 現在會套用 raw-edit blockers；已有 epoch / dataset /
   trainer 或 locked raw data 時，agent / MCP 不能繞過 UI lock 直接 apply 新資料，必須先 reset
   或 new session。

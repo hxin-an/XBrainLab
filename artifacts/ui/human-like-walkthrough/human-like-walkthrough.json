@@ -12595,33 +12595,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -13179,9 +13183,9 @@
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
               "time_model": "seconds",
-              "granularity": "event",
-              "role": "external labels",
-              "selected_target_file": "",
+              "granularity": "trial",
+              "role": "class cue labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
@@ -13190,7 +13194,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "time_model": "sample_index_or_annotation_time",
@@ -13200,33 +13204,37 @@
               "file": "<walkthrough_source>/sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -13328,16 +13336,45 @@
           ],
           "confirmation_items": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
             "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "choices": {
-            "recipe_id": "recipe-7"
+            "recipe_id": "recipe-7",
+            "selected_eeg_files": [
+              "<walkthrough_source>/sub-01_task-mi_run-1_raw.fif",
+              "<walkthrough_source>/sub-01_task-mi_run-2_raw.fif"
+            ],
+            "metadata_overrides": {
+              "sub-01_task-mi_run-1_raw.fif": {
+                "subject": "S01",
+                "session": "session-01",
+                "task": "motor-imagery"
+              }
+            },
+            "label_carrier_choices": {
+              "<walkthrough_source>/events.tsv": {
+                "target_file": "sub-01_task-mi_run-2_raw.fif",
+                "label_field": "trial_type",
+                "anchor": "onset",
+                "time_model": "seconds",
+                "granularity": "trial",
+                "role": "class cue labels"
+              }
+            },
+            "event_roles": {
+              "duration": "event duration",
+              "label_carrier": "external label or event source",
+              "onset": "time anchor",
+              "trial_type": "class cue"
+            }
           },
           "recipe_trace": [
             "scan:scan-8",
-            "candidate:candidate-9"
+            "candidate:candidate-9",
+            "choices:metadata_overrides",
+            "choices:event_roles",
+            "choices:label_carriers"
           ]
         },
         "preview": {
@@ -13360,9 +13397,9 @@
               "selected_label_field": "trial_type",
               "selected_anchor": "onset",
               "time_model": "seconds",
-              "granularity": "event",
-              "role": "external labels",
-              "selected_target_file": "",
+              "granularity": "trial",
+              "role": "class cue labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
@@ -13372,33 +13409,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -13500,7 +13541,6 @@
           ],
           "confirmation_items": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
             "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
@@ -13511,7 +13551,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {}
         },
@@ -13528,7 +13568,6 @@
           ],
           "required_confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
             "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
@@ -13686,33 +13725,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -14041,33 +14084,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -14407,33 +14454,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -14798,33 +14849,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -15181,33 +15236,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -15559,33 +15618,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -15944,33 +16007,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -16323,33 +16390,37 @@
               "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": "01",
-                "source": "bids_entity",
+                "value": "S01",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "subject resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "S01",
                 "recipe_trace": [
-                  "bids:sub"
+                  "bids:sub",
+                  "metadata_override:subject"
                 ]
               },
               "session": {
                 "field": "session",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "session BIDS entity is not present for this file.",
-                "override": null,
-                "recipe_trace": []
+                "value": "session-01",
+                "source": "user_override",
+                "decision": "safe",
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "session-01",
+                "recipe_trace": [
+                  "metadata_override:session"
+                ]
               },
               "task": {
                 "field": "task",
-                "value": "mi",
-                "source": "bids_entity",
+                "value": "motor-imagery",
+                "source": "user_override",
                 "decision": "safe",
-                "reason": "task resolved from BIDS entity.",
-                "override": null,
+                "reason": "User confirmed this value in the Data Interpretation wizard.",
+                "override": "motor-imagery",
                 "recipe_trace": [
-                  "bids:task"
+                  "bids:task",
+                  "metadata_override:task"
                 ]
               },
               "run": {
@@ -17786,33 +17857,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 855757,
+      "pid": 857884,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835924
+      "max_rss_kb": 836216
     },
     {
       "label": "before_close",
-      "pid": 855757,
+      "pid": 857884,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1060612
+      "max_rss_kb": 1059376
     },
     {
       "label": "after_close",
-      "pid": 855757,
+      "pid": 857884,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1060612
+      "max_rss_kb": 1059376
     }
   ],
   "ui_quality_review": {
@@ -17972,5 +18043,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.784
+  "elapsed_seconds": 3.79
 }

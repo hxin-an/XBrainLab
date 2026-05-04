@@ -43,7 +43,7 @@ class ImportRecipe:
         target = Path(path).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
-            json.dumps(self.to_dict(), indent=2, sort_keys=True),
+            json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
@@ -119,6 +119,71 @@ def build_import_recipe(
         warnings=list(warnings),
         recipe_trace=[*applied.recipe_trace, f"recipe:{recipe_id}"],
     )
+
+
+def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
+    """Rebuild candidate choices from a saved import recipe."""
+    choices: dict[str, Any] = {"recipe_id": recipe.recipe_id}
+    if recipe.selected_eeg_files:
+        choices["selected_eeg_files"] = list(recipe.selected_eeg_files)
+    metadata_overrides = _metadata_overrides_from_recipe(recipe.metadata)
+    if metadata_overrides:
+        choices["metadata_overrides"] = metadata_overrides
+    label_carrier_choices = _label_carrier_choices_from_recipe(
+        recipe.label_carrier_plan,
+    )
+    if label_carrier_choices:
+        choices["label_carrier_choices"] = label_carrier_choices
+    if recipe.event_roles:
+        choices["event_roles"] = dict(recipe.event_roles)
+    if recipe.class_map:
+        choices["class_map"] = dict(recipe.class_map)
+    return choices
+
+
+def _metadata_overrides_from_recipe(
+    metadata: list[FileMetadataResolution],
+) -> dict[str, dict[str, str]]:
+    overrides: dict[str, dict[str, str]] = {}
+    for item in metadata:
+        file_key = Path(item.file).name or item.file
+        fields: dict[str, str] = {}
+        for field_name in ("subject", "session", "task", "run"):
+            field_value = getattr(item, field_name)
+            value = field_value.override
+            if value is None and field_value.source == "user_override":
+                value = field_value.value
+            if value not in (None, ""):
+                fields[field_name] = str(value)
+        if fields:
+            overrides[file_key] = fields
+    return overrides
+
+
+def _label_carrier_choices_from_recipe(
+    label_carrier_plan: list[dict[str, Any]],
+) -> dict[str, dict[str, str]]:
+    choices: dict[str, dict[str, str]] = {}
+    field_map = {
+        "selected_target_file": "target_file",
+        "selected_label_field": "label_field",
+        "selected_anchor": "anchor",
+        "time_model": "time_model",
+        "granularity": "granularity",
+        "role": "role",
+    }
+    for carrier in label_carrier_plan:
+        path = str(carrier.get("path") or "").strip()
+        if not path:
+            continue
+        carrier_choices = {
+            choice_key: str(carrier.get(recipe_key) or "").strip()
+            for recipe_key, choice_key in field_map.items()
+            if str(carrier.get(recipe_key) or "").strip()
+        }
+        if carrier_choices:
+            choices[path] = carrier_choices
+    return choices
 
 
 def _string_mapping(payload: Any) -> dict[str, str]:

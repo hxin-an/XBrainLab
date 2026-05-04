@@ -1986,6 +1986,39 @@ review 欄位。它仍不是完整 embedded post-load label import editor、raw 
 UI replay 會實際操作 selector 並保存 visible row。它仍不是完整 raw trigger selector、
 complex anchor reconciliation、Windows human acceptance 或全格式 real-data certification。
 
+2026-05-05 Data Interpretation recipe reload rehydration：
+
+- backend:
+  - `ReloadInterpretationRecipeCommand` now rebuilds candidate choices from the saved
+    `ImportRecipe`: selected EEG files, metadata overrides, label carrier choices, event roles,
+    and class map.
+  - `ImportRecipe.write_json()` now writes a trailing newline, avoiding regenerated artifact
+    EOF-only diffs.
+- TDD evidence:
+  - recipe unit test first failed because `choices_from_import_recipe` did not exist.
+  - non-mocked backend workflow first failed because reload candidate choices only contained
+    `recipe_id` and lost metadata / event role / class map choices.
+  - recipe writer newline test first failed because JSON was written without a trailing newline.
+- UI-observable artifact:
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+  - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` shows reload candidate
+    choices for `metadata_overrides`, `label_carrier_choices`, `event_roles`, and
+    `selected_eeg_files`.
+  - reload candidate recipe trace includes `choices:metadata_overrides`,
+    `choices:event_roles`, and `choices:label_carriers`.
+  - summary remains `26 / 26` phases and `20` screenshots, with
+    `human_desktop_acceptance=not performed`.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_recipe.py -q`
+  - `4 passed`
+  - `poetry run pytest --capture=sys tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `1 passed`
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+
+這批 evidence 支撐 recipe reload 會重新套用 saved interpretation choices 後再 preview /
+validate。它仍不是完整 user-facing recipe diff UI，也不是 human desktop acceptance。
+
 2026-05-04 Dataset Add Labels compatibility guard：
 
 - UI/action:
