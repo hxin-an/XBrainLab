@@ -117,7 +117,12 @@ Do not claim product completion yet.
 - Post-handoff update: evaluation / visualization / saliency agent-tool exposure
   has been completed. `evaluate`, `visualize`, and `saliency` are registered
   tools and route through ApplicationService. The remaining blocker is the true
-  ChatPanel dataset -> training -> analysis-readiness walkthrough.
+  ChatPanel controlled tiny training completion -> metrics / render walkthrough.
+- Post-handoff update: the dataset-ready -> model / training settings ->
+  training-confirmation boundary -> visualization/saliency readiness artifact
+  has been completed under `artifacts/ui/chatpanel-local-training-readiness/`.
+  It intentionally rejects training confirmation and does not prove actual
+  training completion.
 - Windows Desktop launcher human click-through / WSLg multi-monitor behavior has
   not been manually verified. There is automated command-path evidence only.
 - MCP stdio server and stdlib client walkthrough exist, but MCP Inspector GUI /

@@ -2510,3 +2510,31 @@
   - 這只解除 analysis command 的 agent exposure gap。
   - 還沒有真 ChatPanel dataset -> model / training settings -> train -> evaluation /
     visualization / saliency readiness 長鏈 walkthrough。
+
+### 2026-05-04 12:51 ChatPanel training-readiness boundary
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py`。
+  - script 先用 ApplicationService 準備 synthetic dataset-ready state，避免重跑已驗證的
+    import-to-dataset UI chain。
+  - 真 MainWindow / ChatPanel / local model visible turns：
+    `set_model` -> `configure_training` -> `start_training` confirmation observed/rejected ->
+    `visualize` -> `saliency` -> `evaluate` blocked reason。
+  - 新增 `tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py`。
+- artifact：
+  - `artifacts/ui/chatpanel-local-training-readiness/chatpanel-local-training-readiness-walkthrough.md`
+  - `artifacts/ui/chatpanel-local-training-readiness/chatpanel-local-training-readiness-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-training-readiness/chatpanel-training-readiness-ready.png`
+  - turn screenshots 1-6。
+- 驗證：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py -q`
+    -> `4 passed`
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `timeout 900s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py --output-dir artifacts/ui/chatpanel-local-training-readiness --timeout-seconds 840`
+    -> passed；primary `microsoft/Phi-4-mini-instruct`、`gpu-ready`、cache `15.34 GB`、
+    confirmation dialogs observed `1` 且 `approved=False`。
+  - visible assistant text clean check -> pass。
+- 不能宣稱：
+  - 這支撐 training confirmation boundary 和 analysis-readiness tool path。
+  - 還不支撐 actual training completion、evaluation metrics 或 saliency render。

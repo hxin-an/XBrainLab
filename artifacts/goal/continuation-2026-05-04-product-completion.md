@@ -133,10 +133,10 @@ tail -n 160 docs/records/worklog.md
 tail -n 180 docs/records/implementation_log.md
 ```
 
-3. Do not redo completed ChatPanel short-chain or import-to-dataset pipeline-chain evidence. The analysis-tool exposure gap has also been closed by the post-handoff slice: `evaluate`, `visualize`, and `saliency` are now ApplicationService-backed agent tools with deterministic and affected-case local LLM smoke evidence. Next highest-value product slice:
+3. Do not redo completed ChatPanel short-chain or import-to-dataset pipeline-chain evidence. The analysis-tool exposure gap has also been closed by the post-handoff slice: `evaluate`, `visualize`, and `saliency` are now ApplicationService-backed agent tools with deterministic and affected-case local LLM smoke evidence. A training-readiness boundary artifact also exists: ChatPanel can set model, configure training, surface training confirmation, run visualization/saliency readiness, and report evaluate blocked reason. Next highest-value product slice:
 
 ```text
-ChatPanel dataset -> model / training settings -> train -> evaluation / saliency readiness evidence
+ChatPanel controlled tiny training completion -> evaluation metrics -> visualization / saliency render evidence
 ```
 
 The next slice should still run one verified command per turn. It should not auto-train without explicit confirmation. If local model behavior is unstable, fix parser / normalizer / verifier / prompt / state snapshot instead of only documenting the failure.

@@ -174,6 +174,14 @@ definitions / mock / real tools，註冊進 ChatPanel controller 的 tool regist
 `CommandParser` 現在接受三個 bare tool names，`infer_user_intent()` 也會把 evaluation request
 映射到 `CommandName.EVALUATE`。這解除「backend 有 typed command，但 agent 不能直接使用」的
 架構旁路；它仍不等於 ChatPanel 已完成 dataset -> train -> evaluate / saliency 長鏈。
+同日 training-readiness walkthrough 又新增一條真 local ChatPanel artifact：
+`scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py` 先用 ApplicationService
+準備 synthetic dataset-ready state，再透過可見 ChatPanel 依序執行 `set_model`、
+`configure_training`、觀察並拒絕 `start_training` confirmation、執行 `visualize` 和
+`saliency`，最後對 `evaluate` 顯示「Create a training plan before evaluating results.」blocked
+reason。artifact 顯示 UI 回到 idle、training 沒有被啟動、visible assistant text 沒有 raw debug
+syntax。這支撐 high-impact training confirmation boundary 和 analysis-readiness tool path；仍不支撐
+真 training completion、evaluation metrics 或 saliency view render 完成。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
 `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
@@ -417,7 +425,8 @@ release closure。
   單步 `query_state` tool-command walkthrough、兩 turn workflow walkthrough artifact，以及
   Data Interpretation `scan_source` -> `preview_interpretation` -> `validate_interpretation`
   短鏈 tool-command artifact，並已有 confirm/apply -> standard preprocess -> epoch -> dataset
-  pipeline-chain artifact。這仍不是 training / evaluation / saliency 的長鏈 autonomous workflow
+  pipeline-chain artifact 和 dataset-ready -> model / training settings / analysis-readiness
+  boundary artifact。這仍不是 true training completion / evaluation metrics / saliency render
   驗收，也不是真人 Windows Desktop click-through。
 - Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
   fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
@@ -446,10 +455,10 @@ release closure。
 ## 目前執行中
 
 1. 等待真 Windows Desktop launcher click-through。
-2. 擴 true local LLM ChatPanel walkthrough 到 dataset -> model / training settings ->
-   explicit training boundary -> evaluate / visualize / saliency readiness；不要讓 assistant
-   自行越過高影響確認邊界。
-3. 補真正 UI button-click 到 training / evaluation / visualization completion 的 E2E。
+2. 補真正 UI button-click 到 training completion、evaluation metrics 和 visualization /
+   saliency render 的 E2E；不要讓 assistant 自行越過高影響確認邊界。
+3. 擴 true local LLM ChatPanel walkthrough 到可控 tiny training completion 後的 evaluate /
+   visualize / saliency，或明確記錄環境限制下不能安全跑訓練的原因。
 4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。
 5. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis

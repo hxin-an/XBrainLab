@@ -168,6 +168,17 @@
   - `CommandParser` 支援三個 bare tool names；intent mapping 也補上 `evaluate`。
   - 這解除 analysis commands 的 agent 旁路，但仍不代表 ChatPanel dataset -> train ->
     evaluate / visualize / saliency 長鏈已完成。
+- ChatPanel true local-model training-readiness boundary walkthrough 已新增：
+  - script：`scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py`。
+  - artifact：`artifacts/ui/chatpanel-local-training-readiness/chatpanel-local-training-readiness-walkthrough.json` /
+    `.md`，含 ready / 6 turn screenshots。
+  - flow：ApplicationService 準備 synthetic dataset-ready state -> visible ChatPanel `set_model` ->
+    `configure_training` -> `start_training` confirmation observed/rejected -> `visualize` ->
+    `saliency` -> evaluate blocked reason。
+  - final state：dataset available、model `EEGNet`、training option present、trainer not created、
+    training not running、evaluation unavailable。
+  - 這支撐 training high-impact confirmation boundary 和 analysis-readiness tools；仍不代表真
+    training completion、evaluation metrics 或 saliency render 完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

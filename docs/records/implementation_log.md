@@ -3738,3 +3738,52 @@ UI routing 或 substitute tool 心智模型。
 - 仍沒有真 ChatPanel dataset -> model / training settings -> train -> evaluate / visualize /
   saliency readiness 長鏈 artifact。
 - Goal 不能標 complete。
+
+## 2026-05-04 ChatPanel training-readiness boundary
+
+### 背景
+
+analysis tools 已經進入 agent registry 後，下一個產品問題是：真 local ChatPanel 是否能從
+dataset-ready state 進到 model selection、training settings、training confirmation boundary 和
+analysis readiness，而不是只靠 backend JSON 或 deterministic eval。
+
+### 變更
+
+- 新增 `scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py`：
+  - 使用 `ApplicationService` 先準備 synthetic dataset-ready state。
+  - 打開真 `MainWindow` / `ChatPanel`。
+  - 使用 offline local model path。
+  - visible turns：
+    - `set_model`
+    - `configure_training`
+    - `start_training` confirmation observed / rejected
+    - `visualize`
+    - `saliency`
+    - `evaluate` blocked reason
+  - 保存 ready / turn screenshots、visible transcript、executed tools、confirmation dialog 和
+    final state。
+- 新增 `tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py`。
+
+### 驗證
+
+- Unit:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_training_readiness_walkthrough.py -q`
+  - `4 passed`
+- Static:
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- True local ChatPanel run:
+  - `timeout 900s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_training_readiness_walkthrough.py --output-dir artifacts/ui/chatpanel-local-training-readiness --timeout-seconds 840`
+  - status：`passed`
+  - runtime：primary `microsoft/Phi-4-mini-instruct`，`gpu-ready`
+  - cache：`15.34 GB`，no download
+  - confirmation dialogs observed：`1`，`approved=False`
+  - final state：dataset available、model `EEGNet`、training option present、trainer not created、
+    training not running、evaluation unavailable。
+  - visible assistant text clean check：pass。
+
+### 不能宣稱完成
+
+- 這支撐 high-impact training confirmation boundary 和 analysis-readiness tools。
+- 這不是 actual training completion，也沒有 evaluation metrics 或 saliency render。
+- Goal 不能標 complete。
