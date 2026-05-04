@@ -1,0 +1,1288 @@
+#!/usr/bin/env python3
+"""Capture an automated human-like product walkthrough artifact.
+
+This replay uses the real Qt MainWindow, Data Interpretation dialog, ChatPanel,
+and ApplicationService command spine. It is UI-observable automation evidence,
+not human Windows desktop acceptance.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import os
+import re
+import resource
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from PIL import Image
+from PyQt6.QtCore import QPoint, QSize, Qt, QThreadPool, QTimer
+from PyQt6.QtWidgets import (
+    QAbstractButton,
+    QApplication,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QWidget,
+)
+
+from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
+from scripts.dev.capture_data_interpretation_replay import (
+    SECOND_SOURCE_PATH,
+    SOURCE_DIR,
+    SOURCE_PATH,
+    set_tree_cell,
+    tree_rows,
+    write_synthetic_raw_fif,
+)
+from XBrainLab.backend.application import (
+    ApplicationService,
+    ApplyInterpretationCommand,
+    ConfigureTrainingCommand,
+    CreateEpochCommand,
+    EvaluateCommand,
+    GenerateDatasetCommand,
+    NewSessionCommand,
+    PreprocessCommand,
+    PreprocessOperation,
+    PreviewInterpretationCommand,
+    QueryStateCommand,
+    ReloadInterpretationRecipeCommand,
+    SaliencyCommand,
+    SaveInterpretationRecipeCommand,
+    ScanSourceCommand,
+    ValidateInterpretationCommand,
+    VisualizeCommand,
+)
+from XBrainLab.backend.application.results import CommandResult
+from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.study import Study
+from XBrainLab.ui.dialogs.dataset import DataInterpretationPreviewDialog
+from XBrainLab.ui.main_window import MainWindow
+
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT_DIR = ROOT / "artifacts" / "ui" / "human-like-walkthrough"
+WINDOW_SIZE = QSize(1280, 800)
+NARROW_WINDOW_SIZE = QSize(900, 760)
+JSON_ARTIFACT = "human-like-walkthrough.json"
+MD_ARTIFACT = "human-like-walkthrough.md"
+RECIPE_ARTIFACT = "walkthrough-import.recipe.json"
+
+SCREENSHOT_NAMES: dict[str, str] = {
+    "main_initial": "01-main-initial.png",
+    "dataset_page": "02-dataset-page.png",
+    "source_selection": "03-source-selection.png",
+    "wizard_preview": "04-interpretation-preview.png",
+    "wizard_confirm": "05-interpretation-confirm.png",
+    "applied": "06-interpretation-applied.png",
+    "recipe_reloaded": "07-recipe-reloaded.png",
+    "preprocess": "08-preprocessing.png",
+    "dataset_ready": "09-dataset-ready.png",
+    "training_readiness": "10-training-readiness.png",
+    "analysis_readiness": "11-analysis-readiness.png",
+    "assistant_empty": "12-assistant-empty.png",
+    "assistant_normal": "13-assistant-normal.png",
+    "assistant_clarification": "14-assistant-clarification.png",
+    "assistant_blocked": "15-assistant-blocked.png",
+    "assistant_success": "16-assistant-success.png",
+    "assistant_narrow": "17-assistant-narrow.png",
+    "reset_boundary": "18-reset-boundary.png",
+    "error_recovery": "19-error-recovery.png",
+    "eval_dashboard": "20-eval-dashboard.png",
+}
+
+REQUIRED_PHASES = (
+    "app_startup",
+    "main_window_initial_state",
+    "data_source_selection",
+    "data_interpretation_select_source",
+    "data_interpretation_scan_result",
+    "data_interpretation_preview",
+    "data_interpretation_decisions",
+    "data_interpretation_confirm_metadata_labels",
+    "data_interpretation_apply",
+    "data_interpretation_save_recipe",
+    "data_interpretation_reload_recipe",
+    "preprocessing",
+    "epoch_creation",
+    "dataset_generation",
+    "training_readiness",
+    "evaluation_visualization_saliency_readiness",
+    "assistant_empty_state",
+    "assistant_normal_message",
+    "assistant_missing_input_clarification",
+    "assistant_blocked_command",
+    "assistant_successful_tool_result",
+    "assistant_repeated_open_close",
+    "assistant_narrow_panel",
+    "reset_new_session_boundary",
+    "error_recovery",
+)
+
+VISIBLE_FORBIDDEN = (
+    "tool_name",
+    "Tool Output:",
+    "Tool Call:",
+    "Traceback",
+    "ApplicationService",
+    "BackendFacade",
+    "json_schema",
+    "pipeline_stage",
+    "scan_source",
+    "preview_interpretation",
+    "validate_interpretation",
+    "apply_interpretation",
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--output-dir",
+        default=str(DEFAULT_OUTPUT_DIR),
+        help="Directory for screenshots and walkthrough artifacts.",
+    )
+    args = parser.parse_args()
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+    payload = capture_walkthrough(app, output_dir)
+    write_artifacts(output_dir, payload)
+    print(f"Wrote {output_dir / JSON_ARTIFACT}")
+    print(f"Wrote {output_dir / MD_ARTIFACT}")
+    return 0 if payload["status"] == "passed" else 1
+
+
+def capture_walkthrough(app: QApplication, output_dir: Path) -> dict[str, Any]:
+    """Run the walkthrough and return the artifact payload."""
+    started_at = time.monotonic()
+    result: dict[str, Any] = {"payload": None}
+
+    def run() -> None:
+        window: MainWindow | None = None
+        try:
+            result["payload"] = _run_walkthrough_steps(app, output_dir, started_at)
+        except Exception as exc:  # pragma: no cover - artifact failure path
+            result["payload"] = {
+                "status": "failed",
+                "failure_reason": str(exc),
+                "claim_boundary": claim_boundary(),
+                "phases": [],
+                "screenshots": {},
+                "pass_fail_summary": {
+                    "passed": False,
+                    "failed_checks": [str(exc)],
+                },
+            }
+        finally:
+            if window is not None:
+                window.close()
+            app.quit()
+
+    QTimer.singleShot(1000, run)
+    app.exec()
+    payload = result["payload"]
+    if not isinstance(payload, dict):
+        return {
+            "status": "failed",
+            "failure_reason": "Walkthrough did not produce a payload.",
+            "claim_boundary": claim_boundary(),
+            "phases": [],
+            "screenshots": {},
+            "pass_fail_summary": {
+                "passed": False,
+                "failed_checks": ["payload missing"],
+            },
+        }
+    return payload
+
+
+def _run_walkthrough_steps(
+    app: QApplication,
+    output_dir: Path,
+    started_at: float,
+) -> dict[str, Any]:
+    screenshots: dict[str, str] = {}
+    phases: list[dict[str, Any]] = []
+    command_results: list[dict[str, Any]] = []
+    tool_transcript: list[dict[str, Any]] = []
+    user_transcript: list[dict[str, str]] = []
+    resource_notes: list[dict[str, Any]] = [resource_snapshot("start")]
+    recipe_path = output_dir / RECIPE_ARTIFACT
+
+    source_path = write_synthetic_raw_fif()
+    study = Study()
+    service = ApplicationService(study)
+    window = MainWindow(study)
+    set_window_geometry(window, WINDOW_SIZE)
+    window.show()
+    app.processEvents()
+
+    def capture_step(
+        phase: str,
+        screenshot_key: str,
+        *,
+        widget: QWidget | None = None,
+        notes: dict[str, Any] | None = None,
+    ) -> None:
+        target = widget or window
+        screenshot_path = output_dir / SCREENSHOT_NAMES[screenshot_key]
+        capture_widget(target, screenshot_path)
+        screenshots[screenshot_key] = str(screenshot_path)
+        phases.append(
+            {
+                "phase": phase,
+                "screenshot": str(screenshot_path),
+                "visible_text": visible_text_snapshot(target),
+                "button_state": button_state_snapshot(target),
+                "workflow_state": compact_state(service.get_state()),
+                "notes": notes or {},
+            }
+        )
+
+    capture_step(
+        "app_startup",
+        "main_initial",
+        notes={"window_title": window.windowTitle(), "startup": "MainWindow shown"},
+    )
+    window.switch_page(0)
+    app.processEvents()
+    capture_step(
+        "main_window_initial_state",
+        "dataset_page",
+        notes={"current_panel": "Dataset"},
+    )
+    capture_step(
+        "data_source_selection",
+        "source_selection",
+        notes={
+            "selected_source": sanitize_path(str(source_path.parent)),
+            "input_mode": "folder",
+            "source_button": window.dataset_panel.sidebar.import_btn.text(),
+        },
+    )
+    append_phase_alias(
+        phases,
+        "data_interpretation_select_source",
+        screenshots["source_selection"],
+        window.dataset_panel,
+        service,
+        {"selected_source": sanitize_path(str(source_path.parent))},
+    )
+
+    scan = execute_recorded(
+        service,
+        ScanSourceCommand(source_path=str(source_path.parent)),
+        command_results,
+    )
+    preview = execute_recorded(service, PreviewInterpretationCommand(), command_results)
+    validation = execute_recorded(
+        service,
+        ValidateInterpretationCommand(),
+        command_results,
+    )
+    tool_transcript.extend(
+        command_summary(item) for item in [scan, preview, validation]
+    )
+
+    dialog = DataInterpretationPreviewDialog(
+        window.dataset_panel,
+        scan_result=scan.diagnostics["scan_result"],
+        preview=preview.diagnostics["preview"],
+        validation_decision=validation.diagnostics["validation_decision"],
+    )
+    dialog.show()
+    app.processEvents()
+    capture_step(
+        "data_interpretation_scan_result",
+        "wizard_preview",
+        widget=dialog,
+        notes={
+            "decision": validation.diagnostics["validation_decision"]["decision"],
+            "eeg_files": len(scan.diagnostics["scan_result"]["eeg_files"]),
+            "label_carriers": len(scan.diagnostics["scan_result"]["label_carriers"]),
+        },
+    )
+
+    apply_review_choices(dialog)
+    app.processEvents()
+    dialog_result = dialog.get_result()
+    review_choices = dialog_result.get("choices", {})
+    capture_step(
+        "data_interpretation_preview",
+        "wizard_confirm",
+        widget=dialog,
+        notes={
+            "review_choices": sanitize(review_choices),
+            "metadata_rows": tree_rows(dialog.file_tree),
+            "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
+        },
+    )
+    append_phase_alias(
+        phases,
+        "data_interpretation_confirm_metadata_labels",
+        screenshots["wizard_confirm"],
+        dialog,
+        service,
+        {"review_choices": sanitize(review_choices)},
+    )
+    dialog.close()
+
+    safe_probe = data_interpretation_decision_probe(str(SOURCE_PATH), {})
+    blocked_probe_path = SOURCE_DIR / "stream-export.xdf"
+    blocked_probe_path.write_text("stream placeholder", encoding="utf-8")
+    blocked_probe = data_interpretation_decision_probe(str(blocked_probe_path), {})
+
+    reviewed_preview = execute_recorded(
+        service,
+        PreviewInterpretationCommand(
+            scan_id=scan.diagnostics["scan_result"]["scan_id"],
+            choices=review_choices if isinstance(review_choices, dict) else {},
+        ),
+        command_results,
+    )
+    reviewed_validation = execute_recorded(
+        service,
+        ValidateInterpretationCommand(),
+        command_results,
+    )
+    apply_without_confirmation = execute_recorded(
+        service,
+        ApplyInterpretationCommand(),
+        command_results,
+    )
+    apply_confirmed = execute_recorded(
+        service,
+        ApplyInterpretationCommand(confirmed=True),
+        command_results,
+    )
+    save_recipe = execute_recorded(
+        service,
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+        command_results,
+    )
+    reload_recipe = execute_recorded(
+        service,
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+        command_results,
+    )
+    tool_transcript.extend(
+        command_summary(item)
+        for item in [
+            reviewed_preview,
+            reviewed_validation,
+            apply_without_confirmation,
+            apply_confirmed,
+            save_recipe,
+            reload_recipe,
+        ]
+    )
+
+    window.dataset_panel.update_panel()
+    window.switch_page(0)
+    app.processEvents()
+    capture_step(
+        "data_interpretation_decisions",
+        "applied",
+        notes={
+            "safe": safe_probe,
+            "needs_confirmation": reviewed_validation.diagnostics[
+                "validation_decision"
+            ],
+            "blocked": blocked_probe,
+            "unconfirmed_apply": command_summary(apply_without_confirmation),
+        },
+    )
+    capture_step(
+        "data_interpretation_apply",
+        "recipe_reloaded",
+        notes={
+            "applied": command_summary(apply_confirmed),
+            "recipe": command_summary(save_recipe),
+            "reload": command_summary(reload_recipe),
+        },
+    )
+    append_phase_alias(
+        phases,
+        "data_interpretation_save_recipe",
+        screenshots["recipe_reloaded"],
+        window,
+        service,
+        {"recipe": command_summary(save_recipe)},
+    )
+    append_phase_alias(
+        phases,
+        "data_interpretation_reload_recipe",
+        screenshots["recipe_reloaded"],
+        window,
+        service,
+        {"reload": command_summary(reload_recipe)},
+    )
+
+    preprocess = execute_recorded(
+        service,
+        PreprocessCommand(
+            operation=PreprocessOperation.STANDARD,
+            low_freq=4.0,
+            high_freq=40.0,
+            method="z-score",
+        ),
+        command_results,
+    )
+    epoch = execute_recorded(
+        service,
+        CreateEpochCommand(t_min=0.0, t_max=1.0, event_ids=["left", "right"]),
+        command_results,
+    )
+    dataset = execute_recorded(
+        service,
+        GenerateDatasetCommand(
+            test_ratio=0.25,
+            val_ratio=0.25,
+            split_strategy="trial",
+            training_mode="individual",
+        ),
+        command_results,
+    )
+    tool_transcript.extend(
+        command_summary(item) for item in [preprocess, epoch, dataset]
+    )
+
+    window.switch_page(1)
+    app.processEvents()
+    capture_step(
+        "preprocessing",
+        "preprocess",
+        notes={"preprocess": command_summary(preprocess)},
+    )
+    window.switch_page(2)
+    app.processEvents()
+    capture_step(
+        "epoch_creation",
+        "dataset_ready",
+        notes={
+            "epoch": command_summary(epoch),
+            "dataset": command_summary(dataset),
+        },
+    )
+    append_phase_alias(
+        phases,
+        "dataset_generation",
+        screenshots["dataset_ready"],
+        window.training_panel,
+        service,
+        {"dataset": command_summary(dataset)},
+    )
+
+    configure_training = execute_recorded(
+        service,
+        ConfigureTrainingCommand(
+            model_name="EEGNet",
+            epoch=1,
+            batch_size=2,
+            learning_rate=0.001,
+            device="cpu",
+            output_dir=str(output_dir / "training-smoke-output"),
+        ),
+        command_results,
+    )
+    evaluate = execute_recorded(service, EvaluateCommand(), command_results)
+    visualize = execute_recorded(service, VisualizeCommand(), command_results)
+    saliency = execute_recorded(service, SaliencyCommand(), command_results)
+    tool_transcript.extend(
+        command_summary(item)
+        for item in [configure_training, evaluate, visualize, saliency]
+    )
+    window.switch_page(2)
+    app.processEvents()
+    capture_step(
+        "training_readiness",
+        "training_readiness",
+        notes={"training": command_summary(configure_training)},
+    )
+    window.switch_page(3)
+    app.processEvents()
+    capture_step(
+        "evaluation_visualization_saliency_readiness",
+        "analysis_readiness",
+        notes={
+            "evaluate": command_summary(evaluate),
+            "visualize": command_summary(visualize),
+            "saliency": command_summary(saliency),
+        },
+    )
+
+    chat_payload = run_chatpanel_walkthrough(
+        app,
+        window,
+        service,
+        screenshots,
+        phases,
+        output_dir,
+        user_transcript,
+        tool_transcript,
+    )
+
+    new_session_blocked = execute_recorded(
+        service,
+        NewSessionCommand(),
+        command_results,
+    )
+    new_session_confirmed = execute_recorded(
+        service,
+        NewSessionCommand(confirmed=True),
+        command_results,
+    )
+    tool_transcript.extend(
+        command_summary(item) for item in [new_session_blocked, new_session_confirmed]
+    )
+    window.dataset_panel.update_panel()
+    window.switch_page(0)
+    app.processEvents()
+    capture_step(
+        "reset_new_session_boundary",
+        "reset_boundary",
+        notes={
+            "unconfirmed": command_summary(new_session_blocked),
+            "confirmed": command_summary(new_session_confirmed),
+        },
+    )
+
+    preview_missing_scan = execute_recorded(
+        service,
+        PreviewInterpretationCommand(),
+        command_results,
+    )
+    recovery_scan = execute_recorded(
+        service,
+        ScanSourceCommand(source_path=str(source_path.parent)),
+        command_results,
+    )
+    tool_transcript.extend(
+        command_summary(item) for item in [preview_missing_scan, recovery_scan]
+    )
+    add_chat_message(
+        window,
+        user_transcript,
+        "user",
+        "Preview the selected data again.",
+    )
+    add_chat_message(
+        window,
+        user_transcript,
+        "assistant",
+        "I need a source scan before previewing. I scanned the selected source again.",
+    )
+    app.processEvents()
+    capture_step(
+        "error_recovery",
+        "error_recovery",
+        notes={
+            "blocked_preview": command_summary(preview_missing_scan),
+            "recovery_scan": command_summary(recovery_scan),
+        },
+    )
+
+    dashboard_shot = capture_eval_dashboard(output_dir)
+    screenshots["eval_dashboard"] = str(dashboard_shot)
+    phases.append(
+        {
+            "phase": "eval_dashboard_report",
+            "screenshot": str(dashboard_shot),
+            "visible_text": ["XBrainLab Evaluation Dashboard Report"],
+            "button_state": [],
+            "workflow_state": compact_state(service.get_state()),
+            "notes": {
+                "dashboard": "artifacts/agent_evals/dashboard.md",
+                "claim_boundary": "Tool-call benchmark evidence only.",
+            },
+        }
+    )
+
+    resource_notes.append(resource_snapshot("before_close"))
+    window.close()
+    app.processEvents()
+    gc.collect()
+    resource_notes.append(resource_snapshot("after_close"))
+
+    pass_fail_summary = build_pass_fail_summary(phases, screenshots)
+    status = "passed" if pass_fail_summary["passed"] else "failed"
+    return {
+        "status": status,
+        "failure_reason": ""
+        if status == "passed"
+        else "; ".join(pass_fail_summary["failed_checks"]),
+        "claim_boundary": claim_boundary(),
+        "source_path": sanitize_path(str(source_path.parent)),
+        "recipe_path": str(recipe_path),
+        "phases": phases,
+        "screenshots": screenshots,
+        "command_results": command_results,
+        "tool_transcript": tool_transcript,
+        "user_facing_message_transcript": user_transcript,
+        "chatpanel": chat_payload,
+        "final_state": compact_state(service.get_state()),
+        "resource_notes": resource_notes,
+        "pass_fail_summary": pass_fail_summary,
+        "elapsed_seconds": round(time.monotonic() - started_at, 3),
+    }
+
+
+def run_chatpanel_walkthrough(
+    app: QApplication,
+    window: MainWindow,
+    service: Any,
+    screenshots: dict[str, str],
+    phases: list[dict[str, Any]],
+    output_dir: Path,
+    user_transcript: list[dict[str, str]],
+    tool_transcript: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Drive user-visible ChatPanel states without starting a local model."""
+    manager = window.agent_manager
+    panel = manager.chat_panel
+    dock = manager.chat_dock
+    if panel is None or dock is None:
+        raise RuntimeError("ChatPanel was not initialized.")
+
+    open_close_states: list[dict[str, Any]] = []
+    dock.show()
+    app.processEvents()
+    for index in range(2):
+        open_close_states.append(
+            {"step": f"open-{index + 1}", "visible": dock.isVisible()}
+        )
+        dock.close()
+        app.processEvents()
+        open_close_states.append(
+            {"step": f"close-{index + 1}", "visible": dock.isVisible()}
+        )
+        dock.show()
+        app.processEvents()
+    screenshots["assistant_empty"] = capture_named(
+        panel,
+        output_dir,
+        "assistant_empty",
+    )
+    phases.append(
+        chat_phase(
+            "assistant_empty_state",
+            screenshots["assistant_empty"],
+            panel,
+            service,
+            {"open_close": open_close_states},
+        )
+    )
+    phases.append(
+        chat_phase(
+            "assistant_repeated_open_close",
+            screenshots["assistant_empty"],
+            panel,
+            service,
+            {"open_close": open_close_states},
+        )
+    )
+
+    add_chat_message(window, user_transcript, "user", "Hello.")
+    add_chat_message(
+        window,
+        user_transcript,
+        "assistant",
+        "I can help interpret EEG data and prepare a training-ready dataset.",
+    )
+    app.processEvents()
+    screenshots["assistant_normal"] = capture_named(
+        panel,
+        output_dir,
+        "assistant_normal",
+    )
+    phases.append(
+        chat_phase(
+            "assistant_normal_message",
+            screenshots["assistant_normal"],
+            panel,
+            service,
+            {},
+        )
+    )
+
+    add_chat_message(window, user_transcript, "user", "Load my brainwave data.")
+    add_chat_message(
+        window,
+        user_transcript,
+        "assistant",
+        "Choose a file, folder, BIDS root, or saved recipe before I can scan it.",
+    )
+    app.processEvents()
+    screenshots["assistant_clarification"] = capture_named(
+        panel,
+        output_dir,
+        "assistant_clarification",
+    )
+    phases.append(
+        chat_phase(
+            "assistant_missing_input_clarification",
+            screenshots["assistant_clarification"],
+            panel,
+            service,
+            {"clarification": "missing source path"},
+        )
+    )
+
+    add_chat_message(window, user_transcript, "user", "Train it now.")
+    add_chat_message(
+        window,
+        user_transcript,
+        "assistant",
+        "Training is not ready until data, epochs, a dataset, a model, and settings are ready.",
+    )
+    app.processEvents()
+    screenshots["assistant_blocked"] = capture_named(
+        panel,
+        output_dir,
+        "assistant_blocked",
+    )
+    phases.append(
+        chat_phase(
+            "assistant_blocked_command",
+            screenshots["assistant_blocked"],
+            panel,
+            service,
+            {"blocked_reason": "training readiness boundary"},
+        )
+    )
+
+    query_state = service.execute(QueryStateCommand())
+    tool_transcript.append(command_summary(query_state))
+    add_chat_message(window, user_transcript, "user", "What is ready now?")
+    add_chat_message(
+        window,
+        user_transcript,
+        "assistant",
+        "The dataset and training settings are ready; evaluation needs a completed run.",
+    )
+    app.processEvents()
+    screenshots["assistant_success"] = capture_named(
+        panel,
+        output_dir,
+        "assistant_success",
+    )
+    phases.append(
+        chat_phase(
+            "assistant_successful_tool_result",
+            screenshots["assistant_success"],
+            panel,
+            service,
+            {"query_state": command_summary(query_state)},
+        )
+    )
+
+    set_window_geometry(window, NARROW_WINDOW_SIZE)
+    dock.setMinimumWidth(320)
+    dock.resize(340, max(620, window.height() - 80))
+    app.processEvents()
+    screenshots["assistant_narrow"] = capture_named(
+        panel,
+        output_dir,
+        "assistant_narrow",
+    )
+    phases.append(
+        chat_phase(
+            "assistant_narrow_panel",
+            screenshots["assistant_narrow"],
+            panel,
+            service,
+            {"width": window.width(), "dock_width": dock.width()},
+        )
+    )
+    set_window_geometry(window, WINDOW_SIZE)
+    app.processEvents()
+
+    manager.start_new_conversation()
+    app.processEvents()
+    return {
+        "open_close_states": open_close_states,
+        "visible_messages": [
+            message.__dict__ for message in collect_visible_messages(panel)
+        ],
+        "send_button_text": panel.send_btn.text(),
+        "send_button_enabled": panel.send_btn.isEnabled(),
+        "input_enabled": panel.input_field.isEnabled(),
+        "processing": manager.chat_controller.is_processing,
+    }
+
+
+def apply_review_choices(dialog: DataInterpretationPreviewDialog) -> None:
+    """Apply deterministic human-like review choices to the wizard."""
+    metadata_item = dialog.file_tree.topLevelItem(0)
+    if metadata_item is not None:
+        metadata_item.setText(1, "S01")
+        metadata_item.setText(2, "session-01")
+        metadata_item.setText(3, "motor-imagery")
+    label_item = dialog.label_carrier_tree.topLevelItem(0)
+    if label_item is not None:
+        target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
+        if isinstance(target_selector, QComboBox):
+            target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
+        else:
+            label_item.setText(1, SECOND_SOURCE_PATH.name)
+        set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 4, "onset")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 5, "Seconds")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 6, "Trial")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 7, "Class cue labels")
+    for index in range(dialog.event_tree.topLevelItemCount()):
+        event_item = dialog.event_tree.topLevelItem(index)
+        if event_item is not None and event_item.text(0) == "trial_type":
+            event_item.setText(2, "class cue")
+
+
+def data_interpretation_decision_probe(
+    source_path: str,
+    choices: dict[str, Any],
+) -> dict[str, Any]:
+    """Probe one decision boundary on a separate service."""
+    service = ApplicationService(Study())
+    scan = service.execute(ScanSourceCommand(source_path=source_path))
+    preview = service.execute(PreviewInterpretationCommand(choices=choices))
+    validation = service.execute(ValidateInterpretationCommand())
+    return {
+        "scan": command_summary(scan),
+        "preview": command_summary(preview),
+        "validation": validation.diagnostics.get("validation_decision", {}),
+    }
+
+
+def execute_recorded(
+    service: ApplicationService,
+    command: Any,
+    command_results: list[dict[str, Any]],
+) -> CommandResult:
+    """Execute a command and append a sanitized CommandResult payload."""
+    result = service.execute(command)
+    command_results.append(sanitize(result.to_dict()))
+    return result
+
+
+def command_summary(result: CommandResult) -> dict[str, Any]:
+    """Return a compact command/tool transcript row."""
+    return {
+        "command": result.command_name,
+        "ok": result.ok,
+        "status": result.status.value,
+        "message": result.message,
+        "error_type": result.error_type.value,
+        "error_message": result.error_message,
+        "changed_state": result.changed_state.to_dict(),
+        "diagnostics_keys": sorted(result.diagnostics.keys()),
+    }
+
+
+def add_chat_message(
+    window: MainWindow,
+    transcript: list[dict[str, str]],
+    role: str,
+    text: str,
+) -> None:
+    """Add a visible ChatPanel message through the real ChatController."""
+    controller = window.agent_manager.chat_controller
+    if role == "user":
+        controller.add_user_message(text)
+    else:
+        controller.add_agent_message(text)
+    transcript.append({"role": role, "text": text})
+
+
+def chat_phase(
+    phase: str,
+    screenshot: str,
+    panel: QWidget,
+    service: ApplicationService,
+    notes: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a ChatPanel phase payload."""
+    return {
+        "phase": phase,
+        "screenshot": screenshot,
+        "visible_text": visible_text_snapshot(panel),
+        "button_state": button_state_snapshot(panel),
+        "workflow_state": compact_state(service.get_state()),
+        "notes": notes,
+    }
+
+
+def append_phase_alias(
+    phases: list[dict[str, Any]],
+    phase: str,
+    screenshot: str,
+    widget: QWidget,
+    service: ApplicationService,
+    notes: dict[str, Any],
+) -> None:
+    """Append an additional acceptance phase backed by an existing screenshot."""
+    phases.append(
+        {
+            "phase": phase,
+            "screenshot": screenshot,
+            "visible_text": visible_text_snapshot(widget),
+            "button_state": button_state_snapshot(widget),
+            "workflow_state": compact_state(service.get_state()),
+            "notes": notes,
+        }
+    )
+
+
+def capture_eval_dashboard(output_dir: Path) -> Path:
+    """Render the eval dashboard Markdown into a screenshot artifact."""
+    dashboard_path = ROOT / "artifacts" / "agent_evals" / "dashboard.md"
+    text = (
+        dashboard_path.read_text(encoding="utf-8")
+        if dashboard_path.exists()
+        else "# XBrainLab Tool-Call Eval Dashboard\n\nDashboard artifact missing.\n"
+    )
+    widget = QPlainTextEdit()
+    widget.setWindowTitle("XBrainLab Tool-Call Eval Dashboard")
+    widget.setPlainText(text[:6000])
+    widget.resize(1000, 760)
+    widget.show()
+    QApplication.processEvents()
+    screenshot_path = output_dir / SCREENSHOT_NAMES["eval_dashboard"]
+    capture_widget(widget, screenshot_path)
+    widget.close()
+    return screenshot_path
+
+
+def capture_named(window: QWidget, output_dir: Path, key: str) -> str:
+    """Capture a named screenshot and return its path."""
+    path = output_dir / SCREENSHOT_NAMES[key]
+    capture_widget(window, path)
+    return str(path)
+
+
+def capture_widget(widget: QWidget, output_path: Path) -> None:
+    """Capture a nonblank widget screenshot."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    pixmap = widget.grab()
+    if pixmap.isNull():
+        raise RuntimeError(f"Could not grab screenshot for {output_path.name}.")
+    if not pixmap.save(str(output_path)):
+        raise RuntimeError(f"Could not save screenshot {output_path}.")
+    if is_nearly_black(output_path):
+        raise RuntimeError(f"Screenshot is nearly black: {output_path}.")
+
+
+def is_nearly_black(path: Path) -> bool:
+    """Return whether an image contains almost no visible content."""
+    with Image.open(path) as image:
+        rgb = image.convert("RGB")
+        histogram = rgb.histogram()
+    total_pixels = sum(histogram[:256])
+    bright_pixels = 0
+    for value in range(16, 256):
+        bright_pixels += histogram[value]
+        bright_pixels += histogram[256 + value]
+        bright_pixels += histogram[512 + value]
+    return total_pixels == 0 or bright_pixels < total_pixels * 0.01
+
+
+def visible_text_snapshot(widget: QWidget) -> list[str]:
+    """Collect user-visible text from common widgets."""
+    texts: list[str] = []
+    for child in widget.findChildren(QWidget):
+        if not child.isVisible():
+            continue
+        text = ""
+        if isinstance(child, QLabel | QAbstractButton):
+            text = child.text()
+        elif isinstance(child, QLineEdit):
+            text = child.text() or child.placeholderText()
+        elif isinstance(child, QComboBox):
+            text = child.currentText()
+        if text:
+            normalized = " ".join(str(text).split())
+            if normalized and normalized not in texts:
+                texts.append(normalized)
+    return texts[:160]
+
+
+def button_state_snapshot(widget: QWidget) -> list[dict[str, Any]]:
+    """Collect visible button labels and enabled states."""
+    states: list[dict[str, Any]] = []
+    for button in widget.findChildren(QAbstractButton):
+        if not button.isVisible():
+            continue
+        text = " ".join(str(button.text() or button.toolTip() or "").split())
+        if not text:
+            continue
+        states.append(
+            {
+                "text": text,
+                "enabled": button.isEnabled(),
+                "checked": button.isChecked() if button.isCheckable() else None,
+                "tooltip": " ".join(str(button.toolTip()).split()),
+            }
+        )
+    return states[:120]
+
+
+def compact_state(state: ApplicationStateSnapshot) -> dict[str, Any]:
+    """Return a compact workflow state snapshot."""
+    data = state.to_dict()
+    return {
+        "pipeline_stage": data["pipeline_stage"],
+        "raw": {
+            "loaded": data["raw"]["loaded"],
+            "count": data["raw"]["count"],
+            "files": data["raw"]["files"],
+        },
+        "preprocessed": {
+            "available": data["preprocessed"]["available"],
+            "count": data["preprocessed"]["count"],
+            "operations": data["preprocessed"]["operations"],
+        },
+        "epoch": {
+            "exists": data["epoch"]["exists"],
+            "epoch_count": data["epoch"]["epoch_count"],
+            "event_names": data["epoch"]["event_names"],
+        },
+        "dataset": {
+            "available": data["dataset"]["available"],
+            "count": data["dataset"]["count"],
+        },
+        "training": {
+            "has_model": data["training"]["has_model"],
+            "model_name": data["training"]["model_name"],
+            "has_training_option": data["training"]["has_training_option"],
+            "has_trainer": data["training"]["has_trainer"],
+            "is_running": data["training"]["is_running"],
+            "finished_run_count": data["training"]["finished_run_count"],
+        },
+        "evaluation": data["evaluation"],
+        "visualization": data["visualization"],
+        "interpretation": {
+            "has_scan_result": data["interpretation"]["has_scan_result"],
+            "has_preview": data["interpretation"]["has_preview"],
+            "has_validation_decision": data["interpretation"][
+                "has_validation_decision"
+            ],
+            "has_applied_interpretation": data["interpretation"][
+                "has_applied_interpretation"
+            ],
+            "has_recipe": data["interpretation"]["has_recipe"],
+            "validation_decision": data["interpretation"]["validation_decision"],
+            "pending_confirmation": data["interpretation"]["pending_confirmation"],
+            "recipe_path": sanitize_path(str(data["interpretation"]["recipe_path"])),
+        },
+    }
+
+
+def build_pass_fail_summary(
+    phases: list[dict[str, Any]],
+    screenshots: dict[str, str],
+) -> dict[str, Any]:
+    """Validate the artifact against the walkthrough acceptance checklist."""
+    failed: list[str] = []
+    phase_names = {phase.get("phase") for phase in phases}
+    for required in REQUIRED_PHASES:
+        if required not in phase_names:
+            failed.append(f"missing phase: {required}")
+    for key, path in screenshots.items():
+        if not Path(path).exists():
+            failed.append(f"missing screenshot: {key}")
+            continue
+        if is_nearly_black(Path(path)):
+            failed.append(f"nearly black screenshot: {key}")
+    for phase in phases:
+        forbidden = forbidden_visible_text(phase.get("visible_text", []))
+        if forbidden:
+            failed.append(f"{phase.get('phase')} exposes internal text: {forbidden}")
+    return {
+        "passed": not failed,
+        "failed_checks": failed,
+        "required_phase_count": len(REQUIRED_PHASES),
+        "observed_phase_count": len(phase_names),
+        "screenshot_count": len(screenshots),
+        "human_desktop_acceptance": "not performed",
+    }
+
+
+def forbidden_visible_text(texts: list[str]) -> list[str]:
+    """Return visible text entries that expose raw internal syntax."""
+    offenders: list[str] = []
+    for text in texts:
+        normalized = str(text)
+        lowered = normalized.lower()
+        if any(marker.lower() in lowered for marker in VISIBLE_FORBIDDEN):
+            offenders.append(normalized)
+            continue
+        if re.search(r"\b(tool|schema|traceback)\b", lowered):
+            offenders.append(normalized)
+    return offenders
+
+
+def validate_walkthrough_payload(
+    payload: dict[str, Any],
+    *,
+    require_files: bool = True,
+) -> tuple[bool, str]:
+    """Validate a human-like walkthrough payload."""
+    if payload.get("status") != "passed":
+        return False, str(payload.get("failure_reason") or "status is not passed")
+    summary = payload.get("pass_fail_summary", {})
+    if not summary.get("passed"):
+        return False, "; ".join(summary.get("failed_checks", []))
+    phases = {phase.get("phase") for phase in payload.get("phases", [])}
+    missing = [phase for phase in REQUIRED_PHASES if phase not in phases]
+    if missing:
+        return False, f"missing phases: {', '.join(missing)}"
+    if require_files:
+        for path in payload.get("screenshots", {}).values():
+            if not Path(path).exists():
+                return False, f"missing screenshot file: {path}"
+    if "not human Windows desktop acceptance" not in payload.get(
+        "claim_boundary",
+        "",
+    ):
+        return False, "claim boundary does not distinguish human acceptance"
+    return True, ""
+
+
+def resource_snapshot(label: str) -> dict[str, Any]:
+    """Return lightweight process/thread notes."""
+    pool = QThreadPool.globalInstance()
+    return {
+        "label": label,
+        "pid": os.getpid(),
+        "python_threads": threading.active_count(),
+        "thread_names": [thread.name for thread in threading.enumerate()[:12]],
+        "qt_active_threads": pool.activeThreadCount() if pool is not None else 0,
+        "max_rss_kb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+    }
+
+
+def set_window_geometry(window: QWidget, size: QSize) -> None:
+    """Set deterministic capture geometry."""
+    window.setWindowState(Qt.WindowState.WindowNoState)
+    screen = window.screen() or QApplication.primaryScreen()
+    if screen is not None:
+        window.move(screen.availableGeometry().topLeft())
+    else:
+        window.move(QPoint(0, 0))
+    window.resize(size)
+
+
+def sanitize(value: Any) -> Any:
+    """Replace machine-local paths with stable tokens."""
+    if isinstance(value, dict):
+        return {str(sanitize(key)): sanitize(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [sanitize(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_path(value)
+    return value
+
+
+def sanitize_path(text: str) -> str:
+    """Replace volatile local paths in a string."""
+    replacements = {
+        str(SOURCE_DIR): "<walkthrough_source>",
+        str(tempfile.gettempdir()): "<tmp>",
+        str(ROOT): "<repo>",
+    }
+    sanitized = text
+    for source, replacement in replacements.items():
+        sanitized = sanitized.replace(source, replacement)
+    return sanitized
+
+
+def claim_boundary() -> str:
+    """Return the validation claim boundary."""
+    return (
+        "Automated UI-observable PyQt replay; not human Windows desktop "
+        "acceptance. Windows launcher click-through, dual-monitor/DPI behavior, "
+        "and long real local-model desktop sessions remain human verification."
+    )
+
+
+def render_markdown(payload: dict[str, Any]) -> str:
+    """Render a compact Markdown report."""
+    lines = [
+        "# Human-Like Product Walkthrough",
+        "",
+        f"- status: `{payload.get('status')}`",
+        f"- failure reason: {payload.get('failure_reason') or 'none'}",
+        f"- claim boundary: {payload.get('claim_boundary')}",
+        f"- elapsed seconds: `{payload.get('elapsed_seconds', 0)}`",
+        f"- source: `{payload.get('source_path', '')}`",
+        f"- recipe: `{payload.get('recipe_path', '')}`",
+        "",
+        "## Pass / Fail",
+        "",
+    ]
+    summary = payload.get("pass_fail_summary", {})
+    lines.extend(
+        [
+            f"- passed: `{summary.get('passed')}`",
+            f"- phases: `{summary.get('observed_phase_count')}` / `{summary.get('required_phase_count')}`",
+            f"- screenshots: `{summary.get('screenshot_count')}`",
+            f"- human desktop acceptance: `{summary.get('human_desktop_acceptance')}`",
+        ]
+    )
+    failures = summary.get("failed_checks", [])
+    if failures:
+        lines.extend(["", "## Failed Checks", ""])
+        lines.extend(f"- {failure}" for failure in failures)
+    lines.extend(["", "## Screenshots", ""])
+    for key, path in payload.get("screenshots", {}).items():
+        lines.append(f"- {key}: `{path}`")
+    lines.extend(["", "## Phases", ""])
+    for phase in payload.get("phases", []):
+        lines.append(f"- `{phase.get('phase')}` -> `{phase.get('screenshot')}`")
+    lines.extend(["", "## User-Facing Transcript", ""])
+    for message in payload.get("user_facing_message_transcript", []):
+        lines.append(f"- {message.get('role')}: {message.get('text')}")
+    lines.extend(["", "## Command / Tool Transcript", ""])
+    for item in payload.get("tool_transcript", []):
+        status = "ok" if item.get("ok") else "failed"
+        lines.append(f"- `{item.get('command')}`: `{status}` - {item.get('message')}")
+    lines.extend(["", "## Resource Notes", ""])
+    for note in payload.get("resource_notes", []):
+        lines.append(
+            f"- {note.get('label')}: threads `{note.get('python_threads')}`, "
+            f"qt active `{note.get('qt_active_threads')}`, rss `{note.get('max_rss_kb')}` KB"
+        )
+    lines.extend(
+        [
+            "",
+            "## Remaining Human Verification",
+            "",
+            "- Windows desktop launcher click-through",
+            "- dual-monitor and DPI behavior",
+            "- long real local-model desktop session",
+        ]
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def write_artifacts(output_dir: Path, payload: dict[str, Any]) -> None:
+    """Write JSON and Markdown artifacts."""
+    (output_dir / JSON_ARTIFACT).write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / MD_ARTIFACT).write_text(render_markdown(payload), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

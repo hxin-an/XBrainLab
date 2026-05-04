@@ -1,0 +1,200 @@
+{
+  "class_map": {},
+  "confirmations": [
+    "Confirm label carrier alignment, anchor event, and class map before applying.",
+    "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+  ],
+  "event_roles": {
+    "duration": "event duration",
+    "label_carrier": "external label or event source",
+    "onset": "time anchor",
+    "trial_type": "class cue"
+  },
+  "format_capabilities": [
+    {
+      "format": "BIDS events",
+      "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.",
+      "name": "events.tsv",
+      "path": "/tmp/xbrainlab_data_interpretation_replay/events.tsv",
+      "role": "external_labels",
+      "status": "needs_review"
+    },
+    {
+      "format": "MNE FIF",
+      "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
+      "name": "sub-01_task-mi_run-1_raw.fif",
+      "path": "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-1_raw.fif",
+      "role": "eeg",
+      "status": "supported"
+    },
+    {
+      "format": "MNE FIF",
+      "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
+      "name": "sub-01_task-mi_run-2_raw.fif",
+      "path": "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-2_raw.fif",
+      "role": "eeg",
+      "status": "supported"
+    }
+  ],
+  "interpretation_id": "interpretation-6",
+  "label_carrier_plan": [
+    {
+      "anchor_candidates": [
+        "onset"
+      ],
+      "decision": "needs_confirmation",
+      "format": "BIDS events",
+      "granularity": "trial",
+      "label_candidates": [
+        "trial_type"
+      ],
+      "name": "events.tsv",
+      "path": "/tmp/xbrainlab_data_interpretation_replay/events.tsv",
+      "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying.",
+      "role": "class cue labels",
+      "selected_anchor": "onset",
+      "selected_label_field": "trial_type",
+      "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
+      "time_model": "seconds"
+    }
+  ],
+  "label_carriers": [
+    "/tmp/xbrainlab_data_interpretation_replay/events.tsv"
+  ],
+  "label_imports": [
+    {
+      "class_map": {},
+      "file_mapping": {
+        "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-2_raw.fif": "/tmp/xbrainlab_data_interpretation_replay/events.tsv"
+      },
+      "label_carriers": [
+        "/tmp/xbrainlab_data_interpretation_replay/events.tsv"
+      ],
+      "mode": "timestamp",
+      "selected_event_names": [],
+      "success_count": 1,
+      "target_files": [
+        "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-2_raw.fif"
+      ]
+    }
+  ],
+  "metadata": [
+    {
+      "file": "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-1_raw.fif",
+      "run": {
+        "decision": "safe",
+        "field": "run",
+        "override": null,
+        "reason": "run resolved from BIDS entity.",
+        "recipe_trace": [
+          "bids:run"
+        ],
+        "source": "bids_entity",
+        "value": "1"
+      },
+      "session": {
+        "decision": "safe",
+        "field": "session",
+        "override": "session-01",
+        "reason": "User confirmed this value in the Data Interpretation wizard.",
+        "recipe_trace": [
+          "metadata_override:session"
+        ],
+        "source": "user_override",
+        "value": "session-01"
+      },
+      "subject": {
+        "decision": "safe",
+        "field": "subject",
+        "override": "S01",
+        "reason": "User confirmed this value in the Data Interpretation wizard.",
+        "recipe_trace": [
+          "bids:sub",
+          "metadata_override:subject"
+        ],
+        "source": "user_override",
+        "value": "S01"
+      },
+      "task": {
+        "decision": "safe",
+        "field": "task",
+        "override": "motor-imagery",
+        "reason": "User confirmed this value in the Data Interpretation wizard.",
+        "recipe_trace": [
+          "bids:task",
+          "metadata_override:task"
+        ],
+        "source": "user_override",
+        "value": "motor-imagery"
+      }
+    },
+    {
+      "file": "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-2_raw.fif",
+      "run": {
+        "decision": "safe",
+        "field": "run",
+        "override": null,
+        "reason": "run resolved from BIDS entity.",
+        "recipe_trace": [
+          "bids:run"
+        ],
+        "source": "bids_entity",
+        "value": "2"
+      },
+      "session": {
+        "decision": "needs_confirmation",
+        "field": "session",
+        "override": null,
+        "reason": "session BIDS entity is not present for this file.",
+        "recipe_trace": [],
+        "source": "missing",
+        "value": null
+      },
+      "subject": {
+        "decision": "safe",
+        "field": "subject",
+        "override": null,
+        "reason": "subject resolved from BIDS entity.",
+        "recipe_trace": [
+          "bids:sub"
+        ],
+        "source": "bids_entity",
+        "value": "01"
+      },
+      "task": {
+        "decision": "safe",
+        "field": "task",
+        "override": null,
+        "reason": "task resolved from BIDS entity.",
+        "recipe_trace": [
+          "bids:task"
+        ],
+        "source": "bids_entity",
+        "value": "mi"
+      }
+    }
+  ],
+  "recipe_id": "recipe-7",
+  "recipe_trace": [
+    "scan:scan-1",
+    "candidate:candidate-4",
+    "choices:metadata_overrides",
+    "choices:event_roles",
+    "choices:label_carriers",
+    "validation:needs_confirmation",
+    "applied:interpretation-6",
+    "label_import:timestamp:1",
+    "recipe:recipe-7"
+  ],
+  "selected_eeg_files": [
+    "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-1_raw.fif",
+    "/tmp/xbrainlab_data_interpretation_replay/sub-01_task-mi_run-2_raw.fif"
+  ],
+  "source_kind": "bids",
+  "source_path": "/tmp/xbrainlab_data_interpretation_replay",
+  "validation_decision": "needs_confirmation",
+  "warnings": [
+    "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
+    "External label/event carriers require preview before apply."
+  ]
+}

@@ -3496,3 +3496,54 @@
   - 最新要求的單一 UI-observable automated human-like walkthrough 尚未完成；現有 UI artifacts
     是 sliced walkthrough，下一輪需產生完整 screenshots / visible text / button state / workflow
     state / transcript / CommandResult / state snapshot artifact。
+
+### 2026-05-04 UI-observable automated human-like walkthrough
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_human_like_product_walkthrough.py`，用真 Qt MainWindow、
+    Data Interpretation dialog、ChatPanel 和 ApplicationService command spine 產生 consolidated
+    automated human-like walkthrough。
+  - 新增 `tests/unit/scripts/test_capture_human_like_product_walkthrough.py`，驗證 artifact schema、
+    required phases、claim boundary、visible raw-syntax guard 和 Markdown report。
+  - artifact 保存：
+    - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+    - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+    - `artifacts/ui/human-like-walkthrough/*.png` (`20` screenshots)
+    - `artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
+- 覆蓋：
+  - app startup、main window initial state、Dataset page 和 source selection。
+  - Data Interpretation scan / preview / confirm metadata-label choices / apply / save recipe /
+    reload recipe。
+  - safe / needs_confirmation / blocked validation decision probes。
+  - preprocess、epoch、dataset generation。
+  - EEGNet CPU training readiness，不啟動長時間 training。
+  - evaluation / visualization / saliency readiness。
+  - ChatPanel empty state、normal message、missing-input clarification、blocked command、
+    successful tool result summary、repeated open-close、narrow panel。
+  - reset / new session confirmation boundary 和 missing-scan error recovery。
+  - visible text snapshots、button enabled / disabled state、workflow state snapshots、
+    CommandResult payloads、tool transcript、user-facing transcript、process/thread notes。
+- 結果：
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`。
+  - artifact summary：status `passed`、`26 / 25` phases、`20` screenshots、human desktop
+    acceptance `not performed`。
+  - resource notes：Python thread count `1` before close / after close；Qt active thread count `0`。
+  - unit helper tests：`poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `5 passed`。
+  - targeted `ruff check` / `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `git diff --check` -> pass。
+  - manual screenshot spot-check：
+    - Data Interpretation preview is nonblank and shows scan -> preview -> validate -> confirm ->
+      apply -> save recipe, but table density still needs polish.
+    - ChatPanel empty / success / narrow screenshots are nonblank; panel-level narrow capture keeps
+      Send visible and wraps bubbles.
+    - Eval dashboard report screenshot is readable.
+- 不能宣稱：
+  - 這是 automated UI-observable PyQt replay，不是真人 Windows desktop acceptance。
+  - Windows launcher click-through、雙螢幕 / DPI、長時間 true local model desktop session 仍是
+    remaining human verification。
+  - walkthrough 截圖暴露下一輪 UI polish 方向：Data Interpretation table density、main-window
+    narrow-with-assistant layout、analysis page compact controls。

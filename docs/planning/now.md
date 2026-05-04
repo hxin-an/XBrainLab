@@ -523,6 +523,7 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 
 ```text
 1. commit 最新 tool-call best-practices / 117-case dashboard slice
-2. 補最新要求的 UI-observable automated human-like walkthrough artifact
-3. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間 local model session
+2. commit UI-observable automated human-like walkthrough artifact
+3. 進入 UI polish：Data Interpretation wizard density、assistant narrow capture、analysis page compact controls
+4. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間 local model session
 ```
