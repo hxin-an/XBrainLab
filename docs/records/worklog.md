@@ -3190,3 +3190,17 @@
   - 這支撐 official Inspector CLI with Windows WSL config。
   - 仍不是 Inspector GUI 人工 click-through、HTTP transport、long-running MCP training 或完整
     product completion。
+
+### 2026-05-04 Usage refresh handoff
+
+- 做了什麼：
+  - 刷新 `artifacts/goal/handoff-2026-05-04-usage-refresh.md`，以最新 commit
+    `3ffa73d` 作為接續基準。
+  - handoff 現在列出 MCP client config、generic label carrier manual mapping、label
+    target selector UX、Inspector CLI smoke 的 commit、artifact、驗證和 claim boundary。
+  - 下一步建議 slice 改為 Data Interpretation format capability matrix，避免下一個 runner
+    重做已完成的 MCP CLI / label target work。
+- 不能宣稱：
+  - 這只是交接記錄，不是產品完成。
+  - 仍不能宣稱 Inspector GUI、Windows launcher click-through、interactive desktop 3D、
+    raw-event-anchor label alignment、external thesis experiment 或完整 product completion。

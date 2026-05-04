@@ -1,6 +1,6 @@
 # XBrainLab Usage Refresh Handoff
 
-Date: `2026-05-04 18:41 UTC+08`
+Date: `2026-05-04`, after local commit `3ffa73d`.
 
 This handoff exists because the current runner is stopping for usage refresh.
 Resume in the active repo:
@@ -27,6 +27,11 @@ Resume in the active repo:
 Latest local commits at handoff:
 
 ```text
+3ffa73d mcp: verify inspector cli config
+4e9cdfc ui: select label carrier targets
+4f36615 ui: map generic label carriers manually
+eb04399 mcp: add client release config
+0bdfdf8 docs: refresh usage handoff
 15002a1 ui: show label import target context
 7d0f92c ui: show matched eeg for label carriers
 4c2ad99 backend: map reviewed sequence labels by file stem
@@ -34,14 +39,9 @@ c9c79e2 backend: map reviewed timestamp labels by file stem
 a26942a backend: propagate import review state
 514587a docs: refresh product completion handoff
 0da24db backend: apply reviewed sequence labels during import
-626b606 backend: apply reviewed timestamp labels during import
-15c242d backend: surface import format boundaries
-f49af63 ui: add label carrier review to import wizard
-3341d53 ui: guard headless 3d visualization
-a41770f ui: capture visualization render walkthrough
 ```
 
-Expected dirty files before this handoff docs commit:
+Expected dirty files before the next work slice:
 
 ```text
  M .vscode/settings.json
@@ -52,119 +52,179 @@ These two files are protected user / workspace settings. Ignore them unless the
 user explicitly asks otherwise. Do not stage them in any product or handoff
 commit.
 
-## Latest Verified Product Slice
+## Completed Slices Since The Previous Handoff
 
-The latest committed product slice is:
+### MCP client release config
+
+Committed as:
 
 ```text
-15002a1 ui: show label import target context
+eb04399 mcp: add client release config
 ```
 
-It improved the legacy compatibility label path without making it the new
-product mental model:
+Files of interest:
 
-- `ImportLabelDialog` is now titled `Add Labels to Loaded Data`.
-- The dialog shows which loaded EEG files the labels will be applied to.
-- The dialog states that successful label import updates the current import
-  recipe trace when Data Interpretation is active.
-- `DatasetActionHandler.import_label()` passes loaded target file context into
-  the dialog.
-- This remains a service-backed compatibility path, not the mature embedded
-  Data Interpretation label editor.
+- `scripts/dev/run_mcp_server_for_client.sh`
+- `scripts/dev/write_mcp_client_config.py`
+- `artifacts/mcp/xbrainlab-mcp.json`
+- `artifacts/mcp/xbrainlab-mcp.md`
+- `tests/unit/scripts/test_write_mcp_client_config.py`
+- `tests/integration/mcp/test_client_config.py`
 
-Immediately preceding completed slices:
+Outcome:
 
-- `7d0f92c` added `Matched EEG` to the Data Interpretation label carrier table.
-  Single-file direct matches and multi-file unique stem matches show the target
-  EEG filename; unresolved matches show `Needs review`.
-- `4c2ad99` mapped reviewed MAT / TXT trial-order sequence labels by normalized
-  file stem and skipped generic ambiguous sequence carriers.
-- `c9c79e2` mapped reviewed CSV / TSV / BIDS events timestamp labels by
-  normalized file stem and skipped generic ambiguous events carriers.
-- `a26942a` propagated reviewed import truth into
-  `ApplicationStateSnapshot.interpretation`, `query_state`, automation / MCP
-  envelopes, and agent tool state.
-- `0da24db` and `626b606` applied the single-file reviewed sequence and
-  timestamp label paths during `apply_interpretation`.
-- `15c242d` surfaced format capability boundaries for GDF, EDF / BDF, EEGLAB,
-  BrainVision, MNE FIF, MAT labels, CSV / TSV / BIDS events, TXT, and blocked
-  XDF / LSL stream-selection cases.
-- `f49af63` added editable label carrier review rows to the import wizard and
-  persisted `label_carrier_plan` through preview / apply / recipe.
+- Added standard MCP client config with `default-server` and `xbrainlab-windows-wsl`.
+- Client config launches a prepared XBrainLab runtime through a wrapper; MCP clients do not need EEG / PyQt / PyTorch dependencies.
+- Config writer regenerates JSON / Markdown and validates the dependency boundary.
 
-Latest validation recorded before this handoff:
+Validation:
 
-- focused import label target context tests: `2 passed`
-- import label / dialog / DatasetActionHandler UI regression: `83 passed`
-- production touched-file `basedpyright`: `0 errors`
-- targeted `ruff` and format check: pass
-- `poetry run mkdocs build --strict`: pass with the existing MkDocs Material warning
-- `poetry run python tests/architecture_compliance.py`: Architecture compliant
-- `git diff --check`: pass
+- `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py -q` -> `5 passed`
+- `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py -q` -> `6 passed`
+- `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/unit/mcp tests/integration/mcp -q` -> `13 passed`
+- targeted `ruff`, format, `basedpyright`, architecture compliance, MkDocs strict, and diff check passed.
 
-Earlier validation in this continuation:
+### Generic label carrier manual target mapping
 
-- shared import state propagation focused tests and app / automation / agent regression passed.
-- timestamp multi-file label mapping tests passed, including ambiguous generic carrier skip.
-- sequence multi-file label mapping tests passed, including ambiguous generic carrier skip.
-- Data Interpretation UI replay passed and refreshed
-  `artifacts/ui/data-interpretation-preview.png` plus
-  `artifacts/ui/data-interpretation-replay.json`.
+Committed as:
+
+```text
+4f36615 ui: map generic label carriers manually
+```
+
+Files of interest:
+
+- `XBrainLab/backend/application/data_interpretation.py`
+- `XBrainLab/backend/application/service.py`
+- `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- `scripts/dev/capture_data_interpretation_replay.py`
+- `tests/unit/backend/application/test_application_service.py`
+- `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- `artifacts/ui/data-interpretation-preview.png`
+- `artifacts/ui/data-interpretation-applied.png`
+- `artifacts/ui/data-interpretation-replay.json`
+
+Outcome:
+
+- `label_carrier_choices` now accepts `target_file`.
+- Backend persists `selected_target_file` in `label_carrier_plan`.
+- `apply_interpretation` can apply generic `events.tsv` or `labels.mat` to the user-selected loaded EEG file.
+- If no manual target is selected, ambiguous generic multi-file carriers still skip instead of guessing.
+
+Validation:
+
+- Initial TDD failures proved the missing UI result and backend apply behavior.
+- Dialog suite -> `7 passed`
+- Focused backend manual mapping and ambiguous skip tests -> `4 passed`
+- Backend / automation / agent surface regression -> `67 passed`
+- Dialog + DatasetActionHandler regression -> `54 passed`
+- True UI replay exited `0` and refreshed the replay artifacts.
+- targeted `ruff`, format, `basedpyright`, architecture compliance, MkDocs strict, and diff check passed.
+
+### Label target selector UX
+
+Committed as:
+
+```text
+4e9cdfc ui: select label carrier targets
+```
+
+Files of interest:
+
+- `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- `scripts/dev/capture_data_interpretation_replay.py`
+- `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- `artifacts/ui/data-interpretation-preview.png`
+
+Outcome:
+
+- Ambiguous label carrier rows now render a `QComboBox` in the `Matched EEG` column.
+- Options are `Needs review` plus scanned EEG filenames.
+- `get_result()` reads selector current text and returns `target_file`.
+- Replay extraction reads cell widget text, so the visible selected target appears in artifacts.
+
+Validation:
+
+- Initial focused UI test failed because the row had no cell widget.
+- Focused selector test -> `1 passed`
+- Dialog suite -> `7 passed`
+- True UI replay exited `0`
+- Dialog + DatasetActionHandler regression -> `54 passed`
+- Backend manual target mapping focused tests -> `2 passed`
+- targeted `ruff`, format, and production `basedpyright` passed.
+
+### MCP Inspector CLI smoke and WSL Poetry fallback
+
+Committed as:
+
+```text
+3ffa73d mcp: verify inspector cli config
+```
+
+Files of interest:
+
+- `scripts/dev/run_mcp_server_for_client.sh`
+- `artifacts/mcp/inspector-cli-tools-list.json`
+- `artifacts/mcp/inspector-cli-tools-list.md`
+- `artifacts/mcp/xbrainlab-mcp.md`
+
+Outcome:
+
+- First official Inspector CLI attempt using `xbrainlab-windows-wsl` failed with:
+  `Failed to connect to MCP server: MCP error -32000: Connection closed`.
+- Direct WSL smoke found root cause: `exec: poetry: not found`.
+- Wrapper now resolves `POETRY_BIN`, `command -v poetry`, or `$HOME/.local/bin/poetry`.
+- Official Inspector CLI `tools/list` now succeeds through the committed Windows WSL config.
+- Artifact lists `28` tools, including `scan_source` and `apply_interpretation`.
+
+Validation:
+
+- Direct WSL initialize smoke -> valid JSON-RPC initialize response.
+- Official Inspector CLI:
+
+  ```bash
+  timeout 180s '/mnt/c/Program Files/nodejs/npx' -y @modelcontextprotocol/inspector --cli --config artifacts/mcp/xbrainlab-mcp.json --server xbrainlab-windows-wsl --method tools/list
+  ```
+
+  exited `0`.
+- `poetry run pytest --capture=sys tests/unit/scripts/test_write_mcp_client_config.py tests/integration/mcp/test_client_config.py -q` -> `6 passed`
+- `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+- `git diff --check` -> pass.
 
 ## Current Evidence Highlights
 
-- True local ChatPanel controlled tiny training completion evidence exists under
-  `artifacts/ui/chatpanel-local-training-completion/`.
-- Visualization render evidence exists under
-  `artifacts/ui/visualization-render/`; Saliency Map, Spectrogram, and
-  Topographic Map render in a true MainWindow walkthrough after a tiny CPU
-  training run.
-- Headless/offscreen `3D Plot` is guarded and shows a human-readable blocked
-  reason instead of creating a PyVista plotter and crashing.
-- Data Interpretation replay artifacts exist:
-  - `artifacts/ui/data-interpretation-preview.png`
-  - `artifacts/ui/data-interpretation-applied.png`
-  - `artifacts/ui/data-interpretation-replay.json`
-- The replay JSON includes review notes, label carrier rows, reviewed choices,
-  matched EEG target text, timestamp label apply diagnostics, and recipe trace evidence.
-- Local tool-call thesis-candidate benchmark evidence exists for `100` cases,
-  primary / fallback x3, with cached non-China local models and no download.
-  This supports the benchmark slice, but it does not replace UI, launcher, MCP,
-  import wizard, or external experiment validation.
+- Data Interpretation has ApplicationService-backed scan -> preview -> validate -> confirm/apply -> recipe baseline.
+- Import wizard can review metadata, class map, and label carriers.
+- Single-file and safe multi-file reviewed timestamp / trial-order label apply paths are covered.
+- Generic label carriers can now be manually mapped to a specific EEG target inside the wizard.
+- Format-specific supported / needs-review / blocked boundaries exist in code for GDF, EDF / BDF, EEGLAB, BrainVision, MNE FIF, MAT labels, CSV / TSV / BIDS events, TXT, and blocked XDF / LSL stream-selection cases.
+- Shared import truth propagates into UI / agent / headless / MCP state.
+- True local ChatPanel controlled tiny training completion evidence exists under `artifacts/ui/chatpanel-local-training-completion/`.
+- Visualization render evidence exists under `artifacts/ui/visualization-render/`; Saliency Map, Spectrogram, and Topographic Map render in a true MainWindow walkthrough after a tiny CPU training run.
+- Headless/offscreen `3D Plot` is guarded and shows a human-readable blocked reason instead of creating a PyVista plotter and crashing.
+- MCP server can be launched by an external client config and official Inspector CLI can list tools through the Windows WSL config.
+- Local tool-call thesis-candidate benchmark evidence exists for `100` cases, primary / fallback x3, with cached non-China local models and no download.
 
 ## Do Not Redo Without Reason
 
-- Do not redo true ChatPanel training-completion walkthrough unless local model
-  agent execution, training command surface, evaluation, saliency, or visible
-  ChatPanel feedback changed.
-- Do not redo visualization render walkthrough unless visualization panel,
-  training state, saliency, or render contract changed.
-- Do not redo label carrier wizard review / format boundary / label apply work
-  unless `data_interpretation.py`, wizard result mapping, scan format detection,
-  recipe serialization, or state snapshot propagation changed.
-- Do not redo full local LLM x3 eval for documentation-only edits. Rerun
-  targeted eval if prompt / schema / parser / verifier behavior changes, then
-  rerun full primary / fallback x3 before thesis-candidate claims.
-- Do not redo shared state snapshot propagation or multi-file safe label mapping
-  unless a relevant backend contract changes.
+- Do not redo true ChatPanel training-completion walkthrough unless local model agent execution, training command surface, evaluation, saliency, or visible ChatPanel feedback changed.
+- Do not redo visualization render walkthrough unless visualization panel, training state, saliency, or render contract changed.
+- Do not redo label carrier wizard review / format boundary / label apply work unless `data_interpretation.py`, wizard result mapping, scan format detection, recipe serialization, or state snapshot propagation changed.
+- Do not redo full local LLM x3 eval for documentation-only edits. Rerun targeted eval if prompt / schema / parser / verifier behavior changes, then rerun full primary / fallback x3 before thesis-candidate claims.
+- Do not redo MCP client config generation or Inspector CLI `tools/list` unless `artifacts/mcp/xbrainlab-mcp.json`, the wrapper, or MCP server transport/schema changes.
 
 ## Current Known Blockers
 
 Do not claim product completion yet.
 
-- Full embedded post-load label import wizard is still incomplete. The current
-  post-load dialog is compatibility UI with better target context.
-- Generic folder-level `events.tsv` / `labels.mat` disambiguation remains
-  intentionally skipped; the product does not yet provide an interactive
-  resolution surface for these cases.
+- Inspector GUI human click-through is still not done. CLI smoke is done.
+- Windows Desktop launcher human click-through / WSLg multi-monitor behavior has not been manually verified.
+- Interactive desktop 3D / PyVista render has not been verified; only headless blocked UX and Matplotlib tabs are proven.
 - Raw-event-anchor-specific GDF / MAT alignment is not modeled.
 - Full all-format manual compatibility matrix and XDF / LSL stream parser remain incomplete.
-- Windows Desktop launcher human click-through / WSLg multi-monitor behavior has not been manually verified.
-- Interactive desktop 3D / PyVista render has not been verified; only headless blocked UX is proven.
-- MCP Inspector GUI / release config is not completed.
+- Post-load label import is improved, but still not a full embedded Data Interpretation label editor.
 - External thesis experiment runner / statistical report is not done.
-- Thesis-candidate local LLM evidence exists, but the full product claim still
-  depends on UI, launcher, MCP, import, and experiment validation.
+- Thesis-candidate local LLM evidence exists, but the full product claim still depends on UI, launcher, MCP GUI, import, and experiment validation.
 
 ## Immediate Resume Plan
 
@@ -174,45 +234,36 @@ Do not claim product completion yet.
    git status --short
    ```
 
-   Only `.vscode/settings.json` and root `settings.json` should be unrelated
-   protected dirty files after this handoff commit.
+   Only `.vscode/settings.json` and root `settings.json` should be unrelated protected dirty files after this handoff commit.
 
-2. Inspect MCP server / client / docs:
-
-   ```bash
-   rg -n "MCP|mcp|Inspector|stdio|run_mcp|mcp_server|mcp_tool" XBrainLab scripts tests docs artifacts -S
-   ```
-
-   Likely files:
+2. Recommended next product slice:
 
    ```text
-   XBrainLab/mcp/server.py
-   scripts/dev/run_mcp_server.py
-   scripts/dev/capture_mcp_stdio_walkthrough.py
-   tests/unit/mcp/
-   tests/unit/backend/application/test_automation.py
-   docs/current.md
-   docs/validation/README.md
-   artifacts/mcp/
-   ```
-
-3. Recommended next product slice:
-
-   ```text
-   MCP Inspector / release config hardening
-     -> checked-in external-client config or launch manifest
-     -> command invokes prepared XBrainLab runtime, not client-side EEG deps
-     -> tools/list and tools/call still use ApplicationService automation schema
-     -> focused tests or stdio walkthrough evidence
-     -> docs / records update
+   Data Interpretation format capability matrix
+     -> generate a checked-in artifact from actual scan/preview code, not docs-only claims
+     -> cover representative source files for GDF, EDF/BDF, EEGLAB, BrainVision, FIF,
+        MAT labels, CSV/TSV/BIDS events, TXT labels, and XDF/LSL
+     -> assert supported / needs-review / blocked statuses and user-facing reasons
+     -> document that this is current capability-boundary evidence, not a full XDF parser
+     -> update docs/records
      -> local commit
    ```
 
-4. After MCP config, continue with remaining product blockers:
+   Suggested files / functions to inspect:
 
-   - embedded label import wizard hardening;
-   - generic label carrier disambiguation UI for folder-level carriers;
+   ```text
+   XBrainLab/backend/application/data_interpretation.py
+   scripts/dev/report_dataset_validation_matrix.py
+   tests/unit/scripts/
+   docs/validation/README.md
+   ```
+
+3. After the matrix slice, continue with remaining product blockers:
+
+   - embedded post-load label import editor hardening;
+   - raw-event-anchor-specific GDF / MAT alignment design and implementation;
    - Windows Desktop launcher human click-through / WSLg multi-monitor verification;
+   - Inspector GUI click-through;
    - interactive desktop 3D render verification if a real OpenGL desktop session is available;
    - external thesis experiment runner / statistical report;
    - final validation sweep and docs closure.
@@ -221,12 +272,11 @@ Do not claim product completion yet.
 
 Current evidence supports:
 
-- ApplicationService-backed Data Interpretation scan -> preview -> validate ->
-  confirm/apply -> recipe baseline;
+- ApplicationService-backed Data Interpretation baseline;
 - import wizard metadata / class-map / label carrier review;
-- format-specific supported / needs-review / blocked boundaries;
-- single-file and safe multi-file reviewed timestamp / trial-order label apply;
+- single-file, safe multi-file, and manually mapped generic timestamp / trial-order label apply;
 - shared import truth propagation to UI / agent / headless / MCP state;
+- official Inspector CLI `tools/list` through committed Windows WSL client config;
 - true local ChatPanel single-command-per-turn workflow through controlled tiny training completion;
 - true MainWindow post-training Matplotlib visualization render evidence;
 - headless 3D blocked UX.
@@ -237,8 +287,8 @@ Current evidence does not support:
 - completed mature embedded import wizard label editor;
 - completed raw-event-anchor label alignment;
 - completed Windows Desktop human click-through;
+- completed Inspector GUI click-through;
 - completed interactive desktop 3D render;
-- completed MCP Inspector / release configuration;
 - completed external thesis experiment package;
 - full product thesis-ready claim.
 
