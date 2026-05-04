@@ -4392,3 +4392,61 @@
   - This is label carrier planner boundary cleanup, not embedded label editor completion.
   - Scanner, candidate / preview builder, validator, and metadata override helper still remain in
     `data_interpretation.py`.
+
+### 2026-05-05 Data Interpretation review boundary extraction
+
+- scope：
+  - Backend-only Data Interpretation internal boundary cleanup。
+  - No command shape, UI, agent, MCP, automation, or recipe schema changes.
+- current call sites：
+  - `DataInterpretationCommandService.handle_preview_interpretation()` builds a reviewable preview
+    from an interpretation candidate.
+  - `DataInterpretationCommandService.handle_validate_interpretation()` emits the safe /
+    needs-confirmation / blocked decision used by UI, agent, headless, and MCP command results.
+- target boundary：
+  - `data_interpretation_review.py` owns `InterpretationPreview`, `ValidationDecision`, candidate
+    preview serialization, and validation decision construction.
+  - `data_interpretation.py` keeps scanner / candidate lifecycle and re-exports public review names
+    for compatibility.
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_review.py`。
+  - Moved `InterpretationPreview`, `ValidationDecision`, `build_interpretation_preview()`, and
+    `validate_interpretation_candidate()` out of `data_interpretation.py`.
+  - Added direct unit coverage for preview serialization and blocked / needs-confirmation / safe
+    validation decisions.
+  - `data_interpretation.py` reduced from about `581` lines to about `463` lines after this slice.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py -q`
+    initial failure: `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_review`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py -q`
+    -> `2 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_review.py`
+    -> pass.
+  - `timeout 300s poetry run ruff format --check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_review.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_review.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_preview_validate_requires_confirmation tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+    -> `6 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `91 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 120s git diff --check`
+    -> pass.
+- 不能宣稱：
+  - This is review payload / validator boundary cleanup, not mature import wizard completion.
+  - Scanner, candidate builder, and metadata override helper still remain in `data_interpretation.py`.

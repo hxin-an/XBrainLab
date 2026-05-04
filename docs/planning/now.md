@@ -70,8 +70,10 @@
 - 最新 Data Interpretation boundary cleanup 已把 recipe serialization / rehydration 抽到
   `data_interpretation_recipe.py`；下一步可聚焦 label carrier planner 或 preview / validator。
 - 最新 Data Interpretation boundary cleanup 已把 label carrier planner 抽到
-  `data_interpretation_label_carriers.py`；下一步可聚焦 preview / validator 或 metadata override
-  helper。
+  `data_interpretation_label_carriers.py`。
+- 最新 Data Interpretation boundary cleanup 已把 preview payload builder 和 safe /
+  needs-confirmation / blocked validator 抽到 `data_interpretation_review.py`；下一步可聚焦
+  metadata override helper 或 scanner/candidate builder。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。

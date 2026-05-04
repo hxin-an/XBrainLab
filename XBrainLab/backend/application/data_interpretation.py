@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from . import data_interpretation_recipe as _recipe
+from . import data_interpretation_review as _review
 from .data_interpretation_formats import (
     LABEL_CARRIER_EXTENSIONS,
     SUPPORTED_EEG_EXTENSIONS,
@@ -34,9 +35,13 @@ from .data_interpretation_metadata import (
 )
 
 ImportRecipe = _recipe.ImportRecipe
+InterpretationPreview = _review.InterpretationPreview
+ValidationDecision = _review.ValidationDecision
 build_import_recipe = _recipe.build_import_recipe
+build_interpretation_preview = _review.build_interpretation_preview
 import_recipe_from_dict = _recipe.import_recipe_from_dict
 load_import_recipe = _recipe.load_import_recipe
+validate_interpretation_candidate = _review.validate_interpretation_candidate
 
 
 class InterpretationDecision(str, Enum):
@@ -89,45 +94,6 @@ class InterpretationCandidate:
     blocked_reasons: list[str] = dc_field(default_factory=list)
     choices: dict[str, Any] = dc_field(default_factory=dict)
     recipe_trace: list[str] = dc_field(default_factory=list)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
-
-
-@dataclass(frozen=True)
-class InterpretationPreview:
-    """Human- and agent-readable preview of an interpretation candidate."""
-
-    preview_id: str
-    candidate_id: str
-    summary: str
-    file_count: int
-    label_carrier_count: int
-    label_carrier_preview: list[dict[str, Any]] = dc_field(default_factory=list)
-    metadata_preview: list[dict[str, Any]] = dc_field(default_factory=list)
-    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
-    warnings: list[str] = dc_field(default_factory=list)
-    confirmation_items: list[str] = dc_field(default_factory=list)
-    blocked_reasons: list[str] = dc_field(default_factory=list)
-    downstream_impacts: list[str] = dc_field(default_factory=list)
-    event_roles: dict[str, str] = dc_field(default_factory=dict)
-    class_map: dict[str, str] = dc_field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _serialize(self)
-
-
-@dataclass(frozen=True)
-class ValidationDecision:
-    """Validation result for an interpretation candidate."""
-
-    candidate_id: str
-    decision: str
-    reasons: list[str] = dc_field(default_factory=list)
-    warnings: list[str] = dc_field(default_factory=list)
-    required_confirmations: list[str] = dc_field(default_factory=list)
-    blocked_reasons: list[str] = dc_field(default_factory=list)
-    downstream_impacts: list[str] = dc_field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
@@ -303,90 +269,6 @@ def build_interpretation_candidate(
             f"scan:{scan.scan_id}",
             f"candidate:{candidate_id}",
             *_choice_recipe_trace(choices),
-        ],
-    )
-
-
-def build_interpretation_preview(
-    *,
-    preview_id: str,
-    candidate: InterpretationCandidate,
-) -> InterpretationPreview:
-    """Create a UI/agent-friendly preview for a candidate interpretation."""
-    file_count = len(candidate.selected_eeg_files)
-    label_count = len(candidate.label_carriers)
-    summary = (
-        f"Found {file_count} EEG file(s) and {label_count} label/event carrier(s)."
-    )
-    metadata_preview = [
-        {
-            "file": Path(item.file).name,
-            "subject": item.subject.to_dict()
-            if hasattr(item.subject, "to_dict")
-            else _serialize(item.subject),
-            "session": _serialize(item.session),
-            "task": _serialize(item.task),
-            "run": _serialize(item.run),
-        }
-        for item in candidate.metadata
-    ]
-    return InterpretationPreview(
-        preview_id=preview_id,
-        candidate_id=candidate.candidate_id,
-        summary=summary,
-        file_count=file_count,
-        label_carrier_count=label_count,
-        label_carrier_preview=[dict(item) for item in candidate.label_carrier_plan],
-        metadata_preview=metadata_preview,
-        format_capabilities=[dict(item) for item in candidate.format_capabilities],
-        warnings=list(candidate.warnings),
-        confirmation_items=list(candidate.confirmation_items),
-        blocked_reasons=list(candidate.blocked_reasons),
-        downstream_impacts=[
-            "Applying this interpretation will replace active raw data and "
-            "invalidate downstream preprocessing, epochs, datasets, training, "
-            "and saliency for the current session.",
-        ],
-        event_roles=dict(candidate.event_roles),
-        class_map=dict(candidate.class_map),
-    )
-
-
-def validate_interpretation_candidate(
-    candidate: InterpretationCandidate,
-) -> ValidationDecision:
-    """Validate a candidate using reviewable safe/confirm/blocked decisions."""
-    if candidate.blocked_reasons:
-        return ValidationDecision(
-            candidate_id=candidate.candidate_id,
-            decision=InterpretationDecision.BLOCKED.value,
-            reasons=["Interpretation cannot be applied until blockers are resolved."],
-            warnings=list(candidate.warnings),
-            blocked_reasons=list(candidate.blocked_reasons),
-            downstream_impacts=[
-                "Preprocess, epoch, dataset, and training remain blocked.",
-            ],
-        )
-    if candidate.confirmation_items:
-        return ValidationDecision(
-            candidate_id=candidate.candidate_id,
-            decision=InterpretationDecision.NEEDS_CONFIRMATION.value,
-            reasons=["Candidate has reviewable semantic choices."],
-            warnings=list(candidate.warnings),
-            required_confirmations=list(candidate.confirmation_items),
-            downstream_impacts=[
-                "Downstream workflow remains blocked until the interpretation "
-                "is confirmed and applied.",
-            ],
-        )
-    return ValidationDecision(
-        candidate_id=candidate.candidate_id,
-        decision=InterpretationDecision.SAFE.value,
-        reasons=["Source files and required metadata are sufficient for apply."],
-        warnings=list(candidate.warnings),
-        downstream_impacts=[
-            "Applied interpretation becomes the source truth for preprocessing, "
-            "epoching, dataset generation, training, and saliency.",
         ],
     )
 

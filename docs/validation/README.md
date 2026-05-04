@@ -134,6 +134,9 @@ UI baseline capture 結果：
 - Data Interpretation label carrier boundary cleanup 覆蓋 focused
   `data_interpretation_label_carriers.py` module；BIDS events user choices、choice-key
   normalization 和 existing recipe/state label-carrier regressions 仍通過。
+- Data Interpretation review boundary cleanup 覆蓋 focused `data_interpretation_review.py`
+  module；candidate preview serialization、safe / needs-confirmation / blocked decision boundary
+  和 existing preview / validation command regressions 仍通過。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
@@ -150,7 +153,8 @@ UI baseline capture 結果：
   state snapshot construction、query diagnostics、smart-filter suggestions、Dataset direct import
   service-success no-fallback、Preprocess reset service-success no-fallback、Training re-split
   cleanup service-success no-fallback、Clear History service-success no-fallback 和 format
-  capability / metadata resolution / recipe serialization / label carrier planner module boundaries。
+  capability / metadata resolution / recipe serialization / label carrier planner / review validator
+  module boundaries。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - UI runtime bypass slice gate 另通過：

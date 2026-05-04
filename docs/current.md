@@ -198,6 +198,11 @@ validator 和 label carrier planner。
 planning、user choice normalization、anchor/time/granularity defaults 和 MAT / tabular column
 inspection 抽到 `data_interpretation_label_carriers.py`；`data_interpretation.py` 目前約 `581`
 行，主要保留 lifecycle dataclasses、scan / candidate / preview / validate 和 metadata override。
+最新 review boundary cleanup 又把 `InterpretationPreview` / `ValidationDecision`、preview
+payload builder 和 safe / needs-confirmation / blocked validator 抽到
+`data_interpretation_review.py`；`data_interpretation.py` 目前約 `463` 行，主要保留 scanner、
+candidate builder、metadata override 和 lifecycle dataclasses。這是 backend internal boundary
+cleanup，不是 mature import wizard completion。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed

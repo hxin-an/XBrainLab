@@ -67,6 +67,8 @@ Recipe serialization / JSON load-write / applied-interpretation-to-recipe builde
 focused module，Data Interpretation lifecycle module 只保留 compatibility re-export。
 Label carrier planner 也已抽成 focused module，Data Interpretation lifecycle module 不再直接承接
 CSV / MAT parser helpers 或 label-anchor default selection。
+Preview payload builder 和 safe / needs-confirmation / blocked validator 也已抽成 focused
+review module，Data Interpretation lifecycle module 不再直接承接 review payload construction。
 
 ### 已可宣稱
 
@@ -97,6 +99,8 @@ CSV / MAT parser helpers 或 label-anchor default selection。
   由 `data_interpretation_recipe.py` 承接。
 - MAT / CSV / TSV / BIDS events / TXT label carrier planning、choice normalization、anchor /
   time model / granularity defaults 由 `data_interpretation_label_carriers.py` 承接。
+- `InterpretationPreview` / `ValidationDecision`、candidate preview serialization 和 safe /
+  needs-confirmation / blocked decision boundary 由 `data_interpretation_review.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 
