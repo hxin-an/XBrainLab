@@ -26,93 +26,50 @@ artifacts/goal/handoff-2026-05-04-usage-refresh.md
 - Do local LLM disk / VRAM / cache preflight before any model download.
 - Commit each verified slice locally.
 
-## Latest Completed Slices
+## Latest Completed Product Slice
 
-The latest product slices added true local ChatPanel tool-chain evidence.
+Latest product commit:
 
-### Data Interpretation short chain
-
-- `scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py`
-- `artifacts/ui/chatpanel-local-tool-chain/*`
-
-What it proves:
-
-- Real MainWindow / ChatPanel / AgentManager / LLMController / AgentWorker /
-  LLMEngine local backend can run a short Data Interpretation tool chain.
-- The script creates a deterministic synthetic FIF and sends visible ChatPanel prompts.
-- Local primary model `microsoft/Phi-4-mini-instruct` ran offline from cache.
-- Tool sequence passed:
-  - `scan_source`
-  - `preview_interpretation`
-  - `validate_interpretation`
-- Final interpretation state has scan / candidate / preview / validation decision.
-- Validation decision is `needs_confirmation`.
-- UI returned idle and visible transcript did not expose raw tool syntax, schema, traceback, or debug payload.
-
-Root cause fixed:
-
-- First real run showed `scan_source` succeeded, but `preview_interpretation`
-  failed as if no scan existed.
-- Final state showed `latest_scan_id=scan-1`, so ApplicationService state was not lost.
-- The local model was generating schema-derived placeholder ids such as
-  `latest_scan_id`, which overrode backend latest-state fallback.
-- Normalizer now keeps only backend-generated id forms:
-  - `scan-<n>` for `scan_id`
-  - `candidate-<n>` for `candidate_id`
-- Other generated/latest/current/id placeholders are removed so ApplicationService uses current state.
-
-Validated command:
-
-```bash
-timeout 620s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_tool_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-tool-chain --timeout-seconds 580
+```text
+f9f0956 assistant: capture training completion walkthrough
 ```
 
-### Import-to-dataset pipeline chain
+This slice proves true local ChatPanel controlled tiny training completion:
 
-- `scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py`
-- `artifacts/ui/chatpanel-local-pipeline-chain/*`
+- real `MainWindow` / `ChatPanel` / local primary model
+  `microsoft/Phi-4-mini-instruct`;
+- no model download, runtime `gpu-ready`, cache about `15.34 GB`;
+- ApplicationService dataset preparation through Data Interpretation -> recipe
+  apply -> preprocess -> epoch -> dataset;
+- visible one-command-per-turn flow:
+  `set_model` -> `configure_training` -> observed / approved `start_training`
+  confirmation -> training completion -> `evaluate` -> `saliency` configure ->
+  `visualize` -> saliency readiness query;
+- final state has finished runs `1`, evaluation metrics available, saliency
+  configured / available, ChatPanel idle;
+- artifacts under `artifacts/ui/chatpanel-local-training-completion/`.
 
-What it proves:
+Supporting fixes:
 
-- Real local ChatPanel can continue past Data Interpretation validation.
-- The script observes and approves the `apply_interpretation` confirmation dialog.
-- Tool sequence passed:
-  - `scan_source`
-  - `preview_interpretation`
-  - `validate_interpretation`
-  - `apply_interpretation`
-  - `apply_standard_preprocess`
-  - `epoch_data`
-  - `generate_dataset`
-- Final state:
-  - applied interpretation: `True`
-  - epoch count: `6`
-  - dataset available: `True`
-  - dataset count: `1`
-- UI returned idle and visible transcript did not expose raw tool syntax, schema, traceback, or debug payload.
+- saliency flat `method` / `params` normalization;
+- `visualization` / `visualisation` intent recognition;
+- stale saliency config cleanup on readiness query;
+- metrics bar chart layout failure fallback;
+- missing optional `torchinfo` model-summary fallback.
 
-Root causes fixed:
+Validation already recorded in `docs/records/worklog.md`,
+`docs/records/implementation_log.md`, and `docs/validation/README.md`.
 
-- `apply_standard_preprocess` now routes directly to `PreprocessCommand(operation=STANDARD)` in the agent application surface instead of legacy string fallback.
-- First pipeline-chain run hit split audit failure because only the `left` event was extracted, producing 3 epochs and an empty validation split.
-- The split audit guardrail was not relaxed.
-- `tool_call_normalizer` now extracts multiple event ids from prompts such as `events left and right`.
+## Do Not Redo Without Reason
 
-Validated commands already run:
+- ChatPanel Data Interpretation short-chain evidence is already done.
+- ChatPanel import-to-dataset pipeline-chain evidence is already done.
+- Agent exposure for `evaluate`, `visualize`, and `saliency` is already done.
+- ChatPanel training-readiness boundary evidence is already done.
+- Controlled tiny ChatPanel training-completion evidence is already done.
 
-```bash
-poetry run pytest --capture=sys tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py::test_application_tool_command_routes_standard_preprocess tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py -q
-poetry run ruff check XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py
-poetry run basedpyright XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/application_surface.py scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/tools/test_application_surface.py tests/unit/scripts/test_capture_chatpanel_local_pipeline_chain_walkthrough.py
-timeout 840s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_chatpanel_local_pipeline_chain_walkthrough.py --output-dir artifacts/ui/chatpanel-local-pipeline-chain --timeout-seconds 800
-```
-
-Expected results:
-
-- pytest: `32 passed`
-- ruff: pass
-- basedpyright: `0 errors, 0 warnings, 0 notes`
-- walkthrough artifact: `status=passed`
+Redo one only if the underlying parser, verifier, command surface, UI feedback,
+or backend result contract changed.
 
 ## Immediate Resume Steps
 
@@ -122,34 +79,60 @@ Expected results:
 git status --short
 ```
 
-Only `.vscode/settings.json` and root `settings.json` should be unrelated protected dirty files after the latest slice is committed.
+Only `.vscode/settings.json` and root `settings.json` should be unrelated
+protected dirty files.
 
 2. Read current truth and records:
 
 ```bash
-sed -n '1,220p' docs/current.md
-sed -n '1,220p' docs/planning/now.md
-tail -n 160 docs/records/worklog.md
-tail -n 180 docs/records/implementation_log.md
+sed -n '1,240p' docs/current.md
+sed -n '1,240p' docs/planning/now.md
+tail -n 180 docs/records/worklog.md
+tail -n 220 docs/records/implementation_log.md
+sed -n '780,900p' docs/validation/README.md
 ```
 
-3. Do not redo completed ChatPanel short-chain or import-to-dataset pipeline-chain evidence. The analysis-tool exposure gap has also been closed by the post-handoff slice: `evaluate`, `visualize`, and `saliency` are now ApplicationService-backed agent tools with deterministic and affected-case local LLM smoke evidence. A training-readiness boundary artifact also exists: ChatPanel can set model, configure training, surface training confirmation, run visualization/saliency readiness, and report evaluate blocked reason. Next highest-value product slice:
+3. Next highest-value product slice:
 
 ```text
-ChatPanel controlled tiny training completion -> evaluation metrics -> visualization / saliency render evidence
+full visualization / saliency canvas render UI evidence
 ```
 
-The next slice should still run one verified command per turn. It should not auto-train without explicit confirmation. If local model behavior is unstable, fix parser / normalizer / verifier / prompt / state snapshot instead of only documenting the failure.
+The latest ChatPanel training-completion artifact proves readiness summaries,
+not real render/canvas output. Build or verify a user-observable render path and
+capture screenshots/artifacts that show the actual UI update.
+
+4. If render path is blocked, take the smallest architecture-aligned slice:
+
+```text
+ApplicationService typed render/readiness result
+  -> UI panel consumes the same result/capability policy
+  -> agent command remains one verified command per turn
+  -> focused tests
+  -> UI-observable screenshot or clear blocked reason
+```
+
+5. After render evidence, continue with the remaining product gaps:
+
+- mature import wizard embedded label / anchor / MAT variable editor;
+- Windows Desktop launcher human click-through / WSLg multi-monitor verification;
+- MCP Inspector GUI / release config;
+- external thesis experiment runner / statistical report;
+- primary / fallback local LLM x3 thesis-candidate eval report.
 
 ## Remaining Product Blockers
 
-- No true ChatPanel dataset -> train/eval/saliency long-chain walkthrough yet.
-- Windows Desktop launcher human click-through / WSLg multi-monitor behavior not manually verified.
-- MCP Inspector GUI / release config not completed.
-- Label import is recipe-trace compatible but not embedded as a mature import wizard label/anchor/MAT variable editor.
-- Full UI button-click to real train/eval/visualization completion not done.
-- External thesis experiment runner/statistical report not done.
-- Goal must remain incomplete until these are either fixed or explicitly documented as not done.
+- Full saliency / visualization canvas render UI walkthrough is missing.
+- Windows Desktop launcher human click-through / WSLg multi-monitor behavior is
+  not manually verified.
+- MCP Inspector GUI / release config is not complete.
+- Label import is recipe-trace compatible but not yet a mature import wizard
+  embedded label / anchor / MAT variable editor.
+- External thesis experiment runner / statistical report is not done.
+- Thesis-candidate local LLM report still needs primary / fallback x3 evidence
+  organization.
+- Goal must remain incomplete until these are fixed or explicitly documented as
+  not done.
 
 ## Handoff Rule
 

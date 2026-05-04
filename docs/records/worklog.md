@@ -2622,3 +2622,18 @@
   - 這支撐 controlled tiny training completion 和 analysis readiness summary。
   - 還不是完整 saliency / visualization canvas render、真人 Windows launcher click-through、
     MCP Inspector GUI、mature import wizard label editor 或 external thesis experiment package。
+
+### 2026-05-04 13:52 Usage-refresh handoff after training completion
+
+- 因使用量即將刷新，刷新交接紀錄：
+  - `artifacts/goal/handoff-2026-05-04-usage-refresh.md`
+  - `artifacts/goal/continuation-2026-05-04-product-completion.md`
+- 交接已更新到最新 product commit：
+  - `f9f0956 assistant: capture training completion walkthrough`
+  - `7936328 agent: preserve training output dir`
+- 交接紀錄明確保存：
+  - expected dirty worktree 只應剩 `.vscode/settings.json` 和 root `settings.json`，兩者不可碰。
+  - controlled tiny ChatPanel training completion 已完成，不要下一輪重做。
+  - 下一手優先處理 visualization / saliency canvas render UI evidence；不能把 readiness summary
+    包裝成 render。
+- Goal 仍不可標 complete。
