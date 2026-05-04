@@ -1,0 +1,199 @@
+{
+  "status": "passed",
+  "failure_reason": "",
+  "claim_boundary": "Automated MCP Inspector GUI click-through against the Windows WSL client entry; not a human GUI session, full MCP client certification, or packaging release approval.",
+  "server_name": "xbrainlab-windows-wsl",
+  "config_path": "artifacts/mcp/xbrainlab-mcp.json",
+  "inspector_url": "http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=<redacted>",
+  "client_dependency_boundary": "The Inspector and Chrome run as external Windows client processes; the selected server entry launches the prepared XBrainLab WSL runtime wrapper.",
+  "screenshot": "artifacts/mcp/inspector-gui-connected.png",
+  "inspector_stdout": [
+    "Starting MCP inspector...",
+    "⚙️ Proxy server listening on localhost:6277",
+    "🔑 Session token: d7a556a631cc3c4c54c57b9b420b73cdcce11b7b3914cf441f331d19659064ca",
+    "   Use this token to authenticate requests or set DANGEROUSLY_OMIT_AUTH=true to disable auth",
+    "",
+    "🚀 MCP Inspector is up and running at:",
+    "   http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=<redacted>"
+  ],
+  "node_result": {
+    "tabTitle": "MCP Inspector",
+    "tabUrl": "http://localhost:6274/?MCP_PROXY_AUTH_TOKEN=<redacted>",
+    "click": "clicked Connect: Connect",
+    "actions": [
+      {
+        "step": "connect",
+        "result": "clicked Connect: Connect"
+      },
+      {
+        "step": "tools",
+        "result": "not found: List Tools, Tools"
+      },
+      {
+        "step": "tools",
+        "result": "not found: List Tools, Tools"
+      },
+      {
+        "step": "tools",
+        "result": "not found: List Tools, Tools"
+      },
+      {
+        "step": "tools",
+        "result": "not found: List Tools, Tools"
+      },
+      {
+        "step": "tools",
+        "result": "not found: List Tools, Tools"
+      },
+      {
+        "step": "tools",
+        "result": "not found: List Tools, Tools"
+      },
+      {
+        "step": "tools",
+        "result": "clicked List Tools: List Tools"
+      },
+      {
+        "step": "tools",
+        "result": "clicked List Tools: List Tools"
+      }
+    ],
+    "before": {
+      "title": "MCP Inspector",
+      "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet",
+      "buttons": [
+        "STDIO",
+        "Environment Variables",
+        "Server Entry",
+        "Servers File",
+        "Authentication",
+        "Configuration",
+        "Connect",
+        "System",
+        "Open Auth Settings",
+        "Clear",
+        "Clear"
+      ],
+      "inputs": [
+        {
+          "value": "wsl.exe",
+          "placeholder": "Command",
+          "aria": null
+        },
+        {
+          "value": "bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh",
+          "placeholder": "Arguments (space-separated)",
+          "aria": null
+        }
+      ]
+    },
+    "after": {
+      "title": "MCP Inspector",
+      "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nRestart\nDisconnect\nConnected\nxbrainlab\nVersion: 0.5.6\nSystem\nResources\nPrompts\nTools\nTasks\nApps\nPing\nSampling\nElicitations\nRoots\nAuth\nMetadata\nTools\nList ToolsClear\nScan Source\nScan a source path for EEG files, label carriers, and metadata.\nPreview Interpretation\nBuild and preview a candidate data interpretation.\nValidate Interpretation\nValidate an interpretation candidate.\nApply Interpretation\nApply a validated interpretation to the active backend session.\nSave Interpretation Recipe\nSave the applied interpretation as a replayable recipe.\nReload Interpretation Recipe\nReload a recipe and re-run scan/preview/validation without applying.\nLoad Data\nLoad raw EEG files into the active study.\nAttach Labels\nAttach label files to already-loaded raw files.\nImport Labels\nApply an explicit label import plan to loaded raw data.\nUpdate Metadata\nUpdate subject/session metadata for one or more loaded files.\nApply Smart Parse\nApply filename parser results to loaded-file metadata.\nRemove Files\nRemove loaded raw files by row/index.\nPreprocess\nApply a preprocessing operation to the active study.\nCreate Epoch\nCreate epochs from preprocessed data.\nGenerate Dataset\nGenerate train/validation/test datasets from epoch data.\nClear Datasets\nClear generated datasets and any training plan tied to them.\nConfigure Training\nConfigure model and training hyperparameters.\nTrain\nStart model training.\nStop Training\nStop an active training run.\nClear Training History\nClear training plan/run history while preserving current configuration.\nEvaluate\nRead evaluation metrics and run summaries from the active backend.\nVisualize\nRead visualization readiness and available view summaries.\nSaliency\nConfigure or query saliency readiness.\nApply Montage\nApply confirmed channel montage positions to epoch data.\nQuery State\nRead-only typed query through the application service.\nReset Preprocess\nReset preprocessing to loaded raw data and remove downstream artifacts.\nReset Session\nClear loaded data and downstream state.\nNew Session\nStart a new single-backend session by clearing current state.\nSelect a tool\nSelect a tool from the list to view its details and run it\nHistory\nClear\n2. tools/list\n▶\n1. initialize\n▶\nServer Notifications\nClear\n\nNo notifications yet",
+      "buttons": [
+        "STDIO",
+        "Environment Variables",
+        "Server Entry",
+        "Servers File",
+        "Authentication",
+        "Configuration",
+        "Restart",
+        "Disconnect",
+        "System",
+        "Resources",
+        "Prompts",
+        "Tools",
+        "Tasks",
+        "Apps",
+        "Ping",
+        "Sampling",
+        "Elicitations",
+        "Roots",
+        "Auth",
+        "Metadata",
+        "List Tools",
+        "Clear",
+        "Clear",
+        "Clear"
+      ],
+      "inputs": [
+        {
+          "value": "wsl.exe",
+          "placeholder": "Command",
+          "aria": null
+        },
+        {
+          "value": "bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh",
+          "placeholder": "Arguments (space-separated)",
+          "aria": null
+        }
+      ]
+    },
+    "poll": [
+      {
+        "index": 0,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 1,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 2,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 3,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 4,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 5,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nConnect\nDisconnected\nSystem\n\nConnect to an MCP server to start inspecting\n\nNeed to configure authentication?\n\nOpen Auth Settings\nHistory\nClear\n\nNo history yet\n\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 6,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nRestart\nDisconnect\nConnected\nxbrainlab\nVersion: 0.5.6\nSystem\nResources\nPrompts\nTools\nTasks\nApps\nPing\nSampling\nElicitations\nRoots\nAuth\nMetadata\nTools\nList ToolsClear\nSelect a tool\nSelect a tool from the list to view its details and run it\nHistory\nClear\n1. initialize\n▶\nServer Notifications\nClear\n\nNo notifications yet"
+      },
+      {
+        "index": 7,
+        "text": "MCP Inspector v0.21.2\nTransport Type\nSTDIO\nCommand\nArguments\nEnvironment Variables\nServer Entry\nServers File\nAuthentication\nConfiguration\nRestart\nDisconnect\nConnected\nxbrainlab\nVersion: 0.5.6\nSystem\nResources\nPrompts\nTools\nTasks\nApps\nPing\nSampling\nElicitations\nRoots\nAuth\nMetadata\nTools\nList ToolsClear\nScan Source\nScan a source path for EEG files, label carriers, and metadata.\nPreview Interpretation\nBuild and preview a candidate data interpretation.\nValidate Interpretation\nValidate an interpretation candidate.\nApply Interpretation\nApply a validated interpretation to the active backend session.\nSave Interpretation Recipe\nSave the applied interpretation as a replayable recipe.\nReload Interpretation Recipe\nReload a recipe and re-run scan/preview/validation without applying.\nLoad Data\nLoad raw EEG files into the active study.\nAttach Labels\nAttach label files to already-loaded raw files.\nImport Labels\nApply an explicit label import plan to loaded raw data.\nUpdate Metadata\nUpdate subject/sess"
+      }
+    ],
+    "connected": true,
+    "serverNameVisible": true,
+    "commandValue": "wsl.exe",
+    "argumentsValue": "bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh",
+    "toolsVisible": {
+      "scan_source": true,
+      "preview_interpretation": true,
+      "validate_interpretation": true,
+      "apply_interpretation": true
+    },
+    "toolLabelsVisible": {
+      "scan_source": true,
+      "preview_interpretation": true,
+      "validate_interpretation": true,
+      "apply_interpretation": true
+    },
+    "screenshotPath": "D:\\workspace_v2\\projects\\lab\\XBrainLab\\artifacts\\mcp\\inspector-gui-connected.png"
+  },
+  "checks": {
+    "inspector_url_seen": true,
+    "connect_clicked": true,
+    "connected_visible": true,
+    "disconnect_visible": true,
+    "server_name_visible": true,
+    "tools_panel_visible": true,
+    "command_prepopulated": true,
+    "wrapper_argument_prepopulated": true,
+    "screenshot_written": true,
+    "tool_visible_scan_source": true,
+    "tool_visible_preview_interpretation": true,
+    "tool_visible_validate_interpretation": true,
+    "tool_visible_apply_interpretation": true
+  }
+}

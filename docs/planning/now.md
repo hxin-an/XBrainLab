@@ -74,7 +74,7 @@
   - fallback `microsoft/Phi-3.5-mini-instruct`：`100 / 100` pass。
   - runtime classification：primary / fallback 都是 `gpu-ready`；cache `15.34 GB`；no download。
   這支撐 thesis-candidate tool-call benchmark evidence；仍不能取代 ChatPanel walkthrough、
-  Windows launcher walkthrough、MCP Inspector / release config 或成熟 import wizard 驗收。
+  Windows launcher walkthrough、MCP HTTP / long-running tool calls 或成熟 import wizard 驗收。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
@@ -82,8 +82,8 @@
   - evidence 覆蓋 `initialize`、`tools/list`、`scan_source`、`preview_interpretation`、
     `validate_interpretation`；tool schema taxonomy 仍來自 ApplicationService automation
     surface。
-  - 這支撐 external stdio client path，不代表 MCP Inspector GUI click-through、Windows release
-    config、HTTP transport 或 long-running training through MCP 已完成。
+  - 這支撐 external stdio client path，不代表 Windows release registration、HTTP transport
+    或 long-running training through MCP 已完成。
 - MCP Inspector-style release config baseline 已新增：
   - `artifacts/mcp/xbrainlab-mcp.json` 是標準 `mcpServers` / `stdio` config，含
     `default-server` 和 `xbrainlab-windows-wsl` entries。
@@ -94,8 +94,17 @@
   - integration test 會用 committed config command 重跑 stdio walkthrough。
   - Windows-side official Inspector CLI 已用 `xbrainlab-windows-wsl` entry 跑過
     `tools/list`，artifact 在 `artifacts/mcp/inspector-cli-tools-list.json` / `.md`。
-  - 這支撐 Inspector CLI / external client release config baseline；仍不是 Inspector GUI 人工
-    click-through、HTTP transport 或 long-running training through MCP。
+  - 這支撐 Inspector CLI / external client release config baseline；仍不是 HTTP transport 或
+    long-running training through MCP。
+- MCP Inspector GUI click-through baseline 已新增：
+  - script：`scripts/dev/capture_mcp_inspector_gui_walkthrough.py`。
+  - artifact：`artifacts/mcp/inspector-gui-walkthrough.json` / `.md` 和
+    `artifacts/mcp/inspector-gui-connected.png`。
+  - evidence 顯示 official Inspector GUI 透過 `xbrainlab-windows-wsl` entry 連上 `xbrainlab`
+    server，`Connect` / `Connected` / `Disconnect` / `Tools` / `List Tools` 可見，並能看到
+    `Scan Source`、`Preview Interpretation`、`Validate Interpretation`、`Apply Interpretation`。
+  - 這支撐 automated Inspector GUI click-through，不是 human GUI session、full MCP client
+    certification、HTTP transport 或 long-running training through MCP。
 - Windows launcher automated command walkthrough 已新增：
   - `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
     `XBrainLab.cmd` smoke，確認它指向 active repo。
@@ -208,7 +217,7 @@
     readiness query stale params cleanup，以及 tiny metrics / missing `torchinfo` UI fallback。
   - 這支撐 true local ChatPanel controlled tiny training completion 和 post-training analysis
     readiness summary；仍不代表完整 saliency / visualization canvas render、真人 Windows launcher
-    click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
+    click-through、MCP HTTP / long-running client workflow 或 mature import wizard label editor 完成。
 - MainWindow VisualizationPanel render walkthrough 已新增：
   - script：`scripts/dev/capture_visualization_render_walkthrough.py`。
   - artifact：`artifacts/ui/visualization-render/visualization-render-walkthrough.json` /
@@ -222,7 +231,7 @@
     reason，artifact 含 `visualization-render-3d-blocked.png`，且 `plotter_created=False`。
   - 這支撐 post-training Matplotlib saliency render UI evidence 和 headless 3D blocked UX；仍不代表
     interactive desktop 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
-    click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
+    click-through、MCP HTTP / long-running client workflow 或 mature import wizard label editor 完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
@@ -287,8 +296,8 @@
     但最小 PyVistaQt plotter 仍以 X `BadWindow` blocked；interactive 3D render 仍不可宣稱完成。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；任意 raw trigger selection / complex MAT-GDF anchor
-  reconciliation、full real-data manual compatibility certification、MCP Inspector GUI
-  click-through、interactive 3D render、Windows launcher 真人驗收尚未完成，UI replay coverage
+  reconciliation、full real-data manual compatibility certification、MCP HTTP / long-running
+  tool calls、interactive 3D render、Windows launcher 真人驗收尚未完成，UI replay coverage
   還不是完整真人 walkthrough。
 
 ## 下一個 Goal
@@ -298,7 +307,7 @@
 ```text
 True local LLM ChatPanel long-running tool-command workflow
   + label/recipe wizard hardening
-  + MCP Inspector GUI click-through
+  + MCP HTTP / long-running tool-call hardening
   + Windows launcher click-through
 ```
 

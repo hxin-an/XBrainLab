@@ -438,9 +438,9 @@ accuracy 已驗證」。
 
 這批 evidence 支撐 Dataset panel main import entry 的新心智模型。後續 recipe save option
 和 headless / MCP-ready adapter 已補；label import 已降為 service-backed compatibility path，
-且後續已整合進 Data Interpretation recipe trace。stdio MCP server baseline 和 stdio external-client
-walkthrough artifact 已補；Inspector GUI walkthrough、Windows release config 和 local LLM 真實
-ChatPanel walkthrough 仍未完成。
+且後續已整合進 Data Interpretation recipe trace。stdio MCP server baseline、stdio external-client
+walkthrough artifact、Inspector release config、Inspector GUI walkthrough 和 local LLM 真實
+ChatPanel walkthrough 都已另有 evidence；這個早期 gate 本身不能替代那些後續 evidence。
 
 2026-05-04 MCP-ready automation adapter + deterministic eval expansion：
 
@@ -533,8 +533,9 @@ config、HTTP transport、或 product completion。
 
 這批 evidence 支撐 external stdio client 可以不安裝 XBrainLab EEG / PyQt / PyTorch client-side
 dependencies，並透過 prepared XBrainLab MCP server 走同一套 ApplicationService command surface。
-它仍不支撐 MCP Inspector GUI click-through、Windows release registration / config、HTTP transport、
-long-running training tool through MCP、或 product completion。
+它本身仍不支撐 MCP Inspector GUI click-through、Windows release registration / config、HTTP
+transport、long-running training tool through MCP、或 product completion；Inspector release config
+和 GUI walkthrough 已由後續 artifacts 補上。
 
 2026-05-04 MCP Inspector-style release config baseline：
 
@@ -575,8 +576,43 @@ long-running training tool through MCP、或 product completion。
     `artifacts/mcp/inspector-cli-tools-list.json` / `.md`
 
 這批 evidence 支撐 Inspector-style release config baseline、prepared-runtime launch path 和 official
-Inspector CLI `tools/list`。它仍不支撐 Inspector GUI 人工 click-through、Windows Desktop 真人啟動、HTTP transport、
-long-running training through MCP 或 product completion。
+Inspector CLI `tools/list`。它本身仍不支撐 Inspector GUI click-through、Windows Desktop 真人啟動、HTTP
+transport、long-running training through MCP 或 product completion；Inspector GUI baseline 已由下一段
+artifact 補上。
+
+2026-05-04 MCP Inspector GUI click-through baseline：
+
+- script：`scripts/dev/capture_mcp_inspector_gui_walkthrough.py`
+- artifact：
+  - `artifacts/mcp/inspector-gui-walkthrough.json`
+  - `artifacts/mcp/inspector-gui-walkthrough.md`
+  - `artifacts/mcp/inspector-gui-connected.png`
+- command：
+  - `timeout 210s poetry run python scripts/dev/capture_mcp_inspector_gui_walkthrough.py --output-dir artifacts/mcp --timeout-seconds 150`
+- result：
+  - status：`passed`
+  - visible Inspector state：`Connect` clicked、`Connected` visible、`Disconnect` visible、
+    server `xbrainlab` visible、Tools panel visible。
+  - client boundary：Inspector / Chrome run as Windows external client processes; server entry uses
+    `wsl.exe bash /mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/dev/run_mcp_server_for_client.sh`
+    to launch the prepared XBrainLab runtime.
+  - visible Data Interpretation tools:
+    - `scan_source` / `Scan Source`
+    - `preview_interpretation` / `Preview Interpretation`
+    - `validate_interpretation` / `Validate Interpretation`
+    - `apply_interpretation` / `Apply Interpretation`
+  - cleanup: post-run Windows `node.exe` Inspector processes and Chrome processes tied to
+    XBrainLab MCP artifacts were absent.
+- unit/static:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_mcp_inspector_gui_walkthrough.py -q`
+  - `5 passed`
+  - targeted `ruff check` / `ruff format --check` clean
+  - `poetry run basedpyright scripts/dev/capture_mcp_inspector_gui_walkthrough.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 automated MCP Inspector GUI click-through with connected tools list and prepared
+Windows WSL runtime wrapper。它仍不是 human GUI session、full MCP client certification、HTTP
+transport、long-running training through MCP、Windows Desktop真人啟動或 product completion。
 
 2026-05-04 Local LLM tool-call runner and schema gate：
 
@@ -787,7 +823,7 @@ failure。
 這批 evidence 支撐 thesis-candidate local tool-call benchmark：同一 `100` cases 被 deterministic
 baseline、primary local model 和 fallback local model 各自以可重跑 artifact 驗證。它仍不能替代
 true ChatPanel multi-turn walkthrough、Windows launcher click-through、
-MCP Inspector / release config、完整 import wizard UI 驗收或論文最終統計報告。
+MCP HTTP / long-running client workflows、完整 import wizard UI 驗收或論文最終統計報告。
 
 2026-05-04 agent analysis-tool exposure validation：
 
@@ -909,8 +945,8 @@ ChatPanel path。它仍不支撐 actual training completion、evaluation metrics
 
 這批 evidence 支撐 true local ChatPanel controlled tiny training completion、post-training metrics
 query 和 saliency / visualization readiness summary。它仍不等於完整 saliency / visualization
-canvas render、真人 Windows launcher click-through、MCP Inspector GUI 或 mature import wizard label
-editor 完成。
+canvas render、真人 Windows launcher click-through、mature import wizard label editor 或
+MCP HTTP / long-running client workflow 完成。
 
 2026-05-04 MainWindow VisualizationPanel Matplotlib render walkthrough：
 
@@ -957,7 +993,7 @@ editor 完成。
 這批 evidence 支撐 true MainWindow VisualizationPanel post-training Matplotlib saliency renders，
 並支撐 headless/offscreen 3D tab 會顯示人話 blocked reason 而不是 crash。它仍不支撐
 interactive desktop 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
-click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
+click-through、mature import wizard label editor 或 MCP HTTP / long-running client workflow 完成。
 
 2026-05-04 PyVistaQt runtime probe：
 
@@ -1628,7 +1664,7 @@ event anchor 的 GDF/MAT alignment、多檔 label mapping 或 full manual compat
 這批 evidence 支撐 UI / recipe 已確認的 import truth 不再停留在 backend JSON 或 wizard
 內部；agent、headless automation 和 MCP-shaped envelope 可讀到同一份狀態。它仍不支撐 mature
 embedded label import wizard、多檔 label mapping、raw-event-anchor-specific GDF/MAT alignment、
-真人 Windows click-through、interactive desktop 3D 或 MCP Inspector GUI。
+真人 Windows click-through、interactive desktop 3D 或 MCP HTTP / long-running client workflow。
 
 2026-05-04 Data Interpretation multi-file timestamp label mapping：
 

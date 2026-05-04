@@ -37,6 +37,42 @@
 
 ## 2026-05-04
 
+### 20:43 MCP Inspector GUI click-through baseline
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_mcp_inspector_gui_walkthrough.py`。
+  - 腳本啟動 Windows official MCP Inspector、用 Windows Chrome headless + CDP 點擊
+    `Connect` 和 `List Tools`，再保存 JSON / Markdown / screenshot artifact。
+  - 補 `tests/unit/scripts/test_capture_mcp_inspector_gui_walkthrough.py`，驗證 token redaction、
+    WSL -> Windows path 轉換、connected checks、可見工具 checks 和 Markdown claim boundary。
+  - 修正 runtime 驗證：Inspector GUI 會顯示 human labels，例如 `Scan Source`，不是
+    snake_case `scan_source`；script 現在把可見 label 對回 canonical tool name。
+- 結果：
+  - `artifacts/mcp/inspector-gui-walkthrough.json` status `passed`。
+  - 可見狀態包含 `Connected`、`Disconnect`、`xbrainlab`、`wsl.exe`、prepared runtime wrapper
+    args、Tools / List Tools。
+  - 可見 Data Interpretation tools：
+    - `scan_source` / `Scan Source`
+    - `preview_interpretation` / `Preview Interpretation`
+    - `validate_interpretation` / `Validate Interpretation`
+    - `apply_interpretation` / `Apply Interpretation`
+  - post-run 檢查沒有殘留 Windows Inspector `node.exe` 或 XBrainLab MCP Chrome process。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_mcp_inspector_gui_walkthrough.py -q`
+    -> `5 passed`。
+  - targeted `ruff check` / `ruff format --check` -> pass。
+  - `poetry run basedpyright scripts/dev/capture_mcp_inspector_gui_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 210s poetry run python scripts/dev/capture_mcp_inspector_gui_walkthrough.py --output-dir artifacts/mcp --timeout-seconds 150`
+    -> exit `0`。
+  - `artifacts/mcp/inspector-gui-connected.png`
+  - `artifacts/mcp/inspector-gui-walkthrough.json`
+  - `artifacts/mcp/inspector-gui-walkthrough.md`
+- 接續 / 本輪剩餘：
+  - 這是 automated Inspector GUI click-through baseline，不是 human GUI session、HTTP transport、
+    long-running training through MCP、full MCP client certification、Windows Desktop 真人啟動或
+    product completion。
+
 ### 20:31 Records scope cleanup
 
 - 做了什麼：
