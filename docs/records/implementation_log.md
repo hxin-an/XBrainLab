@@ -4608,3 +4608,34 @@ render 3D 的 runtime，UI 應該顯示 blocked reason，而不是 crash。
 - 這支撐 headless/offscreen 3D blocked UX。
 - 這不支撐 interactive desktop 3D / PyVista render；Windows / WSLg 3D click-through 仍未驗證。
 - Goal 不能標 complete。
+
+## 2026-05-04 Usage refresh handoff refresh
+
+### 背景
+
+使用量即將刷新，本輪不再繼續開下一個產品 slice。為避免下一個 runner 從過期 handoff 接錯，
+需要把 handoff 和 continuation prompt 更新到最新產品 commit，並明確列出哪些缺口仍不能宣稱完成。
+
+### 變更
+
+- 更新 `artifacts/goal/handoff-2026-05-04-usage-refresh.md`：
+  - 最新 commit 改為 `15002a1 ui: show label import target context`。
+  - 補入已完成的 shared import state propagation、安全多檔 timestamp / sequence label mapping、
+    label carrier `Matched EEG` UI 和 post-load label target context。
+  - 移除已完成項目作為 next step 的舊提示。
+  - 下一步改為 MCP Inspector / release config hardening。
+- 更新 `artifacts/goal/continuation-2026-05-04-product-completion.md`：
+  - 明確要求刷新後先看 handoff，再從 MCP external-client config / launch manifest slice 接續。
+  - 保留不能宣稱完成的 blocker 和 protected worktree files。
+- 更新 `docs/records/worklog.md` 保存停工位置。
+
+### 驗證
+
+- Handoff 是文件 / artifact refresh；本段只跑文件必要驗證。
+- `git diff --check` -> pass。
+- `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+
+### 不能宣稱完成
+
+- 這只是 usage refresh handoff，不是產品 closure。
+- Goal 不能標 complete。

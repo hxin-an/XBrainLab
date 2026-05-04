@@ -3042,3 +3042,19 @@
 - 不能宣稱：
   - 這支撐 headless/offscreen 3D tab blocked UX，不是 interactive desktop 3D render。
   - Windows / WSLg interactive 3D click-through 仍未驗證。
+
+### 2026-05-04 18:41 Usage refresh handoff refresh
+
+- 因使用量即將刷新，交接紀錄已更新到最新本地 commit：
+  - `15002a1 ui: show label import target context`
+  - `7d0f92c ui: show matched eeg for label carriers`
+  - `4c2ad99 backend: map reviewed sequence labels by file stem`
+  - `c9c79e2 backend: map reviewed timestamp labels by file stem`
+  - `a26942a backend: propagate import review state`
+- 已刷新：
+  - `artifacts/goal/handoff-2026-05-04-usage-refresh.md`
+  - `artifacts/goal/continuation-2026-05-04-product-completion.md`
+- 下一輪建議直接從 MCP Inspector / release config hardening 開始；不要重做已完成的 state snapshot
+  propagation、多檔安全 label mapping、matched EEG UI 或 post-load label target context。
+- 預期未提交的 dirty worktree 只應剩 `.vscode/settings.json` 和 root `settings.json`，兩者不可碰。
+- Goal 仍不可標 complete。

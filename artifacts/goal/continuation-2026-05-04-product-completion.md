@@ -31,34 +31,32 @@ artifacts/goal/handoff-2026-05-04-usage-refresh.md
 Latest product commit:
 
 ```text
-0da24db backend: apply reviewed sequence labels during import
+15002a1 ui: show label import target context
 ```
 
-This slice closes the narrow safe path for reviewed external label application
-inside Data Interpretation:
+This slice makes the legacy compatibility label flow safer and clearer:
 
-- timestamp CSV / TSV / BIDS events carriers apply through
-  `dataset.apply_labels_batch()` when one EEG file and one confirmed reviewed
-  timestamp carrier are present;
-- MAT / TXT trial-order sequence carriers apply through
-  `dataset.apply_labels_legacy()` when one EEG file, one reviewed carrier,
-  trial granularity, `trial_order` time model, and a confirmed class map are
-  present;
-- applied interpretations now record `label_apply` diagnostics,
-  `label_imports`, and recipe trace entries for the applied labels;
-- unsupported / ambiguous cases remain skipped with reason instead of being
-  guessed.
+- `Add Labels to Loaded Data` now shows the loaded EEG target files.
+- The dialog explains that successful label import updates the active Data
+  Interpretation recipe trace.
+- Dataset actions pass loaded target context into the dialog.
+- It remains compatibility UI, not the complete embedded label editor.
 
-Immediately preceding product slices:
+Important product slices already completed:
 
-- `f49af63 ui: add label carrier review to import wizard`
-- `15c242d backend: surface import format boundaries`
+- `a26942a backend: propagate import review state`
+- `c9c79e2 backend: map reviewed timestamp labels by file stem`
+- `4c2ad99 backend: map reviewed sequence labels by file stem`
+- `7d0f92c ui: show matched eeg for label carriers`
+- `0da24db backend: apply reviewed sequence labels during import`
 - `626b606 backend: apply reviewed timestamp labels during import`
-- `a41770f ui: capture visualization render walkthrough`
+- `15c242d backend: surface import format boundaries`
+- `f49af63 ui: add label carrier review to import wizard`
 - `3341d53 ui: guard headless 3d visualization`
+- `a41770f ui: capture visualization render walkthrough`
 - `f9f0956 assistant: capture training completion walkthrough`
 
-Validation already recorded in `docs/records/worklog.md`,
+Validation is recorded in `docs/records/worklog.md`,
 `docs/records/implementation_log.md`, `docs/validation/README.md`, and the
 handoff file.
 
@@ -71,12 +69,13 @@ handoff file.
 - Controlled tiny ChatPanel training-completion evidence is already done.
 - MainWindow VisualizationPanel Matplotlib render evidence is already done.
 - Headless/offscreen 3D blocked UX is already guarded and captured.
-- Label carrier review, format capability boundaries, timestamp label apply, and
-  MAT / TXT sequence label apply are already implemented.
+- Label carrier review, format capability boundaries, timestamp label apply,
+  MAT / TXT sequence label apply, shared state propagation, and safe multi-file
+  label mapping are already implemented.
 
 Redo one only if the underlying parser, verifier, command surface, UI feedback,
-backend result contract, visualization render path, or Data Interpretation
-recipe contract changed.
+backend result contract, visualization render path, Data Interpretation recipe
+contract, or shared state schema changed.
 
 ## Immediate Resume Steps
 
@@ -88,69 +87,66 @@ git status --short
 
 Only `.vscode/settings.json` and root `settings.json` should be unrelated
 protected dirty files. If this continuation / handoff docs update is not yet
-committed, commit only the docs / artifacts touched by that handoff.
+committed, commit only the docs / artifacts touched by the handoff.
 
 2. Read current truth and latest records:
 
 ```bash
 sed -n '1,180p' docs/current.md
-sed -n '200,260p' docs/planning/now.md
-sed -n '90,240p' docs/records/worklog.md
-sed -n '140,260p' docs/records/implementation_log.md
+sed -n '200,320p' docs/planning/now.md
+tail -n 140 docs/records/worklog.md
+tail -n 180 docs/records/implementation_log.md
 ```
 
 3. Next highest-value product slice:
 
 ```text
-Data Interpretation import truth in shared state snapshot
+MCP Inspector / release config hardening
 ```
 
-The import recipe / UI now knows `label_carrier_plan` and
-`format_capabilities`, but `ApplicationStateSnapshot.interpretation`,
-`query_state`, automation, agent, and MCP may still expose only older summary
-fields. Fix this so UI / agent / headless / MCP share the same import truth.
+Suggested inspection:
 
-Suggested TDD shape:
+```bash
+rg -n "MCP|mcp|Inspector|stdio|run_mcp|mcp_server|mcp_tool" XBrainLab scripts tests docs artifacts -S
+```
+
+Candidate implementation shape:
 
 ```text
-apply reviewed timestamp or MAT sequence interpretation
-  -> assert result.state.interpretation has label_carrier_plan
-  -> assert result.state.interpretation has format_capabilities
-  -> assert serialized automation/query_state payload contains the same fields
-  -> implement only the missing state propagation
+checked-in MCP external-client config or launch manifest
+  -> invokes prepared XBrainLab runtime
+  -> does not require client-side EEG / PyQt / PyTorch dependencies
+  -> shares tool schema with ApplicationService automation
+  -> proves tools/list and tools/call through focused test or stdio walkthrough
+  -> records artifact / docs
+  -> local commit
 ```
 
-4. After state propagation, continue with the remaining product gaps:
+4. After MCP config, continue with remaining product gaps:
 
 - mature embedded label import wizard;
-- multi-file label mapping;
+- generic folder-level label carrier disambiguation UI;
 - raw-event-anchor-specific GDF / MAT alignment;
 - all-format manual compatibility matrix and XDF / LSL boundary / parser work;
-- Windows Desktop launcher human click-through / WSLg multi-monitor
-  verification;
-- MCP Inspector GUI / release config;
+- Windows Desktop launcher human click-through / WSLg multi-monitor verification;
 - interactive desktop 3D / PyVista verification if a real OpenGL session exists;
 - external thesis experiment runner / statistical report;
-- primary / fallback local LLM x3 thesis-candidate evidence organization.
+- final validation sweep and docs closure.
 
 ## Remaining Product Blockers
 
-- Shared state snapshot may not yet include the newest Data Interpretation label
-  carrier and format capability details.
 - Full embedded post-load label import wizard is incomplete.
-- Multi-file label mapping is not automatic.
+- Generic folder-level `events.tsv` / `labels.mat` disambiguation remains
+  skipped, with no interactive resolution surface yet.
 - Raw-event-anchor-specific GDF / MAT alignment remains incomplete.
-- Full all-format manual compatibility matrix and XDF / LSL stream parser remain
-  incomplete.
-- Windows Desktop launcher human click-through / WSLg multi-monitor behavior is
-  not manually verified.
+- Full all-format manual compatibility matrix and XDF / LSL stream parser remain incomplete.
+- Windows Desktop launcher human click-through / WSLg multi-monitor behavior is not manually verified.
 - Interactive desktop 3D / PyVista render is not verified.
 - MCP Inspector GUI / release config is not complete.
 - External thesis experiment runner / statistical report is not done.
-- Thesis-candidate local LLM report still needs primary / fallback x3 evidence
-  organization.
-- Goal must remain incomplete until these are fixed or explicitly documented as
-  not done.
+- Full product thesis-ready claim still depends on product validation beyond the
+  tool-call benchmark.
+- Goal must remain incomplete until these are fixed or explicitly documented as not done.
 
 ## Handoff Rule
 
