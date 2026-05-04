@@ -37,6 +37,38 @@
 
 ## 2026-05-04
 
+### 10:36 ChatPanel true local-model one-turn walkthrough
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_chatpanel_local_walkthrough.py`。
+  - 腳本在 `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` 下打開真 MainWindow / ChatPanel，
+    從 UI composer 送出 prompt，走 AgentManager -> LLMController -> AgentWorker ->
+    LLMEngine local backend。
+  - 新增 `tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py`，覆蓋 transcript markdown
+    render 和 raw tool/debug syntax detection。
+- 結果：
+  - walkthrough `passed`。
+  - primary `microsoft/Phi-4-mini-instruct` runtime classification：`gpu-ready`。
+  - cache usage：`15.34 GB`，no download，HF / Transformers offline。
+  - visible transcript：
+    - user：`In one short user-facing sentence, explain what EEG preprocessing does. Do not use tools.`
+    - assistant：`EEG preprocessing involves cleaning and organizing the raw EEG data to prepare it for further analysis.`
+  - UI 回到 idle：send button `Send` / enabled，input enabled，chat / controller processing false。
+- 證據：
+  - `artifacts/ui/chatpanel-local-ready.png`
+  - `artifacts/ui/chatpanel-local-response.png`
+  - `artifacts/ui/chatpanel-local-walkthrough.json`
+  - `artifacts/ui/chatpanel-local-walkthrough.md`
+  - `poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown` ->
+    `classification: gpu-ready`
+  - `timeout 420s xvfb-run -a poetry run python scripts/dev/capture_chatpanel_local_walkthrough.py --output-dir artifacts/ui --timeout-seconds 360` -> wrote artifacts
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py -q` -> `2 passed`
+  - targeted `ruff` / `basedpyright` clean。
+- 接續 / 本輪剩餘：
+  - 這解除「沒有真 local model ChatPanel 可見回覆 artifact」的缺口。
+  - 仍不是 multi-turn tool-command ChatPanel workflow、Windows Desktop launcher click-through、
+    長時間 assistant 操作或完整 import wizard UI 驗收。
+
 ### 10:25 MCP stdio external-client walkthrough
 
 - 做了什麼：

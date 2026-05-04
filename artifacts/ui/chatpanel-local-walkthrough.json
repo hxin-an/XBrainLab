@@ -1,0 +1,41 @@
+{
+  "status": "passed",
+  "failure_reason": "",
+  "prompt": "In one short user-facing sentence, explain what EEG preprocessing does. Do not use tools.",
+  "runtime": {
+    "classification": "gpu-ready",
+    "model_id": "microsoft/Phi-4-mini-instruct",
+    "message": "Local runtime ready.",
+    "cache_dir": "/mnt/d/workspace_v2/projects/lab/XBrainLab/XBrainLab/llm/core/models",
+    "cache_usage": "15.34 GB",
+    "cache_usage_bytes": 15338758970,
+    "has_local_cache": true,
+    "gpu_fallback_reason": null
+  },
+  "hf_offline": {
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1"
+  },
+  "screenshots": {
+    "ready": "artifacts/ui/chatpanel-local-ready.png",
+    "response": "artifacts/ui/chatpanel-local-response.png"
+  },
+  "visible_messages": [
+    {
+      "sender": "user",
+      "text": "In one short user-facing sentence, explain what EEG preprocessing does. Do not use tools."
+    },
+    {
+      "sender": "assistant",
+      "text": "EEG preprocessing involves cleaning and organizing the raw EEG data to prepare it for further analysis."
+    }
+  ],
+  "ui_state": {
+    "send_button_text": "Send",
+    "send_button_enabled": true,
+    "input_enabled": true,
+    "chat_processing": false,
+    "controller_processing": false
+  },
+  "elapsed_seconds": 22.5
+}

@@ -84,6 +84,17 @@
     surface。
   - 這支撐 external stdio client path，不代表 MCP Inspector GUI click-through、Windows release
     config、HTTP transport 或 long-running training through MCP 已完成。
+- ChatPanel true local-model one-turn walkthrough 已新增：
+  - `scripts/dev/capture_chatpanel_local_walkthrough.py` 在 `HF_HUB_OFFLINE=1` /
+    `TRANSFORMERS_OFFLINE=1` 下打開真 MainWindow / ChatPanel。
+  - prompt 從 UI composer 送出，路徑是 AgentManager -> LLMController -> AgentWorker ->
+    LLMEngine local backend。
+  - artifact：`artifacts/ui/chatpanel-local-ready.png`、`chatpanel-local-response.png`、
+    `chatpanel-local-walkthrough.json` / `.md`。
+  - primary `microsoft/Phi-4-mini-instruct` `gpu-ready`、cache `15.34 GB`、visible transcript
+    不含 raw tool/debug syntax，UI 回到 idle。
+  - 這支撐真 local model 能在 ChatPanel 產生可見回覆；仍不代表 multi-turn tool-command
+    workflow、Windows launcher click-through 或長時間 assistant 操作已完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
@@ -98,14 +109,14 @@
 下一個 goal 應聚焦在產品硬化，而不是重做 Goal 1 baseline：
 
 ```text
-True local LLM ChatPanel workflow
+True local LLM ChatPanel multi-turn / tool-command workflow
   + label/recipe wizard hardening
   + MCP Inspector / release config
   + Windows launcher click-through
 ```
 
 這不是單純讓 deterministic eval 分數漂亮。下一輪要把真 UI、真 local model、可見 blocked
-reason、recipe editing 和 external-agent adapter 邊界一起驗證。
+reason、tool execution transcript、recipe editing 和 external-agent adapter 邊界一起驗證。
 
 MCP 也應納入設計，但 Goal 1 的最低要求是 **MCP-ready command surface**：先確保 command
 taxonomy、capability policy、autonomy policy、result schema 足以支撐 MCP server。若 runner

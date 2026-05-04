@@ -28,6 +28,67 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 ChatPanel true local-model walkthrough
+
+### 背景
+
+之前已有 local runtime preflight / prompt smoke、真 local tool-call eval 和 UI screenshot baseline，
+但仍沒有證據顯示「使用者在 ChatPanel 裡送出訊息後，真 local model 會產生可見回覆」。這個缺口
+不能用 deterministic eval 或 mocked ChatPanel tests 取代。
+
+### 變更
+
+- 新增 `scripts/dev/capture_chatpanel_local_walkthrough.py`：
+  - 強制 `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1`，避免 walkthrough 觸發下載或 remote path。
+  - 啟動真 `MainWindow` / `ChatPanel`，開啟 assistant dock。
+  - 從 UI composer 填入 prompt 並按 Send。
+  - 經 real `AgentManager -> LLMController -> AgentWorker -> LLMEngine -> LocalBackend` 等待回覆。
+  - 保存 ready / response screenshots、visible transcript、button state、runtime summary。
+- 新增 `tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py`，覆蓋 Markdown rendering 和
+  raw tool/debug syntax detector。
+
+### 影響範圍
+
+- Dev validation scripts。
+- UI observable artifacts。
+- Validation / current / planning / records docs。
+
+### 驗證
+
+- runtime preflight：
+  - `poetry run python scripts/dev/inspect_local_assistant_runtime.py --format markdown`
+  - classification `gpu-ready`
+  - model `microsoft/Phi-4-mini-instruct`
+  - cache `15.34 GB`
+- true UI walkthrough：
+  - `timeout 420s xvfb-run -a poetry run python scripts/dev/capture_chatpanel_local_walkthrough.py --output-dir artifacts/ui --timeout-seconds 360`
+  - wrote `artifacts/ui/chatpanel-local-ready.png`
+  - wrote `artifacts/ui/chatpanel-local-response.png`
+  - wrote `artifacts/ui/chatpanel-local-walkthrough.json`
+  - wrote `artifacts/ui/chatpanel-local-walkthrough.md`
+- artifact summary：
+  - status `passed`
+  - `HF_HUB_OFFLINE=1`
+  - `TRANSFORMERS_OFFLINE=1`
+  - visible assistant response：
+    `EEG preprocessing involves cleaning and organizing the raw EEG data to prepare it for further analysis.`
+  - send button `Send`
+  - input enabled `True`
+  - chat / controller processing `False`
+- targeted gate：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py -q`
+  - `2 passed`
+  - `poetry run ruff check scripts/dev/capture_chatpanel_local_walkthrough.py tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py`
+  - pass
+  - `poetry run basedpyright scripts/dev/capture_chatpanel_local_walkthrough.py tests/unit/scripts/test_capture_chatpanel_local_walkthrough.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是一輪 true local-model ChatPanel response walkthrough，不是 multi-turn tool-command workflow。
+- 尚未驗證 Windows Desktop launcher click-through、長時間 assistant 操作、UI-driven tool execution
+  transcript 或完整 import wizard UI。
+
 ## 2026-05-04 MCP stdio external-client walkthrough
 
 ### 背景
@@ -77,8 +138,8 @@ walkthrough artifact。產品完成要求 MCP client 不需要安裝 XBrainLab E
 - 這是 stdio external-client walkthrough，不是 MCP Inspector GUI click-through。
 - 尚未補 Windows release registration / config、HTTP transport、long-running training through MCP
   或 external agent recovery UX。
-- 產品 completion 仍受 true ChatPanel local-model walkthrough、Windows launcher click-through 和成熟
-  import wizard UI 驗收影響。
+- 產品 completion 仍受 true ChatPanel multi-turn / tool-command walkthrough、Windows launcher
+  click-through 和成熟 import wizard UI 驗收影響。
 
 ## 2026-05-04 Local tool-call thesis-candidate 100-case rerun
 
@@ -145,8 +206,8 @@ walkthrough artifact。產品完成要求 MCP client 不需要安裝 XBrainLab E
 ### 剩餘風險
 
 - 這支撐 thesis-candidate tool-call benchmark evidence，但不等於整個 thesis package closure。
-- true ChatPanel local-model walkthrough、Windows launcher click-through、MCP Inspector / release
-  config、完整 import wizard UI 驗收仍未完成。
+- true ChatPanel multi-turn / tool-command walkthrough、Windows launcher click-through、
+  MCP Inspector / release config、完整 import wizard UI 驗收仍未完成。
 
 ## 2026-05-04 Local assistant tool-call normalization full rerun
 
@@ -375,8 +436,9 @@ agent adapter，且 MCP calls 不能變成第三套 workflow truth 或繞過 App
 - 這是 stdio MCP server baseline，不是 external MCP client / Inspector walkthrough。
 - 尚未補 Windows launcher / packaged config 讓使用者一鍵註冊 MCP server。
 - 尚未驗證 long-running training tool through MCP、external agent recovery UX 或 HTTP transport。
-- 產品 completion 仍受 true local LLM ChatPanel walkthrough、Windows launcher click-through、
-  MCP external-client walkthrough 和 local LLM tool-call accuracy 影響。
+- 這段風險已由後續 stdio external-client artifact、100-case local eval 和 one-turn ChatPanel
+  local-model walkthrough 部分收斂；剩餘仍是 Inspector / release config、Windows launcher、
+  multi-turn tool-command ChatPanel workflow 和成熟 import wizard UI。
 
 ## 2026-05-04 Local LLM tool-call runner and schema verifier
 
