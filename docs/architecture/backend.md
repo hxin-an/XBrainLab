@@ -51,7 +51,8 @@ split config、split audit、rollback 和 split summary 拆到 `DatasetGeneratio
 最新 lifecycle cleanup slice 又把 `reset_preprocess`、`reset_session`、`new_session`、
 downstream rollback 和 reset-time dependent-state clear 拆到 `LifecycleCommandService`。
 最新 compatibility cleanup slice 又把舊 `load_data`、`attach_labels`、`import_labels` 和
-label helper 拆到 `DataCompatibilityCommandService`。
+label helper 拆到 `DataCompatibilityCommandService`。最新 data-table cleanup slice 又把
+`update_metadata`、`apply_smart_parse` 和 `remove_files` 拆到 `DataTableCommandService`。
 `ApplicationService` 仍只 dispatch / gate / wrap result。
 
 ## 一句話架構
@@ -118,7 +119,10 @@ ApplicationService / Command API
   |       +--> reset preprocess / reset session / new session / dependent-state cleanup
   |
   +--> DataCompatibilityCommandService
-          +--> legacy load_data / attach_labels / import_labels compatibility
+  |       +--> legacy load_data / attach_labels / import_labels compatibility
+  |
+  +--> DataTableCommandService
+          +--> metadata update / smart parse / remove files
   |
   v
 same cached controllers from Study
@@ -319,10 +323,15 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/analysis_service.py`
 - `XBrainLab/backend/application/state.py`
 - `XBrainLab/backend/application/capabilities.py`
+- `XBrainLab/backend/application/data_compatibility_service.py`
 - `XBrainLab/backend/application/data_interpretation.py`
 - `XBrainLab/backend/application/data_interpretation_apply.py`
 - `XBrainLab/backend/application/data_interpretation_service.py`
+- `XBrainLab/backend/application/data_table_service.py`
+- `XBrainLab/backend/application/dataset_generation_service.py`
+- `XBrainLab/backend/application/lifecycle_service.py`
 - `XBrainLab/backend/application/results.py`
+- `XBrainLab/backend/application/training_service.py`
 - `XBrainLab/backend/application/errors.py`
 - `XBrainLab/backend/application/service.py`
 
@@ -366,6 +375,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - 舊 `load_data`、`attach_labels`、`import_labels` 和 label helper 的實作位置現在是
   `DataCompatibilityCommandService`。它明確是 compatibility boundary；新 Data
   Interpretation 主線仍應走 `DataInterpretationCommandService`。
+- `update_metadata`、`apply_smart_parse` 和 `remove_files` 的實作位置現在是
+  `DataTableCommandService`。它 owns loaded-data table mutation diagnostics；`ApplicationService`
+  只做 dispatch、policy gate 和 result envelope。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed

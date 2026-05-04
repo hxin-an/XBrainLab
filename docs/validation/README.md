@@ -110,15 +110,18 @@ UI baseline capture 結果：
   downstream rollback 和 reset-time dependent-state clear。
 - `DataCompatibilityCommandService` 承接舊 `load_data`、`attach_labels`、`import_labels` 和
   label helper，並維持 Data Interpretation recipe trace update。
+- `DataTableCommandService` 承接 `update_metadata`、`apply_smart_parse` 和 `remove_files`，
+  並維持 loaded-data table mutation diagnostics。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
   `XBrainLab.backend.application.lifecycle_service` /
-  `XBrainLab.backend.application.data_compatibility_service`，再以 service unit tests 驗證 model
+  `XBrainLab.backend.application.data_compatibility_service` /
+  `XBrainLab.backend.application.data_table_service`，再以 service unit tests 驗證 model
   holder、training option snapshot、start / stop、history cleanup diagnostics、config reset
   notification、dataset split config、audit blocking、rollback、cleanup diagnostics、reset
-  notification、dependent-state clearing、legacy load failure mapping、attach labels 和 label import
-  recipe update。
+  notification、dependent-state clearing、legacy load failure mapping、attach labels、label import
+  recipe update、metadata skipped row reporting、smart parse normalization 和 remove-count delta。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - 這支撐 backend handler boundary cleanup；不能擴張成 product-complete、Windows human
@@ -202,9 +205,9 @@ agent 架構文件整理時也跑：
 這組 gate 支撐「Data Interpretation lifecycle 已從 `ApplicationService` 拆到 focused service，
 reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
 沒有回歸」。它不能支撐整個 backend architecture closure；後續 cleanup 已另外拆出
-analysis、training、dataset generation、lifecycle 和 data compatibility handlers。這仍不能
-支撐完整 backend architecture closure，因為 `query_state`、metadata / smart parse / remove 和
-preprocess / epoch handlers 仍在 `ApplicationService`。
+analysis、training、dataset generation、lifecycle、data compatibility 和 data-table handlers。
+這仍不能支撐完整 backend architecture closure，因為 `query_state`、preprocess / epoch
+handlers 和 state snapshot helpers 仍在 `ApplicationService`。
 
 2026-05-05 Analysis command boundary cleanup 新增一組 architecture gate：
 

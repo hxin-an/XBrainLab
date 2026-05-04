@@ -27,7 +27,6 @@ from .commands import (
     ImportLabelsCommand,
     LabelImportPlan,
     LoadDataCommand,
-    MetadataUpdate,
     NewSessionCommand,
     PreprocessCommand,
     PreprocessOperation,
@@ -47,6 +46,7 @@ from .commands import (
 )
 from .data_compatibility_service import DataCompatibilityCommandService
 from .data_interpretation_service import DataInterpretationCommandService
+from .data_table_service import DataTableCommandService
 from .dataset_generation_service import DatasetGenerationCommandService
 from .errors import (
     ApplicationError,
@@ -96,6 +96,7 @@ class ApplicationService:
             dataset=self.dataset,
             interpretation=self.interpretation,
         )
+        self.data_table = DataTableCommandService(dataset=self.dataset)
         self.analysis = AnalysisCommandService(
             evaluation=self.evaluation,
             visualization=self.visualization,
@@ -300,9 +301,9 @@ class ApplicationService:
             CommandName.LOAD_DATA: self.data_compatibility.handle_load_data,
             CommandName.ATTACH_LABELS: self.data_compatibility.handle_attach_labels,
             CommandName.IMPORT_LABELS: self.data_compatibility.handle_import_labels,
-            CommandName.UPDATE_METADATA: self._handle_update_metadata,
-            CommandName.APPLY_SMART_PARSE: self._handle_apply_smart_parse,
-            CommandName.REMOVE_FILES: self._handle_remove_files,
+            CommandName.UPDATE_METADATA: self.data_table.handle_update_metadata,
+            CommandName.APPLY_SMART_PARSE: self.data_table.handle_apply_smart_parse,
+            CommandName.REMOVE_FILES: self.data_table.handle_remove_files,
             CommandName.PREPROCESS: self._handle_preprocess,
             CommandName.CREATE_EPOCH: self._handle_create_epoch,
             CommandName.GENERATE_DATASET: (
@@ -527,65 +528,6 @@ class ApplicationService:
         if not capability.enabled:
             raise PreconditionError("; ".join(capability.reasons))
 
-    def _handle_update_metadata(self, command: Command) -> HandlerResult:
-        if not isinstance(command, UpdateMetadataCommand):
-            raise TypeError("Invalid command for update_metadata")
-
-        updates = self._metadata_updates(command)
-        if not updates:
-            raise PreconditionError("At least one metadata update is required.")
-        if all(update.subject is None and update.session is None for update in updates):
-            raise PreconditionError("subject or session is required.")
-
-        loaded_count = len(self.dataset.get_loaded_data_list())
-        updated = 0
-        skipped: list[int] = []
-        for update in updates:
-            if 0 <= update.index < loaded_count:
-                self.dataset.update_metadata(
-                    update.index,
-                    subject=update.subject,
-                    session=update.session,
-                )
-                updated += 1
-            else:
-                skipped.append(update.index)
-
-        if updated == 0:
-            raise PreconditionError("No valid metadata rows were selected.")
-        return (
-            f"Updated metadata for {updated} file(s).",
-            {"success_count": updated, "skipped_indices": skipped},
-        )
-
-    def _handle_apply_smart_parse(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ApplySmartParseCommand):
-            raise TypeError("Invalid command for apply_smart_parse")
-        if not command.results:
-            raise PreconditionError("smart parse results cannot be empty.")
-        normalized = self._normalize_smart_parse_results(command.results)
-        count = self.dataset.apply_smart_parse(normalized)
-        return (
-            f"Smart parse updated {count} file(s).",
-            {"success_count": count},
-        )
-
-    def _handle_remove_files(self, command: Command) -> HandlerResult:
-        if not isinstance(command, RemoveFilesCommand):
-            raise TypeError("Invalid command for remove_files")
-        if not command.indices:
-            raise PreconditionError("indices list cannot be empty.")
-        before = len(self.dataset.get_loaded_data_list())
-        self.dataset.remove_files([int(index) for index in command.indices])
-        after = len(self.dataset.get_loaded_data_list())
-        removed = before - after
-        if removed <= 0:
-            raise PreconditionError("No valid files were selected for removal.")
-        return (
-            f"Removed {removed} file(s).",
-            {"success_count": removed, "requested_indices": command.indices},
-        )
-
     def _handle_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, PreprocessCommand):
             raise TypeError("Invalid command for preprocess")
@@ -780,34 +722,6 @@ class ApplicationService:
             except Exception:
                 logger.debug("Failed to read raw file path", exc_info=True)
         return ApplicationService._data_filename(item)
-
-    @staticmethod
-    def _metadata_updates(command: UpdateMetadataCommand) -> list[MetadataUpdate]:
-        if command.updates:
-            return command.updates
-        if command.index is None:
-            return []
-        return [
-            MetadataUpdate(
-                index=command.index,
-                subject=command.subject,
-                session=command.session,
-            ),
-        ]
-
-    @staticmethod
-    def _normalize_smart_parse_results(
-        results: dict[str, tuple[str, str] | list[str] | Any],
-    ) -> dict[str, tuple[str, str]]:
-        normalized: dict[str, tuple[str, str]] = {}
-        for path, value in results.items():
-            if isinstance(value, (tuple, list)) and len(value) >= 2:
-                normalized[str(path)] = (str(value[0]), str(value[1]))
-            else:
-                raise ValueError(
-                    "Smart parse results must map paths to (subject, session).",
-                )
-        return normalized
 
     def _data_summary_from_state(
         self,

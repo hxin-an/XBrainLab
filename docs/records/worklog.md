@@ -37,6 +37,55 @@
 
 ## 2026-05-05
 
+### 12:05 Data table command service boundary cleanup
+
+- 做了什麼：
+  - 延續 backend cleanup，選 `update_metadata` / `apply_smart_parse` / `remove_files` 作為
+    focused slice。
+  - 先新增 focused test，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.data_table_service`。
+  - 新增 `DataTableCommandService`，承接 loaded-data table metadata mutation、smart parse
+    normalization 和 remove-files count delta diagnostics。
+  - `ApplicationService` 的 handler map 改成窄委派到 data-table service；對外 command name、
+    capability policy 和 `CommandResult` contract 不變。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `ApplicationService` 從 `1107` 行降到 `1021` 行。
+  - `DataTableCommandService` 為 `114` 行。
+  - loaded-data table mutation 不再直接堆在 `ApplicationService`；`query_state`、preprocess /
+    epoch handlers 和 state snapshot helpers 仍留在 `ApplicationService`。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_table_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/data_table_service.py tests/unit/backend/application/test_data_table_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/data_table_service.py tests/unit/backend/application/test_data_table_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_table_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `48 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `72 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 接續 / 本輪剩餘：
+  - 這支撐 loaded-data table handler isolation，不是 product completion。
+  - 下一個 backend cleanup slice 應評估 preprocess / epoch service 或 query/state snapshot
+    service；不要再把新 workflow 塞回 `ApplicationService`。
+
 ### 11:45 Data compatibility command service boundary cleanup
 
 - 做了什麼：
