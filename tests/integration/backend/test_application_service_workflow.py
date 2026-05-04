@@ -247,10 +247,17 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert reload_result.state.interpretation.has_preview is True
     assert reload_result.state.interpretation.has_validation_decision is True
     reloaded_candidate = reload_result.diagnostics["candidate"]
+    reload_preview = reload_result.diagnostics["preview"]
     assert (
         reloaded_candidate["choices"]["metadata_overrides"]
         == (recipe_choices["metadata_overrides"])
     )
+    assert reload_preview["recipe_reload_summary"]["reapplied_choice_types"] == [
+        "selected EEG files",
+        "metadata overrides",
+        "event roles",
+        "class map",
+    ]
     assert reloaded_candidate["event_roles"]["internal_events"] == "class cue"
     assert reloaded_candidate["class_map"] == {"1": "left", "2": "right"}
     assert "choices:metadata_overrides" in reloaded_candidate["recipe_trace"]

@@ -2006,6 +2006,8 @@ complex anchor reconciliation、Windows human acceptance 或全格式 real-data 
     `selected_eeg_files`.
   - reload candidate recipe trace includes `choices:metadata_overrides`,
     `choices:event_roles`, and `choices:label_carriers`.
+  - `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png` is now the reload preview dialog,
+    and phase notes include `Reloaded recipe / Reapplied`.
   - summary remains `26 / 26` phases and `20` screenshots, with
     `human_desktop_acceptance=not performed`.
 - targeted gates:
@@ -2017,7 +2019,8 @@ complex anchor reconciliation、Windows human acceptance 或全格式 real-data 
   - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
 
 這批 evidence 支撐 recipe reload 會重新套用 saved interpretation choices 後再 preview /
-validate。它仍不是完整 user-facing recipe diff UI，也不是 human desktop acceptance。
+validate，且 wizard review summary 會顯示 reload summary。它仍不是完整 user-facing recipe diff
+UI，也不是 human desktop acceptance。
 
 2026-05-04 Dataset Add Labels compatibility guard：
 

@@ -416,6 +416,29 @@ def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):
     assert "stream selection is not available" in details
 
 
+def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "recipe_reload_summary": {
+                "message": (
+                    "Saved recipe choices were reapplied before validation: "
+                    "metadata overrides, event roles."
+                ),
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    details = _tree_text(dialog.review_tree)
+
+    assert "Reloaded recipe" in details
+    assert "Reapplied" in details
+    assert "Saved recipe choices were reapplied before validation" in details
+
+
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

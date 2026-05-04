@@ -1328,7 +1328,7 @@
     },
     {
       "phase": "data_interpretation_apply",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1533,39 +1533,12 @@
             "recipe",
             "recipe_path"
           ]
-        },
-        "reload": {
-          "command": "reload_interpretation_recipe",
-          "ok": true,
-          "status": "ok",
-          "message": "Interpretation recipe reloaded for review.",
-          "error_type": "none",
-          "error_message": null,
-          "changed_state": {
-            "raw_changed": false,
-            "preprocessed_changed": false,
-            "epoch_changed": false,
-            "datasets_changed": false,
-            "training_changed": false,
-            "evaluation_changed": false,
-            "visualization_changed": false,
-            "interpretation_changed": true,
-            "error_changed": false
-          },
-          "diagnostics_keys": [
-            "candidate",
-            "payload_type",
-            "preview",
-            "recipe",
-            "scan_result",
-            "validation_decision"
-          ]
         }
       }
     },
     {
       "phase": "data_interpretation_save_recipe",
-      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1749,98 +1722,52 @@
       "phase": "data_interpretation_reload_recipe",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
       "visible_text": [
-        "Dataset",
-        "Preprocess",
-        "Training",
-        "Evaluation",
-        "Visualization",
-        "AI Assistant",
-        "Interpret Data Source",
-        "Interpret Folder / BIDS",
-        "Reload Import Recipe",
-        "Add Labels to Loaded Data",
-        "Smart Parse Metadata",
-        "Channel Selection",
-        "Clear Dataset"
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
+        "Found 2 EEG file(s) and 1 label/event carrier(s).",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay",
+        "Type",
+        "bids",
+        "Files",
+        "2",
+        "Label carriers",
+        "1",
+        "BIDS",
+        "BIDS-like source, 01, 1 events.tsv file(s)",
+        "Validation needs confirmation before applying.",
+        "trial_type",
+        "onset",
+        "Seconds",
+        "Trial",
+        "Class cue labels",
+        "Needs review",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class cue",
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+        "Save reusable import recipe after applying",
+        "Confirm and Apply",
+        "Cancel"
       ],
       "button_state": [
         {
-          "text": "Dataset",
+          "text": "Save reusable import recipe after applying",
           "enabled": true,
           "checked": true,
-          "tooltip": "Dataset"
+          "tooltip": "Recipe records source, metadata decisions, label carriers, and confirmations for review or replay."
         },
         {
-          "text": "Preprocess",
+          "text": "Confirm and Apply",
           "enabled": true,
-          "checked": false,
-          "tooltip": "Preprocess"
-        },
-        {
-          "text": "Training",
-          "enabled": true,
-          "checked": false,
-          "tooltip": "Training"
-        },
-        {
-          "text": "Evaluation",
-          "enabled": true,
-          "checked": false,
-          "tooltip": "Evaluation"
-        },
-        {
-          "text": "Visualization",
-          "enabled": true,
-          "checked": false,
-          "tooltip": "Visualization"
-        },
-        {
-          "text": "AI Assistant",
-          "enabled": true,
-          "checked": false,
+          "checked": null,
           "tooltip": ""
         },
         {
-          "text": "Interpret Data Source",
+          "text": "Cancel",
           "enabled": true,
           "checked": null,
-          "tooltip": "Scan, preview, validate, and apply EEG data"
-        },
-        {
-          "text": "Interpret Folder / BIDS",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
-        },
-        {
-          "text": "Reload Import Recipe",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Review a saved import recipe before applying it"
-        },
-        {
-          "text": "Add Labels to Loaded Data",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Add labels to loaded data and update the current recipe trace."
-        },
-        {
-          "text": "Smart Parse Metadata",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
-        },
-        {
-          "text": "Channel Selection",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Select specific channels to keep"
-        },
-        {
-          "text": "Clear Dataset",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Remove all loaded data"
+          "tooltip": ""
         }
       ],
       "workflow_state": {
@@ -1927,7 +1854,64 @@
             "scan_result",
             "validation_decision"
           ]
-        }
+        },
+        "review_summary_rows": [
+          [
+            "Reloaded recipe",
+            "Reapplied",
+            "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+          ],
+          [
+            "Warning",
+            "Review",
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+          ],
+          [
+            "Warning",
+            "Review",
+            "External label/event carriers require preview before apply."
+          ],
+          [
+            "Warning",
+            "Review",
+            "Some discovered sources are not applied by this wizard yet: XDF / LSL."
+          ],
+          [
+            "Confirmation",
+            "Needs confirmation",
+            "Confirm label carrier alignment, anchor event, and class map before applying."
+          ],
+          [
+            "Confirmation",
+            "Needs confirmation",
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+          ],
+          [
+            "Downstream impact",
+            "After apply",
+            "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+          ],
+          [
+            "Format capability",
+            "Needs review",
+            "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+          ],
+          [
+            "Format capability",
+            "Blocked",
+            "XDF / LSL: blocked. XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+          ],
+          [
+            "Format capability",
+            "Supported",
+            "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+          ],
+          [
+            "Format capability",
+            "Supported",
+            "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+          ]
+        ]
       }
     },
     {
@@ -4242,19 +4226,33 @@
         "Clear Dataset"
       ],
       "data_interpretation_reload_recipe": [
-        "Dataset",
-        "Preprocess",
-        "Training",
-        "Evaluation",
-        "Visualization",
-        "AI Assistant",
-        "Interpret Data Source",
-        "Interpret Folder / BIDS",
-        "Reload Import Recipe",
-        "Add Labels to Loaded Data",
-        "Smart Parse Metadata",
-        "Channel Selection",
-        "Clear Dataset"
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
+        "Found 2 EEG file(s) and 1 label/event carrier(s).",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay",
+        "Type",
+        "bids",
+        "Files",
+        "2",
+        "Label carriers",
+        "1",
+        "BIDS",
+        "BIDS-like source, 01, 1 events.tsv file(s)",
+        "Validation needs confirmation before applying.",
+        "trial_type",
+        "onset",
+        "Seconds",
+        "Trial",
+        "Class cue labels",
+        "Needs review",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class cue",
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+        "Save reusable import recipe after applying",
+        "Confirm and Apply",
+        "Cancel"
       ],
       "preprocessing": [
         "Dataset",
@@ -4999,82 +4997,22 @@
       ],
       "data_interpretation_reload_recipe": [
         {
-          "text": "Dataset",
+          "text": "Save reusable import recipe after applying",
           "enabled": true,
           "checked": true,
-          "tooltip": "Dataset"
+          "tooltip": "Recipe records source, metadata decisions, label carriers, and confirmations for review or replay."
         },
         {
-          "text": "Preprocess",
+          "text": "Confirm and Apply",
           "enabled": true,
-          "checked": false,
-          "tooltip": "Preprocess"
-        },
-        {
-          "text": "Training",
-          "enabled": true,
-          "checked": false,
-          "tooltip": "Training"
-        },
-        {
-          "text": "Evaluation",
-          "enabled": true,
-          "checked": false,
-          "tooltip": "Evaluation"
-        },
-        {
-          "text": "Visualization",
-          "enabled": true,
-          "checked": false,
-          "tooltip": "Visualization"
-        },
-        {
-          "text": "AI Assistant",
-          "enabled": true,
-          "checked": false,
+          "checked": null,
           "tooltip": ""
         },
         {
-          "text": "Interpret Data Source",
+          "text": "Cancel",
           "enabled": true,
           "checked": null,
-          "tooltip": "Scan, preview, validate, and apply EEG data"
-        },
-        {
-          "text": "Interpret Folder / BIDS",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
-        },
-        {
-          "text": "Reload Import Recipe",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Review a saved import recipe before applying it"
-        },
-        {
-          "text": "Add Labels to Loaded Data",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Add labels to loaded data and update the current recipe trace."
-        },
-        {
-          "text": "Smart Parse Metadata",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
-        },
-        {
-          "text": "Channel Selection",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Select specific channels to keep"
-        },
-        {
-          "text": "Clear Dataset",
-          "enabled": true,
-          "checked": null,
-          "tooltip": "Remove all loaded data"
+          "tooltip": ""
         }
       ],
       "preprocessing": [
@@ -8744,8 +8682,8 @@
       "data_interpretation_preview": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "data_interpretation_confirm_metadata_labels": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "data_interpretation_decisions": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-      "data_interpretation_apply": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-      "data_interpretation_save_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "data_interpretation_apply": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "data_interpretation_save_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "data_interpretation_reload_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
       "preprocessing": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
       "epoch_creation": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
@@ -9721,7 +9659,8 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {}
+          "class_map": {},
+          "recipe_reload_summary": {}
         }
       }
     },
@@ -10702,7 +10641,8 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {}
+          "class_map": {},
+          "recipe_reload_summary": {}
         }
       }
     },
@@ -13553,7 +13493,17 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {}
+          "class_map": {},
+          "recipe_reload_summary": {
+            "recipe_id": "recipe-7",
+            "reapplied_choice_types": [
+              "selected EEG files",
+              "metadata overrides",
+              "label carrier choices",
+              "event roles"
+            ],
+            "message": "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+          }
         },
         "validation_decision": {
           "candidate_id": "candidate-9",
@@ -17857,33 +17807,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 857884,
+      "pid": 860055,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 836216
+      "max_rss_kb": 835980
     },
     {
       "label": "before_close",
-      "pid": 857884,
+      "pid": 860055,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1059376
+      "max_rss_kb": 1068056
     },
     {
       "label": "after_close",
-      "pid": 857884,
+      "pid": 860055,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1059376
+      "max_rss_kb": 1068056
     }
   ],
   "ui_quality_review": {
@@ -18043,5 +17993,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.79
+  "elapsed_seconds": 3.901
 }

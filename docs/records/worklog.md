@@ -50,6 +50,10 @@
     label carrier choices、event roles 和 class map rehydrated 回 candidate choices。
   - `ReloadInterpretationRecipeCommand` 改用 rehydrated choices 後再 build candidate /
     preview / validation。
+  - Preview payload 新增 `recipe_reload_summary`，Data Interpretation Review Summary 會顯示
+    `Reloaded recipe / Reapplied`。
+  - Human-like walkthrough 的 `recipe_reloaded` screenshot 改為 reload preview dialog，phase notes
+    保存 reload review rows。
   - 補 `ImportRecipe.write_json()` trailing newline，避免 regenerated recipe artifact 只有 EOF diff。
   - 刷新 consolidated human-like walkthrough artifact。
 - 結果：
@@ -57,6 +61,8 @@
     `label_carrier_choices`、`event_roles` 和 `selected_eeg_files`。
   - Reload candidate recipe trace 現在含 `choices:metadata_overrides`、
     `choices:event_roles` 和 `choices:label_carriers`。
+  - `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png` 是 reload preview dialog，notes
+    第一列是 `Reloaded recipe / Reapplied`。
   - consolidated human-like walkthrough offscreen rerun 通過：`26 / 26` required phases、`20`
     screenshots、`human_desktop_acceptance=not performed`。
 - 證據：

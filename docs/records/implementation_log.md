@@ -158,6 +158,8 @@ recipe reload 保留使用者曾確認的資料語意，而不是只保留檔案
 - Non-mocked source -> apply -> save recipe -> reload workflow 已覆蓋此行為。
 - Human-like walkthrough artifact 的 reload command result 可見 rehydrated choices 和
   `choices:*` recipe trace。
+- Human-like walkthrough 的 `07-recipe-reloaded.png` 現在是 reload preview dialog，phase notes
+  保存 `Reloaded recipe / Reapplied` review row。
 
 ### Evidence 入口
 
@@ -167,7 +169,7 @@ recipe reload 保留使用者曾確認的資料語意，而不是只保留檔案
 
 ### 不能宣稱完成
 
-- 這是 backend recipe rehydration，不是完整 recipe diff UI。
+- 這是 recipe rehydration + reload summary，不是完整 recipe diff UI。
 - Human-like artifact 仍是 automated PyQt replay，不是 Windows human desktop acceptance。
 
 ## 2026-05-05 Tool-Call Local 118-Case Scoring Hardening

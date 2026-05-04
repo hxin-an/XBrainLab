@@ -3,7 +3,7 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `3.79`
+- elapsed seconds: `3.901`
 - source: `<walkthrough_source>`
 - recipe: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
@@ -60,8 +60,8 @@
 - `data_interpretation_preview` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
 - `data_interpretation_confirm_metadata_labels` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
 - `data_interpretation_decisions` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
-- `data_interpretation_apply` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
-- `data_interpretation_save_recipe` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
+- `data_interpretation_apply` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
+- `data_interpretation_save_recipe` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png`
 - `data_interpretation_reload_recipe` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
 - `preprocessing` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png`
 - `epoch_creation` -> `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png`
@@ -118,9 +118,9 @@
 
 ## Resource Notes
 
-- start: threads `1`, qt active `0`, rss `836216` KB
-- before_close: threads `1`, qt active `0`, rss `1059376` KB
-- after_close: threads `1`, qt active `0`, rss `1059376` KB
+- start: threads `1`, qt active `0`, rss `835980` KB
+- before_close: threads `1`, qt active `0`, rss `1068056` KB
+- after_close: threads `1`, qt active `0`, rss `1068056` KB
 
 ## Remaining Human Verification
 

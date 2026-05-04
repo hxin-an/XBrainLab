@@ -404,29 +404,38 @@ def _run_walkthrough_steps(
     )
     capture_step(
         "data_interpretation_apply",
-        "recipe_reloaded",
+        "applied",
         notes={
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
-            "reload": command_summary(reload_recipe),
         },
     )
     append_phase_alias(
         phases,
         "data_interpretation_save_recipe",
-        screenshots["recipe_reloaded"],
+        screenshots["applied"],
         window,
         service,
         {"recipe": command_summary(save_recipe)},
     )
-    append_phase_alias(
-        phases,
-        "data_interpretation_reload_recipe",
-        screenshots["recipe_reloaded"],
-        window,
-        service,
-        {"reload": command_summary(reload_recipe)},
+    reload_dialog = DataInterpretationPreviewDialog(
+        window.dataset_panel,
+        scan_result=reload_recipe.diagnostics["scan_result"],
+        preview=reload_recipe.diagnostics["preview"],
+        validation_decision=reload_recipe.diagnostics["validation_decision"],
     )
+    reload_dialog.show()
+    app.processEvents()
+    capture_step(
+        "data_interpretation_reload_recipe",
+        "recipe_reloaded",
+        widget=reload_dialog,
+        notes={
+            "reload": command_summary(reload_recipe),
+            "review_summary_rows": tree_rows(reload_dialog.review_tree),
+        },
+    )
+    reload_dialog.close()
 
     preprocess = execute_recorded(
         service,

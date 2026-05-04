@@ -162,8 +162,10 @@ envelope 和 agent `query_state` tool surface 都會暴露 reviewed `label_carri
 現在會把 recipe 裡的 selected EEG files、metadata overrides、label carrier choices、event roles
 和 class map 轉回 candidate `choices` 後再 preview / validate。human-like walkthrough artifact
 的 reload command result 現在可見 `choices:metadata_overrides` / `choices:event_roles` /
-`choices:label_carriers` recipe trace；這支撐 reload 不是只讀 source path 的空 preview。
-它仍不是完整 recipe diff UI。
+`choices:label_carriers` recipe trace；`07-recipe-reloaded.png` 現在是 reload preview dialog，
+phase notes 也保存 `Reloaded recipe / Reapplied` review row。這支撐 reload 不是只讀 source
+path 的空 preview，且使用者可在 wizard 看到 saved choices 已重新套用。它仍不是完整 recipe
+diff UI。
 最新 backend architecture cleanup 又把 Data Interpretation lifecycle
 state 和 scan / preview / validate / apply / recipe command handling 從
 `ApplicationService` 拆到 `DataInterpretationCommandService`，reviewed metadata / label

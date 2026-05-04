@@ -821,6 +821,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.validation_decision.get("blocked_reasons")
             or self.preview.get("blocked_reasons")
         )
+        recipe_reload_summary = self.preview.get("recipe_reload_summary")
+        if isinstance(recipe_reload_summary, dict) and recipe_reload_summary:
+            rows.append(
+                (
+                    "Reloaded recipe",
+                    "Reapplied",
+                    str(
+                        recipe_reload_summary.get("message")
+                        or "Saved recipe choices were reapplied before validation."
+                    ),
+                )
+            )
         for label, status, values in (
             ("Warning", "Review", warnings),
             ("Confirmation", "Needs confirmation", confirmations),

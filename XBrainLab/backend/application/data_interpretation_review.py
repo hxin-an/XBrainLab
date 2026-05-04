@@ -26,6 +26,7 @@ class InterpretationPreview:
     downstream_impacts: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
     class_map: dict[str, str] = dc_field(default_factory=dict)
+    recipe_reload_summary: dict[str, Any] = dc_field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return _serialize(self)
@@ -89,6 +90,9 @@ def build_interpretation_preview(
         ],
         event_roles=dict(candidate.event_roles),
         class_map=dict(candidate.class_map),
+        recipe_reload_summary=_recipe_reload_summary(
+            getattr(candidate, "choices", {}),
+        ),
     )
 
 
@@ -127,6 +131,33 @@ def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
             "epoching, dataset generation, training, and saliency.",
         ],
     )
+
+
+def _recipe_reload_summary(choices: dict[str, Any]) -> dict[str, Any]:
+    recipe_id = str(choices.get("recipe_id") or "").strip()
+    if not recipe_id:
+        return {}
+    choice_labels = [
+        ("selected_eeg_files", "selected EEG files"),
+        ("metadata_overrides", "metadata overrides"),
+        ("label_carrier_choices", "label carrier choices"),
+        ("event_roles", "event roles"),
+        ("class_map", "class map"),
+    ]
+    reapplied = [label for key, label in choice_labels if choices.get(key)]
+    if reapplied:
+        message = (
+            "Saved recipe choices were reapplied before validation: "
+            + ", ".join(reapplied)
+            + "."
+        )
+    else:
+        message = "Saved recipe source was rescanned before validation."
+    return {
+        "recipe_id": recipe_id,
+        "reapplied_choice_types": reapplied,
+        "message": message,
+    }
 
 
 def _serialize(value: Any) -> Any:
