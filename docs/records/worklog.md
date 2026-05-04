@@ -37,6 +37,51 @@
 
 ## 2026-05-05
 
+### 13:10 State / query service boundary cleanup
+
+- 做了什麼：
+  - 延續 backend cleanup，選 state snapshot assembly 和 read-only `query_state` diagnostics 作為
+    focused slice。
+  - 先新增 focused test，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.state_service`。
+  - 新增 `StateSnapshotService`，承接 raw / preprocess / epoch / dataset / training /
+    evaluation / visualization / interpretation snapshot assembly 和 safe helper functions。
+  - 新增 `QueryStateCommandService`，承接 `query_state` 的 state / data_lists / data_summary /
+    preprocess_diagnostics / smart_filter_suggestions diagnostics。
+  - `ApplicationService.get_state()` 只委派 snapshot builder；handler map 改成委派
+    `QueryStateCommandService`。
+  - 修正拆分中發現的命名風險：避免 instance attribute `query_state` 遮蔽 public
+    `ApplicationService.query_state()` wrapper。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `ApplicationService` 從 `945` 行降到 `458` 行。
+  - `StateSnapshotService` / `QueryStateCommandService` 同檔為 `575` 行；這檔仍偏大，但邊界已
+    從 command dispatch 分離，後續若需要可再拆 snapshot builder helpers。
+  - `ApplicationService` 主要保留 command dispatch、capability / confirmation gate、result
+    envelope 和 public compatibility wrappers。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/state_service.py tests/unit/backend/application/test_state_service.py tests/unit/backend/application/test_application_service.py`
+    -> 初次發現 test import / mutable fixture class attributes，修正後 pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/state_service.py tests/unit/backend/application/test_state_service.py`
+    -> 初次發現 test fixture snapshot 欄位和 payload narrowing 問題，修正後為
+    `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `46 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `78 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - 這支撐 state/query handler isolation，不是 product completion。
+  - 下一步應檢查 UI / agent / MCP 是否還有產品主路徑旁路，或轉回 Data Interpretation wizard /
+    human desktop acceptance / long-running local assistant blockers。
+
 ### 12:35 Preprocess command service boundary cleanup
 
 - 做了什麼：

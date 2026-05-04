@@ -171,8 +171,10 @@ reset-time dependent-state clear 拆到 `LifecycleCommandService`。最新 compa
 `DataCompatibilityCommandService`，並保留 Data Interpretation recipe trace 更新。最新 data-table
 cleanup slice 已把 `update_metadata`、`apply_smart_parse` 和 `remove_files` 拆到
 `DataTableCommandService`。最新 preprocess cleanup slice 已把 preprocessing operations 和
-`create_epoch` 拆到 `PreprocessCommandService`。`query_state` 和 state snapshot helpers
-仍在 `ApplicationService`。最新 backend slices 又補了 reviewed label carriers
+`create_epoch` 拆到 `PreprocessCommandService`。最新 state/query cleanup slice 已把
+state snapshot assembly 和 `query_state` diagnostics 拆到 `StateSnapshotService` /
+`QueryStateCommandService`。`ApplicationService` 現在主要保留 command dispatch、
+capability-confirmation gate、result envelope 和 compatibility wrapper methods。最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
 CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `apply_labels_batch`
@@ -620,8 +622,8 @@ true local model desktop session。
 
 1. 繼續 backend architecture cleanup：`ApplicationService` 已拆出 Data Interpretation、
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
-   services，以及 Preprocess command service；`query_state` 和 state snapshot helpers 仍在
-   service 內，不能讓 `ApplicationService` 再成為新的 god object。
+   services、Preprocess command service，以及 State / Query services；下一輪應檢查是否還有
+   UI / agent / MCP 旁路或 wrapper compatibility 心智模型，而不是再把 workflow 塞回 service。
 2. 等待真 Windows Desktop launcher click-through。
 3. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
    reason 或 Matplotlib 2D render 擴張成完整 visualization suite。

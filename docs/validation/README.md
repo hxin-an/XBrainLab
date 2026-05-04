@@ -114,18 +114,22 @@ UI baseline capture 結果：
   並維持 loaded-data table mutation diagnostics。
 - `PreprocessCommandService` 承接 preprocessing operations 和 `create_epoch`，並維持
   `set_montage` UI confirmation boundary。
+- `StateSnapshotService` / `QueryStateCommandService` 承接 state snapshot assembly 和
+  `query_state` diagnostics，並維持 agent `query_state` tool surface。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
   `XBrainLab.backend.application.lifecycle_service` /
   `XBrainLab.backend.application.data_compatibility_service` /
   `XBrainLab.backend.application.data_table_service` /
-  `XBrainLab.backend.application.preprocess_service`，再以 service unit tests 驗證 model
+  `XBrainLab.backend.application.preprocess_service` /
+  `XBrainLab.backend.application.state_service`，再以 service unit tests 驗證 model
   holder、training option snapshot、start / stop、history cleanup diagnostics、config reset
   notification、dataset split config、audit blocking、rollback、cleanup diagnostics、reset
   notification、dependent-state clearing、legacy load failure mapping、attach labels、label import
   recipe update、metadata skipped row reporting、smart parse normalization、remove-count delta、
-  standard preprocess batching、core preprocessing operations、epoch creation 和 montage boundary。
+  standard preprocess batching、core preprocessing operations、epoch creation、montage boundary、
+  state snapshot construction、query diagnostics 和 smart-filter suggestions。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - 這支撐 backend handler boundary cleanup；不能擴張成 product-complete、Windows human
@@ -209,9 +213,10 @@ agent 架構文件整理時也跑：
 這組 gate 支撐「Data Interpretation lifecycle 已從 `ApplicationService` 拆到 focused service，
 reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
 沒有回歸」。它不能支撐整個 backend architecture closure；後續 cleanup 已另外拆出
-analysis、training、dataset generation、lifecycle、data compatibility 和 data-table handlers。
-後續 cleanup 也拆出 preprocess / epoch handlers。這仍不能支撐完整 backend architecture
-closure，因為 `query_state` 和 state snapshot helpers 仍在 `ApplicationService`。
+analysis、training、dataset generation、lifecycle、data compatibility、data-table、preprocess /
+epoch 和 state/query handlers。這仍不能支撐 product completion，因為 UI / agent / MCP
+runtime 旁路、import wizard maturity、Windows human acceptance 和 long-running local assistant
+verification 仍要另外驗證。
 
 2026-05-05 Analysis command boundary cleanup 新增一組 architecture gate：
 

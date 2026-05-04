@@ -50,7 +50,8 @@ Backend command spine 持續從 `ApplicationService` god object 收斂成 focuse
 Data Interpretation、analysis / visualization、training config / train-stop lifecycle、dataset
 generation / split audit、reset lifecycle、legacy data / label compatibility 現在都有各自 service
 boundary；metadata update / smart parse / remove file 也已移到 focused data-table boundary；
-preprocessing operations 和 `create_epoch` 也已移到 focused preprocess boundary。
+preprocessing operations 和 `create_epoch` 也已移到 focused preprocess boundary；state snapshot
+assembly 和 `query_state` diagnostics 也已移到 focused state/query boundary。
 `ApplicationService` 回到 dispatch、capability / confirmation gate 和 state/result envelope。
 
 ### 已可宣稱
@@ -68,6 +69,8 @@ preprocessing operations 和 `create_epoch` 也已移到 focused preprocess boun
   `DataCompatibilityCommandService` 承接，並明確定位為 compatibility boundary。
 - Metadata update、smart parse 和 remove files 由 `DataTableCommandService` 承接。
 - Preprocessing operations 和 create epoch 由 `PreprocessCommandService` 承接。
+- State snapshot assembly 和 query state diagnostics 由 `StateSnapshotService` /
+  `QueryStateCommandService` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 
@@ -79,13 +82,14 @@ preprocessing operations 和 `create_epoch` 也已移到 focused preprocess boun
 
 ### 不能宣稱完成
 
-- `ApplicationService` 仍保留 query state 和 state snapshot helpers。
+- `ApplicationService` 還保留 public compatibility wrapper methods；需要繼續確認 UI / agent / MCP
+  沒有把 wrapper compatibility 誤當新產品心智模型。
 - Legacy `load_data / attach_labels / import_labels` 尚未完全退出產品心智模型。
 - 這是 backend architecture cleanup，不是 UI / Windows / MCP / thesis final closure。
 
 ### 下一手重點
 
-1. 評估 query/state snapshot service 的下一個低風險 slice。
+1. 檢查 UI / agent / MCP 是否仍有 controller-private fallback 或 legacy wrapper path 進入產品主路徑。
 2. 確認 UI / agent / MCP 沒有重新引入 controller-private fallback 作為產品主路徑。
 3. 維持每個 slice 有 focused tests、non-mocked workflow regression 和文件同步。
 
@@ -225,12 +229,10 @@ services / handlers，同時保持 UI、agent、headless、MCP 只走同一套 c
 ### 不能宣稱完成
 
 - 這仍不是整個 backend architecture closure。後續 slices 已另外拆出 training、dataset
-  generation、reset lifecycle、legacy compatibility 和 data-table handlers；目前剩餘重點見本日
-  最上方 backend command boundary cleanup snapshot。
-- `query_state` 仍在 `ApplicationService`；它目前是 cross-cutting state / capability query，
-  後續若拆分必須避免建立第二套 state truth。
+  generation、reset lifecycle、legacy compatibility、data-table、preprocess 和 state/query
+  handlers；目前剩餘重點見本日最上方 backend command boundary cleanup snapshot。
 
 ### 下一手重點
 
-下一輪 backend work 應確認新 UI / agent 心智模型不回到舊 `load_data / attach_labels`，並評估
-remaining `ApplicationService` query/state snapshot helpers 是否需要下一輪拆分。
+下一輪 backend work 應確認新 UI / agent 心智模型不回到舊 `load_data / attach_labels`，並檢查
+UI / agent / MCP 是否仍有產品主路徑旁路。

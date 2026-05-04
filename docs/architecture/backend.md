@@ -54,7 +54,8 @@ downstream rollback 和 reset-time dependent-state clear 拆到 `LifecycleComman
 label helper 拆到 `DataCompatibilityCommandService`。最新 data-table cleanup slice 又把
 `update_metadata`、`apply_smart_parse` 和 `remove_files` 拆到 `DataTableCommandService`。
 最新 preprocess cleanup slice 又把 preprocessing operations 和 `create_epoch` 拆到
-`PreprocessCommandService`。
+`PreprocessCommandService`。最新 state/query cleanup slice 又把 state snapshot assembly 和
+`query_state` diagnostics 拆到 `StateSnapshotService` / `QueryStateCommandService`。
 `ApplicationService` 仍只 dispatch / gate / wrap result。
 
 ## 一句話架構
@@ -127,7 +128,10 @@ ApplicationService / Command API
   |       +--> metadata update / smart parse / remove files
   |
   +--> PreprocessCommandService
-          +--> preprocessing operations / create_epoch
+  |       +--> preprocessing operations / create_epoch
+  |
+  +--> StateSnapshotService / QueryStateCommandService
+          +--> state snapshot assembly / query_state diagnostics
   |
   v
 same cached controllers from Study
@@ -337,13 +341,14 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/lifecycle_service.py`
 - `XBrainLab/backend/application/preprocess_service.py`
 - `XBrainLab/backend/application/results.py`
+- `XBrainLab/backend/application/state_service.py`
 - `XBrainLab/backend/application/training_service.py`
 - `XBrainLab/backend/application/errors.py`
 - `XBrainLab/backend/application/service.py`
 
 目前已提供：
 
-- `ApplicationService.get_state()`：回傳可序列化 state snapshot，包含
+- `ApplicationService.get_state()`：委派 `StateSnapshotService` 回傳可序列化 state snapshot，包含
   raw/preprocessed/epoch/dataset/training/evaluation/visualization、active dataset /
   training、interpretation、`last_error` 和 diagnostics。
 - `ApplicationService.get_capabilities()`：由 backend state 產生 capability policy，
@@ -363,8 +368,10 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   `evaluate`、`visualize`、`saliency`、`query_state`。它們回傳 typed summary diagnostics；
   `saliency` 也能設定 saliency params。
 - `evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage` 的 handler 實作位置現在是
-  `AnalysisCommandService`。`query_state` 仍留在 `ApplicationService`，因為它是 command
-  envelope / capability / state snapshot 的 cross-cutting query。
+  `AnalysisCommandService`。
+- State snapshot assembly 和 `query_state` diagnostics 的實作位置現在是
+  `StateSnapshotService` / `QueryStateCommandService`。`ApplicationService` 仍提供
+  `get_state()` / `get_capabilities()` 入口，但不再直接承接 snapshot helper 細節。
 - `configure_training`、`train`、`stop_training`、`clear_training_history` 和 reset-time
   training config clear 的 handler 實作位置現在是 `TrainingCommandService`。它 owns model
   holder 建立、optimizer / device / evaluation option resolve、training option snapshot 和
@@ -398,8 +405,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `hello` no-response 問題主要發生在 chat / agent visible-output boundary，不是
   `ApplicationService` command contract 本身。
 - `ApplicationService` / `CapabilityPolicy` 仍是 UI / Agent shared decision 的正確入口。
-- `ApplicationService` 仍是 command spine，但不應繼續吸收所有 workflow logic；新增 workflow
-  應優先放在 focused command service / handler，再由 `ApplicationService.execute()` 統一 gate
+- `ApplicationService` 仍是 command spine，但不應重新吸收 workflow logic；新增 workflow 應
+  優先放在 focused command service / handler，再由 `ApplicationService.execute()` 統一 gate
   與包 result。
 - backend query command 已從 future placeholder 推進成 service-backed summary / setup
   result；完整 interactive evaluation / visualization workflow 仍要由 UI walkthrough 驗收。
