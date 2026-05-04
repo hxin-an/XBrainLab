@@ -3932,3 +3932,66 @@ readiness 的可觀察 evidence。前一個 readiness slice 只證明 training c
 - 仍未完成真人 Windows Desktop launcher click-through、MCP Inspector GUI / release config、mature
   import wizard label editor、external thesis experiment package。
 - Goal 不能標 complete。
+
+## 2026-05-04 VisualizationPanel Matplotlib render evidence
+
+### 背景
+
+前一個 ChatPanel training-completion artifact 只證明 `visualize` / `saliency` tools 能回傳 readiness
+summary。產品缺口是使用者在真 MainWindow 的 VisualizationPanel 是否能看到訓練後 saliency
+canvas，而不是只看到 backend JSON 或 assistant summary。
+
+### 變更
+
+- 新增 `scripts/dev/capture_visualization_render_walkthrough.py`：
+  - repo 外 `/tmp` 建立 deterministic synthetic FIF 和 controlled training output。
+  - 用 `ApplicationService` 執行 source -> Data Interpretation apply -> preprocess -> epoch ->
+    dataset -> `ConfigureTrainingCommand` -> `SaliencyCommand` -> `ApplyMontageCommand` ->
+    `TrainCommand`。
+  - 開啟真 `MainWindow`，切到 `VisualizationPanel`，依序 capture `Saliency Map`、
+    `Spectrogram`、`Topographic Map`。
+  - 每個 tab 都驗證 visible canvas、無 error label、figure axes 和 rendered image artist。
+  - offscreen run 會 auto-dismiss `Done / All training jobs finished.` completion dialog，避免
+    modal event loop 擋住 artifact capture。
+- 新增 `tests/unit/scripts/test_capture_visualization_render_walkthrough.py`：
+  - 驗證 render tab 覆蓋範圍。
+  - 驗證 payload 不接受缺 tab、placeholder canvas 或 image count `0`。
+  - 驗證 artifact markdown 記錄 3D claim boundary。
+
+### 驗證
+
+- TDD failure：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
+  - 初跑因 `scripts.dev.capture_visualization_render_walkthrough` module 不存在而 collection failed。
+- Unit:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
+  - `6 passed`
+- Existing visualization UI regression:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization.py -q`
+  - `20 passed`
+- True UI render run:
+  - `timeout 600s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+  - status：`passed`
+  - final state：finished runs `1`、metrics available `True`、saliency available `True`、montage
+    available `True`。
+  - render evidence：
+    - `Saliency Map` axes `3` / image `3`
+    - `Spectrogram` axes `3` / image `3`
+    - `Topographic Map` axes `3` / image `4`
+    - all error visible `False`、canvas visible `True`
+  - artifact：
+    `artifacts/ui/visualization-render/visualization-render-walkthrough.md`、
+    `artifacts/ui/visualization-render/visualization-render-walkthrough.json` 和 screenshots。
+- Static / docs:
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+
+### 不能宣稱完成
+
+- 這支撐 true MainWindow VisualizationPanel post-training Matplotlib saliency renders。
+- 這不支撐 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
+  click-through、MCP Inspector GUI / release config、mature import wizard label editor 或 external
+  thesis experiment package。
+- Goal 不能標 complete。

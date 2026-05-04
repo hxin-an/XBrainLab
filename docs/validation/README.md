@@ -861,6 +861,48 @@ query 和 saliency / visualization readiness summary。它仍不等於完整 sal
 canvas render、真人 Windows launcher click-through、MCP Inspector GUI 或 mature import wizard label
 editor 完成。
 
+2026-05-04 MainWindow VisualizationPanel Matplotlib render walkthrough：
+
+- script：`scripts/dev/capture_visualization_render_walkthrough.py`
+- artifact：
+  - `artifacts/ui/visualization-render/visualization-render-ready.png`
+  - `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
+  - `artifacts/ui/visualization-render/visualization-render-spectrogram.png`
+  - `artifacts/ui/visualization-render/visualization-render-topographic-map.png`
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.json`
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.md`
+- command：
+  - `timeout 600s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+- result：
+  - status：`passed`
+  - dataset preparation：`scan_source` -> `preview_interpretation` -> `validate_interpretation`
+    -> `apply_interpretation` -> `preprocess` -> `create_epoch` -> `generate_dataset` all `ok`
+  - training/setup commands：`configure_training` model `EEGNet` ok、1 epoch CPU settings ok、
+    `saliency` configure ok、`apply_montage` ok、`train` ok。
+  - final state：finished runs `1`、metrics available `True`、saliency available `True`、montage
+    available `True`。
+  - ApplicationService `visualize` result reported `saliency map`、`spectrogram`、
+    `topographic map` 和 `3D plot` available views。
+  - UI render evidence：
+    - `Saliency Map`：axes count `3`、image count `3`、error visible `False`、canvas visible `True`
+    - `Spectrogram`：axes count `3`、image count `3`、error visible `False`、canvas visible `True`
+    - `Topographic Map`：axes count `3`、image count `4`、error visible `False`、canvas visible `True`
+  - offscreen capture auto-dismissed the training completion dialog `Done / All training jobs
+    finished.` so the modal did not mask render state.
+- unit/static:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
+  - `6 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization.py -q`
+  - `20 passed`
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+
+這批 evidence 支撐 true MainWindow VisualizationPanel post-training Matplotlib saliency renders。
+它仍不支撐 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
+click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
+
 2026-05-04 ChatPanel true local-model one-turn walkthrough：
 
 - 新增 `scripts/dev/capture_chatpanel_local_walkthrough.py`：

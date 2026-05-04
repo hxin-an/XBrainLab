@@ -195,6 +195,18 @@
   - 這支撐 true local ChatPanel controlled tiny training completion 和 post-training analysis
     readiness summary；仍不代表完整 saliency / visualization canvas render、真人 Windows launcher
     click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
+- MainWindow VisualizationPanel render walkthrough 已新增：
+  - script：`scripts/dev/capture_visualization_render_walkthrough.py`。
+  - artifact：`artifacts/ui/visualization-render/visualization-render-walkthrough.json` /
+    `.md`，含 ready / Saliency Map / Spectrogram / Topographic Map screenshots。
+  - flow：ApplicationService 準備 synthetic source -> Data Interpretation apply -> preprocess ->
+    epoch -> dataset -> `ConfigureTrainingCommand` -> `SaliencyCommand` -> `ApplyMontageCommand`
+    -> 1 epoch CPU `TrainCommand` -> true MainWindow VisualizationPanel render。
+  - final evidence：finished runs `1`、metrics available、saliency available、montage available；
+    三個 tab 均有 visible canvas、無 error label、axes / rendered image artist。
+  - 這支撐 post-training Matplotlib saliency render UI evidence；仍不代表 3D / PyVista render、
+    ChatPanel UI-routing render、真人 Windows launcher click-through、MCP Inspector GUI 或 mature
+    import wizard label editor 完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

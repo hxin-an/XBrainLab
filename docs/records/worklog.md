@@ -2637,3 +2637,41 @@
   - 下一手優先處理 visualization / saliency canvas render UI evidence；不能把 readiness summary
     包裝成 render。
 - Goal 仍不可標 complete。
+
+### 2026-05-04 17:15 VisualizationPanel Matplotlib render evidence
+
+- 做了什麼：
+  - 新增 `scripts/dev/capture_visualization_render_walkthrough.py`。
+  - script 使用 ApplicationService 準備 synthetic source -> Data Interpretation apply ->
+    preprocess -> epoch -> dataset -> configure EEGNet -> configure saliency -> apply montage ->
+    1 epoch CPU train。
+  - 開啟真 MainWindow / VisualizationPanel，依序 render `Saliency Map`、`Spectrogram`、
+    `Topographic Map` 三個 tab，並保存 screenshots / JSON / Markdown。
+  - 新增 `tests/unit/scripts/test_capture_visualization_render_walkthrough.py`，要求三個 render tab
+    都有 screenshot、visible canvas、axes 和 rendered image artist，避免只記錄 placeholder。
+  - capture script 會 auto-dismiss offscreen training completion dialog，避免 modal 把 render
+    capture 卡住。
+- artifact：
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.md`
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.json`
+  - ready / saliency map / spectrogram / topographic map screenshots。
+- 驗證：
+  - initial TDD failure：script module 不存在，pytest collection failed。
+  - script tests：`poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
+    -> `6 passed`。
+  - existing visualization UI tests：
+    `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization.py -q`
+    -> `20 passed`。
+  - true UI render run：
+    `timeout 600s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+    -> passed。
+  - final evidence：finished runs `1`、metrics available `True`、saliency available `True`、
+    montage available `True`；三個 tab 無 error label 且有 rendered image artist。
+  - targeted `ruff` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐 MainWindow VisualizationPanel post-training Matplotlib saliency render。
+  - 還不是 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher click-through、
+    MCP Inspector GUI、mature import wizard label editor 或 external thesis experiment package。

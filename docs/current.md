@@ -198,6 +198,17 @@ flat params 到 backend-required `SmoothGrad` / `SmoothGrad_Squared` / `VarGrad`
 normalization，`visualization` intent 判斷，saliency readiness query 的 stale params 清理，以及
 evaluation panel tiny metrics fallback：chart `tight_layout` failure 只降級為 warning，缺
 `torchinfo` 時回傳可理解的 model-summary unavailable message，不再打 traceback。
+後續 render slice 已補上真 MainWindow VisualizationPanel 的 Matplotlib canvas evidence：
+`scripts/dev/capture_visualization_render_walkthrough.py` 使用 ApplicationService 準備 synthetic
+source -> scan -> preview -> validate -> apply -> preprocess -> epoch -> dataset -> configure
+EEGNet -> configure saliency -> apply montage -> 1 epoch CPU train，然後打開真 MainWindow 的
+VisualizationPanel 並截 `Saliency Map`、`Spectrogram`、`Topographic Map` 三個 tab。
+artifact `artifacts/ui/visualization-render/visualization-render-walkthrough.json` / `.md`
+顯示 status `passed`、finished runs `1`、metrics available `True`、saliency available `True`，
+三個 tab 均有 visible canvas、無 error label，且 figure evidence 皆有 axes / rendered image
+artist。這支撐 post-training Matplotlib saliency render UI evidence；仍不等於 3D render /
+PyVista path、ChatPanel 觸發 UI routing render、真人 Windows launcher click-through、MCP
+Inspector 或成熟 import wizard label editor 完成。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
 `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop
@@ -443,8 +454,9 @@ release closure。
   短鏈 tool-command artifact，並已有 confirm/apply -> standard preprocess -> epoch -> dataset
   pipeline-chain artifact、dataset-ready -> model / training settings / analysis-readiness
   boundary artifact，以及 controlled tiny training completion -> evaluation metrics ->
-  saliency/visualization readiness artifact。這仍不是真人 Windows Desktop click-through，也不是完整
-  saliency / visualization canvas render 的 UI 驗收。
+  saliency/visualization readiness artifact。MainWindow VisualizationPanel 也已有 post-training
+  Saliency Map / Spectrogram / Topographic Map Matplotlib render artifact。這仍不是真人
+  Windows Desktop click-through，也不是 3D / PyVista render 或 ChatPanel UI-routing render 的驗收。
 - Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
   fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
 - `tests/integration/ui/test_product_walkthrough.py` 仍是 synthetic / patched training
@@ -472,8 +484,8 @@ release closure。
 ## 目前執行中
 
 1. 等待真 Windows Desktop launcher click-through。
-2. 補真正 UI button-click 到 visualization / saliency canvas render 的 E2E；不要把 readiness
-   summary 包裝成完整 render。
+2. 補 3D / PyVista visualization render、ChatPanel UI-routing render 或明確 blocked reason；不要把
+   Matplotlib 2D render 擴張成完整 visualization suite。
 3. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
    import 不再是主要使用心智模型。
 4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它
