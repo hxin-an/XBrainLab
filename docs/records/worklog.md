@@ -37,6 +37,54 @@
 
 ## 2026-05-05
 
+### 11:45 Data compatibility command service boundary cleanup
+
+- 做了什麼：
+  - 延續 backend cleanup，選舊 `load_data` / `attach_labels` / `import_labels` compatibility
+    path 作為 focused slice。
+  - 先新增 focused test，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.data_compatibility_service`。
+  - 新增 `DataCompatibilityCommandService`，承接 legacy load failure mapping、post-load attach
+    labels、label import plan、default event-name mapping 和 Data Interpretation recipe trace update。
+  - `ApplicationService` 的 handler map 改成窄委派到 compatibility service；Data Interpretation
+    主線仍在 `DataInterpretationCommandService`。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `ApplicationService` 從 `1296` 行降到 `1107` 行。
+  - `DataCompatibilityCommandService` 為 `241` 行。
+  - 舊 command names 仍可用，但已被明確隔離為 compatibility boundary。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_compatibility_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/data_compatibility_service.py tests/unit/backend/application/test_data_compatibility_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/data_compatibility_service.py tests/unit/backend/application/test_data_compatibility_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_compatibility_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `47 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `68 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 接續 / 本輪剩餘：
+  - 這支撐 legacy data / label compatibility handler isolation，不是 product completion。
+  - `query_state`、metadata / smart parse / remove file 和 preprocess / epoch handlers 仍在
+    `ApplicationService`；是否繼續拆分要看下一輪 cleanup risk。
+
 ### 11:05 Lifecycle command service boundary cleanup
 
 - 做了什麼：

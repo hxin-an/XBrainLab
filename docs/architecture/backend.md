@@ -40,8 +40,8 @@ Interpretation lifecycle state 和 scan / preview / validate / apply / recipe ha
 `ApplicationService` 拆到 `DataInterpretationCommandService`，並把 reviewed metadata / label
 carrier side effects 再拆到 `DataInterpretationApplyService`；`ApplicationService` 現在只保留
 command dispatch、capability / confirmation gate、state/result envelope，以及對 focused service
-的窄委派。這是 god-object 收斂的連續切片，不代表 legacy label import handlers 都已完成
-拆分。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency` 和
+的窄委派。這是 god-object 收斂的連續切片；legacy data / label compatibility path 仍存在，
+但不再直接塞在 `ApplicationService`。下一個 cleanup slice 又把 `evaluate`、`visualize`、`saliency` 和
 confirmed `apply_montage` 拆到 `AnalysisCommandService`；analysis / visualization readiness
 現在也有 focused handler boundary。最新 cleanup slice 又把 `configure_training`、`train`、
 `stop_training`、`clear_training_history` 和 reset-time training config clear 拆到
@@ -50,6 +50,8 @@ confirmed `apply_montage` 拆到 `AnalysisCommandService`；analysis / visualiza
 split config、split audit、rollback 和 split summary 拆到 `DatasetGenerationCommandService`。
 最新 lifecycle cleanup slice 又把 `reset_preprocess`、`reset_session`、`new_session`、
 downstream rollback 和 reset-time dependent-state clear 拆到 `LifecycleCommandService`。
+最新 compatibility cleanup slice 又把舊 `load_data`、`attach_labels`、`import_labels` 和
+label helper 拆到 `DataCompatibilityCommandService`。
 `ApplicationService` 仍只 dispatch / gate / wrap result。
 
 ## 一句話架構
@@ -113,7 +115,10 @@ ApplicationService / Command API
   |       +--> split config / dataset generation / split audit / rollback / dataset cleanup
   |
   +--> LifecycleCommandService
-          +--> reset preprocess / reset session / new session / dependent-state cleanup
+  |       +--> reset preprocess / reset session / new session / dependent-state cleanup
+  |
+  +--> DataCompatibilityCommandService
+          +--> legacy load_data / attach_labels / import_labels compatibility
   |
   v
 same cached controllers from Study
@@ -358,6 +363,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   dependent-state clear 的實作位置現在是 `LifecycleCommandService`。它會委派到
   `DatasetGenerationCommandService` 和 `TrainingCommandService`，避免 reset path 在
   `ApplicationService` 裡重建第二套 lifecycle truth。
+- 舊 `load_data`、`attach_labels`、`import_labels` 和 label helper 的實作位置現在是
+  `DataCompatibilityCommandService`。它明確是 compatibility boundary；新 Data
+  Interpretation 主線仍應走 `DataInterpretationCommandService`。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed

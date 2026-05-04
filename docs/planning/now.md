@@ -46,6 +46,9 @@
   split audit、rollback 和 dataset split summary 拆到 `DatasetGenerationCommandService`。
 - 最新 lifecycle cleanup slice 已把 `reset_preprocess`、`reset_session`、`new_session`、
   downstream rollback 和 reset-time dependent-state clear 拆到 `LifecycleCommandService`。
+- 最新 compatibility cleanup slice 已把舊 `load_data`、`attach_labels`、`import_labels` 和
+  label helper 拆到 `DataCompatibilityCommandService`；它仍是 compatibility path，不是新資料入口
+  心智模型。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -545,8 +548,9 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 
 ```text
 1. 繼續 backend architecture cleanup：ApplicationService 已拆出 Data Interpretation、
-   Analysis、Training、Dataset Generation 和 Lifecycle command services，下一步要
-   handler/service 化 legacy compatibility 邊界。
+   Analysis、Training、Dataset Generation、Lifecycle 和 Data Compatibility command services。
+   下一步盤點 `query_state`、metadata / smart parse / remove / preprocess handlers 是否需要
+   繼續 service 化，並保持 legacy compatibility 不回到產品主心智模型。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

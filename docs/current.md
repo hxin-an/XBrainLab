@@ -156,8 +156,8 @@ state 和 scan / preview / validate / apply / recipe command handling 從
 carrier side effects 再拆到 `DataInterpretationApplyService`；UI、agent、headless 和 MCP 仍
 只透過 `ApplicationService.execute()` 進入，`ApplicationService` 則回到 dispatch /
 capability-confirmation gate / state-result envelope 的角色。這降低了 god-object 壓力，但不能
-宣稱 backend architecture 已全面乾淨；legacy label/import compatibility handler 還沒有同等
-完成拆分。後續 cleanup slice
+宣稱 backend architecture 已全面乾淨；legacy data / label compatibility path 仍存在，但已
+隔離成 focused compatibility service。後續 cleanup slice
 已把 `evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage` 拆到
 `AnalysisCommandService`；analysis / visualization readiness 不再直接由 `ApplicationService`
 承接。另一個 cleanup slice 已把 `configure_training`、`train`、`stop_training`、
@@ -166,8 +166,10 @@ model / optimizer / device / training-option snapshot 也不再由 `ApplicationS
 最新 cleanup slice 已把 `generate_dataset`、`clear_datasets`、split config、split audit、
 rollback 和 dataset split summary 拆到 `DatasetGenerationCommandService`。最新 reset lifecycle
 slice 已把 `reset_preprocess`、`reset_session`、`new_session`、downstream rollback 和
-reset-time dependent-state clear 拆到 `LifecycleCommandService`。`query_state`、legacy data / label compatibility
-handlers 仍在 `ApplicationService`。最新 backend slices 又補了 reviewed label carriers
+reset-time dependent-state clear 拆到 `LifecycleCommandService`。最新 compatibility slice 已把
+舊 `load_data`、`attach_labels`、`import_labels` 和 label helper 拆到
+`DataCompatibilityCommandService`，並保留 Data Interpretation recipe trace 更新。`query_state` 仍在
+`ApplicationService`。最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
 CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `apply_labels_batch`
@@ -614,8 +616,8 @@ true local model desktop session。
 ## 目前執行中
 
 1. 繼續 backend architecture cleanup：`ApplicationService` 已拆出 Data Interpretation、
-   Analysis、Training、Dataset Generation 和 Lifecycle command services，但 legacy
-   compatibility handlers 仍需逐步 handler 化，不能讓
+   Analysis、Training、Dataset Generation、Lifecycle 和 Data Compatibility command services；
+   `query_state` 和部分 metadata / preprocess compatibility 仍在 service 內，不能讓
    `ApplicationService` 再成為新的 god object。
 2. 等待真 Windows Desktop launcher click-through。
 3. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
