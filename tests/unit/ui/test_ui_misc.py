@@ -346,6 +346,37 @@ class TestDatasetActionHandler:
         assert commands[1].confirmed is True
         handler.panel.update_panel.assert_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_uses_reload_capability_gate(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import CommandName
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+
+        def fake_capability(_panel, command_name):
+            if command_name == CommandName.RELOAD_INTERPRETATION_RECIPE:
+                return SimpleNamespace(
+                    enabled=False,
+                    reasons=["Recipe reload is unavailable."],
+                )
+            return SimpleNamespace(enabled=True, reasons=[])
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+            side_effect=fake_capability,
+        ):
+            handler.reload_interpretation_recipe()
+
+        mock_mb.warning.assert_called_once()
+        assert "Recipe reload is unavailable" in mock_mb.warning.call_args.args[2]
+        mock_fd.getOpenFileName.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")

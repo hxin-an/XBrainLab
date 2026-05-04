@@ -109,7 +109,8 @@ policy；real `Study` action path 也優先走 command adapter。如果 unit tes
 - Dataset source-entry sidebar now exposes separate user-facing actions for EEG file(s),
   folder / BIDS root, and saved import recipe. Folder/BIDS and recipe paths do not use legacy
   controller fallback; automated sidebar evidence is in
-  `artifacts/ui/data-source-entry-options/`.
+  `artifacts/ui/data-source-entry-options/`. Recipe reload uses the
+  `reload_interpretation_recipe` capability gate, rather than inheriting the scan-source gate.
 
 ## Panel 基底與事件更新
 

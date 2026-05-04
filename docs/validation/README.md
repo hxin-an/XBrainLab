@@ -216,6 +216,11 @@ UI baseline capture 結果：
   backend integration -> `3 passed`；agent/tool regression -> `468 passed`；agent integration ->
   `7 passed`；ruff / basedpyright / architecture compliance / MkDocs strict / diff check passed。
   這是 automated Qt sidebar replay，不是 human desktop acceptance。
+- Recipe reload capability gate slice 覆蓋 `Reload Import Recipe` UI action 的 capability source：
+  recipe reload 現在讀 `reload_interpretation_recipe` capability，而不是 scan-source gate。Focused
+  regression 初始紅燈顯示 disabled reload capability 仍進入 file dialog，實作後 focused gate
+  `2 passed`；focused DatasetAction/sidebar gate -> `58 passed`；ruff / basedpyright /
+  architecture compliance / MkDocs strict / diff check passed。
 - Apply interpretation raw-edit boundary slice gate 覆蓋 Data Interpretation apply 的 active
   pipeline mutation policy：已有 epoch / generated dataset / trainer / locked raw data 時，
   `apply_interpretation` capability 會 blocked，並且 `ApplyInterpretationCommand` 不呼叫

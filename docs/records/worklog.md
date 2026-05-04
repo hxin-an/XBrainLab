@@ -37,6 +37,44 @@
 
 ## 2026-05-05
 
+### 16:35 Recipe reload capability gate
+
+- 做了什麼：
+  - 盤點剛新增的 `Reload Import Recipe` UI path，發現它仍共用 `_can_start_interpretation()`
+    的 `scan_source` gate。
+  - 先新增 focused UI regression，紅燈顯示 `reload_interpretation_recipe` capability disabled 時
+    UI 仍進入 file dialog。
+  - `_can_start_interpretation()` 現在可接 command name；recipe reload path 讀
+    `CommandName.RELOAD_INTERPRETATION_RECIPE`，blocked title / fallback reason 也使用 recipe
+    reload 語意。
+  - 更新 current / UI architecture / validation / implementation log。
+- 結果：
+  - Recipe reload UI action 不再依賴 scan-source gate；未來 backend policy 分岔時 UI 會顯示
+    正確 blocked reason。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_uses_reload_capability_gate -q`
+    -> 初始紅燈進入 file dialog，實作後 pass。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_uses_reload_capability_gate tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_reviews_then_applies -q`
+    -> `2 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_dataset_sidebar.py -q`
+    -> `58 passed`。
+  - `timeout 120s git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - 這支撐 UI capability boundary consistency；不是 full recipe reload semantic acceptance。
+
 ### 16:10 Apply interpretation raw-edit capability boundary
 
 - 做了什麼：

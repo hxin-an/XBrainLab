@@ -224,7 +224,8 @@ handler orchestration，不再同時承接 state truth。
 `Interpret Data Source`（EEG file(s)）、`Interpret Folder / BIDS` 和 `Reload Import Recipe`。
 folder/BIDS root 與 recipe reload 都走 Data Interpretation command path；UI-observable artifact 在
 `artifacts/ui/data-source-entry-options/`。這補上 source type entry visibility，但不是 mature
-embedded label editor completion。
+embedded label editor completion。後續小修又讓 recipe reload 讀自己的
+`reload_interpretation_recipe` capability gate，而不是共用 `scan_source` gate。
 最新 backend capability hardening 讓 `apply_interpretation` 也套用 raw-edit blockers：active
 session 已有 epoch、generated dataset、trainer 或 locked raw data 時，UI / agent / MCP 都會收到
 reset/new-session blocked reason，而不是直接把新 interpretation 套進既有 downstream pipeline。

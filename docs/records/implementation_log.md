@@ -87,6 +87,7 @@ fallback。
 - 使用者在 Dataset sidebar 第一層就看得到 file、folder/BIDS root 和 saved recipe 三種資料來源。
 - Folder/BIDS 和 recipe entry 會進入 scan / recipe reload -> preview -> validate ->
   confirm/apply 的 Data Interpretation flow。
+- Recipe reload 會讀 `reload_interpretation_recipe` capability gate，不再沿用 scan-source gate。
 - 新入口有 focused UI tests 和 automated sidebar screenshot evidence。
 
 ### Evidence 入口

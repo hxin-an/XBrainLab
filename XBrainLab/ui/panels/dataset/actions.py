@@ -162,7 +162,11 @@ class DatasetActionHandler:
 
     def reload_interpretation_recipe(self):
         """Reload a saved import recipe, preview it, and apply after review."""
-        if not self._can_start_interpretation():
+        if not self._can_start_interpretation(
+            CommandName.RELOAD_INTERPRETATION_RECIPE,
+            blocked_title="Recipe Reload Blocked",
+            fallback_reason="Recipe reload is not available right now.",
+        ):
             return
         recipe_path, _ = QFileDialog.getOpenFileName(
             self.panel,
@@ -316,16 +320,22 @@ class DatasetActionHandler:
             " ".join(part for part in [apply_result.message, recipe_message] if part),
         )
 
-    def _can_start_interpretation(self) -> bool:
+    def _can_start_interpretation(
+        self,
+        command_name: CommandName = CommandName.SCAN_SOURCE,
+        *,
+        blocked_title: str = "Interpretation Blocked",
+        fallback_reason: str = "Data interpretation is not available right now.",
+    ) -> bool:
         """Return whether the UI can start a Data Interpretation source flow."""
-        scan_capability = get_command_capability(self.panel, CommandName.SCAN_SOURCE)
-        if scan_capability is not None and not scan_capability.enabled:
+        capability = get_command_capability(self.panel, command_name)
+        if capability is not None and not capability.enabled:
             QMessageBox.warning(
                 self.panel,
-                "Interpretation Blocked",
+                blocked_title,
                 blocked_reason(
-                    scan_capability,
-                    "Data interpretation is not available right now.",
+                    capability,
+                    fallback_reason,
                 ),
             )
             return False
