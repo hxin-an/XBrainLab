@@ -153,6 +153,41 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
     }
 
 
+def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "format_capabilities": [
+                {
+                    "name": "brainvision.vhdr",
+                    "format": "BrainVision",
+                    "status": "needs_review",
+                    "message": "Review stimulus, response, sync, and segment markers.",
+                },
+                {
+                    "name": "lsl_recording.xdf",
+                    "format": "XDF / LSL",
+                    "status": "blocked",
+                    "message": (
+                        "XDF / LSL stream selection is not available in this "
+                        "import wizard yet."
+                    ),
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    details = dialog.review_text.toPlainText()
+
+    assert "Format capabilities:" in details
+    assert "BrainVision: needs review" in details
+    assert "XDF / LSL: blocked" in details
+    assert "stream selection is not available" in details
+
+
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

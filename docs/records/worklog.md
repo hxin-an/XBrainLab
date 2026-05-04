@@ -137,6 +137,44 @@
   - 仍缺 all-format manual compatibility matrix、真人 Windows launcher click-through、MCP
     Inspector GUI / release config。
 
+### 17:46 Data Interpretation format capability boundaries
+
+- 做了什麼：
+  - 先補 TDD 紅燈：
+    - backend scan / preview 應輸出 GDF、EDF、EEGLAB、BrainVision、MAT labels、BIDS events、
+      XDF / LSL 等 format capability rows。
+    - dialog review notes 應顯示 format capabilities，且可見文字不能直接露出 raw
+      `needs_review`。
+  - `ScanResult` / `InterpretationCandidate` / `InterpretationPreview` /
+    `AppliedInterpretation` / `ImportRecipe` 新增 `format_capabilities`。
+  - scan 會對 GDF、EDF / BDF、EEGLAB `.set`、BrainVision `.vhdr` / `.vmrk`、MNE FIF、MAT
+    labels、CSV / TSV labels、BIDS `events.tsv`、TXT labels 和 XDF / LSL 建立 supported /
+    needs-review / blocked boundary。
+  - XDF / LSL 目前明確標成 blocked，訊息會要求使用者先轉成 supported EEG format 或提供
+    prepared recipe；若同一 folder 還有 supported EEG，workflow 不會整個 blocked，但會 warning。
+  - `DataInterpretationPreviewDialog` review notes 新增 `Format capabilities` section，並把
+    backend status 轉成人能讀的 `needs review`。
+  - replay JSON 新增 `review_notes`，保存可見 format boundary text。
+- 結果：
+  - TDD 紅燈確認過：
+    - backend test 先因缺 `format_capabilities` 失敗。
+    - dialog test 先因 review notes 沒有 `Format capabilities` 失敗。
+  - UI replay JSON 顯示 BIDS events `needs review`、MNE FIF `supported`，且保留 label
+    carrier rows。
+- 證據：
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `34 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `51 passed`
+  - targeted `ruff` -> `PASS`
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- 接續 / 本輪剩餘：
+  - 這是 capability boundary display，不是 XDF stream parser 或 full all-format import matrix。
+  - 仍缺完整 post-load label import 內嵌 wizard、真人 Windows launcher click-through、MCP
+    Inspector GUI / release config。
+
 ### 11:17 Data Interpretation metadata / class-map editor slice
 
 - 做了什麼：

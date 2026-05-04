@@ -246,6 +246,53 @@ def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
     assert "choices:label_carriers" in recipe["recipe_trace"]
 
 
+def test_data_interpretation_scan_reports_format_capability_boundaries(tmp_path):
+    source_dir = tmp_path / "mixed_format_source"
+    source_dir.mkdir()
+    files = {
+        "A01T.gdf": b"gdf placeholder",
+        "physionet.edf": b"edf placeholder",
+        "eeglab.set": b"set placeholder",
+        "brainvision.vhdr": b"vhdr placeholder",
+        "brainvision.vmrk": b"vmrk placeholder",
+        "labels.mat": b"mat placeholder",
+        "events.tsv": b"onset\ttrial_type\n0.0\tleft\n",
+        "lsl_recording.xdf": b"xdf placeholder",
+    }
+    for name, content in files.items():
+        (source_dir / name).write_bytes(content)
+    service = ApplicationService(Study())
+
+    scan = service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    preview = service.execute(PreviewInterpretationCommand())
+
+    capabilities = {
+        item["name"]: item
+        for item in scan.diagnostics["scan_result"]["format_capabilities"]
+    }
+
+    assert capabilities["A01T.gdf"]["format"] == "GDF"
+    assert capabilities["A01T.gdf"]["status"] == "needs_review"
+    assert "trial anchor" in capabilities["A01T.gdf"]["message"]
+    assert capabilities["physionet.edf"]["format"] == "EDF"
+    assert "annotations" in capabilities["physionet.edf"]["message"]
+    assert capabilities["eeglab.set"]["format"] == "EEGLAB"
+    assert "boundary" in capabilities["eeglab.set"]["message"]
+    assert capabilities["brainvision.vhdr"]["format"] == "BrainVision"
+    assert "stimulus" in capabilities["brainvision.vhdr"]["message"]
+    assert capabilities["labels.mat"]["format"] == "MAT labels"
+    assert capabilities["events.tsv"]["format"] == "BIDS events"
+    assert capabilities["lsl_recording.xdf"]["status"] == "blocked"
+    assert (
+        "XDF / LSL stream selection is not available"
+        in capabilities["lsl_recording.xdf"]["message"]
+    )
+    assert (
+        preview.diagnostics["preview"]["format_capabilities"]
+        == scan.diagnostics["scan_result"]["format_capabilities"]
+    )
+
+
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir = tmp_path / "labels_only"
     source_dir.mkdir()

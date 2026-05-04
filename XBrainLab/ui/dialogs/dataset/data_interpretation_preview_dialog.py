@@ -523,6 +523,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if trace:
             lines.append("Recipe trace:")
             lines.extend(f"- {item}" for item in trace)
+        format_capabilities = self.preview.get(
+            "format_capabilities",
+        ) or self.scan_result.get("format_capabilities")
+        capability_lines = self._format_capability_lines(format_capabilities)
+        if capability_lines:
+            lines.append("Format capabilities:")
+            lines.extend(capability_lines)
         return "\n".join(lines) if lines else "No warnings or confirmations."
 
     @staticmethod
@@ -535,6 +542,23 @@ class DataInterpretationPreviewDialog(BaseDialog):
             if text and text not in result:
                 result.append(text)
         return result
+
+    @staticmethod
+    def _format_capability_lines(values: Any) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        lines: list[str] = []
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            format_name = str(value.get("format") or value.get("name") or "Source")
+            status = str(value.get("status") or "review").replace("_", " ")
+            message = str(value.get("message") or "").strip()
+            if message:
+                lines.append(f"- {format_name}: {status}. {message}")
+            else:
+                lines.append(f"- {format_name}: {status}.")
+        return lines
 
     def _confirmation_text(self) -> str:
         if self.decision == "blocked":

@@ -627,6 +627,7 @@ class ApplicationService:
             label_carriers=list(candidate.label_carriers),
             label_carrier_plan=[dict(item) for item in candidate.label_carrier_plan],
             metadata=list(candidate.metadata),
+            format_capabilities=[dict(item) for item in candidate.format_capabilities],
             validation_decision=decision.decision,
             confirmations=confirmations,
             event_roles=dict(candidate.event_roles),

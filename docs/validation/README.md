@@ -1261,6 +1261,35 @@ wizard，包含 MAT variable / anchor recipe evidence 和 UI-observable BIDS-eve
 column / anchor evidence。它仍不支撐完整 post-load label import 內嵌 wizard、全格式人工
 compatibility matrix 或真人 click-through。
 
+2026-05-04 Data Interpretation format capability boundary slice：
+
+- backend:
+  - `ScanResult` / `InterpretationCandidate` / `InterpretationPreview` / `AppliedInterpretation` /
+    `ImportRecipe` now carry `format_capabilities`.
+  - Scan reports review boundaries for GDF, EDF / BDF, EEGLAB `.set`, BrainVision `.vhdr` /
+    `.vmrk`, MNE FIF, MAT labels, CSV / TSV labels, BIDS `events.tsv`, TXT labels, and XDF / LSL.
+  - XDF / LSL is explicit `blocked` with a user-facing stream-selection unavailable reason; mixed
+    folders with supported EEG keep importing the supported source while warning that blocked
+    sources are not applied.
+- UI:
+  - `DataInterpretationPreviewDialog` review notes include a `Format capabilities` section and
+    converts internal statuses such as `needs_review` into visible text like `needs review`.
+- replay artifact refreshed:
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON `review_notes` shows BIDS events as `needs review` and MNE FIF as `supported`.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `34 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `51 passed`
+  - targeted `ruff` / `basedpyright` clean.
+
+這批 evidence 支撐 import wizard 不再把特殊格式當成泛泛 label/event warning；使用者可以看到
+哪些格式已可載入但需要語意確認，哪些格式目前 blocked。它仍不是 full manual compatibility
+matrix 或 XDF stream parser implementation。
+
 2026-05-04 Data Interpretation recipe save UI path：
 
 - Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。

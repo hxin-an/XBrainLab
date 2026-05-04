@@ -226,6 +226,9 @@
   - replay artifact `artifacts/ui/data-interpretation-preview.png` 已刷新，JSON 也記錄
     `metadata_overrides` 和 TSV / BIDS-events label carrier choices；backend unit test 也覆蓋
     MAT `classlabel` / `cue_onset` recipe trace。
+  - scan / preview 現在會列出 format capability boundaries，覆蓋 GDF、EDF / BDF、EEGLAB、
+    BrainVision、MNE FIF、MAT labels、CSV / TSV / BIDS events、TXT labels 和 XDF / LSL；dialog
+    review notes 會顯示 XDF / LSL stream selection 尚未在 wizard 內可用的 blocked reason。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；all-format manual compatibility matrix、MCP Inspector /
   Windows release config 尚未完成，UI replay coverage 還不是完整真人 walkthrough。

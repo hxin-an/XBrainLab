@@ -94,7 +94,11 @@ time model、granularity 候選；wizard 會顯示可編輯的 label carrier rev
 會把使用者選擇 re-preview / re-validate 後保存到 `AppliedInterpretation` /
 `ImportRecipe.label_carrier_plan`。UI replay artifact 現在顯示 `trial_type`、`onset`、
 `seconds`、`trial` 這組 label carrier choices；backend unit test 也覆蓋 MAT
-`classlabel` / `cue_onset` 選擇寫入 recipe trace。舊 label import 已降成「Add Labels to Loaded
+`classlabel` / `cue_onset` 選擇寫入 recipe trace。後續 slice 又新增 format capability
+boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
+CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
+dialog review notes 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection 尚未在
+wizard 內可用。舊 label import 已降成「Add Labels to Loaded
 Data」的 service-backed compatibility path；label import 成功後會更新 applied interpretation
 的 `label_imports` / `label_carriers` / recipe trace，UI 也會提示使用者可保存更新後
 recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import wizard 內嵌 label

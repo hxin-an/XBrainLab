@@ -73,6 +73,7 @@ class ScanResult:
     label_carriers: list[str] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
     bids: dict[str, Any] = dc_field(default_factory=dict)
+    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
     blocked_reasons: list[str] = dc_field(default_factory=list)
 
@@ -96,6 +97,7 @@ class InterpretationCandidate:
     time_model: str = "unknown"
     granularity: str = "unknown"
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
+    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
     confirmation_items: list[str] = dc_field(default_factory=list)
     blocked_reasons: list[str] = dc_field(default_factory=list)
@@ -117,6 +119,7 @@ class InterpretationPreview:
     label_carrier_count: int
     label_carrier_preview: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata_preview: list[dict[str, Any]] = dc_field(default_factory=list)
+    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
     warnings: list[str] = dc_field(default_factory=list)
     confirmation_items: list[str] = dc_field(default_factory=list)
     blocked_reasons: list[str] = dc_field(default_factory=list)
@@ -156,6 +159,7 @@ class AppliedInterpretation:
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
+    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
@@ -179,6 +183,7 @@ class ImportRecipe:
     label_carriers: list[str] = dc_field(default_factory=list)
     label_carrier_plan: list[dict[str, Any]] = dc_field(default_factory=list)
     metadata: list[FileMetadataResolution] = dc_field(default_factory=list)
+    format_capabilities: list[dict[str, Any]] = dc_field(default_factory=list)
     validation_decision: str = InterpretationDecision.SAFE.value
     confirmations: list[str] = dc_field(default_factory=list)
     event_roles: dict[str, str] = dc_field(default_factory=dict)
@@ -226,6 +231,11 @@ def import_recipe_from_dict(payload: dict[str, Any]) -> ImportRecipe:
             if isinstance(item, dict)
         ],
         metadata=metadata,
+        format_capabilities=[
+            dict(item)
+            for item in payload.get("format_capabilities", [])
+            if isinstance(item, dict)
+        ],
         validation_decision=str(
             payload.get("validation_decision", InterpretationDecision.SAFE.value),
         ),
@@ -274,8 +284,15 @@ def scan_source_path(
         for file_path in eeg_files
     ]
     bids = _bids_summary(scan_root, source_kind, eeg_files, label_carriers)
-    warnings = _scan_warnings(source_kind, eeg_files, label_carriers, bids)
-    blocked_reasons = [] if eeg_files else ["No supported EEG data files were found."]
+    format_capabilities = _format_capabilities(files)
+    warnings = _scan_warnings(
+        source_kind,
+        eeg_files,
+        label_carriers,
+        bids,
+        format_capabilities,
+    )
+    blocked_reasons = _scan_blocked_reasons(eeg_files, format_capabilities)
 
     return ScanResult(
         scan_id=scan_id,
@@ -286,6 +303,7 @@ def scan_source_path(
         label_carriers=label_carriers,
         metadata=metadata,
         bids=bids,
+        format_capabilities=format_capabilities,
         warnings=warnings,
         blocked_reasons=blocked_reasons,
     )
@@ -371,6 +389,7 @@ def build_interpretation_candidate(
         else "file_native_time",
         granularity="trial_or_event" if event_roles else "recording",
         metadata=metadata,
+        format_capabilities=[dict(item) for item in scan.format_capabilities],
         warnings=warnings,
         confirmation_items=confirmation_items,
         blocked_reasons=sorted(set(blocked_reasons)),
@@ -414,6 +433,7 @@ def build_interpretation_preview(
         label_carrier_count=label_count,
         label_carrier_preview=[dict(item) for item in candidate.label_carrier_plan],
         metadata_preview=metadata_preview,
+        format_capabilities=[dict(item) for item in candidate.format_capabilities],
         warnings=list(candidate.warnings),
         confirmation_items=list(candidate.confirmation_items),
         blocked_reasons=list(candidate.blocked_reasons),
@@ -482,6 +502,7 @@ def build_import_recipe(
         label_carriers=list(applied.label_carriers),
         label_carrier_plan=[dict(item) for item in applied.label_carrier_plan],
         metadata=list(applied.metadata),
+        format_capabilities=[dict(item) for item in applied.format_capabilities],
         validation_decision=applied.validation_decision,
         confirmations=list(applied.confirmations),
         event_roles=dict(applied.event_roles),
@@ -1001,11 +1022,145 @@ def _bids_entity_values(
     return sorted(values)
 
 
+def _format_capabilities(files: list[Path]) -> list[dict[str, Any]]:
+    capabilities: list[dict[str, Any]] = []
+    for path in sorted(files, key=lambda item: item.name.lower()):
+        capability = _format_capability(path)
+        if capability:
+            capabilities.append(capability)
+    return capabilities
+
+
+def _format_capability(path: Path) -> dict[str, Any]:
+    suffix = path.suffix.lower()
+    if _is_bids_events_file(path):
+        return _capability(
+            path,
+            "BIDS events",
+            "external_labels",
+            "needs_review",
+            "BIDS events use onset and duration with label columns such as "
+            "trial_type or value; review event column and sidecar semantics.",
+        )
+    if suffix == ".gdf":
+        return _capability(
+            path,
+            "GDF",
+            "eeg",
+            "needs_review",
+            "GDF event tables often mix trial starts, cues, artifacts, and "
+            "class events; confirm trial anchor, class map, and external label "
+            "alignment before supervised training.",
+        )
+    if suffix in {".edf", ".bdf"}:
+        return _capability(
+            path,
+            "EDF",
+            "eeg",
+            "needs_review",
+            "EDF / BDF annotations can describe events or intervals; review "
+            "annotation roles, time units, and class map before supervised "
+            "training.",
+        )
+    if suffix == ".set":
+        return _capability(
+            path,
+            "EEGLAB",
+            "eeg",
+            "needs_review",
+            "EEGLAB events, urevents, and boundary markers require review; "
+            "boundary must not be treated as a class label.",
+        )
+    if suffix == ".vhdr":
+        return _capability(
+            path,
+            "BrainVision",
+            "eeg",
+            "needs_review",
+            "BrainVision marker sidecars can include stimulus, response, sync, "
+            "and new segment markers; review event roles before apply.",
+        )
+    if suffix == ".vmrk":
+        return _capability(
+            path,
+            "BrainVision markers",
+            "sidecar",
+            "context",
+            "BrainVision marker sidecar detected; use the associated .vhdr "
+            "source and review marker roles.",
+        )
+    if str(path).lower().endswith((".fif", ".fif.gz")):
+        return _capability(
+            path,
+            "MNE FIF",
+            "eeg",
+            "supported",
+            "FIF can be loaded as an EEG recording; review metadata and events "
+            "before supervised training.",
+        )
+    if suffix == ".mat":
+        return _capability(
+            path,
+            "MAT labels",
+            "external_labels",
+            "needs_review",
+            "MAT labels require variable selection, anchor alignment, and class "
+            "map confirmation.",
+        )
+    if suffix in {".csv", ".tsv"}:
+        return _capability(
+            path,
+            "CSV / TSV labels",
+            "external_labels",
+            "needs_review",
+            "CSV / TSV labels require label column, anchor, time model, and "
+            "granularity confirmation.",
+        )
+    if suffix == ".txt":
+        return _capability(
+            path,
+            "TXT labels",
+            "external_labels",
+            "needs_review",
+            "Text label sequences require trial-order or anchor alignment "
+            "confirmation.",
+        )
+    if suffix == ".xdf":
+        return _capability(
+            path,
+            "XDF / LSL",
+            "device_export",
+            "blocked",
+            "XDF / LSL stream selection is not available in this import wizard "
+            "yet. Convert streams to a supported EEG format or provide a "
+            "prepared recipe.",
+        )
+    return {}
+
+
+def _capability(
+    path: Path,
+    format_name: str,
+    role: str,
+    status: str,
+    message: str,
+) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "name": path.name,
+        "format": format_name,
+        "role": role,
+        "status": status,
+        "message": message,
+    }
+
+
 def _scan_warnings(
     source_kind: str,
     eeg_files: list[str],
     label_carriers: list[str],
     bids: dict[str, Any],
+    format_capabilities: list[dict[str, Any]],
 ) -> list[str]:
     warnings: list[str] = []
     if len(eeg_files) > 1:
@@ -1020,7 +1175,34 @@ def _scan_warnings(
             "BIDS-like source has no events.tsv carrier; supervised labels "
             "may be limited.",
         )
+    blocked_formats = [
+        str(item.get("format"))
+        for item in format_capabilities
+        if item.get("status") == "blocked"
+    ]
+    if blocked_formats and eeg_files:
+        warnings.append(
+            "Some discovered sources are not applied by this wizard yet: "
+            + ", ".join(blocked_formats)
+            + ".",
+        )
     return warnings
+
+
+def _scan_blocked_reasons(
+    eeg_files: list[str],
+    format_capabilities: list[dict[str, Any]],
+) -> list[str]:
+    if eeg_files:
+        return []
+    blocked = [
+        str(item.get("message"))
+        for item in format_capabilities
+        if item.get("status") == "blocked" and item.get("message")
+    ]
+    if blocked:
+        return sorted(set(blocked))
+    return ["No supported EEG data files were found."]
 
 
 def _relative_text(path: Path, root: Path) -> str:

@@ -214,6 +214,24 @@
             ],
             "dataset_description": null
           },
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
           "warnings": [
             "External label/event carriers require preview before apply."
           ],
@@ -482,6 +500,24 @@
               }
             }
           ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
           "warnings": [
             "External label/event carriers require preview before apply."
           ],
@@ -564,6 +600,24 @@
                 "override": null,
                 "recipe_trace": []
               }
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
             }
           ],
           "warnings": [
@@ -1066,6 +1120,24 @@
               }
             }
           ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
           "warnings": [
             "External label/event carriers require preview before apply."
           ],
@@ -1169,6 +1241,24 @@
                 "override": null,
                 "recipe_trace": []
               }
+            }
+          ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
             }
           ],
           "warnings": [
@@ -1888,6 +1978,24 @@
               }
             }
           ],
+          "format_capabilities": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "role": "external_labels",
+              "status": "needs_review",
+              "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            },
+            {
+              "path": "<replay_source>/product_replay_raw.fif",
+              "name": "product_replay_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            }
+          ],
           "validation_decision": "needs_confirmation",
           "confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
@@ -1952,6 +2060,7 @@
           "trial"
         ]
       ],
+      "review_notes": "Warnings:\n- External label/event carriers require preview before apply.\nConfirmations:\n- Confirm label carrier alignment, anchor event, and class map before applying.\n- Confirm run metadata for product_replay_raw.fif.\n- Confirm session metadata for product_replay_raw.fif.\n- Confirm subject metadata for product_replay_raw.fif.\n- Confirm task metadata for product_replay_raw.fif.\nDownstream impact:\n- Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session.\nFormat capabilities:\n- BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
       "review_choices": {
         "metadata_overrides": {
           "product_replay_raw.fif": {
