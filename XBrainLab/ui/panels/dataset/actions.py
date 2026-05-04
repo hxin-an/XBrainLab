@@ -124,7 +124,15 @@ class DatasetActionHandler:
                             result.message,
                         )
                         return
-                    controller.import_files(filepaths)
+                    if result is None:
+                        controller.import_files(filepaths)
+                        return
+                    self.panel.update_panel()
+                    QMessageBox.information(
+                        self.panel,
+                        "Data imported",
+                        result.message,
+                    )
                     return
             except Exception as e:
                 QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")

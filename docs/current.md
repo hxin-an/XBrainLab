@@ -174,7 +174,11 @@ cleanup slice 已把 `update_metadata`、`apply_smart_parse` 和 `remove_files` 
 `create_epoch` 拆到 `PreprocessCommandService`。最新 state/query cleanup slice 已把
 state snapshot assembly 和 `query_state` diagnostics 拆到 `StateSnapshotService` /
 `QueryStateCommandService`。`ApplicationService` 現在主要保留 command dispatch、
-capability-confirmation gate、result envelope 和 compatibility wrapper methods。最新 backend slices 又補了 reviewed label carriers
+capability-confirmation gate、result envelope 和 compatibility wrapper methods。最新 UI
+runtime bypass cleanup 又修掉兩個 service-success fallback 風險：Dataset panel direct
+file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；Preprocess reset 也改走
+`ResetPreprocessCommand`，controller reset 只保留給 mock / legacy `None` adapter fallback。
+最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
 CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `apply_labels_batch`

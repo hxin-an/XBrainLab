@@ -15,6 +15,7 @@ from XBrainLab.backend.application import (
     CreateEpochCommand,
     PreprocessCommand,
     PreprocessOperation,
+    ResetPreprocessCommand,
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
@@ -522,7 +523,15 @@ class PreprocessSidebar(QWidget):
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                self.controller.reset_preprocess()
+                result = execute_application_command(
+                    self,
+                    ResetPreprocessCommand(confirmed=True),
+                )
+                if result is None:
+                    self.controller.reset_preprocess()
+                elif result.failed:
+                    self._show_command_failure("Error", result.message)
+                    return
                 self.notify_update()
                 if self.main_window and hasattr(self.main_window, "update_info_panel"):
                     self.main_window.update_info_panel()

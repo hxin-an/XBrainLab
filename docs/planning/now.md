@@ -56,6 +56,9 @@
 - 最新 state/query cleanup slice 已把 state snapshot assembly 和 `query_state` diagnostics 拆到
   `StateSnapshotService` / `QueryStateCommandService`；`ApplicationService` 主要回到 dispatch /
   gate / result envelope。
+- 最新 UI runtime bypass audit 修掉 Dataset direct file import 和 Preprocess reset 的
+  service-success fallback：successful `LoadDataCommand` / `ResetPreprocessCommand` 不再再呼叫
+  controller mutation，controller fallback 只留給 mock / legacy `None` adapter 情境。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。

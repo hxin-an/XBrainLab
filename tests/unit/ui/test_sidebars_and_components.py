@@ -8,6 +8,17 @@ import pytest
 from PyQt6.QtWidgets import QDialog, QMainWindow, QWidget
 
 
+def _command_result(**diagnostics):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        ok=True,
+        failed=False,
+        message="ok",
+        diagnostics=diagnostics,
+    )
+
+
 def _make_panel_mock():
     p = MagicMock()
     p.controller = MagicMock()
@@ -125,6 +136,29 @@ class TestPreprocessSidebar:
         ):
             sidebar.reset_preprocess()
             sidebar.panel.controller.reset_preprocess.assert_called()
+
+    def test_reset_preprocess_service_success_does_not_fallback_to_controller(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            sidebar.reset_preprocess()
+
+        sidebar.panel.controller.reset_preprocess.assert_not_called()
+        sidebar.panel.update_panel.assert_called()
 
 
 # ============ TrainingSidebar ============

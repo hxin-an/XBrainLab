@@ -125,6 +125,35 @@ class TestDatasetActionHandler:
         handler.import_data()
         handler.panel.controller.import_files.assert_called_once_with(["/a.set"])
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_service_load_success_does_not_fallback_to_controller(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import LoadDataCommand
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
+
+        with (
+            patch.object(
+                handler, "_run_data_interpretation_import", return_value=False
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=_command_result(success_count=1),
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        assert isinstance(mock_execute.call_args.args[1], LoadDataCommand)
+        handler.panel.controller.import_files.assert_not_called()
+        handler.panel.update_panel.assert_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")

@@ -56,7 +56,10 @@ label helper 拆到 `DataCompatibilityCommandService`。最新 data-table cleanu
 最新 preprocess cleanup slice 又把 preprocessing operations 和 `create_epoch` 拆到
 `PreprocessCommandService`。最新 state/query cleanup slice 又把 state snapshot assembly 和
 `query_state` diagnostics 拆到 `StateSnapshotService` / `QueryStateCommandService`。
-`ApplicationService` 仍只 dispatch / gate / wrap result。
+`ApplicationService` 仍只 dispatch / gate / wrap result。最新 UI runtime bypass cleanup
+也修正 Dataset direct file import 和 Preprocess reset 的 service-success path：real runtime
+收到 successful `CommandResult` 後不再落回 controller mutation；controller fallback 僅保留給
+mock / legacy adapter 回傳 `None` 的相容情境。
 
 ## 一句話架構
 
@@ -182,8 +185,13 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 同一批 high-value execution 也已接 service-backed command adapter：
 
 - Dataset import 使用 `LoadDataCommand`。
+- Dataset direct file import 的 successful `LoadDataCommand` path 不再再呼叫
+  `DatasetController.import_files()`；controller import 只保留給 command adapter 不存在的
+  mock / legacy `None` fallback。
 - Dataset clear / reset 使用 `ResetSessionCommand(confirmed=True)`。
 - Preprocess filtering / resample / rereference / normalize 使用 `PreprocessCommand`。
+- Preprocess reset 使用 `ResetPreprocessCommand(confirmed=True)`；successful service result 不再
+  落回 `PreprocessController.reset_preprocess()`。
 - Channel selection 使用 `PreprocessCommand(SELECT_CHANNELS)`。
 - Epoching 使用 `CreateEpochCommand`。
 - Split / model / training setting dialog submit 使用 `GenerateDatasetCommand` /
@@ -394,6 +402,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - Preprocessing operations 和 `create_epoch` 的實作位置現在是 `PreprocessCommandService`。
   它 owns preprocess controller calls、standard batch preprocessing、channel selection delegate
   和 `set_montage` UI confirmation boundary。
+- UI Preprocess reset action 會透過 `ResetPreprocessCommand` 進入 lifecycle service；只有
+  `execute_application_command()` 回傳 `None` 的 mock / legacy adapter 情境才回到 controller
+  fallback。
 - Data Interpretation command handlers 實作位置現在是
   `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
   in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed

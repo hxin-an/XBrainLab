@@ -53,6 +53,9 @@ boundary；metadata update / smart parse / remove file 也已移到 focused data
 preprocessing operations 和 `create_epoch` 也已移到 focused preprocess boundary；state snapshot
 assembly 和 `query_state` diagnostics 也已移到 focused state/query boundary。
 `ApplicationService` 回到 dispatch、capability / confirmation gate 和 state/result envelope。
+同一輪 UI runtime bypass audit 已修 Dataset direct file import 與 Preprocess reset 的
+service-success controller fallback，讓 successful `CommandResult` 不會再被 UI 以 controller
+mutation 重做一次。
 
 ### 已可宣稱
 
@@ -71,6 +74,8 @@ assembly 和 `query_state` diagnostics 也已移到 focused state/query boundary
 - Preprocessing operations 和 create epoch 由 `PreprocessCommandService` 承接。
 - State snapshot assembly 和 query state diagnostics 由 `StateSnapshotService` /
   `QueryStateCommandService` 承接。
+- Dataset direct file import 和 Preprocess reset 的 successful service path 不再 fallback 到
+  controller mutation；controller fallback 僅保留給 mock / legacy `None` adapter 情境。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 

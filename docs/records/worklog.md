@@ -4115,3 +4115,49 @@
   - 這補強 automated UI-observable artifact 的可審查性，不是真人 Windows desktop acceptance。
   - screenshot nonblank / visible-text-clean 仍不等於真人確認 Windows launcher、雙螢幕 / DPI、
     長時間 local model desktop session 或完整產品 release。
+
+### 2026-05-05 UI runtime service-success fallback cleanup
+
+- 做了什麼：
+  - 依 architecture / Data Interpretation / MCP adapter review skill 重新檢查 UI、agent、MCP 的
+    ApplicationService boundary；MCP stdio server 和 automation adapter quick source read 顯示仍經
+    `backend.application.automation` -> `ApplicationService.execute()`。
+  - 修 Dataset panel direct file import：當 `_run_data_interpretation_import()` 未處理來源、但
+    `LoadDataCommand` 回傳 successful `CommandResult` 時，UI 現在更新 panel 並顯示使用者訊息，不再
+    再呼叫 `DatasetController.import_files()`。
+  - 修 Preprocess reset：UI reset button 現在送 `ResetPreprocessCommand(confirmed=True)`；successful
+    service result 不再再呼叫 `PreprocessController.reset_preprocess()`。
+  - controller fallback 僅保留在 `execute_application_command()` 回傳 `None` 的 mock / legacy
+    adapter 情境，避免 unit tests 的 incomplete mock state 誤觸真 service。
+- red tests：
+  - `tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_service_load_success_does_not_fallback_to_controller`
+    初始失敗，證明 successful `LoadDataCommand` 後仍呼叫 controller import。
+  - `tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_service_success_does_not_fallback_to_controller`
+    初始失敗，證明 reset UI 仍直接呼叫 controller reset。
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_service_load_success_does_not_fallback_to_controller -q`
+    -> `1 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_service_success_does_not_fallback_to_controller -q`
+    -> `1 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/dataset/actions.py XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_ui_misc.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/dataset/test_panel.py`
+    -> pass。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/dataset/test_panel.py -q`
+    -> `85 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+  - Direct targeted `basedpyright` on the UI test files hit an unrelated pre-existing type issue in
+    `tests/unit/ui/test_ui_misc.py` around `dlg.label_data_map`; use full `poetry run basedpyright`
+    for the slice gate.
+- 不能宣稱：
+  - 這只關閉兩個明確 service-success fallback bypass，不代表所有 UI controller paths 已清空。
+  - UI 仍保留 read-only panel refresh / dialog-local logic / mock compatibility controller path。
+  - 仍需繼續盤點 training / visualization UI mutating calls、agent montage / UI routing edge cases
+    和 Windows human desktop acceptance。
