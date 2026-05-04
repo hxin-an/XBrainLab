@@ -98,9 +98,15 @@
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
+- Data Interpretation wizard review surface 已硬化：
+  - dialog title 改為 `Interpret Data Source`。
+  - 可見流程為 `Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`。
+  - 顯示 source/readiness、BIDS status、metadata preview、label/event/recipe trace、
+    confirmation 和 save recipe state。
+  - replay artifact `artifacts/ui/data-interpretation-preview.png` 已刷新。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內的 label/recipe editor；MCP Inspector / Windows release config 尚未完成、UI replay coverage
-  還不是完整真人 walkthrough。
+  wizard 內的 metadata override / label-class map editor；MCP Inspector / Windows release config
+  尚未完成、UI replay coverage 還不是完整真人 walkthrough。
 - subject / session / task / run metadata resolution 已可在 preview dialog 呈現並進入 recipe trace；
   更完整的 override UI 仍是下一輪 hardening。
 

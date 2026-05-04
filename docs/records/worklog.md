@@ -37,6 +37,29 @@
 
 ## 2026-05-04
 
+### 10:49 Data Interpretation wizard review hardening
+
+- 做了什麼：
+  - `DataInterpretationPreviewDialog` 從 baseline preview modal 硬化成第一版 import wizard review
+    surface。
+  - 新增可見流程 `Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`。
+  - 新增 source/readiness、BIDS status、metadata preview、label/event/recipe trace、review notes、
+    confirmation 和 reusable recipe save state。
+  - blocked decision 現在明確 disabled apply / save recipe；needs-confirmation action button 顯示
+    `Confirm and Apply`。
+  - replay helper 補 `WindowNoState` deterministic resize，並用 offscreen mode 刷新 artifact。
+- 結果：
+  - `artifacts/ui/data-interpretation-preview.png` 顯示新的 wizard review surface。
+  - replay JSON dialog title 是 `Interpret Data Source`，decision `needs_confirmation`，apply
+    button enabled，save recipe checked。
+- 證據：
+  - `env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q` -> `47 passed`
+  - targeted `ruff` / `basedpyright` clean。
+- 接續 / 本輪剩餘：
+  - 這仍不是完整 metadata override editor 或 label-class map editor。
+  - file picker / real user click-through、format matrix 和 label import 內嵌 wizard flow 仍未完成。
+
 ### 10:36 ChatPanel true local-model one-turn walkthrough
 
 - 做了什麼：

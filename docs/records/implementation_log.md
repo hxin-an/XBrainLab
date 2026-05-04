@@ -28,6 +28,72 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation wizard review hardening
+
+### 背景
+
+Data Interpretation 已有 backend command baseline、Dataset panel main entry、recipe save option 和
+UI-observable replay，但 preview dialog 仍偏 baseline preview：使用者看得到 metadata table，卻
+看不到完整 import flow、source readiness、label/event boundary 和 recipe trace 的 review
+structure。
+
+### 變更
+
+- `DataInterpretationPreviewDialog` 改名為 `Interpret Data Source`。
+- 新增 visible flow：`Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`。
+- 新增 source/readiness section：
+  - source path。
+  - source kind。
+  - EEG file count。
+  - label/event carrier count。
+  - BIDS status。
+- 新增 labels/events/recipe trace tree：
+  - label carriers。
+  - event roles。
+  - class map。
+  - no-carrier boundary message。
+- Review notes 現在整理 warnings、confirmations、blocked reasons、downstream impact 和 recipe trace，
+  避免同一 confirmation 重複刷屏。
+- needs-confirmation 時 OK button 顯示 `Confirm and Apply`；blocked decision 會 disabled apply 和
+  save recipe。
+- `scripts/dev/capture_data_interpretation_replay.py` 在 deterministic resize 前清掉 maximized state，
+  讓 offscreen replay 可以穩定刷新 screenshot artifact。
+
+### 影響範圍
+
+- Data Interpretation preview / apply dialog。
+- Dataset action unit coverage。
+- UI-observable Data Interpretation replay artifact。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- replay：
+  - `env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - exit `0`
+  - refreshed `artifacts/ui/data-interpretation-preview.png`
+  - refreshed `artifacts/ui/data-interpretation-applied.png`
+  - refreshed `artifacts/ui/data-interpretation-replay.json`
+- replay JSON：
+  - dialog title `Interpret Data Source`
+  - decision `needs_confirmation`
+  - apply button enabled `True`
+  - save recipe checked `True`
+- tests:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `47 passed`
+- static gates:
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py`
+  - pass
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+### 剩餘風險
+
+- 這是 wizard review hardening，不是完整 import wizard editor。
+- Metadata override UI、label-class map editor、format-specific compatibility matrix、file picker
+  click-through 和 label import 內嵌 wizard flow 仍未完成。
+
 ## 2026-05-04 ChatPanel true local-model walkthrough
 
 ### 背景

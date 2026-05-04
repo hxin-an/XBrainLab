@@ -112,6 +112,9 @@
           "warnings": [],
           "summary": null,
           "metadata_preview": [],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
           "recipe_path": null
         },
         "active_dataset": {
@@ -352,6 +355,9 @@
               }
             }
           ],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
           "recipe_path": null
         },
         "active_dataset": {
@@ -659,6 +665,9 @@
               }
             }
           ],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
           "recipe_path": null
         },
         "active_dataset": {
@@ -855,6 +864,9 @@
               }
             }
           ],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
           "recipe_path": null
         },
         "active_dataset": {
@@ -1063,6 +1075,9 @@
               }
             }
           ],
+          "label_carriers": [],
+          "label_import_count": 0,
+          "label_imports": [],
           "recipe_path": null
         },
         "active_dataset": {
@@ -1155,6 +1170,7 @@
             "Confirm subject metadata for product_replay_raw.fif.",
             "Confirm task metadata for product_replay_raw.fif."
           ],
+          "label_imports": [],
           "recipe_trace": [
             "scan:scan-1",
             "candidate:candidate-2",
@@ -1168,12 +1184,22 @@
   },
   "ui_state": {
     "dialog": {
-      "title": "Review Data Interpretation",
+      "title": "Interpret Data Source",
       "decision": "needs_confirmation",
       "visible_text": [
+        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
         "Found 1 EEG file(s) and 0 label/event carrier(s).",
-        "Source: /tmp/xbrainlab_data_interpretation_replay/product_replay_raw.fif",
-        "Validation: needs_confirmation",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay/product_replay_raw.fif",
+        "Type",
+        "file",
+        "Files",
+        "1",
+        "Label carriers",
+        "0",
+        "BIDS",
+        "Not detected",
+        "Validation needs confirmation before applying.",
         "Confirmation required: Confirm run metadata for product_replay_raw.fif.; Confirm session metadata for product_replay_raw.fif.; Confirm subject metadata for product_replay_raw.fif.; Confirm task metadata for product_replay_raw.fif."
       ],
       "metadata_rows": [

@@ -808,6 +808,34 @@ visible state / transcript artifact。
 這批 evidence 支撐 Data Interpretation preview dialog 和 applied Dataset panel 的 UI-observable
 replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agent transcript。
 
+2026-05-04 Data Interpretation wizard review hardening：
+
+- `DataInterpretationPreviewDialog` 已從單層 preview modal 硬化為第一版 wizard review surface：
+  - title：`Interpret Data Source`
+  - visible steps：`Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`
+  - source/readiness group：source path、source kind、file count、label carrier count、BIDS status
+  - metadata preview：file / subject / session / task / run
+  - labels/events/recipe trace：label carriers、event roles、class map，或 no-carrier boundary
+  - review notes：warnings、confirmations、blocked reasons、downstream impact、recipe trace
+  - action button：`Confirm and Apply` for `needs_confirmation`；blocked decision disables apply and
+    recipe save。
+- replay artifact refreshed:
+  - `env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+- targeted gates:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `47 passed`
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 Data Interpretation UI 已比 baseline preview 更接近 import wizard review
+surface。它仍不支撐完整 metadata override editor、label-class map editor、all-format manual
+compatibility matrix、或真人 click-through。
+
 2026-05-04 Data Interpretation recipe save UI path：
 
 - Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。

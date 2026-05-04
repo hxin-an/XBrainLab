@@ -18,7 +18,7 @@ from typing import Any
 import mne
 import numpy as np
 from PIL import Image
-from PyQt6.QtCore import QPoint, QSize, QTimer
+from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QLabel, QTreeWidget, QWidget
 
 from XBrainLab.backend.application import (
@@ -76,6 +76,7 @@ def write_synthetic_raw_fif() -> Path:
 
 def set_capture_geometry(window: QWidget) -> None:
     """Force a deterministic capture geometry."""
+    window.setWindowState(Qt.WindowState.WindowNoState)
     screen = window.screen() or QApplication.primaryScreen()
     if screen is not None:
         window.move(screen.availableGeometry().topLeft())

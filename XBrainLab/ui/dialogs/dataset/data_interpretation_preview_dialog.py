@@ -5,9 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QCheckBox,
     QDialogButtonBox,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QTreeWidget,
@@ -31,16 +36,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.scan_result = dict(scan_result or {})
         self.preview = dict(preview or {})
         self.validation_decision = dict(validation_decision or {})
+        self.workflow_steps_label: QLabel
         self.summary_label: QLabel
+        self.source_summary_label: QLabel
         self.decision_label: QLabel
         self.confirmation_label: QLabel
         self.save_recipe_check: QCheckBox
         self.file_tree: QTreeWidget
+        self.event_tree: QTreeWidget
+        self.review_text: QPlainTextEdit
+        self.button_box: QDialogButtonBox
         super().__init__(
             parent=parent,
-            title="Review Data Interpretation",
-            width=760,
-            height=520,
+            title="Interpret Data Source",
+            width=880,
+            height=640,
         )
 
     @property
@@ -50,60 +60,166 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def init_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
+
+        self.workflow_steps_label = QLabel(
+            "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe"
+        )
+        self.workflow_steps_label.setObjectName("InterpretationWorkflowSteps")
+        self.workflow_steps_label.setWordWrap(True)
+        layout.addWidget(self.workflow_steps_label)
 
         source_path = str(self.scan_result.get("source_path", ""))
         self.summary_label = QLabel(
             str(self.preview.get("summary") or "Review the interpreted EEG source.")
         )
+        self.summary_label.setObjectName("InterpretationSummary")
         self.summary_label.setWordWrap(True)
         layout.addWidget(self.summary_label)
 
-        source_label = QLabel(f"Source: {source_path or 'Unknown source'}")
-        source_label.setWordWrap(True)
-        layout.addWidget(source_label)
+        source_group = QGroupBox("Source and Readiness")
+        source_layout = QGridLayout(source_group)
+        source_layout.setColumnStretch(1, 1)
+        source_layout.addWidget(QLabel("Source"), 0, 0)
+        source_layout.addWidget(
+            self._wrapped_label(source_path or "Unknown source"), 0, 1
+        )
+        source_layout.addWidget(QLabel("Type"), 1, 0)
+        source_layout.addWidget(
+            self._wrapped_label(str(self.scan_result.get("source_kind", "unknown"))),
+            1,
+            1,
+        )
+        source_layout.addWidget(QLabel("Files"), 2, 0)
+        source_layout.addWidget(
+            self._wrapped_label(str(self._file_count())),
+            2,
+            1,
+        )
+        source_layout.addWidget(QLabel("Label carriers"), 3, 0)
+        source_layout.addWidget(
+            self._wrapped_label(str(self._label_carrier_count())),
+            3,
+            1,
+        )
+        source_layout.addWidget(QLabel("BIDS"), 4, 0)
+        source_layout.addWidget(self._wrapped_label(self._bids_status()), 4, 1)
+        layout.addWidget(source_group)
 
-        self.decision_label = QLabel(f"Validation: {self.decision}")
+        decision_text = self._decision_text()
+        self.decision_label = QLabel(decision_text)
+        self.decision_label.setObjectName("InterpretationDecision")
         self.decision_label.setWordWrap(True)
         layout.addWidget(self.decision_label)
 
+        content_row = QHBoxLayout()
+        content_row.setSpacing(12)
+
+        metadata_group = QGroupBox("Metadata Preview")
+        metadata_layout = QVBoxLayout(metadata_group)
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(
             ["File", "Subject", "Session", "Task", "Run"],
         )
+        self.file_tree.setMinimumHeight(160)
         self._populate_files()
-        layout.addWidget(self.file_tree, stretch=1)
+        metadata_layout.addWidget(self.file_tree)
+        content_row.addWidget(metadata_group, stretch=3)
 
-        details = QPlainTextEdit()
-        details.setReadOnly(True)
-        details.setPlainText(self._details_text())
-        details.setMaximumHeight(140)
-        layout.addWidget(details)
+        label_group = QGroupBox("Labels, Events, and Recipe Trace")
+        label_layout = QVBoxLayout(label_group)
+        self.event_tree = QTreeWidget()
+        self.event_tree.setHeaderLabels(["Item", "Role", "Meaning"])
+        self.event_tree.setMinimumHeight(160)
+        self._populate_event_tree()
+        label_layout.addWidget(self.event_tree)
+        content_row.addWidget(label_group, stretch=2)
+        layout.addLayout(content_row, stretch=1)
+
+        self.review_text = QPlainTextEdit()
+        self.review_text.setReadOnly(True)
+        self.review_text.setPlainText(self._details_text())
+        self.review_text.setMaximumHeight(120)
+        layout.addWidget(self.review_text)
 
         self.confirmation_label = QLabel(self._confirmation_text())
+        self.confirmation_label.setObjectName("InterpretationConfirmation")
         self.confirmation_label.setWordWrap(True)
         layout.addWidget(self.confirmation_label)
 
-        self.save_recipe_check = QCheckBox("Save recipe after applying")
+        self.save_recipe_check = QCheckBox("Save reusable import recipe after applying")
         self.save_recipe_check.setChecked(self.decision != "blocked")
         self.save_recipe_check.setEnabled(self.decision != "blocked")
+        self.save_recipe_check.setToolTip(
+            "Recipe records source, metadata decisions, label carriers, and "
+            "confirmations for review or replay."
+        )
         layout.addWidget(self.save_recipe_check)
 
-        buttons = QDialogButtonBox(
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        layout.addWidget(separator)
+
+        self.button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
         )
-        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
-            ok_button.setText("Apply Interpretation")
+            ok_button.setText(
+                "Confirm and Apply"
+                if self.decision == "needs_confirmation"
+                else "Apply Interpretation"
+            )
             ok_button.setEnabled(self.decision != "blocked")
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self.button_box.rejected.connect(self.reject)
+        self.button_box.accepted.connect(self.accept)
+        layout.addWidget(self.button_box)
 
     def get_result(self) -> dict[str, Any]:
         return {
             "confirmed": self.decision == "needs_confirmation",
             "save_recipe": self.save_recipe_check.isChecked(),
         }
+
+    @staticmethod
+    def _wrapped_label(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setWordWrap(True)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        return label
+
+    def _file_count(self) -> int:
+        files = self.scan_result.get("eeg_files", []) or []
+        if isinstance(files, list):
+            return len(files)
+        return int(self.preview.get("file_count", 0) or 0)
+
+    def _label_carrier_count(self) -> int:
+        carriers = self.scan_result.get("label_carriers", []) or []
+        if isinstance(carriers, list):
+            return len(carriers)
+        return int(self.preview.get("label_carrier_count", 0) or 0)
+
+    def _bids_status(self) -> str:
+        bids = self.scan_result.get("bids") or {}
+        if not isinstance(bids, dict) or not bids.get("is_bids"):
+            return "Not detected"
+        subjects = ", ".join(str(item) for item in bids.get("subjects", []) or [])
+        events = bids.get("events_files", []) or []
+        event_count = len(events) if isinstance(events, list) else 0
+        subject_text = subjects or "subjects pending"
+        return f"BIDS-like source, {subject_text}, {event_count} events.tsv file(s)"
+
+    def _decision_text(self) -> str:
+        if self.decision == "blocked":
+            return "Validation blocked: this source cannot be applied yet."
+        if self.decision == "needs_confirmation":
+            return "Validation needs confirmation before applying."
+        if self.decision == "safe":
+            return "Validation passed: ready to apply."
+        return f"Validation status: {self.decision}"
 
     def _populate_files(self) -> None:
         metadata_preview = self.preview.get("metadata_preview") or []
@@ -128,6 +244,45 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 QTreeWidgetItem([Path(str(file_path)).name, "", "", "", ""]),
             )
 
+    def _populate_event_tree(self) -> None:
+        carriers = self.scan_result.get("label_carriers", []) or []
+        if isinstance(carriers, list):
+            for carrier in carriers:
+                self.event_tree.addTopLevelItem(
+                    QTreeWidgetItem(
+                        [
+                            Path(str(carrier)).name,
+                            "label / event carrier",
+                            "Review alignment, anchor, and class map before apply.",
+                        ],
+                    ),
+                )
+
+        event_roles = self.preview.get("event_roles") or {}
+        if isinstance(event_roles, dict):
+            for name, role in event_roles.items():
+                self.event_tree.addTopLevelItem(
+                    QTreeWidgetItem([str(name), "event role", str(role)]),
+                )
+
+        class_map = self.preview.get("class_map") or {}
+        if isinstance(class_map, dict):
+            for code, label in class_map.items():
+                self.event_tree.addTopLevelItem(
+                    QTreeWidgetItem([str(code), "class map", str(label)]),
+                )
+
+        if self.event_tree.topLevelItemCount() == 0:
+            self.event_tree.addTopLevelItem(
+                QTreeWidgetItem(
+                    [
+                        "No label/event carrier detected",
+                        "recording only",
+                        "Supervised labels require events or a later label import.",
+                    ],
+                ),
+            )
+
     @staticmethod
     def _field_text(value: Any) -> str:
         if not isinstance(value, dict):
@@ -140,19 +295,47 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _details_text(self) -> str:
         lines: list[str] = []
-        for label, key in (
-            ("Warnings", "warnings"),
-            ("Confirmations", "confirmation_items"),
-            ("Blocked reasons", "blocked_reasons"),
-            ("Required confirmations", "required_confirmations"),
+        warnings = self._unique_strings(self.preview.get("warnings"))
+        confirmations = self._unique_strings(
+            [
+                *(self.preview.get("confirmation_items") or []),
+                *(self.validation_decision.get("required_confirmations") or []),
+            ]
+        )
+        blocked = self._unique_strings(
+            self.validation_decision.get("blocked_reasons")
+            or self.preview.get("blocked_reasons")
+        )
+        for label, values in (
+            ("Warnings", warnings),
+            ("Confirmations", confirmations),
+            ("Blocked reasons", blocked),
         ):
-            values = self.preview.get(key)
-            if key in {"blocked_reasons", "required_confirmations"}:
-                values = self.validation_decision.get(key, values)
             if values:
                 lines.append(f"{label}:")
                 lines.extend(f"- {item}" for item in values)
+        impacts = self.preview.get(
+            "downstream_impacts"
+        ) or self.validation_decision.get("downstream_impacts")
+        if impacts:
+            lines.append("Downstream impact:")
+            lines.extend(f"- {item}" for item in impacts)
+        trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
+        if trace:
+            lines.append("Recipe trace:")
+            lines.extend(f"- {item}" for item in trace)
         return "\n".join(lines) if lines else "No warnings or confirmations."
+
+    @staticmethod
+    def _unique_strings(values: Any) -> list[str]:
+        if not isinstance(values, list):
+            return []
+        result: list[str] = []
+        for value in values:
+            text = str(value)
+            if text and text not in result:
+                result.append(text)
+        return result
 
     def _confirmation_text(self) -> str:
         if self.decision == "blocked":
