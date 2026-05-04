@@ -150,7 +150,15 @@ timestamp model 或複雜 anchor reconciliation。最新 slice 已把 Data Inter
 state snapshot：`ApplicationStateSnapshot.interpretation`、`query_state`、automation / MCP
 envelope 和 agent `query_state` tool surface 都會暴露 reviewed `label_carrier_plan`、
 `format_capabilities`、`event_roles` 和 `class_map`，避免 UI / recipe 和 agent / headless
-看到不同資料入口真相。最新 backend slices 又補了 reviewed label carriers 的多檔安全
+看到不同資料入口真相。最新 backend architecture cleanup 又把 Data Interpretation lifecycle
+state 和 scan / preview / validate / apply / recipe command handling 從
+`ApplicationService` 拆到 `DataInterpretationCommandService`，reviewed metadata / label
+carrier side effects 再拆到 `DataInterpretationApplyService`；UI、agent、headless 和 MCP 仍
+只透過 `ApplicationService.execute()` 進入，`ApplicationService` 則回到 dispatch /
+capability-confirmation gate / state-result envelope 的角色。這降低了 god-object 壓力，但只是
+第一個 backend cleanup slice；training、visualization、legacy label/import compatibility
+handler 還沒有同等完成拆分，不能宣稱 backend architecture 已全面乾淨。最新 backend slices
+又補了 reviewed label carriers 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
 CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `apply_labels_batch`
 套用；MAT / TXT trial-order sequence carriers 也會逐檔呼叫既有 `apply_labels_legacy`。如果無法
@@ -595,18 +603,21 @@ true local model desktop session。
 
 ## 目前執行中
 
-1. 等待真 Windows Desktop launcher click-through。
-2. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
+1. 繼續 backend architecture cleanup：`ApplicationService` 已拆出 Data Interpretation service，
+   但 training / visualization / legacy compatibility handlers 仍需逐步 handler 化，不能讓
+   `ApplicationService` 再成為新的 god object。
+2. 等待真 Windows Desktop launcher click-through。
+3. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
    reason 或 Matplotlib 2D render 擴張成完整 visualization suite。
-3. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
+4. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
    import 不再是主要使用心智模型。
-4. 繼續根據 human-like walkthrough screenshots 做 UI polish；第一輪已處理 Data Interpretation
+5. 繼續根據 human-like walkthrough screenshots 做 UI polish；第一輪已處理 Data Interpretation
    table density、Training plot readability / history header、Evaluation compact controls 和
    ChatPanel reset stale UI，仍要補 mature import wizard editing、assistant main-window narrow
    composition 和整體產品感。
-5. 將 primary / fallback `117` case tool-call dashboard 整理成 thesis evidence report；不要把它
+6. 將 primary / fallback `117` case tool-call dashboard 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。
-6. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
+7. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
    主評分。
 
 ## 相關文件

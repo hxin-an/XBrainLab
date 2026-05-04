@@ -145,6 +145,41 @@ agent 架構文件整理時也跑：
 這組 gate 只代表 backend policy / UI readiness / agent command surface 的工程可信度；
 它仍不是 thesis-grade tool-call evaluation。
 
+2026-05-04 Backend ApplicationService boundary cleanup 新增一組 architecture gate：
+
+- Data Interpretation command coordinator / apply service focused gate：
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/backend/application/data_interpretation_apply.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py`
+  - pass
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/backend/application/data_interpretation_apply.py tests/unit/backend/application/test_data_interpretation_service.py`
+  - `0 errors, 0 warnings, 0 notes`
+- backend command contract:
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+  - `54 passed`
+- backend integration:
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+  - `3 passed`
+- agent command surface / controller:
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+  - `466 passed`
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+  - `7 passed`
+- static / docs / architecture:
+  - `timeout 300s poetry run ruff check .`
+  - pass
+  - `timeout 300s poetry run basedpyright`
+  - `0 errors, 0 warnings, 0 notes`
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+  - `Architecture compliant!`
+  - `timeout 300s poetry run mkdocs build --strict`
+  - pass with existing MkDocs Material warning
+  - `timeout 120s git diff --check`
+  - pass
+
+這組 gate 支撐「Data Interpretation lifecycle 已從 `ApplicationService` 拆到 focused service，
+reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
+沒有回歸」。它不能支撐整個 backend architecture closure：training / visualization / legacy
+compatibility handlers 還需要後續拆分。
+
 ### 2026-05-02 Chat product-flow blocker
 
 先前 gate 漏掉的 product blocker：

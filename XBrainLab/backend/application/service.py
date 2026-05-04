@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import contextlib
 import os
 from collections.abc import Callable, Iterable
-from dataclasses import replace
-from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -52,12 +49,10 @@ from .commands import (
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
-    ReloadInterpretationRecipeCommand,
     RemoveFilesCommand,
     ResetPreprocessCommand,
     ResetSessionCommand,
     SaliencyCommand,
-    SaveInterpretationRecipeCommand,
     ScanSourceCommand,
     StopTrainingCommand,
     TrainCommand,
@@ -66,21 +61,7 @@ from .commands import (
     VisualizeCommand,
     command_name,
 )
-from .data_interpretation import (
-    AppliedInterpretation,
-    ImportRecipe,
-    InterpretationCandidate,
-    InterpretationDecision,
-    InterpretationPreview,
-    ScanResult,
-    ValidationDecision,
-    build_import_recipe,
-    build_interpretation_candidate,
-    build_interpretation_preview,
-    load_import_recipe,
-    scan_source_path,
-    validate_interpretation_candidate,
-)
+from .data_interpretation_service import DataInterpretationCommandService
 from .errors import (
     ApplicationError,
     ConfirmationRequiredError,
@@ -125,19 +106,11 @@ class ApplicationService:
         self.evaluation = self.study.get_controller("evaluation")
         self.visualization = self.study.get_controller("visualization")
         self._last_error: ErrorSnapshot | None = None
-        self._scan_results: dict[str, ScanResult] = {}
-        self._candidates: dict[str, InterpretationCandidate] = {}
-        self._previews: dict[str, InterpretationPreview] = {}
-        self._validation_decisions: dict[str, ValidationDecision] = {}
-        self._applied_interpretations: dict[str, AppliedInterpretation] = {}
-        self._recipes: dict[str, ImportRecipe] = {}
-        self._latest_scan_id: str | None = None
-        self._latest_candidate_id: str | None = None
-        self._latest_preview_id: str | None = None
-        self._latest_interpretation_id: str | None = None
-        self._latest_recipe_id: str | None = None
-        self._latest_recipe_path: str | None = None
-        self._interpretation_counter = 0
+        self.interpretation = DataInterpretationCommandService(
+            self.dataset,
+            data_filename=self._data_filename,
+            data_filepath=self._data_filepath,
+        )
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
@@ -297,15 +270,21 @@ class ApplicationService:
 
     def _execute_allowed(self, command: Command, name: CommandName) -> HandlerResult:
         handlers: dict[CommandName, Callable[[Command], HandlerResult]] = {
-            CommandName.SCAN_SOURCE: self._handle_scan_source,
-            CommandName.PREVIEW_INTERPRETATION: self._handle_preview_interpretation,
-            CommandName.VALIDATE_INTERPRETATION: self._handle_validate_interpretation,
-            CommandName.APPLY_INTERPRETATION: self._handle_apply_interpretation,
+            CommandName.SCAN_SOURCE: self.interpretation.handle_scan_source,
+            CommandName.PREVIEW_INTERPRETATION: (
+                self.interpretation.handle_preview_interpretation
+            ),
+            CommandName.VALIDATE_INTERPRETATION: (
+                self.interpretation.handle_validate_interpretation
+            ),
+            CommandName.APPLY_INTERPRETATION: (
+                self.interpretation.handle_apply_interpretation
+            ),
             CommandName.SAVE_INTERPRETATION_RECIPE: (
-                self._handle_save_interpretation_recipe
+                self.interpretation.handle_save_interpretation_recipe
             ),
             CommandName.RELOAD_INTERPRETATION_RECIPE: (
-                self._handle_reload_interpretation_recipe
+                self.interpretation.handle_reload_interpretation_recipe
             ),
             CommandName.LOAD_DATA: self._handle_load_data,
             CommandName.ATTACH_LABELS: self._handle_attach_labels,
@@ -531,215 +510,6 @@ class ApplicationService:
         if not capability.enabled:
             raise PreconditionError("; ".join(capability.reasons))
 
-    def _handle_scan_source(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ScanSourceCommand):
-            raise TypeError("Invalid command for scan_source")
-        scan_id = self._next_interpretation_id("scan")
-        scan = scan_source_path(
-            scan_id=scan_id,
-            source_path=command.source_path,
-            source_hint=command.source_hint,
-        )
-        self._scan_results[scan_id] = scan
-        self._latest_scan_id = scan_id
-        self._latest_candidate_id = None
-        self._latest_preview_id = None
-        return (
-            f"Scanned source and found {len(scan.eeg_files)} EEG file(s).",
-            {
-                "payload_type": "scan_result",
-                "scan_result": scan.to_dict(),
-            },
-        )
-
-    def _handle_preview_interpretation(self, command: Command) -> HandlerResult:
-        if not isinstance(command, PreviewInterpretationCommand):
-            raise TypeError("Invalid command for preview_interpretation")
-        scan = self._resolve_scan(command.scan_id)
-        candidate_id = self._next_interpretation_id("candidate")
-        preview_id = self._next_interpretation_id("preview")
-        candidate = build_interpretation_candidate(
-            candidate_id=candidate_id,
-            scan=scan,
-            choices=command.choices,
-        )
-        preview = build_interpretation_preview(
-            preview_id=preview_id,
-            candidate=candidate,
-        )
-        self._candidates[candidate_id] = candidate
-        self._previews[preview_id] = preview
-        self._latest_candidate_id = candidate_id
-        self._latest_preview_id = preview_id
-        return (
-            "Interpretation preview ready.",
-            {
-                "payload_type": "interpretation_preview",
-                "candidate": candidate.to_dict(),
-                "preview": preview.to_dict(),
-            },
-        )
-
-    def _handle_validate_interpretation(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ValidateInterpretationCommand):
-            raise TypeError("Invalid command for validate_interpretation")
-        candidate = self._resolve_candidate(command.candidate_id)
-        decision = validate_interpretation_candidate(candidate)
-        self._validation_decisions[candidate.candidate_id] = decision
-        return (
-            f"Interpretation validation: {decision.decision}.",
-            {
-                "payload_type": "validation_decision",
-                "validation_decision": decision.to_dict(),
-            },
-        )
-
-    def _handle_apply_interpretation(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ApplyInterpretationCommand):
-            raise TypeError("Invalid command for apply_interpretation")
-        candidate = self._resolve_candidate(command.candidate_id)
-        decision = self._validation_decisions.get(candidate.candidate_id)
-        if decision is None:
-            raise PreconditionError("Validate an interpretation before applying it.")
-        if decision.decision == InterpretationDecision.BLOCKED.value:
-            blocked = (
-                "; ".join(decision.blocked_reasons) or "Interpretation is blocked."
-            )
-            raise PreconditionError(blocked)
-        count, errors = self.dataset.import_files(candidate.selected_eeg_files)
-        if count == 0 and errors:
-            raise ApplicationError(
-                message=f"Failed to apply interpretation: {errors}",
-                error_type=ErrorType.RUNTIME,
-                recoverable=True,
-                diagnostics={"errors": errors},
-            )
-        interpretation_id = self._next_interpretation_id("interpretation")
-        confirmations = (
-            list(decision.required_confirmations)
-            if decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
-            else []
-        )
-        applied = AppliedInterpretation(
-            interpretation_id=interpretation_id,
-            candidate_id=candidate.candidate_id,
-            source_path=candidate.source_path,
-            source_kind=candidate.source_kind,
-            loaded_files=list(candidate.selected_eeg_files),
-            label_carriers=list(candidate.label_carriers),
-            label_carrier_plan=[dict(item) for item in candidate.label_carrier_plan],
-            metadata=list(candidate.metadata),
-            format_capabilities=[dict(item) for item in candidate.format_capabilities],
-            validation_decision=decision.decision,
-            confirmations=confirmations,
-            event_roles=dict(candidate.event_roles),
-            class_map=dict(candidate.class_map),
-            recipe_trace=[
-                *candidate.recipe_trace,
-                f"validation:{decision.decision}",
-                f"applied:{interpretation_id}",
-            ],
-        )
-        self._applied_interpretations[interpretation_id] = applied
-        self._latest_interpretation_id = interpretation_id
-        metadata_apply = self._apply_candidate_metadata_to_loaded_data(candidate)
-        label_apply = self._apply_interpretation_label_carriers(candidate)
-        applied_payload = self._applied_interpretations[interpretation_id].to_dict()
-        label_message = ""
-        if label_apply.get("status") == "applied":
-            label_message = (
-                f" Imported reviewed labels for "
-                f"{label_apply.get('success_count', 0)} file(s)."
-            )
-        elif label_apply.get("status") == "failed":
-            label_message = (
-                f" Reviewed labels were not applied: "
-                f"{label_apply.get('reason', 'unknown error')}."
-            )
-        return (
-            f"Applied interpretation and loaded {count} file(s).{label_message}",
-            {
-                "payload_type": "applied_interpretation",
-                "success_count": count,
-                "errors": errors,
-                "applied_interpretation": applied_payload,
-                "metadata_apply": metadata_apply,
-                "label_carriers_pending": list(candidate.label_carriers),
-                "label_apply": label_apply,
-            },
-        )
-
-    def _handle_save_interpretation_recipe(self, command: Command) -> HandlerResult:
-        if not isinstance(command, SaveInterpretationRecipeCommand):
-            raise TypeError("Invalid command for save_interpretation_recipe")
-        applied = self._resolve_applied_interpretation()
-        candidate = self._candidates[applied.candidate_id]
-        recipe_id = self._next_interpretation_id("recipe")
-        recipe = build_import_recipe(
-            recipe_id=recipe_id,
-            applied=applied,
-            warnings=list(candidate.warnings),
-        )
-        if command.recipe_path:
-            recipe.write_json(command.recipe_path)
-            self._latest_recipe_path = command.recipe_path
-        self._recipes[recipe_id] = recipe
-        self._latest_recipe_id = recipe_id
-        return (
-            "Interpretation recipe saved.",
-            {
-                "payload_type": "import_recipe",
-                "recipe": recipe.to_dict(),
-                "recipe_path": command.recipe_path,
-            },
-        )
-
-    def _handle_reload_interpretation_recipe(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ReloadInterpretationRecipeCommand):
-            raise TypeError("Invalid command for reload_interpretation_recipe")
-        if not command.recipe_path:
-            raise PreconditionError("recipe_path is required.")
-        recipe = load_import_recipe(command.recipe_path)
-        scan_id = self._next_interpretation_id("scan")
-        scan = scan_source_path(
-            scan_id=scan_id,
-            source_path=recipe.source_path,
-            source_hint=recipe.source_kind or "recipe",
-        )
-        candidate_id = self._next_interpretation_id("candidate")
-        candidate = build_interpretation_candidate(
-            candidate_id=candidate_id,
-            scan=scan,
-            choices={"recipe_id": recipe.recipe_id},
-        )
-        preview_id = self._next_interpretation_id("preview")
-        preview = build_interpretation_preview(
-            preview_id=preview_id,
-            candidate=candidate,
-        )
-        decision = validate_interpretation_candidate(candidate)
-        self._scan_results[scan_id] = scan
-        self._candidates[candidate_id] = candidate
-        self._previews[preview_id] = preview
-        self._validation_decisions[candidate_id] = decision
-        self._recipes[recipe.recipe_id] = recipe
-        self._latest_scan_id = scan_id
-        self._latest_candidate_id = candidate_id
-        self._latest_preview_id = preview_id
-        self._latest_recipe_id = recipe.recipe_id
-        self._latest_recipe_path = command.recipe_path
-        return (
-            "Interpretation recipe reloaded for review.",
-            {
-                "payload_type": "recipe_reload_preview",
-                "recipe": recipe.to_dict(),
-                "scan_result": scan.to_dict(),
-                "candidate": candidate.to_dict(),
-                "preview": preview.to_dict(),
-                "validation_decision": decision.to_dict(),
-            },
-        )
-
     def _handle_load_data(self, command: Command) -> HandlerResult:
         if not isinstance(command, LoadDataCommand):
             raise TypeError("Invalid command for load_data")
@@ -869,7 +639,7 @@ class ApplicationService:
         else:
             raise ValueError(f"Unknown label import mode: {plan.mode}")
 
-        label_import = self._record_label_import_for_recipe(
+        label_import = self.interpretation.record_label_import_for_recipe(
             plan=plan,
             mode=mode,
             target_files=target_files,
@@ -1496,204 +1266,7 @@ class ApplicationService:
         raise ValueError(f"Unknown query_state request: {command.query}")
 
     def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
-        scan = (
-            self._scan_results.get(self._latest_scan_id)
-            if self._latest_scan_id
-            else None
-        )
-        candidate = (
-            self._candidates.get(self._latest_candidate_id)
-            if self._latest_candidate_id
-            else None
-        )
-        preview = (
-            self._previews.get(self._latest_preview_id)
-            if self._latest_preview_id
-            else None
-        )
-        decision = (
-            self._validation_decisions.get(self._latest_candidate_id)
-            if self._latest_candidate_id
-            else None
-        )
-        applied = (
-            self._applied_interpretations.get(self._latest_interpretation_id)
-            if self._latest_interpretation_id
-            else None
-        )
-        source_path = None
-        source_kind = None
-        if candidate is not None:
-            source_path = candidate.source_path
-            source_kind = candidate.source_kind
-        elif scan is not None:
-            source_path = scan.source_path
-            source_kind = scan.source_kind
-        warnings = []
-        if preview is not None:
-            warnings = list(preview.warnings)
-        elif scan is not None:
-            warnings = list(scan.warnings)
-        label_carrier_plan = (
-            applied.label_carrier_plan
-            if applied is not None
-            else candidate.label_carrier_plan
-            if candidate is not None
-            else preview.label_carrier_preview
-            if preview is not None
-            else []
-        )
-        format_capabilities = (
-            applied.format_capabilities
-            if applied is not None
-            else candidate.format_capabilities
-            if candidate is not None
-            else preview.format_capabilities
-            if preview is not None
-            else scan.format_capabilities
-            if scan is not None
-            else []
-        )
-        event_roles = (
-            applied.event_roles
-            if applied is not None
-            else candidate.event_roles
-            if candidate is not None
-            else preview.event_roles
-            if preview is not None
-            else {}
-        )
-        class_map = (
-            applied.class_map
-            if applied is not None
-            else candidate.class_map
-            if candidate is not None
-            else preview.class_map
-            if preview is not None
-            else {}
-        )
-        return InterpretationStateSnapshot(
-            has_scan_result=scan is not None,
-            has_candidate=candidate is not None,
-            has_preview=preview is not None,
-            has_validation_decision=decision is not None,
-            has_applied_interpretation=applied is not None,
-            has_recipe=self._latest_recipe_id is not None,
-            latest_scan_id=self._latest_scan_id,
-            latest_candidate_id=self._latest_candidate_id,
-            latest_preview_id=self._latest_preview_id,
-            latest_interpretation_id=self._latest_interpretation_id,
-            latest_recipe_id=self._latest_recipe_id,
-            source_path=source_path,
-            source_kind=source_kind,
-            validation_decision=decision.decision if decision else None,
-            pending_confirmation=(
-                decision is not None
-                and decision.decision == InterpretationDecision.NEEDS_CONFIRMATION.value
-            ),
-            blocked_reasons=list(decision.blocked_reasons if decision else []),
-            warnings=warnings,
-            summary=preview.summary if preview else None,
-            metadata_preview=list(preview.metadata_preview if preview else []),
-            label_carriers=list(
-                applied.label_carriers
-                if applied is not None
-                else candidate.label_carriers
-                if candidate is not None
-                else []
-            ),
-            label_carrier_plan=[dict(item) for item in label_carrier_plan],
-            format_capabilities=[dict(item) for item in format_capabilities],
-            event_roles=dict(event_roles),
-            class_map=dict(class_map),
-            label_import_count=len(applied.label_imports) if applied else 0,
-            label_imports=[dict(item) for item in applied.label_imports]
-            if applied
-            else [],
-            recipe_path=self._latest_recipe_path,
-        )
-
-    def _next_interpretation_id(self, prefix: str) -> str:
-        self._interpretation_counter += 1
-        return f"{prefix}-{self._interpretation_counter}"
-
-    def _resolve_scan(self, scan_id: str | None) -> ScanResult:
-        target_id = scan_id or self._latest_scan_id
-        if not target_id or target_id not in self._scan_results:
-            raise PreconditionError(
-                "Scan a data source before previewing interpretation.",
-            )
-        return self._scan_results[target_id]
-
-    def _resolve_candidate(
-        self,
-        candidate_id: str | None,
-    ) -> InterpretationCandidate:
-        target_id = candidate_id or self._latest_candidate_id
-        if not target_id or target_id not in self._candidates:
-            raise PreconditionError("Preview an interpretation candidate first.")
-        return self._candidates[target_id]
-
-    def _resolve_applied_interpretation(self) -> AppliedInterpretation:
-        if (
-            not self._latest_interpretation_id
-            or self._latest_interpretation_id not in self._applied_interpretations
-        ):
-            raise PreconditionError("Apply an interpretation before saving a recipe.")
-        return self._applied_interpretations[self._latest_interpretation_id]
-
-    def _apply_candidate_metadata_to_loaded_data(
-        self,
-        candidate: InterpretationCandidate,
-    ) -> list[dict[str, str]]:
-        """Mirror reviewed interpretation metadata onto loaded Raw wrappers."""
-        metadata_by_path = {
-            self._path_key(item.file): item for item in candidate.metadata
-        }
-        metadata_by_name = {Path(item.file).name: item for item in candidate.metadata}
-        updated: list[dict[str, str]] = []
-        for data in list(self.dataset.get_loaded_data_list() or []):
-            filepath = self._safe_data_filepath(data)
-            metadata = metadata_by_path.get(self._path_key(filepath))
-            if metadata is None:
-                metadata = metadata_by_name.get(Path(filepath).name)
-            if metadata is None:
-                continue
-
-            values = {
-                "subject": str(metadata.subject.value or ""),
-                "session": str(metadata.session.value or ""),
-                "task": str(metadata.task.value or ""),
-                "run": str(metadata.run.value or ""),
-            }
-            if values["subject"] and hasattr(data, "set_subject_name"):
-                data.set_subject_name(values["subject"])
-            if values["session"] and hasattr(data, "set_session_name"):
-                data.set_session_name(values["session"])
-            if hasattr(data, "set_runtime_detail"):
-                data.set_runtime_detail("data_interpretation_metadata", values)
-            updated.append({"file": Path(filepath).name, **values})
-
-        if updated:
-            with contextlib.suppress(Exception):
-                self.dataset.notify("data_changed")
-        return updated
-
-    @staticmethod
-    def _safe_data_filepath(data: Any) -> str:
-        get_filepath = getattr(data, "get_filepath", None)
-        if callable(get_filepath):
-            with contextlib.suppress(Exception):
-                return str(get_filepath())
-        return str(getattr(data, "filepath", ""))
-
-    @staticmethod
-    def _path_key(path: str) -> str:
-        if not path:
-            return ""
-        with contextlib.suppress(Exception):
-            return str(Path(path).resolve())
-        return str(path)
+        return self.interpretation.snapshot()
 
     def _clear_training_configuration(self) -> None:
         """Clear training config that belongs to the previous active dataset."""
@@ -1709,18 +1282,7 @@ class ApplicationService:
             logger.debug("Training config reset notification failed", exc_info=True)
 
     def _clear_interpretation_state(self) -> None:
-        self._scan_results.clear()
-        self._candidates.clear()
-        self._previews.clear()
-        self._validation_decisions.clear()
-        self._applied_interpretations.clear()
-        self._recipes.clear()
-        self._latest_scan_id = None
-        self._latest_candidate_id = None
-        self._latest_preview_id = None
-        self._latest_interpretation_id = None
-        self._latest_recipe_id = None
-        self._latest_recipe_path = None
+        self.interpretation.clear()
 
     @staticmethod
     def _normalize_handler_result(result: HandlerResult) -> tuple[str, dict[str, Any]]:
@@ -1803,413 +1365,6 @@ class ApplicationService:
         if selected_event_names is None:
             return None
         return {str(name) for name in selected_event_names}
-
-    def _apply_interpretation_label_carriers(
-        self,
-        candidate: InterpretationCandidate,
-    ) -> dict[str, Any]:
-        """Apply reviewed label carriers after interpretation apply."""
-        if not candidate.label_carrier_plan:
-            return {"status": "not_applicable", "reason": "No label carrier plan."}
-
-        timestamp_applicable = [
-            item
-            for item in candidate.label_carrier_plan
-            if self._is_auto_applicable_timestamp_label_plan(item)
-        ]
-        anchored_applicable = [
-            item
-            for item in candidate.label_carrier_plan
-            if self._is_auto_applicable_anchored_label_plan(item, candidate.class_map)
-        ]
-        sequence_applicable = [
-            item
-            for item in candidate.label_carrier_plan
-            if self._is_auto_applicable_sequence_label_plan(item, candidate.class_map)
-        ]
-        if (
-            not timestamp_applicable
-            and not anchored_applicable
-            and not sequence_applicable
-        ):
-            return {
-                "status": "skipped",
-                "reason": ("No reviewed label carrier is safe to apply automatically."),
-            }
-
-        applicable = timestamp_applicable or anchored_applicable or sequence_applicable
-        if timestamp_applicable:
-            mode = "timestamp"
-        elif anchored_applicable:
-            mode = "anchored"
-        else:
-            mode = "legacy"
-
-        target_files = list(self.dataset.get_loaded_data_list() or [])
-        if not target_files:
-            return {
-                "status": "skipped",
-                "reason": "Automatic label application found no loaded EEG files.",
-            }
-
-        if len(applicable) == 1 and len(target_files) == 1:
-            carrier_path = str(applicable[0].get("path") or "").strip()
-            file_mapping = {self._data_filepath(target_files[0]): carrier_path}
-        else:
-            file_mapping, reason = self._reviewed_label_file_mapping(
-                applicable,
-                target_files,
-            )
-            if reason:
-                return {"status": "skipped", "reason": reason}
-
-        carrier_label = ", ".join(
-            str(item.get("path") or "").strip() for item in applicable
-        )
-        mapped_target_files = [
-            target
-            for target in target_files
-            if self._data_filepath(target) in file_mapping
-        ]
-        if not mapped_target_files:
-            return {
-                "status": "skipped",
-                "reason": "Reviewed label carriers did not map to any loaded EEG file.",
-            }
-
-        try:
-            label_map = self._load_reviewed_label_map(applicable, mode)
-            mapping = self._label_import_mapping_from_class_map(candidate.class_map)
-            if mode in {"timestamp", "anchored"}:
-                count = self.dataset.apply_labels_batch(
-                    mapped_target_files,
-                    label_map,
-                    file_mapping,
-                    mapping,
-                    None,
-                )
-            else:
-                count = self._apply_reviewed_sequence_label_map(
-                    mapped_target_files,
-                    label_map,
-                    file_mapping,
-                    mapping,
-                )
-            plan = LabelImportPlan(
-                target_indices=list(range(len(mapped_target_files))),
-                label_map=label_map,
-                mapping=mapping,
-                file_mapping=file_mapping,
-                mode=mode,
-            )
-            record = self._record_label_import_for_recipe(
-                plan=plan,
-                mode=mode,
-                target_files=mapped_target_files,
-                file_mapping=file_mapping,
-                selected_event_names=None,
-                success_count=count,
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to apply reviewed label carrier %s: %s",
-                carrier_label,
-                exc,
-                exc_info=True,
-            )
-            return {"status": "failed", "reason": str(exc), "success_count": 0}
-
-        if count <= 0:
-            return {
-                "status": "failed",
-                "reason": "Reviewed label carrier did not match any loaded EEG file.",
-                "success_count": 0,
-            }
-        label_carriers = sorted(label_map)
-        return {
-            "status": "applied",
-            "success_count": int(count),
-            "mode": mode,
-            "label_import": record or {},
-            "label_carrier": label_carriers[0],
-            "label_carriers": label_carriers,
-        }
-
-    @staticmethod
-    def _load_reviewed_label_map(
-        label_plans: list[dict[str, Any]],
-        mode: str,
-    ) -> dict[str, Any]:
-        label_map: dict[str, Any] = {}
-        for carrier in label_plans:
-            carrier_path = str(carrier.get("path") or "").strip()
-            label_field = str(carrier.get("selected_label_field") or "").strip()
-            anchor = str(carrier.get("selected_anchor") or "").strip()
-            if not carrier_path or not label_field or not anchor:
-                raise ValueError(
-                    "Reviewed label carrier is missing label field or anchor.",
-                )
-            label_map[carrier_path] = load_label_file(
-                carrier_path,
-                label_field=label_field,
-                anchor=anchor if mode in {"timestamp", "anchored"} else None,
-            )
-        return label_map
-
-    def _apply_reviewed_sequence_label_map(
-        self,
-        target_files: list[Any],
-        label_map: dict[str, Any],
-        file_mapping: dict[str, str],
-        mapping: dict[Any, str],
-    ) -> int:
-        success_count = 0
-        for target in target_files:
-            data_path = self._data_filepath(target)
-            carrier_path = file_mapping.get(data_path)
-            if not carrier_path or carrier_path not in label_map:
-                continue
-            success_count += int(
-                self.dataset.apply_labels_legacy(
-                    [target],
-                    label_map[carrier_path],
-                    mapping,
-                    None,
-                    force_import=False,
-                ),
-            )
-        return success_count
-
-    def _reviewed_label_file_mapping(
-        self,
-        label_plans: list[dict[str, Any]],
-        target_files: list[Any],
-    ) -> tuple[dict[str, str], str | None]:
-        manual_mapping_requested = any(
-            str(carrier.get("selected_target_file") or "").strip()
-            for carrier in label_plans
-        )
-        file_mapping: dict[str, str] = {}
-        used_carriers: set[str] = set()
-        remaining_plans: list[dict[str, Any]] = []
-        for carrier in label_plans:
-            carrier_path = str(carrier.get("path") or "").strip()
-            selected_target = str(carrier.get("selected_target_file") or "").strip()
-            if not selected_target:
-                remaining_plans.append(carrier)
-                continue
-            target = self._target_file_for_reviewed_label_choice(
-                target_files,
-                selected_target,
-            )
-            if target is None:
-                return (
-                    {},
-                    (
-                        "Reviewed label carrier target file does not match a "
-                        f"loaded EEG file: {selected_target}."
-                    ),
-                )
-            data_path = self._data_filepath(target)
-            if data_path in file_mapping:
-                return (
-                    {},
-                    "Multiple reviewed label carriers target the same EEG file.",
-                )
-            if not carrier_path:
-                return {}, "Reviewed label carrier is missing a usable path."
-            file_mapping[data_path] = carrier_path
-            used_carriers.add(carrier_path)
-
-        carrier_by_key: dict[str, str] = {}
-        for carrier in remaining_plans:
-            carrier_path = str(carrier.get("path") or "").strip()
-            key = self._label_mapping_key(carrier_path)
-            if not carrier_path or not key:
-                return {}, "Reviewed label carrier is missing a usable path."
-            if key in carrier_by_key:
-                return (
-                    {},
-                    "Multiple reviewed label carriers match the same EEG file stem.",
-                )
-            carrier_by_key[key] = carrier_path
-
-        for target in target_files:
-            data_path = self._data_filepath(target)
-            if data_path in file_mapping:
-                continue
-            key = self._label_mapping_key(data_path)
-            carrier_path = carrier_by_key.get(key)
-            if not carrier_path:
-                if manual_mapping_requested:
-                    continue
-                return (
-                    {},
-                    (
-                        "No reviewed label carrier uniquely matches loaded EEG "
-                        f"file {Path(data_path).name}."
-                    ),
-                )
-            file_mapping[data_path] = carrier_path
-            used_carriers.add(carrier_path)
-
-        unused = sorted(set(carrier_by_key.values()) - used_carriers)
-        if unused:
-            return (
-                {},
-                "Reviewed label carriers did not all match loaded EEG files.",
-            )
-        return file_mapping, None
-
-    def _target_file_for_reviewed_label_choice(
-        self,
-        target_files: list[Any],
-        selected_target: str,
-    ) -> Any | None:
-        selected = selected_target.strip()
-        for target in target_files:
-            data_path = self._data_filepath(target)
-            filename = self._data_filename(target)
-            if selected in {data_path, filename, Path(data_path).name}:
-                return target
-        return None
-
-    @staticmethod
-    def _label_mapping_key(path: str) -> str:
-        name = Path(path).name
-        lowered = name.lower()
-        if lowered.endswith(".fif.gz"):
-            stem = name[: -len(".fif.gz")]
-        else:
-            stem = Path(name).stem
-        normalized = stem.lower()
-        for suffix in (
-            "_events",
-            "-events",
-            "_labels",
-            "-labels",
-            "_label",
-            "-label",
-            "_raw",
-            "-raw",
-            "_eeg",
-            "-eeg",
-        ):
-            if normalized.endswith(suffix):
-                normalized = normalized[: -len(suffix)]
-                break
-        return normalized.strip()
-
-    @staticmethod
-    def _is_auto_applicable_timestamp_label_plan(plan: dict[str, Any]) -> bool:
-        carrier_format = str(plan.get("format") or "").strip()
-        time_model = str(plan.get("time_model") or "").strip().lower()
-        return (
-            carrier_format in {"BIDS events", "CSV", "TSV"}
-            and bool(str(plan.get("selected_label_field") or "").strip())
-            and bool(str(plan.get("selected_anchor") or "").strip())
-            and time_model in {"seconds", "relative_time"}
-        )
-
-    @staticmethod
-    def _is_auto_applicable_anchored_label_plan(
-        plan: dict[str, Any],
-        class_map: dict[str, str],
-    ) -> bool:
-        carrier_format = str(plan.get("format") or "").strip()
-        time_model = str(plan.get("time_model") or "").strip().lower()
-        granularity = str(plan.get("granularity") or "").strip().lower()
-        return (
-            carrier_format in {"MAT", "MAT labels"}
-            and bool(str(plan.get("selected_label_field") or "").strip())
-            and bool(str(plan.get("selected_anchor") or "").strip())
-            and time_model == "sample_index"
-            and granularity == "trial"
-            and bool(class_map)
-        )
-
-    @staticmethod
-    def _is_auto_applicable_sequence_label_plan(
-        plan: dict[str, Any],
-        class_map: dict[str, str],
-    ) -> bool:
-        carrier_format = str(plan.get("format") or "").strip()
-        time_model = str(plan.get("time_model") or "").strip().lower()
-        granularity = str(plan.get("granularity") or "").strip().lower()
-        return (
-            carrier_format in {"MAT", "MAT labels", "TXT"}
-            and bool(str(plan.get("selected_label_field") or "").strip())
-            and time_model == "trial_order"
-            and granularity == "trial"
-            and bool(class_map)
-        )
-
-    @staticmethod
-    def _label_import_mapping_from_class_map(
-        class_map: dict[str, str],
-    ) -> dict[Any, str]:
-        mapping: dict[Any, str] = {}
-        for key, value in class_map.items():
-            normalized_key: Any = key
-            with contextlib.suppress(ValueError):
-                normalized_key = int(key)
-            mapping[normalized_key] = str(value)
-        return mapping
-
-    def _record_label_import_for_recipe(
-        self,
-        *,
-        plan: LabelImportPlan,
-        mode: str,
-        target_files: list[Any],
-        file_mapping: dict[str, str],
-        selected_event_names: set[str] | None,
-        success_count: int,
-    ) -> dict[str, Any] | None:
-        if success_count <= 0:
-            return None
-        if not self._latest_interpretation_id:
-            return None
-        applied = self._applied_interpretations.get(self._latest_interpretation_id)
-        if applied is None:
-            return None
-
-        label_carriers = sorted(str(key) for key in plan.label_map)
-        record = {
-            "mode": mode,
-            "label_carriers": label_carriers,
-            "target_files": [self._data_filepath(item) for item in target_files],
-            "file_mapping": {
-                str(key): str(value) for key, value in file_mapping.items()
-            },
-            "selected_event_names": sorted(selected_event_names or []),
-            "class_map": self._label_mapping_for_recipe(plan.mapping),
-            "success_count": int(success_count),
-        }
-        label_import_trace = f"label_import:{mode}:{success_count}"
-        updated = replace(
-            applied,
-            label_carriers=sorted({*applied.label_carriers, *label_carriers}),
-            label_imports=[*applied.label_imports, record],
-            recipe_trace=[*applied.recipe_trace, label_import_trace],
-        )
-        self._applied_interpretations[updated.interpretation_id] = updated
-
-        if self._latest_recipe_id and self._latest_recipe_id in self._recipes:
-            recipe = self._recipes[self._latest_recipe_id]
-            self._recipes[self._latest_recipe_id] = replace(
-                recipe,
-                label_carriers=sorted({*recipe.label_carriers, *label_carriers}),
-                label_imports=[*recipe.label_imports, record],
-                recipe_trace=[*recipe.recipe_trace, label_import_trace],
-            )
-        return record
-
-    @staticmethod
-    def _label_mapping_for_recipe(mapping: Any) -> dict[str, str]:
-        if not isinstance(mapping, dict):
-            return {}
-        return {str(key): str(value) for key, value in mapping.items()}
 
     @staticmethod
     def _data_filepath(item: Any) -> str:

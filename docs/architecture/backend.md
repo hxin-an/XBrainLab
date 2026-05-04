@@ -35,7 +35,13 @@ backend slice 又新增 Data Interpretation command baseline，讓 scan / previe
 apply / recipe reload 開始進入同一個 Application Service command spine。後續 Goal 1 slices
 已把 Data Interpretation 暴露到 agent tools、Dataset panel 主要 import entry，並新增
 `backend.application.automation` 作為 headless / MCP-ready JSON adapter；它只轉 command
-payload，不新增 controller business logic。
+payload，不新增 controller business logic。最新 architecture cleanup 又把 Data
+Interpretation lifecycle state 和 scan / preview / validate / apply / recipe handling 從
+`ApplicationService` 拆到 `DataInterpretationCommandService`，並把 reviewed metadata / label
+carrier side effects 再拆到 `DataInterpretationApplyService`；`ApplicationService` 現在只保留
+command dispatch、capability / confirmation gate、state/result envelope，以及對 focused service
+的窄委派。這是 god-object 收斂的第一刀，不代表 training / visualization / legacy label import
+handlers 都已完成拆分。
 
 ## 一句話架構
 
@@ -82,6 +88,11 @@ BackendFacade
   |
   v
 ApplicationService / Command API
+  |
+  +--> DataInterpretationCommandService
+  |       +--> scanner / candidate builder / preview builder / validator / recipe state
+  |       +--> DataInterpretationApplyService
+  |               +--> reviewed metadata apply / reviewed label carrier apply
   |
   v
 same cached controllers from Study
@@ -187,7 +198,7 @@ controller internals。
 ApplicationService command 並回傳 `ToolCommandResult.from_command_result(...)`。
 
 結論：`BackendFacade` 可以視為 agent/tool surface 的相容入口，但它不再是新的
-核心邏輯層。新邏輯應進 `ApplicationService` 或後續更細的 command handler；
+核心邏輯層。新邏輯應進 `ApplicationService` 下的 focused command service / handler；
 UI 目前是 service-first migration 的中間狀態，尚未完整完成。
 
 ### Data Interpretation command baseline
@@ -202,8 +213,8 @@ UI 目前是 service-first migration 的中間狀態，尚未完整完成。
 - `SaveInterpretationRecipeCommand`
 - `ReloadInterpretationRecipeCommand`
 
-這批 command 目前由 `ApplicationService` 管理 in-memory lifecycle state，並回傳 typed
-diagnostics：
+這批 command 由 `ApplicationService` dispatch / gate，實作與 in-memory lifecycle state
+目前位在 `DataInterpretationCommandService`，並回傳 typed diagnostics：
 
 - `ScanResult`：掃描 file / folder / BIDS-like source / recipe，列出 EEG files、label
   carriers、BIDS summary 和 subject / session / task / run metadata provenance。
@@ -282,6 +293,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/state.py`
 - `XBrainLab/backend/application/capabilities.py`
 - `XBrainLab/backend/application/data_interpretation.py`
+- `XBrainLab/backend/application/data_interpretation_apply.py`
+- `XBrainLab/backend/application/data_interpretation_service.py`
 - `XBrainLab/backend/application/results.py`
 - `XBrainLab/backend/application/errors.py`
 - `XBrainLab/backend/application/service.py`
@@ -307,12 +320,20 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - service-backed query / setup commands：
   `evaluate`、`visualize`、`saliency`、`query_state`。它們回傳 typed summary diagnostics；
   `saliency` 也能設定 saliency params。
+- Data Interpretation command handlers 實作位置現在是
+  `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
+  in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed
+  label carrier apply 則在 `DataInterpretationApplyService`。`ApplicationService` 不再直接承接
+  這些 workflow 細節。
 
 2026-05-02 product blocker 盤點結論：
 
 - `hello` no-response 問題主要發生在 chat / agent visible-output boundary，不是
   `ApplicationService` command contract 本身。
 - `ApplicationService` / `CapabilityPolicy` 仍是 UI / Agent shared decision 的正確入口。
+- `ApplicationService` 仍是 command spine，但不應繼續吸收所有 workflow logic；新增 workflow
+  應優先放在 focused command service / handler，再由 `ApplicationService.execute()` 統一 gate
+  與包 result。
 - backend query command 已從 future placeholder 推進成 service-backed summary / setup
   result；完整 interactive evaluation / visualization workflow 仍要由 UI walkthrough 驗收。
 - `evaluate` / `clear_training_history` capability 以 actual training plan history 為準；
@@ -325,6 +346,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 重要邊界：
 
 - command 目前仍透過既有 controllers 執行，以保留 observer event 與 UI refresh 行為。
+- Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationCommandService`；UI、agent、
+  automation 和 MCP 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
+  interpretation state。
 - `BackendFacade` 是 wrapper；它不應再承載新的 workflow business logic。
 - `BackendFacade(study)` 會重用掛在同一個 `Study` 上的 `ApplicationService`。這是 Data
   Interpretation lifecycle 的必要邊界，否則 `scan_source` 產生的 scan state 會在下一個
@@ -495,6 +519,9 @@ UI 也會透過 `TrainingController` 設定 model / option / data splitting。
 - `ApplicationService` 第一版已可回傳 state snapshot、capability policy 和
   `CommandResult`，並可執行 load / label / preprocess / epoch / dataset /
   training setup / train / reset commands。
+- `DataInterpretationCommandService` / `DataInterpretationApplyService` 已由 focused unit tests
+  覆蓋 scan / preview / validate / clear，以及 apply 後 reviewed metadata / label-import recipe
+  state 同步。
 - `Study` 已拆出 `DataManager` 和 `TrainingManager`，但還保留 backward-compatible delegation properties。
 - pipeline stage 是從 live `Study` state 計算，不是文件或 UI label 推導。
 - tiny Study training E2E smoke 已通過，證明 `Study -> TrainingManager` delegation 的代表性 train/evaluate path 目前可跑。

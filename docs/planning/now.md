@@ -30,6 +30,11 @@
 目前實作狀態要保守判斷：
 
 - `ApplicationService / Command API` baseline 已存在，可作為後續重構骨架。
+- 最新 backend cleanup 已把 Data Interpretation scan / preview / validate / apply / recipe lifecycle
+  從 `ApplicationService` 拆到 `DataInterpretationCommandService`，並把 reviewed metadata /
+  label carrier side effects 拆到 `DataInterpretationApplyService`；`ApplicationService` 仍是
+  dispatch / capability-confirmation gate / result envelope。這是第一個 god-object cleanup slice，
+  不代表 backend architecture 已全面完成。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -528,8 +533,12 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 現在最應該做的是：
 
 ```text
-1. commit 最新 tool-call best-practices / 117-case dashboard slice
-2. commit UI-observable automated human-like walkthrough artifact
-3. 進入 UI polish：Data Interpretation wizard density、assistant narrow capture、analysis page compact controls
-4. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間 local model session
+1. 繼續 backend architecture cleanup：ApplicationService 已拆出 Data Interpretation service，
+   下一步要 handler/service 化 training / visualization / legacy compatibility 邊界。
+2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
+   post-load compatibility label import 繼續主導心智模型。
+3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、
+   analysis page compact controls。
+4. 清楚標記 remaining human desktop acceptance：Windows launcher、雙螢幕、DPI、真人長時間
+   local model session。
 ```

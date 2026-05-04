@@ -37,6 +37,56 @@
 
 ## 2026-05-04
 
+### 21:12 Backend ApplicationService boundary cleanup
+
+- 做了什麼：
+  - 依 backend architecture steering 和 clean-code review，停止把 Data Interpretation 邏輯繼續堆進
+    `ApplicationService`。
+  - 新增 `DataInterpretationCommandService`，承接 scan / preview / validate / apply / save recipe /
+    reload recipe lifecycle state、snapshot、clear 和 recipe label-import state 更新。
+  - 新增 `DataInterpretationApplyService`，承接 reviewed metadata apply 和 reviewed label carrier
+    apply side effects。
+  - `ApplicationService` 的 Data Interpretation commands 改成窄委派；它仍負責 command dispatch、
+    capability / confirmation gate、state/result envelope 和 error mapping。
+  - 補 focused unit tests，直接驗證 Data Interpretation service 的 scan / preview / validate /
+    clear，以及 apply 後 reviewed metadata、notification、label-import recipe state 同步。
+  - 更新 `current.md`、`architecture/backend.md`、`architecture/agent.md`、`planning/now.md`、
+    `planning/roadmap.md`、`validation/README.md` 和 `implementation_log.md`。
+- 結果：
+  - `ApplicationService` 從約 `2799` 行降到 `1912` 行。
+  - `DataInterpretationCommandService` 第二刀後為 `514` 行。
+  - `DataInterpretationApplyService` 為 `446` 行。
+  - UI / agent / headless / MCP 對外仍走同一套 `ApplicationService.execute()` command spine。
+- 證據：
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/backend/application/data_interpretation_apply.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/backend/application/data_interpretation_apply.py tests/unit/backend/application/test_data_interpretation_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `54 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 接續 / 本輪剩餘：
+  - 這是 backend architecture cleanup slice，不是 product complete。
+  - `ApplicationService` 仍有 training / visualization / analysis / lifecycle / legacy compatibility
+    handlers；下一輪應繼續 handler/service 化。
+  - Data Interpretation wizard 仍需要 mature embedded label / anchor editor，不能用 post-load
+    compatibility label import 包裝成新資料入口完成。
+
 ### 20:43 MCP Inspector GUI click-through baseline
 
 - 做了什麼：
