@@ -46,7 +46,7 @@ class BaseConfigureTrainingTool(BaseTool):
     """Configure training hyperparameters.
 
     Includes epoch count, batch size, learning rate, optimizer,
-    device selection, and checkpoint settings.
+    device selection, checkpoint settings, and output directory.
     """
 
     @property
@@ -73,6 +73,7 @@ class BaseConfigureTrainingTool(BaseTool):
                     "default": "adam",
                 },
                 "save_checkpoints_every": {"type": "integer", "default": 0},
+                "output_dir": {"type": "string", "default": "./output"},
             },
             "required": ["epoch", "batch_size", "learning_rate"],
         }

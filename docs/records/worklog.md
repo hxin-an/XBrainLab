@@ -2553,3 +2553,33 @@
   - 下一手優先處理 `configure_training` tool schema / `output_dir` path，然後做 controlled tiny
     training completion -> evaluation / visualization / saliency evidence。
 - Goal 仍不可標 complete。
+
+### 2026-05-04 13:04 Configure-training output directory surface
+
+- 做了什麼：
+  - `BaseConfigureTrainingTool` schema 新增 optional `output_dir`，讓 ChatPanel / local model 可以
+    指定 controlled tiny training artifact 的輸出位置。
+  - `application_surface.py` 的 `configure_training` mapping 現在會把 `output_dir` 傳入
+    `ConfigureTrainingCommand`，不再落回 `./output`。
+  - legacy `RealConfigureTrainingTool` 也會把 `output_dir` 傳給 `BackendFacade.configure_training`。
+  - `tests/unit/llm/tools/test_definitions.py` 補 helper，讓直接 targeted basedpyright 檢查時不再
+    因 property getter optional-call 報錯。
+- TDD failure：
+  - schema 缺 `output_dir`。
+  - ApplicationService-backed tool result 的 training option 仍是 `./output`。
+  - real tool wrapper 沒傳 `output_dir`。
+- 驗證：
+  - initial focused tests -> `3 failed`，原因符合預期。
+  - focused tests after fix -> `3 passed`。
+  - related regression：
+    `poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/tools/test_mock_tools.py tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py tests/unit/llm/agent/test_verification_layer.py -q`
+    -> `311 passed`。
+  - targeted `ruff` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - deterministic tool-call eval refresh：
+    `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2`
+    -> `100 / 100` pass。
+- 不能宣稱：
+  - 這只解除 controlled training artifact 的 output path gap。
+  - 還沒有 actual ChatPanel training completion、evaluation metrics、visualization render 或
+    saliency render evidence。

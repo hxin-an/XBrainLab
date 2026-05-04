@@ -81,6 +81,7 @@ class TestRealTrainingTools:
                 learning_rate=0.001,
                 optimizer="sgd",
                 save_checkpoints_every=5,
+                output_dir="/tmp/xbrainlab-training-output",
             )
             assert "Training configured" in res1
             # Verify passed params
@@ -88,6 +89,7 @@ class TestRealTrainingTools:
             call_args = mock_facade.configure_training.call_args[1]
             assert call_args["optimizer"] == "sgd"
             assert call_args["save_checkpoints_every"] == 5
+            assert call_args["output_dir"] == "/tmp/xbrainlab-training-output"
 
             # Start
             res2 = start_tool.execute(mock_study)

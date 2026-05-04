@@ -596,6 +596,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         return ConfigureTrainingCommand(model_name=str(model_name))
 
     if tool_name == "configure_training":
+        output_dir = params.get("output_dir") or "./output"
         return ConfigureTrainingCommand(
             epoch=int(params.get("epoch", 10)),
             batch_size=int(params.get("batch_size", 32)),
@@ -604,6 +605,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
             device=str(params.get("device", "cpu")),
             optimizer=str(params.get("optimizer", "adam")),
             save_checkpoints_every=int(params.get("save_checkpoints_every", 0)),
+            output_dir=str(output_dir),
         )
 
     if tool_name == "start_training":

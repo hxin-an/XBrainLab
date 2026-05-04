@@ -226,6 +226,28 @@ def test_application_tool_command_returns_structured_result_for_model_config():
     assert model_holder.target_model.__name__ == "EEGNet"
 
 
+def test_application_tool_command_preserves_training_output_dir(tmp_path):
+    output_dir = tmp_path / "chatpanel-training-output"
+
+    result = execute_application_tool_command(
+        Study(),
+        "configure_training",
+        {
+            "epoch": 1,
+            "batch_size": 2,
+            "learning_rate": 0.001,
+            "device": "cpu",
+            "output_dir": str(output_dir),
+        },
+    )
+
+    assert result is not None
+    assert result.ok is True
+    assert result.command_name == CommandName.CONFIGURE_TRAINING.value
+    training_state = result.raw_result["state"]["training"]["training_option"]
+    assert training_state["output_dir"] == str(output_dir)
+
+
 def test_application_tool_command_routes_load_data_to_command_surface(tmp_path):
     sample = tmp_path / "sample.unsupported"
     sample.write_text("not eeg", encoding="utf-8")

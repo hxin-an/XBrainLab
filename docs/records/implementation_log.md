@@ -3819,3 +3819,49 @@ training-readiness boundary 後的實際狀態，避免下一輪重做已完成 
 - Windows Desktop human click-through、MCP Inspector / release config、mature import wizard label
   editor 和 external thesis experiment package 仍未完成。
 - Goal 不能標 complete。
+
+## 2026-05-04 Configure-training output directory surface
+
+### 背景
+
+下一個產品切片需要從 ChatPanel 執行 controlled tiny training completion。若 agent 不能指定
+training `output_dir`，真 training walkthrough 會落回預設 `./output`，造成 artifact 不可控、
+清理困難，也讓使用者看不出訓練輸出是否屬於本次驗證。
+
+### 變更
+
+- `XBrainLab/llm/tools/definitions/training_def.py`
+  - `BaseConfigureTrainingTool.parameters` 新增 optional `output_dir: string`。
+- `XBrainLab/llm/tools/application_surface.py`
+  - `configure_training` tool -> `ConfigureTrainingCommand` mapping 現在保留 `output_dir`。
+- `XBrainLab/llm/tools/real/training_real.py`
+  - legacy real tool wrapper 也會把 `output_dir` 傳給 `BackendFacade.configure_training`。
+- 測試：
+  - `tests/unit/llm/tools/test_definitions.py`
+  - `tests/unit/llm/tools/test_application_surface.py`
+  - `tests/unit/llm/tools/real/test_real_tools.py`
+
+### 驗證
+
+- TDD failure：
+  - focused tests 初跑為 `3 failed`，分別對應 schema 缺欄位、ApplicationService mapping 丟失
+    `output_dir`、real wrapper 丟失 `output_dir`。
+- Focused pass：
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py::TestConfigureTrainingDefinitions::test_output_dir_is_optional_schema_parameter tests/unit/llm/tools/test_application_surface.py::test_application_tool_command_preserves_training_output_dir tests/unit/llm/tools/real/test_real_tools.py::TestRealTrainingTools::test_configure_and_start_training -q`
+  - `3 passed`
+- Regression:
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/tools/real/test_real_tools.py tests/unit/llm/tools/test_mock_tools.py tests/unit/llm/test_tools_and_debug.py tests/unit/llm/test_tools_and_debug_cov.py tests/unit/llm/agent/test_verification_layer.py -q`
+  - `311 passed`
+- Static:
+  - targeted `ruff` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- Deterministic tool-call eval:
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals --repeat-count 2`
+  - `100 / 100` pass
+
+### 不能宣稱完成
+
+- 這只讓下一個 training walkthrough 的 output path 可控。
+- 還沒有 actual ChatPanel training completion、post-training evaluation metrics、visualization render
+  或 saliency render artifact。
+- Goal 不能標 complete。
