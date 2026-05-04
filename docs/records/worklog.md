@@ -3612,3 +3612,38 @@
 - 不能宣稱：
   - 這修的是 automated walkthrough 暴露的 ChatPanel reset / status UI bug。
   - 仍不是真人 Windows desktop acceptance，也不是長時間 true local model conversation soak。
+
+### 2026-05-04 Data Interpretation metadata apply to loaded data
+
+- 做了什麼：
+  - `ApplicationService._handle_apply_interpretation()` 現在會把 reviewed metadata 同步到已載入
+    Raw wrapper：subject/session 寫入 `set_subject_name()` / `set_session_name()`，task/run 保存到
+    `data_interpretation_metadata` runtime detail。
+  - `apply_interpretation` diagnostics 新增 `metadata_apply`，讓 backend / artifact 能看到哪些 loaded
+    files 收到 reviewed metadata。
+  - Dataset table header / widths 改成 compact scan layout：`File`、`Subject`、`Session`、`Chan`、
+    `Hz`、`Epochs`、`Events`，避免 applied state 把 `session-01` 或 events 截掉。
+  - human-like walkthrough 的 tiny synthetic dataset 在 metadata 正確分成多 subject 後，改用 group
+    training split，避免 individual split 在小 fixture 上產生 empty validation rollback。
+- evidence：
+  - backend unit test 覆蓋 Data Interpretation apply 後 loaded data subject/session/runtime detail
+    會更新，diagnostics 會回傳 `metadata_apply`。
+  - refreshed `artifacts/ui/human-like-walkthrough/06-interpretation-applied.png` 顯示 Dataset table
+    applied state 為 `S01` / `session-01`，不是 `0 / 0`。
+  - refreshed `10-training-readiness.png` 顯示 Start Training enabled；artifact command result 顯示
+    `generate_dataset` ok、`dataset_count=1`。
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_apply_updates_loaded_metadata tests/unit/backend/application/test_application_service.py::test_data_interpretation_choices_flow_into_recipe -q`
+    -> `2 passed`。
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `95 passed`。
+  - script helper tests：`poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `5 passed`。
+  - targeted `ruff check` / `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`。
+- 不能宣稱：
+  - 這修的是 reviewed metadata propagation 和 visible Dataset table trust。
+  - 仍不是 full BIDS entities editor、raw trigger selector、complex GDF/MAT anchor reconciliation 或
+    full import wizard completion。

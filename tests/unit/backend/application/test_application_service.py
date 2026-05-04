@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -178,6 +179,77 @@ def test_data_interpretation_choices_flow_into_recipe(tmp_path):
     assert recipe["class_map"] == {"1": "left hand", "2": "right hand"}
     assert "choices:metadata_overrides" in recipe["recipe_trace"]
     assert "choices:class_map" in recipe["recipe_trace"]
+
+
+def test_data_interpretation_apply_updates_loaded_metadata(tmp_path):
+    source_dir = tmp_path / "reviewed_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "subject01_run1.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    service = ApplicationService(Study())
+
+    class LoadedData:
+        def __init__(self, filepath: str) -> None:
+            self.filepath = filepath
+            self.subject = "0"
+            self.session = "0"
+            self.runtime_details: dict[str, dict[str, str]] = {}
+
+        def get_filepath(self) -> str:
+            return self.filepath
+
+        def set_subject_name(self, subject: str) -> None:
+            self.subject = subject
+
+        def set_session_name(self, session: str) -> None:
+            self.session = session
+
+        def set_runtime_detail(self, name: str, detail: dict[str, str]) -> None:
+            self.runtime_details[name] = detail
+
+    loaded = LoadedData(str(eeg_path))
+
+    def import_files(_filepaths: object) -> tuple[int, list[str]]:
+        cast(Any, service.study).loaded_data_list = [loaded]
+        return 1, []
+
+    service.dataset.import_files = MagicMock(side_effect=import_files)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "metadata_overrides": {
+                    "subject01_run1.fif": {
+                        "subject": "S01",
+                        "session": "session-01",
+                        "task": "motor-imagery",
+                        "run": "1",
+                    }
+                }
+            }
+        )
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert loaded.subject == "S01"
+    assert loaded.session == "session-01"
+    assert loaded.runtime_details["data_interpretation_metadata"] == {
+        "subject": "S01",
+        "session": "session-01",
+        "task": "motor-imagery",
+        "run": "1",
+    }
+    assert apply_result.diagnostics["metadata_apply"] == [
+        {
+            "file": "subject01_run1.fif",
+            "subject": "S01",
+            "session": "session-01",
+            "task": "motor-imagery",
+            "run": "1",
+        }
+    ]
 
 
 def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):

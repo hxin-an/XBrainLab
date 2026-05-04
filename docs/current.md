@@ -101,7 +101,11 @@ class-map review edit 接進同一流程：dialog 的 subject / session / task /
 review cells 可產生 `choices`，Dataset action 會在 apply 前 re-preview / re-validate 新
 candidate，backend 會把 user override、class map、event roles 寫入 applied interpretation /
 recipe trace；UI replay artifact 也已顯示 `S01`、`session-01`、`motor-imagery` 這組
-metadata override。後續 slice 已新增 label carrier review plan：backend preview 會為
+metadata override。最新 backend/UI polish 已把 reviewed subject/session 同步寫回 loaded Raw
+wrapper，task/run 保存到 `data_interpretation_metadata` runtime detail，Dataset table 和 downstream
+dataset generation 會看到使用者確認過的 metadata，而不是回到 `0 / 0`。human-like walkthrough
+artifact 也已刷新，applied state 顯示 `S01` / `session-01`，training readiness 使用 group split
+維持 resource-safe dataset readiness。後續 slice 已新增 label carrier review plan：backend preview 會為
 MAT、CSV / TSV、BIDS `events.tsv` 和 TXT carrier 建立 label field / MAT variable、anchor、
 time model、granularity 候選；wizard 會顯示可編輯的 label carrier review rows，Dataset action
 會把使用者選擇 re-preview / re-validate 後保存到 `AppliedInterpretation` /

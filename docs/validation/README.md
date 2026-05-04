@@ -42,7 +42,9 @@ training readiness、analysis readiness、ChatPanel empty / normal / clarificati
 success / narrow、reset / new session boundary、error recovery 和 eval dashboard report。
 最新 artifact summary 是 status `passed`、`26 / 26` required phases、`20` screenshots。UI polish
 後已刷新 screenshots；reset / new-session boundary 截圖也已確認不再顯示 stale chat bubbles
-或 stale `Ready to train` workflow status。這支撐 automated PyQt replay 的主要 UI 操作路徑，但仍不能
+或 stale `Ready to train` workflow status。最新 metadata apply slice 也讓 applied-state Dataset
+table 顯示 reviewed `S01` / `session-01`，且 training readiness 回到 dataset-ready / Start Training
+enabled。這支撐 automated PyQt replay 的主要 UI 操作路徑，但仍不能
 替代 human desktop acceptance。
 
 目前 fast engineering artifact 狀態是：

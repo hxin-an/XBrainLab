@@ -642,6 +642,7 @@ class ApplicationService:
         )
         self._applied_interpretations[interpretation_id] = applied
         self._latest_interpretation_id = interpretation_id
+        metadata_apply = self._apply_candidate_metadata_to_loaded_data(candidate)
         label_apply = self._apply_interpretation_label_carriers(candidate)
         applied_payload = self._applied_interpretations[interpretation_id].to_dict()
         label_message = ""
@@ -662,6 +663,7 @@ class ApplicationService:
                 "success_count": count,
                 "errors": errors,
                 "applied_interpretation": applied_payload,
+                "metadata_apply": metadata_apply,
                 "label_carriers_pending": list(candidate.label_carriers),
                 "label_apply": label_apply,
             },
@@ -1639,6 +1641,59 @@ class ApplicationService:
         ):
             raise PreconditionError("Apply an interpretation before saving a recipe.")
         return self._applied_interpretations[self._latest_interpretation_id]
+
+    def _apply_candidate_metadata_to_loaded_data(
+        self,
+        candidate: InterpretationCandidate,
+    ) -> list[dict[str, str]]:
+        """Mirror reviewed interpretation metadata onto loaded Raw wrappers."""
+        metadata_by_path = {
+            self._path_key(item.file): item for item in candidate.metadata
+        }
+        metadata_by_name = {Path(item.file).name: item for item in candidate.metadata}
+        updated: list[dict[str, str]] = []
+        for data in list(self.dataset.get_loaded_data_list() or []):
+            filepath = self._safe_data_filepath(data)
+            metadata = metadata_by_path.get(self._path_key(filepath))
+            if metadata is None:
+                metadata = metadata_by_name.get(Path(filepath).name)
+            if metadata is None:
+                continue
+
+            values = {
+                "subject": str(metadata.subject.value or ""),
+                "session": str(metadata.session.value or ""),
+                "task": str(metadata.task.value or ""),
+                "run": str(metadata.run.value or ""),
+            }
+            if values["subject"] and hasattr(data, "set_subject_name"):
+                data.set_subject_name(values["subject"])
+            if values["session"] and hasattr(data, "set_session_name"):
+                data.set_session_name(values["session"])
+            if hasattr(data, "set_runtime_detail"):
+                data.set_runtime_detail("data_interpretation_metadata", values)
+            updated.append({"file": Path(filepath).name, **values})
+
+        if updated:
+            with contextlib.suppress(Exception):
+                self.dataset.notify("data_changed")
+        return updated
+
+    @staticmethod
+    def _safe_data_filepath(data: Any) -> str:
+        get_filepath = getattr(data, "get_filepath", None)
+        if callable(get_filepath):
+            with contextlib.suppress(Exception):
+                return str(get_filepath())
+        return str(getattr(data, "filepath", ""))
+
+    @staticmethod
+    def _path_key(path: str) -> str:
+        if not path:
+            return ""
+        with contextlib.suppress(Exception):
+            return str(Path(path).resolve())
+        return str(path)
 
     def _clear_training_configuration(self) -> None:
         """Clear training config that belongs to the previous active dataset."""

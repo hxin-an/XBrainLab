@@ -450,7 +450,7 @@ def _run_walkthrough_steps(
             test_ratio=0.25,
             val_ratio=0.25,
             split_strategy="trial",
-            training_mode="individual",
+            training_mode="group",
         ),
         command_results,
     )

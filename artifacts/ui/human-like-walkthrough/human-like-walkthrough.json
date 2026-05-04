@@ -1409,6 +1409,7 @@
             "errors",
             "label_apply",
             "label_carriers_pending",
+            "metadata_apply",
             "payload_type",
             "success_count"
           ]
@@ -6481,13 +6482,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -6995,6 +6996,22 @@
             "label_import:timestamp:1"
           ]
         },
+        "metadata_apply": [
+          {
+            "file": "sub-01_task-mi_run-1_raw.fif",
+            "subject": "S01",
+            "session": "session-01",
+            "task": "motor-imagery",
+            "run": "1"
+          },
+          {
+            "file": "sub-01_task-mi_run-2_raw.fif",
+            "subject": "01",
+            "session": "",
+            "task": "mi",
+            "run": "2"
+          }
+        ],
         "label_carriers_pending": [
           "<walkthrough_source>/events.tsv"
         ],
@@ -7050,13 +7067,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -7596,13 +7613,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -8684,13 +8701,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -9027,13 +9044,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -9382,13 +9399,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -9454,7 +9471,7 @@
           "available": true,
           "count": 1,
           "names": [
-            "Subject-0_0"
+            "Fold_0"
           ],
           "locked": true,
           "generator_exists": true,
@@ -9767,13 +9784,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -9839,7 +9856,7 @@
           "available": true,
           "count": 1,
           "names": [
-            "Subject-0_0"
+            "Fold_0"
           ],
           "locked": true,
           "generator_exists": true,
@@ -10150,13 +10167,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -10222,7 +10239,7 @@
           "available": true,
           "count": 1,
           "names": [
-            "Subject-0_0"
+            "Fold_0"
           ],
           "locked": true,
           "generator_exists": true,
@@ -10528,13 +10545,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -10600,7 +10617,7 @@
           "available": true,
           "count": 1,
           "names": [
-            "Subject-0_0"
+            "Fold_0"
           ],
           "locked": true,
           "generator_exists": true,
@@ -10913,13 +10930,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -10985,7 +11002,7 @@
           "available": true,
           "count": 1,
           "names": [
-            "Subject-0_0"
+            "Fold_0"
           ],
           "locked": true,
           "generator_exists": true,
@@ -11292,13 +11309,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -11364,7 +11381,7 @@
           "available": true,
           "count": 1,
           "names": [
-            "Subject-0_0"
+            "Fold_0"
           ],
           "locked": true,
           "generator_exists": true,
@@ -12447,6 +12464,7 @@
         "errors",
         "label_apply",
         "label_carriers_pending",
+        "metadata_apply",
         "payload_type",
         "success_count"
       ]
@@ -12905,33 +12923,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 771107,
+      "pid": 775918,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 834780
+      "max_rss_kb": 835076
     },
     {
       "label": "before_close",
-      "pid": 771107,
+      "pid": 775918,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058272
+      "max_rss_kb": 1058736
     },
     {
       "label": "after_close",
-      "pid": 771107,
+      "pid": 775918,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058272
+      "max_rss_kb": 1058736
     }
   ],
   "pass_fail_summary": {
@@ -12942,5 +12960,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.514
+  "elapsed_seconds": 3.382
 }

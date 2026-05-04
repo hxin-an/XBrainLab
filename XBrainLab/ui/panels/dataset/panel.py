@@ -81,11 +81,13 @@ class DatasetPanel(BasePanel):
         self.table = QTableWidget()
         self.table.setColumnCount(7)
         self.table.setHorizontalHeaderLabels(
-            ["Filename", "Subject", "Session", "Channels", "Sfreq", "Epochs", "Events"],
+            ["File", "Subject", "Session", "Chan", "Hz", "Epochs", "Events"],
         )
         header = self.table.horizontalHeader()
         if header:
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for column, width in enumerate((100, 70, 92, 50, 52, 56, 68)):
+            self.table.setColumnWidth(column, width)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection,

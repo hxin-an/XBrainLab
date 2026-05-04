@@ -423,7 +423,9 @@ Goal 1 不能只做文件或小 patch。至少要達到：
   外殼加 backend adapter。
 - 舊 `load_data / attach_labels` 不能再是新 UI / agent 的主要心智模型；若保留，只能是
   legacy adapter 或底層 compatibility path。
-- subject / session / task / run metadata 會在資料解讀 preview 中顯示，且能保存進 recipe。
+- subject / session / task / run metadata 會在資料解讀 preview 中顯示，且能保存進 recipe；
+  reviewed subject/session 也會同步到 loaded Raw wrapper，讓 Dataset table 和 downstream split
+  使用確認過的 metadata。
 - Data Interpretation validation 會產生 `safe`、`needs_confirmation`、`blocked`。
 - command result 或 verification result 能表達 autonomy decision / decision boundary。
 - agent 可以規劃完整 workflow，但每一步都一個 command 一個 command 地 verify / execute /
