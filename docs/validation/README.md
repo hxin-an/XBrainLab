@@ -144,6 +144,14 @@ UI baseline capture 結果：
   `data_interpretation_candidate.py` module；metadata override、event/class choices、
   label-carrier recipe trace、empty selection blocking 和 existing scan / preview / recipe
   regressions 仍通過。
+- Agent legacy data-entry prompt downgrade 覆蓋 Empty / Data Loaded / Preprocessed stage prompt
+  和 Context Assembler policy intersection；`load_data` / `attach_labels` 不再作為 primary stage
+  tools 曝光，backend capability policy 也不能單獨把 stage-filtered legacy tool 放回 prompt。
+  Focused evidence：`tests/unit/llm/test_pipeline_state.py`、
+  `tests/unit/llm/agent/test_assembler_stage.py`、`tests/unit/llm/test_confidence.py`
+  -> `46 passed`；broader agent/tool gate -> `468 passed`；agent integration -> `7 passed`；
+  backend application regression -> `96 passed`；backend integration -> `3 passed`；
+  ruff / basedpyright / architecture compliance / MkDocs strict / diff check also passed。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /

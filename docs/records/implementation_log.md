@@ -42,6 +42,42 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Agent Data-Entry Tool Surface Downgrade
+
+### 狀態
+
+Agent stage prompt / tool exposure 已把 legacy `load_data / attach_labels` 從 Empty、
+Data Loaded 和 Preprocessed 的 primary workflow language 移除。Context Assembler 現在會將
+ApplicationService capability policy 與 stage allowlist 取交集，避免 backend compatibility
+policy 把已降權的 legacy tools 重新放回 prompt。legacy tools 仍保留在 schema taxonomy、
+parser / verification 和 compatibility service 裡，定位為相容入口而不是新資料入口主線。
+
+### 已可宣稱
+
+- In-app agent 的 primary data-entry prompt 已以 Data Interpretation scan / preview /
+  validate / apply / recipe 為主。
+- Backend capability policy 不能再單獨把 stage-filtered legacy data-entry tool 重新曝光到主
+  prompt。
+- Compatibility tools 仍可被 parser / verifier 辨識，沒有為了降權而刪掉相容面。
+
+### Evidence 入口
+
+- Source：`XBrainLab/llm/pipeline_state.py`
+- Source：`XBrainLab/llm/agent/assembler.py`
+- Source：`XBrainLab/llm/agent/confidence.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 legacy data-entry removal；UI post-load label compatibility、MCP/client-facing
+  language 和長時間 ChatPanel workflow 仍要繼續盤點。
+- 這不是 UI import wizard maturity、Windows human acceptance 或 product-complete claim。
+
+### 下一手重點
+
+下一輪應檢查 UI / MCP / docs 是否還把 `load_data / attach_labels` 當 primary workflow
+language，並繼續把使用者入口收斂到 Data Interpretation wizard / recipe flow。
+
 ## 2026-05-05 Backend Command Boundary Cleanup
 
 ### 狀態

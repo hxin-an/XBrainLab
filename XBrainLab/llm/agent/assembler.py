@@ -135,18 +135,24 @@ Workflow tool choices:
     def _application_allowed_tools(self, fallback: list[str]) -> list[str]:
         """Return tool names allowed by ApplicationService capability policy."""
         registered_names = {tool.name for tool in self.registry.get_all_tools()}
+        stage_names = set(fallback)
         try:
             app_allowed = set(enabled_tool_names(self.study_state))
         except Exception:
             return fallback
-        legacy_allowed = {
+        policy_allowed = {
+            name
+            for name in app_allowed
+            if name in stage_names and name in registered_names
+        }
+        non_policy_stage_tools = {
             name
             for name in fallback
             if name in registered_names
             and name not in TOOL_TO_COMMAND
             and name not in READ_ONLY_TOOLS
         }
-        return sorted(app_allowed | legacy_allowed)
+        return sorted(policy_allowed | non_policy_stage_tools)
 
     def _format_blocked_tools(self) -> str:
         """Format blocked tools and reasons from the ApplicationService policy."""

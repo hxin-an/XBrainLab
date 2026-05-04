@@ -211,6 +211,12 @@ candidate builder、metadata override 和 applied interpretation lifecycle datac
 builder、metadata override、event/class mapping 和 candidate recipe trace 抽到
 `data_interpretation_candidate.py`；`data_interpretation.py` 目前約 `75` 行，保留 shared
 decision enum、`AppliedInterpretation` 和 public compatibility re-exports。
+最新 agent tool-surface cleanup 把舊 `load_data` / `attach_labels` 從 Empty / Data Loaded /
+Preprocessed stage prompt 和 primary tool exposure 移除；Context Assembler 會把 backend
+capability policy 與 stage allowlist 取交集，避免 backend compatibility policy 把已降權的
+legacy tool 重新塞回主 prompt。`load_data` / `attach_labels` 仍在 schema taxonomy、parser /
+verification 和 `DataCompatibilityCommandService` 作為 legacy compatibility surface，但新
+agent 心智模型已改以 Data Interpretation scan / preview / validate / apply / recipe 為資料入口。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
@@ -615,8 +621,9 @@ true local model desktop session。
   adapter。mock / unit-test compatibility fallback 仍保留，但 real `Study` path 走
   `ApplicationService.execute()`。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory
-  expansion 再進 command surface。read-only `list_files` / `get_dataset_info` 會被正規化成
-  typed result。visible transcript 只顯示使用者語言；raw tool payload 保留在 diagnostics。
+  expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的
+  primary prompt；`attach_labels` 也已從這些 stage 的主工具語言移除。read-only
+  `list_files` / `get_dataset_info` 會被正規化成 typed result。visible transcript 只顯示使用者語言；raw tool payload 保留在 diagnostics。
   `set_montage` 和 `switch_panel` 仍是 UI request path；真正 montage apply 在 confirmation
   後走 `ApplyMontageCommand`。
 - 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一般回覆 walkthrough、
@@ -661,6 +668,8 @@ true local model desktop session。
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
    services、Preprocess command service，以及 State / Query services；下一輪應檢查是否還有
    UI / agent / MCP 旁路或 wrapper compatibility 心智模型，而不是再把 workflow 塞回 service。
+   Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
+   UI 和 MCP 是否也完全以 Data Interpretation 作為新資料入口語言。
 2. 等待真 Windows Desktop launcher click-through。
 3. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
    reason 或 Matplotlib 2D render 擴張成完整 visualization suite。

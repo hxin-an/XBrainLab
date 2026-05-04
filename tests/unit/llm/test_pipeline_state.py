@@ -132,7 +132,9 @@ class TestStageConfig:
     def test_empty_has_minimal_tools(self):
         tools = STAGE_CONFIG[PipelineStage.EMPTY]["tools"]
         assert "list_files" in tools
-        assert "load_data" in tools
+        assert "scan_source" in tools
+        assert "preview_interpretation" in tools
+        assert "load_data" not in tools
         # No preprocess/training tools in EMPTY
         assert "apply_bandpass_filter" not in tools
         assert "start_training" not in tools
@@ -141,7 +143,8 @@ class TestStageConfig:
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
         assert "apply_standard_preprocess" in tools
         assert "apply_bandpass_filter" in tools
-        assert "attach_labels" in tools
+        assert "scan_source" in tools
+        assert "attach_labels" not in tools
 
     def test_data_loaded_has_no_training_tools(self):
         tools = STAGE_CONFIG[PipelineStage.DATA_LOADED]["tools"]
@@ -151,9 +154,21 @@ class TestStageConfig:
     def test_preprocessed_has_generate_dataset(self):
         tools = STAGE_CONFIG[PipelineStage.PREPROCESSED]["tools"]
         assert "generate_dataset" in tools
-        assert "attach_labels" in tools
+        assert "validate_interpretation" in tools
+        assert "attach_labels" not in tools
         # Can still re-preprocess
         assert "apply_standard_preprocess" in tools
+
+    def test_stage_prompts_do_not_present_legacy_data_entry_as_primary(self):
+        for stage in (
+            PipelineStage.EMPTY,
+            PipelineStage.DATA_LOADED,
+            PipelineStage.PREPROCESSED,
+        ):
+            prompt = STAGE_CONFIG[stage]["system_prompt"]
+            assert "'load_data'" not in prompt
+            assert "'attach_labels'" not in prompt
+            assert "Data Interpretation" in prompt
 
     def test_dataset_ready_has_training_but_no_preprocess(self):
         tools = STAGE_CONFIG[PipelineStage.DATASET_READY]["tools"]

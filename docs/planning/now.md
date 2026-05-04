@@ -79,6 +79,11 @@
 - 最新 Data Interpretation boundary cleanup 已把 candidate builder / metadata override /
   event-class choice mapping 抽到 `data_interpretation_candidate.py`；`data_interpretation.py`
   目前主要只保留 shared decision enum、applied lifecycle dataclass 和 compatibility re-exports。
+- 最新 agent tool-surface cleanup 已把 `load_data` / `attach_labels` 從 Empty / Data Loaded /
+  Preprocessed stage prompt 和 primary tool exposure 移除；Context Assembler 現在用 backend
+  capability policy 與 stage allowlist 取交集，避免 compatibility tool 被 policy 重新帶回主
+  prompt。legacy tools 仍保留在 schema taxonomy / parser / verification 裡作 compatibility
+  path，不是新 agent 資料入口主語言。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -453,7 +458,8 @@ Goal 1 至少要包含：
      snapshot 和 UI quality review；reset / new-session boundary 已不再顯示 stale chat bubbles
      或 stale workflow status。仍不能替代 human desktop acceptance。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
-     `load_data / attach_labels` 作為主設計。
+     `load_data / attach_labels` 作為主設計；agent primary stage prompt 已先移除這兩個 legacy
+     tools，後續 UI / MCP language 仍要繼續盤點。
 
 10. **MCP-ready automation surface**
     - CLI / headless runner 保留給 CI、eval、batch 和 artifact generation。

@@ -18,22 +18,20 @@ from __future__ import annotations
 
 import re
 
-from XBrainLab.llm.pipeline_state import STAGE_CONFIG
+from XBrainLab.llm.tools.schema_contract import TOOL_TAXONOMY
 
 
 def _collect_known_tools() -> frozenset[str]:
-    """Derive the set of known tool names from :data:`STAGE_CONFIG`.
+    """Derive known tool names from the prompt-facing schema taxonomy.
 
-    This keeps the confidence heuristic automatically in sync with the
-    pipeline state machine — no manual duplication needed.
+    Stage configuration controls what should be visible for the current
+    workflow. Confidence scoring still needs to recognize compatibility tools
+    that can appear in parser tests or legacy repair paths.
     """
-    names: set[str] = set()
-    for config in STAGE_CONFIG.values():
-        names.update(config["tools"])
-    return frozenset(names)
+    return frozenset(TOOL_TAXONOMY)
 
 
-#: Tool names derived from STAGE_CONFIG (always in sync).
+#: Tool names derived from the schema taxonomy.
 _KNOWN_TOOLS: frozenset[str] = _collect_known_tools()
 
 _HEDGE_PATTERN = re.compile(

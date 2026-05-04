@@ -4568,3 +4568,67 @@
   - This is candidate builder boundary cleanup, not mature import wizard completion.
   - `AppliedInterpretation` remains in `data_interpretation.py`; apply side effects still live in
     `DataInterpretationApplyService`.
+
+### 2026-05-05 Agent legacy data-entry prompt downgrade
+
+- scope：
+  - Agent tool-surface / prompt-state cleanup。
+  - No backend command shape, UI widget, MCP schema, or recipe schema changes.
+- problem：
+  - `load_data` / `attach_labels` had already been moved to a compatibility backend service, but
+    `STAGE_CONFIG` and `ContextAssembler` could still present them as normal primary tools.
+  - Backend capability policy could reintroduce a compatibility tool into the prompt even if a
+    stage wanted Data Interpretation to be the primary data-entry language.
+- target boundary：
+  - Empty / Data Loaded / Preprocessed stage guidance presents Data Interpretation scan / preview /
+    validate / apply / recipe as the data-entry path.
+  - `ContextAssembler` intersects backend-enabled tools with the stage allowlist before prompt
+    exposure.
+  - Parser / confidence / verification can still recognize legacy compatibility tools through the
+    schema taxonomy, so compatibility paths remain testable without becoming the primary prompt.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py tests/unit/llm/agent/test_assembler_stage.py -q`
+    initially failed `7` tests because `load_data` / `attach_labels` were still exposed by stage
+    config and backend policy could reintroduce a stage-filtered legacy tool.
+- 做了什麼：
+  - Removed `load_data` from the Empty stage tool list and changed Empty guidance to start the Data
+    Interpretation workflow.
+  - Removed `attach_labels` from Data Loaded / Preprocessed primary tools and rewrote label guidance
+    around Data Interpretation preview / validation / recipe trace.
+  - Added analysis-readiness tools to the Trained stage so trained state retains evaluation /
+    visualization / saliency readiness.
+  - Changed `ContextAssembler._application_allowed_tools()` to intersect backend capability policy
+    with the current stage allowlist while preserving non-policy stage tools such as UI routing.
+  - Changed confidence known-tool collection to use `TOOL_TAXONOMY`, keeping legacy tools
+    recognizable outside primary stage prompts.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/test_confidence.py -q`
+    -> `46 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/llm/pipeline_state.py XBrainLab/llm/agent/assembler.py XBrainLab/llm/agent/confidence.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/test_confidence.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/llm/pipeline_state.py XBrainLab/llm/agent/assembler.py XBrainLab/llm/agent/confidence.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/agent/test_assembler_stage.py tests/unit/llm/test_confidence.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/test_pipeline_state.py tests/unit/llm/test_confidence.py -q`
+    -> `32 passed`.
+  - `timeout 120s git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `96 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+- 不能宣稱：
+  - This is an agent prompt/tool-exposure downgrade, not full removal of legacy compatibility paths.
+  - UI post-load label compatibility and MCP/client-facing language still need continued audit.
+  - No new UI screenshot or local LLM rerun was produced in this slice.

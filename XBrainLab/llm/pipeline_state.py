@@ -139,7 +139,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             "list_files",
             *_DATA_INTERPRETATION_TOOLS,
-            "load_data",
             "switch_panel",
         ],
         "system_prompt": (
@@ -147,8 +146,8 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "\n"
             "## Current Stage: Empty (No Data)\n"
             "The user has just opened the application and no data has been "
-            "loaded yet. Your primary goal is to help them locate and load "
-            "their EEG data files.\n"
+            "loaded yet. Your primary goal is to help them locate EEG data "
+            "and start the Data Interpretation workflow.\n"
             "\n"
             "### What you should do\n"
             "- Ask the user where their EEG files (.gdf / .edf / .set) are "
@@ -173,7 +172,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
-            "attach_labels",
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
@@ -192,8 +190,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "→ notch filter → set reference → resample → normalize → select "
             "channels → set montage → epoch.\n"
             "- Use 'get_dataset_info' to show the current data summary.\n"
-            "- If labels are needed, use 'attach_labels' to map label files "
-            "to data files.\n"
+            "- If labels or events are needed, use Data Interpretation tools "
+            "to scan, preview, validate, and apply label/event carriers with "
+            "reviewable metadata and recipe trace.\n"
             "- If the user wants to start over, use 'clear_dataset'.\n"
             "\n"
             "### What you should NOT do\n"
@@ -206,7 +205,6 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
             *_PREPROCESS_TOOLS,
-            "attach_labels",
             "generate_dataset",
             "get_dataset_info",
             "clear_dataset",
@@ -227,7 +225,9 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
             "- If the user wants to adjust preprocessing, they can still "
             "re-run individual preprocessing steps (e.g. change filter "
             "parameters).\n"
-            "- If labels are still missing, use 'attach_labels'.\n"
+            "- If labels are still missing, use Data Interpretation preview "
+            "and validation so label/event semantics stay tied to the import "
+            "recipe.\n"
             "\n"
             "### What you should NOT do\n"
             "- Do NOT suggest model selection or training — the dataset has "
@@ -294,6 +294,7 @@ STAGE_CONFIG: dict[PipelineStage, dict[str, Any]] = {
         "tools": [
             *_DATA_INTERPRETATION_TOOLS,
             *_TRAINING_TOOLS,
+            *_ANALYSIS_TOOLS,
             "get_dataset_info",
             "clear_dataset",
             "switch_panel",
