@@ -5017,3 +5017,49 @@ CSV / TSV / BIDS timestamp labels 走 timestamp batch import。但 reviewed MAT 
 - 這支撐 reviewed MAT sample-index anchor 的窄版 Data Interpretation apply path。
 - 這不支撐任意 raw trigger selection、non-sample timestamp conversion、complex MAT/GDF anchor
   reconciliation、XDF parser、real-data manual certification 或完整 product completion。
+
+## 2026-05-04 PyVistaQt runtime probe
+
+### 背景
+
+Visualization walkthrough 已證明 Matplotlib saliency tabs 會 render，且 headless/offscreen 3D
+tab 會顯示 user-facing blocked reason。然而 interactive PyVistaQt 3D render 仍未驗證。本輪先
+檢查目前 runner session 是否能建立最小 PyVistaQt plotter。
+
+### 變更
+
+- `scripts/dev/probe_pyvistaqt_runtime.py`
+  - parent process 產出 stable JSON / Markdown artifact。
+  - child process 嘗試建立 `QApplication`、`pyvistaqt.QtInteractor`，加入 sphere mesh，並
+    screenshot。
+  - child crash / X error 會由 parent process 捕捉成 `blocked` artifact，而不是讓證據只留在聊天裡。
+- `tests/unit/scripts/test_probe_pyvistaqt_runtime.py`
+  - 覆蓋 X `BadWindow` blocked summary。
+  - 覆蓋 Markdown claim boundary。
+- `artifacts/ui/visualization-render/pyvistaqt-runtime-probe.json`
+- `artifacts/ui/visualization-render/pyvistaqt-runtime-probe.md`
+
+### 驗證
+
+- exploratory direct probe:
+  - failed with X `BadWindow (invalid Window parameter)`。
+- artifact probe:
+  - `timeout 90s poetry run python scripts/dev/probe_pyvistaqt_runtime.py --output-dir artifacts/ui/visualization-render --timeout-seconds 60`
+  - wrote JSON / Markdown artifacts。
+  - status `blocked`。
+  - environment included `DISPLAY=:0` and `WAYLAND_DISPLAY=wayland-0`。
+- tests / static:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_probe_pyvistaqt_runtime.py -q`
+  - `2 passed`
+  - targeted `ruff check` / `ruff format --check` clean
+  - `poetry run basedpyright scripts/dev/probe_pyvistaqt_runtime.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant
+  - `git diff --check` -> pass
+
+### 不能宣稱完成
+
+- 這支撐目前 runner session 無法驗證 interactive PyVistaQt。
+- 這不支撐 XBrainLab 3D saliency render、真人 OpenGL desktop walkthrough 或完整 product
+  completion。

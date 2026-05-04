@@ -276,10 +276,13 @@
     MAT anchor、`time_model=sample_index`、`granularity=trial` 和 class map 時，backend 會把
     MAT labels + anchor 轉成 MNE-style event array，透過 `apply_labels_batch` 套用，並保存
     `label_import:anchored:<n>` recipe trace。
+  - PyVistaQt runtime probe 已新增：目前 runner session 有 `DISPLAY=:0` / `WAYLAND_DISPLAY`，
+    但最小 PyVistaQt plotter 仍以 X `BadWindow` blocked；interactive 3D render 仍不可宣稱完成。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；任意 raw trigger selection / complex MAT-GDF anchor
   reconciliation、full real-data manual compatibility certification、MCP Inspector GUI
-  click-through、Windows launcher 真人驗收尚未完成，UI replay coverage 還不是完整真人 walkthrough。
+  click-through、interactive 3D render、Windows launcher 真人驗收尚未完成，UI replay coverage
+  還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 

@@ -268,8 +268,12 @@ artist。3D tab 在 headless/offscreen runtime 現在不再嘗試建立 PyVista 
 requires an interactive OpenGL desktop session，且 `plotter_created=False`。這支撐
 post-training Matplotlib saliency render UI evidence 和 headless 3D blocked UX；仍不等於
 interactive desktop 3D render / PyVista path、ChatPanel 觸發 UI routing render、真人 Windows launcher
-click-through、MCP
-Inspector 或成熟 import wizard label editor 完成。
+click-through、MCP Inspector 或成熟 import wizard label editor 完成。後續 runtime probe
+`scripts/dev/probe_pyvistaqt_runtime.py` 產生
+`artifacts/ui/visualization-render/pyvistaqt-runtime-probe.json` / `.md`；在目前
+`DISPLAY=:0` / `WAYLAND_DISPLAY=wayland-0` session 中嘗試建立最小 PyVistaQt plotter，結果為
+`blocked`，stderr 是 X `BadWindow`。這支撐「目前 runner session 不能驗證 interactive 3D」；
+interactive 3D product render 仍是 blocker。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
 `scripts/dev/capture_windows_launcher_walkthrough.py` 會從 Windows `cmd.exe` 執行 Desktop

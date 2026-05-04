@@ -959,6 +959,35 @@ editor 完成。
 interactive desktop 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
 click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
 
+2026-05-04 PyVistaQt runtime probe：
+
+- script:
+  - `scripts/dev/probe_pyvistaqt_runtime.py`
+- artifacts:
+  - `artifacts/ui/visualization-render/pyvistaqt-runtime-probe.json`
+  - `artifacts/ui/visualization-render/pyvistaqt-runtime-probe.md`
+- result:
+  - status `blocked`
+  - environment captured `DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0`
+  - child probe attempted a minimal `pyvistaqt.QtInteractor` + sphere render
+  - stderr: X `BadWindow (invalid Window parameter)`
+  - screenshot was not created
+- commands:
+  - direct exploratory probe first failed with the same X `BadWindow`
+  - `timeout 90s poetry run python scripts/dev/probe_pyvistaqt_runtime.py --output-dir artifacts/ui/visualization-render --timeout-seconds 60`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_probe_pyvistaqt_runtime.py -q`
+  - `2 passed`
+  - targeted `ruff check` / `ruff format --check` -> pass.
+  - `poetry run basedpyright scripts/dev/probe_pyvistaqt_runtime.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant.
+  - `git diff --check` -> pass.
+
+這批 evidence 支撐目前 runner session 無法驗證 interactive PyVistaQt render，因此不能把
+headless 3D blocked UX 包裝成產品 3D 完成。它仍不支撐 XBrainLab 3D saliency render、真人
+OpenGL desktop walkthrough 或 Windows release click-through。
+
 2026-05-04 ChatPanel true local-model one-turn walkthrough：
 
 - 新增 `scripts/dev/capture_chatpanel_local_walkthrough.py`：

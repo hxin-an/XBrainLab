@@ -1,0 +1,21 @@
+{
+  "checks": {
+    "bad_window_error": true,
+    "plotter_created_stdout": false,
+    "returncode_zero": false,
+    "screenshot_exists": false,
+    "stdout_image_exists": false
+  },
+  "claim_boundary": "Interactive PyVistaQt runtime probe only; not a full XBrainLab 3D saliency render or human desktop click-through.",
+  "environment": {
+    "DISPLAY": ":0",
+    "PYVISTA_OFF_SCREEN": "",
+    "QT_QPA_PLATFORM": "",
+    "WAYLAND_DISPLAY": "wayland-0"
+  },
+  "returncode": 1,
+  "status": "blocked",
+  "stderr": "X Error of failed request:  BadWindow (invalid Window parameter)\n  Major opcode of failed request:  12 (X_ConfigureWindow)\n  Resource id in failed request:  0x2ec72800\n  Serial number of failed request:  7\n  Current serial number in output stream:  8\n",
+  "stdout": "",
+  "timeout_seconds": 60
+}

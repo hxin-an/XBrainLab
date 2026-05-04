@@ -3269,3 +3269,29 @@
   - 這支撐 reviewed MAT sample-index anchor 的窄版 apply path。
   - 仍不是任意 raw trigger selection、non-sample timestamp conversion、complex MAT/GDF anchor
     reconciliation、XDF parser 或完整 product completion。
+
+### 2026-05-04 PyVistaQt runtime probe
+
+- 做了什麼：
+  - 新增 `scripts/dev/probe_pyvistaqt_runtime.py`，用 child process 嘗試建立最小
+    `pyvistaqt.QtInteractor` + sphere render。
+  - 產出 `artifacts/ui/visualization-render/pyvistaqt-runtime-probe.json` / `.md`。
+- 結果：
+  - 目前 runner session 有 `DISPLAY=:0` 和 `WAYLAND_DISPLAY=wayland-0`。
+  - probe status 是 `blocked`。
+  - stderr 是 X `BadWindow (invalid Window parameter)`；screenshot 未產生。
+- 驗證：
+  - 直接 exploratory probe 先以相同 X `BadWindow` 失敗。
+  - `timeout 90s poetry run python scripts/dev/probe_pyvistaqt_runtime.py --output-dir artifacts/ui/visualization-render --timeout-seconds 60`
+    -> wrote artifacts。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_probe_pyvistaqt_runtime.py -q`
+    -> `2 passed`。
+  - targeted `ruff check` / `ruff format --check` clean。
+  - `poetry run basedpyright scripts/dev/probe_pyvistaqt_runtime.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐目前 session 的 interactive PyVistaQt runtime 被 blocked。
+  - 仍不能宣稱 XBrainLab interactive 3D saliency render 或真人 OpenGL desktop walkthrough 完成。
