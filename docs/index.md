@@ -13,7 +13,7 @@ docs/
   planning/        短期與長期規劃
   decisions/       已確認決策
   validation/      驗證策略與證據邊界
-  records/         實作紀錄與流水帳
+  records/         高層狀態快照與細節 worklog
 ```
 
 ## 先看這幾份
@@ -44,7 +44,7 @@ docs/
 | [planning/](planning/now.md) | 短期現在做什麼、長期路線。 |
 | [decisions/](decisions/README.md) | 討論後確認的決策。 |
 | [validation/](validation/README.md) | 驗證策略、目前 evidence、mock 邊界。 |
-| [records/](records/implementation_log.md) | 實作紀錄與流水帳。 |
+| [records/](records/implementation_log.md) | 高層狀態快照與細節 worklog。 |
 
 ## 目前最重要提醒
 

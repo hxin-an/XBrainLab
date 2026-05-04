@@ -11,8 +11,8 @@
 | 文件 | 角色 |
 | --- | --- |
 | `current.md` | 現在真相。只寫目前狀態、blocker、下一步。 |
-| `records/implementation_log.md` | 專業交接紀錄。只收重要變更、原因、影響、驗證。 |
-| `records/worklog.md` | 流水帳。記錄嘗試、驗證、踩坑、臨時判斷和未整理細節。 |
+| `records/implementation_log.md` | 高層狀態快照。只收產品主線完成度、claim boundary、evidence 入口和下一手重點。 |
+| `records/worklog.md` | 細節流水帳。記錄實作切片、TDD 紅燈、驗證命令、踩坑、臨時判斷和未整理細節。 |
 
 `records/worklog.md` 可以比較細，但不應該取代 current state 或 architecture。
 
@@ -22,7 +22,7 @@
 - 每筆只寫一件事。
 - 寫清楚結果，不只寫動作。
 - 失敗嘗試也要記，因為它們常常是後面判斷可信度的關鍵。
-- 每隔一段時間，把真正重要的內容整理進 `records/implementation_log.md`，不要讓 worklog 變成唯一真相來源。
+- 每隔一段時間，把真正重要的產品狀態整理進 `records/implementation_log.md`；不要把每個測試命令和 slice 細節複製過去。
 
 ## Entry 格式
 
@@ -36,6 +36,27 @@
 ```
 
 ## 2026-05-04
+
+### 20:31 Records scope cleanup
+
+- 做了什麼：
+  - 依使用者回饋，重新切分 `implementation_log.md` 和 `worklog.md` 的職責。
+  - `implementation_log.md` 改為高層產品狀態快照：track 狀態、claim boundary、evidence 入口、
+    下一手重點。
+  - `worklog.md` 保留細節流水帳：TDD 紅燈、驗證命令、artifact 細節、失敗嘗試。
+  - `roadmap.md` 同步更新已完成 baseline 與仍未完成的 product tracks。
+- 結果：
+  - 不再把 implementation log 寫成第二份 worklog。
+  - roadmap 現在可直接掃描 completed baseline / active blockers，不會停留在過期的
+    「Data Interpretation 尚未開始」狀態。
+- 證據：
+  - `rg -n "尚未開始|正式 local LLM eval runner 和足量 cases 尚未完成|實作紀錄與流水帳|BIDS-ish" docs/planning/roadmap.md docs/records docs/index.md`
+    -> roadmap / index 無過期命中；只剩本 worklog 的歷史描述。
+  - `git diff --check -- docs/records/implementation_log.md docs/records/worklog.md docs/planning/roadmap.md docs/index.md`
+    -> pass。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - MCP Inspector GUI script / test 目前仍是未提交施工中變更，不納入這個 docs scope claim。
 
 ### 18:42 Post-load label import target context
 
