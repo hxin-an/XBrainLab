@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -410,6 +411,43 @@ def _make_real_manager_with_fake_controller(qtbot, mode: str):
 
 
 class TestAgentManagerProductChatFlow:
+    def test_product_next_steps_use_data_interpretation_in_empty_state(self):
+        from XBrainLab.backend.application import ApplicationService
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        service = ApplicationService(Study())
+
+        steps = AgentManager._product_next_steps(
+            service.get_state(),
+            service.get_capabilities(),
+        )
+
+        assert steps[0] == "scan_source"
+        assert "load_data" not in steps
+        assert "attach_labels" not in steps
+
+    def test_product_next_steps_hide_legacy_label_tool_after_raw_load(self):
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        state = SimpleNamespace(
+            active_dataset=SimpleNamespace(
+                has_datasets=False,
+                has_epoch_data=False,
+                has_preprocessed_data=False,
+                has_raw_data=True,
+            ),
+            training=SimpleNamespace(has_model=False, has_training_option=False),
+            evaluation=SimpleNamespace(finished_runs=0),
+        )
+        capabilities = SimpleNamespace(
+            get=lambda _name: SimpleNamespace(enabled=True),
+        )
+
+        steps = AgentManager._product_next_steps(state, capabilities)
+
+        assert steps == ["preprocess"]
+
     def test_normal_chat_response_product_flow(self, qtbot):
         manager, fake = _make_real_manager_with_fake_controller(qtbot, "normal")
 

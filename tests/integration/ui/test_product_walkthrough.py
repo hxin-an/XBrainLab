@@ -90,7 +90,10 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert panel.workflow_guidance.isHidden()
     assert "Commands:" not in panel.available_commands_chip.text()
     assert "load_data" not in panel.available_commands_chip.text()
-    assert "Load EEG data" in panel.available_commands_chip.text()
+    assert "attach_labels" not in panel.available_commands_chip.text()
+    assert "Load EEG data" not in panel.available_commands_chip.text()
+    assert "Attach labels" not in panel.available_commands_chip.text()
+    assert "Scan data source" in panel.available_commands_chip.text()
     visible_footer_text = " ".join(
         label.text()
         for label in panel.control_panel.findChildren(type(panel.title_label))

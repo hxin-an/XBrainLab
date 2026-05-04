@@ -92,6 +92,9 @@
   capability policy 與 stage allowlist 取交集，避免 compatibility tool 被 policy 重新帶回主
   prompt。legacy tools 仍保留在 schema taxonomy / parser / verification 裡作 compatibility
   path，不是新 agent 資料入口主語言。
+- 最新 ChatPanel product-status cleanup 已把 assistant empty-state / next-step status 從 visible
+  legacy `Load EEG data` / `Attach labels` 收斂成 `Scan data source`，並在 ChatPanel status
+  rendering 層過濾 `load_data` / `attach_labels` / `import_labels` compatibility commands。
 - 最新 automation / MCP schema cleanup 已把 `load_data` / `attach_labels` / `import_labels`
   在 `AutomationCommandSpec` 和 MCP `tools/list` metadata 中標為 legacy compatibility、非
   primary workflow，並提供 Data Interpretation preferred commands；MCP/headless client 仍可呼叫

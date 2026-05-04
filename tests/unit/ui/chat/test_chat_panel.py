@@ -384,7 +384,7 @@ class TestChatPanelCallbacks:
         chat_panel.set_product_status(
             stage="empty",
             model_status="Setup needed",
-            available_commands=["load_data", "reset_session"],
+            available_commands=["scan_source", "load_data", "attach_labels"],
             tooltip="Setup is incomplete",
             blocked_reason="Generate datasets before training.",
         )
@@ -396,15 +396,18 @@ class TestChatPanelCallbacks:
         assert "Setup needed" in chat_panel.runtime_status_label.toolTip()
         assert "Setup needed" in chat_panel.options_btn.toolTip()
         assert chat_panel.workflow_guidance.isHidden()
-        assert "Load EEG data" in chat_panel.available_commands_chip.text()
+        assert "Scan data source" in chat_panel.available_commands_chip.text()
+        assert "Load EEG data" not in chat_panel.available_commands_chip.text()
+        assert "Attach labels" not in chat_panel.available_commands_chip.text()
         assert "load_data" not in chat_panel.available_commands_chip.text()
+        assert "attach_labels" not in chat_panel.available_commands_chip.text()
         assert chat_panel.empty_state_backend_label.text() == (
             "No EEG files are open yet."
         )
         assert chat_panel.empty_state_model_label.text() == ""
-        assert "Import EEG files" in chat_panel.empty_state_next_label.text()
+        assert "Scan data source" in chat_panel.empty_state_next_label.text()
         assert chat_panel.footer_status_label.toolTip() == (
-            "No EEG data open · Import files to begin"
+            "No EEG data open · Scan a data source to begin"
         )
 
     def test_retry_available_controls_disabled_state(self, chat_panel):

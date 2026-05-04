@@ -37,6 +37,52 @@
 
 ## 2026-05-05
 
+### 07:55 ChatPanel next-step legacy status cleanup
+
+- 做了什麼：
+  - 使用 `clean-code-reviewer` / `ui-product-reviewer` 檢查 UI / agent visible status，發現
+    `AgentManager._product_next_steps()` 在空狀態仍回 `load_data`，raw-loaded 狀態仍把
+    `attach_labels` 當成 next step；ChatPanel 會把這些 compatibility commands 顯示成
+    `Load EEG data` / `Attach labels`。
+  - 先補 tests，要求 empty-state next step 使用 `scan_source`，raw-loaded next step 不顯示
+    `attach_labels`，ChatPanel status rendering 過濾 `load_data` / `attach_labels`。
+  - `AgentManager._product_next_steps()` 改為 empty state 推 `scan_source`、raw-loaded state 只推
+    `preprocess`；ChatPanel status rendering 層新增 legacy command filter，避免 mock / compatibility
+    path 把 legacy command 重新帶回可見主 UI。
+  - 刷新 consolidated human-like walkthrough artifact。
+- 結果：
+  - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` visible text 只看到
+    `Scan data source`，沒有 `Load EEG data`、`Attach labels`、`load_data` 或 `attach_labels`。
+  - 最新 walkthrough 仍通過：status `passed`、`26 / 26` phases、`20` screenshots、resource smoke
+    `passed=True`，RSS growth `231628 KB` / limit `600000 KB`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py::TestAgentManagerProductChatFlow::test_product_next_steps_use_data_interpretation_in_empty_state tests/unit/ui/components/test_agent_manager.py::TestAgentManagerProductChatFlow::test_product_next_steps_hide_legacy_label_tool_after_raw_load -q`
+    -> 初始紅燈：steps 仍是 `load_data` / `attach_labels`。
+  - `poetry run pytest --capture=sys tests/unit/ui/components/test_agent_manager.py::TestAgentManagerProductChatFlow::test_product_next_steps_use_data_interpretation_in_empty_state tests/unit/ui/components/test_agent_manager.py::TestAgentManagerProductChatFlow::test_product_next_steps_hide_legacy_label_tool_after_raw_load -q`
+    -> `2 passed`。
+  - `poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_product_status_updates_empty_state_and_chips -q`
+    -> `1 passed`。
+  - `poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `75 passed`。
+  - `poetry run ruff check XBrainLab/ui/chat/panel.py XBrainLab/ui/components/agent_manager.py tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/ui/chat/panel.py XBrainLab/ui/components/agent_manager.py tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Focused basedpyright on the full legacy `tests/unit/ui/components/test_agent_manager.py` file
+    still reports pre-existing mock/QMainWindow typing debt; full project basedpyright remains the
+    authoritative gate。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`，refreshed consolidated walkthrough artifacts。
+  - `git diff --check` -> pass。
+  - `timeout 300s poetry run ruff check .` -> pass。
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 這清的是 ChatPanel / AgentManager visible product language；legacy compatibility commands 仍存在於
+    compatibility service / parser / tests，後續還要繼續清理 old RAG gold set 和 legacy real-tool
+    expectations 的 claim boundary。
+
 ### 07:45 Human-like walkthrough resource smoke gate
 
 - 做了什麼：
@@ -54,7 +100,7 @@
     `pass_fail_summary.resource_smoke`。
   - 最新 offscreen artifact status `passed`、`26 / 26` required phases、`20` screenshots、
     resource smoke `passed=True`。
-  - 最新 resource smoke：RSS growth `231456 KB` / limit `600000 KB`，after-close Qt active
+  - 最新 resource smoke：RSS growth `231628 KB` / limit `600000 KB`，after-close Qt active
     threads `0`；這是 coarse smoke，不是 leak-proof soak。
 - 證據：
   - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_build_pass_fail_summary_flags_unsettled_threads -q`

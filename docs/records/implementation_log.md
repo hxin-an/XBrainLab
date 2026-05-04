@@ -72,6 +72,38 @@ notes 從「附錄紀錄」提升為可 fail 的 validation boundary，但仍明
 把同樣的 lifecycle thinking 延伸到 long-running local model、training / visualization jobs、
 cancel/cleanup 和 repeated open/close UI smoke。
 
+## 2026-05-05 Visible Data Entry Language Cleanup
+
+### 狀態
+
+ChatPanel / AgentManager 的 visible next-step language 現在以 Data Interpretation 為資料入口主線。
+空狀態顯示 `Scan data source`，raw-loaded 狀態不再把 legacy `attach_labels` 包成下一步建議；
+ChatPanel status rendering 也會過濾 legacy compatibility commands。
+
+### 已可宣稱
+
+- 新使用者看到的 assistant empty-state / next-step status 不再以 `load_data` /
+  `attach_labels` 作為資料入口心智模型。
+- Consolidated walkthrough artifact 已刷新，visible text 沒有 legacy command leakage。
+
+### Evidence 入口
+
+- UI logic：`XBrainLab/ui/components/agent_manager.py`、`XBrainLab/ui/chat/panel.py`
+- UI tests：`tests/unit/ui/chat/test_chat_panel.py`、
+  `tests/unit/ui/components/test_agent_manager.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+
+### 不能宣稱完成
+
+- Legacy compatibility tools 仍存在於 backend compatibility service、parser / schema compatibility
+  和部分 historical tests；這個 slice 只移除可見 product-status 主路徑。
+- 這不是完整 import wizard UX closure 或 human desktop acceptance。
+
+### 下一手重點
+
+盤點剩餘 legacy real-tool / RAG gold-set / test expectations，確認它們是 compatibility coverage
+而不是產品主語言。
+
 ## 2026-05-05 MCP Stdio Adapter Session Boundary
 
 ### 狀態

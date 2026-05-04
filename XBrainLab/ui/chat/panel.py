@@ -57,6 +57,14 @@ from .styles import (
     TOOLBAR_BUTTON_STYLE,
 )
 
+PRODUCT_STATUS_HIDDEN_COMMANDS = frozenset(
+    {
+        "load_data",
+        "attach_labels",
+        "import_labels",
+    }
+)
+
 
 class ChatPanel(QWidget):
     """Copilot-style chat interface using MessageBubble widgets.
@@ -694,12 +702,23 @@ class ChatPanel(QWidget):
             self.runtime_status_label.setText("")
             self.runtime_status_label.setToolTip(status_tooltip)
 
+        visible_command_names = (
+            None
+            if available_commands is None
+            else [
+                name
+                for name in available_commands
+                if str(name) not in PRODUCT_STATUS_HIDDEN_COMMANDS
+            ]
+        )
         display_commands = (
-            None if available_commands is None else command_labels(available_commands)
+            None
+            if visible_command_names is None
+            else command_labels(visible_command_names)
         )
         if display_commands is None:
             command_text = self._footer_status_for(stage, None, blocked_reason)
-        elif available_commands:
+        elif visible_command_names:
             preview = ", ".join(display_commands[:3])
             extra_count = len(display_commands) - 3
             suffix = "" if extra_count <= 0 else f" +{extra_count}"
@@ -759,8 +778,8 @@ class ChatPanel(QWidget):
         """Return a user-facing workflow hint for the footer/status bar."""
         if display_commands:
             first_action = display_commands[0]
-            if stage == "No data loaded" and first_action == "Load EEG data":
-                return "No EEG data open · Import files to begin"
+            if stage == "No data loaded" and first_action == "Scan data source":
+                return "No EEG data open · Scan a data source to begin"
             return f"{stage} · {first_action}"
         if blocked_reason:
             return f"{stage} · Ask what is blocking training"

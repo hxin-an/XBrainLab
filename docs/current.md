@@ -435,11 +435,13 @@ state、workflow/backend snapshot index，`20` 張 screenshot 全部通過 nonbl
 raw tool / schema / traceback leakage check 為 `0` findings。最新 resource smoke gate 也會讓
 walkthrough 在 close 後 Python threads 未回落、Qt thread pool 仍 active 或 RSS high-water delta
 超過 threshold 時 fail；目前 artifact 顯示 resource smoke `passed=True`、RSS growth
-`231456 KB` / limit `600000 KB`、Qt active thread `0`。這是 coarse cleanup smoke，不是
+`231628 KB` / limit `600000 KB`、Qt active thread `0`。這是 coarse cleanup smoke，不是
 memory-leak proof 或長時間 soak。後續 UI polish 已依截圖修正
 Data Interpretation preview / confirm dialog 的 review surface density、Training plot dark-theme
 readability、Training history compact header、Evaluation page compact controls，以及 ChatPanel
-new conversation / reset 後的 stale bubble / stale workflow status，並刷新同一份
+new conversation / reset 後的 stale bubble / stale workflow status，並把 ChatPanel empty-state
+next step 從 legacy `load_data` / `attach_labels` visible language 收斂成 Data Interpretation
+`Scan data source` 主線，刷新同一份
 walkthrough artifact。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。

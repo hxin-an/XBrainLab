@@ -929,8 +929,8 @@ class AgentManager(QObject):
         """Return a user-facing status-bar hint with no runtime diagnostics."""
         labels = command_labels(command_names)
         if labels:
-            if stage == "No data loaded" and labels[0] == "Load EEG data":
-                return "No EEG data open · Import files to begin"
+            if stage == "No data loaded" and labels[0] == "Scan data source":
+                return "No EEG data open · Scan a data source to begin"
             return f"{stage} · {labels[0]}"
         if blocked_reason:
             return f"{stage} · Ask what is blocking training"
@@ -958,9 +958,9 @@ class AgentManager(QObject):
         elif active_dataset.has_preprocessed_data:
             candidates = ["create_epoch"]
         elif active_dataset.has_raw_data:
-            candidates = ["preprocess", "attach_labels"]
+            candidates = ["preprocess"]
         else:
-            candidates = ["load_data"]
+            candidates = ["scan_source"]
 
         return [
             command_name
