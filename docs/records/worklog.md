@@ -3647,3 +3647,39 @@
   - 這修的是 reviewed metadata propagation 和 visible Dataset table trust。
   - 仍不是 full BIDS entities editor、raw trigger selector、complex GDF/MAT anchor reconciliation 或
     full import wizard completion。
+
+### 2026-05-04 Walkthrough observable evidence hardening
+
+- 做了什麼：
+  - `scripts/dev/capture_human_like_product_walkthrough.py` 現在會把 per-phase evidence 彙整到
+    top-level `observable_evidence`，包含 visible text snapshots、button states、
+    workflow snapshots、backend state snapshots 和 phase screenshot index。
+  - 同一 artifact 新增 `ui_quality_review`，逐張 screenshot 記錄 exists / nonblank automated
+    review，並保存 forbidden visible text findings 與 human design review boundary。
+  - `validate_walkthrough_payload()` 會拒絕缺少 observable evidence、缺少 UI quality review 或
+    UI quality automated checks 未通過的 artifact。
+  - Markdown report 新增 `UI Quality Review` 和 `Observable Evidence` sections，reviewer 不必只讀
+    raw JSON phases。
+- evidence：
+  - refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`：
+    `observable_evidence.visible_text_snapshots=26`、`button_states=26`、
+    `workflow_states=26`、`ui_quality_review.automated_checks_passed=True`。
+  - refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` 顯示 UI quality review
+    和 observable evidence counts。
+  - artifact summary 仍是 status `passed`、`26 / 26` phases、`20` screenshots、human desktop
+    acceptance `not performed`。
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `9 passed`。
+  - `timeout 300s poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> pass。
+  - `timeout 300s poetry run ruff format --check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`。
+- 不能宣稱：
+  - 這補強 automated UI-observable artifact 的可審查性，不是真人 Windows desktop acceptance。
+  - screenshot nonblank / visible-text-clean 仍不等於真人確認 Windows launcher、雙螢幕 / DPI、
+    長時間 local model desktop session 或完整產品 release。

@@ -3901,6 +3901,4565 @@
     "error_recovery": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
     "eval_dashboard": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
   },
+  "observable_evidence": {
+    "visible_text_snapshots": {
+      "app_startup": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "main_window_initial_state": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "data_source_selection": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "data_interpretation_select_source": [
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "data_interpretation_scan_result": [
+        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Found 2 EEG file(s) and 1 label/event carrier(s).",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay",
+        "Type",
+        "bids",
+        "Files",
+        "2",
+        "Label carriers",
+        "1",
+        "BIDS",
+        "BIDS-like source, 01, 1 events.tsv file(s)",
+        "Validation needs confirmation before applying.",
+        "trial_type",
+        "onset",
+        "Seconds",
+        "Event",
+        "External labels",
+        "Needs review",
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+        "Save reusable import recipe after applying",
+        "Confirm and Apply",
+        "Cancel"
+      ],
+      "data_interpretation_preview": [
+        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Found 2 EEG file(s) and 1 label/event carrier(s).",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay",
+        "Type",
+        "bids",
+        "Files",
+        "2",
+        "Label carriers",
+        "1",
+        "BIDS",
+        "BIDS-like source, 01, 1 events.tsv file(s)",
+        "Validation needs confirmation before applying.",
+        "trial_type",
+        "onset",
+        "Seconds",
+        "Trial",
+        "Class cue labels",
+        "sub-01_task-mi_run-2_raw.fif",
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+        "Save reusable import recipe after applying",
+        "Confirm and Apply",
+        "Cancel"
+      ],
+      "data_interpretation_confirm_metadata_labels": [
+        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Found 2 EEG file(s) and 1 label/event carrier(s).",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay",
+        "Type",
+        "bids",
+        "Files",
+        "2",
+        "Label carriers",
+        "1",
+        "BIDS",
+        "BIDS-like source, 01, 1 events.tsv file(s)",
+        "Validation needs confirmation before applying.",
+        "trial_type",
+        "onset",
+        "Seconds",
+        "Trial",
+        "Class cue labels",
+        "sub-01_task-mi_run-2_raw.fif",
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
+        "Save reusable import recipe after applying",
+        "Confirm and Apply",
+        "Cancel"
+      ],
+      "data_interpretation_decisions": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "data_interpretation_apply": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "data_interpretation_save_recipe": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "data_interpretation_reload_recipe": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset"
+      ],
+      "preprocessing": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Filtering",
+        "Resample",
+        "Re-reference",
+        "Normalize",
+        "Epoched (Locked)",
+        "Reset All Preprocessing",
+        "Channel:",
+        "C3",
+        "Y-Scale (uV):",
+        "Auto",
+        "Time / Epoch:",
+        "0.00"
+      ],
+      "epoch_creation": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Dataset Splitting",
+        "Model Selection",
+        "Training Setting",
+        "Start Training",
+        "Stop Training",
+        "Clear History"
+      ],
+      "dataset_generation": [
+        "Dataset Splitting",
+        "Model Selection",
+        "Training Setting",
+        "Start Training",
+        "Stop Training",
+        "Clear History"
+      ],
+      "training_readiness": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Dataset Splitting",
+        "Model Selection",
+        "Training Setting",
+        "Start Training",
+        "Stop Training",
+        "Clear History"
+      ],
+      "evaluation_visualization_saliency_readiness": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "No Data Available",
+        "Model:",
+        "Run:",
+        "Percent"
+      ],
+      "assistant_empty_state": [
+        "Start with your EEG data",
+        "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
+        "No EEG files are open yet.",
+        "Import EEG files · Ask what is ready",
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "assistant_repeated_open_close": [
+        "Start with your EEG data",
+        "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
+        "No EEG files are open yet.",
+        "Import EEG files · Ask what is ready",
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "assistant_normal_message": [
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "assistant_missing_input_clarification": [
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "assistant_blocked_command": [
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "assistant_successful_tool_result": [
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "assistant_narrow_panel": [
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send"
+      ],
+      "reset_new_session_boundary": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset",
+        "Start with your EEG data",
+        "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
+        "No EEG files are open yet.",
+        "Import EEG files · Ask what is ready",
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send",
+        "XBrainLab",
+        "↻",
+        "+",
+        "...",
+        "❐"
+      ],
+      "error_recovery": [
+        "Dataset",
+        "Preprocess",
+        "Training",
+        "Evaluation",
+        "Visualization",
+        "AI Assistant",
+        "Interpret Data Source",
+        "Add Labels to Loaded Data",
+        "Smart Parse Metadata",
+        "Channel Selection",
+        "Clear Dataset",
+        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Send",
+        "XBrainLab",
+        "↻",
+        "+",
+        "...",
+        "❐"
+      ],
+      "eval_dashboard_report": [
+        "XBrainLab Evaluation Dashboard Report"
+      ]
+    },
+    "button_states": {
+      "app_startup": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Apply external labels to loaded files"
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "main_window_initial_state": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Interpret a data source before adding labels."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "data_source_selection": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Interpret a data source before adding labels."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "data_interpretation_select_source": [
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Interpret a data source before adding labels."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "data_interpretation_scan_result": [
+        {
+          "text": "Save reusable import recipe after applying",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Recipe records source, metadata decisions, label carriers, and confirmations for review or replay."
+        },
+        {
+          "text": "Confirm and Apply",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Cancel",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "data_interpretation_preview": [
+        {
+          "text": "Save reusable import recipe after applying",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Recipe records source, metadata decisions, label carriers, and confirmations for review or replay."
+        },
+        {
+          "text": "Confirm and Apply",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Cancel",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "data_interpretation_confirm_metadata_labels": [
+        {
+          "text": "Save reusable import recipe after applying",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Recipe records source, metadata decisions, label carriers, and confirmations for review or replay."
+        },
+        {
+          "text": "Confirm and Apply",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Cancel",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "data_interpretation_decisions": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Add labels to loaded data and update the current recipe trace."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "data_interpretation_apply": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Add labels to loaded data and update the current recipe trace."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "data_interpretation_save_recipe": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Add labels to loaded data and update the current recipe trace."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "data_interpretation_reload_recipe": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Add labels to loaded data and update the current recipe trace."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        }
+      ],
+      "preprocessing": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Filtering",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Reset the session before changing preprocessing after epoching or dataset generation."
+        },
+        {
+          "text": "Resample",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Reset the session before changing preprocessing after epoching or dataset generation."
+        },
+        {
+          "text": "Re-reference",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Reset the session before changing preprocessing after epoching or dataset generation."
+        },
+        {
+          "text": "Normalize",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Reset the session before changing preprocessing after epoching or dataset generation."
+        },
+        {
+          "text": "Epoched (Locked)",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Reset the session before recreating epochs for the active dataset."
+        },
+        {
+          "text": "Reset All Preprocessing",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "epoch_creation": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Dataset Splitting",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Model Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Training Setting",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Start Training",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Select a model before training. Configure training options before training."
+        },
+        {
+          "text": "Stop Training",
+          "enabled": false,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Clear History",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "dataset_generation": [
+        {
+          "text": "Dataset Splitting",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Model Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Training Setting",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Start Training",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Select a model before training. Configure training options before training."
+        },
+        {
+          "text": "Stop Training",
+          "enabled": false,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Clear History",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "training_readiness": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Dataset Splitting",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Model Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Training Setting",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Start Training",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Start Training"
+        },
+        {
+          "text": "Stop Training",
+          "enabled": false,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "Clear History",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "evaluation_visualization_saliency_readiness": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        },
+        {
+          "text": "Percent",
+          "enabled": true,
+          "checked": false,
+          "tooltip": ""
+        }
+      ],
+      "assistant_empty_state": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "assistant_repeated_open_close": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "assistant_normal_message": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "assistant_missing_input_clarification": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "assistant_blocked_command": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "assistant_successful_tool_result": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "assistant_narrow_panel": [
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        }
+      ],
+      "reset_new_session_boundary": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": true,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Interpret a data source before adding labels."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        },
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "↻",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Send a request before retrying."
+        },
+        {
+          "text": "+",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "New Conversation"
+        },
+        {
+          "text": "...",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Options"
+        },
+        {
+          "text": "❐",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Float / Dock"
+        }
+      ],
+      "error_recovery": [
+        {
+          "text": "Dataset",
+          "enabled": true,
+          "checked": true,
+          "tooltip": "Dataset"
+        },
+        {
+          "text": "Preprocess",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Preprocess"
+        },
+        {
+          "text": "Training",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Training"
+        },
+        {
+          "text": "Evaluation",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Evaluation"
+        },
+        {
+          "text": "Visualization",
+          "enabled": true,
+          "checked": false,
+          "tooltip": "Visualization"
+        },
+        {
+          "text": "AI Assistant",
+          "enabled": true,
+          "checked": true,
+          "tooltip": ""
+        },
+        {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Add Labels to Loaded Data",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Interpret a data source before adding labels."
+        },
+        {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        {
+          "text": "Channel Selection",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Select specific channels to keep"
+        },
+        {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Remove all loaded data"
+        },
+        {
+          "text": "Send",
+          "enabled": true,
+          "checked": null,
+          "tooltip": ""
+        },
+        {
+          "text": "↻",
+          "enabled": false,
+          "checked": null,
+          "tooltip": "Send a request before retrying."
+        },
+        {
+          "text": "+",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "New Conversation"
+        },
+        {
+          "text": "...",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Options"
+        },
+        {
+          "text": "❐",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Float / Dock"
+        }
+      ],
+      "eval_dashboard_report": []
+    },
+    "workflow_states": {
+      "app_startup": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "main_window_initial_state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "data_source_selection": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_select_source": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_scan_result": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_preview": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_confirm_metadata_labels": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_decisions": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "data_interpretation_apply": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "data_interpretation_save_recipe": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "data_interpretation_reload_recipe": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "preprocessing": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "epoch_creation": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "dataset_generation": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "training_readiness": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "evaluation_visualization_saliency_readiness": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_empty_state": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_repeated_open_close": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_normal_message": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_missing_input_clarification": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_blocked_command": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_successful_tool_result": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_narrow_panel": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "reset_new_session_boundary": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "error_recovery": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "eval_dashboard_report": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      }
+    },
+    "backend_state_snapshots": {
+      "app_startup": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "main_window_initial_state": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "data_source_selection": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_select_source": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_scan_result": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_preview": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_confirm_metadata_labels": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "None"
+        }
+      },
+      "data_interpretation_decisions": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "data_interpretation_apply": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "data_interpretation_save_recipe": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "data_interpretation_reload_recipe": {
+        "pipeline_stage": "data_loaded",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "preprocessing": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "epoch_creation": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "dataset_generation": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "training_readiness": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "evaluation_visualization_saliency_readiness": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_empty_state": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_repeated_open_close": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_normal_message": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_missing_input_clarification": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_blocked_command": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_successful_tool_result": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "assistant_narrow_panel": {
+        "pipeline_stage": "dataset_ready",
+        "raw": {
+          "loaded": true,
+          "count": 2,
+          "files": [
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
+          ]
+        },
+        "preprocessed": {
+          "available": true,
+          "count": 2,
+          "operations": [
+            "Filtering 4.0 ~ 40.0 Hz",
+            "z-score normalization",
+            "Epoching 0.0 ~ 1.0 by event (None baseline)"
+          ]
+        },
+        "epoch": {
+          "exists": true,
+          "epoch_count": 8,
+          "event_names": [
+            "left",
+            "right"
+          ]
+        },
+        "dataset": {
+          "available": true,
+          "count": 1
+        },
+        "training": {
+          "has_model": true,
+          "model_name": "EEGNet",
+          "has_training_option": true,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 4
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": true,
+          "has_validation_decision": true,
+          "has_applied_interpretation": true,
+          "has_recipe": true,
+          "validation_decision": "needs_confirmation",
+          "pending_confirmation": true,
+          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        }
+      },
+      "reset_new_session_boundary": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": false,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "error_recovery": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      },
+      "eval_dashboard_report": {
+        "pipeline_stage": "empty",
+        "raw": {
+          "loaded": false,
+          "count": 0,
+          "files": []
+        },
+        "preprocessed": {
+          "available": false,
+          "count": 0,
+          "operations": []
+        },
+        "epoch": {
+          "exists": false,
+          "epoch_count": null,
+          "event_names": []
+        },
+        "dataset": {
+          "available": false,
+          "count": 0
+        },
+        "training": {
+          "has_model": false,
+          "model_name": null,
+          "has_training_option": false,
+          "has_trainer": false,
+          "is_running": false,
+          "finished_run_count": 0
+        },
+        "evaluation": {
+          "available": false,
+          "total_plans": 0,
+          "total_runs": 0,
+          "finished_runs": 0,
+          "metrics_available": false
+        },
+        "visualization": {
+          "saliency_configured": false,
+          "saliency_available": false,
+          "montage_available": false,
+          "channel_positions_available": false,
+          "channel_count": 0
+        },
+        "interpretation": {
+          "has_scan_result": true,
+          "has_preview": false,
+          "has_validation_decision": false,
+          "has_applied_interpretation": false,
+          "has_recipe": false,
+          "validation_decision": null,
+          "pending_confirmation": false,
+          "recipe_path": "None"
+        }
+      }
+    },
+    "phase_screenshots": {
+      "app_startup": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
+      "main_window_initial_state": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+      "data_source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_interpretation_select_source": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_interpretation_scan_result": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+      "data_interpretation_preview": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "data_interpretation_confirm_metadata_labels": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "data_interpretation_decisions": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "data_interpretation_apply": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "data_interpretation_save_recipe": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "data_interpretation_reload_recipe": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "preprocessing": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+      "epoch_creation": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "dataset_generation": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "training_readiness": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+      "evaluation_visualization_saliency_readiness": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+      "assistant_empty_state": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "assistant_repeated_open_close": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "assistant_normal_message": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+      "assistant_missing_input_clarification": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+      "assistant_blocked_command": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+      "assistant_successful_tool_result": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+      "assistant_narrow_panel": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+      "reset_new_session_boundary": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+      "error_recovery": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+      "eval_dashboard_report": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
+    }
+  },
   "command_results": [
     {
       "status": "ok",
@@ -12923,35 +17482,184 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 775918,
+      "pid": 779152,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835076
+      "max_rss_kb": 835332
     },
     {
       "label": "before_close",
-      "pid": 775918,
+      "pid": 779152,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058736
+      "max_rss_kb": 1058016
     },
     {
       "label": "after_close",
-      "pid": 775918,
+      "pid": 779152,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058736
+      "max_rss_kb": 1058016
     }
   ],
+  "ui_quality_review": {
+    "automated_checks_passed": true,
+    "screenshot_review": [
+      {
+        "screenshot": "main_initial",
+        "path": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "dataset_page",
+        "path": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "source_selection",
+        "path": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "wizard_preview",
+        "path": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "wizard_confirm",
+        "path": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "applied",
+        "path": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "recipe_reloaded",
+        "path": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "preprocess",
+        "path": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "dataset_ready",
+        "path": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "training_readiness",
+        "path": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "analysis_readiness",
+        "path": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "assistant_empty",
+        "path": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "assistant_normal",
+        "path": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "assistant_clarification",
+        "path": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "assistant_blocked",
+        "path": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "assistant_success",
+        "path": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "assistant_narrow",
+        "path": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "reset_boundary",
+        "path": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "error_recovery",
+        "path": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      },
+      {
+        "screenshot": "eval_dashboard",
+        "path": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
+        "exists": true,
+        "nonblank": true,
+        "automated_review": "nonblank"
+      }
+    ],
+    "forbidden_visible_text": [],
+    "phase_snapshot_coverage": true,
+    "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, and selected snake_case command leakage.",
+    "human_design_review_boundary": "This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions."
+  },
   "pass_fail_summary": {
     "passed": true,
     "failed_checks": [],
@@ -12960,5 +17668,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.382
+  "elapsed_seconds": 3.617
 }

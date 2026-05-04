@@ -3,7 +3,7 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `3.382`
+- elapsed seconds: `3.617`
 - source: `<walkthrough_source>`
 - recipe: `artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
@@ -36,6 +36,19 @@
 - reset_boundary: `artifacts/ui/human-like-walkthrough/18-reset-boundary.png`
 - error_recovery: `artifacts/ui/human-like-walkthrough/19-error-recovery.png`
 - eval_dashboard: `artifacts/ui/human-like-walkthrough/20-eval-dashboard.png`
+
+## UI Quality Review
+
+- automated checks passed: `True`
+- phase snapshot coverage: `True`
+- forbidden visible text findings: `0`
+- human review boundary: This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions.
+
+## Observable Evidence
+
+- visible text snapshots: `26` phases
+- button states: `26` phases
+- workflow/backend snapshots: `26` phases
 
 ## Phases
 
@@ -105,9 +118,9 @@
 
 ## Resource Notes
 
-- start: threads `1`, qt active `0`, rss `835076` KB
-- before_close: threads `1`, qt active `0`, rss `1058736` KB
-- after_close: threads `1`, qt active `0`, rss `1058736` KB
+- start: threads `1`, qt active `0`, rss `835332` KB
+- before_close: threads `1`, qt active `0`, rss `1058016` KB
+- after_close: threads `1`, qt active `0`, rss `1058016` KB
 
 ## Remaining Human Verification
 

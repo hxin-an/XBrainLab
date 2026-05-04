@@ -44,7 +44,10 @@ success / narrow、reset / new session boundary、error recovery 和 eval dashbo
 後已刷新 screenshots；reset / new-session boundary 截圖也已確認不再顯示 stale chat bubbles
 或 stale `Ready to train` workflow status。最新 metadata apply slice 也讓 applied-state Dataset
 table 顯示 reviewed `S01` / `session-01`，且 training readiness 回到 dataset-ready / Start Training
-enabled。這支撐 automated PyQt replay 的主要 UI 操作路徑，但仍不能
+enabled。最新 artifact 另有 top-level `observable_evidence` / `ui_quality_review`：`26`
+個 phase 都有 visible text、button state、workflow/backend snapshot index，`20` 張 screenshot
+全數 nonblank，visible text raw tool / schema / traceback leakage findings 為 `0`。這支撐
+automated PyQt replay 的主要 UI 操作路徑，但仍不能
 替代 human desktop acceptance。
 
 目前 fast engineering artifact 狀態是：
@@ -919,11 +922,17 @@ local model session、EEG training quality 或 product completion。
   - reset / new session confirmation boundary and error recovery after a missing scan.
   - visible text snapshots、button enabled / disabled state、workflow state snapshots、
     command / tool transcript、user-facing transcript、CommandResult payloads、process/thread notes.
+  - top-level `observable_evidence` indexes visible text、button states、workflow snapshots and
+    backend state snapshots by phase；`ui_quality_review` records nonblank screenshot checks,
+    forbidden visible text findings and the human-review boundary.
 - observed result：
   - status：`passed`
   - phases：`26 / 26`
   - screenshots：`20`
   - human desktop acceptance：`not performed`
+  - observable evidence：`26` visible text snapshots、`26` button-state snapshots、`26`
+    workflow/backend snapshots.
+  - UI quality review：automated checks `passed`、forbidden visible text findings `0`.
   - resource notes：Python thread count returned to `1`; Qt active thread count `0`.
 
 這批 evidence 支撐 automated UI-observable replay 條件下主要 path 可操作。它仍不能宣稱真人

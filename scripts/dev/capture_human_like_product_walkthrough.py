@@ -618,6 +618,8 @@ def _run_walkthrough_steps(
     resource_notes.append(resource_snapshot("after_close"))
 
     pass_fail_summary = build_pass_fail_summary(phases, screenshots)
+    observable_evidence = build_observable_evidence_summary(phases)
+    ui_quality_review = build_ui_quality_review(phases, screenshots)
     status = "passed" if pass_fail_summary["passed"] else "failed"
     return {
         "status": status,
@@ -629,12 +631,14 @@ def _run_walkthrough_steps(
         "recipe_path": str(recipe_path),
         "phases": phases,
         "screenshots": screenshots,
+        "observable_evidence": observable_evidence,
         "command_results": command_results,
         "tool_transcript": tool_transcript,
         "user_facing_message_transcript": user_transcript,
         "chatpanel": chat_payload,
         "final_state": compact_state(service.get_state()),
         "resource_notes": resource_notes,
+        "ui_quality_review": ui_quality_review,
         "pass_fail_summary": pass_fail_summary,
         "elapsed_seconds": round(time.monotonic() - started_at, 3),
     }
@@ -1108,6 +1112,10 @@ def build_pass_fail_summary(
         forbidden = forbidden_visible_text(phase.get("visible_text", []))
         if forbidden:
             failed.append(f"{phase.get('phase')} exposes internal text: {forbidden}")
+        if "button_state" not in phase:
+            failed.append(f"{phase.get('phase')} is missing button state")
+        if "workflow_state" not in phase:
+            failed.append(f"{phase.get('phase')} is missing workflow state")
     return {
         "passed": not failed,
         "failed_checks": failed,
@@ -1115,6 +1123,89 @@ def build_pass_fail_summary(
         "observed_phase_count": len(phase_names),
         "screenshot_count": len(screenshots),
         "human_desktop_acceptance": "not performed",
+    }
+
+
+def build_observable_evidence_summary(
+    phases: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Index per-phase UI evidence so reviewers do not need to mine raw phases."""
+    visible_text: dict[str, list[str]] = {}
+    button_states: dict[str, list[dict[str, Any]]] = {}
+    workflow_states: dict[str, dict[str, Any]] = {}
+    backend_snapshots: dict[str, dict[str, Any]] = {}
+    phase_screenshots: dict[str, str] = {}
+    for phase in phases:
+        name = str(phase.get("phase", ""))
+        if not name:
+            continue
+        visible_text[name] = list(phase.get("visible_text", []))
+        button_states[name] = list(phase.get("button_state", []))
+        workflow_state = dict(phase.get("workflow_state", {}))
+        workflow_states[name] = workflow_state
+        backend_snapshots[name] = workflow_state
+        phase_screenshots[name] = str(phase.get("screenshot", ""))
+    return {
+        "visible_text_snapshots": visible_text,
+        "button_states": button_states,
+        "workflow_states": workflow_states,
+        "backend_state_snapshots": backend_snapshots,
+        "phase_screenshots": phase_screenshots,
+    }
+
+
+def build_ui_quality_review(
+    phases: list[dict[str, Any]],
+    screenshots: dict[str, str],
+) -> dict[str, Any]:
+    """Return automated UI quality checks and explicit human-review boundary."""
+    screenshot_rows: list[dict[str, Any]] = []
+    for key, path_text in screenshots.items():
+        path = Path(path_text)
+        exists = path.exists()
+        nearly_black = is_nearly_black(path) if exists else True
+        screenshot_rows.append(
+            {
+                "screenshot": key,
+                "path": path_text,
+                "exists": exists,
+                "nonblank": exists and not nearly_black,
+                "automated_review": "nonblank"
+                if exists and not nearly_black
+                else "failed",
+            }
+        )
+    forbidden_rows = [
+        {
+            "phase": phase.get("phase"),
+            "offenders": forbidden_visible_text(phase.get("visible_text", [])),
+        }
+        for phase in phases
+    ]
+    forbidden_rows = [row for row in forbidden_rows if row["offenders"]]
+    all_phases_have_snapshots = all(
+        "visible_text" in phase
+        and "button_state" in phase
+        and "workflow_state" in phase
+        and phase.get("screenshot")
+        for phase in phases
+    )
+    return {
+        "automated_checks_passed": not forbidden_rows
+        and all(row["nonblank"] for row in screenshot_rows)
+        and all_phases_have_snapshots,
+        "screenshot_review": screenshot_rows,
+        "forbidden_visible_text": forbidden_rows,
+        "phase_snapshot_coverage": all_phases_have_snapshots,
+        "visible_text_boundary": (
+            "Checks visible widget text for raw tool syntax, schema, traceback, "
+            "and selected snake_case command leakage."
+        ),
+        "human_design_review_boundary": (
+            "This is automated UI-observable evidence. It does not replace a "
+            "human desktop review of Windows launcher, dual-monitor/DPI, or "
+            "long local-model sessions."
+        ),
     }
 
 
@@ -1151,6 +1242,12 @@ def validate_walkthrough_payload(
         for path in payload.get("screenshots", {}).values():
             if not Path(path).exists():
                 return False, f"missing screenshot file: {path}"
+    if not payload.get("observable_evidence"):
+        return False, "observable evidence summary is missing"
+    if not payload.get("ui_quality_review"):
+        return False, "ui quality review is missing"
+    if not payload["ui_quality_review"].get("automated_checks_passed"):
+        return False, "ui quality review did not pass"
     if "not human Windows desktop acceptance" not in payload.get(
         "claim_boundary",
         "",
@@ -1249,6 +1346,25 @@ def render_markdown(payload: dict[str, Any]) -> str:
     lines.extend(["", "## Screenshots", ""])
     for key, path in payload.get("screenshots", {}).items():
         lines.append(f"- {key}: `{path}`")
+    quality = payload.get("ui_quality_review", {})
+    lines.extend(["", "## UI Quality Review", ""])
+    lines.extend(
+        [
+            f"- automated checks passed: `{quality.get('automated_checks_passed')}`",
+            f"- phase snapshot coverage: `{quality.get('phase_snapshot_coverage')}`",
+            f"- forbidden visible text findings: `{len(quality.get('forbidden_visible_text', []))}`",
+            f"- human review boundary: {quality.get('human_design_review_boundary', '')}",
+        ]
+    )
+    lines.extend(["", "## Observable Evidence", ""])
+    evidence = payload.get("observable_evidence", {})
+    lines.extend(
+        [
+            f"- visible text snapshots: `{len(evidence.get('visible_text_snapshots', {}))}` phases",
+            f"- button states: `{len(evidence.get('button_states', {}))}` phases",
+            f"- workflow/backend snapshots: `{len(evidence.get('backend_state_snapshots', {}))}` phases",
+        ]
+    )
     lines.extend(["", "## Phases", ""])
     for phase in payload.get("phases", []):
         lines.append(f"- `{phase.get('phase')}` -> `{phase.get('screenshot')}`")

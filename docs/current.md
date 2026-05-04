@@ -318,7 +318,10 @@ dialog / ChatPanel / ApplicationService capture `20` 張 screenshot、visible te
 state、workflow state、CommandResult payload、tool transcript、user-facing transcript、recipe
 artifact 和 process/thread notes。artifact
 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` 顯示 status `passed`、
-`26 / 26` phases、human desktop acceptance `not performed`。後續 UI polish 已依截圖修正
+`26 / 26` phases、human desktop acceptance `not performed`。最新 artifact 已補上 top-level
+`observable_evidence` 和 `ui_quality_review`：`26` 個 phase 都有 visible text、button
+state、workflow/backend snapshot index，`20` 張 screenshot 全部通過 nonblank check，visible text
+raw tool / schema / traceback leakage check 為 `0` findings。後續 UI polish 已依截圖修正
 Data Interpretation preview / confirm dialog 的 review surface density、Training plot dark-theme
 readability、Training history compact header、Evaluation page compact controls，以及 ChatPanel
 new conversation / reset 後的 stale bubble / stale workflow status，並刷新同一份
