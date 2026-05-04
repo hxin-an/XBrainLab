@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import uuid
 from dataclasses import dataclass
 from typing import Any, TextIO
 
@@ -46,6 +47,7 @@ class MCPServer:
 
     def __init__(self, service: ApplicationService | None = None) -> None:
         self._service = service or ApplicationService(Study())
+        self._session_id = f"mcp-stdio-{uuid.uuid4().hex[:12]}"
         self._initialized = False
 
     def handle_line(self, line: str) -> dict[str, Any] | None:
@@ -151,6 +153,7 @@ class MCPServer:
             self._service,
             {"command": name, "arguments": arguments},
         ).to_dict()
+        execution["adapter"] = self._adapter_metadata()
         result = execution.get("result")
         is_error = not execution["accepted"] or (
             isinstance(result, dict) and result.get("status") == "failed"
@@ -159,6 +162,20 @@ class MCPServer:
             "content": [{"type": "text", "text": _tool_result_text(execution)}],
             "structuredContent": execution,
             "isError": is_error,
+        }
+
+    def _adapter_metadata(self) -> dict[str, Any]:
+        return {
+            "mode": "headless_mcp_stdio",
+            "transport": "stdio",
+            "session_id": self._session_id,
+            "ui_refresh": {
+                "supported": False,
+                "reason": (
+                    "This MCP server owns a headless ApplicationService session "
+                    "and does not refresh a desktop UI."
+                ),
+            },
         }
 
 

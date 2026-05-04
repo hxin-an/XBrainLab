@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 MCP Stdio Adapter Session Boundary
+
+### 狀態
+
+MCP stdio `tools/call` result 現在明確帶 headless adapter metadata：mode、transport、stable
+session id 和 UI refresh boundary。這讓 external clients 可以分辨「MCP server 擁有自己的
+ApplicationService session」和「正在控制使用者桌面 UI」是兩件不同的事。
+
+### 已可宣稱
+
+- MCP stdio tool calls 仍走 `ApplicationService` / automation payload；structured result 現在含
+  `adapter.mode=headless_mcp_stdio`、`transport=stdio`、stable `session_id` 和
+  `ui_refresh.supported=False`。
+- stdlib-only MCP client walkthrough artifact 已刷新並在 Markdown summary 顯示 adapter boundary。
+
+### Evidence 入口
+
+- Unit / integration tests：`tests/unit/mcp/test_server.py`、
+  `tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+- Artifact：`artifacts/mcp/stdio-walkthrough.json` / `.md`
+
+### 不能宣稱完成
+
+- 這不是 MCP Streamable HTTP transport，也不是 long-running training job/cancel/progress model。
+- 這不是 desktop UI control certification；stdio MCP 是 headless session。
+
+### 下一手重點
+
+設計 HTTP/session ownership、auth、job progress、cancel/recovery 和 resource lock，再實作
+long-running MCP tool boundary。
+
 ## 2026-05-05 Data Interpretation Review Summary UI
 
 ### 狀態

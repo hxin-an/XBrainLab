@@ -206,9 +206,37 @@ UI baseline capture 結果：
   - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
   - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
 - Claim boundary: this supports automated UI-observable Data Interpretation wizard review polish.
-  It does not prove full mature import wizard completion, Windows launcher click-through, dual
+ It does not prove full mature import wizard completion, Windows launcher click-through, dual
   monitor / DPI behavior, XDF / LSL stream selection, complex MAT/GDF anchor reconciliation, or
   real-data manual certification.
+
+2026-05-05 MCP stdio adapter session boundary:
+
+- Adapter change:
+  - `MCPServer` now assigns a stable per-server stdio session id.
+  - `tools/call` structuredContent includes `adapter` metadata:
+    `mode=headless_mcp_stdio`, `transport=stdio`, `session_id`, and a `ui_refresh` object with
+    `supported=False`.
+  - MCP tool output schema exposes optional `adapter` property through the same automation schema
+    source.
+  - `scripts/dev/capture_mcp_stdio_walkthrough.py` summary / Markdown now includes adapter mode,
+    transport, session stability, and UI refresh boundary.
+- Validation:
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q`
+    -> `6 passed`.
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `8 passed`.
+  - `poetry run ruff check XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 180s poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir artifacts/mcp`
+    -> refreshed `artifacts/mcp/stdio-walkthrough.json` / `.md`.
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+- Claim boundary: this proves stdio MCP calls expose an explicit headless session/UI-refresh
+  boundary while still using ApplicationService. It does not implement Streamable HTTP,
+  authorization, long-running job progress/cancel/recovery, or desktop UI control certification.
 
 2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
 

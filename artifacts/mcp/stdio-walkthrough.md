@@ -6,6 +6,11 @@
 - tool count: `28`
 - has scan_source: `True`
 - scan_source taxonomy: `data_interpretation`
+- adapter mode: `headless_mcp_stdio`
+- adapter transport: `stdio`
+- session id stable: `True`
+- UI refresh supported: `False`
+- UI refresh boundary: This MCP server owns a headless ApplicationService session and does not refresh a desktop UI.
 
 ## Tool Calls
 

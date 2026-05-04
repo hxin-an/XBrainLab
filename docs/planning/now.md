@@ -161,6 +161,9 @@
   - evidence 覆蓋 `initialize`、`tools/list`、`scan_source`、`preview_interpretation`、
     `validate_interpretation`；tool schema taxonomy 仍來自 ApplicationService automation
     surface。
+  - `tools/call` structured result 現在包含 `adapter` boundary：`mode=headless_mcp_stdio`、
+    `transport=stdio`、stable `session_id`、`ui_refresh_supported=False`，明確表示 stdio MCP
+    是 headless ApplicationService session，不刷新 desktop UI。
   - 這支撐 external stdio client path，不代表 Windows release registration、HTTP transport
     或 long-running training through MCP 已完成。
 - MCP Inspector-style release config baseline 已新增：

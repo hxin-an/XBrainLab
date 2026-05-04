@@ -85,8 +85,10 @@ Inspector + headless Chrome，點擊 `Connect` / `List Tools`，並保存
 `artifacts/mcp/inspector-gui-connected.png`；artifact 顯示 `xbrainlab` connected、`wsl.exe`
 wrapper、prepared runtime args、Tools panel 和 Data Interpretation tools 可見。這支撐外部
 stdio client path、Inspector CLI / release config baseline 和 Inspector GUI click-through
-baseline；仍不是 HTTP transport、long-running training through MCP、Windows launcher 真人驗收
-或 full MCP client certification。另已新增 non-mocked backend
+baseline。最新 MCP boundary slice 又把 `tools/call` structured result 補上 adapter metadata：
+`mode=headless_mcp_stdio`、stable `session_id`、`transport=stdio`、`ui_refresh.supported=False`；
+stdio walkthrough Markdown 也會顯示這個 headless session boundary。這仍不是 HTTP transport、
+long-running training through MCP、Windows launcher 真人驗收或 full MCP client certification。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
 confirmation-blocked apply -> confirmed apply -> save recipe -> reload recipe review ->
 preprocess -> epoch -> dataset，並檢查 split audit / train-val-test counts。UI-observable

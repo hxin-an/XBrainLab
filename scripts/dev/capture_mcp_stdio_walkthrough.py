@@ -170,6 +170,7 @@ def summarize_steps(steps: list[ClientStep]) -> dict[str, Any]:
         for step in steps
         if step.request.get("method") == "tools/call"
     }
+    adapter_boundary = _adapter_boundary_summary(steps)
     return {
         "initialized": "result" in steps[0].response,
         "tool_count": len(listed_tools),
@@ -178,6 +179,7 @@ def summarize_steps(steps: list[ClientStep]) -> dict[str, Any]:
         "scan_source_taxonomy": listed_tools.get("scan_source", {})
         .get("x_xbrainlab", {})
         .get("taxonomy"),
+        "adapter_boundary": adapter_boundary,
         "tool_results": tool_results,
     }
 
@@ -193,6 +195,11 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- tool count: `{summary['tool_count']}`",
         f"- has scan_source: `{summary['has_scan_source']}`",
         f"- scan_source taxonomy: `{summary['scan_source_taxonomy']}`",
+        f"- adapter mode: `{summary['adapter_boundary']['mode']}`",
+        f"- adapter transport: `{summary['adapter_boundary']['transport']}`",
+        f"- session id stable: `{summary['adapter_boundary']['session_id_stable']}`",
+        f"- UI refresh supported: `{summary['adapter_boundary']['ui_refresh_supported']}`",
+        f"- UI refresh boundary: {summary['adapter_boundary']['ui_refresh_reason']}",
         "",
         "## Tool Calls",
         "",
@@ -232,6 +239,33 @@ def _step_result(steps: list[ClientStep], label: str) -> dict[str, Any]:
         if step.label == label:
             return step.response.get("result", {})
     return {}
+
+
+def _adapter_boundary_summary(steps: list[ClientStep]) -> dict[str, Any]:
+    adapters: list[dict[str, Any]] = []
+    for step in steps:
+        result = step.response.get("result")
+        if not isinstance(result, dict):
+            continue
+        structured = result.get("structuredContent")
+        if not isinstance(structured, dict):
+            continue
+        adapter = structured.get("adapter")
+        if isinstance(adapter, dict):
+            adapters.append(adapter)
+    first = adapters[0] if adapters else {}
+    session_ids = {str(adapter.get("session_id") or "") for adapter in adapters}
+    ui_refresh = first.get("ui_refresh") if isinstance(first, dict) else {}
+    if not isinstance(ui_refresh, dict):
+        ui_refresh = {}
+    return {
+        "mode": str(first.get("mode") or "unknown"),
+        "transport": str(first.get("transport") or "unknown"),
+        "session_id": str(first.get("session_id") or ""),
+        "session_id_stable": len(session_ids - {""}) <= 1,
+        "ui_refresh_supported": bool(ui_refresh.get("supported")),
+        "ui_refresh_reason": str(ui_refresh.get("reason") or ""),
+    }
 
 
 def _tools_by_name(tools: Any) -> dict[str, dict[str, Any]]:

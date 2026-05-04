@@ -97,6 +97,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -125,7 +128,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -172,6 +178,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -202,7 +211,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -246,6 +258,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -276,7 +291,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -323,6 +341,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -353,7 +374,10 @@
                   "retry_limit": 0,
                   "stop_after_success": true,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -397,6 +421,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -427,7 +454,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -473,6 +503,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -501,13 +534,16 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
               "name": "load_data",
               "title": "Load Data",
-              "description": "Load raw EEG files into the active study.",
+              "description": "Legacy compatibility: directly load raw EEG files. Prefer Data Interpretation scan_source -> preview_interpretation -> validate_interpretation -> apply_interpretation for new imports.",
               "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -553,6 +589,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -581,13 +620,22 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": true,
+                "primary_workflow": false,
+                "preferred_commands": [
+                  "scan_source",
+                  "preview_interpretation",
+                  "validate_interpretation",
+                  "apply_interpretation",
+                  "save_interpretation_recipe"
+                ]
               }
             },
             {
               "name": "attach_labels",
               "title": "Attach Labels",
-              "description": "Attach label files to already-loaded raw files.",
+              "description": "Legacy compatibility: attach label files to already-loaded raw data. Prefer Data Interpretation label/event carrier preview, validation, apply, and recipe trace for new imports.",
               "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -631,6 +679,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -661,13 +712,22 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": true,
+                "primary_workflow": false,
+                "preferred_commands": [
+                  "scan_source",
+                  "preview_interpretation",
+                  "validate_interpretation",
+                  "apply_interpretation",
+                  "save_interpretation_recipe"
+                ]
               }
             },
             {
               "name": "import_labels",
               "title": "Import Labels",
-              "description": "Apply an explicit label import plan to loaded raw data.",
+              "description": "Legacy compatibility: apply an explicit post-load label import plan. Prefer Data Interpretation label/event carrier review and recipe flow for new imports.",
               "inputSchema": {
                 "type": "object",
                 "additionalProperties": false,
@@ -747,6 +807,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -777,7 +840,16 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": true,
+                "primary_workflow": false,
+                "preferred_commands": [
+                  "scan_source",
+                  "preview_interpretation",
+                  "validate_interpretation",
+                  "apply_interpretation",
+                  "save_interpretation_recipe"
+                ]
               }
             },
             {
@@ -852,6 +924,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -882,7 +957,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -928,6 +1006,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -958,7 +1039,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1007,6 +1091,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1037,7 +1124,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1132,6 +1222,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1162,7 +1255,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1242,6 +1338,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1272,7 +1371,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1328,6 +1430,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1358,7 +1463,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1401,6 +1509,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1431,7 +1542,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1520,6 +1634,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1548,7 +1665,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1594,6 +1714,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1627,7 +1750,10 @@
                   "retry_limit": 0,
                   "stop_after_success": true,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1666,6 +1792,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1696,7 +1825,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1739,6 +1871,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1769,7 +1904,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1813,6 +1951,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1843,7 +1984,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1887,6 +2031,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1917,7 +2064,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -1965,6 +2115,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -1995,7 +2148,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -2058,6 +2214,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2088,7 +2247,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -2137,6 +2299,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2165,7 +2330,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -2208,6 +2376,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2238,7 +2409,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -2281,6 +2455,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2309,7 +2486,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             },
             {
@@ -2352,6 +2532,9 @@
                   },
                   "state": {
                     "type": "object"
+                  },
+                  "adapter": {
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -2380,7 +2563,10 @@
                   "retry_limit": 2,
                   "stop_after_success": false,
                   "blocks_downstream_until_confirmed": false
-                }
+                },
+                "legacy_compatibility": false,
+                "primary_workflow": true,
+                "preferred_commands": []
               }
             }
           ]
@@ -2396,7 +2582,7 @@
         "params": {
           "name": "scan_source",
           "arguments": {
-            "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf"
+            "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf"
           }
         }
       },
@@ -2539,7 +2725,7 @@
                   "latest_preview_id": null,
                   "latest_interpretation_id": null,
                   "latest_recipe_id": null,
-                  "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "validation_decision": null,
                   "pending_confirmation": false,
@@ -2548,6 +2734,19 @@
                   "summary": null,
                   "metadata_preview": [],
                   "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "event_roles": {},
+                  "class_map": {},
                   "label_import_count": 0,
                   "label_imports": [],
                   "recipe_path": null
@@ -2585,16 +2784,16 @@
                 "payload_type": "scan_result",
                 "scan_result": {
                   "scan_id": "scan-1",
-                  "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                   "source_hint": "auto",
                   "source_kind": "file",
                   "eeg_files": [
-                    "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf"
+                    "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf"
                   ],
                   "label_carriers": [],
                   "metadata": [
                     {
-                      "file": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                      "file": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                       "subject": {
                         "field": "subject",
                         "value": "01",
@@ -2654,6 +2853,16 @@
                     "events_files": [],
                     "dataset_description": null
                   },
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
                   "warnings": [],
                   "blocked_reasons": []
                 }
@@ -2750,7 +2959,7 @@
                 "latest_preview_id": null,
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": null,
                 "pending_confirmation": false,
@@ -2759,6 +2968,19 @@
                 "summary": null,
                 "metadata_preview": [],
                 "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {},
+                "class_map": {},
                 "label_import_count": 0,
                 "label_imports": [],
                 "recipe_path": null
@@ -2777,6 +2999,15 @@
                 "is_running": false
               },
               "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_stdio",
+              "transport": "stdio",
+              "session_id": "mcp-stdio-a33a43a0edf1",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
             }
           },
           "isError": false
@@ -2933,7 +3164,7 @@
                   "latest_preview_id": "preview-3",
                   "latest_interpretation_id": null,
                   "latest_recipe_id": null,
-                  "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "validation_decision": null,
                   "pending_confirmation": false,
@@ -2988,6 +3219,21 @@
                     }
                   ],
                   "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "event_roles": {
+                    "internal_events": "event role candidates"
+                  },
+                  "class_map": {},
                   "label_import_count": 0,
                   "label_imports": [],
                   "recipe_path": null
@@ -3026,12 +3272,13 @@
                 "candidate": {
                   "candidate_id": "candidate-2",
                   "scan_id": "scan-1",
-                  "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "selected_eeg_files": [
-                    "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf"
+                    "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf"
                   ],
                   "label_carriers": [],
+                  "label_carrier_plan": [],
                   "event_roles": {
                     "internal_events": "event role candidates"
                   },
@@ -3040,7 +3287,7 @@
                   "granularity": "trial_or_event",
                   "metadata": [
                     {
-                      "file": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                      "file": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                       "subject": {
                         "field": "subject",
                         "value": "01",
@@ -3085,6 +3332,16 @@
                       }
                     }
                   ],
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
                   "warnings": [],
                   "confirmation_items": [
                     "Confirm session metadata for sub-01_task-mi_run-1.gdf.",
@@ -3103,6 +3360,7 @@
                   "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
                   "file_count": 1,
                   "label_carrier_count": 0,
+                  "label_carrier_preview": [],
                   "metadata_preview": [
                     {
                       "file": "sub-01_task-mi_run-1.gdf",
@@ -3148,6 +3406,16 @@
                           "bids:run"
                         ]
                       }
+                    }
+                  ],
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
                     }
                   ],
                   "warnings": [],
@@ -3257,7 +3525,7 @@
                 "latest_preview_id": "preview-3",
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": null,
                 "pending_confirmation": false,
@@ -3312,6 +3580,21 @@
                   }
                 ],
                 "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
                 "label_import_count": 0,
                 "label_imports": [],
                 "recipe_path": null
@@ -3330,6 +3613,15 @@
                 "is_running": false
               },
               "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_stdio",
+              "transport": "stdio",
+              "session_id": "mcp-stdio-a33a43a0edf1",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
             }
           },
           "isError": false
@@ -3486,7 +3778,7 @@
                   "latest_preview_id": "preview-3",
                   "latest_interpretation_id": null,
                   "latest_recipe_id": null,
-                  "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "validation_decision": "needs_confirmation",
                   "pending_confirmation": true,
@@ -3541,6 +3833,21 @@
                     }
                   ],
                   "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "event_roles": {
+                    "internal_events": "event role candidates"
+                  },
+                  "class_map": {},
                   "label_import_count": 0,
                   "label_imports": [],
                   "recipe_path": null
@@ -3685,7 +3992,7 @@
                 "latest_preview_id": "preview-3",
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-uheygeu6/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": "needs_confirmation",
                 "pending_confirmation": true,
@@ -3740,6 +4047,21 @@
                   }
                 ],
                 "label_carriers": [],
+                "label_carrier_plan": [],
+                "format_capabilities": [
+                  {
+                    "path": "/tmp/xbrainlab-mcp-7tsm84_y/sub-01_task-mi_run-1.gdf",
+                    "name": "sub-01_task-mi_run-1.gdf",
+                    "format": "GDF",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                  }
+                ],
+                "event_roles": {
+                  "internal_events": "event role candidates"
+                },
+                "class_map": {},
                 "label_import_count": 0,
                 "label_imports": [],
                 "recipe_path": null
@@ -3758,6 +4080,15 @@
                 "is_running": false
               },
               "last_error": null
+            },
+            "adapter": {
+              "mode": "headless_mcp_stdio",
+              "transport": "stdio",
+              "session_id": "mcp-stdio-a33a43a0edf1",
+              "ui_refresh": {
+                "supported": false,
+                "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+              }
             }
           },
           "isError": false
@@ -3771,6 +4102,14 @@
     "has_scan_source": true,
     "has_preview_interpretation": true,
     "scan_source_taxonomy": "data_interpretation",
+    "adapter_boundary": {
+      "mode": "headless_mcp_stdio",
+      "transport": "stdio",
+      "session_id": "mcp-stdio-a33a43a0edf1",
+      "session_id_stable": true,
+      "ui_refresh_supported": false,
+      "ui_refresh_reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
+    },
     "tool_results": {
       "scan_source": {
         "is_error": false,

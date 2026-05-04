@@ -37,6 +37,46 @@
 
 ## 2026-05-05
 
+### 06:48 MCP stdio adapter session boundary
+
+- 做了什麼：
+  - 使用 `mcp-adapter-reviewer` 檢查 stdio MCP baseline 的下一個 boundary gap：`tools/call`
+    structured result 有 CommandResult / state snapshot，但沒有明確說明這是 headless
+    ApplicationService session，也沒有 UI refresh claim boundary。
+  - 先補 unit test，要求同一 `MCPServer` 的多個 tool call 回傳相同 `session_id`，且
+    `mode=headless_mcp_stdio`、`transport=stdio`、`ui_refresh.supported=False`。
+  - 在 `MCPServer` 建立 per-server stdio session id，`tools/call` structuredContent 追加
+    `adapter` metadata。
+  - 在 automation output schema 補 optional `adapter` property，讓 MCP tool schema 能說明這個
+    envelope。
+  - 更新 stdio walkthrough summarizer / Markdown，讓 stdlib-only client artifact 直接呈現
+    adapter boundary。
+- 結果：
+  - `artifacts/mcp/stdio-walkthrough.json` / `.md` 已刷新；summary 顯示
+    `headless_mcp_stdio`、`transport=stdio`、`session_id_stable=True`、
+    `ui_refresh_supported=False`。
+  - MCP adapter 更清楚地避免「HTTP/headless external client 正在刷新桌面 UI」這種錯誤 claim。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_tools_call_reuses_one_application_service_session -q`
+    -> 初始紅燈：缺 `adapter` key。
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q`
+    -> `6 passed`。
+  - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `8 passed`。
+  - `poetry run ruff check XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 180s poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir artifacts/mcp`
+    -> refreshed artifact。
+  - `git diff --check`
+    -> pass。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - 還不能宣稱 MCP HTTP / Streamable HTTP、long-running training job model、progress、cancel 或
+    full MCP client certification。
+
 ### 06:40 Data Interpretation review summary UI
 
 - 做了什麼：

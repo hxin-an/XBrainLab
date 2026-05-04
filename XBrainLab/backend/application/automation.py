@@ -418,6 +418,7 @@ def _automation_execution_output_schema() -> dict[str, Any]:
             "capability": {"type": "object", "nullable": True},
             "result": {"type": "object", "nullable": True},
             "state": {"type": "object"},
+            "adapter": {"type": "object"},
         },
         "required": [
             "accepted",

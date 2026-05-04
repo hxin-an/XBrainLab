@@ -29,8 +29,13 @@ def test_capture_mcp_stdio_walkthrough_writes_client_artifact(tmp_path: Path):
     assert payload["summary"]["initialized"] is True
     assert payload["summary"]["has_scan_source"] is True
     assert payload["summary"]["scan_source_taxonomy"] == "data_interpretation"
+    assert payload["summary"]["adapter_boundary"]["mode"] == "headless_mcp_stdio"
+    assert payload["summary"]["adapter_boundary"]["transport"] == "stdio"
+    assert payload["summary"]["adapter_boundary"]["ui_refresh_supported"] is False
+    assert payload["summary"]["adapter_boundary"]["session_id_stable"] is True
     assert payload["summary"]["tool_results"]["scan_source"]["status"] == "ok"
     assert payload["summary"]["tool_results"]["preview_interpretation"]["status"] == (
         "ok"
     )
     assert "MCP Stdio Walkthrough" in markdown
+    assert "headless_mcp_stdio" in markdown
