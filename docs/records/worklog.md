@@ -37,6 +37,38 @@
 
 ## 2026-05-04
 
+### 18:32 Data Interpretation multi-file sequence label mapping
+
+- 做了什麼：
+  - 補 TDD 紅燈：兩個 loaded raw files 各自有 reviewed MAT `classlabel` carrier 時，
+    `apply_interpretation` 應以 file stem 建立 mapping，並逐檔呼叫既有
+    `apply_labels_legacy`。
+  - `_apply_interpretation_label_carriers()` 的多檔 mapping 現在同時支援 timestamp mode 和
+    sequence mode。
+  - sequence mode 多檔時不串接 labels；每個 target 只套用自己 matched carrier 的 labels。
+  - 補 negative regression：兩個 raw files 只有 generic `labels.mat` 時必須 skipped，且不可呼叫
+    `apply_labels_legacy`。
+- 結果：
+  - 初跑 positive test 先看到 `label_apply.status=skipped`，實作後 `applied`。
+  - reviewed MAT / TXT trial-order labels 已有安全多檔 backend path。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem -q`
+    -> first run failed as expected, then passed。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels -q`
+    -> `2 passed`。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+    -> `65 passed`。
+  - targeted `ruff` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 仍不能宣稱 raw-event-anchor-specific GDF/MAT alignment、generic folder-level label
+    disambiguation、embedded label wizard UI、真人 Windows click-through、interactive desktop 3D、
+    MCP Inspector / release config 或 thesis-ready local LLM evidence。
+
 ### 18:25 Data Interpretation multi-file timestamp label mapping
 
 - 做了什麼：

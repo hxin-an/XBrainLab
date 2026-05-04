@@ -28,6 +28,62 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation multi-file sequence label mapping
+
+### 背景
+
+Timestamp label carriers 已補上 safe stem-matched multi-file mapping，但 MAT / TXT trial-order
+sequence labels 仍只支援單檔。BCI Competition / GDF external labels 類資料常見一個 EEG file
+搭配一個 MAT labels file，若每個 file pair 已在 wizard review 後唯一對應，仍不應被擋在
+單檔限制。
+
+### 變更
+
+- `_apply_interpretation_label_carriers()` 的 multi-file mapping 現在不只限 timestamp mode。
+- sequence mode 多檔成功條件：
+  - 每個 loaded EEG file 都有唯一 normalized stem match。
+  - 每個 reviewed MAT / TXT carrier 都被使用。
+  - class map 已確認，time model 是 `trial_order`，granularity 是 `trial`。
+- sequence mode 多檔實作：
+  - 逐一讀取每個 carrier 的 reviewed label field。
+  - 每個 target file 單獨呼叫 `dataset.apply_labels_legacy([target], labels_for_target, ...)`。
+  - 不把不同檔案的 sequence labels 串接後再分配。
+- ambiguous 多檔情境，例如兩個 raw files 只有一個 generic `labels.mat`，仍 skipped，不呼叫
+  label mutation path。
+
+### 影響範圍
+
+- `ApplicationService.apply_interpretation` reviewed label apply path。
+- Data Interpretation recipe label import record。
+- Backend application tests。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- TDD red:
+  - `test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem` first failed with
+    `label_apply.status=skipped`.
+- focused:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels -q`
+  - `2 passed`
+- regression:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `65 passed`
+- static:
+  - targeted `ruff` -> pass
+  - targeted `ruff format --check` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass
+
+### 剩餘風險
+
+- This supports safe stem-matched MAT / TXT trial-order carriers only.
+- It does not support raw-event-anchor-specific GDF / MAT alignment, generic label
+  disambiguation, embedded label wizard UI, Windows launcher human click-through, interactive
+  desktop 3D, MCP Inspector GUI, or thesis-ready local LLM evidence.
+
 ## 2026-05-04 Data Interpretation multi-file timestamp label mapping
 
 ### 背景

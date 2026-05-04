@@ -575,6 +575,120 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_pa
     )
 
 
+def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
+    tmp_path,
+):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "reviewed_mat_sequence_multi"
+    source_dir.mkdir()
+    eeg_1 = source_dir / "A01T.gdf"
+    eeg_2 = source_dir / "B01T.gdf"
+    label_1 = source_dir / "A01T.mat"
+    label_2 = source_dir / "B01T.mat"
+    eeg_1.write_bytes(b"not loaded during scan")
+    eeg_2.write_bytes(b"not loaded during scan")
+    savemat(label_1, {"classlabel": np.array([1, 2])})
+    savemat(label_2, {"classlabel": np.array([2, 1])})
+    service = ApplicationService(Study())
+    raw_1 = _raw_mock()
+    raw_1.get_filepath.return_value = str(eeg_1)
+    raw_1.get_filename.return_value = eeg_1.name
+    raw_2 = _raw_mock()
+    raw_2.get_filepath.return_value = str(eeg_2)
+    raw_2.get_filename.return_value = eeg_2.name
+    service.dataset.import_files = MagicMock(return_value=(2, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
+    service.dataset.apply_labels_legacy = MagicMock(side_effect=[1, 1])
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_1): {
+                        "label_field": "classlabel",
+                        "anchor": "trial order",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    },
+                    str(label_2): {
+                        "label_field": "classlabel",
+                        "anchor": "trial order",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    },
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
+    assert apply_result.diagnostics["label_apply"]["success_count"] == 2
+    calls = service.dataset.apply_labels_legacy.call_args_list
+    assert len(calls) == 2
+    assert calls[0].args[0] == [raw_1]
+    np.testing.assert_array_equal(calls[0].args[1], np.array([1, 2]))
+    assert calls[1].args[0] == [raw_2]
+    np.testing.assert_array_equal(calls[1].args[1], np.array([2, 1]))
+    assert apply_result.state.interpretation.label_imports[0]["file_mapping"] == {
+        str(eeg_1): str(label_1),
+        str(eeg_2): str(label_2),
+    }
+
+
+def test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels(tmp_path):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "ambiguous_sequence_multi"
+    source_dir.mkdir()
+    eeg_1 = source_dir / "A01T.gdf"
+    eeg_2 = source_dir / "B01T.gdf"
+    labels = source_dir / "labels.mat"
+    eeg_1.write_bytes(b"not loaded during scan")
+    eeg_2.write_bytes(b"not loaded during scan")
+    savemat(labels, {"classlabel": np.array([1, 2, 1, 2])})
+    service = ApplicationService(Study())
+    raw_1 = _raw_mock()
+    raw_1.get_filepath.return_value = str(eeg_1)
+    raw_2 = _raw_mock()
+    raw_2.get_filepath.return_value = str(eeg_2)
+    service.dataset.import_files = MagicMock(return_value=(2, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw_1, raw_2])
+    service.dataset.apply_labels_legacy = MagicMock(return_value=2)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(labels): {
+                        "label_field": "classlabel",
+                        "anchor": "trial order",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    },
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["status"] == "skipped"
+    assert (
+        "No reviewed label carrier uniquely matches"
+        in apply_result.diagnostics["label_apply"]["reason"]
+    )
+    service.dataset.apply_labels_legacy.assert_not_called()
+
+
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir = tmp_path / "labels_only"
     source_dir.mkdir()

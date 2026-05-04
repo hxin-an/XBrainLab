@@ -241,9 +241,11 @@
   - reviewed timestamp label carriers 已支援安全多檔 mapping：多個 loaded EEG file 若可用唯一
     normalized stem 對應各自的 CSV / TSV / BIDS events carrier，會一次 batch apply；generic
     `events.tsv` 或無法唯一對應時仍 skipped，不自動猜。
+  - reviewed MAT / TXT trial-order sequence carriers 也支援安全多檔 stem mapping；每個 target file
+    逐檔呼叫既有 `apply_labels_legacy`，generic `labels.mat` 或無法唯一對應時仍 skipped。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、sequence labels
-  多檔 mapping、all-format manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
+  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、all-format
+  manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
   UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal

@@ -1786,21 +1786,13 @@ class ApplicationService:
         if len(applicable) == 1 and len(target_files) == 1:
             carrier_path = str(applicable[0].get("path") or "").strip()
             file_mapping = {self._data_filepath(target_files[0]): carrier_path}
-        elif mode == "timestamp":
+        else:
             file_mapping, reason = self._reviewed_label_file_mapping(
                 applicable,
                 target_files,
             )
             if reason:
                 return {"status": "skipped", "reason": reason}
-        else:
-            return {
-                "status": "skipped",
-                "reason": (
-                    "Automatic sequence label application currently requires one "
-                    "loaded EEG file and one reviewed label carrier."
-                ),
-            }
 
         carrier_label = ", ".join(
             str(item.get("path") or "").strip() for item in applicable
@@ -1817,13 +1809,11 @@ class ApplicationService:
                     None,
                 )
             else:
-                carrier_path = next(iter(label_map))
-                count = self.dataset.apply_labels_legacy(
+                count = self._apply_reviewed_sequence_label_map(
                     target_files,
-                    label_map[carrier_path],
+                    label_map,
+                    file_mapping,
                     mapping,
-                    None,
-                    force_import=False,
                 )
             plan = LabelImportPlan(
                 target_indices=list(range(len(target_files))),
@@ -1885,6 +1875,30 @@ class ApplicationService:
                 anchor=anchor if mode == "timestamp" else None,
             )
         return label_map
+
+    def _apply_reviewed_sequence_label_map(
+        self,
+        target_files: list[Any],
+        label_map: dict[str, Any],
+        file_mapping: dict[str, str],
+        mapping: dict[Any, str],
+    ) -> int:
+        success_count = 0
+        for target in target_files:
+            data_path = self._data_filepath(target)
+            carrier_path = file_mapping.get(data_path)
+            if not carrier_path or carrier_path not in label_map:
+                continue
+            success_count += int(
+                self.dataset.apply_labels_legacy(
+                    [target],
+                    label_map[carrier_path],
+                    mapping,
+                    None,
+                    force_import=False,
+                ),
+            )
+        return success_count
 
     def _reviewed_label_file_mapping(
         self,

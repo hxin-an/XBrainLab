@@ -1365,6 +1365,9 @@ event anchor 的 GDF/MAT alignment、多檔 label mapping 或 full manual compat
   - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
   - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
   - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass.
 
 這批 evidence 支撐 UI / recipe 已確認的 import truth 不再停留在 backend JSON 或 wizard
 內部；agent、headless automation 和 MCP-shaped envelope 可讀到同一份狀態。它仍不支撐 mature
@@ -1394,6 +1397,30 @@ embedded label import wizard、多檔 label mapping、raw-event-anchor-specific 
 這批 evidence 支撐 BIDS-style per-run timestamp labels 的 safe multi-file backend path。它仍不支撐
 generic folder-level `events.tsv` disambiguation、multi-file MAT / TXT sequence mapping、
 raw-event-anchor-specific GDF / MAT alignment、embedded label wizard UI 或真人 click-through。
+
+2026-05-04 Data Interpretation multi-file sequence label mapping：
+
+- backend:
+  - Reviewed MAT / TXT trial-order sequence carriers can now auto-apply to multiple loaded EEG
+    files when every raw file has exactly one matching carrier by normalized stem.
+  - Sequence mapping calls existing `apply_labels_legacy()` once per matched target file, so
+    per-file label sequences are not concatenated or shared across files.
+  - Ambiguous multi-file cases such as one generic `labels.mat` for two loaded files are skipped
+    with a reason instead of distributing labels by guesswork.
+- TDD evidence:
+  - initial positive regression failed with `label_apply.status=skipped`.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels -q`
+  - `2 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `65 passed`
+  - targeted `ruff` clean.
+  - targeted `ruff format --check` clean.
+  - targeted `basedpyright` clean.
+
+這批 evidence 支撐 per-file MAT/TXT trial-order label sequences 的 safe multi-file backend path。
+它仍不支撐 generic label disambiguation、raw-event-anchor-specific GDF / MAT alignment、embedded
+label wizard UI 或真人 click-through。
 
 2026-05-04 Data Interpretation recipe save UI path：
 
