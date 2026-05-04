@@ -3526,7 +3526,7 @@
 - 結果：
   - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
     -> exit `0`。
-  - artifact summary：status `passed`、`26 / 25` phases、`20` screenshots、human desktop
+  - artifact summary：status `passed`、`26 / 26` phases、`20` screenshots、human desktop
     acceptance `not performed`。
   - resource notes：Python thread count `1` before close / after close；Qt active thread count `0`。
   - unit helper tests：`poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
@@ -3547,3 +3547,40 @@
     remaining human verification。
   - walkthrough 截圖暴露下一輪 UI polish 方向：Data Interpretation table density、main-window
     narrow-with-assistant layout、analysis page compact controls。
+
+### 2026-05-04 Walkthrough-driven UI polish
+
+- 做了什麼：
+  - 放大並重排 Data Interpretation preview / confirm dialog：metadata preview 改為全寬，
+    label carrier / event / recipe trace stacked review surface，固定主要欄寬，避免 preview
+    像擠在 debug panel 裡。
+  - Training plot 重新調整 Matplotlib dark-theme 套用順序，空狀態標題 / 座標 / tick 不再是黑字。
+  - Training history compact header 改成 `Epochs`，縮短前幾欄預設寬度，讓 800px walkthrough
+    capture 的關鍵欄位完整可見。
+  - Evaluation toolbar 改成 compact controls：combo width 收斂、spacing 縮小、`Show Percentage`
+    改為 `Percent`。
+  - Human-like walkthrough required phases 補上 `eval_dashboard_report`，artifact summary 從
+    `26 / 25` 修成 `26 / 26`。
+- evidence：
+  - refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` / `.json`。
+  - refreshed screenshots include `04-interpretation-preview.png`、`05-interpretation-confirm.png`、
+    `10-training-readiness.png`、`11-analysis-readiness.png`、`17-assistant-narrow.png`。
+  - artifact summary：status `passed`、`26 / 26` required phases、`20` screenshots、human desktop
+    acceptance `not performed`。
+- validation：
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/training/test_metric_tab.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `62 passed`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `5 passed`。
+  - targeted `ruff check` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這是 automated UI-observable PyQt replay 和 screenshot-driven polish，不是真人 Windows
+    launcher click-through、雙螢幕 / DPI 或長時間 true local model desktop acceptance。
+  - Data Interpretation 仍缺 mature embedded label editor、raw event anchor / MAT variable editor
+    和全格式 manual certification；legacy post-load label compatibility path 仍需繼續降權。

@@ -352,27 +352,30 @@ class EvaluationPanel(BasePanel):
         # Toolbar (Below Charts)
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setContentsMargins(0, 10, 0, 0)
+        toolbar_layout.setSpacing(8)
 
         # Model Selection
         toolbar_layout.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
-        self.model_combo.setMinimumWidth(150)
+        self.model_combo.setMinimumWidth(96)
+        self.model_combo.setMaximumWidth(180)
         self.model_combo.currentIndexChanged.connect(self.on_model_changed)
         toolbar_layout.addWidget(self.model_combo)
 
-        toolbar_layout.addSpacing(15)
+        toolbar_layout.addSpacing(4)
 
         # Run Selection
         toolbar_layout.addWidget(QLabel("Run:"))
         self.run_combo = QComboBox()
-        self.run_combo.setMinimumWidth(150)
+        self.run_combo.setMinimumWidth(96)
+        self.run_combo.setMaximumWidth(180)
         self.run_combo.currentIndexChanged.connect(self.update_views)
         toolbar_layout.addWidget(self.run_combo)
 
-        toolbar_layout.addSpacing(15)
+        toolbar_layout.addSpacing(4)
 
         # Options
-        self.chk_percentage = QCheckBox("Show Percentage")
+        self.chk_percentage = QCheckBox("Percent")
         self.chk_percentage.toggled.connect(self.update_views)
         toolbar_layout.addWidget(self.chk_percentage)
 

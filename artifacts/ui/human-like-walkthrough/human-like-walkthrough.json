@@ -2526,7 +2526,7 @@
         "No Data Available",
         "Model:",
         "Run:",
-        "Show Percentage"
+        "Percent"
       ],
       "button_state": [
         {
@@ -2566,7 +2566,7 @@
           "tooltip": ""
         },
         {
-          "text": "Show Percentage",
+          "text": "Percent",
           "enabled": true,
           "checked": false,
           "tooltip": ""
@@ -12905,42 +12905,42 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 760668,
+      "pid": 765995,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 834548
+      "max_rss_kb": 835184
     },
     {
       "label": "before_close",
-      "pid": 760668,
+      "pid": 765995,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1056072
+      "max_rss_kb": 1058600
     },
     {
       "label": "after_close",
-      "pid": 760668,
+      "pid": 765995,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1056072
+      "max_rss_kb": 1058600
     }
   ],
   "pass_fail_summary": {
     "passed": true,
     "failed_checks": [],
-    "required_phase_count": 25,
+    "required_phase_count": 26,
     "observed_phase_count": 26,
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.369
+  "elapsed_seconds": 3.37
 }

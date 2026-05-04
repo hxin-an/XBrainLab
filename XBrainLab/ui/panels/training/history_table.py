@@ -45,7 +45,7 @@ class TrainingHistoryTable(QTableWidget):
                 "Run",
                 "Model",
                 "Status",
-                "Progress",
+                "Epochs",
                 "Train Loss",
                 "Train Acc",
                 "Val Loss",
@@ -70,14 +70,14 @@ class TrainingHistoryTable(QTableWidget):
             for i in range(11):
                 header.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
 
-        self.setColumnWidth(0, 80)  # Group
-        self.setColumnWidth(1, 80)  # Run
-        self.setColumnWidth(2, 150)  # Model
-        self.setColumnWidth(3, 100)  # Status
-        self.setColumnWidth(4, 80)  # Progress
+        self.setColumnWidth(0, 70)  # Group
+        self.setColumnWidth(1, 70)  # Run
+        self.setColumnWidth(2, 130)  # Model
+        self.setColumnWidth(3, 90)  # Status
+        self.setColumnWidth(4, 70)  # Progress
         # Metrics
         for i in range(5, 11):
-            self.setColumnWidth(i, 80)
+            self.setColumnWidth(i, 78)
 
         if header:
             header.setStretchLastSection(True)

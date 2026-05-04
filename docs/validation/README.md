@@ -39,7 +39,9 @@ closure。
 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` 和 `20` 張 screenshots。
 artifact 覆蓋 startup、Data Interpretation wizard、recipe reload、preprocess、epoch、dataset、
 training readiness、analysis readiness、ChatPanel empty / normal / clarification / blocked /
-success / narrow、reset / new session boundary、error recovery 和 eval dashboard report。這仍不能
+success / narrow、reset / new session boundary、error recovery 和 eval dashboard report。
+最新 artifact summary 是 status `passed`、`26 / 26` required phases、`20` screenshots。UI polish
+後已刷新 screenshots；這支撐 automated PyQt replay 的主要 UI 操作路徑，但仍不能
 替代 human desktop acceptance。
 
 目前 fast engineering artifact 狀態是：
@@ -916,7 +918,7 @@ local model session、EEG training quality 或 product completion。
     command / tool transcript、user-facing transcript、CommandResult payloads、process/thread notes.
 - observed result：
   - status：`passed`
-  - phases：`26 / 25`
+  - phases：`26 / 26`
   - screenshots：`20`
   - human desktop acceptance：`not performed`
   - resource notes：Python thread count returned to `1`; Qt active thread count `0`.

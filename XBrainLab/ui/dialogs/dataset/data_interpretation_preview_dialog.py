@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QTreeWidget,
@@ -58,8 +57,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
         super().__init__(
             parent=parent,
             title="Interpret Data Source",
-            width=880,
-            height=640,
+            width=1040,
+            height=760,
         )
 
     @property
@@ -122,9 +121,6 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.decision_label.setWordWrap(True)
         layout.addWidget(self.decision_label)
 
-        content_row = QHBoxLayout()
-        content_row.setSpacing(12)
-
         metadata_group = QGroupBox("Metadata Preview")
         metadata_layout = QVBoxLayout(metadata_group)
         self.file_tree = QTreeWidget()
@@ -137,8 +133,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self._populate_files()
+        self.file_tree.setColumnWidth(0, 260)
+        self.file_tree.setColumnWidth(1, 120)
+        self.file_tree.setColumnWidth(2, 140)
+        self.file_tree.setColumnWidth(3, 180)
+        self.file_tree.setColumnWidth(4, 80)
         metadata_layout.addWidget(self.file_tree)
-        content_row.addWidget(metadata_group, stretch=3)
+        layout.addWidget(metadata_group)
 
         label_group = QGroupBox("Labels, Events, and Recipe Trace")
         label_layout = QVBoxLayout(label_group)
@@ -161,6 +162,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self._populate_label_carrier_tree()
+        self.label_carrier_tree.setColumnWidth(0, 120)
+        self.label_carrier_tree.setColumnWidth(1, 180)
+        self.label_carrier_tree.setColumnWidth(2, 100)
+        self.label_carrier_tree.setColumnWidth(3, 120)
+        self.label_carrier_tree.setColumnWidth(4, 110)
+        self.label_carrier_tree.setColumnWidth(5, 110)
+        self.label_carrier_tree.setColumnWidth(6, 120)
+        self.label_carrier_tree.setColumnWidth(7, 150)
         label_layout.addWidget(self.label_carrier_tree)
 
         self.event_tree = QTreeWidget()
@@ -171,9 +180,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self._populate_event_tree()
+        self.event_tree.setColumnWidth(0, 220)
+        self.event_tree.setColumnWidth(1, 160)
+        self.event_tree.setColumnWidth(2, 520)
         label_layout.addWidget(self.event_tree)
-        content_row.addWidget(label_group, stretch=2)
-        layout.addLayout(content_row, stretch=1)
+        layout.addWidget(label_group, stretch=1)
 
         self.review_text = QPlainTextEdit()
         self.review_text.setReadOnly(True)

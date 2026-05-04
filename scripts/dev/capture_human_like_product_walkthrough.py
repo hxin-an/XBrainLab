@@ -124,6 +124,7 @@ REQUIRED_PHASES = (
     "assistant_narrow_panel",
     "reset_new_session_boundary",
     "error_recovery",
+    "eval_dashboard_report",
 )
 
 VISIBLE_FORBIDDEN = (
