@@ -141,6 +141,9 @@ VISIBLE_FORBIDDEN = (
     "apply_interpretation",
 )
 
+RESOURCE_THREAD_TOLERANCE = 1
+RESOURCE_RSS_SMOKE_LIMIT_KB = 600_000
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -625,7 +628,11 @@ def _run_walkthrough_steps(
     gc.collect()
     resource_notes.append(resource_snapshot("after_close"))
 
-    pass_fail_summary = build_pass_fail_summary(phases, screenshots)
+    pass_fail_summary = build_pass_fail_summary(
+        phases,
+        screenshots,
+        resource_notes=resource_notes,
+    )
     observable_evidence = build_observable_evidence_summary(phases)
     ui_quality_review = build_ui_quality_review(phases, screenshots)
     status = "passed" if pass_fail_summary["passed"] else "failed"
@@ -1083,6 +1090,8 @@ def compact_state(state: ApplicationStateSnapshot) -> dict[str, Any]:
 def build_pass_fail_summary(
     phases: list[dict[str, Any]],
     screenshots: dict[str, str],
+    *,
+    resource_notes: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Validate the artifact against the walkthrough acceptance checklist."""
     failed: list[str] = []
@@ -1104,6 +1113,8 @@ def build_pass_fail_summary(
             failed.append(f"{phase.get('phase')} is missing button state")
         if "workflow_state" not in phase:
             failed.append(f"{phase.get('phase')} is missing workflow state")
+    resource_smoke = build_resource_smoke_summary(resource_notes)
+    failed.extend(resource_smoke["failed_checks"])
     return {
         "passed": not failed,
         "failed_checks": failed,
@@ -1111,7 +1122,87 @@ def build_pass_fail_summary(
         "observed_phase_count": len(phase_names),
         "screenshot_count": len(screenshots),
         "human_desktop_acceptance": "not performed",
+        "resource_smoke": resource_smoke,
     }
+
+
+def build_resource_smoke_summary(
+    resource_notes: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Check for obvious thread or RSS regressions in the automated replay."""
+    boundary = (
+        "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this "
+        "does not prove the absence of leaks."
+    )
+    if resource_notes is None:
+        return {
+            "checked": False,
+            "passed": True,
+            "failed_checks": [],
+            "boundary": boundary,
+        }
+
+    start = _resource_note(resource_notes, "start")
+    after_close = _resource_note(resource_notes, "after_close")
+    failed: list[str] = []
+    if start is None or after_close is None:
+        failed.append("resource notes missing start/after_close snapshots")
+        return {
+            "checked": True,
+            "passed": False,
+            "failed_checks": failed,
+            "boundary": boundary,
+        }
+
+    start_threads = _resource_int(start, "python_threads")
+    after_threads = _resource_int(after_close, "python_threads")
+    after_qt_threads = _resource_int(after_close, "qt_active_threads")
+    rss_growth_kb = _resource_int(after_close, "max_rss_kb") - _resource_int(
+        start, "max_rss_kb"
+    )
+
+    if after_threads > start_threads + RESOURCE_THREAD_TOLERANCE:
+        failed.append(
+            "Python threads did not settle: "
+            f"start {start_threads}, after_close {after_threads}."
+        )
+    if after_qt_threads > 0:
+        failed.append(f"Qt thread pool still active after close: {after_qt_threads}.")
+    if rss_growth_kb > RESOURCE_RSS_SMOKE_LIMIT_KB:
+        failed.append(
+            "RSS smoke delta exceeded "
+            f"{RESOURCE_RSS_SMOKE_LIMIT_KB} KB: {rss_growth_kb} KB."
+        )
+
+    return {
+        "checked": True,
+        "passed": not failed,
+        "failed_checks": failed,
+        "start_python_threads": start_threads,
+        "after_close_python_threads": after_threads,
+        "python_thread_tolerance": RESOURCE_THREAD_TOLERANCE,
+        "after_close_qt_active_threads": after_qt_threads,
+        "rss_growth_kb": rss_growth_kb,
+        "rss_limit_kb": RESOURCE_RSS_SMOKE_LIMIT_KB,
+        "boundary": boundary,
+    }
+
+
+def _resource_note(
+    resource_notes: list[dict[str, Any]],
+    label: str,
+) -> dict[str, Any] | None:
+    return next(
+        (note for note in resource_notes if str(note.get("label", "")) == label),
+        None,
+    )
+
+
+def _resource_int(note: dict[str, Any], key: str) -> int:
+    try:
+        return int(note.get(key, 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def build_observable_evidence_summary(
@@ -1327,6 +1418,14 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- human desktop acceptance: `{summary.get('human_desktop_acceptance')}`",
         ]
     )
+    resource_smoke = summary.get("resource_smoke", {})
+    if resource_smoke:
+        lines.extend(
+            [
+                f"- resource smoke passed: `{resource_smoke.get('passed')}`",
+                f"- RSS growth: `{resource_smoke.get('rss_growth_kb', 'n/a')}` KB / limit `{resource_smoke.get('rss_limit_kb', 'n/a')}` KB",
+            ]
+        )
     failures = summary.get("failed_checks", [])
     if failures:
         lines.extend(["", "## Failed Checks", ""])
@@ -1364,6 +1463,14 @@ def render_markdown(payload: dict[str, Any]) -> str:
         status = "ok" if item.get("ok") else "failed"
         lines.append(f"- `{item.get('command')}`: `{status}` - {item.get('message')}")
     lines.extend(["", "## Resource Notes", ""])
+    if resource_smoke:
+        lines.extend(
+            [
+                f"- smoke checked: `{resource_smoke.get('checked')}`",
+                f"- smoke passed: `{resource_smoke.get('passed')}`",
+                f"- boundary: {resource_smoke.get('boundary', '')}",
+            ]
+        )
     for note in payload.get("resource_notes", []):
         lines.append(
             f"- {note.get('label')}: threads `{note.get('python_threads')}`, "

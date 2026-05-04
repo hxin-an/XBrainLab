@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Walkthrough Resource Smoke Boundary
+
+### 狀態
+
+Consolidated automated human-like walkthrough 不只保存 screenshots、visible text 和 backend
+snapshots，現在也把 close 後的 process/thread cleanup 納入 pass/fail smoke。這把 resource
+notes 從「附錄紀錄」提升為可 fail 的 validation boundary，但仍明確限定為 coarse smoke。
+
+### 已可宣稱
+
+- UI-observable walkthrough artifact 會 gate obvious Python thread、Qt thread-pool 和 RSS
+  high-water cleanup regression。
+- 最新 artifact 仍是 `26 / 26` phases、`20` screenshots、resource smoke passed。
+
+### Evidence 入口
+
+- Script：`scripts/dev/capture_human_like_product_walkthrough.py`
+- Unit gate：`tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+
+### 不能宣稱完成
+
+- 這不是 leak-proof soak test，也不是長時間 local model / training resource acceptance。
+- 這仍不是 Windows launcher、雙螢幕或 DPI human desktop verification。
+
+### 下一手重點
+
+把同樣的 lifecycle thinking 延伸到 long-running local model、training / visualization jobs、
+cancel/cleanup 和 repeated open/close UI smoke。
+
 ## 2026-05-05 MCP Stdio Adapter Session Boundary
 
 ### 狀態

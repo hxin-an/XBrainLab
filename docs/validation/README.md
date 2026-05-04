@@ -49,6 +49,12 @@ enabled。最新 artifact 另有 top-level `observable_evidence` / `ui_quality_r
 全數 nonblank，visible text raw tool / schema / traceback leakage findings 為 `0`。這支撐
 automated PyQt replay 的主要 UI 操作路徑，但仍不能
 替代 human desktop acceptance。
+同一 walkthrough 現在也把 process/thread resource notes 納入 pass/fail smoke：artifact
+`pass_fail_summary.resource_smoke` 會檢查 replay close 後 Python thread count 是否回落、
+Qt thread pool 是否仍 active，以及 `ru_maxrss` high-water delta 是否超過 smoke threshold。
+最新 offscreen artifact 顯示 resource smoke `passed=True`、RSS growth `231456 KB` /
+limit `600000 KB`、Qt active thread `0`。這只能抓明顯 cleanup regression，不是 leak-proof
+soak test，也不能替代長時間 local model / training desktop session。
 
 目前 fast engineering artifact 狀態是：
 

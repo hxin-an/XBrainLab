@@ -113,6 +113,44 @@ def test_build_pass_fail_summary_requires_all_phases() -> None:
     assert "missing phase" in "; ".join(summary["failed_checks"])
 
 
+def test_build_pass_fail_summary_flags_unsettled_threads() -> None:
+    phases = [
+        {
+            "phase": phase,
+            "visible_text": [],
+            "button_state": [],
+            "workflow_state": {},
+            "screenshot": "",
+        }
+        for phase in REQUIRED_PHASES
+    ]
+
+    summary = build_pass_fail_summary(
+        phases,
+        screenshots={},
+        resource_notes=[
+            {
+                "label": "start",
+                "python_threads": 1,
+                "qt_active_threads": 0,
+                "max_rss_kb": 100,
+            },
+            {
+                "label": "after_close",
+                "python_threads": 4,
+                "qt_active_threads": 2,
+                "max_rss_kb": 900000,
+            },
+        ],
+    )
+
+    assert summary["passed"] is False
+    failed = "; ".join(summary["failed_checks"])
+    assert "Python threads did not settle" in failed
+    assert "Qt thread pool still active" in failed
+    assert "RSS smoke delta exceeded" in failed
+
+
 def test_observable_evidence_summary_indexes_phase_snapshots() -> None:
     payload = _base_payload()
 

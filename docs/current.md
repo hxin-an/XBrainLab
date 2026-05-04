@@ -432,7 +432,11 @@ artifact 和 process/thread notes。artifact
 `26 / 26` phases、human desktop acceptance `not performed`。最新 artifact 已補上 top-level
 `observable_evidence` 和 `ui_quality_review`：`26` 個 phase 都有 visible text、button
 state、workflow/backend snapshot index，`20` 張 screenshot 全部通過 nonblank check，visible text
-raw tool / schema / traceback leakage check 為 `0` findings。後續 UI polish 已依截圖修正
+raw tool / schema / traceback leakage check 為 `0` findings。最新 resource smoke gate 也會讓
+walkthrough 在 close 後 Python threads 未回落、Qt thread pool 仍 active 或 RSS high-water delta
+超過 threshold 時 fail；目前 artifact 顯示 resource smoke `passed=True`、RSS growth
+`231456 KB` / limit `600000 KB`、Qt active thread `0`。這是 coarse cleanup smoke，不是
+memory-leak proof 或長時間 soak。後續 UI polish 已依截圖修正
 Data Interpretation preview / confirm dialog 的 review surface density、Training plot dark-theme
 readability、Training history compact header、Evaluation page compact controls，以及 ChatPanel
 new conversation / reset 後的 stale bubble / stale workflow status，並刷新同一份

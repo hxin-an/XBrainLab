@@ -17807,33 +17807,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 860055,
+      "pid": 861892,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835980
+      "max_rss_kb": 836300
     },
     {
       "label": "before_close",
-      "pid": 860055,
+      "pid": 861892,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068056
+      "max_rss_kb": 1067756
     },
     {
       "label": "after_close",
-      "pid": 860055,
+      "pid": 861892,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068056
+      "max_rss_kb": 1067756
     }
   ],
   "ui_quality_review": {
@@ -17991,7 +17991,19 @@
     "required_phase_count": 26,
     "observed_phase_count": 26,
     "screenshot_count": 20,
-    "human_desktop_acceptance": "not performed"
+    "human_desktop_acceptance": "not performed",
+    "resource_smoke": {
+      "checked": true,
+      "passed": true,
+      "failed_checks": [],
+      "start_python_threads": 1,
+      "after_close_python_threads": 1,
+      "python_thread_tolerance": 1,
+      "after_close_qt_active_threads": 0,
+      "rss_growth_kb": 231456,
+      "rss_limit_kb": 600000,
+      "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
+    }
   },
-  "elapsed_seconds": 3.901
+  "elapsed_seconds": 3.908
 }

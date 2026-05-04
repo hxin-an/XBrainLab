@@ -37,6 +37,47 @@
 
 ## 2026-05-05
 
+### 07:45 Human-like walkthrough resource smoke gate
+
+- 做了什麼：
+  - 使用 `performance-resource-reviewer` 檢查 consolidated automated walkthrough，發現 script
+    已保存 `start` / `before_close` / `after_close` resource notes，但 pass/fail summary 沒有把
+    thread / Qt pool / RSS evidence 當成 gate。
+  - 先補 unit test：建構 `after_close` Python threads 上升、Qt active thread pool 未清、RSS
+    high-water delta 過大的 fake artifact，要求 `build_pass_fail_summary()` fail。
+  - 新增 `build_resource_smoke_summary()`，把 close 後 Python thread count、Qt active thread count
+    和 `ru_maxrss` high-water delta 納入 pass/fail；Markdown report 也顯示 resource smoke
+    passed、RSS growth 和 smoke boundary。
+  - 刷新 consolidated human-like walkthrough artifact。
+- 結果：
+  - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` 現在有
+    `pass_fail_summary.resource_smoke`。
+  - 最新 offscreen artifact status `passed`、`26 / 26` required phases、`20` screenshots、
+    resource smoke `passed=True`。
+  - 最新 resource smoke：RSS growth `231456 KB` / limit `600000 KB`，after-close Qt active
+    threads `0`；這是 coarse smoke，不是 leak-proof soak。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_build_pass_fail_summary_flags_unsettled_threads -q`
+    -> 初始紅燈：`build_pass_fail_summary()` 尚不接受 `resource_notes`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_build_pass_fail_summary_flags_unsettled_threads -q`
+    -> `1 passed`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `11 passed`。
+  - `poetry run ruff check scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> pass。
+  - `poetry run basedpyright scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`，refreshed consolidated walkthrough artifacts。
+  - `git diff --check` -> pass。
+  - `timeout 300s poetry run ruff check .` -> pass。
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 這只會抓 obvious cleanup regression；仍需要長時間 ChatPanel/local-model/training soak、
+    Windows launcher真人 click-through、雙螢幕 / DPI 和更多 lifecycle / stop-cleanup checks。
+
 ### 07:23 Data Interpretation recipe reload rehydration
 
 - 做了什麼：
