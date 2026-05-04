@@ -144,6 +144,13 @@ UI baseline capture 結果：
   `data_interpretation_candidate.py` module；metadata override、event/class choices、
   label-carrier recipe trace、empty selection blocking 和 existing scan / preview / recipe
   regressions 仍通過。
+- Data Interpretation session-state boundary cleanup 覆蓋 focused
+  `data_interpretation_state.py` module；lifecycle stores、latest-id resolver、snapshot、clear、
+  applied interpretation / recipe resolver 和 post-load label-import recipe state update 有直接 unit
+  coverage，既有 Data Interpretation service regression 仍通過。Full slice gate：backend
+  application regression -> `99 passed`；backend integration -> `3 passed`；agent/tool regression ->
+  `468 passed`；agent integration -> `7 passed`；ruff / basedpyright / architecture compliance /
+  MkDocs strict / diff check passed。
 - Agent legacy data-entry prompt downgrade 覆蓋 Empty / Data Loaded / Preprocessed stage prompt
   和 Context Assembler policy intersection；`load_data` / `attach_labels` 不再作為 primary stage
   tools 曝光，backend capability policy 也不能單獨把 stage-filtered legacy tool 放回 prompt。

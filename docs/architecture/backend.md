@@ -85,6 +85,10 @@ source discovery。
 最新 candidate boundary cleanup 又把 candidate builder、metadata override、event/class choice
 mapping 和 candidate recipe trace 抽到 `data_interpretation_candidate.py`；大型 lifecycle module
 基本收斂成 shared enum、applied lifecycle dataclass 和 public compatibility re-export。
+最新 session-state boundary cleanup 又把 Data Interpretation lifecycle object stores、latest-id
+resolver、snapshot assembly、clear 和 post-load label-import recipe recording 抽到
+`data_interpretation_state.py`；`DataInterpretationCommandService` 現在主要保留 command handler
+orchestration，state truth 不再混在 handler 檔案裡。
 最新 automation / MCP schema cleanup 又把 legacy data-entry 降權資訊寫進同一套
 `AutomationCommandSpec` truth：`load_data`、`attach_labels`、`import_labels` 的 command spec 和
 MCP `tools/list` `x_xbrainlab` metadata 都會標示 `legacy_compatibility=True`、
@@ -139,6 +143,7 @@ ApplicationService / Command API
   |
   +--> DataInterpretationCommandService
   |       +--> scanner / candidate builder / review service / recipe state
+  |       +--> DataInterpretationSessionState for lifecycle stores / snapshot truth
   |       +--> DataInterpretationApplyService
   |               +--> reviewed metadata apply / reviewed label carrier apply
   |
@@ -453,10 +458,11 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   `execute_application_command()` 回傳 `None` 的 mock / legacy adapter 情境才回到 controller
   fallback。
 - Data Interpretation command handlers 實作位置現在是
-  `DataInterpretationCommandService`。它 owns scan/candidate/preview/validation/applied/recipe
-  in-memory lifecycle 和 recipe label import state 更新；reviewed metadata apply 與 reviewed
-  label carrier apply 則在 `DataInterpretationApplyService`。`ApplicationService` 不再直接承接
-  這些 workflow 細節。
+  `DataInterpretationCommandService`。它 orchestration scan / preview / validate / apply /
+  recipe commands；scan/candidate/preview/validation/applied/recipe in-memory state、latest-id
+  resolver、snapshot 和 recipe label import state 更新在 `DataInterpretationSessionState`；
+  reviewed metadata apply 與 reviewed label carrier apply 則在 `DataInterpretationApplyService`。
+  `ApplicationService` 不再直接承接這些 workflow 細節。
 - Data Interpretation format capability matrix 實作位置現在是
   `data_interpretation_formats.py`。它 owns GDF、EDF / BDF、EEGLAB、BrainVision、FIF、MAT、
   CSV / TSV、TXT、BIDS events 和 XDF / LSL 的 supported / needs-review / blocked 邊界。
@@ -501,7 +507,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 重要邊界：
 
 - command 目前仍透過既有 controllers 執行，以保留 observer event 與 UI refresh 行為。
-- Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationCommandService`；UI、agent、
+- Data Interpretation 的 lifecycle truth 目前在 `DataInterpretationSessionState`，並由
+  `DataInterpretationCommandService` 作為 command boundary 協調；UI、agent、
   automation 和 MCP 仍必須透過 `ApplicationService.execute()` 進入，不可直接建立第二套
   interpretation state。
 - Analysis / visualization readiness truth 目前在 `AnalysisCommandService`，但 capability

@@ -178,11 +178,14 @@ lifecycle module 不再直接承接 scan IO / source discovery。
 Candidate builder / metadata override / event-class choice mapping 也已抽成 focused candidate
 module，原大型 lifecycle module 現在主要保留 shared decision enum、applied lifecycle dataclass
 和 compatibility re-exports。
+Data Interpretation lifecycle object stores、latest-id resolver、snapshot assembly、clear 和
+post-load label-import recipe recording 也已抽成 `DataInterpretationSessionState`；command
+service 主要回到 scan / preview / validate / apply / recipe command orchestration。
 
 ### 已可宣稱
 
 - Data Interpretation command lifecycle 由 `DataInterpretationCommandService` /
-  `DataInterpretationApplyService` 承接。
+  `DataInterpretationApplyService` / `DataInterpretationSessionState` 承接。
 - Evaluation / visualization / saliency / montage apply 由 `AnalysisCommandService` 承接。
 - Model configuration、training option、train / stop、history cleanup 和 reset-time training config
   clear 由 `TrainingCommandService` 承接。
@@ -214,6 +217,8 @@ module，原大型 lifecycle module 現在主要保留 shared decision enum、ap
   discovery 和 scan warning / blocked reason assembly 由 `data_interpretation_scan.py` 承接。
 - `InterpretationCandidate`、scan + user choices to candidate conversion、metadata override、
   event/class mapping 和 candidate recipe trace 由 `data_interpretation_candidate.py` 承接。
+- Data Interpretation lifecycle stores、resolver、snapshot、clear 和 post-load label-import recipe
+  recording 由 `data_interpretation_state.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 

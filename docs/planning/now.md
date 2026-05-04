@@ -83,6 +83,10 @@
 - 最新 Data Interpretation boundary cleanup 已把 candidate builder / metadata override /
   event-class choice mapping 抽到 `data_interpretation_candidate.py`；`data_interpretation.py`
   目前主要只保留 shared decision enum、applied lifecycle dataclass 和 compatibility re-exports。
+- 最新 Data Interpretation session-state cleanup 已把 lifecycle stores、latest-id resolver、
+  snapshot assembly、clear 和 post-load label-import recipe recording 抽到
+  `data_interpretation_state.py`；`DataInterpretationCommandService` 目前主要保留 command handler
+  orchestration。
 - 最新 agent tool-surface cleanup 已把 `load_data` / `attach_labels` 從 Empty / Data Loaded /
   Preprocessed stage prompt 和 primary tool exposure 移除；Context Assembler 現在用 backend
   capability policy 與 stage allowlist 取交集，避免 compatibility tool 被 policy 重新帶回主

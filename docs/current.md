@@ -216,6 +216,10 @@ candidate builder、metadata override 和 applied interpretation lifecycle datac
 builder、metadata override、event/class mapping 和 candidate recipe trace 抽到
 `data_interpretation_candidate.py`；`data_interpretation.py` 目前約 `75` 行，保留 shared
 decision enum、`AppliedInterpretation` 和 public compatibility re-exports。
+最新 Data Interpretation session-state cleanup 又把 lifecycle object stores、latest-id resolver、
+snapshot assembly、clear 和 post-load label import recipe recording 抽到
+`data_interpretation_state.py`；`DataInterpretationCommandService` 目前約 `297` 行，主要保留 command
+handler orchestration，不再同時承接 state truth。
 最新 agent tool-surface cleanup 把舊 `load_data` / `attach_labels` 從 Empty / Data Loaded /
 Preprocessed stage prompt 和 primary tool exposure 移除；Context Assembler 會把 backend
 capability policy 與 stage allowlist 取交集，避免 backend compatibility policy 把已降權的

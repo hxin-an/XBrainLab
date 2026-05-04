@@ -37,6 +37,57 @@
 
 ## 2026-05-05
 
+### 14:25 Data Interpretation session-state boundary cleanup
+
+- 做了什麼：
+  - 使用 `refactor-slicer` / `clean-code-reviewer` 檢查後，選 Data Interpretation 的
+    session state / resolver / snapshot / label-import recipe recording 作為下一個 backend cleanup
+    slice。
+  - 先新增 focused tests，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_state`。
+  - 新增 `DataInterpretationSessionState`，承接 scan/candidate/preview/validation/applied/recipe
+    lifecycle stores、latest-id resolver、snapshot assembly、clear 和 post-load label import recipe
+    state update。
+  - `DataInterpretationCommandService` 改成委派 state/resolver/snapshot，只保留 scan /
+    preview / validate / apply / save recipe / reload recipe command orchestration。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `DataInterpretationCommandService` 從約 `514` 行降到 `297` 行。
+  - 新增 `data_interpretation_state.py` 為 `385` 行，邊界是 lifecycle state truth，不是新的
+    command dispatcher。
+  - UI / agent / MCP command name、payload 和 `CommandResult` contract 未變。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_state.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_state.py tests/unit/backend/application/test_data_interpretation_service.py -q`
+    -> `4 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation_state.py XBrainLab/backend/application/data_interpretation_service.py tests/unit/backend/application/test_data_interpretation_state.py tests/unit/backend/application/test_data_interpretation_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation_state.py XBrainLab/backend/application/data_interpretation_service.py tests/unit/backend/application/test_data_interpretation_state.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `99 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 120s git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - 這支撐 Data Interpretation internal boundary cleanup，不是 mature import wizard completion。
+  - 下一步可繼續檢查 UI / agent / MCP 是否還有 controller-private fallback 或 legacy
+    data-entry 心智模型殘留；這個 slice 不標 product complete。
+
 ### 13:10 State / query service boundary cleanup
 
 - 做了什麼：
