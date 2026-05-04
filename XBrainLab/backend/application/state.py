@@ -124,6 +124,10 @@ class InterpretationStateSnapshot:
     summary: str | None = None
     metadata_preview: list[dict[str, Any]] = field(default_factory=list)
     label_carriers: list[str] = field(default_factory=list)
+    label_carrier_plan: list[dict[str, Any]] = field(default_factory=list)
+    format_capabilities: list[dict[str, Any]] = field(default_factory=list)
+    event_roles: dict[str, str] = field(default_factory=dict)
+    class_map: dict[str, str] = field(default_factory=dict)
     label_import_count: int = 0
     label_imports: list[dict[str, Any]] = field(default_factory=list)
     recipe_path: str | None = None

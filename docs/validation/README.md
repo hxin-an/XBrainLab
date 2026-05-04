@@ -1335,6 +1335,39 @@ post-load label import 內嵌 wizard。
 這批 evidence 支撐 reviewed MAT trial-order labels 不再只是 recipe plan。它仍不支撐需要選 raw
 event anchor 的 GDF/MAT alignment、多檔 label mapping 或 full manual compatibility matrix。
 
+2026-05-04 Data Interpretation shared state snapshot propagation：
+
+- backend:
+  - `InterpretationStateSnapshot` now exposes `label_carrier_plan`,
+    `format_capabilities`, `event_roles`, and `class_map`.
+  - `ApplicationService._interpretation_snapshot()` sources those fields from applied
+    interpretation first, then candidate / preview / scan state.
+- automation / agent:
+  - `query_state` returns the same interpretation review truth in diagnostics.
+  - `execute_automation_payload()` includes the fields in its serialized state envelope,
+    which is the MCP / headless path.
+  - `execute_application_tool_command(..., "query_state", ...)` surfaces the same fields
+    through the agent ApplicationService-backed tool surface.
+- TDD evidence:
+  - initial focused regression failed because `InterpretationStateSnapshot` had no
+    `label_carrier_plan` attribute.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_state_snapshot_preserves_import_review_truth tests/unit/backend/application/test_automation.py::test_execute_automation_payload_state_contains_interpretation_review_truth tests/unit/llm/tools/test_application_surface.py::test_query_state_tool_surfaces_interpretation_review_truth -q`
+  - `3 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `61 passed`
+  - targeted `ruff` clean.
+  - targeted `ruff format --check` clean.
+  - targeted `basedpyright` clean.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass.
+
+這批 evidence 支撐 UI / recipe 已確認的 import truth 不再停留在 backend JSON 或 wizard
+內部；agent、headless automation 和 MCP-shaped envelope 可讀到同一份狀態。它仍不支撐 mature
+embedded label import wizard、多檔 label mapping、raw-event-anchor-specific GDF/MAT alignment、
+真人 Windows click-through、interactive desktop 3D 或 MCP Inspector GUI。
+
 2026-05-04 Data Interpretation recipe save UI path：
 
 - Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。

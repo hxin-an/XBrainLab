@@ -37,6 +37,42 @@
 
 ## 2026-05-04
 
+### 18:15 Data Interpretation shared state snapshot propagation
+
+- 做了什麼：
+  - 補 TDD 紅燈：reviewed MAT label carrier / class map apply 後，
+    `ApplicationStateSnapshot.interpretation` 和 `query_state` 應暴露 reviewed
+    `label_carrier_plan`、`format_capabilities`、`event_roles` 和 `class_map`。
+  - `InterpretationStateSnapshot` 新增上述欄位。
+  - `_interpretation_snapshot()` 以 applied interpretation 為優先，其次 candidate / preview /
+    scan，建立同一份 import truth。
+  - 補 automation / MCP envelope regression：`execute_automation_payload()` serialized state 要
+    包含 label carrier plan / format capabilities。
+  - 補 agent surface regression：ApplicationService-backed `query_state` tool 要傳出同一份
+    interpretation review truth。
+- 結果：
+  - 初跑 focused test 先因 `InterpretationStateSnapshot` 沒有 `label_carrier_plan` attribute
+    失敗，實作後通過。
+  - UI / recipe、agent、headless / MCP-shaped envelope 不再因 state snapshot 少欄位而看不同
+    Data Interpretation truth。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_state_snapshot_preserves_import_review_truth -q`
+    -> first run failed as expected, then `1 passed`。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_state_snapshot_preserves_import_review_truth tests/unit/backend/application/test_automation.py::test_execute_automation_payload_state_contains_interpretation_review_truth tests/unit/llm/tools/test_application_surface.py::test_query_state_tool_surfaces_interpretation_review_truth -q`
+    -> `3 passed`。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+    -> `61 passed`。
+  - targeted `ruff` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 仍不能宣稱 mature embedded label import wizard、多檔 label mapping、raw-event-anchor-specific
+    MAT/GDF alignment、真人 Windows launcher click-through、interactive desktop 3D、MCP Inspector /
+    release config 或 thesis-ready local LLM evidence。
+
 ### 18:06 Usage-refresh handoff after import label apply
 
 - 做了什麼：

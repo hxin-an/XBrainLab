@@ -110,7 +110,11 @@ service-backed compatibility path；label import 成功後會更新 applied inte
 recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import wizard 內嵌 label
 import editor；同日後續 slice 已把單一 EEG + 單一 reviewed MAT / TXT trial-order sequence
 carrier + confirmed class map 接到 legacy label import，recipe trace 會寫
-`label_import:legacy:<n>`。raw-event-anchor-specific MAT/GDF alignment、多檔 label mapping、
+`label_import:legacy:<n>`。最新 slice 已把 Data Interpretation import truth 補進 shared
+state snapshot：`ApplicationStateSnapshot.interpretation`、`query_state`、automation / MCP
+envelope 和 agent `query_state` tool surface 都會暴露 reviewed `label_carrier_plan`、
+`format_capabilities`、`event_roles` 和 `class_map`，避免 UI / recipe 和 agent / headless
+看到不同資料入口真相。raw-event-anchor-specific MAT/GDF alignment、多檔 label mapping、
 all-format manual compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。

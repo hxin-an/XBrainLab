@@ -235,6 +235,9 @@
     labels applied。
   - 單一 EEG + 單一 reviewed MAT / TXT trial-order sequence carrier + confirmed class map 也會走
     legacy label import，並保存 `label_import:legacy:<n>` recipe trace。
+  - shared state snapshot 已同步 import review truth：`ApplicationStateSnapshot.interpretation`、
+    `query_state`、automation / MCP envelope 和 agent `query_state` tool surface 現在都會暴露
+    `label_carrier_plan`、`format_capabilities`、`event_roles` 和 `class_map`。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
   wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、多檔 label
   mapping、all-format manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，

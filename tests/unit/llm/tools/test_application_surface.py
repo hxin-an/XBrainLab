@@ -283,6 +283,56 @@ def test_query_state_tool_uses_application_command_surface():
     assert result.raw_result["status"] == "ok"
 
 
+def test_query_state_tool_surfaces_interpretation_review_truth(tmp_path):
+    study = Study()
+    facade = BackendFacade(study)
+    source_dir = tmp_path / "agent_reviewed_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "sub-01_task-mi_raw.fif"
+    events_path = source_dir / "events.tsv"
+    eeg_path.write_bytes(b"placeholder")
+    events_path.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
+    facade.service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    execute_application_tool_command(
+        study,
+        "scan_source",
+        {"source_path": str(source_dir)},
+    )
+    execute_application_tool_command(
+        study,
+        "preview_interpretation",
+        {
+            "choices": {
+                "label_carrier_choices": {
+                    str(events_path): {
+                        "label_field": "trial_type",
+                        "anchor": "onset",
+                        "time_model": "seconds",
+                        "granularity": "trial",
+                    },
+                },
+                "class_map": {"left": "left hand"},
+            },
+        },
+    )
+    execute_application_tool_command(study, "validate_interpretation", {})
+    execute_application_tool_command(study, "apply_interpretation", {"confirmed": True})
+    result = execute_application_tool_command(study, "query_state", {"query": "state"})
+
+    assert result is not None
+    interpretation = result.raw_result["diagnostics"]["state"]["interpretation"]
+    assert interpretation["label_carrier_plan"][0]["path"] == str(events_path)
+    assert interpretation["label_carrier_plan"][0]["selected_label_field"] == (
+        "trial_type"
+    )
+    capabilities = {
+        item["name"]: item for item in interpretation["format_capabilities"]
+    }
+    assert capabilities["events.tsv"]["format"] == "BIDS events"
+    assert interpretation["class_map"] == {"left": "left hand"}
+
+
 def test_analysis_tools_are_application_service_backed():
     study = Study()
 

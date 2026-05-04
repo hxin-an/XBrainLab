@@ -1531,6 +1531,44 @@ class ApplicationService:
             warnings = list(preview.warnings)
         elif scan is not None:
             warnings = list(scan.warnings)
+        label_carrier_plan = (
+            applied.label_carrier_plan
+            if applied is not None
+            else candidate.label_carrier_plan
+            if candidate is not None
+            else preview.label_carrier_preview
+            if preview is not None
+            else []
+        )
+        format_capabilities = (
+            applied.format_capabilities
+            if applied is not None
+            else candidate.format_capabilities
+            if candidate is not None
+            else preview.format_capabilities
+            if preview is not None
+            else scan.format_capabilities
+            if scan is not None
+            else []
+        )
+        event_roles = (
+            applied.event_roles
+            if applied is not None
+            else candidate.event_roles
+            if candidate is not None
+            else preview.event_roles
+            if preview is not None
+            else {}
+        )
+        class_map = (
+            applied.class_map
+            if applied is not None
+            else candidate.class_map
+            if candidate is not None
+            else preview.class_map
+            if preview is not None
+            else {}
+        )
         return InterpretationStateSnapshot(
             has_scan_result=scan is not None,
             has_candidate=candidate is not None,
@@ -1561,6 +1599,10 @@ class ApplicationService:
                 if candidate is not None
                 else []
             ),
+            label_carrier_plan=[dict(item) for item in label_carrier_plan],
+            format_capabilities=[dict(item) for item in format_capabilities],
+            event_roles=dict(event_roles),
+            class_map=dict(class_map),
             label_import_count=len(applied.label_imports) if applied else 0,
             label_imports=[dict(item) for item in applied.label_imports]
             if applied

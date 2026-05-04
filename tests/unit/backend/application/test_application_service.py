@@ -246,6 +246,57 @@ def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
     assert "choices:label_carriers" in recipe["recipe_trace"]
 
 
+def test_data_interpretation_state_snapshot_preserves_import_review_truth(tmp_path):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "reviewed_state_truth"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(label_path, {"classlabel": [1, 2], "cue_onset": [100, 200]})
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "label_field": "classlabel",
+                        "anchor": "cue_onset",
+                        "time_model": "sample_index",
+                        "granularity": "trial",
+                    },
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    query_result = service.execute(QueryStateCommand(query="state"))
+
+    interpretation = apply_result.state.interpretation
+    assert interpretation.label_carrier_plan[0]["path"] == str(label_path)
+    assert interpretation.label_carrier_plan[0]["selected_label_field"] == "classlabel"
+    assert interpretation.label_carrier_plan[0]["selected_anchor"] == "cue_onset"
+    assert interpretation.class_map == {"1": "left hand", "2": "right hand"}
+    assert (
+        interpretation.event_roles["label_carrier"] == "external label or event source"
+    )
+    capabilities = {item["name"]: item for item in interpretation.format_capabilities}
+    assert capabilities["A01T.gdf"]["status"] == "needs_review"
+    assert capabilities["A01T.mat"]["format"] == "MAT labels"
+
+    state_payload = query_result.diagnostics["state"]["interpretation"]
+    assert state_payload["label_carrier_plan"] == interpretation.label_carrier_plan
+    assert state_payload["format_capabilities"] == interpretation.format_capabilities
+    assert state_payload["class_map"] == interpretation.class_map
+    assert state_payload["event_roles"] == interpretation.event_roles
+
+
 def test_data_interpretation_scan_reports_format_capability_boundaries(tmp_path):
     source_dir = tmp_path / "mixed_format_source"
     source_dir.mkdir()

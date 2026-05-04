@@ -28,6 +28,63 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Data Interpretation shared state snapshot propagation
+
+### 背景
+
+Data Interpretation recipe / wizard 已保存 label carrier plan、format capability boundaries、
+event roles 和 class map，但 shared `ApplicationStateSnapshot.interpretation` 仍只暴露舊的
+label carrier path list 和 label import summary。這會讓 `query_state`、agent、headless
+automation 和 MCP-shaped envelope 看不到 UI / recipe 已確認的 import truth。
+
+### 變更
+
+- `InterpretationStateSnapshot` 新增：
+  - `label_carrier_plan`
+  - `format_capabilities`
+  - `event_roles`
+  - `class_map`
+- `ApplicationService._interpretation_snapshot()` 依序從 applied interpretation、candidate、
+  preview / scan state 建立這些欄位。
+- 補 backend public behavior test，覆蓋 `ApplyInterpretationCommand` result state 和
+  `QueryStateCommand(query="state")` diagnostics。
+- 補 automation test，覆蓋 `execute_automation_payload()` serialized state envelope。
+- 補 agent surface test，覆蓋 ApplicationService-backed `query_state` tool result。
+
+### 影響範圍
+
+- Backend application state contract。
+- `query_state` command diagnostics。
+- Headless / MCP automation envelope。
+- Agent ApplicationService-backed tool surface。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- TDD red:
+  - `test_data_interpretation_state_snapshot_preserves_import_review_truth` first failed because
+    `InterpretationStateSnapshot` had no `label_carrier_plan` attribute.
+- targeted:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_state_snapshot_preserves_import_review_truth tests/unit/backend/application/test_automation.py::test_execute_automation_payload_state_contains_interpretation_review_truth tests/unit/llm/tools/test_application_surface.py::test_query_state_tool_surfaces_interpretation_review_truth -q`
+  - `3 passed`
+- regression:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `61 passed`
+- static:
+  - targeted `ruff` -> pass
+  - targeted `ruff format --check` -> pass
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass
+
+### 剩餘風險
+
+- This is state propagation, not a new UI workflow.
+- It does not implement mature embedded label import wizard, multi-file label mapping,
+  raw-event-anchor-specific MAT / GDF alignment, Windows launcher human click-through,
+  interactive desktop 3D, MCP Inspector GUI, or thesis-ready local LLM evidence.
+
 ## 2026-05-04 Usage-refresh handoff after import label apply
 
 ### 背景

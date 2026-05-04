@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -130,6 +131,60 @@ def test_execute_automation_payload_routes_through_service_and_policy(tmp_path: 
     assert apply_without_confirmation.result is not None
     assert apply_without_confirmation.result["status"] == "failed"
     assert apply_without_confirmation.result["error_type"] == "confirmation_required"
+
+
+def test_execute_automation_payload_state_contains_interpretation_review_truth(
+    tmp_path: Path,
+):
+    source_dir = tmp_path / "automation_reviewed_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "sub-01_task-mi_raw.fif"
+    events_path = source_dir / "events.tsv"
+    eeg_path.write_bytes(b"placeholder")
+    events_path.write_text("onset\ttrial_type\n0.0\tleft\n", encoding="utf-8")
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    execute_automation_payload(
+        service,
+        {"command": "scan_source", "arguments": {"source_path": str(source_dir)}},
+    )
+    execute_automation_payload(
+        service,
+        {
+            "command": "preview_interpretation",
+            "arguments": {
+                "choices": {
+                    "label_carrier_choices": {
+                        str(events_path): {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "time_model": "seconds",
+                            "granularity": "trial",
+                        },
+                    },
+                    "class_map": {"left": "left hand"},
+                },
+            },
+        },
+    )
+    execute_automation_payload(
+        service,
+        {"command": "validate_interpretation", "arguments": {}},
+    )
+    apply_execution = execute_automation_payload(
+        service,
+        {"command": "apply_interpretation", "arguments": {"confirmed": True}},
+    )
+
+    interpretation = apply_execution.state["interpretation"]
+    assert interpretation["label_carrier_plan"][0]["path"] == str(events_path)
+    assert interpretation["label_carrier_plan"][0]["selected_anchor"] == "onset"
+    assert interpretation["class_map"] == {"left": "left hand"}
+    capabilities = {
+        item["name"]: item for item in interpretation["format_capabilities"]
+    }
+    assert capabilities["events.tsv"]["format"] == "BIDS events"
 
 
 def test_execute_automation_payload_reports_schema_error_without_service_execution():
