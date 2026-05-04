@@ -178,6 +178,10 @@ capability-confirmation gate、result envelope 和 compatibility wrapper methods
 runtime bypass cleanup 又修掉兩個 service-success fallback 風險：Dataset panel direct
 file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；Preprocess reset 也改走
 `ResetPreprocessCommand`，controller reset 只保留給 mock / legacy `None` adapter fallback。
+下一個 UI cleanup slice 又把 Training sidebar 的 destructive cleanup path 收回 command spine：
+重新 split 前清 datasets 走 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先要求
+使用者確認，再走 `ClearTrainingHistoryCommand(confirmed=True)`，successful service result 不再
+落回 controller mutation。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed

@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
+    ClearDatasetsCommand,
+    ClearTrainingHistoryCommand,
     CommandName,
     ConfigureTrainingCommand,
     GenerateDatasetCommand,
@@ -244,7 +246,19 @@ class TrainingSidebar(QWidget):
                 )
                 if reply == QMessageBox.StandardButton.No:
                     return
-                self.controller.clean_datasets(force_update=True)
+                clear_result = execute_application_command(
+                    self,
+                    ClearDatasetsCommand(confirmed=True),
+                )
+                if clear_result is None:
+                    self.controller.clean_datasets(force_update=True)
+                elif clear_result.failed:
+                    QMessageBox.critical(
+                        self,
+                        "Reset Training Data Failed",
+                        clear_result.message,
+                    )
+                    return
 
             generator = win.get_result()
             if generator:
@@ -363,7 +377,7 @@ class TrainingSidebar(QWidget):
             self.check_ready_to_train()
 
     def start_training_ui_action(self):
-        """Start training via the controller and enable the stop button.
+        """Start training via the application command spine and enable stop.
 
         Raises:
             Exception: Propagated from the controller on failure, shown
@@ -429,24 +443,24 @@ class TrainingSidebar(QWidget):
                     "Cannot clear history while training is running.",
                 )
                 return
-            self.controller.clear_history()
-            # Panel needs to clear table/plots.
-            # Controller emits "training_updated"? Or we should have a
-            # "history_cleared" signal?
-            # Or Panel should have an observer for history clear?
-            # Currently Panel.clear_history calls controller.clear_history
-            # then does UI cleanup.
-            # If Sidebar calls controller.clear_history, Panel needs to know!
-            # The current observer bridge on 'training_updated' might not cover clear.
-            # Panel has:
-            # self.bridge_updated.connect_to(lambda *args, **kwargs: self.update_loop())
-            # If clear_history empties history, update_loop will see 0 rows and sync.
-            # So Panel UI cleanup might be automatic IF update_loop runs.
-            # But we should ensure update_loop runs.
-            # If controller.clear_history() emits 'training_updated', we are good.
-            # If not, we might need manual trigger.
-            # Let's assume for now we might need to notify Panel.
-            # But better design: Controller emits 'history_cleared'.
+            reply = QMessageBox.question(
+                self,
+                "Clear Training History",
+                "Clear all training history records? This cannot be undone.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+            result = execute_application_command(
+                self,
+                ClearTrainingHistoryCommand(confirmed=True),
+            )
+            if result is None:
+                self.controller.clear_history()
+            elif result.failed:
+                QMessageBox.warning(self, "Warning", result.message)
+                return
 
             self.check_ready_to_train()
         except Exception as e:

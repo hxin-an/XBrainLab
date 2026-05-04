@@ -59,6 +59,9 @@
 - 最新 UI runtime bypass audit 修掉 Dataset direct file import 和 Preprocess reset 的
   service-success fallback：successful `LoadDataCommand` / `ResetPreprocessCommand` 不再再呼叫
   controller mutation，controller fallback 只留給 mock / legacy `None` adapter 情境。
+- 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
+  controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
+  `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。

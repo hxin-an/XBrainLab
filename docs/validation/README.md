@@ -119,6 +119,9 @@ UI baseline capture 結果：
 - UI runtime bypass cleanup 覆蓋 Dataset direct file import 和 Preprocess reset：successful
   `LoadDataCommand` / `ResetPreprocessCommand` 不再落回 controller mutation，fallback 只保留給
   command adapter unavailable 的 mock / legacy `None` 情境。
+- Training sidebar bypass cleanup 覆蓋 destructive dataset cleanup 和 Clear History：
+  successful `ClearDatasetsCommand` / `ClearTrainingHistoryCommand` 不再落回 training controller
+  mutation，Clear History 現在也有 user confirmation。
 - focused test-first 紅燈先確認缺少
   `XBrainLab.backend.application.training_service` /
   `XBrainLab.backend.application.dataset_generation_service` /
@@ -133,12 +136,19 @@ UI baseline capture 結果：
   recipe update、metadata skipped row reporting、smart parse normalization、remove-count delta、
   standard preprocess batching、core preprocessing operations、epoch creation、montage boundary、
   state snapshot construction、query diagnostics、smart-filter suggestions、Dataset direct import
-  service-success no-fallback 和 Preprocess reset service-success no-fallback。
+  service-success no-fallback、Preprocess reset service-success no-fallback、Training re-split
+  cleanup service-success no-fallback 和 Clear History service-success no-fallback。
 - regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
   `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
 - UI runtime bypass slice gate 另通過：
   `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/dataset/test_panel.py -q`
   (`85 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
+  (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
+  (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
+  `git diff --check`。
+- Training sidebar cleanup slice gate 另通過：
+  `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+  (`40 passed`)、`poetry run ruff check .`、`poetry run basedpyright`
   (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
   (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
   `git diff --check`。

@@ -60,6 +60,9 @@ label helper 拆到 `DataCompatibilityCommandService`。最新 data-table cleanu
 也修正 Dataset direct file import 和 Preprocess reset 的 service-success path：real runtime
 收到 successful `CommandResult` 後不再落回 controller mutation；controller fallback 僅保留給
 mock / legacy adapter 回傳 `None` 的相容情境。
+後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 接回
+`ClearDatasetsCommand` / `ClearTrainingHistoryCommand`；successful service result 不再落回
+training controller mutation。
 
 ## 一句話架構
 
@@ -196,6 +199,8 @@ controller，而是先經過 UI command adapter 進 `ApplicationService.execute(
 - Epoching 使用 `CreateEpochCommand`。
 - Split / model / training setting dialog submit 使用 `GenerateDatasetCommand` /
   `ConfigureTrainingCommand`。
+- Re-split 前清 datasets 使用 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先做
+  user confirmation，再使用 `ClearTrainingHistoryCommand(confirmed=True)`。
 - Evaluation / visualization / saliency query 使用 `EvaluateCommand` /
   `VisualizeCommand` / `SaliencyCommand`。
 - Training start / stop 使用 `TrainCommand` / `StopTrainingCommand`。
@@ -385,10 +390,15 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   holder 建立、optimizer / device / evaluation option resolve、training option snapshot 和
   training lifecycle notification；`ApplicationService` 只做 dispatch、policy gate 和 result
   envelope。
+- UI Training sidebar 的 Clear History action 會透過 `ClearTrainingHistoryCommand` 進入
+  `TrainingCommandService`；只有 mock / legacy `None` adapter 情境才回到 controller fallback。
 - `generate_dataset`、`clear_datasets`、split config、split audit、rollback 和
   `DatasetStateSnapshot.split_summary` 的實作位置現在是 `DatasetGenerationCommandService`。
   `ApplicationService` 的 reset preprocess rollback 只委派到這個 service 的 state restore
   helper，不再自己操作 dataset generator / trainer rollback 細節。
+- UI Training sidebar 重新 split 前的 destructive dataset cleanup 會透過
+  `ClearDatasetsCommand` 進入 `DatasetGenerationCommandService`；successful service result 不再
+  落回 `TrainingController.clean_datasets()`。
 - `reset_preprocess`、`reset_session`、`new_session`、downstream rollback 和 reset-time
   dependent-state clear 的實作位置現在是 `LifecycleCommandService`。它會委派到
   `DatasetGenerationCommandService` 和 `TrainingCommandService`，避免 reset path 在

@@ -4161,3 +4161,44 @@
   - UI 仍保留 read-only panel refresh / dialog-local logic / mock compatibility controller path。
   - 仍需繼續盤點 training / visualization UI mutating calls、agent montage / UI routing edge cases
     和 Windows human desktop acceptance。
+
+### 2026-05-05 Training sidebar destructive command cleanup
+
+- 做了什麼：
+  - 修 Training sidebar 重新 split 前的 destructive dataset cleanup：使用者確認後先走
+    `ClearDatasetsCommand(confirmed=True)`，successful service result 不再呼叫
+    `TrainingController.clean_datasets()`；adapter unavailable 的 mock / legacy `None` path 才 fallback。
+  - 修 Clear History：現在先顯示 user confirmation，再走
+    `ClearTrainingHistoryCommand(confirmed=True)`；successful service result 不再呼叫
+    `TrainingController.clear_history()`。
+  - 更新 `start_training_ui_action()` docstring，避免再把產品執行語意寫成 controller-first。
+- red tests：
+  - `tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_service_success_does_not_fallback_to_controller`
+    初始失敗，證明 re-split cleanup 只直接呼叫 controller cleanup，service call 只出現在
+    `GenerateDatasetCommand`。
+  - `tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_clear_history_service_success_does_not_fallback_to_controller`
+    初始失敗，證明 Clear History 完全沒有呼叫 command adapter。
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_service_success_does_not_fallback_to_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_clear_history_service_success_does_not_fallback_to_controller -q`
+    -> `2 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py`
+    -> pass。
+  - `timeout 300s poetry run ruff format --check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `40 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 不能宣稱：
+  - 這只修 Training sidebar 兩個 destructive cleanup path；model/settings/start/stop 已 service-first，
+    但 training UI 仍有 controller read-only checks 和 mock fallback。
+  - 還不能宣稱所有 UI mutating controller paths 已清完，也不能替代 Windows human desktop
+    acceptance。

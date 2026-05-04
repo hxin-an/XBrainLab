@@ -200,6 +200,49 @@ class TestTrainingSidebar:
             MockDlg.return_value.get_result.return_value = MagicMock()
             sidebar.split_data()
 
+    def test_split_data_service_success_does_not_fallback_to_controller(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import (
+            ClearDatasetsCommand,
+            GenerateDatasetCommand,
+        )
+
+        generator = MagicMock()
+        sidebar.panel.controller.has_data = MagicMock(return_value=True)
+        sidebar.panel.dataset_controller.has_data.return_value = True
+        sidebar.panel.dataset_controller.get_epoch_data.return_value = MagicMock()
+        sidebar.panel.controller.has_datasets.return_value = True
+        sidebar.panel.controller.get_trainer.return_value = MagicMock()
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
+            ) as MockDlg,
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            MockDlg.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            MockDlg.return_value.get_result.return_value = generator
+            sidebar.split_data()
+
+        commands = [call.args[1] for call in mock_execute.call_args_list]
+        assert isinstance(commands[0], ClearDatasetsCommand)
+        assert isinstance(commands[1], GenerateDatasetCommand)
+        sidebar.panel.controller.clean_datasets.assert_not_called()
+        sidebar.panel.controller.apply_data_splitting.assert_not_called()
+
     def test_select_model_accepted(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False
         mock_holder = MagicMock()
@@ -240,6 +283,30 @@ class TestTrainingSidebar:
         ):
             sidebar.clear_history()
             sidebar.panel.controller.clear_history.assert_called()
+
+    def test_clear_history_service_success_does_not_fallback_to_controller(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import ClearTrainingHistoryCommand
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+        ):
+            sidebar.clear_history()
+
+        assert isinstance(mock_execute.call_args.args[1], ClearTrainingHistoryCommand)
+        sidebar.panel.controller.clear_history.assert_not_called()
 
     def test_training_setting_while_training(self, sidebar):
         sidebar.panel.controller.is_training.return_value = True

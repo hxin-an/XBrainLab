@@ -56,6 +56,9 @@ assembly 和 `query_state` diagnostics 也已移到 focused state/query boundary
 同一輪 UI runtime bypass audit 已修 Dataset direct file import 與 Preprocess reset 的
 service-success controller fallback，讓 successful `CommandResult` 不會再被 UI 以 controller
 mutation 重做一次。
+後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 收回 typed
+command path；Clear History 現在有使用者確認，successful service result 不再落回 controller
+mutation。
 
 ### 已可宣稱
 
@@ -76,6 +79,8 @@ mutation 重做一次。
   `QueryStateCommandService` 承接。
 - Dataset direct file import 和 Preprocess reset 的 successful service path 不再 fallback 到
   controller mutation；controller fallback 僅保留給 mock / legacy `None` adapter 情境。
+- Training sidebar 的 re-split dataset cleanup 和 Clear History destructive action 走
+  `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`，且 Clear History 有 confirmation。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 
