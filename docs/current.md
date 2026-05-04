@@ -207,6 +207,10 @@ cleanup，不是 mature import wizard completion。
 classification、BIDS source detection、candidate-file traversal 和 scan warning / blocked reason
 assembly 抽到 `data_interpretation_scan.py`；`data_interpretation.py` 目前約 `286` 行，主要保留
 candidate builder、metadata override 和 applied interpretation lifecycle dataclass。
+最新 candidate boundary cleanup 又把 `InterpretationCandidate`、scan + user choices -> candidate
+builder、metadata override、event/class mapping 和 candidate recipe trace 抽到
+`data_interpretation_candidate.py`；`data_interpretation.py` 目前約 `75` 行，保留 shared
+decision enum、`AppliedInterpretation` 和 public compatibility re-exports。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed

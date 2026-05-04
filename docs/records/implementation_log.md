@@ -71,6 +71,9 @@ Preview payload builder 和 safe / needs-confirmation / blocked validator 也已
 review module，Data Interpretation lifecycle module 不再直接承接 review payload construction。
 Source scanner / source classification 也已抽成 focused scan module，Data Interpretation
 lifecycle module 不再直接承接 scan IO / source discovery。
+Candidate builder / metadata override / event-class choice mapping 也已抽成 focused candidate
+module，原大型 lifecycle module 現在主要保留 shared decision enum、applied lifecycle dataclass
+和 compatibility re-exports。
 
 ### 已可宣稱
 
@@ -105,6 +108,8 @@ lifecycle module 不再直接承接 scan IO / source discovery。
   needs-confirmation / blocked decision boundary 由 `data_interpretation_review.py` 承接。
 - `ScanResult`、source scanning、source kind classification、BIDS root detection、label carrier
   discovery 和 scan warning / blocked reason assembly 由 `data_interpretation_scan.py` 承接。
+- `InterpretationCandidate`、scan + user choices to candidate conversion、metadata override、
+  event/class mapping 和 candidate recipe trace 由 `data_interpretation_candidate.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 

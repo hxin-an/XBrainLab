@@ -4508,3 +4508,63 @@
 - 不能宣稱：
   - This is source scanner boundary cleanup, not mature import wizard completion.
   - Candidate builder and metadata override helper still remain in `data_interpretation.py`.
+
+### 2026-05-05 Data Interpretation candidate boundary extraction
+
+- scope：
+  - Backend-only Data Interpretation internal boundary cleanup。
+  - No command shape, UI, agent, MCP, automation, or recipe schema changes.
+- current call sites：
+  - `DataInterpretationCommandService.handle_preview_interpretation()` builds an
+    `InterpretationCandidate` from the latest `ScanResult`.
+  - `reload_interpretation_recipe` reuses the same candidate builder with recipe choices.
+- target boundary：
+  - `data_interpretation_candidate.py` owns `InterpretationCandidate`, scan + user choices to
+    candidate conversion, metadata overrides, event/class mapping, label-carrier choice trace, and
+    candidate recipe trace.
+  - `data_interpretation.py` keeps shared `InterpretationDecision`, `AppliedInterpretation`, and
+    compatibility re-exports.
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_candidate.py`。
+  - Moved `InterpretationCandidate`, `build_interpretation_candidate()`, metadata override helpers,
+    event/class choice normalization, and candidate recipe trace helper out of
+    `data_interpretation.py`.
+  - Added direct unit coverage for metadata override, event/class choices, label-carrier recipe
+    trace, and empty selection blocking.
+  - `data_interpretation.py` reduced from about `286` lines to about `75` lines after this slice.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py -q`
+    initial failure: `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_candidate`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py -q`
+    -> `2 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> pass.
+  - `timeout 300s poetry run ruff format --check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_candidate.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_preview_validate_requires_confirmation tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries tests/unit/backend/application/test_application_service.py::test_data_interpretation_choices_flow_into_recipe tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe -q`
+    -> `25 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `96 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 120s git diff --check`
+    -> pass.
+- 不能宣稱：
+  - This is candidate builder boundary cleanup, not mature import wizard completion.
+  - `AppliedInterpretation` remains in `data_interpretation.py`; apply side effects still live in
+    `DataInterpretationApplyService`.

@@ -82,6 +82,9 @@ blocked validator 抽到 `data_interpretation_review.py`；Data Interpretation l
 detection、candidate-file traversal 和 scan warning / blocked reason assembly 抽到
 `data_interpretation_scan.py`；Data Interpretation lifecycle module 不再直接承接 scan IO /
 source discovery。
+最新 candidate boundary cleanup 又把 candidate builder、metadata override、event/class choice
+mapping 和 candidate recipe trace 抽到 `data_interpretation_candidate.py`；大型 lifecycle module
+基本收斂成 shared enum、applied lifecycle dataclass 和 public compatibility re-export。
 
 ## 一句話架構
 
@@ -367,6 +370,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/data_compatibility_service.py`
 - `XBrainLab/backend/application/data_interpretation.py`
 - `XBrainLab/backend/application/data_interpretation_apply.py`
+- `XBrainLab/backend/application/data_interpretation_candidate.py`
 - `XBrainLab/backend/application/data_interpretation_formats.py`
 - `XBrainLab/backend/application/data_interpretation_label_carriers.py`
 - `XBrainLab/backend/application/data_interpretation_metadata.py`
@@ -465,6 +469,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - Data Interpretation scanner 實作位置現在是 `data_interpretation_scan.py`。它 owns
   `ScanResult`、source path scanning、source kind classification、BIDS root detection、candidate
   file traversal、label carrier discovery、scan warnings 和 blocked reason assembly。
+- Data Interpretation candidate builder 實作位置現在是 `data_interpretation_candidate.py`。它
+  owns `InterpretationCandidate`、scan + user choices to candidate conversion、metadata overrides、
+  event/class mapping、label-carrier choice trace 和 candidate recipe trace。
 
 2026-05-02 product blocker 盤點結論：
 
