@@ -52,6 +52,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._metadata_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_target_widgets: dict[int, QComboBox] = {}
+        self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         super().__init__(
             parent=parent,
@@ -150,6 +151,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "Anchor",
                 "Time",
                 "Granularity",
+                "Role",
             ],
         )
         self.label_carrier_tree.setMinimumHeight(110)
@@ -315,9 +317,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         event_roles = self.preview.get("event_roles") or {}
         if isinstance(event_roles, dict):
             for name, role in event_roles.items():
-                self.event_tree.addTopLevelItem(
-                    QTreeWidgetItem([str(name), "event role", str(role)]),
-                )
+                tree_item = QTreeWidgetItem([str(name), "event role", str(role)])
+                tree_item.setFlags(tree_item.flags() | Qt.ItemFlag.ItemIsEditable)
+                self._event_role_items.append((tree_item, str(name), str(role)))
+                self.event_tree.addTopLevelItem(tree_item)
 
         class_map = self.preview.get("class_map") or {}
         if isinstance(class_map, dict):
@@ -373,6 +376,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     str(carrier.get("selected_anchor") or ""),
                     str(carrier.get("time_model") or ""),
                     str(carrier.get("granularity") or ""),
+                    str(carrier.get("role") or "external labels"),
                 ],
             )
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
@@ -381,6 +385,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             item.setToolTip(4, self._candidate_tooltip(carrier, "anchor_candidates"))
             item.setToolTip(5, "How label timing aligns to the EEG recording.")
             item.setToolTip(6, "The data unit each label describes.")
+            item.setToolTip(7, "How this label carrier should be used in the recipe.")
             self._label_carrier_items.append((item, original))
             self.label_carrier_tree.addTopLevelItem(item)
             if match_text == "Needs review" and self._file_count() > 1:
@@ -395,6 +400,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                         "Recording",
                         "",
                         "Use internal events",
+                        "",
                         "",
                         "",
                         "",
@@ -440,6 +446,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         class_map = self._class_map_overrides()
         if class_map:
             choices["class_map"] = class_map
+        event_roles = self._event_role_overrides()
+        if event_roles:
+            choices["event_roles"] = event_roles
         label_carriers = self._label_carrier_choices()
         if label_carriers:
             choices["label_carrier_choices"] = label_carriers
@@ -476,6 +485,20 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         return current if changed else {}
 
+    def _event_role_overrides(self) -> dict[str, str]:
+        if not self._event_role_items:
+            return {}
+        current = {
+            name: tree_item.text(2).strip()
+            for tree_item, name, _original in self._event_role_items
+            if tree_item.text(2).strip()
+        }
+        changed = any(
+            current.get(name, "") != original
+            for _tree_item, name, original in self._event_role_items
+        )
+        return current if changed else {}
+
     def _label_carrier_choices(self) -> dict[str, dict[str, str]]:
         choices: dict[str, dict[str, str]] = {}
         fields = (
@@ -484,6 +507,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             ("anchor", "selected_anchor", 4),
             ("time_model", "time_model", 5),
             ("granularity", "granularity", 6),
+            ("role", "role", 7),
         )
         for item, original in self._label_carrier_items:
             carrier_key = str(

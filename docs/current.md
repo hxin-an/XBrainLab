@@ -100,8 +100,11 @@ MAT、CSV / TSV、BIDS `events.tsv` 和 TXT carrier 建立 label field / MAT var
 time model、granularity 候選；wizard 會顯示可編輯的 label carrier review rows，Dataset action
 會把使用者選擇 re-preview / re-validate 後保存到 `AppliedInterpretation` /
 `ImportRecipe.label_carrier_plan`。UI replay artifact 現在顯示 `trial_type`、`onset`、
-`seconds`、`trial` 這組 label carrier choices；backend unit test 也覆蓋 MAT
-`classlabel` / `cue_onset` 選擇寫入 recipe trace。後續 slice 又新增 format capability
+`seconds`、`trial` 這組 label carrier choices；後續 slice 又補上可編輯 role：wizard
+會把 event role edit 寫成 `choices.event_roles`，也會把 label carrier role 寫進
+`label_carrier_choices`。UI replay artifact 現在可見 `class cue labels` 和
+`trial_type -> class cue`，backend unit test 也覆蓋 MAT `classlabel` / `cue_onset` / role /
+event role 寫入 recipe trace。後續 slice 又新增 format capability
 boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
 CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
 dialog review notes 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection 尚未在

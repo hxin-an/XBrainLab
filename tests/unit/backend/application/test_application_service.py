@@ -211,9 +211,11 @@ def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
                         "anchor": "cue_onset",
                         "time_model": "sample_index",
                         "granularity": "trial",
+                        "role": "class cue labels",
                     }
                 },
                 "class_map": {"1": "left hand", "2": "right hand"},
+                "event_roles": {"cue_onset": "trial anchor"},
             },
         ),
     )
@@ -235,15 +237,21 @@ def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
     assert reviewed_carrier["selected_anchor"] == "cue_onset"
     assert reviewed_carrier["time_model"] == "sample_index"
     assert reviewed_carrier["granularity"] == "trial"
+    assert reviewed_carrier["role"] == "class cue labels"
 
     applied = apply_result.diagnostics["applied_interpretation"]
     assert applied["label_carrier_plan"][0]["selected_label_field"] == "classlabel"
     assert applied["label_carrier_plan"][0]["selected_anchor"] == "cue_onset"
+    assert applied["label_carrier_plan"][0]["role"] == "class cue labels"
+    assert applied["event_roles"]["cue_onset"] == "trial anchor"
     recipe = save_result.diagnostics["recipe"]
     assert recipe["label_carrier_plan"][0]["path"] == str(label_path)
     assert recipe["label_carrier_plan"][0]["selected_label_field"] == "classlabel"
     assert recipe["label_carrier_plan"][0]["selected_anchor"] == "cue_onset"
+    assert recipe["label_carrier_plan"][0]["role"] == "class cue labels"
+    assert recipe["event_roles"]["cue_onset"] == "trial anchor"
     assert "choices:label_carriers" in recipe["recipe_trace"]
+    assert "choices:event_roles" in recipe["recipe_trace"]
 
 
 def test_data_interpretation_state_snapshot_preserves_import_review_truth(tmp_path):

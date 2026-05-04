@@ -3310,3 +3310,29 @@
   - Goal 仍不能完成；embedded Data Interpretation label editor、Inspector GUI、真人 Windows
     launcher click-through、interactive 3D、XDF / LSL、real-data certification、external thesis
     experiment runner 仍是 blockers。
+
+### 2026-05-04 Data Interpretation role review UI
+
+- 做了什麼：
+  - `DataInterpretationPreviewDialog` 的 event role rows 現在可編輯，`get_result()` 會回傳
+    `choices.event_roles`。
+  - label carrier table 新增 `Role` 欄位，會把 carrier role 併入 `label_carrier_choices`。
+  - `scripts/dev/capture_data_interpretation_replay.py` 會在 replay 中確認 `trial_type` 是
+    `class cue`，並把 `events.tsv` role 設為 `class cue labels`。
+- TDD：
+  - focused UI test 初跑失敗，因 `event_roles` 沒有從 dialog choices 輸出。
+  - focused UI test 初跑失敗，因 label carrier `role` 沒有輸出。
+- 驗證：
+  - focused UI tests -> `2 passed`。
+  - full dialog suite -> `8 passed`。
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `47 passed`。
+  - full ApplicationService unit suite -> `43 passed`。
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`。
+  - replay JSON 顯示 `class cue labels` 和 `review_choices.event_roles.trial_type = class cue`。
+  - targeted `ruff check` / `ruff format --check` clean。
+  - targeted `basedpyright` clean。
+- 不能宣稱：
+  - 這支撐 role review 已進 Data Interpretation recipe UI。
+  - 仍不是完整 embedded post-load label editor、raw trigger selector、全格式 real-data
+    certification 或真人 click-through。

@@ -210,6 +210,11 @@ def capture_replay(app: QApplication) -> int:
                 label_item.setText(4, "onset")
                 label_item.setText(5, "seconds")
                 label_item.setText(6, "trial")
+                label_item.setText(7, "class cue labels")
+            for index in range(dialog.event_tree.topLevelItemCount()):
+                event_item = dialog.event_tree.topLevelItem(index)
+                if event_item is not None and event_item.text(0) == "trial_type":
+                    event_item.setText(2, "class cue")
             dialog_result = dialog.get_result()
             dialog_choices = dialog_result.get("choices", {})
             dialog.repaint()
@@ -257,7 +262,8 @@ def capture_replay(app: QApplication) -> int:
                     "Scanned source and previewed metadata plus label carrier "
                     "interpretation.",
                     "Mapped generic events.tsv to the second EEG file in the wizard.",
-                    "Reviewed label column, anchor, time model, and granularity.",
+                    "Reviewed label column, anchor, time model, granularity, and role.",
+                    "Confirmed trial_type as the class cue event role.",
                     "Validation required confirmation for missing metadata.",
                     "Unconfirmed apply was blocked.",
                     "Confirmed apply loaded the interpreted source.",

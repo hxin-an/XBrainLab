@@ -1341,6 +1341,45 @@ wizard，包含 MAT variable / anchor recipe evidence 和 UI-observable BIDS-eve
 column / anchor evidence。它仍不支撐完整 post-load label import 內嵌 wizard、全格式人工
 compatibility matrix 或真人 click-through。
 
+2026-05-04 Data Interpretation role review slice：
+
+- UI:
+  - `DataInterpretationPreviewDialog` now tracks editable event-role rows and returns
+    `choices.event_roles` when the user changes an event role.
+  - label carrier review rows gained a visible `Role` column; `get_result()` now returns
+    carrier `role` along with target, label field, anchor, time model, and granularity.
+- backend evidence:
+  - `ApplicationService` recipe test now asserts reviewed label carrier role and event role flow
+    into `AppliedInterpretation` / `ImportRecipe`, and recipe trace records
+    `choices:event_roles`.
+- replay artifact refreshed:
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON visible row:
+    `events.tsv -> sub-01_task-mi_run-2_raw.fif -> BIDS events -> trial_type -> onset -> seconds -> trial -> class cue labels`
+  - replay JSON `review_choices.event_roles.trial_type` is `class cue`.
+- TDD evidence:
+  - focused UI test first failed because `event_roles` was missing from dialog choices.
+  - focused UI test first failed because carrier `role` was missing from `label_carrier_choices`.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `8 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe -q`
+  - `1 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `47 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py -q`
+  - `43 passed`
+  - targeted `ruff check` / `ruff format --check` -> pass.
+  - `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 Data Interpretation wizard 可讓使用者確認 event role 與 label carrier role，
+並把這些語意保存到 recipe choices / backend recipe。它仍不是完整 post-load label import
+內嵌 editor、raw trigger selector、全格式 real-data certification 或真人 click-through。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

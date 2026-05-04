@@ -101,6 +101,33 @@ def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     }
 
 
+def test_data_interpretation_preview_dialog_returns_event_role_review(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "event_roles": {
+                "cue": "class label candidate",
+                "onset": "time anchor",
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    for index in range(dialog.event_tree.topLevelItemCount()):
+        item = dialog.event_tree.topLevelItem(index)
+        if item is not None and item.text(0) == "cue":
+            item.setText(2, "class cue")
+
+    result = dialog.get_result()
+
+    assert result["choices"]["event_roles"] == {
+        "cue": "class cue",
+        "onset": "time anchor",
+    }
+
+
 def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
     label_path = "/tmp/source/A01T.mat"
     dialog = DataInterpretationPreviewDialog(
@@ -122,6 +149,7 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
                     "selected_anchor": "",
                     "time_model": "trial_order",
                     "granularity": "trial",
+                    "role": "external labels",
                     "reason": "MAT variables need review before apply.",
                 }
             ],
@@ -142,6 +170,7 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
     carrier_item.setText(3, "classlabel")
     carrier_item.setText(4, "cue_onset")
     carrier_item.setText(5, "sample_index")
+    carrier_item.setText(7, "class cue labels")
 
     result = dialog.get_result()
 
@@ -151,6 +180,7 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
             "anchor": "cue_onset",
             "time_model": "sample_index",
             "granularity": "trial",
+            "role": "class cue labels",
         }
     }
 
@@ -269,6 +299,7 @@ def test_data_interpretation_preview_dialog_returns_manual_label_target_mapping(
             "anchor": "onset",
             "time_model": "seconds",
             "granularity": "trial",
+            "role": "external labels",
         }
     }
 

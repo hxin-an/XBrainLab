@@ -5,7 +5,8 @@
     "Selected folder source for interpretation.",
     "Scanned source and previewed metadata plus label carrier interpretation.",
     "Mapped generic events.tsv to the second EEG file in the wizard.",
-    "Reviewed label column, anchor, time model, and granularity.",
+    "Reviewed label column, anchor, time model, granularity, and role.",
+    "Confirmed trial_type as the class cue event role.",
     "Validation required confirmation for missing metadata.",
     "Unconfirmed apply was blocked.",
     "Confirmed apply loaded the interpreted source."
@@ -1501,7 +1502,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -1537,7 +1538,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -1602,7 +1603,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -1612,7 +1613,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "time_model": "sample_index_or_annotation_time",
@@ -1756,10 +1757,17 @@
                 "task": "motor-imagery"
               }
             },
+            "event_roles": {
+              "label_carrier": "external label or event source",
+              "onset": "time anchor",
+              "duration": "event duration",
+              "trial_type": "class cue"
+            },
             "label_carrier_choices": {
               "<replay_source>/events.tsv": {
                 "target_file": "sub-01_task-mi_run-2_raw.fif",
                 "granularity": "trial",
+                "role": "class cue labels",
                 "label_field": "trial_type",
                 "anchor": "onset",
                 "time_model": "seconds"
@@ -1770,6 +1778,7 @@
             "scan:scan-1",
             "candidate:candidate-4",
             "choices:metadata_overrides",
+            "choices:event_roles",
             "choices:label_carriers"
           ]
         },
@@ -1794,7 +1803,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -1938,7 +1947,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {}
         }
@@ -2163,7 +2172,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -2199,7 +2208,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -2477,7 +2486,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -2513,7 +2522,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -2810,7 +2819,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -2846,7 +2855,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "label_import_count": 1,
@@ -2929,7 +2938,7 @@
               "selected_anchor": "onset",
               "time_model": "seconds",
               "granularity": "trial",
-              "role": "external labels",
+              "role": "class cue labels",
               "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
@@ -3066,7 +3075,7 @@
             "label_carrier": "external label or event source",
             "onset": "time anchor",
             "duration": "event duration",
-            "trial_type": "class label candidate"
+            "trial_type": "class cue"
           },
           "class_map": {},
           "label_imports": [
@@ -3090,6 +3099,7 @@
             "scan:scan-1",
             "candidate:candidate-4",
             "choices:metadata_overrides",
+            "choices:event_roles",
             "choices:label_carriers",
             "validation:needs_confirmation",
             "applied:interpretation-6",
@@ -3170,7 +3180,8 @@
           "trial_type",
           "onset",
           "seconds",
-          "trial"
+          "trial",
+          "class cue labels"
         ]
       ],
       "review_notes": "Warnings:\n- Multiple EEG files were discovered; subject/session/run mapping should be reviewed.\n- External label/event carriers require preview before apply.\nConfirmations:\n- Confirm label carrier alignment, anchor event, and class map before applying.\n- Confirm session metadata for sub-01_task-mi_run-1_raw.fif.\n- Confirm session metadata for sub-01_task-mi_run-2_raw.fif.\nDownstream impact:\n- Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session.\nFormat capabilities:\n- BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
@@ -3182,10 +3193,17 @@
             "task": "motor-imagery"
           }
         },
+        "event_roles": {
+          "label_carrier": "external label or event source",
+          "onset": "time anchor",
+          "duration": "event duration",
+          "trial_type": "class cue"
+        },
         "label_carrier_choices": {
           "<replay_source>/events.tsv": {
             "target_file": "sub-01_task-mi_run-2_raw.fif",
             "granularity": "trial",
+            "role": "class cue labels",
             "label_field": "trial_type",
             "anchor": "onset",
             "time_model": "seconds"

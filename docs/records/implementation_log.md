@@ -5086,3 +5086,59 @@ tab 會顯示 user-facing blocked reason。然而 interactive PyVistaQt 3D rende
 
 - 這只是交接紀錄，沒有改變產品 blocker。
 - Goal 仍不能標 complete。
+
+## 2026-05-04 Data Interpretation role review UI
+
+### 背景
+
+Data Interpretation wizard 已能 review metadata、class map、label carrier target、label field、
+anchor、time model 和 granularity，但 event role / label carrier role 還沒有成為同一個 recipe
+UI contract。這會讓使用者可以選 label column，卻無法把「這個欄位在 workflow 裡是什麼角色」
+明確保存下來。
+
+### 變更
+
+- `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+  - 新增 `_event_role_items`，event role rows 可編輯。
+  - `get_result()` 會在 event role 改變時回傳 `choices.event_roles`。
+  - label carrier table 新增 `Role` 欄位，`_label_carrier_choices()` 會輸出 carrier `role`。
+- `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+  - 新增 event role review test。
+  - 更新 label carrier review test，要求 role 進入 `label_carrier_choices`。
+- `tests/unit/backend/application/test_application_service.py`
+  - recipe flow test 追加 label carrier role 與 `event_roles` assertions。
+- `scripts/dev/capture_data_interpretation_replay.py`
+  - replay 會設定 `trial_type -> class cue` 和 `events.tsv -> class cue labels`。
+- `artifacts/ui/data-interpretation-preview.png`
+- `artifacts/ui/data-interpretation-applied.png`
+- `artifacts/ui/data-interpretation-replay.json`
+
+### 驗證
+
+- TDD failures:
+  - `test_data_interpretation_preview_dialog_returns_event_role_review` failed with missing
+    `event_roles` in dialog choices。
+  - `test_data_interpretation_preview_dialog_returns_label_carrier_review` failed because carrier
+    `role` was missing from `label_carrier_choices`。
+- Final:
+  - focused UI tests -> `2 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `8 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_data_interpretation_label_carrier_choices_flow_into_recipe -q`
+  - `1 passed`
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `47 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py -q`
+  - `43 passed`
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`
+  - replay JSON shows visible `label_carrier_rows` ending in `class cue labels`
+  - replay JSON shows `review_choices.event_roles.trial_type = class cue`
+  - targeted `ruff check` / `ruff format --check` clean
+  - targeted `basedpyright` clean
+
+### 不能宣稱完成
+
+- 這支撐 Data Interpretation recipe UI 內的 event role / label carrier role review。
+- 這不支撐完整 post-load label import embedded editor、raw trigger selector、all-format
+  real-data certification、MCP Inspector GUI、Windows launcher click-through 或完整 product
+  completion。
