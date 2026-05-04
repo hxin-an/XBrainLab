@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QLabel,
-    QPlainTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -46,7 +45,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.file_tree: QTreeWidget
         self.label_carrier_tree: QTreeWidget
         self.event_tree: QTreeWidget
-        self.review_text: QPlainTextEdit
+        self.review_tree: QTreeWidget
         self.button_box: QDialogButtonBox
         self._metadata_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
@@ -72,7 +71,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.setSpacing(12)
 
         self.workflow_steps_label = QLabel(
-            "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe"
+            "Select source | Scan result | Preview | Confirm | Apply | Save recipe"
         )
         self.workflow_steps_label.setObjectName("InterpretationWorkflowSteps")
         self.workflow_steps_label.setWordWrap(True)
@@ -186,11 +185,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_layout.addWidget(self.event_tree)
         layout.addWidget(label_group, stretch=1)
 
-        self.review_text = QPlainTextEdit()
-        self.review_text.setReadOnly(True)
-        self.review_text.setPlainText(self._details_text())
-        self.review_text.setMaximumHeight(120)
-        layout.addWidget(self.review_text)
+        review_group = QGroupBox("Review Summary")
+        review_layout = QVBoxLayout(review_group)
+        self.review_tree = QTreeWidget()
+        self.review_tree.setObjectName("InterpretationReviewSummary")
+        self.review_tree.setHeaderLabels(["Item", "Status", "What it means"])
+        self.review_tree.setRootIsDecorated(False)
+        self.review_tree.setAlternatingRowColors(True)
+        self.review_tree.setUniformRowHeights(True)
+        self.review_tree.setMinimumHeight(120)
+        self.review_tree.setMaximumHeight(170)
+        self.review_tree.setColumnWidth(0, 160)
+        self.review_tree.setColumnWidth(1, 160)
+        self.review_tree.setColumnWidth(2, 640)
+        self._populate_review_tree()
+        review_layout.addWidget(self.review_tree)
+        layout.addWidget(review_group)
 
         self.confirmation_label = QLabel(self._confirmation_text())
         self.confirmation_label.setObjectName("InterpretationConfirmation")
@@ -742,8 +752,26 @@ class DataInterpretationPreviewDialog(BaseDialog):
         reason = str(carrier.get("reason") or "")
         return reason or "No automatic candidates were found."
 
-    def _details_text(self) -> str:
-        lines: list[str] = []
+    def _populate_review_tree(self) -> None:
+        rows = self._review_rows()
+        for item, status, detail in rows:
+            tree_item = QTreeWidgetItem([item, status, detail])
+            for column in range(3):
+                tree_item.setToolTip(column, detail or status)
+            self.review_tree.addTopLevelItem(tree_item)
+        if not rows:
+            self.review_tree.addTopLevelItem(
+                QTreeWidgetItem(
+                    [
+                        "Review",
+                        "Ready",
+                        "No warnings or confirmations.",
+                    ],
+                )
+            )
+
+    def _review_rows(self) -> list[tuple[str, str, str]]:
+        rows: list[tuple[str, str, str]] = []
         warnings = self._unique_strings(self.preview.get("warnings"))
         confirmations = self._unique_strings(
             [
@@ -755,32 +783,27 @@ class DataInterpretationPreviewDialog(BaseDialog):
             self.validation_decision.get("blocked_reasons")
             or self.preview.get("blocked_reasons")
         )
-        for label, values in (
-            ("Warnings", warnings),
-            ("Confirmations", confirmations),
-            ("Blocked reasons", blocked),
+        for label, status, values in (
+            ("Warning", "Review", warnings),
+            ("Confirmation", "Needs confirmation", confirmations),
+            ("Blocked reason", "Blocked", blocked),
         ):
-            if values:
-                lines.append(f"{label}:")
-                lines.extend(f"- {item}" for item in values)
+            rows.extend((label, status, item) for item in values)
         impacts = self.preview.get(
             "downstream_impacts"
         ) or self.validation_decision.get("downstream_impacts")
         if impacts:
-            lines.append("Downstream impact:")
-            lines.extend(f"- {item}" for item in impacts)
+            rows.extend(
+                ("Downstream impact", "After apply", str(item)) for item in impacts
+            )
         trace = self.preview.get("recipe_trace") or self.scan_result.get("recipe_trace")
         if trace:
-            lines.append("Recipe trace:")
-            lines.extend(f"- {item}" for item in trace)
+            rows.extend(("Recipe trace", "Saved", str(item)) for item in trace)
         format_capabilities = self.preview.get(
             "format_capabilities",
         ) or self.scan_result.get("format_capabilities")
-        capability_lines = self._format_capability_lines(format_capabilities)
-        if capability_lines:
-            lines.append("Format capabilities:")
-            lines.extend(capability_lines)
-        return "\n".join(lines) if lines else "No warnings or confirmations."
+        rows.extend(self._format_capability_rows(format_capabilities))
+        return rows
 
     @staticmethod
     def _unique_strings(values: Any) -> list[str]:
@@ -794,21 +817,21 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return result
 
     @staticmethod
-    def _format_capability_lines(values: Any) -> list[str]:
+    def _format_capability_rows(values: Any) -> list[tuple[str, str, str]]:
         if not isinstance(values, list):
             return []
-        lines: list[str] = []
+        rows: list[tuple[str, str, str]] = []
         for value in values:
             if not isinstance(value, dict):
                 continue
             format_name = str(value.get("format") or value.get("name") or "Source")
             status = str(value.get("status") or "review").replace("_", " ")
             message = str(value.get("message") or "").strip()
+            detail = f"{format_name}: {status}."
             if message:
-                lines.append(f"- {format_name}: {status}. {message}")
-            else:
-                lines.append(f"- {format_name}: {status}.")
-        return lines
+                detail = f"{detail} {message}"
+            rows.append(("Format capability", status[:1].upper() + status[1:], detail))
+        return rows
 
     def _confirmation_text(self) -> str:
         if self.decision == "blocked":

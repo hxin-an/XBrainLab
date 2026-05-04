@@ -1,6 +1,6 @@
 """Tests for the Data Interpretation preview dialog."""
 
-from PyQt6.QtWidgets import QComboBox, QDialogButtonBox
+from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QPlainTextEdit
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -44,13 +44,18 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
 
     assert dialog.windowTitle() == "Interpret Data Source"
     assert dialog.decision == "needs_confirmation"
-    assert "Scan -> Preview -> Validate" in dialog.workflow_steps_label.text()
+    assert "Select source | Scan result | Preview" in (
+        dialog.workflow_steps_label.text()
+    )
     assert dialog.file_tree.topLevelItemCount() == 1
     assert dialog.event_tree.topLevelItemCount() == 4
     assert "Found 1 EEG file" in dialog.summary_label.text()
     assert "Validation needs confirmation" in dialog.decision_label.text()
     assert "Confirm session metadata." in dialog.confirmation_label.text()
-    assert "Training uses this recipe trace." in dialog.review_text.toPlainText()
+    review_text = _tree_text(dialog.review_tree)
+    assert "Downstream impact" in review_text
+    assert "Training uses this recipe trace." in review_text
+    assert not dialog.findChildren(QPlainTextEdit)
     ok_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
     assert ok_button is not None
     assert ok_button.text() == "Confirm and Apply"
@@ -398,9 +403,9 @@ def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    details = dialog.review_text.toPlainText()
+    details = _tree_text(dialog.review_tree)
 
-    assert "Format capabilities:" in details
+    assert "Format capability" in details
     assert "BrainVision: needs review" in details
     assert "XDF / LSL: blocked" in details
     assert "stream selection is not available" in details
@@ -435,3 +440,16 @@ def test_data_interpretation_preview_dialog_blocks_apply(qtbot):
     empty_event_item = dialog.event_tree.topLevelItem(0)
     assert empty_event_item is not None
     assert empty_event_item.text(0) == "No label/event carrier detected"
+
+
+def _tree_text(tree) -> str:
+    values: list[str] = []
+    for row in range(tree.topLevelItemCount()):
+        item = tree.topLevelItem(row)
+        if item is None:
+            continue
+        for column in range(tree.columnCount()):
+            text = item.text(column).strip()
+            if text:
+                values.append(text)
+    return "\n".join(values)

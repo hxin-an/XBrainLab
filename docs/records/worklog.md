@@ -37,6 +37,58 @@
 
 ## 2026-05-05
 
+### 06:40 Data Interpretation review summary UI
+
+- 做了什麼：
+  - 使用 `ui-product-reviewer` / `data-interpretation-reviewer` / `tdd-guard` 檢查 wizard UX
+    gap：warning、confirmation、format capability 和 downstream impact 仍以 plain text review
+    dump 呈現，偏工程 artifact，不像成熟 import wizard。
+  - 先改 dialog unit test：要求 `review_tree` 存在、`QPlainTextEdit` 不再出現在 dialog，且
+    format boundary / downstream impact 能從 structured tree row 被讀到。測試先紅燈，確認舊
+    UI 仍只有 `review_text`。
+  - 將 `DataInterpretationPreviewDialog` 的 review notes 改為 `Review Summary` table，欄位為
+    Item / Status / What it means，承載 warnings、confirmations、blocked reasons、downstream
+    impact、recipe trace 和 format capability rows。
+  - 將流程提示改成 `Select source | Scan result | Preview | Confirm | Apply | Save recipe`。
+  - 更新 `capture_data_interpretation_replay.py`，artifact 改保存 `review_summary_rows`。
+  - 刷新 `artifacts/ui/data-interpretation-*` 和 consolidated
+    `artifacts/ui/human-like-walkthrough/*` artifacts。
+- 結果：
+  - Data Interpretation replay JSON 現在有 `review_summary_rows`，不再保存 `review_notes`
+    plain text dump。
+  - consolidated human-like walkthrough offscreen rerun 通過：`26 / 26` required phases、`20`
+    screenshots、`human_desktop_acceptance=not performed`。
+  - 第一次 `xvfb-run` rerun 因 WSLg / Wayland maximized-state protocol error 中斷；沒有把這次
+    失敗當成 evidence，改用 `QT_QPA_PLATFORM=offscreen` 完成 automated walkthrough。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_renders_payload tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_shows_format_boundaries -q`
+    -> 初始紅燈：`DataInterpretationPreviewDialog` 沒有 `review_tree`。
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `9 passed`。
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `21 passed`。
+  - `timeout 300s xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`，refreshed `artifacts/ui/data-interpretation-preview.png` /
+    `data-interpretation-applied.png` / `data-interpretation-replay.json`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`，`status=passed`、`required_phase_count=26`、`screenshot_count=20`。
+  - `git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - 還不能宣稱 mature import wizard complete：raw trigger selector、complex MAT/GDF anchor
+    reconciliation、XDF/LSL stream selection 和 real-data manual certification 仍未完成。
+  - 這仍不是 Windows / 雙螢幕 / DPI 真人驗收；human desktop acceptance 仍是 blocker。
+
 ### 18:40 Tool-call local 118-case scorer hardening
 
 - 做了什麼：

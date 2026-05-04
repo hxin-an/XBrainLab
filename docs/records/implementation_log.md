@@ -42,6 +42,43 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Data Interpretation Review Summary UI
+
+### 狀態
+
+Data Interpretation wizard 的 review surface 往 mature import wizard 再收斂一步：warnings、
+confirmations、blocked reasons、downstream impact、recipe trace 和 format capability boundary
+不再以 plain text review dump 顯示，而是放進可掃描的 `Review Summary` table。可見流程文字也改成
+`Select source | Scan result | Preview | Confirm | Apply | Save recipe`，更接近使用者操作路徑。
+
+### 已可宣稱
+
+- Data Interpretation preview dialog 現在以 structured review rows 呈現 label / metadata /
+  format boundary，不顯示 raw schema 或 traceback。
+- Data Interpretation replay artifact 和 consolidated human-like walkthrough artifact 已刷新；後者
+  仍明確標示 human desktop acceptance 未執行。
+
+### Evidence 入口
+
+- Dialog test：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Replay artifact：`artifacts/ui/data-interpretation-replay.json`
+- Screenshots：`artifacts/ui/data-interpretation-preview.png`、
+  `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`、
+  `artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png`
+- Consolidated walkthrough：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+
+### 不能宣稱完成
+
+- 這是 wizard review surface polish，不是 full mature import wizard：raw trigger selector、
+  complex MAT/GDF anchor reconciliation、XDF/LSL stream selection 和 real-data manual certification
+  仍未完成。
+- Offscreen automated walkthrough 仍不是 Windows launcher / 雙螢幕 / DPI human acceptance。
+
+### 下一手重點
+
+繼續補 mature label/anchor editor 與 real-data capability boundary，同時推進 ChatPanel 長鏈和
+MCP long-running boundary。
+
 ## 2026-05-05 Tool-Call Local 118-Case Scoring Hardening
 
 ### 狀態

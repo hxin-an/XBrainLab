@@ -168,6 +168,48 @@ UI baseline capture 結果：
   direct blocked `apply_interpretation` command; the supported claim is that verifier / capability
   policy blocks it and unsafe substitute tools are no longer scored as pass.
 
+2026-05-05 Data Interpretation review summary UI:
+
+- Product/UI change:
+  - `DataInterpretationPreviewDialog` no longer uses a plain text review dump for warnings,
+    confirmations, blocked reasons, downstream impact, recipe trace, or format boundary.
+  - The dialog now shows a structured `Review Summary` table with `Item`, `Status`, and
+    `What it means` columns.
+  - Visible workflow copy is now `Select source | Scan result | Preview | Confirm | Apply | Save recipe`.
+  - `capture_data_interpretation_replay.py` writes `review_summary_rows` into
+    `artifacts/ui/data-interpretation-replay.json`.
+- Focused TDD gate:
+  - Initial targeted dialog test failed because the dialog had no `review_tree` and still exposed
+    `review_text`.
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `9 passed`.
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `21 passed`.
+- UI-observable artifacts:
+  - `timeout 300s xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-applied.png`, and
+    `artifacts/ui/data-interpretation-replay.json`.
+  - `timeout 420s xvfb-run -a poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> failed with WSLg / Wayland maximized-state protocol error; this is not accepted as evidence.
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; refreshed consolidated artifacts with `status=passed`,
+    `required_phase_count=26`, `observed_phase_count=26`, `screenshot_count=20`, and
+    `human_desktop_acceptance=not performed`.
+- Post-change gates:
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+- Claim boundary: this supports automated UI-observable Data Interpretation wizard review polish.
+  It does not prove full mature import wizard completion, Windows launcher click-through, dual
+  monitor / DPI behavior, XDF / LSL stream selection, complex MAT/GDF anchor reconciliation, or
+  real-data manual certification.
+
 2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
 
 - `TrainingCommandService` 承接 `configure_training`、`train`、`stop_training`、
@@ -1704,11 +1746,13 @@ replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agen
 
 - `DataInterpretationPreviewDialog` 已從單層 preview modal 硬化為第一版 wizard review surface：
   - title：`Interpret Data Source`
-  - visible steps：`Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`
+  - visible steps at that slice：`Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`
+    （2026-05-05 UI polish 已改為 `Select source | Scan result | Preview | Confirm | Apply | Save recipe`）
   - source/readiness group：source path、source kind、file count、label carrier count、BIDS status
   - metadata preview：file / subject / session / task / run
   - labels/events/recipe trace：label carriers、event roles、class map，或 no-carrier boundary
-  - review notes：warnings、confirmations、blocked reasons、downstream impact、recipe trace
+  - review notes at that slice：warnings、confirmations、blocked reasons、downstream impact、
+    recipe trace（2026-05-05 UI polish 已改為 structured `Review Summary` table）
   - action button：`Confirm and Apply` for `needs_confirmation`；blocked decision disables apply and
     recipe save。
 - replay artifact refreshed:
@@ -1912,13 +1956,14 @@ attach-label 心智模型。它仍不是完整 embedded Data Interpretation labe
     folders with supported EEG keep importing the supported source while warning that blocked
     sources are not applied.
 - UI:
-  - `DataInterpretationPreviewDialog` review notes include a `Format capabilities` section and
-    converts internal statuses such as `needs_review` into visible text like `needs review`.
+  - At that slice, `DataInterpretationPreviewDialog` review notes included a `Format capabilities`
+    section and converted internal statuses such as `needs_review` into visible text like
+    `needs review`; this is superseded by the 2026-05-05 `Review Summary` table.
 - replay artifact refreshed:
   - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
   - `artifacts/ui/data-interpretation-preview.png`
   - `artifacts/ui/data-interpretation-replay.json`
-  - replay JSON `review_notes` shows BIDS events as `needs review` and MNE FIF as `supported`.
+  - replay JSON then used `review_notes`; current replay JSON uses `review_summary_rows`.
 - targeted gates:
   - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
   - `34 passed`

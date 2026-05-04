@@ -3,11 +3,11 @@
   "failure_reason": "",
   "claim_boundary": "Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.",
   "source_path": "<walkthrough_source>",
-  "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json",
+  "recipe_path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json",
   "phases": [
     {
       "phase": "app_startup",
-      "screenshot": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -16,6 +16,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -63,6 +65,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -150,7 +164,7 @@
     },
     {
       "phase": "main_window_initial_state",
-      "screenshot": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -159,6 +173,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -206,6 +222,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -292,7 +320,7 @@
     },
     {
       "phase": "data_source_selection",
-      "screenshot": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -301,6 +329,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -348,6 +378,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -436,9 +478,11 @@
     },
     {
       "phase": "data_interpretation_select_source",
-      "screenshot": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
       "visible_text": [
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -450,6 +494,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -536,9 +592,9 @@
     },
     {
       "phase": "data_interpretation_scan_result",
-      "screenshot": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
       "visible_text": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -644,9 +700,9 @@
     },
     {
       "phase": "data_interpretation_preview",
-      "screenshot": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "visible_text": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -802,9 +858,9 @@
     },
     {
       "phase": "data_interpretation_confirm_metadata_labels",
-      "screenshot": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
       "visible_text": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -932,7 +988,7 @@
     },
     {
       "phase": "data_interpretation_decisions",
-      "screenshot": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -941,6 +997,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -988,6 +1046,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -1068,7 +1138,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -1246,7 +1316,7 @@
     },
     {
       "phase": "data_interpretation_apply",
-      "screenshot": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1255,6 +1325,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -1302,6 +1374,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -1382,7 +1466,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -1469,7 +1553,7 @@
     },
     {
       "phase": "data_interpretation_save_recipe",
-      "screenshot": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1478,6 +1562,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -1525,6 +1611,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -1605,7 +1703,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -1637,7 +1735,7 @@
     },
     {
       "phase": "data_interpretation_reload_recipe",
-      "screenshot": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1646,6 +1744,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -1693,6 +1793,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -1773,7 +1885,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -1808,7 +1920,7 @@
     },
     {
       "phase": "preprocessing",
-      "screenshot": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -1964,7 +2076,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -1992,7 +2104,7 @@
     },
     {
       "phase": "epoch_creation",
-      "screenshot": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -2142,7 +2254,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2195,7 +2307,7 @@
     },
     {
       "phase": "dataset_generation",
-      "screenshot": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
       "visible_text": [
         "Dataset Splitting",
         "Model Selection",
@@ -2303,7 +2415,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2336,7 +2448,7 @@
     },
     {
       "phase": "training_readiness",
-      "screenshot": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -2486,7 +2598,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2516,7 +2628,7 @@
     },
     {
       "phase": "evaluation_visualization_saliency_readiness",
-      "screenshot": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -2634,7 +2746,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2721,7 +2833,7 @@
     },
     {
       "phase": "assistant_empty_state",
-      "screenshot": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
       "visible_text": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
@@ -2799,7 +2911,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2825,7 +2937,7 @@
     },
     {
       "phase": "assistant_repeated_open_close",
-      "screenshot": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
       "visible_text": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
@@ -2903,7 +3015,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -2929,7 +3041,7 @@
     },
     {
       "phase": "assistant_normal_message",
-      "screenshot": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
       "visible_text": [
         "Ask about data, preprocessing, epoching, datasets, or training...",
         "Send"
@@ -3003,14 +3115,14 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {}
     },
     {
       "phase": "assistant_missing_input_clarification",
-      "screenshot": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
       "visible_text": [
         "Ask about data, preprocessing, epoching, datasets, or training...",
         "Send"
@@ -3084,7 +3196,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3093,7 +3205,7 @@
     },
     {
       "phase": "assistant_blocked_command",
-      "screenshot": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
       "visible_text": [
         "Ask about data, preprocessing, epoching, datasets, or training...",
         "Send"
@@ -3167,7 +3279,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3176,7 +3288,7 @@
     },
     {
       "phase": "assistant_successful_tool_result",
-      "screenshot": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
       "visible_text": [
         "Ask about data, preprocessing, epoching, datasets, or training...",
         "Send"
@@ -3250,7 +3362,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3281,7 +3393,7 @@
     },
     {
       "phase": "assistant_narrow_panel",
-      "screenshot": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
       "visible_text": [
         "Ask about data, preprocessing, epoching, datasets, or training...",
         "Send"
@@ -3355,7 +3467,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "notes": {
@@ -3365,7 +3477,7 @@
     },
     {
       "phase": "reset_new_session_boundary",
-      "screenshot": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -3374,6 +3486,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -3432,6 +3546,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -3591,7 +3717,7 @@
     },
     {
       "phase": "error_recovery",
-      "screenshot": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
       "visible_text": [
         "Dataset",
         "Preprocess",
@@ -3600,6 +3726,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -3654,6 +3782,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -3814,7 +3954,7 @@
     },
     {
       "phase": "eval_dashboard_report",
-      "screenshot": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
+      "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
       "visible_text": [
         "XBrainLab Evaluation Dashboard Report"
       ],
@@ -3880,26 +4020,26 @@
     }
   ],
   "screenshots": {
-    "main_initial": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
-    "dataset_page": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
-    "source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
-    "wizard_preview": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
-    "wizard_confirm": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
-    "applied": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-    "recipe_reloaded": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-    "preprocess": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
-    "dataset_ready": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
-    "training_readiness": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
-    "analysis_readiness": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
-    "assistant_empty": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
-    "assistant_normal": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
-    "assistant_clarification": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
-    "assistant_blocked": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
-    "assistant_success": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
-    "assistant_narrow": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
-    "reset_boundary": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
-    "error_recovery": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
-    "eval_dashboard": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
+    "main_initial": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
+    "dataset_page": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+    "source_selection": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
+    "wizard_preview": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+    "wizard_confirm": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+    "applied": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+    "recipe_reloaded": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+    "preprocess": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+    "dataset_ready": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+    "training_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+    "analysis_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+    "assistant_empty": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+    "assistant_normal": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+    "assistant_clarification": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+    "assistant_blocked": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+    "assistant_success": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+    "assistant_narrow": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+    "reset_boundary": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+    "error_recovery": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+    "eval_dashboard": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
   },
   "observable_evidence": {
     "visible_text_snapshots": {
@@ -3911,6 +4051,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -3924,6 +4066,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -3937,6 +4081,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -3944,13 +4090,15 @@
       ],
       "data_interpretation_select_source": [
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
         "Clear Dataset"
       ],
       "data_interpretation_scan_result": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -3975,7 +4123,7 @@
         "Cancel"
       ],
       "data_interpretation_preview": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -4000,7 +4148,7 @@
         "Cancel"
       ],
       "data_interpretation_confirm_metadata_labels": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -4032,6 +4180,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -4045,6 +4195,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -4058,6 +4210,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -4071,6 +4225,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -4188,6 +4344,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -4212,6 +4370,8 @@
         "Visualization",
         "AI Assistant",
         "Interpret Data Source",
+        "Interpret Folder / BIDS",
+        "Reload Import Recipe",
         "Add Labels to Loaded Data",
         "Smart Parse Metadata",
         "Channel Selection",
@@ -4271,6 +4431,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -4341,6 +4513,18 @@
           "tooltip": "Scan, preview, validate, and apply EEG data"
         },
         {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        {
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
@@ -4409,6 +4593,18 @@
           "tooltip": "Scan, preview, validate, and apply EEG data"
         },
         {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        {
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
@@ -4439,6 +4635,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -4569,6 +4777,18 @@
           "tooltip": "Scan, preview, validate, and apply EEG data"
         },
         {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        {
           "text": "Add Labels to Loaded Data",
           "enabled": true,
           "checked": null,
@@ -4635,6 +4855,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -4705,6 +4937,18 @@
           "tooltip": "Scan, preview, validate, and apply EEG data"
         },
         {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        {
           "text": "Add Labels to Loaded Data",
           "enabled": true,
           "checked": null,
@@ -4771,6 +5015,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -5201,6 +5457,18 @@
           "tooltip": "Scan, preview, validate, and apply EEG data"
         },
         {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        {
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
@@ -5297,6 +5565,18 @@
           "enabled": true,
           "checked": null,
           "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "checked": null,
+          "tooltip": "Review a saved import recipe before applying it"
         },
         {
           "text": "Add Labels to Loaded Data",
@@ -5788,7 +6068,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_apply": {
@@ -5845,7 +6125,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_save_recipe": {
@@ -5902,7 +6182,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_reload_recipe": {
@@ -5959,7 +6239,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "preprocessing": {
@@ -6023,7 +6303,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "epoch_creation": {
@@ -6087,7 +6367,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "dataset_generation": {
@@ -6151,7 +6431,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "training_readiness": {
@@ -6215,7 +6495,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "evaluation_visualization_saliency_readiness": {
@@ -6279,7 +6559,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_empty_state": {
@@ -6343,7 +6623,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_repeated_open_close": {
@@ -6407,7 +6687,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_normal_message": {
@@ -6471,7 +6751,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_missing_input_clarification": {
@@ -6535,7 +6815,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_blocked_command": {
@@ -6599,7 +6879,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_successful_tool_result": {
@@ -6663,7 +6943,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_narrow_panel": {
@@ -6727,7 +7007,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "reset_new_session_boundary": {
@@ -7326,7 +7606,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_apply": {
@@ -7383,7 +7663,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_save_recipe": {
@@ -7440,7 +7720,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "data_interpretation_reload_recipe": {
@@ -7497,7 +7777,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "preprocessing": {
@@ -7561,7 +7841,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "epoch_creation": {
@@ -7625,7 +7905,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "dataset_generation": {
@@ -7689,7 +7969,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "training_readiness": {
@@ -7753,7 +8033,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "evaluation_visualization_saliency_readiness": {
@@ -7817,7 +8097,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_empty_state": {
@@ -7881,7 +8161,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_repeated_open_close": {
@@ -7945,7 +8225,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_normal_message": {
@@ -8009,7 +8289,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_missing_input_clarification": {
@@ -8073,7 +8353,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_blocked_command": {
@@ -8137,7 +8417,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_successful_tool_result": {
@@ -8201,7 +8481,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "assistant_narrow_panel": {
@@ -8265,7 +8545,7 @@
           "has_recipe": true,
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         }
       },
       "reset_new_session_boundary": {
@@ -8432,32 +8712,32 @@
       }
     },
     "phase_screenshots": {
-      "app_startup": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
-      "main_window_initial_state": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
-      "data_source_selection": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
-      "data_interpretation_select_source": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
-      "data_interpretation_scan_result": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
-      "data_interpretation_preview": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
-      "data_interpretation_confirm_metadata_labels": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
-      "data_interpretation_decisions": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
-      "data_interpretation_apply": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-      "data_interpretation_save_recipe": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-      "data_interpretation_reload_recipe": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
-      "preprocessing": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
-      "epoch_creation": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
-      "dataset_generation": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
-      "training_readiness": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
-      "evaluation_visualization_saliency_readiness": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
-      "assistant_empty_state": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
-      "assistant_repeated_open_close": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
-      "assistant_normal_message": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
-      "assistant_missing_input_clarification": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
-      "assistant_blocked_command": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
-      "assistant_successful_tool_result": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
-      "assistant_narrow_panel": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
-      "reset_new_session_boundary": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
-      "error_recovery": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
-      "eval_dashboard_report": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
+      "app_startup": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
+      "main_window_initial_state": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+      "data_source_selection": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_interpretation_select_source": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
+      "data_interpretation_scan_result": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+      "data_interpretation_preview": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "data_interpretation_confirm_metadata_labels": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+      "data_interpretation_decisions": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+      "data_interpretation_apply": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "data_interpretation_save_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "data_interpretation_reload_recipe": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+      "preprocessing": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+      "epoch_creation": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "dataset_generation": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+      "training_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+      "evaluation_visualization_saliency_readiness": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+      "assistant_empty_state": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "assistant_repeated_open_close": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+      "assistant_normal_message": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+      "assistant_missing_input_clarification": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+      "assistant_blocked_command": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+      "assistant_successful_tool_result": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+      "assistant_narrow_panel": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+      "reset_new_session_boundary": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+      "error_recovery": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+      "eval_dashboard_report": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
     }
   },
   "command_results": [
@@ -11910,7 +12190,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -12143,7 +12423,7 @@
             "recipe:recipe-7"
           ]
         },
-        "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+        "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
       }
     },
     {
@@ -12453,7 +12733,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -13544,7 +13824,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -13899,7 +14179,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -14265,7 +14545,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -14443,7 +14723,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -14656,7 +14936,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -14696,7 +14976,7 @@
           "device": "cpu",
           "optimizer": "Adam",
           "checkpoint_epoch": 0,
-          "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
+          "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
         }
       }
     },
@@ -14826,7 +15106,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -15039,7 +15319,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -15204,7 +15484,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -15417,7 +15697,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -15589,7 +15869,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -15802,7 +16082,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -15968,7 +16248,7 @@
             "device": "cpu",
             "optimizer": "Adam",
             "checkpoint_epoch": 0,
-            "output_dir": "artifacts/ui/human-like-walkthrough/training-smoke-output"
+            "output_dir": "<repo>/artifacts/ui/human-like-walkthrough/training-smoke-output"
           },
           "has_trainer": false,
           "is_running": false,
@@ -16181,7 +16461,7 @@
               "success_count": 1
             }
           ],
-          "recipe_path": "artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
+          "recipe_path": "<repo>/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json"
         },
         "active_dataset": {
           "has_raw_data": true,
@@ -17482,33 +17762,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 779152,
+      "pid": 847976,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835332
+      "max_rss_kb": 836696
     },
     {
       "label": "before_close",
-      "pid": 779152,
+      "pid": 847976,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058016
+      "max_rss_kb": 1060068
     },
     {
       "label": "after_close",
-      "pid": 779152,
+      "pid": 847976,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058016
+      "max_rss_kb": 1060068
     }
   ],
   "ui_quality_review": {
@@ -17516,140 +17796,140 @@
     "screenshot_review": [
       {
         "screenshot": "main_initial",
-        "path": "artifacts/ui/human-like-walkthrough/01-main-initial.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/01-main-initial.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "dataset_page",
-        "path": "artifacts/ui/human-like-walkthrough/02-dataset-page.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/02-dataset-page.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "source_selection",
-        "path": "artifacts/ui/human-like-walkthrough/03-source-selection.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/03-source-selection.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "wizard_preview",
-        "path": "artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/04-interpretation-preview.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "wizard_confirm",
-        "path": "artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/05-interpretation-confirm.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "applied",
-        "path": "artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/06-interpretation-applied.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "recipe_reloaded",
-        "path": "artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "preprocess",
-        "path": "artifacts/ui/human-like-walkthrough/08-preprocessing.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/08-preprocessing.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "dataset_ready",
-        "path": "artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/09-dataset-ready.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "training_readiness",
-        "path": "artifacts/ui/human-like-walkthrough/10-training-readiness.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/10-training-readiness.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "analysis_readiness",
-        "path": "artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/11-analysis-readiness.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_empty",
-        "path": "artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/12-assistant-empty.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_normal",
-        "path": "artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_clarification",
-        "path": "artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_blocked",
-        "path": "artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_success",
-        "path": "artifacts/ui/human-like-walkthrough/16-assistant-success.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "assistant_narrow",
-        "path": "artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "reset_boundary",
-        "path": "artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "error_recovery",
-        "path": "artifacts/ui/human-like-walkthrough/19-error-recovery.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
       },
       {
         "screenshot": "eval_dashboard",
-        "path": "artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
+        "path": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png",
         "exists": true,
         "nonblank": true,
         "automated_review": "nonblank"
@@ -17668,5 +17948,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.617
+  "elapsed_seconds": 3.754
 }

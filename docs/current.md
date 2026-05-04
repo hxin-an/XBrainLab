@@ -94,8 +94,10 @@ replay 也有第一份 artifact：`scripts/dev/capture_data_interpretation_repla
 `artifacts/ui/data-interpretation-preview.png`、`data-interpretation-applied.png` 和
 `data-interpretation-replay.json`，對照 visible dialog state、dataset panel state 和 command
 result。Data Interpretation preview dialog 已硬化成第一版 import wizard review surface：
-可見 `Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe` 流程、source/readiness、
-BIDS status、metadata preview、label/event/recipe trace、confirmation 和 recipe save 選項；
+可見 `Select source | Scan result | Preview | Confirm | Apply | Save recipe` 流程、source/readiness、
+BIDS status、metadata preview、label/event/recipe trace、confirmation 和 recipe save 選項；最新 UI
+polish 已把 warning / confirmation / downstream impact / format boundary 從大段文字框改成
+`Review Summary` 表格，artifact 會保存 `review_summary_rows`，避免使用者面對 raw review dump；
 apply 後保存 recipe 仍透過 `SaveInterpretationRecipeCommand`。後續 slice 已把 metadata /
 class-map review edit 接進同一流程：dialog 的 subject / session / task / run 與 class map
 review cells 可產生 `choices`，Dataset action 會在 apply 前 re-preview / re-validate 新
@@ -120,8 +122,8 @@ UI replay 顯示人話 `Seconds`、`Trial`、`Class cue labels`，但 recipe cho
 需要的 `seconds`、`trial`、`class cue labels`。後續 slice 又新增 format capability
 boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
 CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
-dialog review notes 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection 尚未在
-wizard 內可用。後續 slice 已新增 generated format capability matrix artifact：
+dialog `Review Summary` 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection
+尚未在 wizard 內可用。後續 slice 已新增 generated format capability matrix artifact：
 `scripts/dev/report_data_interpretation_format_matrix.py` 透過 live `ApplicationService`
 `ScanSourceCommand -> PreviewInterpretationCommand -> ValidateInterpretationCommand` 產生
 `artifacts/data_interpretation/format-capability-matrix.json` / `.md`，覆蓋 GDF、EDF、BDF、

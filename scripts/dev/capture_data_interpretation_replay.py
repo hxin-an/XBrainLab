@@ -253,7 +253,7 @@ def capture_replay(app: QApplication) -> int:
                 "visible_text": visible_texts(dialog),
                 "metadata_rows": tree_rows(dialog.file_tree),
                 "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
-                "review_notes": sanitized(dialog.review_text.toPlainText()),
+                "review_summary_rows": sanitized(tree_rows(dialog.review_tree)),
                 "review_choices": sanitized(dialog_choices),
                 "apply_button_enabled": dialog.decision != "blocked",
                 "save_recipe_checked": dialog.save_recipe_check.isChecked(),

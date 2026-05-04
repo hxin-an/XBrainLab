@@ -2592,13 +2592,13 @@
             {
               "index": "0",
               "file": "sub-01_task-mi_run-1_raw.fif",
-              "subject": "0",
-              "session": "0"
+              "subject": "S01",
+              "session": "session-01"
             },
             {
               "index": "1",
               "file": "sub-01_task-mi_run-2_raw.fif",
-              "subject": "0",
+              "subject": "01",
               "session": "0"
             }
           ],
@@ -3106,6 +3106,22 @@
             "label_import:timestamp:1"
           ]
         },
+        "metadata_apply": [
+          {
+            "file": "sub-01_task-mi_run-1_raw.fif",
+            "subject": "S01",
+            "session": "session-01",
+            "task": "motor-imagery",
+            "run": "1"
+          },
+          {
+            "file": "sub-01_task-mi_run-2_raw.fif",
+            "subject": "01",
+            "session": "",
+            "task": "mi",
+            "run": "2"
+          }
+        ],
         "label_carriers_pending": [
           "<replay_source>/events.tsv"
         ],
@@ -3141,7 +3157,7 @@
       "title": "Interpret Data Source",
       "decision": "needs_confirmation",
       "visible_text": [
-        "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
         "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
@@ -3184,7 +3200,53 @@
           "Class cue labels"
         ]
       ],
-      "review_notes": "Warnings:\n- Multiple EEG files were discovered; subject/session/run mapping should be reviewed.\n- External label/event carriers require preview before apply.\nConfirmations:\n- Confirm label carrier alignment, anchor event, and class map before applying.\n- Confirm session metadata for sub-01_task-mi_run-1_raw.fif.\n- Confirm session metadata for sub-01_task-mi_run-2_raw.fif.\nDownstream impact:\n- Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session.\nFormat capabilities:\n- BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
+      "review_summary_rows": [
+        [
+          "Warning",
+          "Review",
+          "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+        ],
+        [
+          "Warning",
+          "Review",
+          "External label/event carriers require preview before apply."
+        ],
+        [
+          "Confirmation",
+          "Needs confirmation",
+          "Confirm label carrier alignment, anchor event, and class map before applying."
+        ],
+        [
+          "Confirmation",
+          "Needs confirmation",
+          "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+        ],
+        [
+          "Confirmation",
+          "Needs confirmation",
+          "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+        ],
+        [
+          "Downstream impact",
+          "After apply",
+          "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+        ],
+        [
+          "Format capability",
+          "Needs review",
+          "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+        ],
+        [
+          "Format capability",
+          "Supported",
+          "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+        ],
+        [
+          "Format capability",
+          "Supported",
+          "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+        ]
+      ],
       "review_choices": {
         "metadata_overrides": {
           "sub-01_task-mi_run-1_raw.fif": {

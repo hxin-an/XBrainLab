@@ -316,9 +316,12 @@
   dataset workflow evidence 和 UI-observable preview / applied artifact。
 - Data Interpretation wizard review surface 已硬化：
   - dialog title 改為 `Interpret Data Source`。
-  - 可見流程為 `Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe`。
+  - 可見流程為 `Select source | Scan result | Preview | Confirm | Apply | Save recipe`。
   - 顯示 source/readiness、BIDS status、metadata preview、label/event/recipe trace、
     confirmation 和 save recipe state。
+  - warnings、confirmations、blocked reasons、downstream impact 和 format boundaries 已改成
+    `Review Summary` table，不再是大段 plain text review dump；Data Interpretation replay JSON
+    保存 `review_summary_rows`。
   - subject / session / task / run 和 class map review cells 已可產生 dialog `choices`。
   - Dataset action 會在 apply 前用使用者 review choices re-preview / re-validate，再套用新
     candidate。
@@ -334,7 +337,7 @@
     MAT `classlabel` / `cue_onset` recipe trace。
   - scan / preview 現在會列出 format capability boundaries，覆蓋 GDF、EDF / BDF、EEGLAB、
     BrainVision、MNE FIF、MAT labels、CSV / TSV / BIDS events、TXT labels 和 XDF / LSL；dialog
-    review notes 會顯示 XDF / LSL stream selection 尚未在 wizard 內可用的 blocked reason。
+    `Review Summary` 會顯示 XDF / LSL stream selection 尚未在 wizard 內可用的 blocked reason。
   - Generated Data Interpretation format capability matrix 已新增：
     `scripts/dev/report_data_interpretation_format_matrix.py` 透過 live `ApplicationService`
     command path 產生 `artifacts/data_interpretation/format-capability-matrix.json` / `.md`，
