@@ -585,6 +585,50 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_without_loaded_rows_guides_to_interpret_source(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        handler.panel.table.rowCount.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = []
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.return_value = []
+
+        handler.import_label()
+
+        mock_mb.warning.assert_called_once()
+        assert "Interpret a data source" in mock_mb.warning.call_args.args[2]
+        mock_dlg.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_respects_backend_capability_block(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        capability = MagicMock()
+        capability.enabled = False
+        capability.reasons = ["Reset the session before changing labels."]
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+            return_value=capability,
+        ):
+            handler.import_label()
+
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Reset the session before changing labels."
+            in (mock_mb.warning.call_args.args[2])
+        )
+        mock_dlg.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_dialog_cancelled(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
         idx.row.return_value = 0

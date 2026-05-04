@@ -37,6 +37,8 @@ def test_update_sidebar_locked(sidebar):
     # Logic: Button remains enabled but action is blocked. Tooltip updates.
     assert sidebar.chan_select_btn.isEnabled() is True
     assert "Dataset is locked" in sidebar.chan_select_btn.toolTip()
+    assert sidebar.import_label_btn.isEnabled() is False
+    assert "locked" in sidebar.import_label_btn.toolTip().lower()
 
 
 def test_update_sidebar_unlocked(sidebar):
@@ -48,6 +50,18 @@ def test_update_sidebar_unlocked(sidebar):
 
     assert sidebar.chan_select_btn.isEnabled() is True
     assert sidebar.chan_select_btn.toolTip() == "Select specific channels to keep"
+    assert sidebar.import_label_btn.isEnabled() is True
+    assert "recipe trace" in sidebar.import_label_btn.toolTip()
+
+
+def test_update_sidebar_without_data_guides_to_interpret_source(sidebar):
+    sidebar.controller.is_locked.return_value = False
+    sidebar.controller.has_data.return_value = False
+
+    sidebar.update_sidebar()
+
+    assert sidebar.import_label_btn.isEnabled() is False
+    assert "Interpret a data source" in sidebar.import_label_btn.toolTip()
 
 
 def test_button_connections(sidebar):

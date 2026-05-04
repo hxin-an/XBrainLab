@@ -3360,3 +3360,28 @@
   - 這支撐 label carrier review selector UX。
   - 仍不是完整 embedded post-load label editor、raw trigger selector、全格式 real-data
     certification 或真人 click-through。
+
+### 2026-05-04 Add Labels compatibility guard
+
+- 做了什麼：
+  - Dataset sidebar 在 empty state 會 disable `Add Labels to Loaded Data`，tooltip 指向先
+    interpret data source。
+  - locked state 也會 disable 該 compatibility action。
+  - `DatasetActionHandler.import_label()` 會先讀 backend `ImportLabelsCommand` capability，
+    blocked 時直接顯示人話 reason，不開 legacy dialog。
+  - 沒有 table rows 時不再問 `Apply to ALL?`，改成 warning。
+  - Data Interpretation replay JSON 新增 empty/applied sidebar button state。
+- TDD：
+  - focused sidebar tests 初跑失敗，因 button 沒有 disable。
+  - focused action tests 初跑失敗，因 no-data / capability block guard 缺失。
+- 驗證：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_dataset_sidebar.py -q`
+    -> `54 passed`。
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py` -> exit `0`。
+  - replay JSON empty state：button enabled `False`，tooltip `Interpret a data source before adding labels.`。
+  - replay JSON applied state：button enabled `True`，tooltip 提示 update current recipe trace。
+  - targeted `ruff check` / `ruff format --check` clean。
+  - targeted `basedpyright` clean。
+- 不能宣稱：
+  - 這支撐 compatibility label action 的 state guard。
+  - 仍不是完整 Data Interpretation embedded label editor。

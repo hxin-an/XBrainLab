@@ -427,6 +427,21 @@ class DatasetActionHandler:
         Supports single-file, batch, and timestamp-based label mapping.
         Prompts the user for event filtering when applicable.
         """
+        label_capability = get_command_capability(
+            self.panel,
+            CommandName.IMPORT_LABELS,
+        )
+        if label_capability is not None and not label_capability.enabled:
+            QMessageBox.warning(
+                self.panel,
+                "Label Import Blocked",
+                blocked_reason(
+                    label_capability,
+                    "Label import is not available right now.",
+                ),
+            )
+            return
+
         target_files = self._get_target_files_for_import()
         if not target_files:
             return
@@ -597,6 +612,14 @@ class DatasetActionHandler:
                 or an empty list if the operation is cancelled.
 
         """
+        if self.panel.table.rowCount() <= 0:
+            QMessageBox.warning(
+                self.panel,
+                "No Data Loaded",
+                "Interpret a data source before adding labels.",
+            )
+            return []
+
         selected_rows = sorted(
             {index.row() for index in self.panel.table.selectedIndexes()},
         )

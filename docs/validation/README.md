@@ -1415,6 +1415,36 @@ compatibility matrix 或真人 click-through。
 review 欄位。它仍不是完整 embedded post-load label import editor、raw trigger selector、
 全格式 real-data certification 或真人 click-through。
 
+2026-05-04 Dataset Add Labels compatibility guard：
+
+- UI/action:
+  - `DatasetSidebar.update_sidebar()` disables `Add Labels to Loaded Data` when no data is loaded
+    and uses tooltip text `Interpret a data source before adding labels.`
+  - the same button is disabled while the dataset is locked by downstream edits.
+  - `DatasetActionHandler.import_label()` checks backend `ImportLabelsCommand` capability before
+    opening the compatibility dialog.
+  - `_get_target_files_for_import()` now warns immediately when the dataset table has no rows,
+    instead of asking whether to apply labels to all files.
+- replay artifact refreshed:
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - empty dataset sidebar evidence:
+    `Add Labels to Loaded Data`, enabled `False`, tooltip `Interpret a data source before adding labels.`
+  - applied dataset sidebar evidence:
+    enabled `True`, tooltip `Add labels to loaded data and update the current recipe trace.`
+- TDD evidence:
+  - focused sidebar tests first failed because the button remained enabled for locked / empty states.
+  - focused action tests first failed because no-data and capability-block guards were missing.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_dataset_sidebar.py -q`
+  - `54 passed`
+  - targeted `ruff check` / `ruff format --check` -> pass.
+  - `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py XBrainLab/ui/panels/dataset/actions.py XBrainLab/ui/panels/dataset/sidebar.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
+attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

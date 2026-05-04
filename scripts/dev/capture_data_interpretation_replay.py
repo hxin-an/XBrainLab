@@ -190,6 +190,18 @@ def capture_replay(app: QApplication) -> int:
 
     def run_steps() -> None:
         try:
+            window.dataset_panel.sidebar.update_sidebar()
+            empty_sidebar_state = {
+                "import_label_button_text": (
+                    window.dataset_panel.sidebar.import_label_btn.text()
+                ),
+                "import_label_button_enabled": (
+                    window.dataset_panel.sidebar.import_label_btn.isEnabled()
+                ),
+                "import_label_button_tooltip": (
+                    window.dataset_panel.sidebar.import_label_btn.toolTip()
+                ),
+            }
             scan = service.execute(
                 ScanSourceCommand(source_path=str(source_path.parent))
             )
@@ -302,10 +314,20 @@ def capture_replay(app: QApplication) -> int:
                         "import_button_enabled": (
                             window.dataset_panel.sidebar.import_btn.isEnabled()
                         ),
+                        "import_label_button_text": (
+                            window.dataset_panel.sidebar.import_label_btn.text()
+                        ),
+                        "import_label_button_enabled": (
+                            window.dataset_panel.sidebar.import_label_btn.isEnabled()
+                        ),
+                        "import_label_button_tooltip": (
+                            window.dataset_panel.sidebar.import_label_btn.toolTip()
+                        ),
                         "table_rows": window.dataset_panel.table.rowCount(),
                         "visible_panel_text": visible_texts(window.dataset_panel),
                         "screenshot": APPLIED_SCREENSHOT.name,
                     },
+                    "empty_dataset_sidebar": empty_sidebar_state,
                 },
             }
             REPLAY_JSON.write_text(

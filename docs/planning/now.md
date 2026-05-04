@@ -276,6 +276,9 @@
     使用者手打 filename。
   - Post-load `Add Labels to Loaded Data` dialog 現在會顯示 target EEG files 和 recipe trace
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
+  - `Add Labels to Loaded Data` compatibility path 現在會在 empty state disable，tooltip 引導
+    使用者先 interpret data source；action 也會尊重 backend `ImportLabelsCommand`
+    capability block。
   - Reviewed MAT sample-index anchor apply 已新增窄路徑：當 wizard 明確選定 MAT label field、
     MAT anchor、`time_model=sample_index`、`granularity=trial` 和 class map 時，backend 會把
     MAT labels + anchor 轉成 MNE-style event array，透過 `apply_labels_batch` 套用，並保存

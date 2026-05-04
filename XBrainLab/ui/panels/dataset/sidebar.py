@@ -161,6 +161,23 @@ class DatasetSidebar(QWidget):
                     "Auto-extract Subject/Session from filenames",
                 )
 
+            has_data = bool(self.controller.has_data())
+            if is_locked:
+                self.import_label_btn.setEnabled(False)
+                self.import_label_btn.setToolTip(
+                    "Dataset is locked. Reset before changing labels.",
+                )
+            elif not has_data:
+                self.import_label_btn.setEnabled(False)
+                self.import_label_btn.setToolTip(
+                    "Interpret a data source before adding labels.",
+                )
+            else:
+                self.import_label_btn.setEnabled(True)
+                self.import_label_btn.setToolTip(
+                    "Add labels to loaded data and update the current recipe trace.",
+                )
+
     # --- Actions moved from Panel ---
 
     def open_channel_selection(self):

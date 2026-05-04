@@ -3217,9 +3217,17 @@
     "dataset_panel": {
       "import_button_text": "Interpret Data Source",
       "import_button_enabled": true,
+      "import_label_button_text": "Add Labels to Loaded Data",
+      "import_label_button_enabled": true,
+      "import_label_button_tooltip": "Add labels to loaded data and update the current recipe trace.",
       "table_rows": 2,
       "visible_panel_text": [],
       "screenshot": "data-interpretation-applied.png"
+    },
+    "empty_dataset_sidebar": {
+      "import_label_button_text": "Add Labels to Loaded Data",
+      "import_label_button_enabled": false,
+      "import_label_button_tooltip": "Interpret a data source before adding labels."
     }
   }
 }
