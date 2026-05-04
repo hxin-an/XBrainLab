@@ -547,6 +547,7 @@ def _run_walkthrough_steps(
         command_summary(item) for item in [new_session_blocked, new_session_confirmed]
     )
     window.dataset_panel.update_panel()
+    window.agent_manager.refresh_backend_status()
     window.switch_page(0)
     app.processEvents()
     capture_step(
@@ -571,6 +572,7 @@ def _run_walkthrough_steps(
     tool_transcript.extend(
         command_summary(item) for item in [preview_missing_scan, recovery_scan]
     )
+    window.agent_manager.refresh_backend_status()
     add_chat_message(
         window,
         user_transcript,

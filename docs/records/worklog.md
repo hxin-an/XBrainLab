@@ -3584,3 +3584,31 @@
     launcher click-through、雙螢幕 / DPI 或長時間 true local model desktop acceptance。
   - Data Interpretation 仍缺 mature embedded label editor、raw event anchor / MAT variable editor
     和全格式 manual certification；legacy post-load label compatibility path 仍需繼續降權。
+
+### 2026-05-04 ChatPanel reset boundary polish
+
+- 做了什麼：
+  - 修 `ChatPanel._clear_ui()`：清 conversation 時舊 message bubble 會立即 `hide()` 並 detach，
+    不只 `deleteLater()`，避免 DeferredDelete 前舊 bubble 還可見。
+  - 補 ChatPanel unit test，確認 append message 會隱藏 empty state，clear 後舊 bubble 立即不可見 /
+    detached，empty state 才重新顯示。
+  - human-like walkthrough 直接用 `ApplicationService` 執行 reset / recovery command 後，現在會刷新
+    `AgentManager` workflow status，避免 reset 後主資料已清空但 ChatPanel / status bar 仍顯示
+    `Ready to train`。
+- evidence：
+  - refreshed `artifacts/ui/human-like-walkthrough/18-reset-boundary.png` 不再顯示舊 bubbles，也不再
+    顯示 stale `Ready to train`；可見狀態為 `No EEG files are open yet.` / `No EEG data open · Import files to begin`。
+  - refreshed `19-error-recovery.png` 只顯示 recovery request / response，不顯示 empty-state overlap。
+  - artifact summary 仍為 status `passed`、`26 / 26` required phases、`20` screenshots。
+- validation：
+  - `timeout 300s scripts/dev/run_ui_pytest.sh tests/unit/ui/chat/test_chat_panel.py -q`
+    -> `40 passed`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `5 passed`。
+  - targeted `ruff check` -> pass。
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py --output-dir artifacts/ui/human-like-walkthrough`
+    -> exit `0`。
+- 不能宣稱：
+  - 這修的是 automated walkthrough 暴露的 ChatPanel reset / status UI bug。
+  - 仍不是真人 Windows desktop acceptance，也不是長時間 true local model conversation soak。

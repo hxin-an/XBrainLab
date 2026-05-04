@@ -862,6 +862,8 @@ class ChatPanel(QWidget):
             if item:
                 w = item.widget()
                 if w and w is not empty_state:
+                    w.hide()
+                    w.setParent(None)
                     w.deleteLater()
         if empty_state is not None:
             self.chat_layout.addWidget(empty_state)

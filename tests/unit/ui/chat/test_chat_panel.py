@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QLabel, QLineEdit, QScrollArea, QToolButton, QWidget
 
+from XBrainLab.ui.chat.message_bubble import MessageBubble
+
 
 @pytest.fixture
 def chat_panel(qtbot):
@@ -76,10 +78,12 @@ class TestChatPanelCallbacks:
         chat_panel.append_message("user", "hi there")
         # Should have added a bubble
         assert chat_panel.chat_layout.count() > 1
+        assert chat_panel.empty_state_widget.isHidden()
 
     def test_append_message_agent(self, chat_panel):
         chat_panel.append_message("assistant", "response")
         assert isinstance(chat_panel.current_agent_bubble, QWidget)
+        assert chat_panel.empty_state_widget.isHidden()
 
     def test_set_processing_state(self, chat_panel):
         chat_panel.set_processing_state(True)
@@ -94,9 +98,15 @@ class TestChatPanelCallbacks:
     def test_clear_ui(self, chat_panel):
         chat_panel.append_message("user", "msg1")
         chat_panel.append_message("assistant", "msg2")
+        stale_bubbles = chat_panel.chat_content_widget.findChildren(MessageBubble)
+        assert stale_bubbles
         chat_panel._clear_ui()
         assert chat_panel.current_agent_bubble is None
         assert chat_panel.empty_state_widget.isHidden() is False
+        assert all(
+            bubble.parent() is None or not bubble.isVisible()
+            for bubble in stale_bubbles
+        )
 
     def test_collapse_agent_message(self, chat_panel):
         chat_panel.on_chunk_received("Tool call: xyz\nResult text")

@@ -3379,8 +3379,8 @@
         "Clear Dataset",
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
-        "Current workflow stage: Ready to train.",
-        "Start training",
+        "No EEG files are open yet.",
+        "Import EEG files · Ask what is ready",
         "Ask about data, preprocessing, epoching, datasets, or training...",
         "Send",
         "XBrainLab",
@@ -12905,33 +12905,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 765995,
+      "pid": 771107,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835184
+      "max_rss_kb": 834780
     },
     {
       "label": "before_close",
-      "pid": 765995,
+      "pid": 771107,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058600
+      "max_rss_kb": 1058272
     },
     {
       "label": "after_close",
-      "pid": 765995,
+      "pid": 771107,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1058600
+      "max_rss_kb": 1058272
     }
   ],
   "pass_fail_summary": {
@@ -12942,5 +12942,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.37
+  "elapsed_seconds": 3.514
 }

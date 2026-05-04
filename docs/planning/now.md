@@ -400,7 +400,8 @@ Goal 1 至少要包含：
      thesis claim boundary；目前入口是 `artifacts/agent_evals/dashboard.md`。
    - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
      目前 consolidated human-like walkthrough artifact 已刷新到 `26 / 26` required phases、`20`
-     screenshots，並完成第一輪 screenshot-driven UI polish；仍不能替代 human desktop acceptance。
+     screenshots，並完成第一輪 screenshot-driven UI polish；reset / new-session boundary 已不再顯示
+     stale chat bubbles 或 stale workflow status。仍不能替代 human desktop acceptance。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計。
 

@@ -316,7 +316,8 @@ artifact 和 process/thread notes。artifact
 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` 顯示 status `passed`、
 `26 / 26` phases、human desktop acceptance `not performed`。後續 UI polish 已依截圖修正
 Data Interpretation preview / confirm dialog 的 review surface density、Training plot dark-theme
-readability、Training history compact header，以及 Evaluation page compact controls，並刷新同一份
+readability、Training history compact header、Evaluation page compact controls，以及 ChatPanel
+new conversation / reset 後的 stale bubble / stale workflow status，並刷新同一份
 walkthrough artifact。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。
@@ -593,8 +594,9 @@ true local model desktop session。
 3. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
    import 不再是主要使用心智模型。
 4. 繼續根據 human-like walkthrough screenshots 做 UI polish；第一輪已處理 Data Interpretation
-   table density、Training plot readability / history header 和 Evaluation compact controls，仍要補
-   main-window narrow-with-assistant layout、mature import wizard editing 和整體產品感。
+   table density、Training plot readability / history header、Evaluation compact controls 和
+   ChatPanel reset stale UI，仍要補 mature import wizard editing、assistant main-window narrow
+   composition 和整體產品感。
 5. 將 primary / fallback `117` case tool-call dashboard 整理成 thesis evidence report；不要把它
    擴張成 UI / launcher 完成 claim。
 6. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
