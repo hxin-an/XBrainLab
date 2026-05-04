@@ -42,6 +42,28 @@ class TestLoadMat:
         labels = load_label_file(str(p), label_field="target")
         np.testing.assert_array_equal(labels, [1, 2, 1])
 
+    def test_mat_uses_selected_label_and_sample_anchor_as_events(self, tmp_path):
+        """Reviewed MAT label and anchor variables should form MNE events."""
+        p = tmp_path / "labels.mat"
+        scipy.io.savemat(
+            str(p),
+            {
+                "classlabel": np.array([1, 2, 1]),
+                "cue_onset": np.array([100, 250, 400]),
+            },
+        )
+
+        labels = load_label_file(
+            str(p),
+            label_field="classlabel",
+            anchor="cue_onset",
+        )
+
+        np.testing.assert_array_equal(
+            labels,
+            np.array([[100, 0, 1], [250, 0, 2], [400, 0, 1]], dtype=np.int32),
+        )
+
     def test_mat_n_by_1(self, tmp_path):
         """(n, 1) shape should flatten to 1D."""
         p = tmp_path / "labels.mat"

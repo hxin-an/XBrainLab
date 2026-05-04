@@ -1762,19 +1762,33 @@ class ApplicationService:
             for item in candidate.label_carrier_plan
             if self._is_auto_applicable_timestamp_label_plan(item)
         ]
+        anchored_applicable = [
+            item
+            for item in candidate.label_carrier_plan
+            if self._is_auto_applicable_anchored_label_plan(item, candidate.class_map)
+        ]
         sequence_applicable = [
             item
             for item in candidate.label_carrier_plan
             if self._is_auto_applicable_sequence_label_plan(item, candidate.class_map)
         ]
-        if not timestamp_applicable and not sequence_applicable:
+        if (
+            not timestamp_applicable
+            and not anchored_applicable
+            and not sequence_applicable
+        ):
             return {
                 "status": "skipped",
                 "reason": ("No reviewed label carrier is safe to apply automatically."),
             }
 
-        applicable = timestamp_applicable or sequence_applicable
-        mode = "timestamp" if timestamp_applicable else "legacy"
+        applicable = timestamp_applicable or anchored_applicable or sequence_applicable
+        if timestamp_applicable:
+            mode = "timestamp"
+        elif anchored_applicable:
+            mode = "anchored"
+        else:
+            mode = "legacy"
 
         target_files = list(self.dataset.get_loaded_data_list() or [])
         if not target_files:
@@ -1811,7 +1825,7 @@ class ApplicationService:
         try:
             label_map = self._load_reviewed_label_map(applicable, mode)
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
-            if mode == "timestamp":
+            if mode in {"timestamp", "anchored"}:
                 count = self.dataset.apply_labels_batch(
                     mapped_target_files,
                     label_map,
@@ -1883,7 +1897,7 @@ class ApplicationService:
             label_map[carrier_path] = load_label_file(
                 carrier_path,
                 label_field=label_field,
-                anchor=anchor if mode == "timestamp" else None,
+                anchor=anchor if mode in {"timestamp", "anchored"} else None,
             )
         return label_map
 
@@ -2040,6 +2054,23 @@ class ApplicationService:
             and bool(str(plan.get("selected_label_field") or "").strip())
             and bool(str(plan.get("selected_anchor") or "").strip())
             and time_model in {"seconds", "relative_time"}
+        )
+
+    @staticmethod
+    def _is_auto_applicable_anchored_label_plan(
+        plan: dict[str, Any],
+        class_map: dict[str, str],
+    ) -> bool:
+        carrier_format = str(plan.get("format") or "").strip()
+        time_model = str(plan.get("time_model") or "").strip().lower()
+        granularity = str(plan.get("granularity") or "").strip().lower()
+        return (
+            carrier_format in {"MAT", "MAT labels"}
+            and bool(str(plan.get("selected_label_field") or "").strip())
+            and bool(str(plan.get("selected_anchor") or "").strip())
+            and time_model == "sample_index"
+            and granularity == "trial"
+            and bool(class_map)
         )
 
     @staticmethod

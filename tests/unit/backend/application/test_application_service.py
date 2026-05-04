@@ -628,6 +628,69 @@ def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_pa
     )
 
 
+def test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier(
+    tmp_path,
+):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "reviewed_mat_sample_anchor"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(
+        label_path,
+        {
+            "classlabel": np.array([1, 2, 1]),
+            "cue_onset": np.array([100, 250, 400]),
+        },
+    )
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_batch = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "label_field": "classlabel",
+                        "anchor": "cue_onset",
+                        "time_model": "sample_index",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
+    assert apply_result.diagnostics["label_apply"]["mode"] == "anchored"
+    args = service.dataset.apply_labels_batch.call_args.args
+    assert args[0] == [raw]
+    np.testing.assert_array_equal(
+        args[1][str(label_path)],
+        np.array([[100, 0, 1], [250, 0, 2], [400, 0, 1]], dtype=np.int32),
+    )
+    assert args[2] == {str(eeg_path): str(label_path)}
+    assert args[3] == {1: "left hand", 2: "right hand"}
+    assert args[4] is None
+    assert apply_result.state.interpretation.label_imports[0]["mode"] == "anchored"
+    assert (
+        "label_import:anchored:1"
+        in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
+    )
+
+
 def test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem(
     tmp_path,
 ):

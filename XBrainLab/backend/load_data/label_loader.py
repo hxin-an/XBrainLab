@@ -37,7 +37,8 @@ def load_label_file(
     Args:
         filepath: Path to the label file.
         label_field: Optional reviewed label column or MAT variable.
-        anchor: Optional reviewed time/sample/anchor column for CSV/TSV.
+        anchor: Optional reviewed time/sample/anchor column for CSV/TSV or MAT
+            variable for sample-index event construction.
 
     Returns:
         1D array of integer labels (Sequence Mode), or a list of dicts
@@ -56,7 +57,7 @@ def load_label_file(
     if filepath.endswith((".csv", ".tsv")):
         return _load_csv_tsv(filepath, label_field=label_field, anchor=anchor)
     if filepath.endswith(".mat"):
-        return _load_mat(filepath, label_field=label_field)
+        return _load_mat(filepath, label_field=label_field, anchor=anchor)
     raise ValueError(f"Unsupported file format: {filepath}")
 
 
@@ -87,7 +88,12 @@ def _load_txt(path: str) -> np.ndarray:
         raise ValueError(f"Failed to load txt file: {e}") from e
 
 
-def _load_mat(path: str, *, label_field: str | None = None) -> np.ndarray:
+def _load_mat(
+    path: str,
+    *,
+    label_field: str | None = None,
+    anchor: str | None = None,
+) -> np.ndarray:
     """Load labels from a MATLAB ``.mat`` file.
 
     Handles common shapes including ``(n,)``, ``(n, 1)``, ``(1, n)``,
@@ -115,27 +121,11 @@ def _load_mat(path: str, *, label_field: str | None = None) -> np.ndarray:
         var_name = _resolve_mat_variable(mat, variables, label_field)
         data = mat[var_name]
 
-        # Robust shape handling (migrated from EventLoader)
-        label_list = np.array(data).astype(np.int32)
+        if anchor is not None and str(anchor).strip():
+            anchor_name = _resolve_mat_variable(mat, variables, anchor)
+            return _mat_sample_anchor_events(data, mat[anchor_name])
 
-        # Handle (n, 1) and (1, n)
-        if len(label_list.shape) == 2:
-            if label_list.shape[0] == 1:
-                return label_list[0]
-            if label_list.shape[1] == 1:
-                return label_list[:, 0]
-            # Handle (n, 3) - MNE event format
-            if label_list.shape[1] == 3:
-                # Return the last column (event id)
-                return label_list[:, -1]
-            # Fallback for non-standard 2D shapes: Flatten to 1D to attempt
-            # heuristic matching. This accommodates loose formats where dimensions
-            # might be ambiguous.
-            return label_list.flatten()
-
-        if len(label_list.shape) == 1:
-            return label_list
-        return label_list.flatten()
+        return _mat_label_array(data)
 
     except Exception as e:
         logger.error("Failed to load mat file %s: %s", path, e)
@@ -160,6 +150,51 @@ def _resolve_mat_variable(
         if variable.lower() == normalized:
             return variable
     raise ValueError(f"MAT variable not found: {requested}")
+
+
+def _mat_label_array(data: Any) -> np.ndarray:
+    """Convert a MAT label variable to the legacy 1D label array."""
+    label_list = np.array(data).astype(np.int32)
+
+    # Handle (n, 1) and (1, n)
+    if len(label_list.shape) == 2:
+        if label_list.shape[0] == 1:
+            return label_list[0]
+        if label_list.shape[1] == 1:
+            return label_list[:, 0]
+        # Handle (n, 3) - MNE event format
+        if label_list.shape[1] == 3:
+            # Return the last column (event id)
+            return label_list[:, -1]
+        # Fallback for non-standard 2D shapes: Flatten to 1D to attempt
+        # heuristic matching. This accommodates loose formats where dimensions
+        # might be ambiguous.
+        return label_list.flatten()
+
+    if len(label_list.shape) == 1:
+        return label_list
+    return label_list.flatten()
+
+
+def _mat_sample_anchor_events(label_data: Any, anchor_data: Any) -> np.ndarray:
+    """Build MNE event rows from reviewed MAT label and sample-anchor variables."""
+    labels = _mat_label_array(label_data).astype(np.int32).flatten()
+    anchors = np.array(anchor_data).squeeze().flatten()
+    if anchors.size != labels.size:
+        raise ValueError(
+            "MAT anchor variable length does not match selected label variable.",
+        )
+    try:
+        anchor_values = anchors.astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("MAT anchor variable must be numeric.") from exc
+    if not np.all(np.isfinite(anchor_values)):
+        raise ValueError("MAT anchor variable contains non-finite values.")
+    if not np.all(np.equal(np.mod(anchor_values, 1), 0)):
+        raise ValueError("MAT anchor variable must contain integer sample indexes.")
+    samples = anchor_values.astype(np.int64)
+    zeros = np.zeros(labels.size, dtype=np.int64)
+    return np.column_stack([samples, zeros, labels.astype(np.int64)]).astype(np.int32)
 
 
 def _select_mat_variable(mat: dict[str, Any], variables: list[str]) -> str:

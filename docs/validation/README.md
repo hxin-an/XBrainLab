@@ -1370,6 +1370,37 @@ matrix 或 XDF stream parser implementation。
 XDF / LSL 目前是 blocked user-facing boundary。它仍不支撐 XDF / LSL stream parser、
 raw-event-anchor-specific MAT/GDF alignment、或全格式 real-data manual certification。
 
+2026-05-04 Data Interpretation reviewed MAT sample-anchor apply slice：
+
+- backend:
+  - `load_label_file()` now accepts reviewed MAT `label_field` + `anchor`.
+  - When a MAT anchor is provided, the loader returns an MNE-style event array:
+    `[sample_index, 0, class_label]`.
+  - `apply_interpretation` now treats reviewed MAT plans with `time_model=sample_index`,
+    `granularity=trial`, selected label/anchor, and confirmed class map as `anchored` label apply.
+  - The apply path uses `apply_labels_batch`, records `label_import:anchored:<n>`, and keeps the
+    applied interpretation / recipe trace updated.
+- tests:
+  - TDD failures:
+    - focused label loader test first returned the plain class labels instead of MNE event rows.
+    - focused ApplicationService test first returned `label_apply.status=skipped`.
+  - `poetry run pytest --capture=sys tests/unit/backend/load_data/test_label_loader_coverage.py::TestLoadMat::test_mat_uses_selected_label_and_sample_anchor_as_events tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier -q`
+  - `2 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/load_data/test_label_loader.py tests/unit/backend/load_data/test_label_loader_coverage.py tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_timestamp_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sample_anchor_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_sequence_label_carriers_by_stem tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_sequence_label -q`
+  - `35 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py -q`
+  - `43 passed`
+  - targeted `ruff check` / `ruff format --check` clean.
+  - `poetry run basedpyright XBrainLab/backend/load_data/label_loader.py XBrainLab/backend/application/service.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant.
+  - `git diff --check` -> pass.
+
+這批 evidence 支撐 reviewed MAT + sample-index anchor 的窄版 GDF/MAT external-label apply path。
+它仍不支撐任意 raw trigger selection、non-sample timestamp conversion、複雜 anchor
+reconciliation、XDF stream parser 或 full real-data manual certification。
+
 2026-05-04 Data Interpretation timestamp label apply slice：
 
 - backend:

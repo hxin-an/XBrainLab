@@ -111,8 +111,8 @@ wizard 內可用。後續 slice 已新增 generated format capability matrix art
 `artifacts/data_interpretation/format-capability-matrix.json` / `.md`，覆蓋 GDF、EDF、BDF、
 EEGLAB、BrainVision VHDR / VMRK、MNE FIF、MAT、CSV、TSV、BIDS events、TXT 和 XDF / LSL
 stream export 的 capability / validation boundary。這是可重跑的 capability evidence；仍不是
-XDF / LSL stream parser、raw-event-anchor-specific MAT/GDF alignment 或全格式 real-data manual
-certification。最新 slice 已把 reviewed timestamp label carrier apply 接進 Data Interpretation
+XDF / LSL stream parser 或全格式 real-data manual certification。最新 slice 已把 reviewed
+timestamp label carrier apply 接進 Data Interpretation
 主線：`load_label_file()` 可使用 wizard 選定的 MAT variable / CSV-TSV-BIDS label column 和
 anchor；`apply_interpretation` 會在單一 EEG + 單一 reviewed timestamp CSV / TSV / BIDS events
 carrier、已確認且 time model 為 seconds / relative time 時，自動透過既有
@@ -124,7 +124,13 @@ service-backed compatibility path；label import 成功後會更新 applied inte
 recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import wizard 內嵌 label
 import editor；同日後續 slice 已把單一 EEG + 單一 reviewed MAT / TXT trial-order sequence
 carrier + confirmed class map 接到 legacy label import，recipe trace 會寫
-`label_import:legacy:<n>`。最新 slice 已把 Data Interpretation import truth 補進 shared
+`label_import:legacy:<n>`。最新 backend slice 又把 reviewed MAT label + sample-index anchor
+接進窄版 anchored apply path：當 wizard 明確選定 MAT `label_field`、MAT `anchor`、
+`time_model=sample_index`、`granularity=trial` 和 confirmed class map 時，`load_label_file()`
+會把 label / anchor 變成 MNE-style event array，`apply_interpretation` 透過
+`apply_labels_batch` 套用到已對應 EEG，並寫入 `label_import:anchored:<n>` recipe trace。這支撐
+GDF + external MAT sample-anchor 的窄路徑；仍不是任意 raw trigger selection、非 sample-index
+timestamp model 或複雜 anchor reconciliation。最新 slice 已把 Data Interpretation import truth 補進 shared
 state snapshot：`ApplicationStateSnapshot.interpretation`、`query_state`、automation / MCP
 envelope 和 agent `query_state` tool surface 都會暴露 reviewed `label_carrier_plan`、
 `format_capabilities`、`event_roles` 和 `class_map`，避免 UI / recipe 和 agent / headless
@@ -136,12 +142,11 @@ CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `ap
 讓 wizard 的 `Matched EEG` 欄位能保存人工 target mapping；generic `events.tsv` 或
 `labels.mat` 在使用者明確指定目標 EEG 後，可只套用到被指定的 loaded file，recipe trace 也會記錄
 target / file mapping。下一個 UX slice 已把 ambiguous `Matched EEG` cell 改成 target selector，
-讓使用者不必手打 filename。raw-event-anchor-specific MAT/GDF alignment、
-同日後續 UI slice 已讓 Data Interpretation wizard 的 label carrier table 顯示 `Matched EEG`
+讓使用者不必手打 filename。同日後續 UI slice 已讓 Data Interpretation wizard 的 label carrier table 顯示 `Matched EEG`
 欄位；單檔 direct match 或多檔唯一 stem match 會顯示對應 EEG 檔名，無法唯一對應則顯示
 `Needs review`。UI replay artifact 已刷新，顯示 generic `events.tsv` 對到
-`sub-01_task-mi_run-2_raw.fif`。raw-event-anchor-specific MAT/GDF alignment、full real-data
-manual compatibility certification、label import 內嵌 wizard 和真人 click-through 仍未完成。
+`sub-01_task-mi_run-2_raw.fif`。full raw-event-anchor selection / complex MAT/GDF alignment、
+full real-data manual compatibility certification、label import 內嵌 wizard 和真人 click-through 仍未完成。
 Post-load `Add Labels to Loaded Data` dialog 已補上 target context：dialog 會顯示 labels 將套用到
 哪些 loaded EEG files，並提示成功後會更新目前 import recipe trace。這改善 compatibility label
 flow 的使用者語意，但它仍不是完整 Data Interpretation 內嵌 label editor。MCP Inspector /

@@ -270,10 +270,14 @@
     使用者手打 filename。
   - Post-load `Add Labels to Loaded Data` dialog 現在會顯示 target EEG files 和 recipe trace
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
+  - Reviewed MAT sample-index anchor apply 已新增窄路徑：當 wizard 明確選定 MAT label field、
+    MAT anchor、`time_model=sample_index`、`granularity=trial` 和 class map 時，backend 會把
+    MAT labels + anchor 轉成 MNE-style event array，透過 `apply_labels_batch` 套用，並保存
+    `label_import:anchored:<n>` recipe trace。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、full real-data
-  manual compatibility certification、MCP Inspector GUI click-through、Windows launcher 真人驗收
-  尚未完成，UI replay coverage 還不是完整真人 walkthrough。
+  wizard 內嵌 label import editor；任意 raw trigger selection / complex MAT-GDF anchor
+  reconciliation、full real-data manual compatibility certification、MCP Inspector GUI
+  click-through、Windows launcher 真人驗收尚未完成，UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 

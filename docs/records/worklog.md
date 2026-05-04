@@ -3236,3 +3236,28 @@
   - 這支撐 generated capability-boundary matrix。
   - 仍不是 XDF / LSL stream parser、raw-event-anchor-specific MAT/GDF alignment、real-data manual
     certification 或完整 product completion。
+
+### 2026-05-04 Data Interpretation reviewed MAT sample-anchor apply
+
+- 做了什麼：
+  - `load_label_file()` 現在可用 reviewed MAT `label_field` + `anchor` 產生 MNE-style event
+    array：`[sample_index, 0, class_label]`。
+  - `apply_interpretation` 對 reviewed MAT plan 新增 `anchored` mode：需要 selected label、
+    selected anchor、`time_model=sample_index`、`granularity=trial` 和 confirmed class map。
+  - anchored mode 走 `apply_labels_batch`，並保存 `label_import:anchored:<n>` recipe trace。
+- TDD：
+  - focused label loader 初跑只回 plain labels，未回 event rows。
+  - focused ApplicationService 初跑 `label_apply.status=skipped`。
+- 驗證：
+  - focused MAT anchor tests -> `2 passed`。
+  - label loader + label apply regression subset -> `35 passed`。
+  - full `tests/unit/backend/application/test_application_service.py` -> `43 passed`。
+  - targeted `ruff check` / `ruff format --check` clean。
+  - production `basedpyright` for touched backend files -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐 reviewed MAT sample-index anchor 的窄版 apply path。
+  - 仍不是任意 raw trigger selection、non-sample timestamp conversion、complex MAT/GDF anchor
+    reconciliation、XDF parser 或完整 product completion。
