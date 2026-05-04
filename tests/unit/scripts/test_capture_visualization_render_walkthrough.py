@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from scripts.dev.capture_visualization_render_walkthrough import (
+    BLOCKED_TAB_SPECS,
     RENDER_TAB_SPECS,
     _command_payload,
     render_markdown,
@@ -66,6 +67,17 @@ def _base_payload():
                 "canvas_visible": True,
             },
         ],
+        "blocked_renders": [
+            {
+                "tab": "3D Plot",
+                "screenshot": "3d-blocked.png",
+                "ok": True,
+                "blocked_reason": (
+                    "3D rendering requires an interactive OpenGL desktop session."
+                ),
+                "plotter_created": False,
+            },
+        ],
         "final_state": {
             "dataset": {"available": True},
             "training": {
@@ -91,6 +103,10 @@ def test_render_tab_specs_cover_matplotlib_saliency_views():
         "Spectrogram",
         "Topographic Map",
     ]
+
+
+def test_blocked_tab_specs_cover_headless_3d_boundary():
+    assert [spec["tab"] for spec in BLOCKED_TAB_SPECS] == ["3D Plot"]
 
 
 def test_validate_visualization_payload_accepts_rendered_tabs():
@@ -119,6 +135,16 @@ def test_validate_visualization_payload_rejects_placeholder_canvas():
     assert ok is False
     assert "Saliency Map" in reason
     assert "rendered image" in reason
+
+
+def test_validate_visualization_payload_requires_3d_blocked_reason():
+    payload = _base_payload()
+    payload["blocked_renders"] = []
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert "3D Plot" in reason
 
 
 def test_render_markdown_records_render_claim_boundary():

@@ -206,8 +206,12 @@ VisualizationPanel 並截 `Saliency Map`、`Spectrogram`、`Topographic Map` 三
 artifact `artifacts/ui/visualization-render/visualization-render-walkthrough.json` / `.md`
 顯示 status `passed`、finished runs `1`、metrics available `True`、saliency available `True`，
 三個 tab 均有 visible canvas、無 error label，且 figure evidence 皆有 axes / rendered image
-artist。這支撐 post-training Matplotlib saliency render UI evidence；仍不等於 3D render /
-PyVista path、ChatPanel 觸發 UI routing render、真人 Windows launcher click-through、MCP
+artist。3D tab 在 headless/offscreen runtime 現在不再嘗試建立 PyVista `QtInteractor` 而 crash；
+同 artifact 會保存 `visualization-render-3d-blocked.png`，可見 blocked reason 是 3D rendering
+requires an interactive OpenGL desktop session，且 `plotter_created=False`。這支撐
+post-training Matplotlib saliency render UI evidence 和 headless 3D blocked UX；仍不等於
+interactive desktop 3D render / PyVista path、ChatPanel 觸發 UI routing render、真人 Windows launcher
+click-through、MCP
 Inspector 或成熟 import wizard label editor 完成。
 MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不再用過度聰明的
 跨螢幕置中當最後保護。Windows launcher 現在有 automated command walkthrough artifact：
@@ -455,8 +459,9 @@ release closure。
   pipeline-chain artifact、dataset-ready -> model / training settings / analysis-readiness
   boundary artifact，以及 controlled tiny training completion -> evaluation metrics ->
   saliency/visualization readiness artifact。MainWindow VisualizationPanel 也已有 post-training
-  Saliency Map / Spectrogram / Topographic Map Matplotlib render artifact。這仍不是真人
-  Windows Desktop click-through，也不是 3D / PyVista render 或 ChatPanel UI-routing render 的驗收。
+  Saliency Map / Spectrogram / Topographic Map Matplotlib render artifact，且 headless 3D tab 會顯示
+  blocked reason 不再 crash。這仍不是真人 Windows Desktop click-through，也不是 interactive
+  desktop 3D / PyVista render 或 ChatPanel UI-routing render 的驗收。
 - Windows/WSLg 雙螢幕開窗問題已用使用者回報的 offset screen geometry 補 regression；
   fallback policy 是 maximized，不是 fullscreen。但這仍不能取代真人桌面 click-through。
 - `tests/integration/ui/test_product_walkthrough.py` 仍是 synthetic / patched training
@@ -484,8 +489,8 @@ release closure。
 ## 目前執行中
 
 1. 等待真 Windows Desktop launcher click-through。
-2. 補 3D / PyVista visualization render、ChatPanel UI-routing render 或明確 blocked reason；不要把
-   Matplotlib 2D render 擴張成完整 visualization suite。
+2. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked
+   reason 或 Matplotlib 2D render 擴張成完整 visualization suite。
 3. 修 mature import wizard 內嵌 label / anchor / MAT variable editor，讓 compatibility label
    import 不再是主要使用心智模型。
 4. 將 primary / fallback `100` case tool-call artifacts 整理成 thesis evidence report；不要把它

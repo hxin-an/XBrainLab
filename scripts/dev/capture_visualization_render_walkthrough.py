@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from scripts.dev.capture_chatpanel_local_tool_chain_walkthrough import (
     _capture_current_window,
@@ -53,6 +53,13 @@ RENDER_TAB_SPECS: list[dict[str, str]] = [
     {
         "tab": "Topographic Map",
         "screenshot": "visualization-render-topographic-map.png",
+    },
+]
+BLOCKED_TAB_SPECS: list[dict[str, str]] = [
+    {
+        "tab": "3D Plot",
+        "screenshot": "visualization-render-3d-blocked.png",
+        "expected_reason": "interactive OpenGL desktop session",
     },
 ]
 
@@ -129,6 +136,7 @@ def run_visualization_render_walkthrough(
         "application_evaluate": {},
         "application_visualize": {},
         "renders": [],
+        "blocked_renders": [],
         "dismissed_dialogs": [],
         "screenshots": {"ready": ""},
         "final_state": {},
@@ -198,6 +206,11 @@ def run_visualization_render_walkthrough(
         payload["renders"].append(render)
         if not render["ok"]:
             break
+    if all(render.get("ok") for render in payload["renders"]):
+        for spec in BLOCKED_TAB_SPECS:
+            payload["blocked_renders"].append(
+                _capture_blocked_tab(app, window, output_dir, spec),
+            )
 
     payload["final_state"] = service.get_state().to_dict()
     ok, reason = validate_visualization_render_payload(payload)
@@ -315,6 +328,46 @@ def _capture_render_tab(
     }
 
 
+def _capture_blocked_tab(
+    app: QApplication,
+    window: Any,
+    output_dir: Path,
+    spec: dict[str, str],
+) -> dict[str, Any]:
+    panel = window.visualization_panel
+    tab_name = spec["tab"]
+    tab_index = _find_tab_index(panel, tab_name)
+    if tab_index < 0:
+        return {
+            "tab": tab_name,
+            "screenshot": "",
+            "ok": False,
+            "failure_reason": f"Tab not found: {tab_name}",
+            "blocked_reason": "",
+            "plotter_created": False,
+        }
+    panel.tabs.setCurrentIndex(tab_index)
+    panel.on_update()
+    _process_events(app, 500)
+    widget = panel.tabs.currentWidget()
+    blocked_reason = _visible_label_text(widget)
+    plotter_created = bool(getattr(widget, "plotter_widget", None))
+    screenshot_path = output_dir / spec["screenshot"]
+    capture_code = _capture_current_window(window, screenshot_path)
+    expected_reason = spec["expected_reason"]
+    ok = capture_code == 0 and expected_reason in blocked_reason and not plotter_created
+    return {
+        "tab": tab_name,
+        "screenshot": str(screenshot_path),
+        "ok": ok,
+        "failure_reason": ""
+        if ok
+        else f"{tab_name} did not show expected blocked reason.",
+        "blocked_reason": blocked_reason,
+        "plotter_created": plotter_created,
+    }
+
+
 def _render_evidence(widget: Any) -> dict[str, Any]:
     fig = getattr(widget, "fig", None)
     axes = list(getattr(fig, "axes", []) or [])
@@ -332,6 +385,15 @@ def _render_evidence(widget: Any) -> dict[str, Any]:
         "image_count": image_count,
         "canvas_visible": bool(canvas and canvas.isVisible()),
     }
+
+
+def _visible_label_text(widget: Any) -> str:
+    labels = [
+        label.text()
+        for label in widget.findChildren(QLabel)
+        if not label.isHidden() and label.text()
+    ]
+    return " ".join(labels)
 
 
 def validate_visualization_render_payload(
@@ -393,6 +455,21 @@ def validate_visualization_render_payload(
             return False, f"{tab} did not contain a rendered image artist."
         if not render.get("screenshot"):
             return False, f"{tab} screenshot path was not recorded."
+
+    blocked = {item.get("tab"): item for item in payload.get("blocked_renders", [])}
+    for spec in BLOCKED_TAB_SPECS:
+        tab = spec["tab"]
+        render = blocked.get(tab)
+        if not render:
+            return False, f"Missing blocked evidence for {tab}."
+        if not render.get("ok"):
+            return False, render.get("failure_reason") or f"{tab} blocked check failed."
+        if render.get("plotter_created"):
+            return False, f"{tab} created a PyVista plotter in a blocked runtime."
+        if spec["expected_reason"] not in str(render.get("blocked_reason", "")):
+            return False, f"{tab} did not show a user-facing blocked reason."
+        if not render.get("screenshot"):
+            return False, f"{tab} blocked screenshot path was not recorded."
     return True, ""
 
 
@@ -430,6 +507,21 @@ def render_markdown(payload: dict[str, Any]) -> str:
             ],
         )
 
+    if payload.get("blocked_renders"):
+        lines.extend(["## Blocked Tabs", ""])
+        for render in payload.get("blocked_renders", []):
+            lines.extend(
+                [
+                    f"### {render.get('tab', '')}",
+                    "",
+                    f"- status: `{'ok' if render.get('ok') else 'failed'}`",
+                    f"- screenshot: `{render.get('screenshot', '')}`",
+                    f"- plotter created: `{render.get('plotter_created')}`",
+                    f"- blocked reason: {render.get('blocked_reason', '')}",
+                    "",
+                ],
+            )
+
     final_state = payload.get("final_state") or {}
     visualization = _section(final_state, "visualization")
     ui = payload.get("ui_state") or {}
@@ -446,7 +538,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
             "## Claim Boundary",
             "",
             "- Supports true MainWindow VisualizationPanel Matplotlib saliency renders.",
-            "- Does not support 3D render readiness or Windows human click-through.",
+            "- Supports a user-facing 3D blocked reason in headless/offscreen runtime.",
+            "- Does not support interactive 3D render or Windows human click-through.",
         ],
     )
     return "\n".join(lines).rstrip() + "\n"

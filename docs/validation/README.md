@@ -869,10 +869,11 @@ editor 完成。
   - `artifacts/ui/visualization-render/visualization-render-saliency-map.png`
   - `artifacts/ui/visualization-render/visualization-render-spectrogram.png`
   - `artifacts/ui/visualization-render/visualization-render-topographic-map.png`
+  - `artifacts/ui/visualization-render/visualization-render-3d-blocked.png`
   - `artifacts/ui/visualization-render/visualization-render-walkthrough.json`
   - `artifacts/ui/visualization-render/visualization-render-walkthrough.md`
 - command：
-  - `timeout 600s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+  - `timeout 600s env QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
 - result：
   - status：`passed`
   - dataset preparation：`scan_source` -> `preview_interpretation` -> `validate_interpretation`
@@ -887,11 +888,14 @@ editor 完成。
     - `Saliency Map`：axes count `3`、image count `3`、error visible `False`、canvas visible `True`
     - `Spectrogram`：axes count `3`、image count `3`、error visible `False`、canvas visible `True`
     - `Topographic Map`：axes count `3`、image count `4`、error visible `False`、canvas visible `True`
+    - `3D Plot`：blocked reason visible、`plotter_created=False`、screenshot captured。
   - offscreen capture auto-dismissed the training completion dialog `Done / All training jobs
     finished.` so the modal did not mask render state.
 - unit/static:
   - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
-  - `6 passed`
+  - `8 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
+  - `1 passed`
   - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization.py -q`
   - `20 passed`
   - targeted `ruff` -> pass
@@ -899,8 +903,9 @@ editor 完成。
   - `poetry run mkdocs build --strict` -> pass
   - `git diff --check` -> pass
 
-這批 evidence 支撐 true MainWindow VisualizationPanel post-training Matplotlib saliency renders。
-它仍不支撐 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
+這批 evidence 支撐 true MainWindow VisualizationPanel post-training Matplotlib saliency renders，
+並支撐 headless/offscreen 3D tab 會顯示人話 blocked reason 而不是 crash。它仍不支撐
+interactive desktop 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
 click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
 
 2026-05-04 ChatPanel true local-model one-turn walkthrough：

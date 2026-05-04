@@ -204,9 +204,11 @@
     -> 1 epoch CPU `TrainCommand` -> true MainWindow VisualizationPanel render。
   - final evidence：finished runs `1`、metrics available、saliency available、montage available；
     三個 tab 均有 visible canvas、無 error label、axes / rendered image artist。
-  - 這支撐 post-training Matplotlib saliency render UI evidence；仍不代表 3D / PyVista render、
-    ChatPanel UI-routing render、真人 Windows launcher click-through、MCP Inspector GUI 或 mature
-    import wizard label editor 完成。
+  - headless/offscreen `3D Plot` tab 現在會顯示 interactive OpenGL desktop session 的 blocked
+    reason，artifact 含 `visualization-render-3d-blocked.png`，且 `plotter_created=False`。
+  - 這支撐 post-training Matplotlib saliency render UI evidence 和 headless 3D blocked UX；仍不代表
+    interactive desktop 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher
+    click-through、MCP Inspector GUI 或 mature import wizard label editor 完成。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。

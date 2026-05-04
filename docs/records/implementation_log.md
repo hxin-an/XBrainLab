@@ -3995,3 +3995,54 @@ canvas，而不是只看到 backend JSON 或 assistant summary。
   click-through、MCP Inspector GUI / release config、mature import wizard label editor 或 external
   thesis experiment package。
 - Goal 不能標 complete。
+
+## 2026-05-04 3D headless blocked UX guard
+
+### 背景
+
+Matplotlib render artifact 完成後，下一個 visualization gap 是 `3D Plot`。臨時真 run 在
+`QT_QPA_PLATFORM=offscreen` / `PYVISTA_OFF_SCREEN=true` 切到 `3D Plot` 時，PyVista / X11 直接
+觸發 `BadWindow (invalid Window parameter)` 並結束 process。這不是可接受的產品狀態：在無法
+render 3D 的 runtime，UI 應該顯示 blocked reason，而不是 crash。
+
+### 變更
+
+- `XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py`
+  - 新增 `_interactive_3d_runtime_available()`。
+  - 在建立 `pyvistaqt.QtInteractor` 前檢查：
+    - `QT_QPA_PLATFORM=offscreen|minimal`
+    - `PYVISTA_OFF_SCREEN=1|true|yes`
+    - Linux 沒有 `DISPLAY`
+  - 不可用時以 `show_message()` 顯示：
+    `3D rendering requires an interactive OpenGL desktop session...`
+  - 不建立 PyVista plotter，避免 X11 crash。
+- `scripts/dev/capture_visualization_render_walkthrough.py`
+  - 新增 `BLOCKED_TAB_SPECS`。
+  - capture `3D Plot` blocked screenshot、blocked reason 和 `plotter_created` 狀態。
+  - payload validation 要求 headless 3D blocked evidence 存在。
+- `tests/unit/ui/test_visualization.py`
+  - 新增 offscreen guard test，確保 blocked runtime 不呼叫 `QtInteractor`。
+- `tests/unit/scripts/test_capture_visualization_render_walkthrough.py`
+  - 新增 blocked tab contract 和 validation。
+
+### 驗證
+
+- TDD failure：
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
+  - 初跑失敗，因 current code 仍呼叫 `pyvistaqt.QtInteractor`。
+- Focused:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
+  - `1 passed`
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
+  - `8 passed`
+- True UI run:
+  - `timeout 600s env QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+  - status：`passed`
+  - 2D tabs：Saliency Map / Spectrogram / Topographic Map all rendered。
+  - 3D tab：blocked reason visible、`plotter_created=False`、screenshot captured。
+
+### 不能宣稱完成
+
+- 這支撐 headless/offscreen 3D blocked UX。
+- 這不支撐 interactive desktop 3D / PyVista render；Windows / WSLg 3D click-through 仍未驗證。
+- Goal 不能標 complete。

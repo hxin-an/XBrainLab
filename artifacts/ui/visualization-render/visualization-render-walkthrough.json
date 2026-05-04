@@ -756,6 +756,16 @@
       "canvas_visible": true
     }
   ],
+  "blocked_renders": [
+    {
+      "tab": "3D Plot",
+      "screenshot": "artifacts/ui/visualization-render/visualization-render-3d-blocked.png",
+      "ok": true,
+      "failure_reason": "",
+      "blocked_reason": "3D rendering requires an interactive OpenGL desktop session. Use the desktop launcher, or switch to Saliency Map, Spectrogram, or Topographic Map in this headless environment.",
+      "plotter_created": false
+    }
+  ],
   "dismissed_dialogs": [
     {
       "title": "Done",
@@ -988,5 +998,5 @@
     "run": "Run 1",
     "method": "Gradient"
   },
-  "elapsed_seconds": 6.614
+  "elapsed_seconds": 7.164
 }

@@ -207,3 +207,37 @@ class TestSaliency3DPlotWidget:
             w.clear_plot()
             # Calling twice should be fine
             w.clear_plot()
+
+    def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ) as pyvistaqt:
+            from PyQt6.QtWidgets import QLabel
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+
+            eval_record = MagicMock()
+            plan = MagicMock()
+            plan.get_eval_record.return_value = eval_record
+            epoch = MagicMock()
+            epoch.get_montage_position.return_value = [(0.0, 0.0, 0.0)]
+            epoch.event_id = {"left": 0}
+            trainer = MagicMock()
+            trainer.get_dataset.return_value.get_epoch_data.return_value = epoch
+
+            w.update_plot(plan, trainer, "Gradient", False, eval_record)
+
+            pyvistaqt.QtInteractor.assert_not_called()
+            visible_labels = [
+                label.text()
+                for label in w.findChildren(QLabel)
+                if not label.isHidden() and label.text()
+            ]
+            assert any(
+                "interactive OpenGL desktop session" in text for text in visible_labels
+            )

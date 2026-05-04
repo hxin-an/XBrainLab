@@ -2675,3 +2675,33 @@
   - 這支撐 MainWindow VisualizationPanel post-training Matplotlib saliency render。
   - 還不是 3D / PyVista render、ChatPanel UI-routing render、真人 Windows launcher click-through、
     MCP Inspector GUI、mature import wizard label editor 或 external thesis experiment package。
+
+### 2026-05-04 17:23 3D headless blocked UX guard
+
+- 做了什麼：
+  - 真 prototype 在 `QT_QPA_PLATFORM=offscreen` / `PYVISTA_OFF_SCREEN=true` 切到 `3D Plot` 時，
+    PyVista / X11 直接 `BadWindow` crash。
+  - `Saliency3DPlotWidget.update_plot()` 新增 interactive OpenGL runtime preflight；offscreen /
+    minimal Qt platform、`PYVISTA_OFF_SCREEN=true` 或 Linux 無 `DISPLAY` 時，不建立
+    `pyvistaqt.QtInteractor`，改在 3D tab 顯示人話 blocked reason。
+  - `scripts/dev/capture_visualization_render_walkthrough.py` 現在也 capture `3D Plot` blocked
+    screenshot 和 `plotter_created=False` evidence。
+- artifact：
+  - `artifacts/ui/visualization-render/visualization-render-3d-blocked.png`
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.md`
+  - `artifacts/ui/visualization-render/visualization-render-walkthrough.json`
+- 驗證：
+  - initial TDD failure：`test_update_plot_blocks_offscreen_before_qtinteractor` 顯示 current code
+    仍呼叫 `QtInteractor`。
+  - focused 3D guard：
+    `scripts/dev/run_ui_pytest.sh tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
+    -> `1 passed`。
+  - visualization artifact tests：
+    `poetry run pytest --capture=sys tests/unit/scripts/test_capture_visualization_render_walkthrough.py -q`
+    -> `8 passed`。
+  - true UI render / blocked run：
+    `timeout 600s env QT_QPA_PLATFORM=offscreen PYVISTA_OFF_SCREEN=true poetry run python scripts/dev/capture_visualization_render_walkthrough.py --output-dir artifacts/ui/visualization-render --timeout-seconds 540`
+    -> passed；2D tabs render，3D blocked reason visible，`plotter_created=False`。
+- 不能宣稱：
+  - 這支撐 headless/offscreen 3D tab blocked UX，不是 interactive desktop 3D render。
+  - Windows / WSLg interactive 3D click-through 仍未驗證。
