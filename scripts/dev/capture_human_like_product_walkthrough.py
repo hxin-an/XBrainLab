@@ -35,10 +35,9 @@ from PyQt6.QtWidgets import (
 
 from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
 from scripts.dev.capture_data_interpretation_replay import (
-    SECOND_SOURCE_PATH,
     SOURCE_DIR,
     SOURCE_PATH,
-    set_tree_cell,
+    apply_replay_review_choices,
     tree_rows,
     write_synthetic_raw_fif,
 )
@@ -830,27 +829,7 @@ def run_chatpanel_walkthrough(
 
 def apply_review_choices(dialog: DataInterpretationPreviewDialog) -> None:
     """Apply deterministic human-like review choices to the wizard."""
-    metadata_item = dialog.file_tree.topLevelItem(0)
-    if metadata_item is not None:
-        metadata_item.setText(1, "S01")
-        metadata_item.setText(2, "session-01")
-        metadata_item.setText(3, "motor-imagery")
-    label_item = dialog.label_carrier_tree.topLevelItem(0)
-    if label_item is not None:
-        target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
-        if isinstance(target_selector, QComboBox):
-            target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
-        else:
-            label_item.setText(1, SECOND_SOURCE_PATH.name)
-        set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 4, "onset")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 5, "Seconds")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 6, "Trial")
-        set_tree_cell(dialog.label_carrier_tree, label_item, 7, "Class cue labels")
-    for index in range(dialog.event_tree.topLevelItemCount()):
-        event_item = dialog.event_tree.topLevelItem(index)
-        if event_item is not None and event_item.text(0) == "trial_type":
-            event_item.setText(2, "class cue")
+    apply_replay_review_choices(dialog)
 
 
 def data_interpretation_decision_probe(

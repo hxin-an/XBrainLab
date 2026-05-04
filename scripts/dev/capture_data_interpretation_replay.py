@@ -177,6 +177,44 @@ def sanitized(value: Any) -> Any:
     return value
 
 
+def apply_replay_review_choices(
+    dialog: DataInterpretationPreviewDialog,
+) -> dict[str, Any]:
+    """Apply the review choices used by the Data Interpretation replay."""
+    metadata_item = dialog.file_tree.topLevelItem(0)
+    if metadata_item is not None:
+        metadata_item.setText(1, "S01")
+        metadata_item.setText(2, "session-01")
+        metadata_item.setText(3, "motor-imagery")
+
+    label_item = dialog.label_carrier_tree.topLevelItem(0)
+    if label_item is not None:
+        target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
+        if isinstance(target_selector, QComboBox):
+            target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
+        else:
+            label_item.setText(1, SECOND_SOURCE_PATH.name)
+        set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 4, "onset")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 5, "Seconds")
+        set_tree_cell(dialog.label_carrier_tree, label_item, 6, "Trial")
+        set_tree_cell(
+            dialog.label_carrier_tree,
+            label_item,
+            7,
+            "Class cue labels",
+        )
+
+    for index in range(dialog.event_tree.topLevelItemCount()):
+        event_item = dialog.event_tree.topLevelItem(index)
+        if event_item is not None and event_item.text(0) == "trial_type":
+            set_tree_cell(dialog.event_tree, event_item, 2, "Class cue")
+
+    dialog_result = dialog.get_result()
+    choices = dialog_result.get("choices", {})
+    return choices if isinstance(choices, dict) else {}
+
+
 def capture_replay(app: QApplication) -> int:
     """Run the replay and write JSON / screenshot artifacts."""
     result: dict[str, int] = {"code": 1}
@@ -215,34 +253,7 @@ def capture_replay(app: QApplication) -> int:
             )
             dialog.show()
             app.processEvents()
-            metadata_item = dialog.file_tree.topLevelItem(0)
-            if metadata_item is not None:
-                metadata_item.setText(1, "S01")
-                metadata_item.setText(2, "session-01")
-                metadata_item.setText(3, "motor-imagery")
-            label_item = dialog.label_carrier_tree.topLevelItem(0)
-            if label_item is not None:
-                target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
-                if isinstance(target_selector, QComboBox):
-                    target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
-                else:
-                    label_item.setText(1, SECOND_SOURCE_PATH.name)
-                set_tree_cell(dialog.label_carrier_tree, label_item, 3, "trial_type")
-                set_tree_cell(dialog.label_carrier_tree, label_item, 4, "onset")
-                set_tree_cell(dialog.label_carrier_tree, label_item, 5, "Seconds")
-                set_tree_cell(dialog.label_carrier_tree, label_item, 6, "Trial")
-                set_tree_cell(
-                    dialog.label_carrier_tree,
-                    label_item,
-                    7,
-                    "Class cue labels",
-                )
-            for index in range(dialog.event_tree.topLevelItemCount()):
-                event_item = dialog.event_tree.topLevelItem(index)
-                if event_item is not None and event_item.text(0) == "trial_type":
-                    event_item.setText(2, "class cue")
-            dialog_result = dialog.get_result()
-            dialog_choices = dialog_result.get("choices", {})
+            dialog_choices = apply_replay_review_choices(dialog)
             dialog.repaint()
             app.processEvents()
             capture_widget(dialog, PREVIEW_SCREENSHOT)
@@ -253,6 +264,7 @@ def capture_replay(app: QApplication) -> int:
                 "visible_text": visible_texts(dialog),
                 "metadata_rows": tree_rows(dialog.file_tree),
                 "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
+                "event_rows": tree_rows(dialog.event_tree),
                 "review_summary_rows": sanitized(tree_rows(dialog.review_tree)),
                 "review_choices": sanitized(dialog_choices),
                 "apply_button_enabled": dialog.decision != "blocked",
@@ -264,7 +276,7 @@ def capture_replay(app: QApplication) -> int:
             reviewed_preview = service.execute(
                 PreviewInterpretationCommand(
                     scan_id=scan.diagnostics["scan_result"]["scan_id"],
-                    choices=dialog_choices if isinstance(dialog_choices, dict) else {},
+                    choices=dialog_choices,
                 )
             )
             reviewed_validation = service.execute(ValidateInterpretationCommand())

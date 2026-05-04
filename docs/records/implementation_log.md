@@ -113,6 +113,36 @@ confirmations、blocked reasons、downstream impact、recipe trace 和 format ca
 繼續補 mature label/anchor editor 與 real-data capability boundary，同時推進 ChatPanel 長鏈和
 MCP long-running boundary。
 
+## 2026-05-05 Data Interpretation Event Role Selector
+
+### 狀態
+
+Data Interpretation wizard 的 event role review 從任意 free-text cell 收斂成 selector control。
+使用者會看到 `Class cue`、`Time anchor` 等可辨識選項；recipe choices 仍保存 backend value
+如 `class cue`。Replay script 也改為透過 selector 操作 event role，並把 `event_rows` 寫入
+artifact，避免 transcript 說已確認但 UI state 沒有被 selector 實際更新。
+
+### 已可宣稱
+
+- Event role review 不再要求使用者手打 role text。
+- Data Interpretation replay artifact 可見 `trial_type -> event role -> Class cue`。
+- Consolidated automated human-like walkthrough 已刷新且仍通過，但仍不是 human desktop acceptance。
+
+### Evidence 入口
+
+- Dialog test：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Replay helper test：`tests/unit/scripts/test_capture_data_interpretation_replay.py`
+- Replay artifact：`artifacts/ui/data-interpretation-replay.json`
+- Screenshots：`artifacts/ui/data-interpretation-preview.png`、
+  `artifacts/ui/human-like-walkthrough/04-interpretation-preview.png`
+- Consolidated walkthrough：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+
+### 不能宣稱完成
+
+- 這是 event role selector polish，不是 full mature import wizard：raw trigger selector、
+  complex MAT/GDF anchor reconciliation、XDF/LSL stream selection、real-data manual certification
+  和 Windows / DPI / dual-monitor human acceptance 仍未完成。
+
 ## 2026-05-05 Tool-Call Local 118-Case Scoring Hardening
 
 ### 狀態

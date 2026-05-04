@@ -1951,6 +1951,41 @@ compatibility matrix 或真人 click-through。
 review 欄位。它仍不是完整 embedded post-load label import editor、raw trigger selector、
 全格式 real-data certification 或真人 click-through。
 
+2026-05-05 Data Interpretation event role selector UI：
+
+- UI:
+  - event role review rows now use `QComboBox` selectors instead of editable free-text cells.
+  - selector display text is user-facing (`Class cue`, `Time anchor`, etc.) while `get_result()`
+    still returns backend recipe values such as `class cue`.
+- replay artifact refreshed:
+  - `timeout 300s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON `ui_state.dialog.event_rows` now includes
+    `trial_type -> event role -> Class cue`.
+  - replay JSON `review_choices.event_roles.trial_type` is `class cue`.
+- consolidated UI-observable walkthrough refreshed:
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+  - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md`
+  - summary remains `26 / 26` phases and `20 / 20` nonblank screenshots, with
+    `human_desktop_acceptance=not performed`.
+- targeted gates:
+  - focused UI test first failed because event-role rows were still editable even after a combo
+    widget was installed.
+  - script unit test first failed because replay code had no helper that could operate the event
+    role selector.
+  - human-like walkthrough helper test first failed because the consolidated walkthrough still used
+    the old `item.setText()` path and did not update the selector-backed recipe.
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+  - `23 passed`
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+
+這批 evidence 支撐 event role review 已從任意文字輸入收斂成可辨識 selector，且 automated
+UI replay 會實際操作 selector 並保存 visible row。它仍不是完整 raw trigger selector、
+complex anchor reconciliation、Windows human acceptance 或全格式 real-data certification。
+
 2026-05-04 Dataset Add Labels compatibility guard：
 
 - UI/action:

@@ -3200,6 +3200,33 @@
           "Class cue labels"
         ]
       ],
+      "event_rows": [
+        [
+          "events.tsv",
+          "label / event carrier",
+          "Review alignment, anchor, and class map before apply."
+        ],
+        [
+          "label_carrier",
+          "event role",
+          "External label or event source"
+        ],
+        [
+          "onset",
+          "event role",
+          "Time anchor"
+        ],
+        [
+          "duration",
+          "event role",
+          "Event duration"
+        ],
+        [
+          "trial_type",
+          "event role",
+          "Class cue"
+        ]
+      ],
       "review_summary_rows": [
         [
           "Warning",

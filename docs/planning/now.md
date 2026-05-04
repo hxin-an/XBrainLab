@@ -108,6 +108,10 @@
 - Dataset sidebar 現在也明確提供 `Interpret Folder / BIDS` 和 `Reload Import Recipe` 入口；
   folder/BIDS root 與 saved recipe 不再隱含在 file picker 裡。Artifact：
   `artifacts/ui/data-source-entry-options/`。
+- Data Interpretation wizard 的 label carrier review cells 已使用 selector controls；最新 slice
+  也把 event role rows 改成 selector，不再要求使用者手打 role text。Replay artifact 現在保存
+  `event_rows`，可見 `trial_type -> Class cue`，recipe choices 仍保存 backend value
+  `class cue`。
 - `apply_interpretation` capability 現在會套用 raw-edit blockers；已有 epoch / dataset /
   trainer 或 locked raw data 時，agent / MCP 不能繞過 UI lock 直接 apply 新資料，必須先 reset
   或 new session。

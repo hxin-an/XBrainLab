@@ -51,6 +51,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_target_widgets: dict[int, QComboBox] = {}
         self._label_choice_widgets: dict[tuple[int, int], QComboBox] = {}
+        self._event_role_widgets: dict[int, QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         super().__init__(
@@ -340,9 +341,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if isinstance(event_roles, dict):
             for name, role in event_roles.items():
                 tree_item = QTreeWidgetItem([str(name), "event role", str(role)])
-                tree_item.setFlags(tree_item.flags() | Qt.ItemFlag.ItemIsEditable)
                 self._event_role_items.append((tree_item, str(name), str(role)))
                 self.event_tree.addTopLevelItem(tree_item)
+                self._install_event_role_selector(tree_item, str(role))
 
         class_map = self.preview.get("class_map") or {}
         if isinstance(class_map, dict):
@@ -512,15 +513,52 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not self._event_role_items:
             return {}
         current = {
-            name: tree_item.text(2).strip()
+            name: self._event_role_item_text(tree_item).strip()
             for tree_item, name, _original in self._event_role_items
-            if tree_item.text(2).strip()
+            if self._event_role_item_text(tree_item).strip()
         }
         changed = any(
             current.get(name, "") != original
             for _tree_item, name, original in self._event_role_items
         )
         return current if changed else {}
+
+    def _install_event_role_selector(
+        self,
+        item: QTreeWidgetItem,
+        current_value: str,
+    ) -> None:
+        selector = QComboBox(self.event_tree)
+        selector.setToolTip("Choose how this event should be used in the recipe.")
+        choices = [
+            ("Class cue", "class cue"),
+            ("Class label candidate", "class label candidate"),
+            ("Time anchor", "time anchor"),
+            ("Trial start", "trial start"),
+            ("Response", "response"),
+            ("Artifact", "artifact"),
+            ("Boundary", "boundary"),
+            ("Run marker", "run marker"),
+            ("Ignored", "ignored"),
+        ]
+        seen_values: set[str] = set()
+        for display, value in choices:
+            selector.addItem(display, value)
+            seen_values.add(value)
+        if current_value and current_value not in seen_values:
+            selector.addItem(self._label_choice_display(current_value), current_value)
+        current_index = selector.findData(current_value)
+        if current_index >= 0:
+            selector.setCurrentIndex(current_index)
+        self._event_role_widgets[id(item)] = selector
+        self.event_tree.setItemWidget(item, 2, selector)
+
+    def _event_role_item_text(self, item: QTreeWidgetItem) -> str:
+        selector = self._event_role_widgets.get(id(item))
+        if selector is not None:
+            value = selector.currentData()
+            return str(value) if value is not None else selector.currentText()
+        return item.text(2)
 
     def _label_carrier_choices(self) -> dict[str, dict[str, str]]:
         choices: dict[str, dict[str, str]] = {}

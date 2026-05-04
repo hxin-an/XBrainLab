@@ -1,5 +1,6 @@
 """Tests for the Data Interpretation preview dialog."""
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QPlainTextEdit
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
@@ -123,7 +124,11 @@ def test_data_interpretation_preview_dialog_returns_event_role_review(qtbot):
     for index in range(dialog.event_tree.topLevelItemCount()):
         item = dialog.event_tree.topLevelItem(index)
         if item is not None and item.text(0) == "cue":
-            item.setText(2, "class cue")
+            role_selector = dialog.event_tree.itemWidget(item, 2)
+            assert isinstance(role_selector, QComboBox)
+            assert not (item.flags() & Qt.ItemFlag.ItemIsEditable)
+            assert role_selector.currentData() == "class label candidate"
+            role_selector.setCurrentText("Class cue")
 
     result = dialog.get_result()
 

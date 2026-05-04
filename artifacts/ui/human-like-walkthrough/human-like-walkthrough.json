@@ -613,6 +613,10 @@
         "Event",
         "External labels",
         "Needs review",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class label candidate",
         "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -721,6 +725,10 @@
         "Trial",
         "Class cue labels",
         "sub-01_task-mi_run-2_raw.fif",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class cue",
         "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -879,6 +887,10 @@
         "Trial",
         "Class cue labels",
         "sub-01_task-mi_run-2_raw.fif",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class cue",
         "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -4117,6 +4129,10 @@
         "Event",
         "External labels",
         "Needs review",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class label candidate",
         "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -4142,6 +4158,10 @@
         "Trial",
         "Class cue labels",
         "sub-01_task-mi_run-2_raw.fif",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class cue",
         "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -4167,6 +4187,10 @@
         "Trial",
         "Class cue labels",
         "sub-01_task-mi_run-2_raw.fif",
+        "External label or event source",
+        "Time anchor",
+        "Event duration",
+        "Class cue",
         "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif.",
         "Save reusable import recipe after applying",
         "Confirm and Apply",
@@ -17762,33 +17786,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 847976,
+      "pid": 855757,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 836696
+      "max_rss_kb": 835924
     },
     {
       "label": "before_close",
-      "pid": 847976,
+      "pid": 855757,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1060068
+      "max_rss_kb": 1060612
     },
     {
       "label": "after_close",
-      "pid": 847976,
+      "pid": 855757,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1060068
+      "max_rss_kb": 1060612
     }
   ],
   "ui_quality_review": {
@@ -17948,5 +17972,5 @@
     "screenshot_count": 20,
     "human_desktop_acceptance": "not performed"
   },
-  "elapsed_seconds": 3.754
+  "elapsed_seconds": 3.784
 }

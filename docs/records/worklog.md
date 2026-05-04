@@ -37,6 +37,54 @@
 
 ## 2026-05-05
 
+### 07:07 Data Interpretation event role selector UI
+
+- 做了什麼：
+  - 使用 `data-interpretation-reviewer` / `ui-product-reviewer` / `tdd-guard` 檢查 wizard role
+    review，發現 event role 雖然可進 recipe choices，但仍是 free-text row edit，不夠像產品級
+    import wizard。
+  - 先補 dialog unit test：要求 event role row column 2 是 `QComboBox`，且 row 本身不帶
+    `ItemIsEditable`。測試先紅燈，確認舊 row 仍可任意編輯。
+  - 將 event role rows 改成 selector controls，顯示 `Class cue`、`Time anchor` 等人話選項，
+    `get_result()` 仍回 backend recipe values。
+  - 檢查 replay artifact 後發現 script 仍用 `item.setText()` 改 event role，沒有真正操作
+    selector；補 `apply_replay_review_choices()` helper 和 unit test，並讓 replay JSON 保存
+    `event_rows`。
+  - 再檢查 consolidated human-like walkthrough recipe，發現它也還在舊 `item.setText()` path；
+    補 human-like helper test，並讓 walkthrough 共用 Data Interpretation replay helper。
+  - 刷新 `artifacts/ui/data-interpretation-*` 和 consolidated
+    `artifacts/ui/human-like-walkthrough/*` artifacts。
+- 結果：
+  - Data Interpretation replay JSON 現在可見
+    `trial_type -> event role -> Class cue`。
+  - `review_choices.event_roles.trial_type` 保存為 `class cue`。
+  - human-like walkthrough saved recipe 現在也保存 `trial_type: class cue`，recipe trace 含
+    `choices:event_roles`。
+  - consolidated human-like walkthrough offscreen rerun 通過：`26 / 26` required phases、`20 / 20`
+    nonblank screenshots、`human_desktop_acceptance=not performed`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_event_role_review -q`
+    -> 初始紅燈：event role row 仍有 `ItemIsEditable`。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> 初始紅燈：`apply_replay_review_choices` 尚不存在。
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_apply_review_choices_updates_event_role_selector -q`
+    -> 初始紅燈：human-like helper 沒有更新 event role selector。
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `23 passed`。
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`，refreshed `artifacts/ui/data-interpretation-preview.png` /
+    `data-interpretation-applied.png` / `data-interpretation-replay.json`。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`，refreshed consolidated walkthrough artifacts。
+- 接續 / 本輪剩餘：
+  - 這是 event role selector polish，不是 mature import wizard completion；raw trigger selector、
+    complex anchor reconciliation、XDF/LSL stream selection、real-data manual certification 和
+    Windows human acceptance 仍未完成。
+
 ### 06:48 MCP stdio adapter session boundary
 
 - 做了什麼：
