@@ -225,6 +225,9 @@ handler orchestration，不再同時承接 state truth。
 folder/BIDS root 與 recipe reload 都走 Data Interpretation command path；UI-observable artifact 在
 `artifacts/ui/data-source-entry-options/`。這補上 source type entry visibility，但不是 mature
 embedded label editor completion。
+最新 backend capability hardening 讓 `apply_interpretation` 也套用 raw-edit blockers：active
+session 已有 epoch、generated dataset、trainer 或 locked raw data 時，UI / agent / MCP 都會收到
+reset/new-session blocked reason，而不是直接把新 interpretation 套進既有 downstream pipeline。
 最新 agent tool-surface cleanup 把舊 `load_data` / `attach_labels` 從 Empty / Data Loaded /
 Preprocessed stage prompt 和 primary tool exposure 移除；Context Assembler 會把 backend
 capability policy 與 stage allowlist 取交集，避免 backend compatibility policy 把已降權的

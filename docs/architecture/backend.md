@@ -463,6 +463,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   resolver、snapshot 和 recipe label import state 更新在 `DataInterpretationSessionState`；
   reviewed metadata apply 與 reviewed label carrier apply 則在 `DataInterpretationApplyService`。
   `ApplicationService` 不再直接承接這些 workflow 細節。
+- `apply_interpretation` capability 也會套用 raw-edit blockers；若 active session 已有 epoch、
+  generated dataset、trainer 或 locked raw data，UI / agent / MCP 必須先 reset / new session，
+  不能把新的 Data Interpretation 直接套進既有 downstream pipeline。
 - Data Interpretation format capability matrix 實作位置現在是
   `data_interpretation_formats.py`。它 owns GDF、EDF / BDF、EEGLAB、BrainVision、FIF、MAT、
   CSV / TSV、TXT、BIDS events 和 XDF / LSL 的 supported / needs-review / blocked 邊界。

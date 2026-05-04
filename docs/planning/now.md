@@ -108,6 +108,9 @@
 - Dataset sidebar 現在也明確提供 `Interpret Folder / BIDS` 和 `Reload Import Recipe` 入口；
   folder/BIDS root 與 saved recipe 不再隱含在 file picker 裡。Artifact：
   `artifacts/ui/data-source-entry-options/`。
+- `apply_interpretation` capability 現在會套用 raw-edit blockers；已有 epoch / dataset /
+  trainer 或 locked raw data 時，agent / MCP 不能繞過 UI lock 直接 apply 新資料，必須先 reset
+  或 new session。
 - headless / MCP-ready automation adapter 已新增：
   `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
   payload 轉回 typed `ApplicationService` command。

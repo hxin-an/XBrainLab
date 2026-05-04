@@ -216,6 +216,15 @@ UI baseline capture 結果：
   backend integration -> `3 passed`；agent/tool regression -> `468 passed`；agent integration ->
   `7 passed`；ruff / basedpyright / architecture compliance / MkDocs strict / diff check passed。
   這是 automated Qt sidebar replay，不是 human desktop acceptance。
+- Apply interpretation raw-edit boundary slice gate 覆蓋 Data Interpretation apply 的 active
+  pipeline mutation policy：已有 epoch / generated dataset / trainer / locked raw data 時，
+  `apply_interpretation` capability 會 blocked，並且 `ApplyInterpretationCommand` 不呼叫
+  `dataset.import_files()` side effect。Focused evidence：
+  `tests/unit/backend/application/test_application_service.py::test_apply_interpretation_blocks_after_epoch_without_import_side_effect`
+  初始紅燈 `available is True`，實作後 focused gate `2 passed`；backend application regression ->
+  `100 passed`；backend integration -> `3 passed`；agent/tool regression -> `468 passed`；agent
+  integration -> `7 passed`；ruff / basedpyright / architecture compliance / MkDocs strict /
+  diff check passed。
 - Data Interpretation format boundary slice gate 另通過：
   `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
   (`5 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`

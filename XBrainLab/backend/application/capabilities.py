@@ -110,6 +110,7 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     if interpretation.validation_decision == "blocked":
         apply_reasons.append("Interpretation is blocked.")
         apply_reasons.extend(interpretation.blocked_reasons)
+    apply_reasons.extend(_raw_edit_blockers(state))
     apply_needs_confirmation = (
         interpretation.validation_decision == "needs_confirmation"
     )

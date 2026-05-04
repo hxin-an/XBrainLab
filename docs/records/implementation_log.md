@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Apply Interpretation Raw-Edit Boundary
+
+### 狀態
+
+Backend capability policy 現在會把 raw-edit blockers 套到 `apply_interpretation`。如果 active
+session 已有 epoch、generated dataset、trainer 或 locked raw data，UI / agent / MCP 都會看到同一個
+reset/new-session blocked reason；`ApplyInterpretationCommand` 不會呼叫 import side effect。
+
+### 已可宣稱
+
+- Data Interpretation apply 不再只看 semantic validation，也會尊重 active pipeline mutation
+  boundary。
+- Agent / MCP 無法透過 `apply_interpretation` 繞過 UI lock，把新資料套進已有 downstream pipeline。
+- 已有 focused regression 覆蓋 blocked command 不呼叫 `dataset.import_files()`。
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/capabilities.py`
+- Test：`tests/unit/backend/application/test_application_service.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 reset/new-session product walkthrough，也不是 MCP long-running job boundary。
+- Data Interpretation mature wizard 和 Windows human acceptance 仍未完成。
+
+### 下一手重點
+
+繼續盤點其他 mutating commands 是否仍有 UI-only blockers，特別是 recipe reload / label apply /
+visualization setup 的 capability 與 visible blocked reason。
+
 ## 2026-05-05 Data Source Entry UI Options
 
 ### 狀態

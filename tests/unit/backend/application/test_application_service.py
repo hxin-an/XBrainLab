@@ -1205,6 +1205,38 @@ def test_raw_mutation_commands_block_after_epoch_without_side_effects():
     service.dataset.remove_files.assert_not_called()
 
 
+def test_apply_interpretation_blocks_after_epoch_without_import_side_effect(
+    tmp_path,
+):
+    source_dir = tmp_path / "new_source"
+    source_dir.mkdir()
+    eeg_path = source_dir / "sub-02_task-mi_raw.fif"
+    eeg_path.write_bytes(b"not loaded during scan")
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(PreviewInterpretationCommand())
+    validation = service.execute(ValidateInterpretationCommand())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.study.data_manager.epoch_data = MagicMock()
+    policy = service.get_capabilities()
+
+    result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert validation.ok is True
+    assert policy.get(CommandName.APPLY_INTERPRETATION).available is False
+    assert "Reset the session" in " ".join(
+        policy.get(CommandName.APPLY_INTERPRETATION).reasons,
+    )
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    assert "Reset the session" in result.message
+    service.dataset.import_files.assert_not_called()
+
+
 def test_generate_dataset_blocks_when_dataset_already_exists():
     service = ApplicationService(Study())
     raw = _raw_mock()

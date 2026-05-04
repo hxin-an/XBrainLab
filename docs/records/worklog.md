@@ -37,6 +37,52 @@
 
 ## 2026-05-05
 
+### 16:10 Apply interpretation raw-edit capability boundary
+
+- 做了什麼：
+  - 盤點剛新增的 Data Interpretation source-entry path 後，發現更大的 backend gap：
+    `apply_interpretation` capability 只看 Data Interpretation validation，沒有套用 active
+    pipeline 的 raw-edit blockers。
+  - 先新增 focused regression，紅燈顯示已有 epoch state 時
+    `policy.get(APPLY_INTERPRETATION).available` 仍為 `True`。
+  - `build_capability_policy()` 現在把 `_raw_edit_blockers(state)` 加到
+    `apply_interpretation` reasons。已有 epoch、dataset、trainer 或 locked raw data 時，apply
+    會被 precondition 擋下，且不呼叫 `dataset.import_files()`。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - UI / agent / MCP 共用同一個 apply raw-mutation boundary；不能靠 agent/MCP 繞過 UI lock。
+  - 這是 capability/autonomy safety slice，不是 mature import wizard completion。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_blocks_after_epoch_without_import_side_effect -q`
+    -> 初始紅燈 `available is True`，實作後 pass。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_blocks_after_epoch_without_import_side_effect tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_preview_validate_requires_confirmation -q`
+    -> `2 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/capabilities.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/capabilities.py tests/unit/backend/application/test_application_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 120s git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `100 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - 這支撐 apply mutation safety，不是 product completion。
+  - 下一步繼續盤點 mutating commands 是否還有 UI-only blockers 或 weak visible blocked reason。
+
 ### 15:05 Dataset source-entry UI options
 
 - 做了什麼：
