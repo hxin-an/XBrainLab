@@ -112,6 +112,40 @@ compatibility，而不是 primary workflow。`load_data`、`attach_labels`、`im
 後續 MCP work 應處理 HTTP / long-running command job boundary、progress/cancel/recovery，以及
 UI language 是否仍引導使用者走 post-load compatibility label path。
 
+## 2026-05-05 Training Start Long-Running Confirmation
+
+### 狀態
+
+Training sidebar 的 `Start Training` button 現在會尊重 backend `train` capability 的
+long-running confirmation boundary。當 capability 要求 confirmation 時，UI 會先用使用者語言提示
+training 可能耗時並使用 CPU/GPU；使用者拒絕時不執行 command，service 成功時不 fallback 到
+controller。
+
+### 已可宣稱
+
+- UI button path 和 ChatPanel agent path 都會對 `train` long-running action 做 human confirmation。
+- Real `Study` path 仍透過 `TrainCommand` / `ApplicationService.execute()`，mock compatibility
+  fallback 只保留給 unit-test / legacy adapter 情境。
+- 已留下 automated Qt replay screenshot / visible text / button state artifact。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Artifact：`artifacts/ui/training-start-confirmation/`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是真人 Windows desktop training acceptance，也不是完整 training / evaluation / saliency UI
+  長鏈驗收。
+- 這不處理 MCP long-running job model；MCP training progress/cancel/recovery 仍是後續工作。
+
+### 下一手重點
+
+後續應把 button-driven train -> evaluate -> visualization / saliency flow 納入 UI-observable
+walkthrough，並繼續補 Windows desktop human acceptance。
+
 ## 2026-05-05 Backend Command Boundary Cleanup
 
 ### 狀態

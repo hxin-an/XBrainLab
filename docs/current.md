@@ -182,6 +182,11 @@ file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；P
 重新 split 前清 datasets 走 `ClearDatasetsCommand(confirmed=True)`；Clear History 會先要求
 使用者確認，再走 `ClearTrainingHistoryCommand(confirmed=True)`，successful service result 不再
 落回 controller mutation。
+最新 UI autonomy slice 讓 Training sidebar 的 `Start Training` button 也尊重 backend
+`train` long-running boundary：當 capability 顯示需要 confirmation 時，UI 會先用使用者語言詢問
+是否開始可能耗時且使用 CPU/GPU 的訓練；拒絕時不會執行 `TrainCommand`，service 成功時不再
+fallback 到 controller。Automated Qt replay artifact 在
+`artifacts/ui/training-start-confirmation/`，它不是 human desktop acceptance。
 最新 Data Interpretation boundary cleanup 把 GDF / EDF-BDF / EEGLAB / BrainVision / FIF /
 MAT / CSV-TSV / TXT / BIDS events / XDF-LSL format capability matrix 從大型
 `data_interpretation.py` 抽到 `DataInterpretationFormats` focused module，scanner /
@@ -623,7 +628,8 @@ true local model desktop session。
 - UI import / preprocess / epoch / channel selection、split / model / training setting dialogs、
   evaluation / visualization / saliency query、training start-stop / reset、metadata update、
   smart parse、remove files、label import、montage confirmation 已有 service-backed command
-  adapter。mock / unit-test compatibility fallback 仍保留，但 real `Study` path 走
+  adapter；Start Training button 現在也會在 backend long-running capability 要求時顯示
+  confirmation。mock / unit-test compatibility fallback 仍保留，但 real `Study` path 走
   `ApplicationService.execute()`。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory
   expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的

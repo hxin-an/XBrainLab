@@ -62,6 +62,10 @@
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
+- 最新 UI autonomy cleanup 讓 Training sidebar `Start Training` button 在 backend `train`
+  capability 需要 confirmation 時先顯示 long-running confirmation；拒絕時不執行 command，service
+  success path 不再 fallback 到 controller。Automated Qt replay artifact：
+  `artifacts/ui/training-start-confirmation/`。
 - 最新 Data Interpretation boundary cleanup 已把 format capability taxonomy 抽到
   `data_interpretation_formats.py`，讓 scanner / candidate lifecycle 與 format matrix 邊界分離。
 - 後續 Data Interpretation boundary cleanup 已把 metadata resolution / BIDS summary / recipe

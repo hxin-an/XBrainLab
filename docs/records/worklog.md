@@ -4693,3 +4693,68 @@
   - This is schema/taxonomy cleanup, not HTTP MCP or long-running job support.
   - It does not remove legacy commands from ApplicationService or UI compatibility flows.
   - No new Inspector screenshot or external human MCP client session was produced in this slice.
+
+### 2026-05-05 Training start long-running confirmation
+
+- scope：
+  - UI / autonomy boundary cleanup for Training sidebar。
+  - No backend command shape, training service, or agent tool change.
+- problem：
+  - Backend `train` capability exposes `requires_confirmation=True` for a long-running action.
+  - ChatPanel agent path already pauses for confirmation, but the Training sidebar button could
+    execute `TrainCommand` without presenting that boundary to the user.
+- target behavior：
+  - If backend `train` capability requires confirmation, the Start Training button asks a
+    user-facing long-running confirmation before command execution.
+  - If the user rejects, no `TrainCommand` is executed and controller fallback is not called.
+  - If the user confirms and service returns success, controller fallback is not called.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_requires_confirmation_for_long_running_command tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_does_not_fallback_to_controller -q`
+    initially failed because `QMessageBox.question` was not called for long-running `train`
+    capability.
+- 做了什麼：
+  - Added a `Start Training` confirmation dialog in `TrainingSidebar.start_training_ui_action()`
+    whenever `train` capability has `requires_confirmation` or `confirmation_required`.
+  - Kept mock / legacy controller fallback only for cases where `execute_application_command()`
+    returns `None`.
+  - Added focused UI unit tests for rejection and service-success no-fallback behavior.
+  - Captured automated Qt replay artifact:
+    `artifacts/ui/training-start-confirmation/training-start-confirmation-dialog.png`,
+    `.json`, and `.md`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_requires_confirmation_for_long_running_command tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_does_not_fallback_to_controller -q`
+    -> `2 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Direct focused basedpyright on `tests/unit/ui/training/test_training_panel.py` still reports
+    existing mock typing debt; full project basedpyright remains the authoritative gate.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `42 passed`.
+  - `timeout 120s git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `97 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - Automated Qt replay artifact shows visible text `Start Training` /
+    `Training can take time and use CPU/GPU resources. Start training now?`, enabled `Yes` / `No`
+    buttons, nonblank screenshot, and empty command/controller transcript after choosing `No`.
+- 不能宣稱：
+  - This is automated Qt replay, not human Windows desktop acceptance.
+  - This does not prove full button-driven training completion, evaluation, visualization, or
+    saliency workflow.
+  - MCP long-running job progress / cancel / recovery is still not implemented.

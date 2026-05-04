@@ -1,0 +1,17 @@
+{
+  "screenshot": "artifacts/ui/training-start-confirmation/training-start-confirmation-dialog.png",
+  "visible_text": [
+    "Start Training",
+    "Training can take time and use CPU/GPU resources. Start training now?"
+  ],
+  "buttons": {
+    "&Yes": true,
+    "&No": true
+  },
+  "workflow_state": "training_ready_start_confirmation",
+  "command_transcript": [],
+  "controller_transcript": [],
+  "claim_boundary": "Automated Qt replay; not human desktop acceptance.",
+  "screenshot_nonblank": true,
+  "pass": true
+}

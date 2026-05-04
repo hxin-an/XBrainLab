@@ -193,6 +193,14 @@ UI baseline capture 結果：
   (`0 errors, 0 warnings, 0 notes`)、`poetry run python tests/architecture_compliance.py`
   (`Architecture compliant!`)、`poetry run mkdocs build --strict`（既有 Material warning）和
   `git diff --check`。
+- Training start long-running confirmation slice gate 覆蓋 Start Training button 的 backend
+  autonomy boundary：當 `train` capability requires confirmation 時會顯示使用者語言 confirmation，
+  拒絕後不執行 command / controller fallback。Evidence：
+  `artifacts/ui/training-start-confirmation/training-start-confirmation-dialog.png`、
+  `.json`、`.md`；focused UI gate `42 passed`；backend application regression -> `97 passed`；
+  backend integration -> `3 passed`；agent/tool regression -> `468 passed`；agent integration ->
+  `7 passed`；ruff / basedpyright / architecture compliance / MkDocs strict / diff check passed。
+  這是 automated Qt replay，不是 human desktop acceptance。
 - Data Interpretation format boundary slice gate 另通過：
   `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
   (`5 passed`)、`poetry run pytest --capture=sys tests/unit/backend/application -q`

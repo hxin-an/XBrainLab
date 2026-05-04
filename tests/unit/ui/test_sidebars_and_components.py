@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -330,6 +331,75 @@ class TestTrainingSidebar:
         sidebar.panel.controller.is_training.return_value = False
         sidebar.start_training_ui_action()
         sidebar.panel.controller.start_training.assert_called_once()
+
+    def test_start_training_requires_confirmation_for_long_running_command(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        capability = SimpleNamespace(
+            enabled=True,
+            reasons=[],
+            requires_confirmation=True,
+            confirmation_required=False,
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=capability,
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.No,
+            ) as mock_question,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+            ) as mock_execute,
+        ):
+            sidebar.start_training_ui_action()
+
+        mock_question.assert_called_once()
+        mock_execute.assert_not_called()
+        sidebar.panel.controller.start_training.assert_not_called()
+
+    def test_start_training_service_success_does_not_fallback_to_controller(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import TrainCommand
+
+        capability = SimpleNamespace(
+            enabled=True,
+            reasons=[],
+            requires_confirmation=True,
+            confirmation_required=False,
+        )
+
+        sidebar.panel.controller.is_training.return_value = False
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=capability,
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+        ):
+            sidebar.start_training_ui_action()
+
+        assert isinstance(mock_execute.call_args.args[1], TrainCommand)
+        sidebar.panel.controller.start_training.assert_not_called()
 
     def test_start_training_error(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False

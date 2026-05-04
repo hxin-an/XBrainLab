@@ -397,6 +397,22 @@ class TrainingSidebar(QWidget):
                 )
                 return
             if not self.controller.is_training():
+                if train_capability is not None and (
+                    train_capability.requires_confirmation
+                    or train_capability.confirmation_required
+                ):
+                    reply = QMessageBox.question(
+                        self,
+                        "Start Training",
+                        (
+                            "Training can take time and use CPU/GPU resources. "
+                            "Start training now?"
+                        ),
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
                 result = execute_application_command(self, TrainCommand())
                 if result is None:
                     self.controller.start_training()
