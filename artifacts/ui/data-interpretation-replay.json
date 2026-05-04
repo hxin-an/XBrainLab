@@ -1,9 +1,10 @@
 {
   "workflow": "data_interpretation_ui_replay",
-  "source": "product_replay_raw.fif",
+  "source": "xbrainlab_data_interpretation_replay",
   "transcript": [
-    "Selected EEG source for interpretation.",
+    "Selected folder source for interpretation.",
     "Scanned source and previewed metadata plus label carrier interpretation.",
+    "Mapped generic events.tsv to the second EEG file in the wizard.",
     "Reviewed label column, anchor, time model, and granularity.",
     "Validation required confirmation for missing metadata.",
     "Unconfirmed apply was blocked.",
@@ -13,7 +14,7 @@
     "scan_source": {
       "status": "ok",
       "command_name": "scan_source",
-      "message": "Scanned source and found 1 EEG file(s).",
+      "message": "Scanned source and found 2 EEG file(s).",
       "state": {
         "pipeline_stage": "empty",
         "raw": {
@@ -106,11 +107,12 @@
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "summary": null,
@@ -119,16 +121,24 @@
           "label_carrier_plan": [],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -176,77 +186,144 @@
           "scan_id": "scan-1",
           "source_path": "<replay_source>",
           "source_hint": "auto",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "eeg_files": [
-            "<replay_source>/product_replay_raw.fif"
+            "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+            "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "metadata": [
             {
-              "file": "<replay_source>/product_replay_raw.fif",
+              "file": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:sub"
+                ]
               },
               "session": {
                 "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:task"
+                ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "bids": {
-            "is_bids": false,
-            "subjects": [],
+            "is_bids": true,
+            "subjects": [
+              "01"
+            ],
             "sessions": [],
-            "tasks": [],
-            "runs": [],
+            "tasks": [
+              "mi"
+            ],
+            "runs": [
+              "1",
+              "2"
+            ],
             "events_files": [
-              "<replay_source>/product_replay_events.tsv"
+              "<replay_source>/events.tsv"
             ],
             "dataset_description": null
           },
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -254,6 +331,7 @@
             }
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "blocked_reasons": []
@@ -356,62 +434,114 @@
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:sub"
+                ]
               },
               "session": {
                 "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:task"
+                ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -424,22 +554,31 @@
               "time_model": "seconds",
               "granularity": "event",
               "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -447,7 +586,10 @@
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -489,17 +631,18 @@
           "candidate_id": "candidate-2",
           "scan_id": "scan-1",
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "selected_eeg_files": [
-            "<replay_source>/product_replay_raw.fif"
+            "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+            "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -512,69 +655,132 @@
               "time_model": "seconds",
               "granularity": "event",
               "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
             {
-              "file": "<replay_source>/product_replay_raw.fif",
+              "file": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:sub"
+                ]
               },
               "session": {
                 "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:task"
+                ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -582,14 +788,13 @@
             }
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "confirmation_items": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif.",
-            "Confirm session metadata for product_replay_raw.fif.",
-            "Confirm subject metadata for product_replay_raw.fif.",
-            "Confirm task metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "choices": {},
@@ -601,13 +806,13 @@
         "preview": {
           "preview_id": "preview-3",
           "candidate_id": "candidate-2",
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-          "file_count": 1,
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
+          "file_count": 2,
           "label_carrier_count": 1,
           "label_carrier_preview": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -620,63 +825,123 @@
               "time_model": "seconds",
               "granularity": "event",
               "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:sub"
+                ]
               },
               "session": {
                 "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:task"
+                ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -684,21 +949,23 @@
             }
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "confirmation_items": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif.",
-            "Confirm session metadata for product_replay_raw.fif.",
-            "Confirm subject metadata for product_replay_raw.fif.",
-            "Confirm task metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "downstream_impacts": [
             "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {}
         }
@@ -800,62 +1067,114 @@
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "subject was not inferred from source path.",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:sub"
+                ]
               },
               "session": {
                 "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "session was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
               },
               "task": {
                 "field": "task",
-                "value": null,
-                "source": "missing",
-                "decision": "needs_confirmation",
-                "reason": "task was not inferred from source path.",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
                 "override": null,
-                "recipe_trace": []
+                "recipe_trace": [
+                  "bids:task"
+                ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -868,22 +1187,31 @@
               "time_model": "seconds",
               "granularity": "event",
               "role": "external labels",
+              "selected_target_file": "",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -891,7 +1219,10 @@
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -936,14 +1267,13 @@
             "Candidate has reviewable semantic choices."
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "required_confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif.",
-            "Confirm session metadata for product_replay_raw.fif.",
-            "Confirm subject metadata for product_replay_raw.fif.",
-            "Confirm task metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-1_raw.fif.",
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "downstream_impacts": [
@@ -1048,17 +1378,18 @@
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -1067,6 +1398,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -1089,27 +1421,75 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -1122,22 +1502,31 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -1145,7 +1534,10 @@
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -1187,17 +1579,18 @@
           "candidate_id": "candidate-4",
           "scan_id": "scan-1",
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "selected_eeg_files": [
-            "<replay_source>/product_replay_raw.fif"
+            "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+            "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -1210,19 +1603,23 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "time_model": "sample_index_or_annotation_time",
           "granularity": "trial_or_event",
           "metadata": [
             {
-              "file": "<replay_source>/product_replay_raw.fif",
+              "file": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -1231,6 +1628,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -1253,32 +1651,88 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -1286,23 +1740,25 @@
             }
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "confirmation_items": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "choices": {
             "metadata_overrides": {
-              "product_replay_raw.fif": {
+              "sub-01_task-mi_run-1_raw.fif": {
                 "subject": "S01",
                 "session": "session-01",
                 "task": "motor-imagery"
               }
             },
             "label_carrier_choices": {
-              "<replay_source>/product_replay_events.tsv": {
+              "<replay_source>/events.tsv": {
+                "target_file": "sub-01_task-mi_run-2_raw.fif",
                 "granularity": "trial",
                 "label_field": "trial_type",
                 "anchor": "onset",
@@ -1320,13 +1776,13 @@
         "preview": {
           "preview_id": "preview-5",
           "candidate_id": "candidate-4",
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
-          "file_count": 1,
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
+          "file_count": 2,
           "label_carrier_count": 1,
           "label_carrier_preview": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -1339,13 +1795,14 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -1354,6 +1811,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -1376,32 +1834,88 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -1409,18 +1923,22 @@
             }
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "confirmation_items": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "downstream_impacts": [
             "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {}
         }
@@ -1522,17 +2040,18 @@
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -1541,6 +2060,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -1563,27 +2083,75 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -1596,22 +2164,31 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -1619,7 +2196,10 @@
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -1664,11 +2244,12 @@
             "Candidate has reviewable semantic choices."
           ],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
           "required_confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "blocked_reasons": [],
           "downstream_impacts": [
@@ -1773,17 +2354,18 @@
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -1792,6 +2374,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -1814,27 +2397,75 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -1847,22 +2478,31 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -1870,7 +2510,10 @@
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_import_count": 0,
@@ -1917,14 +2560,15 @@
     "apply_confirmed": {
       "status": "ok",
       "command_name": "apply_interpretation",
-      "message": "Applied interpretation and loaded 1 file(s). Imported reviewed labels for 1 file(s).",
+      "message": "Applied interpretation and loaded 2 file(s). Imported reviewed labels for 1 file(s).",
       "state": {
         "pipeline_stage": "data_loaded",
         "raw": {
           "loaded": true,
-          "count": 1,
+          "count": 2,
           "files": [
-            "product_replay_raw.fif"
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
           ],
           "formats": [
             ".fif"
@@ -1938,12 +2582,18 @@
           "metadata": [
             {
               "index": "0",
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
+              "subject": "0",
+              "session": "0"
+            },
+            {
+              "index": "1",
+              "file": "sub-01_task-mi_run-2_raw.fif",
               "subject": "0",
               "session": "0"
             }
           ],
-          "event_total": 4,
+          "event_total": 10,
           "unique_events": [
             "left",
             "right"
@@ -1957,9 +2607,10 @@
         },
         "preprocessed": {
           "available": true,
-          "count": 1,
+          "count": 2,
           "files": [
-            "product_replay_raw.fif"
+            "sub-01_task-mi_run-1_raw.fif",
+            "sub-01_task-mi_run-2_raw.fif"
           ],
           "is_epoched": false,
           "channel_names": [
@@ -2036,17 +2687,18 @@
           "latest_interpretation_id": "interpretation-6",
           "latest_recipe_id": null,
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
           "warnings": [
+            "Multiple EEG files were discovered; subject/session/run mapping should be reviewed.",
             "External label/event carriers require preview before apply."
           ],
-          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
+          "summary": "Found 2 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
-              "file": "product_replay_raw.fif",
+              "file": "sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -2055,6 +2707,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -2077,27 +2730,75 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -2110,22 +2811,31 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -2133,7 +2843,10 @@
             }
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_import_count": 1,
@@ -2141,13 +2854,13 @@
             {
               "mode": "timestamp",
               "label_carriers": [
-                "<replay_source>/product_replay_events.tsv"
+                "<replay_source>/events.tsv"
               ],
               "target_files": [
-                "<replay_source>/product_replay_raw.fif"
+                "<replay_source>/sub-01_task-mi_run-2_raw.fif"
               ],
               "file_mapping": {
-                "<replay_source>/product_replay_raw.fif": "<replay_source>/product_replay_events.tsv"
+                "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
               },
               "selected_event_names": [],
               "class_map": {},
@@ -2187,23 +2900,24 @@
       "error_message": null,
       "diagnostics": {
         "payload_type": "applied_interpretation",
-        "success_count": 1,
+        "success_count": 2,
         "errors": [],
         "applied_interpretation": {
           "interpretation_id": "interpretation-6",
           "candidate_id": "candidate-4",
           "source_path": "<replay_source>",
-          "source_kind": "folder",
+          "source_kind": "bids",
           "loaded_files": [
-            "<replay_source>/product_replay_raw.fif"
+            "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+            "<replay_source>/sub-01_task-mi_run-2_raw.fif"
           ],
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ],
           "label_carrier_plan": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "label_candidates": [
                 "trial_type"
@@ -2216,13 +2930,14 @@
               "time_model": "seconds",
               "granularity": "trial",
               "role": "external labels",
+              "selected_target_file": "sub-01_task-mi_run-2_raw.fif",
               "decision": "needs_confirmation",
               "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
             }
           ],
           "metadata": [
             {
-              "file": "<replay_source>/product_replay_raw.fif",
+              "file": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
               "subject": {
                 "field": "subject",
                 "value": "S01",
@@ -2231,6 +2946,7 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "S01",
                 "recipe_trace": [
+                  "bids:sub",
                   "metadata_override:subject"
                 ]
               },
@@ -2253,32 +2969,88 @@
                 "reason": "User confirmed this value in the Data Interpretation wizard.",
                 "override": "motor-imagery",
                 "recipe_trace": [
+                  "bids:task",
                   "metadata_override:task"
                 ]
               },
               "run": {
                 "field": "run",
+                "value": "1",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
+              }
+            },
+            {
+              "file": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "subject": {
+                "field": "subject",
+                "value": "01",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "subject resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:sub"
+                ]
+              },
+              "session": {
+                "field": "session",
                 "value": null,
                 "source": "missing",
                 "decision": "needs_confirmation",
-                "reason": "run was not inferred from source path.",
+                "reason": "session BIDS entity is not present for this file.",
                 "override": null,
                 "recipe_trace": []
+              },
+              "task": {
+                "field": "task",
+                "value": "mi",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "task resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:task"
+                ]
+              },
+              "run": {
+                "field": "run",
+                "value": "2",
+                "source": "bids_entity",
+                "decision": "safe",
+                "reason": "run resolved from BIDS entity.",
+                "override": null,
+                "recipe_trace": [
+                  "bids:run"
+                ]
               }
             }
           ],
           "format_capabilities": [
             {
-              "path": "<replay_source>/product_replay_events.tsv",
-              "name": "product_replay_events.tsv",
+              "path": "<replay_source>/events.tsv",
+              "name": "events.tsv",
               "format": "BIDS events",
               "role": "external_labels",
               "status": "needs_review",
               "message": "BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
             },
             {
-              "path": "<replay_source>/product_replay_raw.fif",
-              "name": "product_replay_raw.fif",
+              "path": "<replay_source>/sub-01_task-mi_run-1_raw.fif",
+              "name": "sub-01_task-mi_run-1_raw.fif",
+              "format": "MNE FIF",
+              "role": "eeg",
+              "status": "supported",
+              "message": "FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            },
+            {
+              "path": "<replay_source>/sub-01_task-mi_run-2_raw.fif",
+              "name": "sub-01_task-mi_run-2_raw.fif",
               "format": "MNE FIF",
               "role": "eeg",
               "status": "supported",
@@ -2288,23 +3060,26 @@
           "validation_decision": "needs_confirmation",
           "confirmations": [
             "Confirm label carrier alignment, anchor event, and class map before applying.",
-            "Confirm run metadata for product_replay_raw.fif."
+            "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
           ],
           "event_roles": {
-            "label_carrier": "external label or event source"
+            "label_carrier": "external label or event source",
+            "onset": "time anchor",
+            "duration": "event duration",
+            "trial_type": "class label candidate"
           },
           "class_map": {},
           "label_imports": [
             {
               "mode": "timestamp",
               "label_carriers": [
-                "<replay_source>/product_replay_events.tsv"
+                "<replay_source>/events.tsv"
               ],
               "target_files": [
-                "<replay_source>/product_replay_raw.fif"
+                "<replay_source>/sub-01_task-mi_run-2_raw.fif"
               ],
               "file_mapping": {
-                "<replay_source>/product_replay_raw.fif": "<replay_source>/product_replay_events.tsv"
+                "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
               },
               "selected_event_names": [],
               "class_map": {},
@@ -2322,7 +3097,7 @@
           ]
         },
         "label_carriers_pending": [
-          "<replay_source>/product_replay_events.tsv"
+          "<replay_source>/events.tsv"
         ],
         "label_apply": {
           "status": "applied",
@@ -2331,21 +3106,21 @@
           "label_import": {
             "mode": "timestamp",
             "label_carriers": [
-              "<replay_source>/product_replay_events.tsv"
+              "<replay_source>/events.tsv"
             ],
             "target_files": [
-              "<replay_source>/product_replay_raw.fif"
+              "<replay_source>/sub-01_task-mi_run-2_raw.fif"
             ],
             "file_mapping": {
-              "<replay_source>/product_replay_raw.fif": "<replay_source>/product_replay_events.tsv"
+              "<replay_source>/sub-01_task-mi_run-2_raw.fif": "<replay_source>/events.tsv"
             },
             "selected_event_names": [],
             "class_map": {},
             "success_count": 1
           },
-          "label_carrier": "<replay_source>/product_replay_events.tsv",
+          "label_carrier": "<replay_source>/events.tsv",
           "label_carriers": [
-            "<replay_source>/product_replay_events.tsv"
+            "<replay_source>/events.tsv"
           ]
         }
       }
@@ -2357,33 +3132,40 @@
       "decision": "needs_confirmation",
       "visible_text": [
         "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
-        "Found 1 EEG file(s) and 1 label/event carrier(s).",
+        "Found 2 EEG file(s) and 1 label/event carrier(s).",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
         "Type",
-        "folder",
+        "bids",
         "Files",
-        "1",
+        "2",
         "Label carriers",
         "1",
         "BIDS",
-        "Not detected",
+        "BIDS-like source, 01, 1 events.tsv file(s)",
         "Validation needs confirmation before applying.",
-        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm run metadata for product_replay_raw.fif.; Confirm session metadata for product_replay_raw.fif.; Confirm subject metadata for product_replay_raw.fif.; Confirm task metadata for product_replay_raw.fif."
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm session metadata for sub-01_task-mi_run-1_raw.fif.; Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
       ],
       "metadata_rows": [
         [
-          "product_replay_raw.fif",
+          "sub-01_task-mi_run-1_raw.fif",
           "S01",
           "session-01",
           "motor-imagery",
-          ""
+          "1"
+        ],
+        [
+          "sub-01_task-mi_run-2_raw.fif",
+          "01",
+          "",
+          "mi",
+          "2"
         ]
       ],
       "label_carrier_rows": [
         [
-          "product_replay_events.tsv",
-          "product_replay_raw.fif",
+          "events.tsv",
+          "sub-01_task-mi_run-2_raw.fif",
           "BIDS events",
           "trial_type",
           "onset",
@@ -2391,17 +3173,18 @@
           "trial"
         ]
       ],
-      "review_notes": "Warnings:\n- External label/event carriers require preview before apply.\nConfirmations:\n- Confirm label carrier alignment, anchor event, and class map before applying.\n- Confirm run metadata for product_replay_raw.fif.\n- Confirm session metadata for product_replay_raw.fif.\n- Confirm subject metadata for product_replay_raw.fif.\n- Confirm task metadata for product_replay_raw.fif.\nDownstream impact:\n- Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session.\nFormat capabilities:\n- BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
+      "review_notes": "Warnings:\n- Multiple EEG files were discovered; subject/session/run mapping should be reviewed.\n- External label/event carriers require preview before apply.\nConfirmations:\n- Confirm label carrier alignment, anchor event, and class map before applying.\n- Confirm session metadata for sub-01_task-mi_run-1_raw.fif.\n- Confirm session metadata for sub-01_task-mi_run-2_raw.fif.\nDownstream impact:\n- Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session.\nFormat capabilities:\n- BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.\n- MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training.",
       "review_choices": {
         "metadata_overrides": {
-          "product_replay_raw.fif": {
+          "sub-01_task-mi_run-1_raw.fif": {
             "subject": "S01",
             "session": "session-01",
             "task": "motor-imagery"
           }
         },
         "label_carrier_choices": {
-          "<replay_source>/product_replay_events.tsv": {
+          "<replay_source>/events.tsv": {
+            "target_file": "sub-01_task-mi_run-2_raw.fif",
             "granularity": "trial",
             "label_field": "trial_type",
             "anchor": "onset",
@@ -2416,7 +3199,7 @@
     "dataset_panel": {
       "import_button_text": "Interpret Data Source",
       "import_button_enabled": true,
-      "table_rows": 1,
+      "table_rows": 2,
       "visible_panel_text": [],
       "screenshot": "data-interpretation-applied.png"
     }

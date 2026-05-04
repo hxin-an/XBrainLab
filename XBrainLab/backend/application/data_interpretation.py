@@ -591,7 +591,14 @@ def _normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, str]]:
     if not isinstance(payload, dict):
         return {}
     result: dict[str, dict[str, str]] = {}
-    allowed = {"label_field", "anchor", "time_model", "granularity", "role"}
+    allowed = {
+        "label_field",
+        "anchor",
+        "time_model",
+        "granularity",
+        "role",
+        "target_file",
+    }
     for carrier_key, carrier_choices in payload.items():
         if not isinstance(carrier_choices, dict):
             continue
@@ -630,6 +637,7 @@ def _label_carrier_plan_for_path(
         or _default_time_model(path, anchor_candidates),
         "granularity": carrier_choice.get("granularity") or _default_granularity(path),
         "role": carrier_choice.get("role") or "external labels",
+        "selected_target_file": carrier_choice.get("target_file", ""),
         "decision": InterpretationDecision.NEEDS_CONFIRMATION.value,
         "reason": _label_carrier_reason(path, label_candidates, anchor_candidates),
     }

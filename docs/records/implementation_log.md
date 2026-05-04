@@ -4708,3 +4708,74 @@ client 用標準 `mcp.json` 啟動 prepared XBrainLab runtime，MCP calls 仍走
 - 這不支撐 Inspector GUI 人工 click-through、HTTP transport、Windows Desktop 真人啟動或
   long-running training through MCP。
 - Goal 不能標 complete。
+
+## 2026-05-04 Data Interpretation manual generic label target mapping
+
+### 背景
+
+前一輪已讓多檔 label carrier 可用 normalized stem 安全自動對應，也讓 wizard 顯示 `Matched EEG`
+欄位。但 generic folder-level `events.tsv` / `labels.mat` 在多 EEG 檔時仍只能顯示
+`Needs review`，使用者無法在 wizard 中指定 target。這會讓 import wizard 看起來像 preview 而非
+可完成的資料入口。
+
+### 變更
+
+- `XBrainLab/backend/application/data_interpretation.py`
+  - `label_carrier_choices` 允許 `target_file`。
+  - `label_carrier_plan` 保存為 `selected_target_file`。
+- `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+  - `Matched EEG` 欄位若被使用者從 `Needs review` 改成 EEG filename/path，會輸出
+    `target_file` choice。
+  - target mapping 變更時會一起帶出目前 label field / anchor / time model / granularity，讓
+    re-preview 保存完整 carrier review state。
+- `XBrainLab/backend/application/service.py`
+  - `_reviewed_label_file_mapping()` 先套用手動 `selected_target_file`。
+  - 有手動 mapping 時允許 partial target apply，不要求每個 loaded EEG 都有 carrier。
+  - `apply_interpretation` 對 timestamp labels 只傳 mapped target files 給
+    `apply_labels_batch()`；sequence labels 也只逐檔套用 mapped targets。
+  - 未指定 target 的 ambiguous generic carrier 仍維持 skipped，不猜。
+- `scripts/dev/capture_data_interpretation_replay.py`
+  - replay 改成兩個 synthetic FIF + generic `events.tsv`。
+  - wizard 會把 `events.tsv` 手動對到 `sub-01_task-mi_run-2_raw.fif`。
+  - refreshed screenshot / JSON artifact 記錄 visible row、review choices、label apply target。
+
+### 驗證
+
+- TDD failure:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_manual_label_target_mapping -q`
+  - 初跑 failure：`label_carrier_choices` 不存在。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_timestamp_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_sequence_label -q`
+  - 初跑 failure：manual target cases 仍 `label_apply.status=skipped`。
+- Focused:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `7 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_timestamp_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_sequence_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels -q`
+  - `4 passed`
+- Regression:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `67 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `54 passed`
+- UI-observable replay:
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - exit `0`
+  - `artifacts/ui/data-interpretation-replay.json` shows:
+    - label row `events.tsv -> sub-01_task-mi_run-2_raw.fif`
+    - `review_choices.label_carrier_choices[*].target_file`
+    - `label_apply.status=applied`
+    - `label_apply.success_count=1`
+    - target file `<replay_source>/sub-01_task-mi_run-2_raw.fif`
+- Static / docs:
+  - targeted `ruff` -> pass
+  - targeted `ruff format --check` -> pass after formatting
+  - production `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `git diff --check` -> pass
+
+### 不能宣稱完成
+
+- 這支撐 generic label carrier manual target mapping 的第一個 embedded wizard path。
+- 這不支撐 raw-event-anchor-specific GDF/MAT alignment、all-format manual compatibility matrix、
+  post-load label import full editor 或真人 click-through。
+- Goal 不能標 complete。

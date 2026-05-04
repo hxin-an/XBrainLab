@@ -216,6 +216,54 @@ def test_data_interpretation_preview_dialog_shows_label_carrier_matches(qtbot):
     assert generic.text(1) == "Needs review"
 
 
+def test_data_interpretation_preview_dialog_returns_manual_label_target_mapping(qtbot):
+    generic_events = "/tmp/source/events.tsv"
+    target_name = "sub-01_task-mi_run-2_raw.fif"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [
+                "/tmp/source/sub-01_task-mi_run-1_raw.fif",
+                f"/tmp/source/{target_name}",
+            ],
+            "label_carriers": [generic_events],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": generic_events,
+                    "name": "events.tsv",
+                    "format": "BIDS events",
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                },
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    carrier_item = dialog.label_carrier_tree.topLevelItem(0)
+    assert carrier_item is not None
+    assert carrier_item.text(1) == "Needs review"
+
+    carrier_item.setText(1, target_name)
+    result = dialog.get_result()
+
+    assert result["choices"]["label_carrier_choices"] == {
+        generic_events: {
+            "target_file": target_name,
+            "label_field": "trial_type",
+            "anchor": "onset",
+            "time_model": "seconds",
+            "granularity": "trial",
+        }
+    }
+
+
 def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

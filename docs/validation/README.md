@@ -1484,6 +1484,49 @@ label wizard UI 或真人 click-through。
 post-load label import wizard，也不支撐 raw-event-anchor-specific MAT/GDF alignment 或真人
 click-through。
 
+2026-05-04 Data Interpretation manual generic label target mapping:
+
+- backend:
+  - Label carrier choices now accept `target_file` and preserve it as
+    `selected_target_file` in `label_carrier_plan`.
+  - Reviewed generic timestamp carriers such as folder-level `events.tsv` can be applied to a
+    user-selected loaded EEG file instead of being skipped as ambiguous.
+  - Reviewed generic MAT / TXT trial-order carriers such as `labels.mat` can likewise be
+    applied to a user-selected loaded EEG file through the legacy sequence label path.
+  - If no target is selected, the previous ambiguous skip behavior remains.
+- UI:
+  - The editable `Matched EEG` column now contributes `target_file` to
+    `label_carrier_choices` when the user changes it from `Needs review`.
+  - The replay artifact was refreshed to show generic `events.tsv` mapped to
+    `sub-01_task-mi_run-2_raw.fif`.
+- UI-observable replay:
+  - command: `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - artifact:
+    - `artifacts/ui/data-interpretation-preview.png`
+    - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON `label_carrier_rows` shows:
+    `events.tsv -> sub-01_task-mi_run-2_raw.fif`.
+  - replay JSON `review_choices.label_carrier_choices` includes `target_file`.
+  - replay JSON `label_apply` shows `status=applied`, `success_count=1`, and target file
+    `sub-01_task-mi_run-2_raw.fif`.
+- targeted gates:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `7 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_timestamp_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_sequence_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels -q`
+  - `4 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `67 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `54 passed`
+  - targeted `ruff`, `ruff format --check`, and production `basedpyright` clean.
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `git diff --check` -> pass.
+
+這批 evidence 支撐 generic label carrier disambiguation 的第一個 embedded wizard path。它仍不支撐
+raw-event-anchor-specific GDF / MAT alignment、all-format manual compatibility matrix、post-load
+label import full editor、或真人 click-through。
+
 2026-05-04 post-load label import target context slice：
 
 - UI:

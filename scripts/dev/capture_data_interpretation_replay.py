@@ -35,8 +35,9 @@ from XBrainLab.ui.main_window import MainWindow
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_data_interpretation_replay"
-SOURCE_PATH = SOURCE_DIR / "product_replay_raw.fif"
-LABEL_PATH = SOURCE_DIR / "product_replay_events.tsv"
+SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-1_raw.fif"
+SECOND_SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-2_raw.fif"
+LABEL_PATH = SOURCE_DIR / "events.tsv"
 PREVIEW_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-preview.png"
 APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
 REPLAY_JSON = ARTIFACTS_DIR / "data-interpretation-replay.json"
@@ -49,10 +50,25 @@ def write_synthetic_raw_fif() -> Path:
         shutil.rmtree(SOURCE_DIR)
     SOURCE_DIR.mkdir(parents=True, exist_ok=True)
 
+    _write_raw_file(SOURCE_PATH, seed=17)
+    _write_raw_file(SECOND_SOURCE_PATH, seed=23)
+    LABEL_PATH.write_text(
+        "onset\tduration\ttrial_type\n"
+        "1.0\t0.5\tleft\n"
+        "2.0\t0.5\tright\n"
+        "3.0\t0.5\tleft\n"
+        "4.0\t0.5\tright\n",
+        encoding="utf-8",
+    )
+    return SOURCE_PATH
+
+
+def _write_raw_file(path: Path, *, seed: int) -> None:
+    """Write one deterministic synthetic EEG file."""
     sfreq = 128
     ch_names = ["C3", "C4", "Cz", "Pz"]
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types="eeg")
-    data = np.random.default_rng(17).normal(size=(len(ch_names), sfreq * 6))
+    data = np.random.default_rng(seed).normal(size=(len(ch_names), sfreq * 6))
     raw = mne.io.RawArray(data, info)
     events = np.array(
         [
@@ -71,16 +87,7 @@ def write_synthetic_raw_fif() -> Path:
             event_desc={1: "left", 2: "right"},
         )
     )
-    raw.save(SOURCE_PATH, overwrite=True)
-    LABEL_PATH.write_text(
-        "onset\tduration\ttrial_type\n"
-        "1.0\t0.5\tleft\n"
-        "2.0\t0.5\tright\n"
-        "3.0\t0.5\tleft\n"
-        "4.0\t0.5\tright\n",
-        encoding="utf-8",
-    )
-    return SOURCE_PATH
+    raw.save(path, overwrite=True)
 
 
 def set_capture_geometry(window: QWidget) -> None:
@@ -187,6 +194,7 @@ def capture_replay(app: QApplication) -> int:
                 metadata_item.setText(3, "motor-imagery")
             label_item = dialog.label_carrier_tree.topLevelItem(0)
             if label_item is not None:
+                label_item.setText(1, SECOND_SOURCE_PATH.name)
                 label_item.setText(3, "trial_type")
                 label_item.setText(4, "onset")
                 label_item.setText(5, "seconds")
@@ -232,11 +240,12 @@ def capture_replay(app: QApplication) -> int:
 
             replay = {
                 "workflow": "data_interpretation_ui_replay",
-                "source": SOURCE_PATH.name,
+                "source": SOURCE_DIR.name,
                 "transcript": [
-                    "Selected EEG source for interpretation.",
+                    "Selected folder source for interpretation.",
                     "Scanned source and previewed metadata plus label carrier "
                     "interpretation.",
+                    "Mapped generic events.tsv to the second EEG file in the wizard.",
                     "Reviewed label column, anchor, time model, and granularity.",
                     "Validation required confirmation for missing metadata.",
                     "Unconfirmed apply was blocked.",

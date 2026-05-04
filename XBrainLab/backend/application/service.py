@@ -1797,12 +1797,23 @@ class ApplicationService:
         carrier_label = ", ".join(
             str(item.get("path") or "").strip() for item in applicable
         )
+        mapped_target_files = [
+            target
+            for target in target_files
+            if self._data_filepath(target) in file_mapping
+        ]
+        if not mapped_target_files:
+            return {
+                "status": "skipped",
+                "reason": "Reviewed label carriers did not map to any loaded EEG file.",
+            }
+
         try:
             label_map = self._load_reviewed_label_map(applicable, mode)
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
             if mode == "timestamp":
                 count = self.dataset.apply_labels_batch(
-                    target_files,
+                    mapped_target_files,
                     label_map,
                     file_mapping,
                     mapping,
@@ -1810,13 +1821,13 @@ class ApplicationService:
                 )
             else:
                 count = self._apply_reviewed_sequence_label_map(
-                    target_files,
+                    mapped_target_files,
                     label_map,
                     file_mapping,
                     mapping,
                 )
             plan = LabelImportPlan(
-                target_indices=list(range(len(target_files))),
+                target_indices=list(range(len(mapped_target_files))),
                 label_map=label_map,
                 mapping=mapping,
                 file_mapping=file_mapping,
@@ -1825,7 +1836,7 @@ class ApplicationService:
             record = self._record_label_import_for_recipe(
                 plan=plan,
                 mode=mode,
-                target_files=target_files,
+                target_files=mapped_target_files,
                 file_mapping=file_mapping,
                 selected_event_names=None,
                 success_count=count,
@@ -1905,8 +1916,44 @@ class ApplicationService:
         label_plans: list[dict[str, Any]],
         target_files: list[Any],
     ) -> tuple[dict[str, str], str | None]:
-        carrier_by_key: dict[str, str] = {}
+        manual_mapping_requested = any(
+            str(carrier.get("selected_target_file") or "").strip()
+            for carrier in label_plans
+        )
+        file_mapping: dict[str, str] = {}
+        used_carriers: set[str] = set()
+        remaining_plans: list[dict[str, Any]] = []
         for carrier in label_plans:
+            carrier_path = str(carrier.get("path") or "").strip()
+            selected_target = str(carrier.get("selected_target_file") or "").strip()
+            if not selected_target:
+                remaining_plans.append(carrier)
+                continue
+            target = self._target_file_for_reviewed_label_choice(
+                target_files,
+                selected_target,
+            )
+            if target is None:
+                return (
+                    {},
+                    (
+                        "Reviewed label carrier target file does not match a "
+                        f"loaded EEG file: {selected_target}."
+                    ),
+                )
+            data_path = self._data_filepath(target)
+            if data_path in file_mapping:
+                return (
+                    {},
+                    "Multiple reviewed label carriers target the same EEG file.",
+                )
+            if not carrier_path:
+                return {}, "Reviewed label carrier is missing a usable path."
+            file_mapping[data_path] = carrier_path
+            used_carriers.add(carrier_path)
+
+        carrier_by_key: dict[str, str] = {}
+        for carrier in remaining_plans:
             carrier_path = str(carrier.get("path") or "").strip()
             key = self._label_mapping_key(carrier_path)
             if not carrier_path or not key:
@@ -1918,13 +1965,15 @@ class ApplicationService:
                 )
             carrier_by_key[key] = carrier_path
 
-        file_mapping: dict[str, str] = {}
-        used_carriers: set[str] = set()
         for target in target_files:
             data_path = self._data_filepath(target)
+            if data_path in file_mapping:
+                continue
             key = self._label_mapping_key(data_path)
             carrier_path = carrier_by_key.get(key)
             if not carrier_path:
+                if manual_mapping_requested:
+                    continue
                 return (
                     {},
                     (
@@ -1942,6 +1991,19 @@ class ApplicationService:
                 "Reviewed label carriers did not all match loaded EEG files.",
             )
         return file_mapping, None
+
+    def _target_file_for_reviewed_label_choice(
+        self,
+        target_files: list[Any],
+        selected_target: str,
+    ) -> Any | None:
+        selected = selected_target.strip()
+        for target in target_files:
+            data_path = self._data_filepath(target)
+            filename = self._data_filename(target)
+            if selected in {data_path, filename, Path(data_path).name}:
+                return target
+        return None
 
     @staticmethod
     def _label_mapping_key(path: str) -> str:

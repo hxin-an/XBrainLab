@@ -3097,3 +3097,50 @@
   - 還不是 Inspector GUI 人工 click-through、HTTP transport、Windows Desktop 真人啟動或
     long-running training through MCP。
   - Goal 仍不可標 complete。
+
+### 2026-05-04 19:31 Data Interpretation manual generic label target mapping
+
+- 做了什麼：
+  - `label_carrier_choices` 新增 `target_file`，backend 會保存到
+    `label_carrier_plan[*].selected_target_file`。
+  - Data Interpretation wizard 的 editable `Matched EEG` 欄位現在會在使用者把 `Needs review`
+    改成 EEG filename/path 時，把 target mapping 帶進 choices。
+  - `apply_interpretation` 現在可將 generic `events.tsv` 或 `labels.mat` 只套用到使用者指定的
+    loaded EEG file；未指定 target 時，原本 ambiguous skip behavior 保持不變。
+  - UI replay 改成兩個 synthetic FIF + generic `events.tsv`，artifact 顯示
+    `events.tsv -> sub-01_task-mi_run-2_raw.fif`，且 label_apply 只套用到第二個 EEG。
+- TDD：
+  - UI 初跑失敗：`label_carrier_choices` 沒有 `target_file`。
+  - backend 初跑失敗：manual target 的 generic timestamp / sequence carriers 仍
+    `label_apply.status=skipped`。
+- artifact：
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+- 驗證：
+  - focused UI manual target mapping -> pass after implementation。
+  - focused backend manual timestamp / sequence mapping -> `2 passed`。
+  - dialog suite：
+    `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `7 passed`。
+  - focused backend positive + negative：
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_timestamp_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_sequence_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_timestamp_labels tests/unit/backend/application/test_application_service.py::test_apply_interpretation_skips_ambiguous_multi_file_sequence_labels -q`
+    -> `4 passed`。
+  - backend / automation / agent surface regression：
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/unit/backend/application/test_automation.py tests/unit/llm/tools/test_application_surface.py -q`
+    -> `67 passed`。
+  - dialog + DatasetActionHandler regression：
+    `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `54 passed`。
+  - true UI replay:
+    `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`。
+  - targeted `ruff`, `ruff format --check`, production `basedpyright` clean。
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `git diff --check` -> pass。
+- 不能宣稱：
+  - 這支撐 generic label carrier manual target mapping 的第一個 embedded wizard path。
+  - 還不是 raw-event-anchor-specific GDF/MAT alignment、all-format manual compatibility matrix、
+    post-load label import full editor 或真人 click-through。
+  - Goal 仍不可標 complete。

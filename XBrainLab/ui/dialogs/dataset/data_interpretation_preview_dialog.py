@@ -359,10 +359,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for carrier in carriers:
             if not isinstance(carrier, dict):
                 continue
+            match_text = self._label_carrier_match_text(carrier)
+            original = dict(carrier)
+            original["_matched_eeg_text"] = match_text
             item = QTreeWidgetItem(
                 [
                     str(carrier.get("name") or Path(str(carrier.get("path", ""))).name),
-                    self._label_carrier_match_text(carrier),
+                    match_text,
                     str(carrier.get("format") or "Unknown"),
                     str(carrier.get("selected_label_field") or ""),
                     str(carrier.get("selected_anchor") or ""),
@@ -376,7 +379,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             item.setToolTip(4, self._candidate_tooltip(carrier, "anchor_candidates"))
             item.setToolTip(5, "How label timing aligns to the EEG recording.")
             item.setToolTip(6, "The data unit each label describes.")
-            self._label_carrier_items.append((item, dict(carrier)))
+            self._label_carrier_items.append((item, original))
             self.label_carrier_tree.addTopLevelItem(item)
         if self.label_carrier_tree.topLevelItemCount() == 0:
             self.label_carrier_tree.addTopLevelItem(
@@ -470,6 +473,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _label_carrier_choices(self) -> dict[str, dict[str, str]]:
         choices: dict[str, dict[str, str]] = {}
         fields = (
+            ("target_file", "_matched_eeg_text", 1),
             ("label_field", "selected_label_field", 3),
             ("anchor", "selected_anchor", 4),
             ("time_model", "time_model", 5),
@@ -483,17 +487,31 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 continue
             changed: dict[str, str] = {}
             for choice_key, original_key, column in fields:
-                current = item.text(column).strip()
+                current = self._label_carrier_choice_text(choice_key, item.text(column))
                 original_value = str(original.get(original_key) or "").strip()
                 if current and current != original_value:
                     changed[choice_key] = current
             if changed:
                 for choice_key, _original_key, column in fields:
-                    current = item.text(column).strip()
+                    if choice_key == "target_file":
+                        continue
+                    current = self._label_carrier_choice_text(
+                        choice_key,
+                        item.text(column),
+                    )
                     if current and choice_key not in changed:
                         changed[choice_key] = current
                 choices[carrier_key] = changed
         return choices
+
+    @staticmethod
+    def _label_carrier_choice_text(choice_key: str, value: str) -> str:
+        text = value.strip()
+        if choice_key != "target_file":
+            return text
+        if text in {"", "Needs review", "Recording"}:
+            return ""
+        return text
 
     def _label_carrier_match_text(self, carrier: dict[str, Any]) -> str:
         eeg_files = [

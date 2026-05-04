@@ -122,13 +122,15 @@ envelope 和 agent `query_state` tool surface 都會暴露 reviewed `label_carri
 看到不同資料入口真相。最新 backend slices 又補了 reviewed label carriers 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
 CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `apply_labels_batch`
-套用；MAT / TXT trial-order sequence carriers 也會逐檔呼叫既有 `apply_labels_legacy`。如果只有
-generic `events.tsv`、generic `labels.mat` 或無法唯一對應，會保持 skipped 並回傳人可讀
-reason，不會把同一 labels 亂套到多個檔案。raw-event-anchor-specific MAT/GDF alignment、
+套用；MAT / TXT trial-order sequence carriers 也會逐檔呼叫既有 `apply_labels_legacy`。如果無法
+唯一對應，會保持 skipped 並回傳人可讀 reason，不會把同一 labels 亂套到多個檔案。最新 slice
+讓 wizard 的 `Matched EEG` 欄位能保存人工 target mapping；generic `events.tsv` 或
+`labels.mat` 在使用者明確指定目標 EEG 後，可只套用到被指定的 loaded file，recipe trace 也會記錄
+target / file mapping。raw-event-anchor-specific MAT/GDF alignment、
 同日後續 UI slice 已讓 Data Interpretation wizard 的 label carrier table 顯示 `Matched EEG`
 欄位；單檔 direct match 或多檔唯一 stem match 會顯示對應 EEG 檔名，無法唯一對應則顯示
-`Needs review`。UI replay artifact 已刷新，顯示 `product_replay_events.tsv` 對到
-`product_replay_raw.fif`。raw-event-anchor-specific MAT/GDF alignment、all-format manual
+`Needs review`。UI replay artifact 已刷新，顯示 generic `events.tsv` 對到
+`sub-01_task-mi_run-2_raw.fif`。raw-event-anchor-specific MAT/GDF alignment、all-format manual
 compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
 Post-load `Add Labels to Loaded Data` dialog 已補上 target context：dialog 會顯示 labels 將套用到
 哪些 loaded EEG files，並提示成功後會更新目前 import recipe trace。這改善 compatibility label
