@@ -3144,3 +3144,27 @@
   - 還不是 raw-event-anchor-specific GDF/MAT alignment、all-format manual compatibility matrix、
     post-load label import full editor 或真人 click-through。
   - Goal 仍不可標 complete。
+
+### 2026-05-04 19:39 Data Interpretation label target selector UX
+
+- 做了什麼：
+  - Ambiguous label carrier rows now render a `QComboBox` in the `Matched EEG` column.
+  - Selector options are `Needs review` plus scanned EEG filenames.
+  - `get_result()` reads the selector value and still returns `target_file` in
+    `label_carrier_choices`.
+  - replay `tree_rows()` now reads cell widgets, so UI artifact records the visible selected
+    target rather than stale item text.
+- TDD：
+  - 初跑 focused UI test failed，因 `itemWidget(carrier_item, 1)` 是 `None`。
+- 驗證：
+  - focused selector test -> `1 passed`。
+  - dialog suite -> `7 passed`。
+  - true UI replay -> exit `0`。
+  - dialog + DatasetActionHandler regression -> `54 passed`。
+  - backend manual target mapping focused tests -> `2 passed`。
+  - targeted `ruff` / `ruff format --check` / production `basedpyright` clean。
+- 不能宣稱：
+  - 這支撐 generic carrier target mapping 的使用者操作不再依賴手打 filename。
+  - 還不是 post-load label import full editor、all-format manual compatibility matrix 或真人
+    click-through。
+  - Goal 仍不可標 complete。

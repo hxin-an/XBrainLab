@@ -258,6 +258,8 @@
     carrier 名稱和欄位設定。
   - 使用者在 `Matched EEG` 欄位手動指定 target 後，`label_carrier_choices` 會保存
     `target_file`，backend 會只對該 loaded EEG file apply reviewed timestamp 或 trial-order labels。
+  - Ambiguous `Matched EEG` cell 現在會顯示 target selector，選項來自 scanned EEG files，避免
+    使用者手打 filename。
   - Post-load `Add Labels to Loaded Data` dialog 現在會顯示 target EEG files 和 recipe trace
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import

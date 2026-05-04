@@ -1,6 +1,6 @@
 """Tests for the Data Interpretation preview dialog."""
 
-from PyQt6.QtWidgets import QDialogButtonBox
+from PyQt6.QtWidgets import QComboBox, QDialogButtonBox
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -249,8 +249,17 @@ def test_data_interpretation_preview_dialog_returns_manual_label_target_mapping(
     carrier_item = dialog.label_carrier_tree.topLevelItem(0)
     assert carrier_item is not None
     assert carrier_item.text(1) == "Needs review"
+    target_selector = dialog.label_carrier_tree.itemWidget(carrier_item, 1)
+    assert isinstance(target_selector, QComboBox)
+    assert [
+        target_selector.itemText(index) for index in range(target_selector.count())
+    ] == [
+        "Needs review",
+        "sub-01_task-mi_run-1_raw.fif",
+        target_name,
+    ]
 
-    carrier_item.setText(1, target_name)
+    target_selector.setCurrentText(target_name)
     result = dialog.get_result()
 
     assert result["choices"]["label_carrier_choices"] == {

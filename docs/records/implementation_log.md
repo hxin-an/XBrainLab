@@ -4779,3 +4779,45 @@ client 用標準 `mcp.json` 啟動 prepared XBrainLab runtime，MCP calls 仍走
 - 這不支撐 raw-event-anchor-specific GDF/MAT alignment、all-format manual compatibility matrix、
   post-load label import full editor 或真人 click-through。
 - Goal 不能標 complete。
+
+## 2026-05-04 Data Interpretation label target selector UX
+
+### 背景
+
+Manual generic carrier mapping 已能運作，但若使用者必須手打 EEG filename，import wizard 仍像
+developer table，不像成熟 wizard。Ambiguous `Matched EEG` row 應提供可選 target。
+
+### 變更
+
+- `DataInterpretationPreviewDialog`
+  - ambiguous label carrier row 的 `Matched EEG` cell 現在放入 `QComboBox`。
+  - options 來自 scanned EEG filenames，第一項為 `Needs review`。
+  - `get_result()` 會讀 selector current text；`Needs review` 不輸出 target。
+- `capture_data_interpretation_replay.py`
+  - `tree_rows()` 支援 cell widget text。
+  - replay script 用 selector 選擇 `sub-01_task-mi_run-2_raw.fif`。
+
+### 驗證
+
+- TDD failure:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_manual_label_target_mapping -q`
+  - 初跑 failure：`itemWidget(carrier_item, 1)` 是 `None`。
+- Focused / replay:
+  - focused selector test -> `1 passed`
+  - dialog suite -> `7 passed`
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - exit `0`
+- Regression / static:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `54 passed`
+  - backend manual mapping focused tests -> `2 passed`
+  - targeted `ruff` -> pass after import sort fix
+  - targeted `ruff format --check` -> pass
+  - production `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+
+### 不能宣稱完成
+
+- 這支撐 generic carrier target mapping 的使用者操作不再依賴手打 filename。
+- 這不支撐 post-load label import full editor、all-format manual compatibility matrix 或真人
+  click-through。
+- Goal 不能標 complete。

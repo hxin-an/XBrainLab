@@ -1527,6 +1527,32 @@ click-through。
 raw-event-anchor-specific GDF / MAT alignment、all-format manual compatibility matrix、post-load
 label import full editor、或真人 click-through。
 
+2026-05-04 Data Interpretation label target selector UX:
+
+- UI:
+  - Ambiguous label carrier rows now render a `QComboBox` in the `Matched EEG` column.
+  - The selector options are `Needs review` plus scanned EEG file names.
+  - `get_result()` reads the selector value, so the same `target_file` choice flows into
+    preview / apply.
+- UI-observable replay:
+  - `tree_rows()` now reads cell-widget text, so replay JSON records the visible selector value.
+  - refreshed replay still shows `events.tsv -> sub-01_task-mi_run-2_raw.fif`.
+- targeted gates:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_manual_label_target_mapping -q`
+  - `1 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+  - `7 passed`
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - exit `0`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `54 passed`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_timestamp_label tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_manually_mapped_generic_sequence_label -q`
+  - `2 passed`
+  - targeted `ruff`, `ruff format --check`, and production `basedpyright` clean.
+
+這批 evidence 支撐 generic carrier target mapping 的使用者操作不再依賴手打欄位。它仍不是完整
+post-load label import full editor、all-format manual compatibility matrix 或真人 click-through。
+
 2026-05-04 post-load label import target context slice：
 
 - UI:

@@ -126,7 +126,8 @@ CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `ap
 唯一對應，會保持 skipped 並回傳人可讀 reason，不會把同一 labels 亂套到多個檔案。最新 slice
 讓 wizard 的 `Matched EEG` 欄位能保存人工 target mapping；generic `events.tsv` 或
 `labels.mat` 在使用者明確指定目標 EEG 後，可只套用到被指定的 loaded file，recipe trace 也會記錄
-target / file mapping。raw-event-anchor-specific MAT/GDF alignment、
+target / file mapping。下一個 UX slice 已把 ambiguous `Matched EEG` cell 改成 target selector，
+讓使用者不必手打 filename。raw-event-anchor-specific MAT/GDF alignment、
 同日後續 UI slice 已讓 Data Interpretation wizard 的 label carrier table 顯示 `Matched EEG`
 欄位；單檔 direct match 或多檔唯一 stem match 會顯示對應 EEG 檔名，無法唯一對應則顯示
 `Needs review`。UI replay artifact 已刷新，顯示 generic `events.tsv` 對到

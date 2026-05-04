@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDialogButtonBox,
     QFrame,
     QGridLayout,
@@ -50,6 +51,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.button_box: QDialogButtonBox
         self._metadata_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
+        self._label_target_widgets: dict[int, QComboBox] = {}
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         super().__init__(
             parent=parent,
@@ -381,6 +383,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
             item.setToolTip(6, "The data unit each label describes.")
             self._label_carrier_items.append((item, original))
             self.label_carrier_tree.addTopLevelItem(item)
+            if match_text == "Needs review" and self._file_count() > 1:
+                target_selector = self._label_target_selector()
+                self._label_target_widgets[id(item)] = target_selector
+                self.label_carrier_tree.setItemWidget(item, 1, target_selector)
         if self.label_carrier_tree.topLevelItemCount() == 0:
             self.label_carrier_tree.addTopLevelItem(
                 QTreeWidgetItem(
@@ -487,7 +493,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 continue
             changed: dict[str, str] = {}
             for choice_key, original_key, column in fields:
-                current = self._label_carrier_choice_text(choice_key, item.text(column))
+                current = self._label_carrier_choice_text(
+                    choice_key,
+                    self._label_carrier_item_text(item, column),
+                )
                 original_value = str(original.get(original_key) or "").strip()
                 if current and current != original_value:
                     changed[choice_key] = current
@@ -497,12 +506,29 @@ class DataInterpretationPreviewDialog(BaseDialog):
                         continue
                     current = self._label_carrier_choice_text(
                         choice_key,
-                        item.text(column),
+                        self._label_carrier_item_text(item, column),
                     )
                     if current and choice_key not in changed:
                         changed[choice_key] = current
                 choices[carrier_key] = changed
         return choices
+
+    def _label_target_selector(self) -> QComboBox:
+        selector = QComboBox(self.label_carrier_tree)
+        selector.addItem("Needs review")
+        for file_path in self.scan_result.get("eeg_files", []) or []:
+            text = Path(str(file_path)).name
+            if text:
+                selector.addItem(text)
+        selector.setToolTip("Choose the EEG file this label carrier applies to.")
+        return selector
+
+    def _label_carrier_item_text(self, item: QTreeWidgetItem, column: int) -> str:
+        if column == 1:
+            selector = self._label_target_widgets.get(id(item))
+            if selector is not None:
+                return selector.currentText()
+        return item.text(column)
 
     @staticmethod
     def _label_carrier_choice_text(choice_key: str, value: str) -> str:

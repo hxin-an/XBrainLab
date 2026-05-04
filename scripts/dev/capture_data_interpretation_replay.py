@@ -19,7 +19,7 @@ import mne
 import numpy as np
 from PIL import Image
 from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QLabel, QTreeWidget, QWidget
+from PyQt6.QtWidgets import QApplication, QComboBox, QLabel, QTreeWidget, QWidget
 
 from XBrainLab.backend.application import (
     ApplicationService,
@@ -144,7 +144,14 @@ def tree_rows(tree: QTreeWidget) -> list[list[str]]:
         item = tree.topLevelItem(index)
         if item is None:
             continue
-        rows.append([item.text(column) for column in range(tree.columnCount())])
+        row: list[str] = []
+        for column in range(tree.columnCount()):
+            widget = tree.itemWidget(item, column)
+            if isinstance(widget, QComboBox):
+                row.append(widget.currentText())
+            else:
+                row.append(item.text(column))
+        rows.append(row)
     return rows
 
 
@@ -194,7 +201,11 @@ def capture_replay(app: QApplication) -> int:
                 metadata_item.setText(3, "motor-imagery")
             label_item = dialog.label_carrier_tree.topLevelItem(0)
             if label_item is not None:
-                label_item.setText(1, SECOND_SOURCE_PATH.name)
+                target_selector = dialog.label_carrier_tree.itemWidget(label_item, 1)
+                if isinstance(target_selector, QComboBox):
+                    target_selector.setCurrentText(SECOND_SOURCE_PATH.name)
+                else:
+                    label_item.setText(1, SECOND_SOURCE_PATH.name)
                 label_item.setText(3, "trial_type")
                 label_item.setText(4, "onset")
                 label_item.setText(5, "seconds")
