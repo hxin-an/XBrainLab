@@ -269,7 +269,11 @@ policy，並將 JSON payload 驗證後轉成 typed command 再呼叫 `Applicatio
 preferred commands。
 `XBrainLab.mcp.server` 是目前的 stdio MCP server baseline；它只處理 MCP lifecycle / tool
 transport，實際 tool call 仍包這層 automation adapter，而不是繞過 command layer 或直接碰
-controller internals。
+controller internals。每個 stdio `tools/call` structured result 都會標出
+`adapter.mode=headless_mcp_stdio`、stable session id 和 `ui_refresh.supported=False`，避免把
+headless MCP session 誤認成桌面 UI control。對 `train` 這類 long-running command，stdio
+adapter 目前回 `long_running_job_required`，不做同步阻塞執行；HTTP job API、progress、
+cancel、recovery 和 resource lock 仍是後續 architecture work。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

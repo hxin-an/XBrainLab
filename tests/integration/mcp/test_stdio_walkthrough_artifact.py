@@ -37,5 +37,11 @@ def test_capture_mcp_stdio_walkthrough_writes_client_artifact(tmp_path: Path):
     assert payload["summary"]["tool_results"]["preview_interpretation"]["status"] == (
         "ok"
     )
+    assert payload["summary"]["tool_results"]["train"]["status"] == "failed"
+    assert payload["summary"]["long_running_boundary"]["error_type"] == (
+        "long_running_job_required"
+    )
+    assert payload["summary"]["long_running_boundary"]["supported"] is False
     assert "MCP Stdio Walkthrough" in markdown
     assert "headless_mcp_stdio" in markdown
+    assert "long_running_job_required" in markdown

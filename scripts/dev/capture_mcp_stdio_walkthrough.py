@@ -151,6 +151,21 @@ def run_walkthrough(server_command: list[str], source: Path) -> list[ClientStep]
                 },
             )
         )
+        steps.append(
+            _exchange(
+                proc,
+                "train",
+                {
+                    "jsonrpc": "2.0",
+                    "id": 6,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "train",
+                        "arguments": {},
+                    },
+                },
+            )
+        )
         return steps
     finally:
         if proc.stdin is not None:
@@ -171,6 +186,7 @@ def summarize_steps(steps: list[ClientStep]) -> dict[str, Any]:
         if step.request.get("method") == "tools/call"
     }
     adapter_boundary = _adapter_boundary_summary(steps)
+    long_running_boundary = _long_running_boundary_summary(steps)
     return {
         "initialized": "result" in steps[0].response,
         "tool_count": len(listed_tools),
@@ -180,6 +196,7 @@ def summarize_steps(steps: list[ClientStep]) -> dict[str, Any]:
         .get("x_xbrainlab", {})
         .get("taxonomy"),
         "adapter_boundary": adapter_boundary,
+        "long_running_boundary": long_running_boundary,
         "tool_results": tool_results,
     }
 
@@ -200,6 +217,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- session id stable: `{summary['adapter_boundary']['session_id_stable']}`",
         f"- UI refresh supported: `{summary['adapter_boundary']['ui_refresh_supported']}`",
         f"- UI refresh boundary: {summary['adapter_boundary']['ui_refresh_reason']}",
+        f"- long-running boundary: `{summary['long_running_boundary']['error_type']}`",
+        f"- long-running job supported: `{summary['long_running_boundary']['supported']}`",
         "",
         "## Tool Calls",
         "",
@@ -265,6 +284,41 @@ def _adapter_boundary_summary(steps: list[ClientStep]) -> dict[str, Any]:
         "session_id_stable": len(session_ids - {""}) <= 1,
         "ui_refresh_supported": bool(ui_refresh.get("supported")),
         "ui_refresh_reason": str(ui_refresh.get("reason") or ""),
+    }
+
+
+def _long_running_boundary_summary(steps: list[ClientStep]) -> dict[str, Any]:
+    for step in steps:
+        if step.label != "train":
+            continue
+        result = step.response.get("result")
+        if not isinstance(result, dict):
+            break
+        structured = result.get("structuredContent")
+        if not isinstance(structured, dict):
+            break
+        command_result = structured.get("result")
+        if not isinstance(command_result, dict):
+            break
+        diagnostics = command_result.get("diagnostics")
+        if not isinstance(diagnostics, dict):
+            diagnostics = {}
+        boundary = diagnostics.get("job_boundary")
+        if not isinstance(boundary, dict):
+            boundary = {}
+        return {
+            "error_type": str(command_result.get("error_type") or ""),
+            "supported": bool(boundary.get("supported")),
+            "required_transport": str(boundary.get("required_transport") or ""),
+            "supports_progress": bool(boundary.get("supports_progress")),
+            "supports_cancel": bool(boundary.get("supports_cancel")),
+        }
+    return {
+        "error_type": "",
+        "supported": False,
+        "required_transport": "",
+        "supports_progress": False,
+        "supports_cancel": False,
     }
 
 

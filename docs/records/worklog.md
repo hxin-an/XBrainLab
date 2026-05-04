@@ -51,18 +51,24 @@
     envelope。
   - 更新 stdio walkthrough summarizer / Markdown，讓 stdlib-only client artifact 直接呈現
     adapter boundary。
+  - 進一步補 `train` over stdio 的 long-running guard：schema valid 後仍不同步執行長任務，
+    而是回 `long_running_job_required` 和 `job_boundary` diagnostics。
 - 結果：
   - `artifacts/mcp/stdio-walkthrough.json` / `.md` 已刷新；summary 顯示
     `headless_mcp_stdio`、`transport=stdio`、`session_id_stable=True`、
     `ui_refresh_supported=False`。
+  - stdio walkthrough 現在也包含 `train` call，status 是 `failed`，error type 是
+    `long_running_job_required`，並標出 `http_job_api` / progress / cancel 尚未支援。
   - MCP adapter 更清楚地避免「HTTP/headless external client 正在刷新桌面 UI」這種錯誤 claim。
 - 證據：
   - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_tools_call_reuses_one_application_service_session -q`
     -> 初始紅燈：缺 `adapter` key。
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_long_running_commands_until_job_api_exists tests/integration/mcp/test_stdio_walkthrough_artifact.py::test_capture_mcp_stdio_walkthrough_writes_client_artifact -q`
+    -> 初始紅燈：stdio `train` 只回一般 precondition failure，artifact 沒有 `train` / long-running boundary；實作後 `2 passed`。
   - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q`
     -> `6 passed`。
   - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
-    -> `8 passed`。
+    -> `9 passed`。
   - `poetry run ruff check XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
     -> pass。
   - `poetry run basedpyright XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`

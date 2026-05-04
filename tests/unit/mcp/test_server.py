@@ -138,6 +138,44 @@ def test_tools_call_returns_tool_error_for_schema_repair():
     assert result["structuredContent"]["verification"]["schema_valid"] is False
 
 
+def test_stdio_mcp_blocks_long_running_commands_until_job_api_exists():
+    server = MCPServer()
+    server.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": PROTOCOL_VERSION},
+        }
+    )
+
+    response = server.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "train", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    assert result["isError"] is True
+    assert "long-running" in result["content"][0]["text"]
+    structured = result["structuredContent"]
+    assert structured["accepted"] is False
+    assert structured["verification"]["schema_valid"] is True
+    assert structured["verification"]["long_running_job_required"] is True
+    assert structured["result"]["error_type"] == "long_running_job_required"
+    assert structured["result"]["diagnostics"]["job_boundary"] == {
+        "supported": False,
+        "required_transport": "http_job_api",
+        "supports_progress": False,
+        "supports_cancel": False,
+    }
+    assert structured["adapter"]["mode"] == "headless_mcp_stdio"
+
+
 def test_unknown_tool_is_protocol_error():
     server = MCPServer()
     server.handle_message(

@@ -18,7 +18,9 @@ from typing import Any, TextIO
 from XBrainLab import __version__
 from XBrainLab.backend.application import (
     ApplicationService,
+    AutomationPayloadError,
     CommandName,
+    build_command_from_payload,
     execute_automation_payload,
     mcp_tool_specs,
 )
@@ -149,9 +151,30 @@ class MCPServer:
         if not isinstance(arguments, dict):
             raise JsonRpcError(INVALID_PARAMS, "Tool arguments must be an object.")
 
+        payload = {"command": name, "arguments": arguments}
+        try:
+            build_command_from_payload(payload)
+        except AutomationPayloadError:
+            execution = execute_automation_payload(self._service, payload).to_dict()
+            execution["adapter"] = self._adapter_metadata()
+            return {
+                "content": [{"type": "text", "text": _tool_result_text(execution)}],
+                "structuredContent": execution,
+                "isError": True,
+            }
+
+        capability = self._service.get_capabilities().get(name)
+        if capability.long_running:
+            execution = self._long_running_boundary_execution(name, capability)
+            return {
+                "content": [{"type": "text", "text": _tool_result_text(execution)}],
+                "structuredContent": execution,
+                "isError": True,
+            }
+
         execution = execute_automation_payload(
             self._service,
-            {"command": name, "arguments": arguments},
+            payload,
         ).to_dict()
         execution["adapter"] = self._adapter_metadata()
         result = execution.get("result")
@@ -162,6 +185,50 @@ class MCPServer:
             "content": [{"type": "text", "text": _tool_result_text(execution)}],
             "structuredContent": execution,
             "isError": is_error,
+        }
+
+    def _long_running_boundary_execution(
+        self,
+        name: str,
+        capability: Any,
+    ) -> dict[str, Any]:
+        message = (
+            "MCP stdio does not execute long-running commands synchronously. "
+            "Use the desktop UI or a future HTTP job API with progress and "
+            "cancel support."
+        )
+        job_boundary = {
+            "supported": False,
+            "required_transport": "http_job_api",
+            "supports_progress": False,
+            "supports_cancel": False,
+        }
+        return {
+            "accepted": False,
+            "command_name": name,
+            "verification": {
+                "schema_valid": True,
+                "capability_enabled": capability.enabled,
+                "confirmation_required": True,
+                "long_running_job_required": True,
+                "reasons": [message, *capability.reasons],
+            },
+            "autonomy": _autonomy_metadata(capability),
+            "capability": capability.to_dict(),
+            "result": {
+                "status": "failed",
+                "command_name": name,
+                "message": message,
+                "error_type": "long_running_job_required",
+                "recoverable": True,
+                "error_message": message,
+                "diagnostics": {
+                    "job_boundary": job_boundary,
+                    "capability_reasons": capability.reasons,
+                },
+            },
+            "state": self._service.get_state().to_dict(),
+            "adapter": self._adapter_metadata(),
         }
 
     def _adapter_metadata(self) -> dict[str, Any]:
@@ -219,6 +286,21 @@ def _tool_result_text(execution: dict[str, Any]) -> str:
 
     command_name = execution.get("command_name") or "command"
     return f"{command_name} completed."
+
+
+def _autonomy_metadata(capability: Any) -> dict[str, Any]:
+    return {
+        "can_auto_execute": capability.can_auto_execute,
+        "requires_confirmation": capability.requires_confirmation,
+        "confirmation_required": capability.confirmation_required,
+        "decision_boundary": capability.decision_boundary,
+        "continue_allowed_after_success": capability.continue_allowed_after_success,
+        "retry_limit": capability.retry_limit,
+        "stop_after_success": capability.stop_after_success,
+        "blocks_downstream_until_confirmed": (
+            capability.blocks_downstream_until_confirmed
+        ),
+    }
 
 
 def _error_response(

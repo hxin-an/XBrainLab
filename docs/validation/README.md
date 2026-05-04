@@ -217,15 +217,22 @@ UI baseline capture 結果：
   - `tools/call` structuredContent includes `adapter` metadata:
     `mode=headless_mcp_stdio`, `transport=stdio`, `session_id`, and a `ui_refresh` object with
     `supported=False`.
+  - stdio `train` is now blocked before synchronous execution with
+    `long_running_job_required`; result diagnostics include a `job_boundary` object indicating
+    `http_job_api`, progress, and cancel are not available yet.
   - MCP tool output schema exposes optional `adapter` property through the same automation schema
     source.
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` summary / Markdown now includes adapter mode,
-    transport, session stability, and UI refresh boundary.
+    transport, session stability, UI refresh boundary, and the long-running boundary.
 - Validation:
+  - Initial focused tests failed because stdio `train` only returned ordinary training preconditions
+    and the stdio artifact did not include a long-running boundary.
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_long_running_commands_until_job_api_exists tests/integration/mcp/test_stdio_walkthrough_artifact.py::test_capture_mcp_stdio_walkthrough_writes_client_artifact -q`
+    -> `2 passed`.
   - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q`
     -> `6 passed`.
   - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
-    -> `8 passed`.
+    -> `9 passed`.
   - `poetry run ruff check XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
     -> pass.
   - `poetry run basedpyright XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
@@ -235,8 +242,9 @@ UI baseline capture 結果：
   - `git diff --check` -> pass.
   - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
 - Claim boundary: this proves stdio MCP calls expose an explicit headless session/UI-refresh
-  boundary while still using ApplicationService. It does not implement Streamable HTTP,
-  authorization, long-running job progress/cancel/recovery, or desktop UI control certification.
+  boundary and refuse synchronous long-running training while still using ApplicationService. It
+  does not implement Streamable HTTP, authorization, long-running job progress/cancel/recovery, or
+  desktop UI control certification.
 
 2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
 

@@ -11,6 +11,8 @@
 - session id stable: `True`
 - UI refresh supported: `False`
 - UI refresh boundary: This MCP server owns a headless ApplicationService session and does not refresh a desktop UI.
+- long-running boundary: `long_running_job_required`
+- long-running job supported: `False`
 
 ## Tool Calls
 
@@ -31,3 +33,9 @@
 - isError: `False`
 - status: `ok`
 - text: Interpretation validation: needs_confirmation.
+
+### train
+
+- isError: `True`
+- status: `failed`
+- text: MCP stdio does not execute long-running commands synchronously. Use the desktop UI or a future HTTP job API with progress and cancel support.
