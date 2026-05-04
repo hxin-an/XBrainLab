@@ -1,21 +1,6 @@
-# XBrainLab Local Tool-Call Eval
-
-- runner: `local-llm`
-- model: `microsoft/Phi-4-mini-instruct`
-- repeat count: `3`
-- exploratory: `False`
-- runtime classification: `gpu-ready`
-- cache usage: `15.34 GB`
-
-## Failure Taxonomy
-
-- None.
-
-## Scoring Detail
-
 # XBrainLab Tool-Call Eval
 
-- runner: `local-llm`
+- runner: `deterministic-scripted-baseline`
 - total cases: `100`
 - passed: `100`
 - failed: `0`

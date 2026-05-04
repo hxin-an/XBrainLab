@@ -37,6 +37,39 @@
 
 ## 2026-05-04
 
+### 10:10 local tool-call thesis-candidate 100-case rerun
+
+- 做了什麼：
+  - deterministic / local eval cases 從 `54` 擴到 `100`，納入 Data Interpretation file /
+    folder / BIDS / recipe、metadata choices、relative / missing path、confirmation、blocked /
+    recovery、多輪 workflow、bandpass-only vs standard preprocess、dataset split、visualization /
+    saliency readiness 和 query-state cases。
+  - 補 parser / normalizer / verifier / controller guardrails：partial tool-name JSON、
+    command-only JSON with confirmation metadata、blank / relative source path rejection、
+    metadata choice cleanup、bandpass-only demotion、dataset split vs training mode、epoch default
+    window、visualization / saliency substitute rejection。
+- 結果：
+  - deterministic baseline：`100 / 100` pass。
+  - primary `microsoft/Phi-4-mini-instruct` full local eval：`100 / 100` pass (`100.00%`)。
+  - fallback `microsoft/Phi-3.5-mini-instruct` full local eval：`100 / 100` pass (`100.00%`)。
+  - 兩者都是 `gpu-ready`，cache `15.34 GB`，no download。
+- 證據：
+  - `artifacts/agent_evals/deterministic/latest.md`
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_intent.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/agent/test_controller.py -q` -> `166 passed`
+  - targeted `poetry run ruff check ...` -> pass
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q` -> `487 passed`
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+- 接續 / 本輪剩餘：
+  - 這解除 local tool-call eval case 數不足和 33% / 37% / 54-case failure blocker。
+  - 仍不能宣稱 product complete：true ChatPanel local-model walkthrough、Windows launcher
+    click-through、MCP external-client walkthrough 和成熟 import wizard UI 驗收仍未完成。
+
 ### 07:40 local assistant full eval normalization rerun
 
 - 做了什麼：

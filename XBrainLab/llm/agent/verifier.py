@@ -301,6 +301,7 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
         "replace/",
     )
     PLACEHOLDER_EXACT: ClassVar[set[str]] = {
+        "",
         "empty",
         "path",
         "path_to_dataset",
@@ -315,7 +316,7 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
         for param_name, value in params.items():
             if param_name in self.PATH_KEYS:
                 placeholder = self._first_placeholder(value)
-                if placeholder:
+                if placeholder is not None:
                     label = self._path_label(param_name)
                     return VerificationResult(
                         is_valid=False,
@@ -324,9 +325,20 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
                             f"by the user, got placeholder {placeholder!r}."
                         ),
                     )
+                relative_path = self._first_relative_required_path(param_name, value)
+                if relative_path:
+                    label = self._path_label(param_name)
+                    return VerificationResult(
+                        is_valid=False,
+                        error_message=(
+                            f"Required {label} must be an actual absolute path "
+                            f"provided by the user, got relative path "
+                            f"{relative_path!r}."
+                        ),
+                    )
             elif name == "attach_labels" and param_name == "mapping":
                 placeholder = self._first_placeholder(value)
-                if placeholder:
+                if placeholder is not None:
                     return VerificationResult(
                         is_valid=False,
                         error_message=(
@@ -359,6 +371,35 @@ class PlaceholderArgumentValidator(ValidatorStrategy):
         if text in cls.PLACEHOLDER_EXACT:
             return True
         return any(marker in text for marker in cls.PLACEHOLDER_MARKERS)
+
+    @classmethod
+    def _first_relative_required_path(
+        cls,
+        param_name: str,
+        value: Any,
+    ) -> str | None:
+        if param_name not in {"recipe_path", "source_path"}:
+            return None
+        if isinstance(value, str):
+            text = value.strip().strip("\"'")
+            if text and not cls._is_absolute_user_path(text):
+                return text
+            return None
+        if isinstance(value, list):
+            for item in value:
+                found = cls._first_relative_required_path(param_name, item)
+                if found:
+                    return found
+        return None
+
+    @staticmethod
+    def _is_absolute_user_path(value: str) -> bool:
+        return os.path.isabs(value) or (
+            len(value) >= 3
+            and value[1] == ":"
+            and value[2] in {"\\", "/"}
+            and value[0].isalpha()
+        )
 
     @staticmethod
     def _path_label(param_name: str) -> str:

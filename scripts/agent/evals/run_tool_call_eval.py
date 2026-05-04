@@ -718,12 +718,547 @@ def build_eval_cases() -> list[EvalCase]:
             "preprocess",
             [
                 ExpectedToolCall(
-                    "apply_standard_preprocess",
-                    {"l_freq": 8.0, "h_freq": 30.0},
+                    "apply_bandpass_filter",
+                    {"low_freq": 8.0, "high_freq": 30.0},
                 )
             ],
             expected_recovery=True,
             expected_state_delta={"preprocessed_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-gdf-file",
+            "GDF file enters through Data Interpretation scan",
+            "empty",
+            ["Scan data source /data/A01T.gdf"],
+            "scan_source",
+            [ExpectedToolCall("scan_source", {"source_path": "/data/A01T.gdf"})],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-brainvision-file",
+            "BrainVision header enters through Data Interpretation scan",
+            "empty",
+            ["Scan data source /data/sub-01/eeg/sub-01_task-mi.vhdr"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/data/sub-01/eeg/sub-01_task-mi.vhdr"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-eeglab-file",
+            "EEGLAB set file enters through Data Interpretation scan",
+            "empty",
+            ["Scan data source /data/eeglab/sub01.set"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source", {"source_path": "/data/eeglab/sub01.set"}
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-edf-file",
+            "EDF file enters through Data Interpretation scan",
+            "empty",
+            ["Scan data source /data/edf/sub01.edf"],
+            "scan_source",
+            [ExpectedToolCall("scan_source", {"source_path": "/data/edf/sub01.edf"})],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-xdf-file",
+            "XDF source enters through Data Interpretation scan",
+            "empty",
+            ["Scan data source /data/xdf/session01.xdf"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source", {"source_path": "/data/xdf/session01.xdf"}
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-custom-folder",
+            "Custom folder with external labels enters through scan",
+            "empty",
+            ["Scan data source /datasets/custom_csv_labels"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/datasets/custom_csv_labels"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-scan-source-bids-root-alt",
+            "BIDS root scan keeps BIDS source hint",
+            "empty",
+            ["Scan the BIDS dataset at /mnt/eeg/bids_root"],
+            "scan_source",
+            [
+                ExpectedToolCall(
+                    "scan_source",
+                    {"source_path": "/mnt/eeg/bids_root", "source_hint": "bids"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "empty-reload-recipe-json-alt",
+            "Import recipe reload uses the recipe command",
+            "empty",
+            ["Reload recipe /recipes/session_import.json"],
+            "reload_interpretation_recipe",
+            [
+                ExpectedToolCall(
+                    "reload_interpretation_recipe",
+                    {"recipe_path": "/recipes/session_import.json"},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "scanned-preview-session-override",
+            "Preview accepts session metadata choice",
+            "scanned",
+            ["Preview with session ses-01 override."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"session": "ses-01"}},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "scanned-preview-task-override",
+            "Preview accepts task metadata choice",
+            "scanned",
+            ["Preview with task motor override."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"task": "motor"}},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "scanned-preview-run-override",
+            "Preview accepts run metadata choice",
+            "scanned",
+            ["Preview with run 02 override."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"run": "02"}},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "scanned-preview-event-role",
+            "Preview accepts event role choice",
+            "scanned",
+            ["Preview with event role stimulus."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"event_role": "stimulus"}},
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-preview-session-choice",
+            "Session choice in second turn previews candidate",
+            "scanned",
+            ["Preview the candidate.", "Use session ses-02 and preview again."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"session": "ses-02"}},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-preview-task-run-choice",
+            "Task and run choices in second turn preview candidate",
+            "scanned",
+            ["Preview the candidate.", "Use task imagery run 03 and preview again."],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {"choices": {"task": "imagery", "run": "03"}},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "previewed-gdf-label-validate-confirmation",
+            "External GDF label ambiguity validates to confirmation boundary",
+            "previewed_confirmation",
+            ["Validate the external GDF label carrier candidate."],
+            "validate_interpretation",
+            [ExpectedToolCall("validate_interpretation", {})],
+            expected_result_interpretation="confirmation_boundary",
+            expected_state_delta={"interpretation_changed": True},
+        ),
+        EvalCase(
+            "validated-confirmation-apply-yes",
+            "Plain yes apply still carries confirmation",
+            "validated_confirmation",
+            ["Apply the interpretation.", "Yes, apply it."],
+            "apply_interpretation",
+            [ExpectedToolCall("apply_interpretation", {"confirmed": True})],
+            expected_confirmation_required=True,
+            expected_state_delta={
+                "raw_changed": True,
+                "interpretation_changed": True,
+            },
+        ),
+        EvalCase(
+            "applied-save-recipe-alt-path",
+            "Applied interpretation can save recipe to another explicit path",
+            "applied_interpretation",
+            ["Save the recipe to /recipes/sub01_confirmed_recipe.json"],
+            "save_interpretation_recipe",
+            [
+                ExpectedToolCall(
+                    "save_interpretation_recipe",
+                    {"recipe_path": "/recipes/sub01_confirmed_recipe.json"},
+                )
+            ],
+        ),
+        EvalCase(
+            "empty-scan-source-relative-missing",
+            "Relative scan source is treated as missing input",
+            "empty",
+            ["Scan data source datasets/session01"],
+            "scan_source",
+            expected_blocked=True,
+            expected_reason_terms=["source path"],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "empty-reload-recipe-relative-missing",
+            "Relative recipe path is treated as missing input",
+            "empty",
+            ["Reload recipe import_recipe.json"],
+            "reload_interpretation_recipe",
+            expected_blocked=True,
+            expected_reason_terms=["recipe path"],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "scanned-apply-before-validation-block",
+            "Apply from scanned state is blocked until validation",
+            "scanned",
+            ["Apply the interpretation now."],
+            "apply_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Validate an interpretation before applying"],
+        ),
+        EvalCase(
+            "loaded-preview-before-scan-block",
+            "Preview import candidate is blocked without scan state",
+            "loaded",
+            ["Preview the interpretation candidate."],
+            "preview_interpretation",
+            expected_blocked=True,
+            expected_reason_terms=["Scan a data source before previewing"],
+        ),
+        EvalCase(
+            "loaded-bandpass-only",
+            "Bandpass-only request uses dedicated bandpass tool",
+            "loaded",
+            ["Apply 1 to 45 Hz bandpass."],
+            "preprocess",
+            [
+                ExpectedToolCall(
+                    "apply_bandpass_filter",
+                    {"low_freq": 1.0, "high_freq": 45.0},
+                )
+            ],
+            expected_state_delta={"preprocessed_changed": True},
+        ),
+        EvalCase(
+            "loaded-standard-preprocess-default",
+            "Standard preprocessing without frequencies uses standard tool",
+            "loaded",
+            ["Run standard preprocessing."],
+            "preprocess",
+            [ExpectedToolCall("apply_standard_preprocess", {})],
+            expected_state_delta={"preprocessed_changed": True},
+        ),
+        EvalCase(
+            "loaded-standard-preprocess-frequencies",
+            "Standard preprocessing with frequencies stays standard preprocess",
+            "loaded",
+            ["Apply standard preprocessing with 1 to 40 Hz bandpass."],
+            "preprocess",
+            [
+                ExpectedToolCall(
+                    "apply_standard_preprocess",
+                    {"l_freq": 1.0, "h_freq": 40.0},
+                )
+            ],
+            expected_state_delta={"preprocessed_changed": True},
+        ),
+        EvalCase(
+            "empty-bandpass-block",
+            "Bandpass before loading raw data is blocked",
+            "empty",
+            ["Apply 8 to 30 Hz bandpass."],
+            "preprocess",
+            expected_blocked=True,
+            expected_reason_terms=["Load raw data before preprocessing"],
+        ),
+        EvalCase(
+            "epoched-preprocess-reset-block",
+            "Preprocess change after epoching requires reset",
+            "epoched",
+            ["Apply 1 to 40 Hz bandpass."],
+            "preprocess",
+            expected_blocked=True,
+            expected_reason_terms=["Reset the session before changing preprocessing"],
+        ),
+        EvalCase(
+            "epoched-create-epoch-reset-block",
+            "Recreating epochs after epoching requires reset",
+            "epoched",
+            ["Create epochs from -0.2 to 0.8 seconds for event 769."],
+            "create_epoch",
+            expected_blocked=True,
+            expected_reason_terms=["Reset the session before recreating epochs"],
+        ),
+        EvalCase(
+            "preprocessed-epoch-default-window",
+            "Epoch request without explicit window uses safe default",
+            "preprocessed",
+            ["Create epochs for event 770."],
+            "create_epoch",
+            [
+                ExpectedToolCall(
+                    "epoch_data",
+                    {"t_min": -0.1, "t_max": 1.0, "event_id": ["770"]},
+                )
+            ],
+            expected_state_delta={"epoch_changed": True},
+        ),
+        EvalCase(
+            "preprocessed-epoch-event-770-window",
+            "Epoch request extracts event and window",
+            "preprocessed",
+            ["Create epochs for event 770 from -0.1 to 0.7 seconds."],
+            "create_epoch",
+            [
+                ExpectedToolCall(
+                    "epoch_data",
+                    {"t_min": -0.1, "t_max": 0.7, "event_id": ["770"]},
+                )
+            ],
+            expected_state_delta={"epoch_changed": True},
+        ),
+        EvalCase(
+            "epoched-generate-group-dataset",
+            "Group dataset request preserves training mode",
+            "epoched",
+            ["Generate a group training dataset with 20% test split."],
+            "generate_dataset",
+            [
+                ExpectedToolCall(
+                    "generate_dataset",
+                    {"training_mode": "group", "test_ratio": 0.2},
+                )
+            ],
+            expected_state_delta={"dataset_changed": True},
+        ),
+        EvalCase(
+            "epoched-generate-subject-split",
+            "Subject split dataset request preserves split strategy",
+            "epoched",
+            ["Generate an individual dataset with subject split."],
+            "generate_dataset",
+            [
+                ExpectedToolCall(
+                    "generate_dataset",
+                    {"training_mode": "individual", "split_strategy": "subject"},
+                )
+            ],
+            expected_state_delta={"dataset_changed": True},
+        ),
+        EvalCase(
+            "epoched-generate-session-split",
+            "Session split dataset request preserves split strategy",
+            "epoched",
+            ["Generate an individual dataset with session split."],
+            "generate_dataset",
+            [
+                ExpectedToolCall(
+                    "generate_dataset",
+                    {"training_mode": "individual", "split_strategy": "session"},
+                )
+            ],
+            expected_state_delta={"dataset_changed": True},
+        ),
+        EvalCase(
+            "dataset-set-model-shallowconvnet",
+            "Dataset state can select a non-default local model architecture",
+            "dataset_without_training_config",
+            ["Use ShallowConvNet as the model."],
+            "configure_training",
+            [ExpectedToolCall("set_model", {"model_name": "ShallowConvNet"})],
+        ),
+        EvalCase(
+            "dataset-configure-training-20-32-lr",
+            "Dataset state can configure a larger training run",
+            "dataset_without_training_config",
+            ["Configure training for 20 epochs, batch size 32, learning rate 0.0005."],
+            "configure_training",
+            [
+                ExpectedToolCall(
+                    "configure_training",
+                    {"epoch": 20, "batch_size": 32, "learning_rate": 0.0005},
+                )
+            ],
+        ),
+        EvalCase(
+            "training-ready-run-training-confirmation",
+            "Ready training run asks for confirmation",
+            "training_ready",
+            ["Run training now."],
+            "train",
+            [ExpectedToolCall("start_training", {})],
+            expected_confirmation_required=True,
+        ),
+        EvalCase(
+            "training-ready-reset-confirmation",
+            "Reset from training-ready state is a confirmation boundary",
+            "training_ready",
+            ["Reset this session."],
+            "reset_session",
+            [ExpectedToolCall("clear_dataset", {})],
+            expected_blocked=True,
+            expected_confirmation_required=True,
+            expected_reason_terms=["requires confirmation"],
+        ),
+        EvalCase(
+            "trained-visualize-ready-summary",
+            "Trained state visualization uses service summary",
+            "trained",
+            ["Visualize the trained result."],
+            "visualize",
+            expected_result_interpretation="service_query_summary",
+        ),
+        EvalCase(
+            "trained-saliency-ready-summary",
+            "Trained state saliency uses service summary",
+            "trained",
+            ["Show saliency map for the trained model."],
+            "saliency",
+            expected_result_interpretation="service_query_summary",
+        ),
+        EvalCase(
+            "dataset-saliency-readiness-summary",
+            "Dataset state saliency uses readiness summary",
+            "dataset_without_training_config",
+            ["Show saliency readiness."],
+            "saliency",
+            expected_result_interpretation="service_query_summary",
+        ),
+        EvalCase(
+            "query-state-trained",
+            "Trained state query remains read-only",
+            "trained",
+            ["What is the current workflow state?"],
+            "query_state",
+            [ExpectedToolCall("query_state", {"query": "state"})],
+        ),
+        EvalCase(
+            "multi-turn-query-after-training-ready",
+            "State query after training setup remains read-only",
+            "training_ready",
+            ["Configure training.", "What changed in the state?"],
+            "query_state",
+            [ExpectedToolCall("query_state", {"query": "state"})],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "multi-turn-loaded-standard-preprocess",
+            "Loaded state accepts standard preprocessing in second turn",
+            "loaded",
+            ["The raw file is loaded.", "Run standard preprocessing."],
+            "preprocess",
+            [ExpectedToolCall("apply_standard_preprocess", {})],
+            expected_recovery=True,
+            expected_state_delta={"preprocessed_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-preprocessed-create-epoch",
+            "Preprocessed state creates epochs in second turn",
+            "preprocessed",
+            ["The data is preprocessed.", "Create epochs for event 769."],
+            "create_epoch",
+            [
+                ExpectedToolCall(
+                    "epoch_data",
+                    {"t_min": -0.1, "t_max": 1.0, "event_id": ["769"]},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"epoch_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-epoched-generate-session-dataset",
+            "Epoched state generates session-split dataset in second turn",
+            "epoched",
+            ["Epochs are ready.", "Generate an individual dataset with session split."],
+            "generate_dataset",
+            [
+                ExpectedToolCall(
+                    "generate_dataset",
+                    {"training_mode": "individual", "split_strategy": "session"},
+                )
+            ],
+            expected_recovery=True,
+            expected_state_delta={"dataset_changed": True},
+        ),
+        EvalCase(
+            "multi-turn-dataset-set-model-config",
+            "Dataset state can set model after setup context",
+            "dataset_without_training_config",
+            ["The dataset is generated.", "Use EEGNet as the model."],
+            "configure_training",
+            [ExpectedToolCall("set_model", {"model_name": "EEGNet"})],
+            expected_recovery=True,
+        ),
+        EvalCase(
+            "multi-turn-training-ready-start",
+            "Training-ready state starts training in second turn",
+            "training_ready",
+            ["Training options are ready.", "Start training now."],
+            "train",
+            [ExpectedToolCall("start_training", {})],
+            expected_confirmation_required=True,
+            expected_recovery=True,
         ),
         EvalCase(
             "query-state-empty",
@@ -940,14 +1475,10 @@ def predict_case(case: EvalCase) -> Prediction:
         blocked = block_from_policy(policy, CommandName.PREPROCESS)
         if blocked:
             return blocked_prediction(intent, [], blocked)
+        tool_name, args = preprocess_tool_call(text)
         return Prediction(
             intent=intent,
-            tool_calls=[
-                PredictedToolCall(
-                    "apply_standard_preprocess",
-                    extract_filter_args(text),
-                )
-            ],
+            tool_calls=[PredictedToolCall(tool_name, args)],
             state_delta=state_delta_for(case),
         )
 
@@ -969,23 +1500,16 @@ def predict_case(case: EvalCase) -> Prediction:
             return blocked_prediction(intent, [], blocked)
         return Prediction(
             intent=intent,
-            tool_calls=[
-                PredictedToolCall(
-                    "generate_dataset",
-                    {
-                        "test_ratio": 0.2,
-                        "val_ratio": 0.2,
-                        "training_mode": "individual",
-                    },
-                )
-            ],
+            tool_calls=[PredictedToolCall("generate_dataset", dataset_tool_args(text))],
             state_delta=state_delta_for(case),
         )
 
     if intent == "configure_training":
         return Prediction(
             intent=intent,
-            tool_calls=[PredictedToolCall(*training_tool_call(text))],
+            tool_calls=[
+                PredictedToolCall(*training_tool_call(" ".join(case.user_turns)))
+            ],
         )
 
     if intent == "train":
@@ -1408,7 +1932,24 @@ def blocked_prediction(
 
 def extract_paths(text: str) -> list[str]:
     """Extract simple absolute paths from user text."""
-    return re.findall(r"/[^\s,;]+", text)
+    return [
+        item.rstrip(".") for item in re.findall(r"(?<![A-Za-z0-9_.-])/[^\s,;]+", text)
+    ]
+
+
+def preprocess_tool_call(text: str) -> tuple[str, dict[str, Any]]:
+    """Return deterministic preprocess tool and arguments."""
+    if "bandpass" in text and "preprocess" not in text and "standard" not in text:
+        return "apply_bandpass_filter", extract_bandpass_args(text)
+    return "apply_standard_preprocess", extract_filter_args(text)
+
+
+def extract_bandpass_args(text: str) -> dict[str, Any]:
+    """Extract bandpass frequencies for the dedicated bandpass tool."""
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*hz", text)
+    if not match:
+        return {}
+    return {"low_freq": float(match.group(1)), "high_freq": float(match.group(2))}
 
 
 def extract_filter_args(text: str) -> dict[str, Any]:
@@ -1444,6 +1985,16 @@ def extract_interpretation_choices(text: str) -> dict[str, Any]:
     task = re.search(r"task\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
     if task:
         choices["task"] = task.group(1)
+    run = re.search(r"run\s+([A-Za-z0-9_-]+)", text, flags=re.IGNORECASE)
+    if run:
+        choices["run"] = run.group(1)
+    event_role = re.search(
+        r"event\s+role\s+([A-Za-z0-9_-]+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if event_role:
+        choices["event_role"] = event_role.group(1)
     return choices
 
 
@@ -1463,12 +2014,20 @@ def user_confirmed(text: str) -> bool:
 
 def training_tool_call(text: str) -> tuple[str, dict[str, Any]]:
     """Return deterministic training config/model tool call."""
-    if "eegnet" in text:
+    normalized = text.lower()
+    if "eegnet" in normalized:
         return "set_model", {"model_name": "EEGNet"}
+    model = re.search(
+        r"use\s+([A-Za-z0-9_-]+)\s+as\s+the\s+model",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if model:
+        return "set_model", {"model_name": model.group(1)}
     args: dict[str, Any] = {}
-    epoch = re.search(r"(\d+)\s+epochs?", text)
-    batch = re.search(r"batch size\s+(\d+)", text)
-    lr = re.search(r"learning rate\s+([0-9]+(?:\.[0-9]+)?)", text)
+    epoch = re.search(r"(\d+)\s+epochs?", normalized)
+    batch = re.search(r"batch size\s+(\d+)", normalized)
+    lr = re.search(r"learning rate\s+([0-9]+(?:\.[0-9]+)?)", normalized)
     if epoch:
         args["epoch"] = int(epoch.group(1))
     if batch:
@@ -1476,6 +2035,24 @@ def training_tool_call(text: str) -> tuple[str, dict[str, Any]]:
     if lr:
         args["learning_rate"] = float(lr.group(1))
     return "configure_training", args
+
+
+def dataset_tool_args(text: str) -> dict[str, Any]:
+    """Extract deterministic dataset split and training mode arguments."""
+    args: dict[str, Any] = {
+        "test_ratio": 0.2,
+        "val_ratio": 0.2,
+        "training_mode": "individual",
+    }
+    if "group" in text:
+        args["training_mode"] = "group"
+    if "subject" in text and "split" in text:
+        args["split_strategy"] = "subject"
+    elif "session" in text and "split" in text:
+        args["split_strategy"] = "session"
+    elif "trial" in text and "split" in text:
+        args["split_strategy"] = "trial"
+    return args
 
 
 def result_interpretation_for(case: EvalCase) -> str | None:
@@ -1609,9 +2186,23 @@ def arguments_match(
         return False
     for expected_call, predicted_call in zip(expected, predicted, strict=True):
         for key, value in expected_call.arguments.items():
-            if predicted_call.arguments.get(key) != value:
+            if not _argument_value_matches(value, predicted_call.arguments.get(key)):
                 return False
     return True
+
+
+def _argument_value_matches(expected: Any, predicted: Any) -> bool:
+    """Return whether an expected argument is present in a predicted value."""
+    if isinstance(expected, dict):
+        if not isinstance(predicted, dict):
+            return False
+        return all(
+            key in predicted and _argument_value_matches(value, predicted[key])
+            for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return predicted == expected
+    return predicted == expected
 
 
 def blocked_matches(case: EvalCase, prediction: Prediction) -> bool:

@@ -107,6 +107,9 @@ class CommandParser:
             # But simple_bench expects a tuple.
             # I should change simple_bench first or return a list and fix simple_bench.
             return found_commands  # Return List[Tuple]
+        partial_command = CommandParser._extract_partial_json_command(cleaned_text)
+        if partial_command is not None:
+            return [partial_command]
         bare_command = CommandParser._extract_bare_command(cleaned_text)
         if bare_command is not None:
             return [bare_command]
@@ -160,7 +163,14 @@ class CommandParser:
         if params is None:
             params = data.get("arguments")
         if params is None and any(
-            key in data for key in ("reason", "reasons", "blocked_reason")
+            key in data
+            for key in (
+                "reason",
+                "reasons",
+                "blocked_reason",
+                "requires_confirmation",
+                "decision_boundary",
+            )
         ):
             params = {}
         if isinstance(params, str):
@@ -181,6 +191,22 @@ class CommandParser:
         if not stripped:
             return None
         command = re.split(r"[\s:]+", stripped, maxsplit=1)[0]
+        if command in _BARE_COMMANDS:
+            return command, {}
+        return None
+
+    @staticmethod
+    def _extract_partial_json_command(
+        text: str,
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Extract a tool name from truncated JSON when parameters are unusable."""
+        match = re.search(
+            r'"(?:tool_name|name)"\s*:\s*"([A-Za-z0-9_]+)"',
+            text,
+        )
+        if not match:
+            return None
+        command = match.group(1)
         if command in _BARE_COMMANDS:
             return command, {}
         return None

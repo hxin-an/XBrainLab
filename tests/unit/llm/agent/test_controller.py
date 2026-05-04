@@ -391,6 +391,24 @@ class TestProcessToolCalls:
         assert result.command_name == CommandName.VISUALIZE.value
         assert "readiness summary" in result.message
 
+    def test_requested_intent_boundary_rejects_saliency_setup_substitute(self, ctrl):
+        ctrl.history = [{"role": "user", "content": "Show saliency readiness."}]
+        capability = CommandCapability(
+            command_name=CommandName.SALIENCY.value,
+            enabled=True,
+            reasons=[],
+        )
+        policy = MagicMock()
+        policy.get.return_value = capability
+
+        with patch("XBrainLab.llm.agent.controller.BackendFacade") as facade:
+            facade.return_value.get_capabilities.return_value = policy
+            result = ctrl._check_requested_intent_boundary("set_model")
+
+        assert result is not None
+        assert result.command_name == CommandName.SALIENCY.value
+        assert "readiness summary" in result.message
+
     def test_verification_failure_uses_requested_path_label(self, ctrl):
         ctrl.history = [{"role": "user", "content": "Load my EEG file."}]
 

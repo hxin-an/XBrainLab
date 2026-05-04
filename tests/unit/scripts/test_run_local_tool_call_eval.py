@@ -169,6 +169,19 @@ def test_scores_missing_recipe_path_with_path_label():
     assert "recipe path" in score.visible_response
 
 
+def test_scores_relative_scan_source_as_missing_input():
+    case = _case("empty-scan-source-relative-missing")
+    raw_output = (
+        '{"tool_name":"scan_source","parameters":{"source_path":"data/session01"}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "missing_input"
+    assert "source path" in score.visible_response
+
+
 def test_scores_visualization_ui_route_as_service_summary():
     case = _case("visualize-before-trained-block")
     raw_output = (
@@ -180,6 +193,43 @@ def test_scores_visualization_ui_route_as_service_summary():
     assert score.passed
     assert score.parsed_tool_calls == []
     assert score.prediction["result_interpretation"] == "service_query_summary"
+
+
+def test_scores_saliency_setup_tool_as_service_summary():
+    case = _case("dataset-saliency-readiness-summary")
+    raw_output = '{"tool_name":"set_model","parameters":{"model_name":"EEGNet"}}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == []
+    assert score.prediction["result_interpretation"] == "service_query_summary"
+
+
+def test_scores_saliency_tool_name_as_service_summary():
+    case = _case("dataset-saliency-readiness-summary")
+    raw_output = '{"tool_name":"saliency","parameters":{}}'
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == []
+    assert score.prediction["result_interpretation"] == "service_query_summary"
+
+
+def test_scores_only_first_tool_call():
+    case = _case("query-state-empty")
+    raw_output = (
+        '{"command":"query_state","reasons":[]}\n'
+        '{"command":"configure_training","reasons":["not the selected tool"]}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == [
+        {"tool_name": "query_state", "arguments": {"query": "state"}}
+    ]
 
 
 def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path):

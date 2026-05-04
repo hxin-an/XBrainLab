@@ -34,6 +34,18 @@ def test_malformed_json():
     assert result is None
 
 
+def test_parse_partial_tool_name_json_as_empty_parameters():
+    text = """
+    ```json
+    {"tool_name": "preview_interpretation", "parameters": {"choices": {"task":
+    ```
+    """
+
+    result = CommandParser.parse(text)
+
+    assert result == [("preview_interpretation", {})]
+
+
 def test_json_without_command_payload():
     text = '{"command": "test"}'
     result = CommandParser.parse(text)
@@ -44,6 +56,15 @@ def test_parse_command_only_json_with_reason_as_empty_parameters():
     text = '{"command": "validate_interpretation", "reasons": []}'
     result = CommandParser.parse(text)
     assert result == [("validate_interpretation", {})]
+
+
+def test_parse_command_only_json_with_decision_boundary_as_empty_parameters():
+    text = (
+        '{"command": "apply_interpretation", '
+        '"requires_confirmation": false, "decision_boundary": "data_apply"}'
+    )
+    result = CommandParser.parse(text)
+    assert result == [("apply_interpretation", {})]
 
 
 def test_parse_bare_tool_name_at_start():

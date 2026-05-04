@@ -288,6 +288,12 @@ class TestPlaceholderArgumentValidator:
         assert not r.is_valid
         assert "actual path" in _error_message(r)
 
+    def test_rejects_blank_scan_source_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate("scan_source", {"source_path": ""})
+        assert not r.is_valid
+        assert "actual path" in _error_message(r)
+
     def test_rejects_placeholder_load_data_path_list(self):
         v = PlaceholderArgumentValidator()
         r = v.validate(
@@ -304,6 +310,21 @@ class TestPlaceholderArgumentValidator:
             {"recipe_path": "path_to_recipe.json"},
         )
         assert not r.is_valid
+
+    def test_rejects_relative_scan_source_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate("scan_source", {"source_path": "datasets/session01"})
+        assert not r.is_valid
+        assert "absolute path" in _error_message(r)
+
+    def test_rejects_relative_recipe_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate(
+            "reload_interpretation_recipe",
+            {"recipe_path": "import_recipe.json"},
+        )
+        assert not r.is_valid
+        assert "absolute path" in _error_message(r)
 
     def test_rejects_path_to_your_recipe(self):
         v = PlaceholderArgumentValidator()
@@ -324,6 +345,11 @@ class TestPlaceholderArgumentValidator:
     def test_allows_realistic_absolute_path(self):
         v = PlaceholderArgumentValidator()
         r = v.validate("scan_source", {"source_path": "/data/S01.gdf"})
+        assert r.is_valid
+
+    def test_allows_windows_absolute_source_path(self):
+        v = PlaceholderArgumentValidator()
+        r = v.validate("scan_source", {"source_path": r"C:\data\S01.gdf"})
         assert r.is_valid
 
     def test_ignores_non_path_values(self):

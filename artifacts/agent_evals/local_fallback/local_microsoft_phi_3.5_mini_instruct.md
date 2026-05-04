@@ -9,35 +9,32 @@
 
 ## Failure Taxonomy
 
-- argument mismatch: `1`
-- state delta mismatch: `1`
-- tool selection mismatch: `1`
-- trajectory mismatch: `1`
+- None.
 
 ## Scoring Detail
 
 # XBrainLab Tool-Call Eval
 
 - runner: `local-llm`
-- total cases: `54`
-- passed: `53`
-- failed: `1`
-- pass rate: `98.15%`
+- total cases: `100`
+- passed: `100`
+- failed: `0`
+- pass rate: `100.00%`
 
 ## Metrics
 
 | Metric | Accuracy |
 | --- | ---: |
 | intent | 100.00% |
-| tool selection | 98.15% |
-| argument correctness | 98.15% |
+| tool selection | 100.00% |
+| argument correctness | 100.00% |
 | state aware | 100.00% |
 | verification result match | 100.00% |
-| state delta | 98.15% |
+| state delta | 100.00% |
 | blocked command | 100.00% |
 | recovery | 100.00% |
 | tool result interpretation | 100.00% |
-| trajectory quality | 98.15% |
+| trajectory quality | 100.00% |
 | runtime safety | 100.00% |
 | local llm reliability | 100.00% |
 
@@ -49,4 +46,4 @@
 
 ## Failed Cases
 
-- `multi-turn-loaded-preprocess`: tool selection mismatch, argument mismatch, state delta mismatch, trajectory mismatch
+- None.

@@ -56,6 +56,10 @@ def infer_user_intent(text: str) -> str:
         "interpret" in normalized
         or "candidate" in normalized
         or "subject" in normalized
+        or "session" in normalized
+        or "task" in normalized
+        or "run" in normalized
+        or "event role" in normalized
         or has_it
     ):
         return "preview_interpretation"

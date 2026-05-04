@@ -28,6 +28,74 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Local tool-call thesis-candidate 100-case rerun
+
+### 背景
+
+前一輪 local tool-call eval 已從不可用區間提升到 `53 / 54`，但仍不足使用者要求的
+`100` thesis candidate cases，也留下 bandpass-only vs standard preprocess 語意 failure。
+
+### 變更
+
+- `scripts/agent/evals/run_tool_call_eval.py` 的 case suite 擴到 `100` cases，覆蓋：
+  - Data Interpretation file / folder / BIDS / recipe。
+  - metadata choice：subject / session / task / run / event role。
+  - missing / relative path、confirmation、blocked / recovery、多輪 workflow。
+  - bandpass-only vs standard preprocess、epoch default window、dataset split、query-state、
+    visualization / saliency readiness。
+- local tool-call guardrails 補齊：
+  - `CommandParser` 解析 partial tool-name JSON，以及 command-only JSON with
+    `requires_confirmation` / `decision_boundary` metadata。
+  - `PlaceholderArgumentValidator` 拒絕 blank / relative source and recipe paths。
+  - `tool_call_normalizer` 處理 metadata choice cleanup、bandpass-only demotion、dataset
+    split vs training mode、epoch default window、confirmed apply、legacy scan / recipe
+    substitutes。
+  - local eval prompt 明確寫入 direct tool map、epoch default window 和 visualization /
+    saliency no-substitute rule。
+  - `LLMController` requested-intent boundary 擋 saliency / visualization 被模型改成 setup /
+    UI-route tool。
+
+### 影響範圍
+
+- Agent parser / verifier / controller guardrail。
+- Deterministic and local tool-call eval runner / artifacts。
+- Tool-call thesis-candidate evidence docs。
+
+### 驗證
+
+- deterministic eval：
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --repeat-count 2 --output-dir artifacts/agent_evals/deterministic`
+  - `100 / 100` pass。
+- primary local eval：
+  - `timeout 3600s poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role primary --repeat-count 3 --max-new-tokens 128 --output-dir artifacts/agent_evals/local_primary`
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.md`
+  - `100 / 100` pass (`100.00%`)。
+- fallback local eval：
+  - `timeout 3600s poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --max-new-tokens 128 --output-dir artifacts/agent_evals/local_fallback`
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.md`
+  - `100 / 100` pass (`100.00%`)。
+- runtime / resource:
+  - primary / fallback 都是 `gpu-ready`。
+  - cache `15.34 GB`，no download。
+- targeted tests：
+  - `poetry run pytest --capture=sys tests/unit/llm/test_parser.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_intent.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/agent/test_controller.py -q`
+  - `166 passed`
+  - targeted `poetry run ruff check ...` -> pass
+- regression / docs / architecture gates：
+  - `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools tests/unit/scripts/test_run_local_tool_call_eval.py tests/unit/llm/test_parser.py tests/unit/llm/test_pipeline_state.py tests/unit/llm/tools/test_application_surface.py -q`
+  - `487 passed`
+  - `poetry run ruff check .` -> pass
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass
+  - `git diff --check` -> pass
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+
+### 剩餘風險
+
+- 這支撐 thesis-candidate tool-call benchmark evidence，但不等於整個 thesis package closure。
+- true ChatPanel local-model walkthrough、Windows launcher click-through、MCP external-client
+  walkthrough、完整 import wizard UI 驗收仍未完成。
+
 ## 2026-05-04 Local assistant tool-call normalization full rerun
 
 ### 背景

@@ -1060,7 +1060,7 @@ class LLMController(QObject):
 
         if (
             requested_intent in {"visualize", "saliency"}
-            and tool_name == "switch_panel"
+            and chosen_command != requested_command
         ):
             reason = "; ".join(capability.reasons) or (
                 "Use an ApplicationService readiness summary before opening "

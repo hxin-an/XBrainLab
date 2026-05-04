@@ -93,6 +93,18 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "The initial workflow state is authoritative: if the state is already "
         "scanned, previewed, validated, or applied, continue from that state "
         "instead of repeating an earlier scan or load step. Use "
+        "preview_interpretation with choices for subject, session, task, run, "
+        "or event_role metadata overrides. Use validate_interpretation with "
+        "empty parameters when the latest request is validation. Do not claim "
+        "these direct tools are unavailable when they appear in Available tools. "
+        "epoch_data for create_epoch requests; preprocessed state can create "
+        "epochs and does not need dataset generation first. If create_epoch "
+        "has an event id but no time window, call epoch_data with t_min -0.1 "
+        "and t_max 1.0 instead of asking for t_min/t_max. Use set_model when "
+        "the user asks to use a model architecture. For visualize or saliency "
+        "intents, do not call set_model, configure_training, switch_panel, or "
+        "another substitute tool; provide a concise readiness summary instead. "
+        "Use "
         "apply_standard_preprocess for standard preprocessing or general "
         "preprocess requests, even when bandpass frequencies are included; use "
         "apply_bandpass_filter only for a bandpass-only operation. For "
@@ -101,7 +113,9 @@ def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
         "Prefer the direct workflow tool named by the user request. Do not use "
         "list_files or get_dataset_info as a substitute for scan_source, "
         "preview_interpretation, validate_interpretation, apply_interpretation, "
-        "generate_dataset, or training commands. Do not use markdown."
+        "generate_dataset, or training commands. Do not emit a second JSON "
+        "object for blocked command explanations or diagnostics. Do not use "
+        "markdown."
     )
     user = (
         f"Initial workflow state: {case.state_name}\n\n"
@@ -176,7 +190,7 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
 
     first_tool = tool_calls[0].tool_name
     first_params = tool_calls[0].arguments
-    if _visualization_ui_route_substitute(requested_intent, first_tool):
+    if _visualization_tool_substitute(requested_intent, first_tool):
         return Prediction(
             intent=requested_intent,
             tool_calls=[],
@@ -207,6 +221,7 @@ def prediction_from_model_output(case: EvalCase, raw_output: str) -> Prediction:
             marker in lower
             for marker in (
                 "actual path",
+                "absolute path",
                 "missing required parameter",
                 "required input",
                 "is missing",
@@ -515,7 +530,7 @@ def _prediction_tool_calls(
             arguments=_normalized_prediction_arguments(name, params),
         )
         for name, params in _normalized_parsed_tool_calls(case, parsed)
-    ]
+    ][:1]
 
 
 def _normalized_parsed_tool_calls(
@@ -551,15 +566,21 @@ def _intent_adjusted_verification_message(intent: str, message: str) -> str:
     lower = message.lower()
     if label is None:
         return message
-    if "actual path" in lower:
+    if "actual path" in lower or "absolute path" in lower:
         return f"Required {label} must be an actual path provided by the user."
     if "missing required parameter" in lower or "required input" in lower:
         return f"Required {label} is missing."
     return message
 
 
-def _visualization_ui_route_substitute(intent: str, tool_name: str) -> bool:
-    return intent in {"visualize", "saliency"} and tool_name == "switch_panel"
+def _visualization_tool_substitute(intent: str, tool_name: str) -> bool:
+    return intent in {"visualize", "saliency"} and tool_name in {
+        "switch_panel",
+        "set_model",
+        "configure_training",
+        "saliency",
+        "visualize",
+    }
 
 
 def _blocked_requested_intent_reason(state_name: str, intent: str) -> str:

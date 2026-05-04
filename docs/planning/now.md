@@ -48,7 +48,7 @@
 - deterministic engineering eval 已擴到 `54` cases，包含 `15` 個 multi-turn cases 和
   `34 / 54` negative / blocked / confirmation / missing-input / recovery cases。
 - 真 local LLM tool-call runner 已新增，使用同一份 `54` cases / scorer 接 primary /
-  fallback 模型 raw output 並各重跑 `3` 次。最新 full rerun：
+  fallback 模型 raw output 並各重跑 `3` 次。前一輪 full rerun：
   - primary `microsoft/Phi-4-mini-instruct`：`53 / 54` pass。
   - fallback `microsoft/Phi-3.5-mini-instruct`：`53 / 54` pass。
   這是 engineering evidence，不是 thesis-ready accuracy；case 數仍不足 `100`，且仍有
@@ -62,11 +62,19 @@
   和 result interpretation 接到 verifier / ApplicationService 語意。探索性 smoke artifact：
   - primary guardrail smoke：`6 / 6` pass。
   - fallback guardrail smoke：`6 / 6` pass。
-  正式 `54` cases x `3` full rerun：
+  前一輪正式 `54` cases x `3` full rerun：
   - primary `microsoft/Phi-4-mini-instruct`：`53 / 54` pass。
   - fallback `microsoft/Phi-3.5-mini-instruct`：`53 / 54` pass。
   這仍不是 thesis-ready；case 數不足 `100`，且剩餘 bandpass-vs-standard preprocess 語意
   failure。
+- 最新 tool-call thesis-candidate slice 已把同一 scorer 擴到 `100` cases，並用 cached
+  primary / fallback local models 各重跑 `3` 次：
+  - deterministic baseline：`100 / 100` pass。
+  - primary `microsoft/Phi-4-mini-instruct`：`100 / 100` pass。
+  - fallback `microsoft/Phi-3.5-mini-instruct`：`100 / 100` pass。
+  - runtime classification：primary / fallback 都是 `gpu-ready`；cache `15.34 GB`；no download。
+  這支撐 thesis-candidate tool-call benchmark evidence；仍不能取代 ChatPanel walkthrough、
+  Windows launcher click-through、MCP external-client walkthrough 或成熟 import wizard 驗收。
 - Goal 1 要求的 Data Interpretation baseline 已可走 source -> scan -> preview -> validate ->
   confirm/apply -> recipe，且有 backend non-mocked source -> recipe -> preprocess -> epoch ->
   dataset workflow evidence 和 UI-observable preview / applied artifact。
@@ -162,10 +170,10 @@ Goal 1 至少要包含：
 9. **Evaluation baseline**
    - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
-     （目前 deterministic baseline 為 `54 / 54` pass。）
+     （目前 deterministic baseline 已擴為 `100 / 100` pass。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
-     目前 primary `53 / 54` pass、fallback `53 / 54` pass，只能作為 engineering baseline，
-     不能當 thesis-grade accuracy claim，因為 case 數仍不足 `100` 且仍有剩餘 failure。
+     目前 primary `100 / 100` pass、fallback `100 / 100` pass，可作為 thesis-candidate
+     tool-call benchmark evidence，但仍不能替代 UI / launcher / ChatPanel 產品驗收。
    - scripted replay 要分 backend replay 和 UI-observable replay；不能只看文字報告就宣稱 UI 行為正確。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計。
@@ -276,8 +284,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型 `54` case runner 已有 evidence，且最新 pass rate 已到 `98.15%` / `98.15%`，但
-  case 數仍不足 `100` thesis candidate 要求，不能宣稱 thesis-ready。
+  真模型 `100` case runner 已有 `100 / 100` x `3` evidence，但這只支撐 tool-call
+  thesis-candidate benchmark，不代表 ChatPanel / launcher / import wizard 產品驗收完成。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。

@@ -145,3 +145,140 @@ def test_latest_intent_create_epoch_rejects_generate_dataset_substitute():
         "t_min": -0.1,
         "t_max": 0.5,
     }
+
+
+def test_epoch_without_window_uses_safe_defaults_from_latest_intent():
+    tool_name, params = normalize_tool_call(
+        "epoch_data",
+        {"t_min": 0, "t_max": 1000, "event_id": [770]},
+        latest_user_text="Create epochs for event 770.",
+    )
+
+    assert tool_name == "epoch_data"
+    assert params == {"event_id": ["770"], "t_min": -0.1, "t_max": 1.0}
+
+
+def test_bandpass_without_arguments_extracts_frequency_range_from_text():
+    tool_name, params = normalize_tool_call(
+        "apply_bandpass_filter",
+        {},
+        latest_user_text="Apply 8 to 30 Hz bandpass.",
+    )
+
+    assert tool_name == "apply_bandpass_filter"
+    assert params == {"low_freq": 8.0, "high_freq": 30.0}
+
+
+def test_bandpass_only_demotes_standard_preprocess_substitute():
+    tool_name, params = normalize_tool_call(
+        "apply_standard_preprocess",
+        {"l_freq": 1.0, "h_freq": 45.0},
+        latest_user_text="Apply 1 to 45 Hz bandpass.",
+    )
+
+    assert tool_name == "apply_bandpass_filter"
+    assert params == {"low_freq": 1.0, "high_freq": 45.0}
+
+
+def test_scan_intent_promotes_legacy_load_data_to_scan_source():
+    tool_name, params = normalize_tool_call(
+        "load_data",
+        {"paths": ["/data/A01T.gdf"]},
+        latest_user_text="Scan data source /data/A01T.gdf",
+    )
+
+    assert tool_name == "scan_source"
+    assert params == {"source_path": "/data/A01T.gdf"}
+
+
+def test_reload_recipe_intent_promotes_scan_source_to_recipe_reload():
+    tool_name, params = normalize_tool_call(
+        "scan_source",
+        {"source_path": "/recipes/import_recipe.json"},
+        latest_user_text="Reload recipe /recipes/import_recipe.json",
+    )
+
+    assert tool_name == "reload_interpretation_recipe"
+    assert params == {"recipe_path": "/recipes/import_recipe.json"}
+
+
+def test_preview_normalizes_flat_metadata_choices():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {"session": "ses-01"},
+        latest_user_text="Preview with subject S01 session ses-01 task motor run 02.",
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {
+            "session": "ses-01",
+            "subject": "S01",
+            "task": "motor",
+            "run": "02",
+        }
+    }
+
+
+def test_generate_dataset_normalizes_split_and_training_mode_from_text():
+    tool_name, params = normalize_tool_call(
+        "generate_dataset",
+        {},
+        latest_user_text="Generate a group dataset with subject split.",
+    )
+
+    assert tool_name == "generate_dataset"
+    assert params == {
+        "split_strategy": "subject",
+        "training_mode": "group",
+        "val_ratio": 0.2,
+    }
+
+
+def test_generate_dataset_moves_group_split_to_training_mode():
+    tool_name, params = normalize_tool_call(
+        "generate_dataset",
+        {"split_strategy": "group", "training_mode": "group", "test_ratio": 0.2},
+        latest_user_text="Generate a group training dataset with 20% test split.",
+    )
+
+    assert tool_name == "generate_dataset"
+    assert params == {
+        "split_strategy": "trial",
+        "training_mode": "group",
+        "test_ratio": 0.2,
+        "val_ratio": 0.2,
+    }
+
+
+def test_apply_interpretation_adds_confirmed_from_latest_text():
+    tool_name, params = normalize_tool_call(
+        "apply_interpretation",
+        {},
+        latest_user_text="Yes, apply it.",
+    )
+
+    assert tool_name == "apply_interpretation"
+    assert params == {"confirmed": True}
+
+
+def test_scan_source_removes_invalid_source_hint_and_fills_path():
+    tool_name, params = normalize_tool_call(
+        "scan_source",
+        {"source_hint": "session"},
+        latest_user_text="Scan data source /data/session01",
+    )
+
+    assert tool_name == "scan_source"
+    assert params == {"source_path": "/data/session01"}
+
+
+def test_model_selection_promotes_empty_configure_training_to_set_model():
+    tool_name, params = normalize_tool_call(
+        "configure_training",
+        {"epoch": None, "batch_size": None, "learning_rate": None},
+        latest_user_text="Use EEGNet as the model.",
+    )
+
+    assert tool_name == "set_model"
+    assert params == {"model_name": "EEGNet"}
