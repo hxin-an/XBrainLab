@@ -14,13 +14,17 @@
 - `wsl_stderr_mirrored`: `True`
 - `startup_saw_main_window`: `True`
 - `startup_bounded`: `True`
+- `startup_geometry_screen_count_logged`: `True`
+- `startup_geometry_screen_detail_logged`: `True`
+- `startup_geometry_splash_logged`: `True`
+- `startup_geometry_main_window_logged`: `True`
 - `wsl_log_exists`: `True`
 - `startup_log_exists`: `True`
 
 ## Logs
 
-- `wsl`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-112540.log`
-- `startup`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-112540.log`
+- `wsl`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-193942.log`
+- `startup`: `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/launcher-20260504-193942.log`
 
 ## Command Summary
 

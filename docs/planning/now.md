@@ -103,6 +103,8 @@
     output/log。
   - `startup` smoke 經 Windows launcher path 執行 bounded `run.py --model local`，artifact 顯示
     `MainWindow initialized` 和 timeout 後正常收束。
+  - 最新 artifact 也會啟用 startup geometry diagnostics，確認 screen count、screen detail、
+    splash geometry 和 main-window geometry 都寫進 launcher stdout / log。
   - artifact：`artifacts/launcher/windows-launcher-walkthrough.json` / `.md`。
   - 這支撐 Windows launcher command path，不代表真人 Desktop click-through、packaged release
     approval 或多螢幕實際使用體驗已完成。

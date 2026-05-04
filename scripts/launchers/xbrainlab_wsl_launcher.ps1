@@ -101,8 +101,10 @@ if ($env:XBRAINLAB_LAUNCHER_SMOKE -eq "startup") {
 set -o pipefail
 cd '$Repo'
 export PYTHONUNBUFFERED=1
+export XBRAINLAB_STARTUP_DIAGNOSTICS=1
 echo "WSL repo: `$(pwd)"
 echo "Launcher startup smoke: running run.py through the Windows launcher path."
+echo "Launcher startup smoke: startup geometry diagnostics enabled."
 if command -v xvfb-run >/dev/null 2>&1; then
   echo "Launcher startup smoke: using xvfb-run for deterministic headless capture."
   timeout 45s xvfb-run -a poetry run python run.py --model local

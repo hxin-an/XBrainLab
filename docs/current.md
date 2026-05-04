@@ -276,7 +276,9 @@ MainWindow 首次啟動或壞 saved geometry 現在 fallback 到 maximized，不
 `XBrainLab.cmd` smoke、從 PowerShell 執行 WSL stdout/stderr smoke，再透過同一 launcher path
 跑 bounded `run.py` startup smoke；`artifacts/launcher/windows-launcher-walkthrough.json` /
 `.md` 顯示 Desktop command 指向 active repo、PowerShell launcher 可進 WSL、log file 存在、
-stdout/stderr 被 mirror、且 startup 看到 `MainWindow initialized`。這仍不是真人 Windows
+stdout/stderr 被 mirror、startup 看到 `MainWindow initialized`，且最新 artifact 會強制收集
+startup geometry diagnostics，確認 screen count、screen detail、splash geometry 和 main-window
+geometry log 都出現。這仍不是真人 Windows
 Desktop click-through 或 release packaging approval。真 local model 多輪 tool-command UI
 walkthrough、MCP Inspector GUI、external thesis experiment runner 仍未完成，不能宣稱完整
 release closure。

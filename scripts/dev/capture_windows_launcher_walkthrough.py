@@ -102,6 +102,7 @@ def capture_walkthrough(startup_timeout: int) -> dict[str, Any]:
         "startup_saw_main_window": "MainWindow initialized" in startup.stdout,
         "startup_bounded": "GUI kept running until timeout" in startup.stdout,
     }
+    checks.update(startup_geometry_checks(startup.stdout))
     log_paths = {
         "wsl": windows_log_path_to_wsl(extract_log_path(wsl.stdout)),
         "startup": windows_log_path_to_wsl(extract_log_path(startup.stdout)),
@@ -179,6 +180,23 @@ def windows_log_path_to_wsl(path: str) -> str:
         drive = normalized[0].lower()
         return f"/mnt/{drive}{normalized[2:]}"
     return normalized
+
+
+def startup_geometry_checks(output: str) -> dict[str, bool]:
+    """Return startup geometry evidence checks from launcher stdout."""
+    return {
+        "startup_geometry_screen_count_logged": (
+            "startup geometry: screen_count=" in output
+        ),
+        "startup_geometry_screen_detail_logged": "startup geometry: screen[0]"
+        in output,
+        "startup_geometry_splash_logged": (
+            "startup geometry: splash.after_show" in output
+        ),
+        "startup_geometry_main_window_logged": (
+            "startup geometry: main_window.after_show" in output
+        ),
+    }
 
 
 def render_markdown(payload: dict[str, Any]) -> str:

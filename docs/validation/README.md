@@ -274,14 +274,23 @@ EEG dataset experiment 屬於 pipeline support，不是 thesis 主評分。
   - launcher logs exist under `/mnt/c/Users/Administrator/AppData/Local/XBrainLab/logs/`
   - startup smoke saw `MainWindow initialized`
   - startup smoke was bounded by timeout and returned `0`
+  - startup geometry diagnostics logged screen count, screen detail, splash geometry, and
+    main-window geometry.
 - commands:
   - `timeout 180s poetry run python scripts/dev/capture_windows_launcher_walkthrough.py --output-dir artifacts/launcher --startup-timeout 150`
   - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_windows_launcher_walkthrough.py -q`
-  - `2 passed`
+  - `3 passed`
+  - targeted `ruff check` / `ruff format --check` -> pass.
+  - `poetry run basedpyright scripts/dev/capture_windows_launcher_walkthrough.py`
+  - `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> Architecture compliant.
+  - `git diff --check` -> pass.
 
 這批 evidence 支撐 Windows Desktop command、PowerShell launcher、WSL bridge、launcher log 和
-bounded startup path。它仍不是真人雙螢幕 Desktop click-through、packaged installer approval 或
-完整 release validation。
+bounded startup path，也支撐 automated startup geometry diagnostics 會被寫入 launcher
+stdout/log。它仍不是真人雙螢幕 Desktop click-through、packaged installer approval 或完整
+release validation。
 
 2026-05-02 product-delivery final gate：
 
