@@ -1714,25 +1714,30 @@ class ApplicationService:
         if not candidate.label_carrier_plan:
             return {"status": "not_applicable", "reason": "No label carrier plan."}
 
-        applicable = [
+        timestamp_applicable = [
             item
             for item in candidate.label_carrier_plan
             if self._is_auto_applicable_timestamp_label_plan(item)
         ]
-        if not applicable:
+        sequence_applicable = [
+            item
+            for item in candidate.label_carrier_plan
+            if self._is_auto_applicable_sequence_label_plan(item, candidate.class_map)
+        ]
+        if not timestamp_applicable and not sequence_applicable:
             return {
                 "status": "skipped",
-                "reason": (
-                    "No reviewed timestamp label carrier is safe to apply "
-                    "automatically."
-                ),
+                "reason": ("No reviewed label carrier is safe to apply automatically."),
             }
+
+        applicable = timestamp_applicable or sequence_applicable
+        mode = "timestamp" if timestamp_applicable else "legacy"
         if len(applicable) != 1:
             return {
                 "status": "skipped",
                 "reason": (
                     "Automatic label application currently supports one reviewed "
-                    "timestamp label carrier at a time."
+                    "label carrier at a time."
                 ),
             }
 
@@ -1760,29 +1765,38 @@ class ApplicationService:
             labels = load_label_file(
                 carrier_path,
                 label_field=label_field,
-                anchor=anchor,
+                anchor=anchor if mode == "timestamp" else None,
             )
             label_map = {carrier_path: labels}
             target = target_files[0]
             file_mapping = {self._data_filepath(target): carrier_path}
             mapping = self._label_import_mapping_from_class_map(candidate.class_map)
-            count = self.dataset.apply_labels_batch(
-                target_files,
-                label_map,
-                file_mapping,
-                mapping,
-                None,
-            )
+            if mode == "timestamp":
+                count = self.dataset.apply_labels_batch(
+                    target_files,
+                    label_map,
+                    file_mapping,
+                    mapping,
+                    None,
+                )
+            else:
+                count = self.dataset.apply_labels_legacy(
+                    target_files,
+                    labels,
+                    mapping,
+                    None,
+                    force_import=False,
+                )
             plan = LabelImportPlan(
                 target_indices=[0],
                 label_map=label_map,
                 mapping=mapping,
                 file_mapping=file_mapping,
-                mode="timestamp",
+                mode=mode,
             )
             record = self._record_label_import_for_recipe(
                 plan=plan,
-                mode="timestamp",
+                mode=mode,
                 target_files=target_files,
                 file_mapping=file_mapping,
                 selected_event_names=None,
@@ -1806,7 +1820,7 @@ class ApplicationService:
         return {
             "status": "applied",
             "success_count": int(count),
-            "mode": "timestamp",
+            "mode": mode,
             "label_import": record or {},
             "label_carrier": carrier_path,
         }
@@ -1820,6 +1834,22 @@ class ApplicationService:
             and bool(str(plan.get("selected_label_field") or "").strip())
             and bool(str(plan.get("selected_anchor") or "").strip())
             and time_model in {"seconds", "relative_time"}
+        )
+
+    @staticmethod
+    def _is_auto_applicable_sequence_label_plan(
+        plan: dict[str, Any],
+        class_map: dict[str, str],
+    ) -> bool:
+        carrier_format = str(plan.get("format") or "").strip()
+        time_model = str(plan.get("time_model") or "").strip().lower()
+        granularity = str(plan.get("granularity") or "").strip().lower()
+        return (
+            carrier_format in {"MAT", "MAT labels", "TXT"}
+            and bool(str(plan.get("selected_label_field") or "").strip())
+            and time_model == "trial_order"
+            and granularity == "trial"
+            and bool(class_map)
         )
 
     @staticmethod

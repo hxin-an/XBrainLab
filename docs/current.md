@@ -108,8 +108,10 @@ carrier、已確認且 time model 為 seconds / relative time 時，自動透過
 service-backed compatibility path；label import 成功後會更新 applied interpretation 的
 `label_imports` / `label_carriers` / recipe trace，UI 也會提示使用者可保存更新後
 recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import wizard 內嵌 label
-import editor；MAT sequence auto-apply、多檔 label mapping、all-format manual compatibility
-matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
+import editor；同日後續 slice 已把單一 EEG + 單一 reviewed MAT / TXT trial-order sequence
+carrier + confirmed class map 接到 legacy label import，recipe trace 會寫
+`label_import:legacy:<n>`。raw-event-anchor-specific MAT/GDF alignment、多檔 label mapping、
+all-format manual compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：

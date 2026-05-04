@@ -213,6 +213,29 @@
   - 仍缺完整 post-load label import 內嵌 wizard、全格式人工 compatibility matrix、真人
     Windows launcher click-through、MCP Inspector GUI / release config。
 
+### 18:02 Data Interpretation reviewed MAT/TXT sequence label apply
+
+- 做了什麼：
+  - 補 TDD 紅燈：reviewed MAT `classlabel` + trial-order + class map 的 interpretation apply 應該
+    套用 external labels，而不是只保存 recipe plan。
+  - `_apply_interpretation_label_carriers()` 新增 sequence path：
+    - 單一 loaded EEG file。
+    - 單一 reviewed MAT / TXT carrier。
+    - time model 是 `trial_order`。
+    - granularity 是 `trial`。
+    - class map 已確認。
+  - 成功後呼叫既有 `dataset.apply_labels_legacy()`，並透過 `_record_label_import_for_recipe()`
+    寫入 `label_import:legacy:<n>`。
+- 結果：
+  - MAT sequence test 先看到 `label_apply.status=skipped`，實作後改為 `applied / legacy`。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier -q`
+    -> `2 passed`
+- 接續 / 本輪剩餘：
+  - 仍不支撐 raw-event-anchor-specific GDF/MAT alignment 或多檔 label mapping。
+  - 仍缺完整 post-load label import 內嵌 wizard、全格式人工 compatibility matrix、真人
+    Windows launcher click-through、MCP Inspector GUI / release config。
+
 ### 11:17 Data Interpretation metadata / class-map editor slice
 
 - 做了什麼：

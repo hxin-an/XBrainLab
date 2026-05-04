@@ -353,6 +353,56 @@ def test_apply_interpretation_applies_reviewed_timestamp_label_carrier(tmp_path)
     )
 
 
+def test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier(tmp_path):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "reviewed_mat_sequence"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(label_path, {"classlabel": np.array([1, 2, 1, 2])})
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    raw.get_filepath.return_value = str(eeg_path)
+    raw.get_filename.return_value = eeg_path.name
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+    service.dataset.get_loaded_data_list = MagicMock(return_value=[raw])
+    service.dataset.apply_labels_legacy = MagicMock(return_value=1)
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "label_field": "classlabel",
+                        "anchor": "trial order",
+                        "time_model": "trial_order",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert apply_result.ok is True
+    assert apply_result.diagnostics["label_apply"]["status"] == "applied"
+    assert apply_result.diagnostics["label_apply"]["mode"] == "legacy"
+    args = service.dataset.apply_labels_legacy.call_args.args
+    assert args[0] == [raw]
+    np.testing.assert_array_equal(args[1], np.array([1, 2, 1, 2]))
+    assert args[2] == {1: "left hand", 2: "right hand"}
+    assert apply_result.state.interpretation.label_imports[0]["mode"] == "legacy"
+    assert (
+        "label_import:legacy:1"
+        in apply_result.diagnostics["applied_interpretation"]["recipe_trace"]
+    )
+
+
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir = tmp_path / "labels_only"
     source_dir.mkdir()

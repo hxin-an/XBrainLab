@@ -1316,8 +1316,24 @@ matrix 或 XDF stream parser implementation。
   - targeted `basedpyright` clean; `.basedpyright/baseline.json` refreshed with one fewer baseline error.
 
 這批 evidence 支撐 reviewed timestamp label carrier 已從 recipe-only 進入 Data Interpretation
-apply path。它仍不支撐 MAT sequence auto-apply、多檔 label mapping、XDF stream parser 或完整
+apply path。下一個 slice 已補 reviewed MAT / TXT trial-order sequence auto-apply；仍不支撐
+raw-event-anchor-specific GDF/MAT alignment、多檔 label mapping、XDF stream parser 或完整
 post-load label import 內嵌 wizard。
+
+2026-05-04 Data Interpretation MAT/TXT sequence label apply slice：
+
+- backend:
+  - `apply_interpretation` now also auto-applies the narrow sequence path:
+    one loaded EEG file, one reviewed MAT / TXT trial-order carrier, confirmed class map, and
+    trial granularity.
+  - This path uses `load_label_file(label_field=...)`, then existing `apply_labels_legacy()`, and
+    records `label_import:legacy:<n>` in the recipe trace.
+- targeted gate:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_mat_sequence_label_carrier tests/unit/backend/application/test_application_service.py::test_apply_interpretation_applies_reviewed_timestamp_label_carrier -q`
+  - `2 passed`
+
+這批 evidence 支撐 reviewed MAT trial-order labels 不再只是 recipe plan。它仍不支撐需要選 raw
+event anchor 的 GDF/MAT alignment、多檔 label mapping 或 full manual compatibility matrix。
 
 2026-05-04 Data Interpretation recipe save UI path：
 

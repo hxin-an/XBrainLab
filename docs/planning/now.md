@@ -233,10 +233,12 @@
     carrier、已確認且 time model 為 seconds / relative time 時，自動套用 external labels，並保存
     `label_apply` diagnostics / `label_import:timestamp:<n>` recipe trace；UI replay JSON 已顯示
     labels applied。
+  - 單一 EEG + 單一 reviewed MAT / TXT trial-order sequence carrier + confirmed class map 也會走
+    legacy label import，並保存 `label_import:legacy:<n>` recipe trace。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label import editor；MAT sequence auto-apply、多檔 label mapping、all-format manual
-  compatibility matrix、MCP Inspector / Windows release config 尚未完成，UI replay coverage 還不是
-  完整真人 walkthrough。
+  wizard 內嵌 label import editor；raw-event-anchor-specific MAT/GDF alignment、多檔 label
+  mapping、all-format manual compatibility matrix、MCP Inspector / Windows release config 尚未完成，
+  UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 
