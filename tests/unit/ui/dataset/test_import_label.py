@@ -20,6 +20,23 @@ def test_import_label_dialog_init(qtbot):
     assert dialog.map_table.rowCount() == 0
 
 
+def test_import_label_dialog_shows_target_context(qtbot):
+    """The post-load label dialog should show where labels will be applied."""
+    target = type(
+        "Target",
+        (),
+        {
+            "get_filepath": lambda self: "/tmp/sub-01_task-mi_raw.fif",
+        },
+    )()
+    dialog = ImportLabelDialog(target_files=[target])
+    qtbot.addWidget(dialog)
+
+    assert "Apply labels to 1 loaded EEG file" in dialog.target_summary_label.text()
+    assert "sub-01_task-mi_raw.fif" in dialog.target_summary_label.text()
+    assert "updates the current import recipe trace" in dialog.recipe_note_label.text()
+
+
 def test_import_label_dialog_load_file(qtbot):
     """Test loading label files."""
     dialog = ImportLabelDialog()

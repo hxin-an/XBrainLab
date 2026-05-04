@@ -1453,6 +1453,33 @@ label wizard UI 或真人 click-through。
 post-load label import wizard，也不支撐 raw-event-anchor-specific MAT/GDF alignment 或真人
 click-through。
 
+2026-05-04 post-load label import target context slice：
+
+- UI:
+  - `ImportLabelDialog` title is now `Add Labels to Loaded Data`.
+  - The dialog accepts selected target files and shows which loaded EEG file(s) will receive
+    labels.
+  - The dialog tells the user that a successful import updates the current import recipe trace
+    when a data interpretation is active.
+  - `DatasetActionHandler.import_label()` passes selected target files into the dialog.
+- TDD evidence:
+  - initial focused tests failed because `ImportLabelDialog` had no `target_files` argument and
+    `DatasetActionHandler` did not pass target context.
+- targeted gates:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset/test_import_label.py::test_import_label_dialog_shows_target_context tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_passes_target_context_to_dialog -q`
+  - `2 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset/test_import_label.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_ui_misc.py::TestImportLabelDialog -q`
+  - `83 passed`
+  - targeted `ruff` clean.
+  - targeted `ruff format --check` clean.
+  - production `basedpyright` for touched UI files clean.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass.
+
+這批 evidence 支撐 compatibility label import flow 的 target visibility and recipe-impact wording。
+它仍不是完整 embedded label wizard，也沒有取代 Data Interpretation source-level import flow。
+
 2026-05-04 Data Interpretation recipe save UI path：
 
 - Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。

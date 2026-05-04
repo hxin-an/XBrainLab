@@ -37,6 +37,35 @@
 
 ## 2026-05-04
 
+### 18:42 Post-load label import target context
+
+- 做了什麼：
+  - 補 TDD 紅燈：`ImportLabelDialog(target_files=[...])` 應顯示 labels 會套到哪些 loaded EEG
+    files，`DatasetActionHandler.import_label()` 應把 selected target files 傳進 dialog。
+  - `ImportLabelDialog` title 改為 `Add Labels to Loaded Data`。
+  - dialog 上方新增 target summary，列出最多前三個 target EEG file，並顯示 target count。
+  - dialog 新增 recipe impact note：若目前有 active data interpretation，成功 import 會更新
+    import recipe trace。
+- 結果：
+  - 初跑 focused tests 先因 `target_files` 參數不存在、action 未傳 target context 而失敗。
+  - compatibility label flow 現在不再讓使用者只看到 label file picker；使用者能看到 labels
+    會套到哪些 loaded EEG files。
+- 證據：
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset/test_import_label.py::test_import_label_dialog_shows_target_context tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_passes_target_context_to_dialog -q`
+    -> first run failed as expected, then `2 passed`。
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset/test_import_label.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_ui_misc.py::TestImportLabelDialog -q`
+    -> `83 passed`。
+  - targeted `ruff` -> pass。
+  - targeted `ruff format --check` -> pass。
+  - production touched-file `basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 這是 post-load compatibility label flow target visibility，不是完整 embedded label wizard。
+  - 仍不能宣稱 raw-event-anchor-specific GDF/MAT alignment、真人 Windows click-through、
+    interactive desktop 3D、MCP Inspector / release config 或 thesis-ready local LLM evidence。
+
 ### 18:35 Data Interpretation label carrier matched-EEG UI
 
 - 做了什麼：

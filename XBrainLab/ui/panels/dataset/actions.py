@@ -431,7 +431,7 @@ class DatasetActionHandler:
         if not target_files:
             return
 
-        dialog = ImportLabelDialog(self.panel)
+        dialog = ImportLabelDialog(self.panel, target_files=target_files)
         if not dialog.exec():
             return
         label_map, mapping = dialog.get_result()

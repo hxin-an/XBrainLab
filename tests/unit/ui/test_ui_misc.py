@@ -597,6 +597,26 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_passes_target_context_to_dialog(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        idx = MagicMock()
+        idx.row.return_value = 0
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.controller = MagicMock()
+        data_obj = MagicMock()
+        handler.panel.controller.get_loaded_data_list.return_value = [data_obj]
+        mock_dlg.return_value.exec.return_value = False
+
+        handler.import_label()
+
+        mock_dlg.assert_called_once_with(handler.panel, target_files=[data_obj])
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_null_label_map(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
         idx.row.return_value = 0

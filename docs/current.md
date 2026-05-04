@@ -125,7 +125,10 @@ reason，不會把同一 labels 亂套到多個檔案。raw-event-anchor-specifi
 `Needs review`。UI replay artifact 已刷新，顯示 `product_replay_events.tsv` 對到
 `product_replay_raw.fif`。raw-event-anchor-specific MAT/GDF alignment、all-format manual
 compatibility matrix、label import 內嵌 wizard 和真人 click-through 仍未完成。
-MCP Inspector / Windows release config 驗收尚未完成，舊
+Post-load `Add Labels to Loaded Data` dialog 已補上 target context：dialog 會顯示 labels 將套用到
+哪些 loaded EEG files，並提示成功後會更新目前 import recipe trace。這改善 compatibility label
+flow 的使用者語意，但它仍不是完整 Data Interpretation 內嵌 label editor。MCP Inspector /
+Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：
 `scripts/agent/evals/run_local_tool_call_eval.py` 會用同一份 `54` cases / scorer 接 primary /

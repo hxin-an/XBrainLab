@@ -74,21 +74,38 @@ class ImportLabelDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, target_files: list[Any] | None = None):
         self.label_data_map: dict[str, Any] = {}  # {label_path: label_array}
         self.unique_labels: list[Any] = []
+        self.target_files = list(target_files or [])
 
         # UI Elements
         self.file_list: QListWidget | None = None
         self.map_table: QTableWidget | None = None
         self.info_label: QLabel | None = None
+        self.target_summary_label: QLabel | None = None
+        self.recipe_note_label: QLabel | None = None
 
-        super().__init__(parent, title="Import Labels")
-        self.resize(500, 400)
+        super().__init__(parent, title="Add Labels to Loaded Data")
+        self.resize(580, 460)
 
     def init_ui(self):
         """Initialize the dialog UI with file list, mapping table, and buttons."""
         layout = QVBoxLayout(self)
+
+        self.target_summary_label = QLabel(self._target_summary_text())
+        self.target_summary_label.setWordWrap(True)
+        self.target_summary_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse,
+        )
+        layout.addWidget(self.target_summary_label)
+
+        self.recipe_note_label = QLabel(
+            "A successful import updates the current import recipe trace when a "
+            "data interpretation is active."
+        )
+        self.recipe_note_label.setWordWrap(True)
+        layout.addWidget(self.recipe_note_label)
 
         # 1. File Selection
         file_group = QGroupBox("Select Label File")
@@ -138,6 +155,34 @@ class ImportLabelDialog(BaseDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _target_summary_text(self) -> str:
+        if not self.target_files:
+            return "Apply labels to the loaded EEG files selected in the dataset table."
+
+        names = [self._target_file_name(item) for item in self.target_files]
+        visible = ", ".join(names[:3])
+        if len(names) > 3:
+            visible += f", and {len(names) - 3} more"
+        plural = "file" if len(names) == 1 else "files"
+        return f"Apply labels to {len(names)} loaded EEG {plural}: {visible}."
+
+    @staticmethod
+    def _target_file_name(item: Any) -> str:
+        for method_name in ("get_filename", "get_filepath"):
+            method = getattr(item, method_name, None)
+            if not callable(method):
+                continue
+            try:
+                value = str(method())
+            except Exception as exc:
+                logger.debug(
+                    "Could not read target filename via %s: %s", method_name, exc
+                )
+                continue
+            if value:
+                return os.path.basename(value)
+        return str(item)
 
     def browse_files(self):
         """Open a file picker and load selected label files."""

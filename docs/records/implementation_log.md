@@ -28,6 +28,58 @@
 ### 剩餘風險
 ```
 
+## 2026-05-04 Post-load label import target context
+
+### 背景
+
+`Add Labels to Loaded Data` 已是 service-backed compatibility path，成功後也會更新 applied
+interpretation recipe trace。但 dialog 本身仍像舊式 label file picker：使用者在選 label files
+和 mapping code 時，看不到 labels 會套到哪些 loaded EEG files，也看不到這會影響 recipe trace。
+
+### 變更
+
+- `ImportLabelDialog` 新增可選 `target_files` 參數。
+- Dialog title 改為 `Add Labels to Loaded Data`。
+- Dialog 上方新增 target summary：
+  - 顯示 selected target count。
+  - 顯示最多前三個 target EEG file name。
+- Dialog 新增 recipe-impact note，說明成功 import 會在 active data interpretation 時更新 import
+  recipe trace。
+- `DatasetActionHandler.import_label()` 會把 `_get_target_files_for_import()` 選出的 target
+  files 傳給 dialog。
+
+### 影響範圍
+
+- Post-load label import dialog。
+- Dataset action handler。
+- Import-label UI tests。
+- Current / planning / validation / records docs。
+
+### 驗證
+
+- TDD red:
+  - focused tests first failed because `ImportLabelDialog` did not accept `target_files` and
+    `DatasetActionHandler.import_label()` still instantiated it without target context.
+- UI regression:
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset/test_import_label.py::test_import_label_dialog_shows_target_context tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_passes_target_context_to_dialog -q`
+  - `2 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dataset/test_import_label.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/test_ui_misc.py::TestImportLabelDialog -q`
+  - `83 passed`
+- static:
+  - targeted `ruff` -> pass
+  - targeted `ruff format --check` -> pass
+  - production touched-file `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `git diff --check` -> pass
+
+### 剩餘風險
+
+- This makes the compatibility label flow more user-facing.
+- It is not a full embedded Data Interpretation label wizard and does not solve raw-event-anchor
+  alignment, Windows launcher human click-through, interactive desktop 3D, MCP Inspector GUI, or
+  thesis-ready local LLM evidence.
+
 ## 2026-05-04 Data Interpretation label carrier matched-EEG UI
 
 ### 背景
