@@ -18,6 +18,7 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     MetadataUpdate,
     PreviewInterpretationCommand,
+    ReloadInterpretationRecipeCommand,
     RemoveFilesCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
@@ -136,6 +137,216 @@ class DatasetActionHandler:
                     return
             except Exception as e:
                 QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
+
+    def import_folder_source(self):
+        """Interpret a folder or BIDS root through the Data Interpretation flow."""
+        if not self._can_start_interpretation():
+            return
+        source_path = QFileDialog.getExistingDirectory(
+            self.panel,
+            "Choose Folder or BIDS Root for Interpretation",
+            "",
+        )
+        if not source_path:
+            return
+        try:
+            handled = self._run_data_interpretation_import([source_path])
+            if not handled:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation unavailable",
+                    "Data Interpretation command service is unavailable.",
+                )
+        except Exception as e:
+            QMessageBox.critical(self.panel, "Error", f"Import failed: {e}")
+
+    def reload_interpretation_recipe(self):
+        """Reload a saved import recipe, preview it, and apply after review."""
+        if not self._can_start_interpretation():
+            return
+        recipe_path, _ = QFileDialog.getOpenFileName(
+            self.panel,
+            "Choose Import Recipe",
+            "",
+            "Import Recipe (*.json);;JSON (*.json)",
+        )
+        if not recipe_path:
+            return
+
+        reload_result = execute_application_command(
+            self.panel,
+            ReloadInterpretationRecipeCommand(recipe_path=recipe_path),
+        )
+        if reload_result is None:
+            QMessageBox.critical(
+                self.panel,
+                "Recipe reload unavailable",
+                "Data Interpretation command service is unavailable.",
+            )
+            return
+        if reload_result.failed:
+            QMessageBox.critical(
+                self.panel,
+                "Recipe reload failed",
+                reload_result.message,
+            )
+            return
+
+        scan = self._diagnostic_payload(reload_result, "scan_result")
+        preview = self._diagnostic_payload(reload_result, "preview")
+        candidate = self._diagnostic_payload(reload_result, "candidate")
+        decision = self._diagnostic_payload(
+            reload_result,
+            "validation_decision",
+        )
+        dialog = DataInterpretationPreviewDialog(
+            self.panel,
+            scan_result=scan,
+            preview=preview,
+            validation_decision=decision,
+        )
+        if not dialog.exec():
+            return
+        if str(decision.get("decision")) == "blocked":
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation blocked",
+                self._decision_reason(decision),
+            )
+            return
+
+        raw_dialog_result = dialog.get_result()
+        dialog_result = (
+            dict(raw_dialog_result) if isinstance(raw_dialog_result, dict) else {}
+        )
+        raw_dialog_choices = dialog_result.get("choices")
+        dialog_choices: dict[str, Any] = (
+            {str(key): value for key, value in raw_dialog_choices.items()}
+            if isinstance(raw_dialog_choices, dict)
+            else {}
+        )
+        candidate_id = self._optional_payload_id(candidate, "candidate_id")
+        if dialog_choices:
+            preview_result = execute_application_command(
+                self.panel,
+                PreviewInterpretationCommand(
+                    scan_id=self._optional_payload_id(scan, "scan_id"),
+                    choices=dialog_choices,
+                ),
+            )
+            if preview_result is None:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation preview unavailable",
+                    "Data Interpretation command service is unavailable.",
+                )
+                return
+            if preview_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation preview failed",
+                    preview_result.message,
+                )
+                return
+            candidate = self._diagnostic_payload(preview_result, "candidate")
+            candidate_id = self._optional_payload_id(candidate, "candidate_id")
+            validation_result = execute_application_command(
+                self.panel,
+                ValidateInterpretationCommand(candidate_id=candidate_id),
+            )
+            if validation_result is None:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation validation unavailable",
+                    "Data Interpretation command service is unavailable.",
+                )
+                return
+            if validation_result.failed:
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation validation failed",
+                    validation_result.message,
+                )
+                return
+            decision = self._diagnostic_payload(
+                validation_result,
+                "validation_decision",
+            )
+            if str(decision.get("decision")) == "blocked":
+                QMessageBox.critical(
+                    self.panel,
+                    "Interpretation blocked",
+                    self._decision_reason(decision),
+                )
+                return
+
+        confirmed = str(decision.get("decision")) == "needs_confirmation" and bool(
+            dialog_result.get("confirmed"),
+        )
+        apply_result = execute_application_command(
+            self.panel,
+            ApplyInterpretationCommand(
+                candidate_id=self._optional_payload_id(decision, "candidate_id")
+                or candidate_id,
+                confirmed=confirmed,
+            ),
+        )
+        if apply_result is None:
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation apply unavailable",
+                "Data Interpretation command service is unavailable.",
+            )
+            return
+        if apply_result.failed:
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation apply failed",
+                apply_result.message,
+            )
+            return
+
+        self.panel.update_panel()
+        recipe_message = ""
+        if bool(dialog_result.get("save_recipe", False)):
+            recipe_message = self._save_interpretation_recipe()
+        QMessageBox.information(
+            self.panel,
+            "Data interpreted",
+            " ".join(part for part in [apply_result.message, recipe_message] if part),
+        )
+
+    def _can_start_interpretation(self) -> bool:
+        """Return whether the UI can start a Data Interpretation source flow."""
+        scan_capability = get_command_capability(self.panel, CommandName.SCAN_SOURCE)
+        if scan_capability is not None and not scan_capability.enabled:
+            QMessageBox.warning(
+                self.panel,
+                "Interpretation Blocked",
+                blocked_reason(
+                    scan_capability,
+                    "Data interpretation is not available right now.",
+                ),
+            )
+            return False
+
+        controller = self.controller
+        if controller is None:
+            QMessageBox.critical(
+                self.panel,
+                "Import failed",
+                "Dataset controller unavailable.",
+            )
+            return False
+
+        if controller.is_locked():
+            QMessageBox.warning(
+                self.panel,
+                "Interpretation Blocked",
+                "Dataset is locked. Please clear or reset before importing.",
+            )
+            return False
+        return True
 
     def _run_data_interpretation_import(self, filepaths: list[str]) -> bool:
         """Run the Data Interpretation command sequence for selected files."""

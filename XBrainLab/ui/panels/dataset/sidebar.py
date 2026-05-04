@@ -31,6 +31,8 @@ class DatasetSidebar(QWidget):
         panel: The parent ``DatasetPanel`` reference.
         info_panel: ``AggregateInfoPanel`` displaying summary statistics.
         import_btn: Button to import EEG data files.
+        import_folder_btn: Button to interpret a folder or BIDS root.
+        reload_recipe_btn: Button to reload a saved import recipe.
         import_label_btn: Button to import external labels.
         smart_parse_btn: Button to auto-extract metadata from filenames.
         chan_select_btn: Button to open channel selection dialog.
@@ -97,6 +99,26 @@ class DatasetSidebar(QWidget):
         self.import_btn.clicked.connect(self.panel.action_handler.import_data)
         ops_layout.addWidget(self.import_btn)
 
+        self.import_folder_btn = QPushButton("Interpret Folder / BIDS")
+        self.import_folder_btn.setToolTip(
+            "Scan a folder or BIDS root, then preview and confirm it",
+        )
+        self.import_folder_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.import_folder_btn.clicked.connect(
+            self.panel.action_handler.import_folder_source,
+        )
+        ops_layout.addWidget(self.import_folder_btn)
+
+        self.reload_recipe_btn = QPushButton("Reload Import Recipe")
+        self.reload_recipe_btn.setToolTip(
+            "Review a saved import recipe before applying it",
+        )
+        self.reload_recipe_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
+        self.reload_recipe_btn.clicked.connect(
+            self.panel.action_handler.reload_interpretation_recipe,
+        )
+        ops_layout.addWidget(self.reload_recipe_btn)
+
         self.import_label_btn = QPushButton("Add Labels to Loaded Data")
         self.import_label_btn.setToolTip("Apply external labels to loaded files")
         self.import_label_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
@@ -142,6 +164,27 @@ class DatasetSidebar(QWidget):
 
             # Update Button States (Tooltips only as per design)
             is_locked = self.controller.is_locked()
+
+            if is_locked:
+                self.import_btn.setToolTip(
+                    "Dataset is locked. Reset before interpreting a new source.",
+                )
+                self.import_folder_btn.setToolTip(
+                    "Dataset is locked. Reset before interpreting a folder.",
+                )
+                self.reload_recipe_btn.setToolTip(
+                    "Dataset is locked. Reset before reloading a recipe.",
+                )
+            else:
+                self.import_btn.setToolTip(
+                    "Scan, preview, validate, and apply EEG data",
+                )
+                self.import_folder_btn.setToolTip(
+                    "Scan a folder or BIDS root, then preview and confirm it",
+                )
+                self.reload_recipe_btn.setToolTip(
+                    "Review a saved import recipe before applying it",
+                )
 
             # Channel Selection
             if is_locked:

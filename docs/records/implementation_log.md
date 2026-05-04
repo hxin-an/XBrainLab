@@ -42,6 +42,40 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Data Source Entry UI Options
+
+### 狀態
+
+Dataset sidebar 的 Data Interpretation source entry 不再只露出 EEG file picker。UI 現在明確提供
+`Interpret Data Source`、`Interpret Folder / BIDS` 和 `Reload Import Recipe` 三個入口；folder /
+BIDS root 和 recipe reload 都直接走 Data Interpretation command path，不靠 legacy controller
+fallback。
+
+### 已可宣稱
+
+- 使用者在 Dataset sidebar 第一層就看得到 file、folder/BIDS root 和 saved recipe 三種資料來源。
+- Folder/BIDS 和 recipe entry 會進入 scan / recipe reload -> preview -> validate ->
+  confirm/apply 的 Data Interpretation flow。
+- 新入口有 focused UI tests 和 automated sidebar screenshot evidence。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Artifact：`artifacts/ui/data-source-entry-options/`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 mature embedded label editor、raw trigger selector、recipe-diff UI 或 full human desktop
+  acceptance。
+- Reload recipe 仍是 review/apply entry，不代表所有 recipe semantic replay edge cases 已人工驗收。
+
+### 下一手重點
+
+後續 Data Interpretation UI work 應聚焦 embedded label/anchor editor、recipe reload diff、
+BIDS sidecar visibility 和 complex external label reconciliation。
+
 ## 2026-05-05 Agent Data-Entry Tool Surface Downgrade
 
 ### 狀態

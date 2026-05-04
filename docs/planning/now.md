@@ -105,6 +105,9 @@
   `Add Labels to Loaded Data`，定位為 service-backed compatibility path；label import 成功後
   會寫入 applied interpretation 的 label carrier / class map / selected event / recipe trace，
   UI 也可提示保存更新後 recipe。
+- Dataset sidebar 現在也明確提供 `Interpret Folder / BIDS` 和 `Reload Import Recipe` 入口；
+  folder/BIDS root 與 saved recipe 不再隱含在 file picker 裡。Artifact：
+  `artifacts/ui/data-source-entry-options/`。
 - headless / MCP-ready automation adapter 已新增：
   `backend.application.automation` 產生 command schema / MCP-shaped tool specs，並把 JSON
   payload 轉回 typed `ApplicationService` command。

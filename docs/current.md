@@ -220,6 +220,11 @@ decision enum、`AppliedInterpretation` 和 public compatibility re-exports。
 snapshot assembly、clear 和 post-load label import recipe recording 抽到
 `data_interpretation_state.py`；`DataInterpretationCommandService` 目前約 `297` 行，主要保留 command
 handler orchestration，不再同時承接 state truth。
+最新 Data Interpretation UI source-entry slice 讓 Dataset sidebar 明確提供三個資料入口：
+`Interpret Data Source`（EEG file(s)）、`Interpret Folder / BIDS` 和 `Reload Import Recipe`。
+folder/BIDS root 與 recipe reload 都走 Data Interpretation command path；UI-observable artifact 在
+`artifacts/ui/data-source-entry-options/`。這補上 source type entry visibility，但不是 mature
+embedded label editor completion。
 最新 agent tool-surface cleanup 把舊 `load_data` / `attach_labels` 從 Empty / Data Loaded /
 Preprocessed stage prompt 和 primary tool exposure 移除；Context Assembler 會把 backend
 capability policy 與 stage allowlist 取交集，避免 backend compatibility policy 把已降權的

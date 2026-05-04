@@ -37,6 +37,62 @@
 
 ## 2026-05-05
 
+### 15:05 Dataset source-entry UI options
+
+- 做了什麼：
+  - 使用 `data-interpretation-reviewer` 檢查資料入口後，發現 Dataset sidebar 雖然以
+    `Interpret Data Source` 為主，但實際 UI 仍只開 EEG file picker，folder / BIDS root /
+    saved recipe 入口不可見。
+  - 先新增 focused UI tests，紅燈為 `DatasetSidebar` 缺少 `import_folder_btn` /
+    `reload_recipe_btn`，`DatasetActionHandler` 缺少 `import_folder_source()` /
+    `reload_interpretation_recipe()`。
+  - 新增 `Interpret Folder / BIDS` 和 `Reload Import Recipe` sidebar buttons。
+  - `import_folder_source()` 走 `ScanSourceCommand` -> preview -> validate -> apply；
+    `reload_interpretation_recipe()` 走 `ReloadInterpretationRecipeCommand` -> preview dialog ->
+    optional re-preview / validate -> apply。folder/BIDS 和 recipe 入口沒有 legacy controller
+    fallback。
+  - 產生 automated sidebar evidence：`artifacts/ui/data-source-entry-options/`。
+  - 更新 current / roadmap / now / UI architecture / validation / implementation log。
+- 結果：
+  - 使用者第一層 UI 可見 EEG file(s)、folder / BIDS root 和 saved recipe 三種 source entry。
+  - 這補 source type visibility，不是 mature import wizard editor completion。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_init_ui tests/unit/ui/dataset/test_dataset_sidebar.py::test_button_connections -q`
+    -> 初始紅燈 `AttributeError: import_folder_btn`，實作後 `2 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_source_uses_folder_or_bids_root tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_reviews_then_applies -q`
+    -> 初始紅燈 missing methods，實作後 `2 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/dataset/test_panel.py -q`
+    -> `63 passed`。
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/dataset/actions.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_ui_misc.py tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/dataset/test_panel.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_ui_misc.py tests/unit/ui/dataset/test_dataset_sidebar.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Artifact：`artifacts/ui/data-source-entry-options/data-source-entry-options.png` /
+    `.json` / `.md`；visible buttons include `Interpret Data Source`,
+    `Interpret Folder / BIDS`, `Reload Import Recipe`，screenshot nonblank。
+  - `timeout 120s git diff --check`
+    -> pass。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `99 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `468 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - Human desktop acceptance 仍未完成，不能把 automated sidebar replay 當 Windows click-through。
+  - 下一步仍應聚焦 mature embedded label/anchor editor、recipe reload diff 和 human desktop
+    acceptance；這個 slice 不標 product complete。
+
 ### 14:25 Data Interpretation session-state boundary cleanup
 
 - 做了什麼：

@@ -4,6 +4,7 @@ agent_manager, preprocess_plotter, saliency views, and remaining gaps."""
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -220,6 +221,129 @@ class TestDatasetActionHandler:
         assert commands[-1].candidate_id == "candidate-1"
         assert commands[-1].confirmed is False
         handler.panel.controller.import_files.assert_not_called()
+        handler.panel.update_panel.assert_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_folder_source_uses_folder_or_bids_root(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ScanSourceCommand,
+            ValidateInterpretationCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": False,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ScanSourceCommand):
+                return _command_result(scan_result={"source_path": command.source_path})
+            if isinstance(command, PreviewInterpretationCommand):
+                return _command_result(
+                    preview={"summary": "Found 1 EEG file(s)."},
+                    candidate={"candidate_id": "candidate-1"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "safe",
+                        "required_confirmations": [],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.import_folder_source()
+
+        assert isinstance(commands[0], ScanSourceCommand)
+        assert commands[0].source_path == "/tmp/bids-root"
+        assert [type(command) for command in commands] == [
+            ScanSourceCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        handler.panel.controller.import_files.assert_not_called()
+        handler.panel.update_panel.assert_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_reviews_then_applies(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            ReloadInterpretationRecipeCommand,
+        )
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileName.return_value = ("/tmp/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ReloadInterpretationRecipeCommand):
+                return _command_result(
+                    scan_result={"scan_id": "scan-1"},
+                    preview={"summary": "Recipe ready for review."},
+                    candidate={"candidate_id": "candidate-1"},
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm recipe choices."],
+                        "blocked_reasons": [],
+                    },
+                    recipe={"recipe_id": "recipe-1"},
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.reload_interpretation_recipe()
+
+        assert isinstance(commands[0], ReloadInterpretationRecipeCommand)
+        assert commands[0].recipe_path == "/tmp/import_recipe.json"
+        assert isinstance(commands[1], ApplyInterpretationCommand)
+        assert commands[1].candidate_id == "candidate-1"
+        assert commands[1].confirmed is True
         handler.panel.update_panel.assert_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
@@ -1115,7 +1239,7 @@ class TestDatasetActionHandler:
 
 class TestImportLabelDialog:
     @pytest.fixture
-    def dlg(self, qtbot):
+    def dlg(self, qtbot) -> Any:
         from XBrainLab.ui.dialogs.dataset.import_label_dialog import ImportLabelDialog
 
         d = ImportLabelDialog(parent=None)
@@ -1123,8 +1247,8 @@ class TestImportLabelDialog:
         return d
 
     def test_creates(self, dlg):
-        assert isinstance(dlg, QDialog)
         assert dlg.label_data_map == {}
+        assert isinstance(dlg, QDialog)
 
     def test_remove_files_empty(self, dlg):
         dlg.remove_files()  # no items, should not crash

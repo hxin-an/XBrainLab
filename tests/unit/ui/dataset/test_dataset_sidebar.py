@@ -23,6 +23,8 @@ def sidebar(qtbot):
 
 def test_init_ui(sidebar):
     assert isinstance(sidebar.import_btn, QPushButton)
+    assert isinstance(sidebar.import_folder_btn, QPushButton)
+    assert isinstance(sidebar.reload_recipe_btn, QPushButton)
     assert isinstance(sidebar.import_label_btn, QPushButton)
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
@@ -68,6 +70,12 @@ def test_button_connections(sidebar):
     # Verify connections call action handler
     sidebar.import_btn.click()
     sidebar.panel.action_handler.import_data.assert_called_once()
+
+    sidebar.import_folder_btn.click()
+    sidebar.panel.action_handler.import_folder_source.assert_called_once()
+
+    sidebar.reload_recipe_btn.click()
+    sidebar.panel.action_handler.reload_interpretation_recipe.assert_called_once()
 
     sidebar.smart_parse_btn.click()
     sidebar.panel.action_handler.open_smart_parser.assert_called_once()
