@@ -4450,3 +4450,61 @@
 - 不能宣稱：
   - This is review payload / validator boundary cleanup, not mature import wizard completion.
   - Scanner, candidate builder, and metadata override helper still remain in `data_interpretation.py`.
+
+### 2026-05-05 Data Interpretation scanner boundary extraction
+
+- scope：
+  - Backend-only Data Interpretation internal boundary cleanup。
+  - No command shape, UI, agent, MCP, automation, or recipe schema changes.
+- current call sites：
+  - `DataInterpretationCommandService.handle_scan_source()` calls `scan_source_path()` and stores
+    `ScanResult` lifecycle state.
+  - `reload_interpretation_recipe` re-runs scan / preview / validation through the same scanner.
+- target boundary：
+  - `data_interpretation_scan.py` owns `ScanResult`, source scanning, source kind classification,
+    BIDS root detection, candidate file traversal, label carrier discovery, scan warnings, and
+    blocked reason assembly.
+  - `data_interpretation.py` keeps candidate building / metadata override / applied lifecycle and
+    re-exports public scan names for compatibility.
+- 做了什麼：
+  - 新增 `XBrainLab/backend/application/data_interpretation_scan.py`。
+  - Moved `ScanResult`, `scan_source_path()`, and scan helper functions out of
+    `data_interpretation.py`.
+  - Added direct unit coverage for BIDS file / label / metadata discovery, XDF blocked boundary,
+    and explicit file source hint.
+  - `data_interpretation.py` reduced from about `463` lines to about `286` lines after this slice.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_scan.py -q`
+    initial failure: `ModuleNotFoundError: XBrainLab.backend.application.data_interpretation_scan`.
+- validation：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_scan.py -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_scan.py`
+    -> pass after import sorting.
+  - `timeout 300s poetry run ruff format --check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_scan.py`
+    -> pass after formatting the new scan test file.
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_scan.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_scan.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/backend/application/test_data_interpretation_label_carriers.py tests/unit/backend/application/test_data_interpretation_recipe.py tests/unit/backend/application/test_data_interpretation_metadata.py tests/unit/backend/application/test_data_interpretation_formats.py tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_preview_validate_requires_confirmation tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply tests/unit/backend/application/test_application_service.py::test_data_interpretation_scan_reports_format_capability_boundaries -q`
+    -> `21 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `94 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 120s git diff --check`
+    -> pass.
+- 不能宣稱：
+  - This is source scanner boundary cleanup, not mature import wizard completion.
+  - Candidate builder and metadata override helper still remain in `data_interpretation.py`.

@@ -203,6 +203,10 @@ payload builder 和 safe / needs-confirmation / blocked validator 抽到
 `data_interpretation_review.py`；`data_interpretation.py` 目前約 `463` 行，主要保留 scanner、
 candidate builder、metadata override 和 lifecycle dataclasses。這是 backend internal boundary
 cleanup，不是 mature import wizard completion。
+最新 scanner boundary cleanup 又把 `ScanResult`、`scan_source_path()`、source kind
+classification、BIDS source detection、candidate-file traversal 和 scan warning / blocked reason
+assembly 抽到 `data_interpretation_scan.py`；`data_interpretation.py` 目前約 `286` 行，主要保留
+candidate builder、metadata override 和 applied interpretation lifecycle dataclass。
 最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed

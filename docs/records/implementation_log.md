@@ -69,6 +69,8 @@ Label carrier planner 也已抽成 focused module，Data Interpretation lifecycl
 CSV / MAT parser helpers 或 label-anchor default selection。
 Preview payload builder 和 safe / needs-confirmation / blocked validator 也已抽成 focused
 review module，Data Interpretation lifecycle module 不再直接承接 review payload construction。
+Source scanner / source classification 也已抽成 focused scan module，Data Interpretation
+lifecycle module 不再直接承接 scan IO / source discovery。
 
 ### 已可宣稱
 
@@ -101,6 +103,8 @@ review module，Data Interpretation lifecycle module 不再直接承接 review p
   time model / granularity defaults 由 `data_interpretation_label_carriers.py` 承接。
 - `InterpretationPreview` / `ValidationDecision`、candidate preview serialization 和 safe /
   needs-confirmation / blocked decision boundary 由 `data_interpretation_review.py` 承接。
+- `ScanResult`、source scanning、source kind classification、BIDS root detection、label carrier
+  discovery 和 scan warning / blocked reason assembly 由 `data_interpretation_scan.py` 承接。
 - UI / agent / headless / MCP 的 command name、capability policy 和 `CommandResult` contract
   沒有因拆分改變。
 

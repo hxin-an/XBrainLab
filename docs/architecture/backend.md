@@ -78,6 +78,10 @@ MAT parser helper 或 label-anchor default selection。
 最新 review boundary cleanup 又把 preview payload builder 和 safe / needs-confirmation /
 blocked validator 抽到 `data_interpretation_review.py`；Data Interpretation lifecycle module 不再
 直接承接 review payload dataclass 或 validation decision construction。
+最新 scanner boundary cleanup 又把 source scanning、source kind classification、BIDS root
+detection、candidate-file traversal 和 scan warning / blocked reason assembly 抽到
+`data_interpretation_scan.py`；Data Interpretation lifecycle module 不再直接承接 scan IO /
+source discovery。
 
 ## 一句話架構
 
@@ -368,6 +372,7 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - `XBrainLab/backend/application/data_interpretation_metadata.py`
 - `XBrainLab/backend/application/data_interpretation_recipe.py`
 - `XBrainLab/backend/application/data_interpretation_review.py`
+- `XBrainLab/backend/application/data_interpretation_scan.py`
 - `XBrainLab/backend/application/data_interpretation_service.py`
 - `XBrainLab/backend/application/data_table_service.py`
 - `XBrainLab/backend/application/dataset_generation_service.py`
@@ -457,6 +462,9 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
 - Data Interpretation review payload / validator 實作位置現在是
   `data_interpretation_review.py`。它 owns `InterpretationPreview` / `ValidationDecision`、
   candidate-to-preview serialization，以及 safe / needs-confirmation / blocked decision boundary。
+- Data Interpretation scanner 實作位置現在是 `data_interpretation_scan.py`。它 owns
+  `ScanResult`、source path scanning、source kind classification、BIDS root detection、candidate
+  file traversal、label carrier discovery、scan warnings 和 blocked reason assembly。
 
 2026-05-02 product blocker 盤點結論：
 

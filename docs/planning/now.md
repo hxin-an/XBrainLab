@@ -74,6 +74,8 @@
 - 最新 Data Interpretation boundary cleanup 已把 preview payload builder 和 safe /
   needs-confirmation / blocked validator 抽到 `data_interpretation_review.py`；下一步可聚焦
   metadata override helper 或 scanner/candidate builder。
+- 最新 Data Interpretation boundary cleanup 已把 source scanner / source classification 抽到
+  `data_interpretation_scan.py`；下一步可聚焦 candidate builder 或 metadata override helper。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
