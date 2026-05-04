@@ -38,6 +38,10 @@
 - 下一個 cleanup slice 已把 `evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage`
   拆到 `AnalysisCommandService`；analysis / visualization readiness 不再直接堆在
   `ApplicationService`。
+- 最新 cleanup slice 已把 `configure_training`、`train`、`stop_training`、
+  `clear_training_history` 和 reset-time training config clear 拆到
+  `TrainingCommandService`；training lifecycle / option snapshot 不再直接堆在
+  `ApplicationService`。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -536,8 +540,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 現在最應該做的是：
 
 ```text
-1. 繼續 backend architecture cleanup：ApplicationService 已拆出 Data Interpretation service
-   和 Analysis service，下一步要 handler/service 化 training / dataset generation /
+1. 繼續 backend architecture cleanup：ApplicationService 已拆出 Data Interpretation、
+   Analysis 和 Training command services，下一步要 handler/service 化 dataset generation /
    reset lifecycle / legacy compatibility 邊界。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。

@@ -37,6 +37,56 @@
 
 ## 2026-05-05
 
+### 09:45 Training command service boundary cleanup
+
+- 做了什麼：
+  - 依 refactor gate 延續 backend cleanup，選 training lifecycle / configuration 作為下一個
+    focused slice，不碰 dataset generation、reset rollback 或 UI。
+  - 先新增 focused test，紅燈為
+    `ModuleNotFoundError: XBrainLab.backend.application.training_service`。
+  - 新增 `TrainingCommandService`，承接 `configure_training`、`train`、`stop_training`、
+    `clear_training_history` 和 reset-time training config clear。
+  - `ApplicationService` 的 handler map 改成窄委派到 training service；public convenience methods
+    仍保留，但只建立 typed command 再進 `execute()`。
+  - 移出 model class resolve、optimizer / device / evaluation-option resolve、training option
+    snapshot 和 model-name snapshot。
+  - 更新 current / roadmap / now / backend architecture / validation / implementation log。
+- 結果：
+  - `ApplicationService` 從 `1719` 行降到 `1552` 行。
+  - `TrainingCommandService` 為 `217` 行。
+  - 對外 command names、capability policy 和 `CommandResult` contract 沒變。
+- 證據：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py -q`
+    -> 初始紅燈 `ModuleNotFoundError`，符合 test-first 預期。
+  - `timeout 300s poetry run ruff check XBrainLab/backend/application/service.py XBrainLab/backend/application/training_service.py tests/unit/backend/application/test_training_service.py tests/unit/backend/application/test_application_service.py`
+    -> pass。
+  - `timeout 300s poetry run basedpyright XBrainLab/backend/application/service.py XBrainLab/backend/application/training_service.py tests/unit/backend/application/test_training_service.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py tests/unit/backend/application/test_application_service.py -q`
+    -> `47 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `59 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `466 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+  - `timeout 300s poetry run ruff check .`
+    -> pass。
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`。
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning。
+  - `timeout 120s git diff --check`
+    -> pass。
+- 接續 / 本輪剩餘：
+  - 這支撐 training command handler boundary，不是 product completion。
+  - 下一輪 backend cleanup 仍應處理 dataset generation / reset lifecycle / legacy compatibility
+    handlers。
+
 ### 09:20 Analysis command service boundary cleanup
 
 - 做了什麼：

@@ -155,13 +155,16 @@ state 和 scan / preview / validate / apply / recipe command handling 從
 `ApplicationService` 拆到 `DataInterpretationCommandService`，reviewed metadata / label
 carrier side effects 再拆到 `DataInterpretationApplyService`；UI、agent、headless 和 MCP 仍
 只透過 `ApplicationService.execute()` 進入，`ApplicationService` 則回到 dispatch /
-capability-confirmation gate / state-result envelope 的角色。這降低了 god-object 壓力，但只是
-第一個 backend cleanup slice；training、visualization、legacy label/import compatibility
-handler 還沒有同等完成拆分，不能宣稱 backend architecture 已全面乾淨。下一個 cleanup slice
+capability-confirmation gate / state-result envelope 的角色。這降低了 god-object 壓力，但不能
+宣稱 backend architecture 已全面乾淨；dataset generation、reset lifecycle、legacy
+label/import compatibility handler 還沒有同等完成拆分。下一個 cleanup slice
 已把 `evaluate`、`visualize`、`saliency` 和 confirmed `apply_montage` 拆到
 `AnalysisCommandService`；analysis / visualization readiness 不再直接由 `ApplicationService`
-承接，但 `query_state`、training / dataset generation / reset lifecycle 和 legacy data / label
-compatibility handlers 仍在 `ApplicationService`。最新 backend slices 又補了 reviewed label carriers
+承接。下一個 cleanup slice 已把 `configure_training`、`train`、`stop_training`、
+`clear_training_history` 和 reset-time training config clear 拆到 `TrainingCommandService`；
+model / optimizer / device / training-option snapshot 也不再由 `ApplicationService` 直接承接。
+`query_state`、dataset generation / reset lifecycle 和 legacy data / label compatibility
+handlers 仍在 `ApplicationService`。最新 backend slices 又補了 reviewed label carriers
 的多檔安全
 mapping：當多個 loaded EEG file 能以唯一 normalized stem 對應各自的 reviewed
 CSV / TSV / BIDS events carrier 時，`apply_interpretation` 會一次呼叫 `apply_labels_batch`
@@ -607,9 +610,9 @@ true local model desktop session。
 
 ## 目前執行中
 
-1. 繼續 backend architecture cleanup：`ApplicationService` 已拆出 Data Interpretation service
-   和 Analysis service，但 training / dataset generation / reset lifecycle / legacy compatibility
-   handlers 仍需逐步 handler 化，不能讓
+1. 繼續 backend architecture cleanup：`ApplicationService` 已拆出 Data Interpretation、
+   Analysis 和 Training command services，但 dataset generation / reset lifecycle / legacy
+   compatibility handlers 仍需逐步 handler 化，不能讓
    `ApplicationService` 再成為新的 god object。
 2. 等待真 Windows Desktop launcher click-through。
 3. 補 interactive desktop 3D / PyVista render 或真人 blocked verification；不要把 offscreen blocked

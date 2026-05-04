@@ -7,7 +7,6 @@ from collections.abc import Callable, Iterable
 from typing import Any, cast
 
 import numpy as np
-import torch
 
 from XBrainLab.backend.dataset import (
     DataSplitter,
@@ -19,11 +18,7 @@ from XBrainLab.backend.dataset import (
     audit_dataset_splits,
 )
 from XBrainLab.backend.load_data.label_loader import load_label_file
-from XBrainLab.backend.model_base.EEGNet import EEGNet
-from XBrainLab.backend.model_base.SCCNet import SCCNet
-from XBrainLab.backend.model_base.ShallowConvNet import ShallowConvNet
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.utils.logger import logger
 
 from .analysis_service import AnalysisCommandService
@@ -84,6 +79,7 @@ from .state import (
     TrainingStateSnapshot,
     VisualizationStateSnapshot,
 )
+from .training_service import TrainingCommandService
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 
@@ -109,6 +105,10 @@ class ApplicationService:
             evaluation=self.evaluation,
             visualization=self.visualization,
             preprocess=self.preprocess,
+            get_state=self.get_state,
+        )
+        self.training_commands = TrainingCommandService(
+            training=self.training,
             get_state=self.get_state,
         )
 
@@ -173,9 +173,11 @@ class ApplicationService:
         )
         training = TrainingStateSnapshot(
             has_model=model_holder is not None,
-            model_name=self._model_name(model_holder),
+            model_name=self.training_commands.model_name(model_holder),
             has_training_option=training_option is not None,
-            training_option=self._training_option_snapshot(training_option),
+            training_option=self.training_commands.training_option_snapshot(
+                training_option,
+            ),
             has_trainer=trainer is not None,
             is_running=self._safe_bool(self.training.is_training),
             plan_count=evaluation.total_plans,
@@ -296,10 +298,14 @@ class ApplicationService:
             CommandName.CREATE_EPOCH: self._handle_create_epoch,
             CommandName.GENERATE_DATASET: self._handle_generate_dataset,
             CommandName.CLEAR_DATASETS: self._handle_clear_datasets,
-            CommandName.CONFIGURE_TRAINING: self._handle_configure_training,
-            CommandName.TRAIN: self._handle_train,
-            CommandName.STOP_TRAINING: self._handle_stop_training,
-            CommandName.CLEAR_TRAINING_HISTORY: self._handle_clear_training_history,
+            CommandName.CONFIGURE_TRAINING: (
+                self.training_commands.handle_configure_training
+            ),
+            CommandName.TRAIN: self.training_commands.handle_train,
+            CommandName.STOP_TRAINING: self.training_commands.handle_stop_training,
+            CommandName.CLEAR_TRAINING_HISTORY: (
+                self.training_commands.handle_clear_training_history
+            ),
             CommandName.EVALUATE: self.analysis.handle_evaluate,
             CommandName.VISUALIZE: self.analysis.handle_visualize,
             CommandName.SALIENCY: self.analysis.handle_saliency,
@@ -892,98 +898,6 @@ class ApplicationService:
             },
         )
 
-    def _handle_configure_training(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ConfigureTrainingCommand):
-            raise TypeError("Invalid command for configure_training")
-        if command.training_option is not None:
-            self.training.set_training_option(command.training_option)
-            return "Training configured.", {
-                "training_option": self._training_option_snapshot(
-                    command.training_option,
-                ),
-            }
-
-        if command.model_name:
-            model_class = self._resolve_model_class(command.model_name)
-            holder = ModelHolder(
-                model_class,
-                dict(command.model_params),
-                command.pretrained_weight_path,
-            )
-            self.training.set_model_holder(holder)
-
-        if (
-            command.epoch is None
-            and command.batch_size is None
-            and command.learning_rate is None
-        ):
-            if command.model_name:
-                return f"Model configured: {command.model_name}."
-            raise PreconditionError(
-                "epoch, batch_size, and learning_rate are required.",
-            )
-        if (
-            command.epoch is None
-            or command.batch_size is None
-            or command.learning_rate is None
-        ):
-            raise PreconditionError(
-                "epoch, batch_size, and learning_rate are required.",
-            )
-
-        optim_class = self._resolve_optimizer(command.optimizer)
-        use_cpu, gpu_idx = self._resolve_training_device(command.device)
-        evaluation_option = self._resolve_training_evaluation(
-            command.evaluation_option,
-        )
-        option = TrainingOption(
-            output_dir=command.output_dir,
-            optim=optim_class,
-            optim_params=dict(command.optimizer_params),
-            use_cpu=use_cpu,
-            gpu_idx=gpu_idx,
-            epoch=command.epoch,
-            bs=command.batch_size,
-            lr=command.learning_rate,
-            checkpoint_epoch=command.save_checkpoints_every,
-            evaluation_option=evaluation_option,
-            repeat_num=command.repeat,
-        )
-        self.training.set_training_option(option)
-        return "Training configured.", {
-            "training_option": self._training_option_snapshot(option),
-        }
-
-    def _handle_train(self, command: Command) -> HandlerResult:
-        if not isinstance(command, TrainCommand):
-            raise TypeError("Invalid command for train")
-        self.training.start_training()
-        return "Training started."
-
-    def _handle_stop_training(self, command: Command) -> HandlerResult:
-        if not isinstance(command, StopTrainingCommand):
-            raise TypeError("Invalid command for stop_training")
-        self.training.stop_training()
-        return "Training stop requested."
-
-    def _handle_clear_training_history(self, command: Command) -> HandlerResult:
-        if not isinstance(command, ClearTrainingHistoryCommand):
-            raise TypeError("Invalid command for clear_training_history")
-        before = self.get_state().evaluation
-        self.training.clear_history()
-        try:
-            self.training.notify("training_updated")
-        except Exception:
-            logger.debug("Training-history clear notification failed", exc_info=True)
-        return (
-            "Training history cleared.",
-            {
-                "plan_count_before": before.total_plans,
-                "run_count_before": before.total_runs,
-                "finished_run_count_before": before.finished_runs,
-            },
-        )
-
     def _handle_reset_preprocess(self, command: Command) -> HandlerResult:
         if not isinstance(command, ResetPreprocessCommand):
             raise TypeError("Invalid command for reset_preprocess")
@@ -1091,16 +1005,9 @@ class ApplicationService:
 
     def _clear_training_configuration(self) -> None:
         """Clear training config that belongs to the previous active dataset."""
-        training_manager = getattr(self.study, "training_manager", None)
-        if training_manager is None:
-            return
-        training_manager.model_holder = None
-        training_manager.training_option = None
-        training_manager.saliency_params = None
-        try:
-            self.training.notify("config_changed")
-        except Exception:
-            logger.debug("Training config reset notification failed", exc_info=True)
+        self.training_commands.clear_configuration(
+            getattr(self.study, "training_manager", None),
+        )
 
     def _clear_interpretation_state(self) -> None:
         self.interpretation.clear()
@@ -1370,56 +1277,6 @@ class ApplicationService:
         return self._split_protocol(command.split_strategy)
 
     @staticmethod
-    def _resolve_model_class(model_name: str) -> type:
-        models_map = {
-            "eegnet": EEGNet,
-            "sccnet": SCCNet,
-            "shallowconvnet": ShallowConvNet,
-        }
-        model_class = models_map.get(model_name.lower())
-        if model_class is None:
-            raise ValueError(f"Unknown model architecture: {model_name}")
-        return model_class
-
-    @staticmethod
-    def _resolve_optimizer(name: str) -> type[torch.optim.Optimizer]:
-        optimizers_map: dict[str, type[torch.optim.Optimizer]] = {
-            "adam": torch.optim.Adam,
-            "sgd": torch.optim.SGD,
-            "adamw": torch.optim.AdamW,
-        }
-        return optimizers_map.get(name.lower(), torch.optim.Adam)
-
-    @staticmethod
-    def _resolve_training_device(device: str) -> tuple[bool, int | None]:
-        normalized = str(device or "auto").strip().lower()
-        if normalized in {"cpu", "none"}:
-            return True, None
-        if normalized in {"auto", "cuda", "gpu"}:
-            return False, 0
-        if normalized.startswith("cuda:"):
-            try:
-                return False, int(normalized.split(":", 1)[1])
-            except (TypeError, ValueError):
-                return False, 0
-        try:
-            return False, int(normalized)
-        except ValueError:
-            return False, 0
-
-    @staticmethod
-    def _resolve_training_evaluation(
-        value: str | None,
-    ) -> TrainingEvaluation:
-        if value is None:
-            return TrainingEvaluation.LAST_EPOCH
-        normalized = str(value).strip().lower()
-        for option in TrainingEvaluation:
-            if normalized in {option.name.lower(), option.value.lower()}:
-                return option
-        return TrainingEvaluation.LAST_EPOCH
-
-    @staticmethod
     def _resolve_label_attachment_path(raw: Any, mapping: dict[str, str]) -> str | None:
         filepath = raw.get_filepath()
         filename = raw.get_filename()
@@ -1470,30 +1327,6 @@ class ApplicationService:
             except Exception:
                 pass
         return f"Dataset {idx + 1}"
-
-    @staticmethod
-    def _model_name(model_holder: Any) -> str | None:
-        target_model = getattr(model_holder, "target_model", None)
-        if target_model is None:
-            return None
-        return getattr(target_model, "__name__", str(target_model))
-
-    @staticmethod
-    def _training_option_snapshot(option: Any) -> dict[str, Any]:
-        if option is None:
-            return {}
-        return {
-            "epoch": getattr(option, "epoch", None),
-            "batch_size": getattr(option, "bs", None),
-            "learning_rate": getattr(option, "lr", None),
-            "repeat": getattr(option, "repeat_num", None),
-            "device": option.get_device() if hasattr(option, "get_device") else None,
-            "optimizer": option.get_optim_name()
-            if hasattr(option, "get_optim_name")
-            else None,
-            "checkpoint_epoch": getattr(option, "checkpoint_epoch", None),
-            "output_dir": getattr(option, "output_dir", None),
-        }
 
     def _evaluation_snapshot(self) -> EvaluationStateSnapshot:
         plans = self._safe_call_list(self.evaluation.get_plans)

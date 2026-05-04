@@ -100,6 +100,18 @@ UI baseline capture 結果：
 - UI unit legacy runtime expectations 已改成 remote switch fail-closed / active local deletion block。
 - deterministic agent eval artifact 已刷新。
 
+2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
+
+- `TrainingCommandService` 承接 `configure_training`、`train`、`stop_training`、
+  `clear_training_history` 和 reset-time training config clear。
+- focused test-first 紅燈先確認缺少
+  `XBrainLab.backend.application.training_service`，再以 service unit tests 驗證 model holder、
+  training option snapshot、start / stop、history cleanup diagnostics 和 config reset notification。
+- regression gate 已通過 `tests/unit/backend/application`、`tests/integration/backend`、
+  `tests/unit/llm/agent tests/unit/llm/tools` 和 `tests/integration/agent`。
+- 這支撐 backend handler boundary cleanup；不能擴張成 product-complete、Windows human
+  acceptance、完整 Data Interpretation wizard 或 MCP long-running training claim。
+
 仍未完成的 evidence：
 
 - Windows Desktop launcher 真人 click-through；目前已有 automated command walkthrough，不等於
@@ -177,8 +189,9 @@ agent 架構文件整理時也跑：
 
 這組 gate 支撐「Data Interpretation lifecycle 已從 `ApplicationService` 拆到 focused service，
 reviewed apply side effects 已拆到 apply service，且 UI / agent / MCP-facing command contract
-沒有回歸」。它不能支撐整個 backend architecture closure：training / visualization / legacy
-compatibility handlers 還需要後續拆分。
+沒有回歸」。它不能支撐整個 backend architecture closure；後續 cleanup 已另外拆出
+analysis 和 training handlers，但 dataset generation、reset lifecycle 和 legacy compatibility
+handlers 仍需要後續拆分。
 
 2026-05-05 Analysis command boundary cleanup 新增一組 architecture gate：
 
