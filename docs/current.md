@@ -88,11 +88,18 @@ class-map review edit 接進同一流程：dialog 的 subject / session / task /
 review cells 可產生 `choices`，Dataset action 會在 apply 前 re-preview / re-validate 新
 candidate，backend 會把 user override、class map、event roles 寫入 applied interpretation /
 recipe trace；UI replay artifact 也已顯示 `S01`、`session-01`、`motor-imagery` 這組
-metadata override。舊 label import 已降成「Add Labels to Loaded Data」的 service-backed
-compatibility path；label import 成功後會更新 applied interpretation 的 `label_imports` /
-`label_carriers` / recipe trace，UI 也會提示使用者可保存更新後 recipe。它仍是「對已載入資料
-加 label」的 compatibility UI，不是完整 import wizard 內嵌 label editor；format-specific
-label/anchor editors、label import 內嵌 wizard 和真人 click-through 仍未完成。
+metadata override。後續 slice 已新增 label carrier review plan：backend preview 會為
+MAT、CSV / TSV、BIDS `events.tsv` 和 TXT carrier 建立 label field / MAT variable、anchor、
+time model、granularity 候選；wizard 會顯示可編輯的 label carrier review rows，Dataset action
+會把使用者選擇 re-preview / re-validate 後保存到 `AppliedInterpretation` /
+`ImportRecipe.label_carrier_plan`。UI replay artifact 現在顯示 `trial_type`、`onset`、
+`seconds`、`trial` 這組 label carrier choices；backend unit test 也覆蓋 MAT
+`classlabel` / `cue_onset` 選擇寫入 recipe trace。舊 label import 已降成「Add Labels to Loaded
+Data」的 service-backed compatibility path；label import 成功後會更新 applied interpretation
+的 `label_imports` / `label_carriers` / recipe trace，UI 也會提示使用者可保存更新後
+recipe。它仍是「對已載入資料加 label」的 compatibility UI，不是完整 import wizard 內嵌 label
+import editor；all-format manual compatibility matrix、label import 內嵌 wizard 和真人
+click-through 仍未完成。
 MCP Inspector / Windows release config 驗收尚未完成，舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：

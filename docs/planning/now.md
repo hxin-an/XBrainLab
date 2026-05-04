@@ -220,12 +220,15 @@
   - subject / session / task / run 和 class map review cells 已可產生 dialog `choices`。
   - Dataset action 會在 apply 前用使用者 review choices re-preview / re-validate，再套用新
     candidate。
-  - backend recipe 會保存 metadata override、event roles、class map 和 recipe trace。
+  - label carrier review rows 現在可審查 / 編輯 label field、MAT variable、anchor、time model
+    和 granularity；backend recipe 會保存 `label_carrier_plan`、metadata override、event
+    roles、class map 和 recipe trace。
   - replay artifact `artifacts/ui/data-interpretation-preview.png` 已刷新，JSON 也記錄
-    `metadata_overrides`。
+    `metadata_overrides` 和 TSV / BIDS-events label carrier choices；backend unit test 也覆蓋
+    MAT `classlabel` / `cue_onset` recipe trace。
 - 剩餘非 Goal 1 closure blockers：label import 已能寫入 recipe trace，但尚未成為成熟 import
-  wizard 內嵌 label editor；format-specific anchor / label column / MAT variable editor、MCP
-  Inspector / Windows release config 尚未完成，UI replay coverage 還不是完整真人 walkthrough。
+  wizard 內嵌 label import editor；all-format manual compatibility matrix、MCP Inspector /
+  Windows release config 尚未完成，UI replay coverage 還不是完整真人 walkthrough。
 
 ## 下一個 Goal
 

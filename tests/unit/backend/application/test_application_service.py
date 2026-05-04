@@ -180,6 +180,72 @@ def test_data_interpretation_choices_flow_into_recipe(tmp_path):
     assert "choices:class_map" in recipe["recipe_trace"]
 
 
+def test_data_interpretation_label_carrier_choices_flow_into_recipe(tmp_path):
+    from scipy.io import savemat
+
+    source_dir = tmp_path / "gdf_with_mat_labels"
+    source_dir.mkdir()
+    eeg_path = source_dir / "A01T.gdf"
+    label_path = source_dir / "A01T.mat"
+    eeg_path.write_bytes(b"not loaded during scan")
+    savemat(
+        label_path,
+        {
+            "classlabel": [1, 2, 1, 2],
+            "cue_onset": [100, 200, 300, 400],
+            "artifact_flag": [0, 0, 1, 0],
+        },
+    )
+    recipe_path = tmp_path / "mat_label_recipe.json"
+    service = ApplicationService(Study())
+    service.dataset.import_files = MagicMock(return_value=(1, []))
+
+    service.execute(ScanSourceCommand(source_path=str(source_dir)))
+    initial_preview = service.execute(PreviewInterpretationCommand())
+    reviewed_preview = service.execute(
+        PreviewInterpretationCommand(
+            choices={
+                "label_carrier_choices": {
+                    str(label_path): {
+                        "label_field": "classlabel",
+                        "anchor": "cue_onset",
+                        "time_model": "sample_index",
+                        "granularity": "trial",
+                    }
+                },
+                "class_map": {"1": "left hand", "2": "right hand"},
+            },
+        ),
+    )
+    service.execute(ValidateInterpretationCommand())
+    apply_result = service.execute(ApplyInterpretationCommand(confirmed=True))
+    save_result = service.execute(
+        SaveInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    initial_carriers = initial_preview.diagnostics["preview"]["label_carrier_preview"]
+    assert initial_carriers[0]["format"] == "MAT"
+    assert "classlabel" in initial_carriers[0]["label_candidates"]
+    assert "cue_onset" in initial_carriers[0]["anchor_candidates"]
+
+    reviewed_carrier = reviewed_preview.diagnostics["preview"]["label_carrier_preview"][
+        0
+    ]
+    assert reviewed_carrier["selected_label_field"] == "classlabel"
+    assert reviewed_carrier["selected_anchor"] == "cue_onset"
+    assert reviewed_carrier["time_model"] == "sample_index"
+    assert reviewed_carrier["granularity"] == "trial"
+
+    applied = apply_result.diagnostics["applied_interpretation"]
+    assert applied["label_carrier_plan"][0]["selected_label_field"] == "classlabel"
+    assert applied["label_carrier_plan"][0]["selected_anchor"] == "cue_onset"
+    recipe = save_result.diagnostics["recipe"]
+    assert recipe["label_carrier_plan"][0]["path"] == str(label_path)
+    assert recipe["label_carrier_plan"][0]["selected_label_field"] == "classlabel"
+    assert recipe["label_carrier_plan"][0]["selected_anchor"] == "cue_onset"
+    assert "choices:label_carriers" in recipe["recipe_trace"]
+
+
 def test_data_interpretation_blocks_sources_without_eeg_files(tmp_path):
     source_dir = tmp_path / "labels_only"
     source_dir.mkdir()

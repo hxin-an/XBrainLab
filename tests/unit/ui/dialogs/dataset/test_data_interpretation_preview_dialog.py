@@ -101,6 +101,58 @@ def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     }
 
 
+def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
+    label_path = "/tmp/source/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "label_carriers": [label_path],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": label_path,
+                    "name": "A01T.mat",
+                    "format": "MAT",
+                    "label_candidates": ["classlabel", "target"],
+                    "anchor_candidates": ["cue_onset", "trial"],
+                    "selected_label_field": "",
+                    "selected_anchor": "",
+                    "time_model": "trial_order",
+                    "granularity": "trial",
+                    "reason": "MAT variables need review before apply.",
+                }
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.label_carrier_tree.topLevelItemCount() == 1
+    carrier_item = dialog.label_carrier_tree.topLevelItem(0)
+    assert carrier_item is not None
+    assert carrier_item.text(0) == "A01T.mat"
+    assert carrier_item.text(1) == "MAT"
+    assert "classlabel" in carrier_item.toolTip(2)
+    assert "cue_onset" in carrier_item.toolTip(3)
+
+    carrier_item.setText(2, "classlabel")
+    carrier_item.setText(3, "cue_onset")
+    carrier_item.setText(4, "sample_index")
+
+    result = dialog.get_result()
+
+    assert result["choices"]["label_carrier_choices"] == {
+        label_path: {
+            "label_field": "classlabel",
+            "anchor": "cue_onset",
+            "time_model": "sample_index",
+            "granularity": "trial",
+        }
+    }
+
+
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

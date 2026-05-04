@@ -3,7 +3,8 @@
   "source": "product_replay_raw.fif",
   "transcript": [
     "Selected EEG source for interpretation.",
-    "Scanned source and previewed metadata interpretation.",
+    "Scanned source and previewed metadata plus label carrier interpretation.",
+    "Reviewed label column, anchor, time model, and granularity.",
     "Validation required confirmation for missing metadata.",
     "Unconfirmed apply was blocked.",
     "Confirmed apply loaded the interpreted source."
@@ -104,12 +105,14 @@
           "latest_preview_id": null,
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "summary": null,
           "metadata_preview": [],
           "label_carriers": [],
@@ -150,13 +153,15 @@
         "payload_type": "scan_result",
         "scan_result": {
           "scan_id": "scan-1",
-          "source_path": "<replay_source>/product_replay_raw.fif",
+          "source_path": "<replay_source>",
           "source_hint": "auto",
-          "source_kind": "file",
+          "source_kind": "folder",
           "eeg_files": [
             "<replay_source>/product_replay_raw.fif"
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "metadata": [
             {
               "file": "<replay_source>/product_replay_raw.fif",
@@ -204,10 +209,14 @@
             "sessions": [],
             "tasks": [],
             "runs": [],
-            "events_files": [],
+            "events_files": [
+              "<replay_source>/product_replay_events.tsv"
+            ],
             "dataset_description": null
           },
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "blocked_reasons": []
         }
       }
@@ -307,13 +316,15 @@
           "latest_preview_id": "preview-3",
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
-          "warnings": [],
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -355,7 +366,9 @@
               }
             }
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -394,16 +407,40 @@
         "candidate": {
           "candidate_id": "candidate-2",
           "scan_id": "scan-1",
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "selected_eeg_files": [
             "<replay_source>/product_replay_raw.fif"
           ],
-          "label_carriers": [],
-          "event_roles": {},
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "event",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
           "class_map": {},
-          "time_model": "file_native_time",
-          "granularity": "recording",
+          "time_model": "sample_index_or_annotation_time",
+          "granularity": "trial_or_event",
           "metadata": [
             {
               "file": "<replay_source>/product_replay_raw.fif",
@@ -445,8 +482,11 @@
               }
             }
           ],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "confirmation_items": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif.",
             "Confirm session metadata for product_replay_raw.fif.",
             "Confirm subject metadata for product_replay_raw.fif.",
@@ -462,9 +502,29 @@
         "preview": {
           "preview_id": "preview-3",
           "candidate_id": "candidate-2",
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "file_count": 1,
-          "label_carrier_count": 0,
+          "label_carrier_count": 1,
+          "label_carrier_preview": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "event",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -506,8 +566,11 @@
               }
             }
           ],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "confirmation_items": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif.",
             "Confirm session metadata for product_replay_raw.fif.",
             "Confirm subject metadata for product_replay_raw.fif.",
@@ -517,7 +580,9 @@
           "downstream_impacts": [
             "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
           ],
-          "event_roles": {},
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
           "class_map": {}
         }
       }
@@ -617,13 +682,15 @@
           "latest_preview_id": "preview-3",
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
-          "warnings": [],
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -665,7 +732,9 @@
               }
             }
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -707,8 +776,11 @@
           "reasons": [
             "Candidate has reviewable semantic choices."
           ],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "required_confirmations": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif.",
             "Confirm session metadata for product_replay_raw.fif.",
             "Confirm subject metadata for product_replay_raw.fif.",
@@ -816,13 +888,15 @@
           "latest_preview_id": "preview-5",
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": null,
           "pending_confirmation": false,
           "blocked_reasons": [],
-          "warnings": [],
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -870,7 +944,9 @@
               }
             }
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -909,16 +985,40 @@
         "candidate": {
           "candidate_id": "candidate-4",
           "scan_id": "scan-1",
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "selected_eeg_files": [
             "<replay_source>/product_replay_raw.fif"
           ],
-          "label_carriers": [],
-          "event_roles": {},
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
           "class_map": {},
-          "time_model": "file_native_time",
-          "granularity": "recording",
+          "time_model": "sample_index_or_annotation_time",
+          "granularity": "trial_or_event",
           "metadata": [
             {
               "file": "<replay_source>/product_replay_raw.fif",
@@ -966,8 +1066,11 @@
               }
             }
           ],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "confirmation_items": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif."
           ],
           "blocked_reasons": [],
@@ -978,20 +1081,49 @@
                 "session": "session-01",
                 "task": "motor-imagery"
               }
+            },
+            "label_carrier_choices": {
+              "<replay_source>/product_replay_events.tsv": {
+                "granularity": "trial",
+                "label_field": "trial_type",
+                "anchor": "onset",
+                "time_model": "seconds"
+              }
             }
           },
           "recipe_trace": [
             "scan:scan-1",
             "candidate:candidate-4",
-            "choices:metadata_overrides"
+            "choices:metadata_overrides",
+            "choices:label_carriers"
           ]
         },
         "preview": {
           "preview_id": "preview-5",
           "candidate_id": "candidate-4",
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "file_count": 1,
-          "label_carrier_count": 0,
+          "label_carrier_count": 1,
+          "label_carrier_preview": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -1039,15 +1171,20 @@
               }
             }
           ],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "confirmation_items": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif."
           ],
           "blocked_reasons": [],
           "downstream_impacts": [
             "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
           ],
-          "event_roles": {},
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
           "class_map": {}
         }
       }
@@ -1147,13 +1284,15 @@
           "latest_preview_id": "preview-5",
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
-          "warnings": [],
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -1201,7 +1340,9 @@
               }
             }
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1243,8 +1384,11 @@
           "reasons": [
             "Candidate has reviewable semantic choices."
           ],
-          "warnings": [],
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
           "required_confirmations": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif."
           ],
           "blocked_reasons": [],
@@ -1349,13 +1493,15 @@
           "latest_preview_id": "preview-5",
           "latest_interpretation_id": null,
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
-          "warnings": [],
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -1403,7 +1549,9 @@
               }
             }
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1566,13 +1714,15 @@
           "latest_preview_id": "preview-5",
           "latest_interpretation_id": "interpretation-6",
           "latest_recipe_id": null,
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "validation_decision": "needs_confirmation",
           "pending_confirmation": true,
           "blocked_reasons": [],
-          "warnings": [],
-          "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+          "warnings": [
+            "External label/event carriers require preview before apply."
+          ],
+          "summary": "Found 1 EEG file(s) and 1 label/event carrier(s).",
           "metadata_preview": [
             {
               "file": "product_replay_raw.fif",
@@ -1620,7 +1770,9 @@
               }
             }
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
           "label_import_count": 0,
           "label_imports": [],
           "recipe_path": null
@@ -1661,12 +1813,34 @@
         "applied_interpretation": {
           "interpretation_id": "interpretation-6",
           "candidate_id": "candidate-4",
-          "source_path": "<replay_source>/product_replay_raw.fif",
-          "source_kind": "file",
+          "source_path": "<replay_source>",
+          "source_kind": "folder",
           "loaded_files": [
             "<replay_source>/product_replay_raw.fif"
           ],
-          "label_carriers": [],
+          "label_carriers": [
+            "<replay_source>/product_replay_events.tsv"
+          ],
+          "label_carrier_plan": [
+            {
+              "path": "<replay_source>/product_replay_events.tsv",
+              "name": "product_replay_events.tsv",
+              "format": "BIDS events",
+              "label_candidates": [
+                "trial_type"
+              ],
+              "anchor_candidates": [
+                "onset"
+              ],
+              "selected_label_field": "trial_type",
+              "selected_anchor": "onset",
+              "time_model": "seconds",
+              "granularity": "trial",
+              "role": "external labels",
+              "decision": "needs_confirmation",
+              "reason": "BIDS events carrier has candidate label fields and anchors; review the selected alignment before applying."
+            }
+          ],
           "metadata": [
             {
               "file": "<replay_source>/product_replay_raw.fif",
@@ -1716,20 +1890,26 @@
           ],
           "validation_decision": "needs_confirmation",
           "confirmations": [
+            "Confirm label carrier alignment, anchor event, and class map before applying.",
             "Confirm run metadata for product_replay_raw.fif."
           ],
-          "event_roles": {},
+          "event_roles": {
+            "label_carrier": "external label or event source"
+          },
           "class_map": {},
           "label_imports": [],
           "recipe_trace": [
             "scan:scan-1",
             "candidate:candidate-4",
             "choices:metadata_overrides",
+            "choices:label_carriers",
             "validation:needs_confirmation",
             "applied:interpretation-6"
           ]
         },
-        "label_carriers_pending": []
+        "label_carriers_pending": [
+          "<replay_source>/product_replay_events.tsv"
+        ]
       }
     }
   },
@@ -1739,19 +1919,19 @@
       "decision": "needs_confirmation",
       "visible_text": [
         "Scan -> Preview -> Validate -> Confirm -> Apply -> Save recipe",
-        "Found 1 EEG file(s) and 0 label/event carrier(s).",
+        "Found 1 EEG file(s) and 1 label/event carrier(s).",
         "Source",
-        "/tmp/xbrainlab_data_interpretation_replay/product_replay_raw.fif",
+        "/tmp/xbrainlab_data_interpretation_replay",
         "Type",
-        "file",
+        "folder",
         "Files",
         "1",
         "Label carriers",
-        "0",
+        "1",
         "BIDS",
         "Not detected",
         "Validation needs confirmation before applying.",
-        "Confirmation required: Confirm run metadata for product_replay_raw.fif.; Confirm session metadata for product_replay_raw.fif.; Confirm subject metadata for product_replay_raw.fif.; Confirm task metadata for product_replay_raw.fif."
+        "Confirmation required: Confirm label carrier alignment, anchor event, and class map before applying.; Confirm run metadata for product_replay_raw.fif.; Confirm session metadata for product_replay_raw.fif.; Confirm subject metadata for product_replay_raw.fif.; Confirm task metadata for product_replay_raw.fif."
       ],
       "metadata_rows": [
         [
@@ -1762,12 +1942,30 @@
           ""
         ]
       ],
+      "label_carrier_rows": [
+        [
+          "product_replay_events.tsv",
+          "BIDS events",
+          "trial_type",
+          "onset",
+          "seconds",
+          "trial"
+        ]
+      ],
       "review_choices": {
         "metadata_overrides": {
           "product_replay_raw.fif": {
             "subject": "S01",
             "session": "session-01",
             "task": "motor-imagery"
+          }
+        },
+        "label_carrier_choices": {
+          "<replay_source>/product_replay_events.tsv": {
+            "granularity": "trial",
+            "label_field": "trial_type",
+            "anchor": "onset",
+            "time_model": "seconds"
           }
         }
       },

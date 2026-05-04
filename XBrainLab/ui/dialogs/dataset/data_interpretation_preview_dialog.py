@@ -44,10 +44,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.confirmation_label: QLabel
         self.save_recipe_check: QCheckBox
         self.file_tree: QTreeWidget
+        self.label_carrier_tree: QTreeWidget
         self.event_tree: QTreeWidget
         self.review_text: QPlainTextEdit
         self.button_box: QDialogButtonBox
         self._metadata_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
+        self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
         super().__init__(
             parent=parent,
@@ -136,6 +138,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
         label_group = QGroupBox("Labels, Events, and Recipe Trace")
         label_layout = QVBoxLayout(label_group)
+        self.label_carrier_tree = QTreeWidget()
+        self.label_carrier_tree.setHeaderLabels(
+            ["Carrier", "Format", "Label field", "Anchor", "Time", "Granularity"],
+        )
+        self.label_carrier_tree.setMinimumHeight(110)
+        self.label_carrier_tree.setEditTriggers(
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed,
+        )
+        self._populate_label_carrier_tree()
+        label_layout.addWidget(self.label_carrier_tree)
+
         self.event_tree = QTreeWidget()
         self.event_tree.setHeaderLabels(["Item", "Role", "Meaning"])
         self.event_tree.setMinimumHeight(160)
@@ -314,6 +328,60 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 ),
             )
 
+    def _populate_label_carrier_tree(self) -> None:
+        carriers = self.preview.get("label_carrier_preview") or []
+        if not isinstance(carriers, list) or not carriers:
+            carriers = [
+                {
+                    "path": str(carrier),
+                    "name": Path(str(carrier)).name,
+                    "format": Path(str(carrier)).suffix.lstrip(".").upper()
+                    or "Unknown",
+                    "label_candidates": [],
+                    "anchor_candidates": [],
+                    "selected_label_field": "",
+                    "selected_anchor": "",
+                    "time_model": "",
+                    "granularity": "",
+                    "reason": "Review this label carrier before applying.",
+                }
+                for carrier in self.scan_result.get("label_carriers", []) or []
+            ]
+
+        for carrier in carriers:
+            if not isinstance(carrier, dict):
+                continue
+            item = QTreeWidgetItem(
+                [
+                    str(carrier.get("name") or Path(str(carrier.get("path", ""))).name),
+                    str(carrier.get("format") or "Unknown"),
+                    str(carrier.get("selected_label_field") or ""),
+                    str(carrier.get("selected_anchor") or ""),
+                    str(carrier.get("time_model") or ""),
+                    str(carrier.get("granularity") or ""),
+                ],
+            )
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            item.setToolTip(2, self._candidate_tooltip(carrier, "label_candidates"))
+            item.setToolTip(3, self._candidate_tooltip(carrier, "anchor_candidates"))
+            item.setToolTip(4, "How label timing aligns to the EEG recording.")
+            item.setToolTip(5, "The data unit each label describes.")
+            self._label_carrier_items.append((item, dict(carrier)))
+            self.label_carrier_tree.addTopLevelItem(item)
+        if self.label_carrier_tree.topLevelItemCount() == 0:
+            self.label_carrier_tree.addTopLevelItem(
+                QTreeWidgetItem(
+                    [
+                        "No external label file",
+                        "Recording",
+                        "Use internal events",
+                        "",
+                        "",
+                        "",
+                    ],
+                ),
+            )
+
     @staticmethod
     def _field_text(value: Any) -> str:
         if not isinstance(value, dict):
@@ -352,6 +420,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         class_map = self._class_map_overrides()
         if class_map:
             choices["class_map"] = class_map
+        label_carriers = self._label_carrier_choices()
+        if label_carriers:
+            choices["label_carrier_choices"] = label_carriers
         return choices
 
     def _metadata_overrides(self) -> dict[str, dict[str, str]]:
@@ -384,6 +455,42 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for _tree_item, code, original in self._class_map_items
         )
         return current if changed else {}
+
+    def _label_carrier_choices(self) -> dict[str, dict[str, str]]:
+        choices: dict[str, dict[str, str]] = {}
+        fields = (
+            ("label_field", "selected_label_field", 2),
+            ("anchor", "selected_anchor", 3),
+            ("time_model", "time_model", 4),
+            ("granularity", "granularity", 5),
+        )
+        for item, original in self._label_carrier_items:
+            carrier_key = str(
+                original.get("path") or original.get("name") or ""
+            ).strip()
+            if not carrier_key:
+                continue
+            changed: dict[str, str] = {}
+            for choice_key, original_key, column in fields:
+                current = item.text(column).strip()
+                original_value = str(original.get(original_key) or "").strip()
+                if current and current != original_value:
+                    changed[choice_key] = current
+            if changed:
+                for choice_key, _original_key, column in fields:
+                    current = item.text(column).strip()
+                    if current and choice_key not in changed:
+                        changed[choice_key] = current
+                choices[carrier_key] = changed
+        return choices
+
+    @staticmethod
+    def _candidate_tooltip(carrier: dict[str, Any], key: str) -> str:
+        values = carrier.get(key) or []
+        if isinstance(values, list) and values:
+            return "Candidates: " + ", ".join(str(value) for value in values)
+        reason = str(carrier.get("reason") or "")
+        return reason or "No automatic candidates were found."
 
     def _details_text(self) -> str:
         lines: list[str] = []

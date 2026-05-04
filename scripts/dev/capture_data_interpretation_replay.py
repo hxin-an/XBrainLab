@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS_DIR = ROOT / "artifacts" / "ui"
 SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_data_interpretation_replay"
 SOURCE_PATH = SOURCE_DIR / "product_replay_raw.fif"
+LABEL_PATH = SOURCE_DIR / "product_replay_events.tsv"
 PREVIEW_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-preview.png"
 APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
 REPLAY_JSON = ARTIFACTS_DIR / "data-interpretation-replay.json"
@@ -71,6 +72,14 @@ def write_synthetic_raw_fif() -> Path:
         )
     )
     raw.save(SOURCE_PATH, overwrite=True)
+    LABEL_PATH.write_text(
+        "onset\tduration\ttrial_type\n"
+        "1.0\t0.5\tleft\n"
+        "2.0\t0.5\tright\n"
+        "3.0\t0.5\tleft\n"
+        "4.0\t0.5\tright\n",
+        encoding="utf-8",
+    )
     return SOURCE_PATH
 
 
@@ -135,7 +144,9 @@ def tree_rows(tree: QTreeWidget) -> list[list[str]]:
 def sanitized(value: Any) -> Any:
     """Replace machine-local paths with stable replay tokens."""
     if isinstance(value, dict):
-        return {str(key): sanitized(item) for key, item in value.items()}
+        return {
+            str(sanitized(str(key))): sanitized(item) for key, item in value.items()
+        }
     if isinstance(value, list):
         return [sanitized(item) for item in value]
     if isinstance(value, str):
@@ -156,7 +167,9 @@ def capture_replay(app: QApplication) -> int:
 
     def run_steps() -> None:
         try:
-            scan = service.execute(ScanSourceCommand(source_path=str(source_path)))
+            scan = service.execute(
+                ScanSourceCommand(source_path=str(source_path.parent))
+            )
             preview = service.execute(PreviewInterpretationCommand())
             validation = service.execute(ValidateInterpretationCommand())
             dialog = DataInterpretationPreviewDialog(
@@ -172,6 +185,12 @@ def capture_replay(app: QApplication) -> int:
                 metadata_item.setText(1, "S01")
                 metadata_item.setText(2, "session-01")
                 metadata_item.setText(3, "motor-imagery")
+            label_item = dialog.label_carrier_tree.topLevelItem(0)
+            if label_item is not None:
+                label_item.setText(2, "trial_type")
+                label_item.setText(3, "onset")
+                label_item.setText(4, "seconds")
+                label_item.setText(5, "trial")
             dialog_result = dialog.get_result()
             dialog_choices = dialog_result.get("choices", {})
             dialog.repaint()
@@ -183,6 +202,7 @@ def capture_replay(app: QApplication) -> int:
                 "decision": dialog.decision,
                 "visible_text": visible_texts(dialog),
                 "metadata_rows": tree_rows(dialog.file_tree),
+                "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
                 "review_choices": sanitized(dialog_choices),
                 "apply_button_enabled": dialog.decision != "blocked",
                 "save_recipe_checked": dialog.save_recipe_check.isChecked(),
@@ -214,7 +234,9 @@ def capture_replay(app: QApplication) -> int:
                 "source": SOURCE_PATH.name,
                 "transcript": [
                     "Selected EEG source for interpretation.",
-                    "Scanned source and previewed metadata interpretation.",
+                    "Scanned source and previewed metadata plus label carrier "
+                    "interpretation.",
+                    "Reviewed label column, anchor, time model, and granularity.",
                     "Validation required confirmation for missing metadata.",
                     "Unconfirmed apply was blocked.",
                     "Confirmed apply loaded the interpreted source.",

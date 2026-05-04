@@ -93,6 +93,50 @@
   - 這是 automated command walkthrough，不是真人 Desktop click-through 或 packaged release approval。
   - 真雙螢幕/WSLg 桌面點擊、MCP Inspector GUI、完整 release packaging 仍未完成。
 
+### 17:37 Data Interpretation label carrier review slice
+
+- 做了什麼：
+  - 先補 TDD 紅燈：
+    - backend preview / apply / recipe 應保存 MAT `classlabel`、`cue_onset`、time model 和
+      granularity 選擇。
+    - wizard 應顯示可編輯 label carrier review rows，並回傳 `label_carrier_choices`。
+  - `InterpretationCandidate` / `InterpretationPreview` 新增 `label_carrier_plan` /
+    `label_carrier_preview`。
+  - backend 會為 MAT、CSV / TSV、BIDS `events.tsv`、TXT carrier 建立 label field / MAT
+    variable、anchor、time model、granularity 候選與 selected values。
+  - `PreviewInterpretationCommand(choices=...)` 可接 `label_carrier_choices`；apply / save recipe
+    會保存 reviewed `label_carrier_plan`，recipe trace 會寫 `choices:label_carriers`。
+  - `DataInterpretationPreviewDialog` 新增 label carrier review table，顯示 carrier、format、
+    label field、anchor、time、granularity；Dataset action 既有 re-preview / re-validate path
+    會套用這些 choices。
+  - UI replay 改成 folder source + `product_replay_events.tsv`，artifact 會記錄可見
+    `label_carrier_rows` 與 reviewed choices。
+- 結果：
+  - TDD 紅燈確認過：
+    - backend test 先因缺 `label_carrier_preview` 失敗。
+    - dialog test 先因缺 `label_carrier_tree` 失敗。
+  - UI replay JSON 顯示 `trial_type` / `onset` / `seconds` / `trial` label carrier review row，
+    applied interpretation 保存同一份 plan。
+  - backend unit test 覆蓋 MAT `classlabel` / `cue_onset` 寫入 `ImportRecipe.label_carrier_plan`
+    和 `choices:label_carriers` trace。
+- 證據：
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `33 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `50 passed`
+  - targeted `ruff` -> `PASS`
+  - targeted `basedpyright` -> `0 errors, 0 warnings, 0 notes`
+- 接續 / 本輪剩餘：
+  - 這是 first-pass format-specific label carrier review，不是完整 post-load label import
+    內嵌 wizard。
+  - 仍缺 all-format manual compatibility matrix、真人 Windows launcher click-through、MCP
+    Inspector GUI / release config。
+
 ### 11:17 Data Interpretation metadata / class-map editor slice
 
 - 做了什麼：

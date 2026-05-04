@@ -1225,6 +1225,42 @@ format-specific label editor、all-format manual compatibility matrix 或真人 
 Interpretation recipe flow。它仍不支撐 format-specific label column / MAT variable / anchor
 editor、label import 內嵌 wizard、完整真人 click-through 或全格式 compatibility matrix。
 
+2026-05-04 Data Interpretation label carrier review slice：
+
+- backend:
+  - `InterpretationCandidate` / `InterpretationPreview` now expose `label_carrier_plan` /
+    `label_carrier_preview` for MAT, CSV / TSV, BIDS `events.tsv`, and TXT carriers.
+  - `PreviewInterpretationCommand(choices=...)` accepts `label_carrier_choices` with
+    `label_field`, `anchor`, `time_model`, and `granularity`.
+  - `AppliedInterpretation` / `ImportRecipe` save the reviewed `label_carrier_plan`, and
+    recipe trace records `choices:label_carriers`.
+- UI:
+  - `DataInterpretationPreviewDialog` now shows editable label carrier review rows for
+    carrier, format, label field / MAT variable, anchor, time model, and granularity.
+  - `get_result()` returns edited label carrier choices, and Dataset action already
+    re-previews / re-validates those choices before applying.
+- replay artifact refreshed:
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - replay JSON shows visible `label_carrier_rows` with `trial_type` / `onset` /
+    `seconds` / `trial`, and applied interpretation saves the same reviewed plan.
+- targeted gates:
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+  - `33 passed`
+  - `scripts/dev/run_ui_pytest.sh tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+  - `50 passed`
+  - `poetry run ruff check XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/service.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/backend/application/test_application_service.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+  - `PASS`
+  - `poetry run basedpyright XBrainLab/backend/application/data_interpretation.py XBrainLab/backend/application/service.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/backend/application/test_application_service.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+  - `0 errors, 0 warnings, 0 notes`
+
+這批 evidence 支撐 first-pass format-specific label carrier review 已進入 Data Interpretation
+wizard，包含 MAT variable / anchor recipe evidence 和 UI-observable BIDS-events / TSV label
+column / anchor evidence。它仍不支撐完整 post-load label import 內嵌 wizard、全格式人工
+compatibility matrix 或真人 click-through。
+
 2026-05-04 Data Interpretation recipe save UI path：
 
 - Preview dialog 新增 `Save recipe after applying` checkbox，blocked decision 會 disabled。
