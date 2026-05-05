@@ -106,6 +106,10 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
         validation_decision={"decision": "needs_confirmation"},
     )
     qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+    dialog._fit_all_tree_columns_to_viewport()
 
     assert dialog.label_carrier_tree.textElideMode() == Qt.TextElideMode.ElideRight
     assert dialog.event_tree.textElideMode() == Qt.TextElideMode.ElideRight
@@ -139,6 +143,7 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     assert isinstance(label_field_selector, QComboBox)
     assert label_field_selector.currentText() == "Trial type"
     assert label_field_selector.currentData() == "trial_type"
+    assert dialog.label_carrier_tree.columnWidth(2) >= 96
 
 
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):

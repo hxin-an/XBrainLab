@@ -3,7 +3,7 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `4.063`
+- elapsed seconds: `4.167`
 - source: `<walkthrough_source>`
 - recipe: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
@@ -14,7 +14,7 @@
 - screenshots: `20`
 - human desktop acceptance: `not performed`
 - resource smoke passed: `True`
-- RSS growth: `232256` KB / limit `600000` KB
+- RSS growth: `232032` KB / limit `600000` KB
 
 ## Screenshots
 
@@ -127,9 +127,9 @@
 - smoke checked: `True`
 - smoke passed: `True`
 - boundary: Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks.
-- start: threads `1`, qt active `0`, rss `837076` KB
-- before_close: threads `1`, qt active `0`, rss `1069332` KB
-- after_close: threads `1`, qt active `0`, rss `1069332` KB
+- start: threads `1`, qt active `0`, rss `836484` KB
+- before_close: threads `1`, qt active `0`, rss `1068516` KB
+- after_close: threads `1`, qt active `0`, rss `1068516` KB
 
 ## Remaining Human Verification
 

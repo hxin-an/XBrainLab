@@ -8924,6 +8924,8 @@
   - Address user-visible Data Interpretation preview polish without changing backend recipe values.
   - Keep table geometry / elide behavior, but reduce raw-looking selector text and harsh Review
     Summary striping.
+  - Follow-up within the same UI concern: give the label-carrier `Format` column enough product-width
+    space for common names such as `BIDS events`.
 - red / focused tests：
   - Updated `test_data_interpretation_preview_dialog_tables_fit_product_layout` to require visible
     label-field selector text `Trial type` while preserving `currentData() == "trial_type"`.
@@ -8933,6 +8935,9 @@
   - `DataInterpretationPreviewDialog._text_choices()` now humanizes displayed label / anchor choice
     labels while keeping the raw value as combo data.
   - Lowered `InterpretationReviewSummary` alternate row color from `#252525` to `#232323`.
+  - Rebalanced label-carrier table column weights from `(150, 145, 70, 115, 105, 105, 110, 140)` to
+    `(145, 145, 110, 115, 105, 100, 105, 157)`, so `Format` has a useful visible width while the
+    table still fills the viewport.
   - Updated existing selector tests to interact with visible user-facing combo labels, while still
     asserting raw recipe choices are saved.
 - validation：
@@ -8941,6 +8946,9 @@
     -> failed on missing `#232323` and raw selector display.
   - After fix:
     same focused test -> `1 passed`.
+  - Follow-up red/green:
+    added a product-width assertion requiring the label-carrier `Format` column to be at least
+    `96px`; it failed at `73px` before the column-weight change and passed after the fix.
   - Regression:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py::test_dataset_panel_refits_table_after_loaded_rows_settle tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color -q`
     -> `20 passed`.

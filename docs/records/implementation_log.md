@@ -2731,12 +2731,16 @@ Preprocess sidebar mock / legacy epoch-reset shared-status fallback now uses the
 
 Data Interpretation label-carrier selectors now display human-readable labels such as `Trial type`
 and `Onset` while preserving raw source values such as `trial_type` in saved recipe choices. The
-Review Summary alternate row contrast was reduced again for a quieter dark-theme table.
+Review Summary alternate row contrast was reduced again for a quieter dark-theme table. A follow-up
+column-weight polish keeps common format names such as `BIDS events` readable in the label-carrier
+review table.
 
 ### 已可宣稱
 
 - The wizard no longer exposes common label/event selector values as raw snake_case in the visible
   combo text.
+- The label-carrier `Format` column is wide enough for common BIDS/event-carrier labels in the
+  product-width dialog.
 - Refreshed UI walkthrough artifacts still pass automated screenshot, visible-text, and table
   geometry checks.
 

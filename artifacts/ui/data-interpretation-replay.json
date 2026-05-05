@@ -3359,14 +3359,14 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "horizontal_scrollbar_max": 0,
           "text_elide_mode": "ElideRight",
@@ -3651,14 +3651,14 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "horizontal_scrollbar_max": 0,
           "text_elide_mode": "ElideRight",

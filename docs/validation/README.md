@@ -358,6 +358,8 @@ Windows desktop acceptance.
   - 2026-05-06 wizard selector polish keeps backend values such as `trial_type` in recipe choices
     but displays label-carrier selector text as `Trial type` / `Onset`; the `Review Summary`
     alternate row color was lowered to `#232323` to reduce striping.
+  - The label-carrier table column weights were adjusted so common format names such as
+    `BIDS events` remain visible in the product-width dialog while still filling the panel.
 - Agent/eval change:
   - General data-entry wording such as `Load ...` and folder import requests now route to
     Data Interpretation `scan_source`; explicit legacy/direct compatibility wording still routes to

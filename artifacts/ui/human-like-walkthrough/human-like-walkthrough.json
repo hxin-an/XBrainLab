@@ -820,14 +820,14 @@
             "header_length": 982,
             "viewport_width": 982,
             "column_widths": [
-              157,
-              151,
-              73,
-              120,
-              110,
+              145,
+              145,
               110,
               115,
-              146
+              105,
+              100,
+              105,
+              157
             ],
             "horizontal_scrollbar_max": 0,
             "text_elide_mode": "ElideRight",
@@ -1199,14 +1199,14 @@
             "header_length": 982,
             "viewport_width": 982,
             "column_widths": [
-              157,
-              151,
-              73,
-              120,
-              110,
+              145,
+              145,
               110,
               115,
-              146
+              105,
+              100,
+              105,
+              157
             ],
             "horizontal_scrollbar_max": 0,
             "text_elide_mode": "ElideRight",
@@ -2593,14 +2593,14 @@
             "header_length": 982,
             "viewport_width": 982,
             "column_widths": [
-              157,
-              151,
-              73,
-              120,
-              110,
+              145,
+              145,
               110,
               115,
-              146
+              105,
+              100,
+              105,
+              157
             ],
             "horizontal_scrollbar_max": 0,
             "text_elide_mode": "ElideRight",
@@ -9662,14 +9662,14 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "horizontal_scrollbar_max": 0,
           "text_elide_mode": "ElideRight",
@@ -9879,14 +9879,14 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "horizontal_scrollbar_max": 0,
           "text_elide_mode": "ElideRight",
@@ -10208,14 +10208,14 @@
           "header_length": 982,
           "viewport_width": 982,
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "horizontal_scrollbar_max": 0,
           "text_elide_mode": "ElideRight",
@@ -19497,33 +19497,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1010770,
+      "pid": 1011732,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837076
+      "max_rss_kb": 836484
     },
     {
       "label": "before_close",
-      "pid": 1010770,
+      "pid": 1011732,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069332
+      "max_rss_kb": 1068516
     },
     {
       "label": "after_close",
-      "pid": 1010770,
+      "pid": 1011732,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069332
+      "max_rss_kb": 1068516
     }
   ],
   "ui_quality_review": {
@@ -19783,14 +19783,14 @@
             "Interactive"
           ],
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -19916,14 +19916,14 @@
             "Interactive"
           ],
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -20129,14 +20129,14 @@
             "Interactive"
           ],
           "column_widths": [
-            157,
-            151,
-            73,
-            120,
-            110,
+            145,
+            145,
             110,
             115,
-            146
+            105,
+            100,
+            105,
+            157
           ],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
@@ -20218,10 +20218,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 232256,
+      "rss_growth_kb": 232032,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.063
+  "elapsed_seconds": 4.167
 }

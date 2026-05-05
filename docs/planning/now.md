@@ -260,7 +260,8 @@
   group title 也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。
 - 最新 wizard selector polish 也把 label carrier combo 顯示從 raw `trial_type` / `onset` 改成
   `Trial type` / `Onset`，並把 `Review Summary` alternate row contrast 再降低；recipe choices
-  仍保存 raw source column value。
+  仍保存 raw source column value。後續欄位權重 polish 又讓 label-carrier `Format` 欄在
+  product-width dialog 中完整顯示 `BIDS events`，不再被擠成 `BIDS ...`。
 - 最新 decision-copy polish 已把 wizard 頂部狀態從 `Validation needs confirmation...` 改成
   `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file
   guidance，減少 backend wording 暴露。
