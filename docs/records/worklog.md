@@ -6951,3 +6951,58 @@
     previous local artifact remains `118 / 118`.
   - This does not complete full recipe conflict editing, automatic rename matching, anchor
     reconciliation, or human desktop acceptance.
+
+### 2026-05-05 Dataset / Data Interpretation table-fit polish
+
+- scope：
+  - Address UI review feedback that Dataset table columns visually shrink away from the main panel
+    after data load, and that Data Interpretation preview/remap tables overflow or look too
+    high-contrast.
+  - No backend workflow, agent schema, or model-eval behavior change in this slice.
+- problem：
+  - Dataset table kept interactive columns but only assigned spare width to one column and allowed
+    narrow viewport overflow.
+  - Data Interpretation `QTreeWidget` tables were configured with fixed widths before final Qt
+    layout, so the screenshot could show table headers ending early with unused panel space.
+  - Review Summary row alternation could read as harsh striping in the dark theme.
+- red / focused tests：
+  - Added failing Dataset tests for wide and narrow panels requiring `header.length()` to match the
+    table viewport while columns remain `Interactive`.
+  - Added failing Data Interpretation dialog tests requiring file / label carrier / event /
+    review trees to fill the viewport and avoid horizontal scroll at narrow width.
+  - Kept a semantic assertion that `Events (n)` / `Labels (n)` are not success-green status
+    indicators.
+- 做了什麼：
+  - Dataset table now scales all columns proportionally against the actual viewport, with a minimum
+    column width floor and exact pixel distribution via shared `ui.table_sizing`.
+  - Data Interpretation dialog now records base widths for each tree, uses interactive resize modes
+    for every column, recomputes widths against the visible viewport, and runs a show-time refit
+    after Qt layout completes.
+  - Review Summary now uses explicit dark theme palette colors and lower-contrast alternating rows.
+  - Refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`,
+    `artifacts/ui/data-interpretation-applied.png`, and
+    `artifacts/ui/data-interpretation-replay.json`.
+- validation：
+  - Focused red tests failed first on old fixed-width behavior, then passed.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_table_sizing.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `29 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `3 passed`.
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> failed once with the existing WSLg / Wayland maximized-state protocol error.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; screenshots were manually reviewed for nonblank content, table fill, reduced
+    striping, and no green event/label success color.
+- evidence：
+  - `artifacts/ui/data-interpretation-replay.json` records Dataset table
+    `header_length=994`, `viewport_width=994`, resize modes all `Interactive`, and column widths
+    `[321, 113, 150, 75, 86, 99, 150]`.
+  - `artifacts/ui/data-interpretation-applied.png` shows the loaded Dataset table filling the
+    left panel through the `Events` column.
+  - `artifacts/ui/data-interpretation-preview.png` and
+    `artifacts/ui/data-interpretation-remap.png` show metadata, label/event, and Review Summary
+    headers filling their containers without horizontal overflow.
+- 不能宣稱：
+  - This is automated PyQt / Xvfb UI-observable evidence, not Windows Desktop human acceptance,
+    dual-monitor / DPI acceptance, or complete import-wizard redesign.

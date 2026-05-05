@@ -489,9 +489,11 @@ next step 從 legacy `load_data` / `attach_labels` visible language 收斂成 Da
 `Import data` / `Add labels to loaded data`，避免 assistant summary 回到舊主流程語言。已刷新同一份
 walkthrough artifact。最新 Dataset / Data Interpretation UI follow-up 又修掉 preview dialog
 的 label / event / recipe trace table overflow、`Review Summary` 高對比黑白條紋，以及 Dataset
-table 載入後欄位內縮問題：table 仍允許使用者動態調整欄寬，但 Dataset table 的 `File` 欄會
-承接剩餘寬度並填滿主 panel，其他欄保留穩定寬度；`Events` 欄現在用 `Events (n)` /
-`Labels (n)` 區分內建 events 與外部 labels，不再用綠色把 external labels 包裝成成功狀態。
+table 載入後欄位內縮問題：Dataset table 仍保留 interactive resize mode，但會依 viewport
+等比例縮放所有欄位，讓欄寬合計貼齊主 panel，不再只把剩餘寬度塞進單一欄或在窄 panel
+外溢；Data Interpretation preview / remap dialog 也會在顯示後用實際 viewport 重算 metadata、
+label/event 和 `Review Summary` 欄寬。`Events` 欄現在用 `Events (n)` / `Labels (n)`
+區分內建 events 與外部 labels，不再用綠色把 external labels 包裝成成功狀態。
 Data Interpretation replay
 JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，applied artifact
 顯示全部欄位填滿主 panel。這支撐 automated PyQt replay

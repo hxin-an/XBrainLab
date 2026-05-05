@@ -99,33 +99,80 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     assert dialog.label_carrier_tree.textElideMode() == Qt.TextElideMode.ElideRight
     assert dialog.event_tree.textElideMode() == Qt.TextElideMode.ElideRight
     assert dialog.review_tree.textElideMode() == Qt.TextElideMode.ElideRight
-    assert dialog.label_carrier_tree.horizontalScrollBarPolicy() == (
-        Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    )
-    assert dialog.review_tree.horizontalScrollBarPolicy() == (
-        Qt.ScrollBarPolicy.ScrollBarAsNeeded
-    )
-    for tree, fill_column in (
-        (dialog.file_tree, 0),
-        (dialog.label_carrier_tree, 7),
-        (dialog.event_tree, 2),
-        (dialog.review_tree, 2),
+    for tree in (
+        dialog.file_tree,
+        dialog.label_carrier_tree,
+        dialog.event_tree,
+        dialog.review_tree,
     ):
         header = tree.header()
         assert header is not None
-        assert header.stretchLastSection() == (fill_column == tree.columnCount() - 1)
+        assert not header.stretchLastSection()
         for column in range(tree.columnCount()):
-            expected_mode = (
-                QHeaderView.ResizeMode.Stretch
-                if column == fill_column and fill_column != tree.columnCount() - 1
-                else QHeaderView.ResizeMode.Interactive
+            assert (
+                header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive
             )
-            assert header.sectionResizeMode(column) == expected_mode
+        assert abs(header.length() - tree.viewport().width()) <= 2
     assert dialog.review_tree.alternatingRowColors()
     assert "alternate-background-color" in dialog.styleSheet()
-    assert "#202020" in dialog.styleSheet().lower()
+    assert "#252525" in dialog.styleSheet().lower()
     assert "#ffffff" not in dialog.styleSheet().lower()
     assert "#000000" not in dialog.styleSheet().lower()
+
+
+def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01.fif"],
+            "label_carriers": ["/tmp/source/sub-01_task-mi_run-01_events.tsv"],
+        },
+        preview={
+            "metadata_preview": [
+                {
+                    "file": "sub-01_task-mi_run-01.fif",
+                    "subject": {"value": "01", "decision": "safe"},
+                    "session": {"value": "session-01", "decision": "safe"},
+                    "task": {"value": "motor-imagery", "decision": "safe"},
+                    "run": {"value": "01", "decision": "safe"},
+                },
+            ],
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/source/sub-01_task-mi_run-01_events.tsv",
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "label_candidates": ["trial_type"],
+                    "anchor_candidates": ["onset"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                    "role": "class cue labels",
+                },
+            ],
+            "event_roles": {"trial_type": "class cue"},
+            "recipe_trace": ["scan:scan-1", "candidate:candidate-1"],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(760, 720)
+    dialog.show()
+    qtbot.wait(0)
+    dialog._fit_all_tree_columns_to_viewport()
+
+    for tree in (
+        dialog.file_tree,
+        dialog.label_carrier_tree,
+        dialog.event_tree,
+        dialog.review_tree,
+    ):
+        header = tree.header()
+        assert header is not None
+        assert abs(header.length() - tree.viewport().width()) <= 2
+        assert tree.horizontalScrollBar().maximum() == 0
 
 
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):

@@ -1378,3 +1378,34 @@ tool specs expose the same `choices.eeg_file_remap` / `choices.label_carrier_rem
 - Primary / fallback local LLM x3 artifacts still need rerun on the new `121` case suite.
 - This does not complete the full recipe conflict editor, anchor reconciliation, or human desktop
   acceptance.
+
+## 2026-05-05 Dataset / Data Interpretation Table-Fit Polish
+
+### 狀態
+
+Dataset 主表與 Data Interpretation preview/remap wizard table 現在會以實際 viewport 重新分配欄寬。
+欄位保持 interactive resize mode，但整體會填滿主 panel；文字溢出交給 elide，而不是讓 table
+header 內縮或外溢。Review Summary 也改成低對比 dark-theme alternate rows。Events/Labels 顯示
+維持語意區分，不用 success-green 表示 external labels。
+
+### 已可宣稱
+
+- Automated PyQt replay 下，Dataset table 載入資料後欄位合計會貼齊主 panel。
+- Data Interpretation metadata、label/event、remap 和 Review Summary table 在截圖中不再水平外溢。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/table_sizing.py`, `XBrainLab/ui/panels/dataset/panel.py`,
+  `XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- Tests：`tests/unit/ui/test_table_sizing.py`, `tests/unit/ui/dataset/test_panel.py`,
+  `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`,
+  `artifacts/ui/data-interpretation-applied.png`,
+  `artifacts/ui/data-interpretation-replay.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 Windows Desktop 真人 click-through、雙螢幕 / DPI acceptance，或完整 mature import
+  wizard redesign。

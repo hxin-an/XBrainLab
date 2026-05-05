@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import (
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.styles.theme import Theme
+from XBrainLab.ui.table_sizing import scaled_column_widths
 
 
 class DataInterpretationPreviewDialog(BaseDialog):
@@ -59,6 +61,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._event_role_widgets: dict[int, QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
+        self._tree_column_specs: dict[int, tuple[int, ...]] = {}
         super().__init__(
             parent=parent,
             title="Interpret Data Source",
@@ -238,6 +241,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.button_box.rejected.connect(self.reject)
         self.button_box.accepted.connect(self.accept)
         layout.addWidget(self.button_box)
+        self._fit_all_tree_columns_to_viewport()
+
+    def resizeEvent(self, event):  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "review_tree"):
+            self._fit_all_tree_columns_to_viewport()
+
+    def showEvent(self, event):  # noqa: N802
+        super().showEvent(event)
+        QTimer.singleShot(0, self._fit_all_tree_columns_to_viewport)
 
     def get_result(self) -> dict[str, Any]:
         return {
@@ -258,15 +271,16 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.setStyleSheet(
             f"""
             QTreeWidget {{
-                background-color: {Theme.BACKGROUND_DARK};
-                alternate-background-color: #222222;
+                background-color: #202020;
+                alternate-background-color: #242424;
                 color: {Theme.TEXT_MUTED};
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 selection-background-color: {Theme.BLUE_PRESSED};
                 selection-color: {Theme.TEXT_MUTED};
             }}
             QTreeWidget#InterpretationReviewSummary {{
-                alternate-background-color: #202020;
+                background-color: #212121;
+                alternate-background-color: #252525;
             }}
             QTreeWidget::item {{
                 padding: 4px 6px;
@@ -290,16 +304,19 @@ class DataInterpretationPreviewDialog(BaseDialog):
             """
         )
 
-    @staticmethod
     def _fit_tree_columns(
+        self,
         tree: QTreeWidget,
         widths: tuple[int, ...],
         *,
-        stretch_column: int,
+        stretch_column: int,  # retained for call-site readability
     ) -> None:
+        _ = stretch_column
         tree.setTextElideMode(Qt.TextElideMode.ElideRight)
         tree.setWordWrap(False)
         tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._apply_tree_palette(tree)
+        self._tree_column_specs[id(tree)] = widths
         header = tree.header()
         if header is None:
             return
@@ -307,16 +324,54 @@ class DataInterpretationPreviewDialog(BaseDialog):
         header.setDefaultAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        stretch_last_section = stretch_column == len(widths) - 1
-        header.setStretchLastSection(stretch_last_section)
-        for column, width in enumerate(widths):
+        header.setStretchLastSection(False)
+        for column in range(len(widths)):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        self._fit_tree_columns_to_viewport(tree)
+
+    def _fit_all_tree_columns_to_viewport(self) -> None:
+        for tree_name in (
+            "file_tree",
+            "label_carrier_tree",
+            "event_tree",
+            "review_tree",
+        ):
+            tree = getattr(self, tree_name, None)
+            if isinstance(tree, QTreeWidget):
+                self._fit_tree_columns_to_viewport(tree)
+
+    def _fit_tree_columns_to_viewport(self, tree: QTreeWidget) -> None:
+        widths = self._tree_column_specs.get(id(tree))
+        if not widths:
+            return
+        viewport = tree.viewport()
+        if viewport is None:
+            return
+        header = tree.header()
+        min_width = header.minimumSectionSize() if header is not None else 56
+        scaled = scaled_column_widths(
+            widths,
+            viewport.width(),
+            min_width=min_width,
+        )
+        for column, width in enumerate(scaled):
             tree.setColumnWidth(column, width)
-            mode = (
-                QHeaderView.ResizeMode.Stretch
-                if column == stretch_column and not stretch_last_section
-                else QHeaderView.ResizeMode.Interactive
-            )
-            header.setSectionResizeMode(column, mode)
+
+    @staticmethod
+    def _apply_tree_palette(tree: QTreeWidget) -> None:
+        palette = tree.palette()
+        if tree.objectName() == "InterpretationReviewSummary":
+            base = QColor("#212121")
+            alternate = QColor("#252525")
+        else:
+            base = QColor("#202020")
+            alternate = QColor("#242424")
+        palette.setColor(QPalette.ColorRole.Base, base)
+        palette.setColor(QPalette.ColorRole.AlternateBase, alternate)
+        palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_MUTED))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(Theme.BLUE_PRESSED))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(Theme.TEXT_MUTED))
+        tree.setPalette(palette)
 
     def _file_count(self) -> int:
         files = self.scan_result.get("eeg_files", []) or []

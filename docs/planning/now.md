@@ -129,6 +129,11 @@
   也把 event role rows 改成 selector，不再要求使用者手打 role text。Replay artifact 現在保存
   `event_rows`，可見 `trial_type -> Class cue`，recipe choices 仍保存 backend value
   `class cue`。
+- 最新 Dataset / Data Interpretation table-fit slice 已把 Dataset 主表和 wizard tree table 改成依
+  viewport 等比例重算欄寬：整體欄位會填滿主 panel，文字用 elide 處理，不再用高對比
+  `Review Summary` 條紋或綠色 success 語意顯示 external labels。Artifact：
+  `artifacts/ui/data-interpretation-preview.png`、`data-interpretation-remap.png`、
+  `data-interpretation-applied.png`。
 - Recipe reload 現在不只重掃 source path：`ReloadInterpretationRecipeCommand` 會把 saved
   selected files、metadata overrides、label carrier choices、event roles 和 class map rehydrated
   回 candidate `choices` 後再 preview / validate。Human-like walkthrough reload command result

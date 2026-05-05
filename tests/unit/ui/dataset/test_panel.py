@@ -155,10 +155,36 @@ def test_dataset_panel_table_columns_fill_available_width(
     assert not header.stretchLastSection()
     for column in range(panel.table.columnCount()):
         assert header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive
-    assert header.length() >= viewport.width() - 2
-    if viewport.width() > sum(DatasetPanel._TABLE_BASE_WIDTHS):
-        assert panel.table.columnWidth(0) > DatasetPanel._TABLE_BASE_WIDTHS[0]
+    assert abs(header.length() - viewport.width()) <= 2
+    assert all(
+        panel.table.columnWidth(column) > DatasetPanel._TABLE_MIN_WIDTH
+        for column in range(panel.table.columnCount())
+    )
     assert panel.table.textElideMode() == Qt.TextElideMode.ElideRight
+
+
+def test_dataset_panel_table_columns_shrink_to_fill_narrow_panel(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.resize(620, 420)
+    panel.show()
+    qtbot.wait(0)
+    panel._fit_table_columns_to_viewport()
+
+    header = panel.table.horizontalHeader()
+    viewport = panel.table.viewport()
+    assert header is not None
+    assert viewport is not None
+
+    assert abs(header.length() - viewport.width()) <= 2
+    assert (
+        max(panel.table.columnWidth(column) for column in range(7))
+        < (DatasetPanel._TABLE_BASE_WIDTHS[0])
+    )
 
 
 def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
@@ -214,6 +240,10 @@ def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
     assert internal_item.toolTip() == "Events detected in the recording."
     assert imported_item.text() == "Labels (2)"
     assert imported_item.toolTip() == "External labels are attached to this recording."
+    assert internal_item.foreground().color().name().lower() not in {
+        Theme.ACCENT_SUCCESS.lower(),
+        "#50fa7b",
+    }
     assert imported_item.foreground().color().name().lower() == (
         Theme.TEXT_MUTED.lower()
     )

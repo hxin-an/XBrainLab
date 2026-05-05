@@ -20,6 +20,7 @@ from XBrainLab.ui.application_capabilities import (
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.theme import Theme
+from XBrainLab.ui.table_sizing import scaled_column_widths
 
 from .actions import DatasetActionHandler
 from .sidebar import DatasetSidebar
@@ -42,6 +43,7 @@ class DatasetPanel(BasePanel):
     """
 
     _TABLE_BASE_WIDTHS: tuple[int, ...] = (240, 84, 112, 56, 64, 74, 112)
+    _TABLE_MIN_WIDTH = 48
 
     def __init__(self, controller=None, parent=None):
         """Initialize the dataset panel.
@@ -126,11 +128,11 @@ class DatasetPanel(BasePanel):
         viewport = self.table.viewport()
         if viewport is None:
             return
-        widths = list(self._TABLE_BASE_WIDTHS)
-        available_width = viewport.width()
-        base_width = sum(widths)
-        if available_width > base_width:
-            widths[0] += available_width - base_width
+        widths = scaled_column_widths(
+            self._TABLE_BASE_WIDTHS,
+            viewport.width(),
+            min_width=self._TABLE_MIN_WIDTH,
+        )
         for column, width in enumerate(widths):
             self.table.setColumnWidth(column, width)
 

@@ -221,12 +221,15 @@ UI baseline capture 結果：
 2026-05-05 Dataset table fit and data-entry routing follow-up:
 
 - Product/UI change:
-  - Data Interpretation preview dialog tables now use constrained stretch + elide behavior so label
-    carriers, events, and recipe trace stay inside the dialog instead of overflowing.
-  - `Review Summary` keeps structured rows but uses lower-contrast dark alternating rows.
+  - Data Interpretation preview dialog tables now use viewport-scaled interactive columns + elide
+    behavior so metadata, label/event, and recipe trace tables fill the dialog panel without
+    horizontal overflow. A show-time refit hook corrects first-render widths after Qt layout
+    finishes.
+  - `Review Summary` keeps structured rows but uses lower-contrast dark alternating rows and theme
+    palette colors instead of high-contrast black/white striping.
   - Dataset panel table keeps columns interactive, records viewport/header width evidence, and
-    assigns remaining width to `File`, so loaded rows fill the main panel while preserving filename
-    readability.
+    proportionally scales all columns so loaded rows fill the main panel in both wide and narrow
+    layouts.
   - Dataset visible text now distinguishes recording events (`Events (n)`) from external labels
     (`Labels (n)`) without using success-green coloring for external labels.
 - Agent/eval change:
@@ -236,12 +239,23 @@ UI baseline capture 結果：
   - BIDS path / prompt hints are normalized toward `source_hint=bids`.
 - Focused evidence:
   - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py -q`
-    -> `23 passed`.
-  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> previous slice `23 passed`; latest viewport-refit regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_table_sizing.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `29 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `3 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
     -> exit `0`; replay JSON records Dataset table headers, rows, resize modes, and column widths.
+  - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> failed once with the existing WSLg / Wayland maximized-state protocol error; not used as
+    acceptance evidence.
   - `artifacts/ui/data-interpretation-replay.json` shows interactive resize modes,
-    `header_length == viewport_width`, a widened `File` column, and rows containing
-    `Events (6)` / `Labels (4)`.
+    `header_length == viewport_width`, proportional column widths
+    `[321, 113, 150, 75, 86, 99, 150]`, and rows containing `Events (6)` / `Labels (4)`.
+  - Refreshed screenshots:
+    `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`, and
+    `artifacts/ui/data-interpretation-applied.png`.
   - Deterministic eval and cached local primary / fallback evals were refreshed at
     `artifacts/agent_evals/dashboard.md`; deterministic, primary, and fallback all remain
     `118 / 118`, with local roles repeated `3` times.
