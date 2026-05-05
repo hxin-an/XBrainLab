@@ -30,8 +30,12 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+b6b6d00 ui: block stale label target fallback
+1e59b29 docs: refresh handoff after split dialog boundary
 2a08679 ui: require split dialog service context
+4ff4c43 docs: refresh handoff after visualization query fallback
 fe978ce ui: keep visualization failed query authoritative
+2c62662 docs: refresh handoff after preprocess query slice
 d786276 ui: query preprocess plot data through service
 aea3d3a docs: refresh handoff after walkthrough geometry gate
 865b7c6 ui: flag clipped rows in walkthrough artifacts
@@ -359,6 +363,9 @@ bb57beb ui: use backend truth for split replacement
     table's column-0 `Qt.UserRole` object before opening `ImportLabelDialog`.
   - `DatasetController.get_loaded_data_list()` remains only as a mock / legacy fallback when table
     row objects are unavailable.
+  - latest boundary slice blocks real `Study` post-load label import if selected rows lack
+    `UserRole` target data, instead of recovering from stale
+    `DatasetController.get_loaded_data_list()`.
 - Channel Selection dialog query source:
   - real command-capable `DatasetSidebar.open_channel_selection()` now queries
     `QueryStateCommand(query="data_lists", include_objects=True)` before opening
@@ -1038,6 +1045,29 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 3ecb698; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  tests/unit/ui/dataset/test_panel.py \
+  tests/unit/ui/dataset/test_import_label.py \
+  -q
+# 105 passed for b6b6d00
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for b6b6d00
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for b6b6d00
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for b6b6d00; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
