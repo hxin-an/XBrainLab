@@ -11,9 +11,13 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from XBrainLab.backend.application import UpdateMetadataCommand
+from XBrainLab.backend.application import CommandName, UpdateMetadataCommand
 from XBrainLab.backend.utils.logger import logger
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.theme import Theme
 
@@ -142,6 +146,14 @@ class DatasetPanel(BasePanel):
         self.table.setRowCount(0)
 
         data_list = self.controller.get_loaded_data_list()
+        metadata_capability = get_command_capability(self, CommandName.UPDATE_METADATA)
+        metadata_editable = (
+            metadata_capability.enabled if metadata_capability is not None else True
+        )
+        metadata_block_reason = blocked_reason(
+            metadata_capability,
+            "Metadata editing is not available right now.",
+        )
 
         if data_list:
             self.table.setRowCount(len(data_list))
@@ -151,11 +163,27 @@ class DatasetPanel(BasePanel):
                 item_name.setFlags(item_name.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 0, item_name)
 
-                # Subject (Editable)
-                self.table.setItem(row, 1, QTableWidgetItem(data.get_subject_name()))
+                # Subject
+                self.table.setItem(
+                    row,
+                    1,
+                    self._metadata_item(
+                        data.get_subject_name(),
+                        editable=metadata_editable,
+                        blocked_tooltip=metadata_block_reason,
+                    ),
+                )
 
-                # Session (Editable)
-                self.table.setItem(row, 2, QTableWidgetItem(data.get_session_name()))
+                # Session
+                self.table.setItem(
+                    row,
+                    2,
+                    self._metadata_item(
+                        data.get_session_name(),
+                        editable=metadata_editable,
+                        blocked_tooltip=metadata_block_reason,
+                    ),
+                )
 
                 # Channels (Read-only)
                 item_ch = QTableWidgetItem(str(data.get_nchan()))
@@ -204,6 +232,19 @@ class DatasetPanel(BasePanel):
 
         self.table.blockSignals(False)
 
+    @staticmethod
+    def _metadata_item(
+        value: str,
+        *,
+        editable: bool,
+        blocked_tooltip: str,
+    ) -> QTableWidgetItem:
+        item = QTableWidgetItem(value)
+        if not editable:
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setToolTip(blocked_tooltip)
+        return item
+
     def on_item_changed(self, item):
         """Handle in-place editing of Subject or Session cells.
 
@@ -217,8 +258,22 @@ class DatasetPanel(BasePanel):
         name_item = self.table.item(row, 0)
         if not (name_item and name_item.data(Qt.ItemDataRole.UserRole)):
             return
+        if col not in (1, 2):
+            return
 
         new_value = item.text()
+        metadata_capability = get_command_capability(self, CommandName.UPDATE_METADATA)
+        if metadata_capability is not None and not metadata_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Metadata blocked",
+                blocked_reason(
+                    metadata_capability,
+                    "Metadata editing is not available right now.",
+                ),
+            )
+            self.update_panel()
+            return
 
         if col == 1:  # Subject
             controller = getattr(self, "controller", None)

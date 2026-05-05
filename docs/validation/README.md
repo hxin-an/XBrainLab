@@ -2280,6 +2280,29 @@ training setup UX 或 long-running training acceptance。
 這批 evidence 支撐 stop-training UI action 與 backend capability policy 對齊。它仍不是完整
 long-running training human acceptance。
 
+2026-05-05 Dataset inline metadata capability follow-up：
+
+- UI/action:
+  - `DatasetPanel.update_panel()` now reads backend `update_metadata` capability and renders
+    Subject / Session cells read-only with the shared blocked reason when raw metadata editing is
+    blocked.
+  - `DatasetPanel.on_item_changed()` also preflights `update_metadata` capability, so programmatic
+    item changes cannot bypass the visible editability state.
+  - mock / legacy non-Study paths keep the existing editable table and controller fallback.
+- targeted gates:
+  - focused red + editability:
+    `poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_cells_use_backend_update_capability -q`
+    -> `1 passed`.
+  - Dataset panel / action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_panel_minimal.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `65 passed`.
+  - backend metadata command regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_table_service.py tests/unit/backend/application/test_application_service.py::test_metadata_update_command_routes_through_service tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `6 passed`.
+
+這批 evidence 支撐 dataset inline metadata editability 與 backend capability policy 對齊。它仍不是
+完整 Data Interpretation wizard editor 或 full dataset table UX acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

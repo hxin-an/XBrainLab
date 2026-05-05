@@ -5934,3 +5934,50 @@
   - This is one stop-action boundary alignment, not full long-running training human acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Dataset inline metadata capability truth
+
+- scope：
+  - UI/backend command truth alignment for Dataset table inline Subject / Session metadata edits。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `DatasetPanel.on_item_changed()` executed `UpdateMetadataCommand` for real `Study` paths, but
+    the table rendered Subject / Session cells as editable even when backend `update_metadata`
+    capability was disabled by downstream state.
+  - The user could edit text first, then get blocked by backend command failure, which made the UI
+    feel inconsistent with shared capability policy.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_cells_use_backend_update_capability -q`
+    initially failed because Subject / Session cells still had `ItemIsEditable`.
+- 做了什麼：
+  - `DatasetPanel.update_panel()` now reads `update_metadata` capability and renders Subject /
+    Session cells read-only with the shared blocked reason when editing is disabled.
+  - `on_item_changed()` now preflights the same capability before executing
+    `UpdateMetadataCommand`, protecting programmatic item changes.
+- validation：
+  - focused red + editability:
+    `poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_cells_use_backend_update_capability -q`
+    -> `1 passed`.
+  - Dataset panel / action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_panel_minimal.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `65 passed`.
+  - backend metadata command regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_table_service.py tests/unit/backend/application/test_application_service.py::test_metadata_update_command_routes_through_service tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `6 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one dataset table editability alignment, not full Data Interpretation wizard editor or
+    dataset table UX acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.

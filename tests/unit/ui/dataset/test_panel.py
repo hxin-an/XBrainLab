@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QMainWindow, QMessageBox
 
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
@@ -170,6 +171,48 @@ def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot)
 
         # Verify controller called
         mock_controller.update_metadata.assert_called()
+
+
+def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
+    """Locked real Study paths should show metadata as read-only."""
+    from XBrainLab.backend.study import Study
+
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    study = Study()
+    window.study = study
+    mock_data = MagicMock()
+    mock_data.configure_mock(
+        **{
+            "get_filepath.return_value": "/path/test.set",
+            "get_filename.return_value": "test.set",
+            "get_subject_name.return_value": "Sub01",
+            "get_session_name.return_value": "Sess01",
+            "get_event_list.return_value": ([], {}),
+            "get_epochs_length.return_value": 0,
+            "get_nchan.return_value": 0,
+            "get_sfreq.return_value": 100,
+            "is_raw.return_value": True,
+            "has_event.return_value": False,
+            "is_labels_imported.return_value": False,
+        },
+    )
+    study.loaded_data_list = [mock_data]
+    study.epoch_data = MagicMock()
+    controller = MagicMock()
+    controller.get_loaded_data_list.return_value = [mock_data]
+
+    panel = DatasetPanel(controller=controller, parent=window)
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    subject_item = panel.table.item(0, 1)
+    session_item = panel.table.item(0, 2)
+
+    assert not subject_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert not session_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert "Reset the session before changing raw files" in subject_item.toolTip()
+    assert subject_item.toolTip() == session_item.toolTip()
 
 
 def test_dataset_panel_smart_parse(mock_main_window, mock_controller, qtbot):

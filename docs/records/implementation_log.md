@@ -1021,3 +1021,26 @@ training 時則顯示 shared blocked reason。
 ### 不能宣稱完成
 
 - 這不是完整 long-running training human acceptance。
+
+## 2026-05-05 Dataset Inline Metadata Capability Truth
+
+### 狀態
+
+Dataset table 的 Subject / Session inline cells 現在會依 backend `update_metadata` capability
+決定是否可編輯。real `Study` path 在 downstream locked state 會顯示 read-only cell 和 shared
+blocked reason，programmatic `itemChanged` path 也會先做 capability preflight。
+
+### 已可宣稱
+
+- Dataset inline metadata editability 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 editable table / controller fallback compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/panel.py`
+- Tests：`tests/unit/ui/dataset/test_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 Data Interpretation wizard editor 或 dataset table UX acceptance。
