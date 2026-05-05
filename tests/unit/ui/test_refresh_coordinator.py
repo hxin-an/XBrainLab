@@ -209,8 +209,9 @@ def test_refresh_is_not_reentrant_for_same_main_window():
     assert nested_results == [False]
 
 
-def test_navigation_refreshes_only_selected_panel():
+def test_navigation_refreshes_selected_panel_and_shared_status():
     main_window = _main_window()
+    info = _attach_info_spy(main_window)
 
     refreshed = refresh_after_navigation(main_window, 2)
 
@@ -220,10 +221,13 @@ def test_navigation_refreshes_only_selected_panel():
     assert main_window.training_panel.update_calls == 1
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
 
 
 def test_navigation_refresh_ignores_unknown_panel_index():
     main_window = _main_window()
+    info = _attach_info_spy(main_window)
 
     refreshed = refresh_after_navigation(main_window, 99)
 
@@ -233,6 +237,8 @@ def test_navigation_refresh_ignores_unknown_panel_index():
     assert main_window.training_panel.update_calls == 0
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
 
 
 def test_refresh_panel_uses_safe_noarg_update_call():

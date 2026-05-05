@@ -135,6 +135,12 @@ UI baseline capture 結果：
     compatibility branches. Missing-result branches may not directly call panel-local refresh
     methods outside explicit `*_after_legacy_result` helpers.
   - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- navigation shared-status refresh:
+  - `refresh_after_navigation()` now refreshes the selected workflow panel plus aggregate info and
+    assistant backend status, keeping tab-switch refresh inside the shared coordinator boundary.
+  - focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `19 passed`.
 - static / docs gates for these slices:
   - `git diff --check` -> pass.
   - `poetry run ruff check .` -> pass.

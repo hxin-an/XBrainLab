@@ -2193,3 +2193,27 @@ partially aligned follow-up work, not target closure.
 
 - This is a documentation truth sync only. It does not close command-driven UI refresh, remove all
   controller fallback boundaries, or complete human desktop acceptance.
+
+## 2026-05-05 Navigation Shared-Status Refresh
+
+### 狀態
+
+`refresh_after_navigation()` now refreshes the selected workflow panel, aggregate info panel, and
+assistant backend status through the UI refresh coordinator. `MainWindow.switch_page()` still owns
+stack navigation and nav-button checked state, then delegates refresh scope to the coordinator.
+
+### 已可宣稱
+
+- Tab switching no longer updates only the selected panel while leaving shared status surfaces stale.
+- Navigation refresh remains centralized in `XBrainLab.ui.refresh_coordinator`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`, `tests/unit/ui/test_main_window_sync.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full command-driven UI refresh closure; observer and callback-specific refresh paths
+  remain mixed until the larger coordinator audit is complete.

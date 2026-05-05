@@ -8165,3 +8165,42 @@
   - This documentation sync does not close the `UI Command Refresh Coordinator + Controller Fallback
     Audit` milestone, full controller fallback removal, mature import wizard, or human desktop
     acceptance.
+
+### 2026-05-05 20:31 Navigation shared-status refresh coordinator slice
+
+- scope：
+  - Tab-switch refresh inside `XBrainLab.ui.refresh_coordinator`.
+- current gap：
+  - `MainWindow.switch_page()` delegated panel mapping to `refresh_after_navigation()`, but
+    navigation only refreshed the selected workflow panel. Aggregate info panel and assistant
+    backend status still depended on other refresh paths.
+- red / focused test：
+  - Updated `tests/unit/ui/test_refresh_coordinator.py` to require
+    `refresh_after_navigation()` to refresh the selected panel plus aggregate info and assistant
+    backend status.
+  - Red result:
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py -q`
+    -> `1 failed, 9 passed`; `info.update_calls == 0` before implementation.
+- 做了什麼：
+  - `refresh_after_navigation()` now calls `refresh_panel(selected_panel)`,
+    `main_window.update_info_panel()`, and `agent_manager.refresh_backend_status()` through the
+    same safe no-arg call boundary used by command refresh.
+  - Updated UI architecture/current/now/validation/records docs.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py -q`
+    -> `10 passed`.
+  - `poetry run ruff check XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `19 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is a small tab-switch shared-status cleanup. It does not close full command-driven UI
+    refresh, controller fallback removal, observer callback classification, or human desktop
+    acceptance.

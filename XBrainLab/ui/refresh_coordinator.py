@@ -51,7 +51,12 @@ def refresh_after_navigation(main_window: Any, index: int) -> bool:
     if index < 0 or index >= len(_PANEL_NAMES_BY_INDEX):
         return False
     panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
-    return refresh_panel(panel)
+    refreshed = refresh_panel(panel)
+    refreshed = _call_noarg(main_window, "update_info_panel") or refreshed
+
+    agent_manager = getattr(main_window, "agent_manager", None)
+    refreshed = _call_noarg(agent_manager, "refresh_backend_status") or refreshed
+    return refreshed
 
 
 def refresh_panel(panel: Any) -> bool:

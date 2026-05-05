@@ -790,9 +790,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `refresh_backend_status()`，除非是 explicit `refresh=False` query path 或 failure / legacy
   fallback branch。最新 guard hardening 又把 legacy missing-result branch 收緊：`result is None`
   branch 不可直接呼叫 local refresh method，應透過 explicit legacy-result helper；`result.failed`
-  branch 仍可做 local restore / warning refresh。最新 tab-switch cleanup 又把 `MainWindow.switch_page()` 的 panel-index refresh
-  mapping 移到 `refresh_after_navigation()`，讓 command result refresh 和 navigation refresh 都由
-  `refresh_coordinator` 承接。最新 observer refresh cleanup 又把單純的
+  branch 仍可做 local restore / warning refresh。最新 tab-switch cleanup 又把
+  `MainWindow.switch_page()` 的 panel-index refresh mapping 移到
+  `refresh_after_navigation()`，讓 command result refresh 和 navigation refresh 都由
+  `refresh_coordinator` 承接；navigation refresh 現在也會更新 aggregate info panel 和 assistant
+  backend status，不再只刷新 selected panel。最新 observer refresh cleanup 又把單純的
   `event -> update_panel()` bridge 收斂到 `BasePanel.refresh_from_observer()`，再委派
   `refresh_coordinator.refresh_panel()`；這保留 observer bridge 語意，但不再讓每個 panel 直接
   接 `update_panel()`。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
