@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+2a08679 ui: require split dialog service context
 fe978ce ui: keep visualization failed query authoritative
 d786276 ui: query preprocess plot data through service
 aea3d3a docs: refresh handoff after walkthrough geometry gate
@@ -132,6 +133,11 @@ bb57beb ui: use backend truth for split replacement
     query has failed.
   - Stale `VisualizationController.get_trainers()` fallback remains only when no ApplicationService
     query exists for mock / legacy panel compatibility.
+- Data Splitting dialog context boundary:
+  - real `Study` `DataSplittingDialog` no longer reads `TrainingController.get_epoch_data()` /
+    `get_dataset_generator()` when explicit service-backed context is missing.
+  - Training sidebar continues to pass `dataset_generation_context`; controller fallback remains
+    only for mock / legacy dialog construction.
 - Visualization sidebar `Set Montage` missing-result handling:
   - no longer silently returns when `execute_application_command()` unexpectedly returns `None`.
   - mock / legacy contexts use `run_legacy_controller_fallback()`; real `Study` contexts refuse
