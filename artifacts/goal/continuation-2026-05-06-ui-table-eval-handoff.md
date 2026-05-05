@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+5ab35ba ui: release saliency canvases on replace
 f9acb77 ui: release plot window figures on close
 28c144a ui: ignore stale preprocess psd results
 d8221bb ui: source rereference dialog from state query
@@ -267,6 +268,13 @@ bb57beb ui: use backend truth for split replacement
     canvas / toolbar widgets, schedules `deleteLater()`, and clears references.
   - This covers the base plot dialog used by training / evaluation / visualization plot windows,
     but it is not long-run visualization memory trend evidence.
+- Saliency 2D canvas cleanup:
+  - Map / Spectrogram / Topomap now share `BaseSaliencyView._replace_figure()` for figure
+    replacement.
+  - replacement and close paths close the current Matplotlib figure, detach the canvas, schedule
+    `deleteLater()`, and clear references.
+  - This is focused canvas lifecycle coverage, not full saliency UX or long-run visualization
+    memory trend evidence.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -891,6 +899,39 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for f9acb77; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_close_releases_figure_and_canvas \
+  tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_replace_figure_releases_previous_canvas \
+  tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_update_plot_no_eval \
+  tests/unit/ui/test_visualization.py::TestSaliencySpectrogramWidget::test_update_plot_no_eval \
+  tests/unit/ui/test_visualization.py::TestSaliencyTopographicMapWidget::test_update_plot_no_eval \
+  -q
+# 5 passed for 5ab35ba
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/components/test_plot_figure_window.py \
+  -q
+# 61 passed for 5ab35ba
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 5ab35ba
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 5ab35ba
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 5ab35ba; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
