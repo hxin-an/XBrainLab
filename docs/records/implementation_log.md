@@ -42,6 +42,40 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Training Sidebar Fallback Boundary
+
+### 狀態
+
+The controller fallback audit now has its first explicit runtime boundary. Training sidebar fallback
+paths for split cleanup / dataset generation, model selection, training settings, start / stop
+training, and clear history now use `run_legacy_controller_fallback()`. The helper allows fallback
+only for mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly
+does not return a `CommandResult`.
+
+### 已可宣稱
+
+- Training sidebar real product runtime will not silently mutate the training controller if the
+  command helper fails to provide an ApplicationService result.
+- Existing mock / legacy unit-test compatibility fallback remains available.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/application_capabilities.py`,
+  `XBrainLab/ui/panels/training/sidebar.py`
+- Tests: `tests/unit/ui/test_application_capabilities.py`,
+  `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not a full controller fallback audit. Dataset, Preprocess, Visualization, and
+  AgentManager fallback sites still need the same explicit boundary.
+
+### 下一手重點
+
+Apply the same helper pattern to the remaining UI `result is None` controller fallbacks, prioritizing
+Dataset metadata / smart parse / remove-file actions and Preprocess operations.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 from unittest.mock import Mock
 
 from XBrainLab.backend.application import Command, CommandName, CommandResult
@@ -10,6 +11,8 @@ from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
+
+_FallbackResult = TypeVar("_FallbackResult")
 
 
 def find_study(context: Any) -> Any | None:
@@ -73,3 +76,17 @@ def execute_application_command(
     if refresh:
         refresh_after_command(context, result)
     return result
+
+
+def run_legacy_controller_fallback(
+    context: Any,
+    fallback: Callable[[], _FallbackResult],
+) -> _FallbackResult:
+    """Run controller fallback only for mock or legacy non-Study UI contexts."""
+    study = find_study(context)
+    if study is None or not isinstance(study, Study) or isinstance(study, Mock):
+        return fallback()
+    raise RuntimeError(
+        "ApplicationService command was unavailable for a real Study; "
+        "refusing controller fallback.",
+    )

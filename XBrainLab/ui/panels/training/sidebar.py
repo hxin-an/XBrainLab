@@ -23,6 +23,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 
@@ -290,7 +291,10 @@ class TrainingSidebar(QWidget):
                     ClearDatasetsCommand(confirmed=True),
                 )
                 if clear_result is None:
-                    self.controller.clean_datasets(force_update=True)
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.clean_datasets(force_update=True),
+                    )
                 elif clear_result.failed:
                     QMessageBox.critical(
                         self,
@@ -306,7 +310,10 @@ class TrainingSidebar(QWidget):
                     GenerateDatasetCommand(generator=generator),
                 )
                 if result is None:
-                    self.controller.apply_data_splitting(generator)
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.apply_data_splitting(generator),
+                    )
                 elif result.failed:
                     QMessageBox.critical(
                         self,
@@ -375,7 +382,10 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                self.controller.set_model_holder(model_holder)
+                run_legacy_controller_fallback(
+                    self,
+                    lambda: self.controller.set_model_holder(model_holder),
+                )
             elif result.failed:
                 QMessageBox.critical(self, "Model Selection Failed", result.message)
                 return
@@ -427,7 +437,10 @@ class TrainingSidebar(QWidget):
                 ),
             )
             if result is None:
-                self.controller.set_training_option(option)
+                run_legacy_controller_fallback(
+                    self,
+                    lambda: self.controller.set_training_option(option),
+                )
             elif result.failed:
                 QMessageBox.critical(
                     self,
@@ -477,7 +490,10 @@ class TrainingSidebar(QWidget):
                         return
                 result = execute_application_command(self, TrainCommand(confirmed=True))
                 if result is None:
-                    self.controller.start_training()
+                    run_legacy_controller_fallback(
+                        self,
+                        self.controller.start_training,
+                    )
                 elif result.failed:
                     QMessageBox.critical(
                         self,
@@ -508,7 +524,7 @@ class TrainingSidebar(QWidget):
 
         result = execute_application_command(self, StopTrainingCommand())
         if result is None:
-            self.controller.stop_training()
+            run_legacy_controller_fallback(self, self.controller.stop_training)
         elif result.failed:
             QMessageBox.warning(
                 self,
@@ -560,7 +576,7 @@ class TrainingSidebar(QWidget):
                 ClearTrainingHistoryCommand(confirmed=True),
             )
             if result is None:
-                self.controller.clear_history()
+                run_legacy_controller_fallback(self, self.controller.clear_history)
             elif result.failed:
                 QMessageBox.warning(self, "Warning", result.message)
                 return

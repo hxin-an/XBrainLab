@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import pytest
 from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.application import (
@@ -20,6 +21,7 @@ from XBrainLab.ui import application_capabilities
 from XBrainLab.ui.application_capabilities import (
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 
 
@@ -136,3 +138,16 @@ def test_execute_application_command_can_skip_refresh(qtbot, monkeypatch):
 
     assert command_result is result
     assert refresh_calls == []
+
+
+def test_legacy_controller_fallback_refuses_real_study(qtbot):
+    study = Study()
+    widget = QWidget()
+    cast(Any, widget).main_window = SimpleNamespace(study=study)
+    qtbot.addWidget(widget)
+    fallback = MagicMock()
+
+    with pytest.raises(RuntimeError, match="real Study"):
+        run_legacy_controller_fallback(widget, fallback)
+
+    fallback.assert_not_called()

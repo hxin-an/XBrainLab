@@ -68,6 +68,11 @@
   first slice，不是 target closure；下一步仍是 `UI Command Refresh Coordinator + Controller
   Fallback Audit` 的剩餘盤點：把 product runtime controller fallback 與 mock / legacy
   compatibility fallback 明確分離，並持續收斂 observer/manual refresh。
+- 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
+  cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
+  history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若
+  command helper 意外回 `None`，會拒絕 fallback；剩餘 Dataset / Preprocess / Visualization /
+  AgentManager fallback 還要沿同一模式盤點。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
@@ -687,9 +692,10 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
    services、Preprocess command service，以及 State / Query services。`UI Command Refresh
    Coordinator + Controller Fallback Audit` 已完成 first slice；下一步是擴大盤點剩餘
-   observer/manual refresh 和 real `Study` mutating workflow，確認 product runtime 不 silent
-   fallback 到 controller mutation；controller fallback 只能留在 explicit mock / unit-test
-   compatibility 或 isolated legacy adapter。
+   observer/manual refresh 和 real `Study` mutating workflow。Training sidebar fallback 已先改成
+   explicit mock / legacy-only helper；後續要把 Dataset / Preprocess / Visualization /
+   AgentManager 的剩餘 fallback 同步收斂，確認 product runtime 不 silent fallback 到 controller
+   mutation。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

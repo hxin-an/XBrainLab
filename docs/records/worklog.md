@@ -37,6 +37,32 @@
 
 ## 2026-05-05
 
+### 16:51 Training sidebar fallback boundary
+
+- 做了什麼：
+  - 針對 `UI Command Refresh Coordinator + Controller Fallback Audit` 的下一個切片，先把
+    Training sidebar controller fallback 明確收斂成 mock / legacy-only boundary。
+  - 新增 `run_legacy_controller_fallback()`；real `Study` context 若 command helper 意外回
+    `None`，會拒絕 controller fallback，而不是 silent mutation。
+  - Training sidebar 的 split cleanup / generate dataset、model selection、training settings、
+    start / stop training 和 clear history fallback 全部改用這個 helper。
+- 結果：
+  - Legacy MagicMock / non-Study UI tests 仍可走 controller compatibility fallback。
+  - Real `Study` path 的 command helper contract 有可測 guard：如果失去 `CommandResult`，不會
+    靜默改走 training controller。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_real_study tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_controller_fallback -q`
+    -> import / behavior failed before helper existed。
+  - 修正後同一指令 -> `2 passed`。
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `88 passed`。
+  - Focused ruff / basedpyright on touched files -> pass / `0 errors, 0 warnings, 0 notes`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 把同一 helper pattern 推到 Dataset / Preprocess / Visualization / AgentManager 剩餘
+    `result is None` fallback；不要把 Training sidebar slice 說成 full fallback audit。
+
 ### 16:45 UI command refresh coordinator first slice
 
 - 做了什麼：

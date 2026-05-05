@@ -762,7 +762,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training
   split / model option / start-stop / clear-history 等 UI path，確認 real `Study` success path
-  不依賴 controller mutation 成功。
+  不依賴 controller mutation 成功。最新 Training sidebar fallback audit slice 已新增
+  `run_legacy_controller_fallback()`：split cleanup / generate dataset、model selection、training
+  settings、start / stop training 和 clear history 的 controller fallback 現在只允許 mock /
+  legacy non-`Study` context；若 real `Study` command helper 意外回 `None`，會拒絕 fallback
+  並暴露錯誤，而不是 silent controller mutation。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory
   expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的
   primary prompt；`attach_labels` 也已從這些 stage 的主工具語言移除。read-only
@@ -820,6 +824,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    `UI Command Refresh Coordinator + Controller Fallback Audit` 已完成第一個集中 refresh
    helper slice；接下來要把剩餘 panel-local manual refresh / controller observer path 和
    product runtime fallback 全面盤點，明確分離 mock / legacy compatibility fallback。
+   Training sidebar 已完成第一個 explicit fallback boundary slice；下一步可把相同 helper 推到
+   Dataset / Preprocess / Visualization / AgentManager 的剩餘 `result is None` controller fallback。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

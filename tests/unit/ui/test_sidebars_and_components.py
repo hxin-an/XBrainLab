@@ -512,6 +512,30 @@ class TestTrainingSidebar:
         sidebar.panel.controller.stop_training.assert_not_called()
         assert sidebar.btn_stop.isEnabled() is False
 
+    def test_stop_training_refuses_real_study_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        trainer = MagicMock()
+        trainer.is_running.return_value = True
+        study.training_manager.trainer = trainer
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.is_training.return_value = True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            pytest.raises(RuntimeError, match="real Study"),
+        ):
+            sidebar.stop_training()
+
+        sidebar.panel.controller.stop_training.assert_not_called()
+
     def test_stop_training_blocked_by_backend_capability_before_command(
         self,
         sidebar,
