@@ -37,6 +37,54 @@
 
 ## 2026-05-06
 
+### 07:00 Dataset label import target fallback boundary
+
+- scope：
+  - Continue Dataset compatibility-path fallback audit.
+  - Prevent real `Study` post-load label import from recovering missing Dataset table target data
+    through stale `DatasetController.get_loaded_data_list()`.
+- red / focused tests：
+  - Added `test_import_label_real_study_refuses_controller_target_fallback`.
+  - Red gate failed because `_get_target_files_for_import()` fell back to
+    `controller.get_loaded_data_list()` when selected table rows lacked `UserRole` data.
+- 做了什麼：
+  - `_get_target_files_for_import()` now uses `run_legacy_controller_fallback()` for the old
+    controller loaded-list fallback.
+  - Real `Study` contexts catch the fallback refusal, show `Import Label Blocked`, and return no
+    target files instead of using stale controller state.
+  - Added explicit controller-None handling for the same fallback branch.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_real_study_refuses_controller_target_fallback -q`
+    -> failed as expected on stale controller read.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Dataset action / label regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_import_label.py -q`
+    -> `105 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`; `.basedpyright/baseline.json` dropped by `1`
+    suppressed optional-controller issue.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Dataset compatibility UI fallback cleanup under the fast dev gate; it does
+    not justify full primary / fallback x3 local eval or VRAM-heavy fallback runs.
+- 不能宣稱：
+  - This does not make post-load label import the primary Data Interpretation workflow or complete
+    the embedded label import wizard.
+
 ### 06:50 Data Splitting dialog context boundary
 
 - scope：

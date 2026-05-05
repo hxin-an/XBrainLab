@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Dataset Label Target Fallback Boundary
+
+### 狀態
+
+`Add Labels to Loaded Data` now refuses to recover missing table-row target data from
+`DatasetController.get_loaded_data_list()` in real `Study` runtime. Target files should come from
+the Dataset table row `UserRole` data populated by the service-backed render path; missing row data
+now blocks with a user-facing warning instead of silently using stale controller lists.
+
+### 已可宣稱
+
+- Real `Study` post-load label target selection no longer uses stale controller loaded-list fallback
+  when table row target data is missing.
+- Legacy / mock tests still cover the old fallback behavior where no real `Study` is present.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/actions.py`
+- Tests: `tests/unit/ui/test_ui_misc.py`, `tests/unit/ui/dataset/test_panel.py`,
+  `tests/unit/ui/dataset/test_import_label.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not make post-load label import the primary Data Interpretation workflow, nor does it
+  complete an embedded label import wizard.
+
+### 下一手重點
+
+Continue treating `Add Labels to Loaded Data` as compatibility-only while moving label/event
+confirmation into Data Interpretation wizard flows.
+
 ## 2026-05-06 Data Splitting Dialog Context Boundary
 
 ### 狀態

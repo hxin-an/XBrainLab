@@ -35,6 +35,8 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -974,7 +976,26 @@ class DatasetActionHandler:
         if table_targets is not None:
             return table_targets
 
-        data_list = self.controller.get_loaded_data_list()
+        controller = self.controller
+        if controller is None:
+            QMessageBox.warning(
+                self.panel,
+                "Import Label Blocked",
+                "Dataset controller unavailable.",
+            )
+            return []
+        try:
+            data_list = run_legacy_controller_fallback(
+                self.panel,
+                controller.get_loaded_data_list,
+            )
+        except LegacyControllerFallbackUnavailableError:
+            QMessageBox.warning(
+                self.panel,
+                "Import Label Blocked",
+                LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+            )
+            return []
         self._last_target_file_indices = [
             i for i in selected_rows if i < len(data_list)
         ]

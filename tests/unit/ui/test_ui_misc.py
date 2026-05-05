@@ -1350,6 +1350,34 @@ class TestDatasetActionHandler:
         handler.panel.controller.get_loaded_data_list.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_label_real_study_refuses_controller_target_fallback(
+        self,
+        mock_mb,
+        handler,
+    ):
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        from XBrainLab.backend.study import Study
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
+        handler.panel.study = Study()
+        handler.panel.table.rowCount.return_value = 1
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.table.item.return_value = item
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.side_effect = AssertionError(
+            "stale loaded list should not be read",
+        )
+
+        result = handler._get_target_files_for_import()
+
+        assert result == []
+        handler.panel.controller.get_loaded_data_list.assert_not_called()
+        mock_mb.warning.assert_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_null_label_map(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()

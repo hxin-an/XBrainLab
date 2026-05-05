@@ -2717,6 +2717,37 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Dataset label target fallback boundary：
+
+- Focused gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_real_study_refuses_controller_target_fallback -q`
+  -> `1 passed`.
+- Regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py tests/unit/ui/dataset/test_import_label.py -q`
+  -> `105 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+  -> pass；
+  `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+  -> `0 errors` and `.basedpyright/baseline.json` dropped by one suppressed
+  `DatasetActionHandler` optional-controller issue.
+- Static / architecture / docs gate:
+  `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+  `poetry run python tests/architecture_compliance.py`, and `poetry run mkdocs build --strict`
+  all passed.
+- Backend / agent regression:
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate UI fallback boundary slice; full primary / fallback x3 local
+  eval remains release / thesis gate only and requires VRAM / disk / cache preflight.
+
+This supports real `Study` label target selection refusing stale
+`DatasetController.get_loaded_data_list()` when selected Dataset table rows do not carry
+`UserRole` data. It does not make post-load label import the primary data-entry workflow or a
+mature import wizard.
+
 2026-05-05 Dataset Smart Parse capability follow-up：
 
 - UI/action:

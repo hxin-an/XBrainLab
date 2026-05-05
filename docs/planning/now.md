@@ -724,7 +724,8 @@
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
   - Post-load label compatibility target selection 現在優先使用 Dataset table row 的 `UserRole`
     data；selected/all-row target files 不再為了開 dialog 回讀 stale
-    `DatasetController.get_loaded_data_list()`。
+    `DatasetController.get_loaded_data_list()`。最新 fallback boundary 也讓 real `Study` table row
+    缺少 `UserRole` data 時 block 並要求刷新，不再 fallback 到 controller loaded list。
   - `Add Labels to Loaded Data` compatibility path 現在會在 empty state disable，tooltip 引導
     使用者先 interpret data source；action 也會尊重 backend `ImportLabelsCommand`
     capability block。
