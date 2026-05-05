@@ -193,6 +193,10 @@
 - 最新 Visualization saliency settings cleanup 也讓 settings dialog defaults 先走 readonly
   `SaliencyCommand` summary diagnostics；stale `VisualizationController.get_saliency_params()`
   只留在 query unavailable 的 mock / legacy fallback helper。
+- 最新 Visualization montage setup cleanup 也讓 channel-name dialog defaults 先走
+  `QueryStateCommand(query="state")` 的 `state.epoch.channel_names`；stale
+  `VisualizationController.get_channel_names()` 只留在 query unavailable 的 mock / legacy
+  fallback helper。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。

@@ -224,6 +224,26 @@ def set_saliency(self):
     assert "capability is None" in violations[0]
 
 
+def test_capability_readiness_guard_flags_channel_names_after_capability(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def set_montage(self):
+    capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+    if capability is not None and not capability.enabled:
+        return
+    channels = self.controller.get_channel_names()
+    return MontageDialog(self, channels)
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.get_channel_names" in violations[0]
+    assert "capability is None" in violations[0]
+
+
 def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,

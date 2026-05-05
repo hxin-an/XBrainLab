@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import (
     ApplyMontageCommand,
     CommandName,
+    QueryStateCommand,
     SaliencyCommand,
 )
 from XBrainLab.ui.application_capabilities import (
@@ -144,8 +145,27 @@ class ControlSidebar(QWidget):
             QMessageBox.warning(self, "Warning", "No epoch data available.")
             return
 
-        # We need channel names
-        chs = self.controller.get_channel_names()
+        channel_query = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if channel_query is not None and channel_query.failed:
+            QMessageBox.warning(
+                self,
+                "Montage blocked" if channel_query.recoverable else "Montage failed",
+                channel_query.message,
+            )
+            return
+
+        chs = self._montage_channel_names(channel_query)
+        if not chs:
+            QMessageBox.warning(
+                self,
+                "Montage blocked",
+                "No epoch channel names are available for montage setup.",
+            )
+            return
         win = PickMontageDialog(self, chs)
         if win.exec():
             chs, positions = win.get_result()
@@ -186,6 +206,20 @@ class ControlSidebar(QWidget):
 
                 # Notify parent to refresh view
                 self._on_update_after_legacy_result(result)
+
+    def _montage_channel_names(self, query_result) -> list[str]:
+        if query_result is None:
+            return run_legacy_controller_fallback(
+                self,
+                self.controller.get_channel_names,
+            )
+        diagnostics = getattr(query_result, "diagnostics", {}) or {}
+        state = diagnostics.get("state")
+        epoch = state.get("epoch") if isinstance(state, dict) else {}
+        names = epoch.get("channel_names") if isinstance(epoch, dict) else None
+        if not isinstance(names, list):
+            return []
+        return [str(name) for name in names]
 
     def set_saliency(self):
         """Open the saliency-settings dialog and apply parameters."""

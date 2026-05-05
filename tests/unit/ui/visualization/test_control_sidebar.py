@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
 
-from XBrainLab.backend.application import ApplyMontageCommand, SaliencyCommand
+from XBrainLab.backend.application import (
+    ApplyMontageCommand,
+    QueryStateCommand,
+    SaliencyCommand,
+)
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
 
@@ -62,14 +66,21 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         instance = MockDialog.return_value
         instance.exec.return_value = True
         instance.get_result.return_value = (["Ch1"], [[0, 0, 0]])
-        mock_execute.return_value = MagicMock(failed=False)
+        query_result = MagicMock(
+            failed=False,
+            diagnostics={"state": {"epoch": {"channel_names": ["Ch1"]}}},
+        )
+        apply_result = MagicMock(failed=False)
+        mock_execute.side_effect = [query_result, apply_result]
 
         sidebar.set_montage()
 
-        command = mock_execute.call_args.args[1]
-        assert isinstance(command, ApplyMontageCommand)
-        assert command.channels == ["Ch1"]
-        assert command.positions == [(0.0, 0.0, 0.0)]
+        query_command = mock_execute.call_args_list[0].args[1]
+        apply_command = mock_execute.call_args_list[1].args[1]
+        assert isinstance(query_command, QueryStateCommand)
+        assert isinstance(apply_command, ApplyMontageCommand)
+        assert apply_command.channels == ["Ch1"]
+        assert apply_command.positions == [(0.0, 0.0, 0.0)]
         mock_panel.controller.set_montage.assert_not_called()
         mock_panel.on_update.assert_not_called()
         mock_info.assert_called_once()
@@ -113,6 +124,7 @@ def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
     study = Study()
     cast(Any, main_window).study = study
     epoch_data = MagicMock()
+    epoch_data.get_channel_names.return_value = ["Ch1", "Ch2"]
     epoch_data.get_mne.return_value.info = {"ch_names": ["Ch1", "Ch2"]}
     study.epoch_data = epoch_data
     panel = MagicMock()
@@ -238,6 +250,54 @@ def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
         sidebar.set_montage()
 
     controller.set_montage.assert_not_called()
+
+
+def test_sidebar_set_montage_uses_query_channels_before_stale_controller(
+    mock_panel,
+    qtbot,
+):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    mock_panel.controller.get_channel_names.return_value = ["stale"]
+    query_result = MagicMock(
+        failed=False,
+        diagnostics={
+            "state": {
+                "epoch": {
+                    "channel_names": ["C3", "C4"],
+                },
+            },
+        },
+    )
+    apply_result = MagicMock(failed=False)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            side_effect=[query_result, apply_result],
+        ) as mock_execute,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ),
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = (
+            ["C3", "C4"],
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        )
+
+        sidebar.set_montage()
+
+    mock_panel.controller.get_channel_names.assert_not_called()
+    mock_dialog.assert_called_once_with(sidebar, ["C3", "C4"])
+    first_command = mock_execute.call_args_list[0].args[1]
+    second_command = mock_execute.call_args_list[1].args[1]
+    assert first_command.query == "state"
+    assert isinstance(second_command, ApplyMontageCommand)
+    assert second_command.channels == ["C3", "C4"]
 
 
 def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):

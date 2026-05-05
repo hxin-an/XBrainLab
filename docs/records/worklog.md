@@ -9547,3 +9547,47 @@
 - 不能宣稱：
   - This does not certify saliency result contents, full Visualization UX, or human desktop
     rendering.
+
+### 2026-05-06 Visualization montage channel query defaults
+
+- scope：
+  - Continue analysis UI query-truth cleanup for Visualization sidebar setup dialogs.
+  - Prevent `Set Montage` from populating the montage picker with stale
+    `VisualizationController.get_channel_names()` when ApplicationService state is available.
+- red / focused tests：
+  - Added `test_capability_readiness_guard_flags_channel_names_after_capability`; it failed because
+    architecture compliance did not yet treat `get_channel_names()` as a stale capability-gated
+    controller read.
+  - Added `test_sidebar_set_montage_uses_query_channels_before_stale_controller`; it failed because
+    `set_montage()` read the stale controller channel list before opening the dialog.
+- 做了什麼：
+  - Added `get_channel_names` to the capability-gated controller state guard.
+  - `ControlSidebar.set_montage()` now queries `QueryStateCommand(query="state")` with
+    `refresh=False` and opens the montage picker with `state.epoch.channel_names`.
+  - Controller channel-name reads remain only through the mock / legacy fallback helper when the
+    query result is unavailable.
+- validation：
+  - Red gates before implementation:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_channel_names_after_capability -q`
+    -> failed with `0` violations.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_uses_query_channels_before_stale_controller -q`
+    -> failed because `controller.get_channel_names()` was called.
+  - After implementation:
+    same focused commands -> `1 passed` each.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py -q`
+    -> `13 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `40 passed`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `27 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Static gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a Visualization UI query-truth cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not certify montage placement quality, full Visualization UX, saliency render output,
+    or human desktop rendering.

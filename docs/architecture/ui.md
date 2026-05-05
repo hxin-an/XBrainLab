@@ -166,6 +166,9 @@ reading trainer lists.
 Visualization sidebar saliency settings also use readonly `SaliencyCommand` summary diagnostics for
 dialog defaults. `VisualizationController.get_saliency_params()` is limited to mock / legacy query
 fallback, so real `Study` UI does not populate the dialog from stale controller parameters.
+Visualization sidebar montage setup now uses `QueryStateCommand(query="state")` for channel-name
+dialog defaults. `VisualizationController.get_channel_names()` is limited to mock / legacy query
+fallback, while montage apply still uses `ApplyMontageCommand` with confirmed positions.
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit
 mock / legacy adapter：real `Study` context 會拒絕 direct `loader.apply(study)`，並提示使用
 Data Interpretation workflow。`find_study()` 現在也會透過 `controller.study` 辨識 real

@@ -892,6 +892,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。
+  最新 montage setup cleanup 也把 channel-name dialog defaults 改成先讀
+  `QueryStateCommand(query="state")` 裡的 `state.epoch.channel_names`；controller
+  `get_channel_names()` 只保留在 query unavailable 的 mock / legacy fallback helper。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
