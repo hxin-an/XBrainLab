@@ -1232,3 +1232,26 @@ path 以 backend `preprocess` capability 作為 source of truth。controller-loc
 ### 不能宣稱完成
 
 - 這不是完整 preprocessing workflow UI acceptance 或 signal/thread lifecycle validation。
+
+## 2026-05-05 Dataset Sidebar Visible Capability Truth
+
+### 狀態
+
+Dataset sidebar 的 main source import、folder/BIDS import、recipe reload 和 Smart Parse button
+現在會用 backend capabilities 決定 enabled / tooltip。real `Study` path 不再因 stale controller
+lock 顯示錯誤 tooltip，也不再讓 backend-blocked Smart Parse 看起來可點。
+
+### 已可宣稱
+
+- Dataset source-entry / Smart Parse visible state 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 controller-local compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 Dataset page visual design pass 或 UI-observable walkthrough acceptance。

@@ -786,6 +786,54 @@ class TestDatasetSidebar:
             sb.import_label_btn.toolTip()
         )
 
+    def test_update_sidebar_uses_backend_smart_parse_capability(self, qtbot):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        panel = _make_panel_mock()
+        panel.main_window.study = Study()
+        panel.controller.is_locked.return_value = False
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        sb.update_sidebar()
+
+        assert not sb.smart_parse_btn.isEnabled()
+        assert "Load raw data before applying smart parse." in (
+            sb.smart_parse_btn.toolTip()
+        )
+
+    def test_update_sidebar_prefers_backend_capabilities_over_stale_lock(
+        self,
+        qtbot,
+    ):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        panel = _make_panel_mock()
+        panel.main_window.study = study
+        panel.controller.is_locked.return_value = True
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        sb.update_sidebar()
+
+        assert sb.import_btn.toolTip() == "Scan, preview, validate, and apply EEG data"
+        assert sb.import_folder_btn.toolTip() == (
+            "Scan a folder or BIDS root, then preview and confirm it"
+        )
+        assert sb.reload_recipe_btn.toolTip() == (
+            "Review a saved import recipe before applying it"
+        )
+        assert sb.smart_parse_btn.isEnabled()
+        assert sb.smart_parse_btn.toolTip() == (
+            "Auto-extract Subject/Session from filenames"
+        )
+
     def test_open_channel_selection_uses_backend_preprocess_capability(self, qtbot):
         from XBrainLab.backend.study import Study
         from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar

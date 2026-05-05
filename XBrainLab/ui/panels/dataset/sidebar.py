@@ -170,15 +170,34 @@ class DatasetSidebar(QWidget):
             # Update Button States (Tooltips only as per design)
             is_locked = self.controller.is_locked()
 
-            if is_locked:
+            scan_capability = get_command_capability(self, CommandName.SCAN_SOURCE)
+            reload_capability = get_command_capability(
+                self,
+                CommandName.RELOAD_INTERPRETATION_RECIPE,
+            )
+            if scan_capability is not None:
+                self.import_btn.setEnabled(scan_capability.enabled)
+                self.import_folder_btn.setEnabled(scan_capability.enabled)
+                source_tooltip = (
+                    "Scan, preview, validate, and apply EEG data"
+                    if scan_capability.enabled
+                    else blocked_reason(
+                        scan_capability,
+                        "Data interpretation is not available right now.",
+                    )
+                )
+                self.import_btn.setToolTip(source_tooltip)
+                self.import_folder_btn.setToolTip(
+                    "Scan a folder or BIDS root, then preview and confirm it"
+                    if scan_capability.enabled
+                    else source_tooltip,
+                )
+            elif is_locked:
                 self.import_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a new source.",
                 )
                 self.import_folder_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a folder.",
-                )
-                self.reload_recipe_btn.setToolTip(
-                    "Dataset is locked. Reset before reloading a recipe.",
                 )
             else:
                 self.import_btn.setToolTip(
@@ -187,6 +206,22 @@ class DatasetSidebar(QWidget):
                 self.import_folder_btn.setToolTip(
                     "Scan a folder or BIDS root, then preview and confirm it",
                 )
+
+            if reload_capability is not None:
+                self.reload_recipe_btn.setEnabled(reload_capability.enabled)
+                self.reload_recipe_btn.setToolTip(
+                    "Review a saved import recipe before applying it"
+                    if reload_capability.enabled
+                    else blocked_reason(
+                        reload_capability,
+                        "Recipe reload is not available right now.",
+                    ),
+                )
+            elif is_locked:
+                self.reload_recipe_btn.setToolTip(
+                    "Dataset is locked. Reset before reloading a recipe.",
+                )
+            else:
                 self.reload_recipe_btn.setToolTip(
                     "Review a saved import recipe before applying it",
                 )
@@ -212,8 +247,21 @@ class DatasetSidebar(QWidget):
             else:
                 self.chan_select_btn.setToolTip("Select specific channels to keep")
 
-            # Smart Parse
-            if is_locked:
+            smart_parse_capability = get_command_capability(
+                self,
+                CommandName.APPLY_SMART_PARSE,
+            )
+            if smart_parse_capability is not None:
+                self.smart_parse_btn.setEnabled(smart_parse_capability.enabled)
+                self.smart_parse_btn.setToolTip(
+                    "Auto-extract Subject/Session from filenames"
+                    if smart_parse_capability.enabled
+                    else blocked_reason(
+                        smart_parse_capability,
+                        "Load raw data before applying smart parse.",
+                    ),
+                )
+            elif is_locked:
                 self.smart_parse_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
                 )

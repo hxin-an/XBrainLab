@@ -6403,3 +6403,53 @@
 - 不能宣稱：
   - This is one Preprocess helper gate cleanup, not full preprocessing workflow UI acceptance.
   - It does not prove signal/thread lifecycle cleanup or complete UI-observable walkthrough coverage.
+
+### 2026-05-05 Dataset sidebar visible capability truth
+
+- scope：
+  - UI visible state alignment for Dataset sidebar source-entry and Smart Parse buttons。
+  - No backend command schema, agent tool, MCP tool, or screenshot artifact change.
+- problem：
+  - `DatasetSidebar.update_sidebar()` still used controller-local `is_locked()` to set main import,
+    folder import, recipe reload, and Smart Parse tooltip text.
+  - Smart Parse stayed enabled on an empty real `Study` even though backend `apply_smart_parse`
+    capability was blocked.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_smart_parse_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock -q`
+    initially failed because Smart Parse was enabled and source tooltips showed stale locked text.
+- 做了什麼：
+  - Added live `scan_source`, `reload_interpretation_recipe`, and `apply_smart_parse` capability
+    reads for Dataset sidebar visible button state.
+  - Kept legacy controller-local tooltip behavior only when backend capabilities are unavailable.
+- validation：
+  - focused red + visible state boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_smart_parse_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock -q`
+    -> red before implementation, then passed.
+  - Dataset sidebar capability regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_smart_parse_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_import_label_capability -q`
+    -> `3 passed`.
+  - Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `10 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one visible-state cleanup, not full Dataset page visual design pass.
+  - It does not prove UI-observable walkthrough screenshots or human desktop acceptance.

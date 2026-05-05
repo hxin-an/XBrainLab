@@ -2568,6 +2568,42 @@ acceptance。
 capability truth。它仍不是完整 preprocessing workflow UI acceptance 或 signal/thread lifecycle
 validation。
 
+2026-05-05 Dataset sidebar visible capability follow-up：
+
+- UI/action:
+  - `DatasetSidebar.update_sidebar()` now reads live `scan_source`,
+    `reload_interpretation_recipe`, and `apply_smart_parse` capabilities for visible button
+    enabled / tooltip state.
+  - Smart Parse is disabled with the backend blocked reason on an empty real `Study`.
+  - Stale controller lock no longer changes real `Study` source-entry / recipe reload tooltips when
+    backend capability allows those actions.
+- targeted gates:
+  - focused red + visible-state boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_smart_parse_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock -q`
+    -> first run failed, implementation run passed.
+  - Dataset sidebar capability regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_smart_parse_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_import_label_capability -q`
+    -> `3 passed`.
+  - Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `10 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 Dataset sidebar visible state 與 backend capability policy 對齊。它仍不是完整
+Dataset page visual design pass 或 UI-observable walkthrough acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

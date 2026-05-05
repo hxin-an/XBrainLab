@@ -311,6 +311,10 @@ Preprocess sidebar 的 shared `check_lock()` / `check_data_loaded()` helpers 也
 `Study` path 先以 backend `preprocess` capability 為準；controller-local `is_epoched()` /
 `has_data()` checks 只保留給 mock / legacy non-Study path。這避免 stale controller state 擋住
 backend 已允許的 filter / resample / rereference / normalize / epoching 入口。
+Dataset sidebar visible state 也已補齊：main source import、folder/BIDS import、recipe reload
+和 Smart Parse button tooltip/enabled state 會讀 backend `scan_source`、
+`reload_interpretation_recipe`、`apply_smart_parse` capabilities；real `Study` path 不再顯示 stale
+controller lock 文案或讓 backend-blocked Smart Parse 看起來可點。
 同日後續 slice 新增真 local LLM tool-call runner：
 `scripts/agent/evals/run_local_tool_call_eval.py` 會用同一份 `54` cases / scorer 接 primary /
 fallback 本地模型 raw output，且每個 case 重跑 `3` 次。當時 artifact 顯示 primary
