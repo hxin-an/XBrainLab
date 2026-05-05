@@ -204,8 +204,12 @@
   不暴露也不接受它。
 - 最新 Visualization panel query cleanup 已讓 real `Study` `VisualizeCommand` result gate controls /
   render：visualization blocked / unavailable 時不再讀 stale injected controller trainers，而是保留
-  `Select a plan` 並顯示 user-facing readiness message。這仍不是 saliency/canvas screenshot
-  acceptance。
+  `Select a plan` 並顯示 user-facing readiness message。最新 object-payload follow-up 也讓
+  successful `VisualizeCommand(include_objects=True)` 攜帶 trainer objects 和 averaged records；
+  real `Study` Visualization panel 有 service payload 時不再回讀 stale injected
+  `VisualizationController.get_trainers()` / `get_averaged_record()`。`include_objects` 是
+  UI-only，automation / MCP `visualize` schema 不暴露也不接受它。這仍不是 saliency/canvas
+  screenshot acceptance。
 - 最新 Visualization sidebar export cleanup 也讓 `Export Saliency` 先走 readonly
   `SaliencyCommand` gate；saliency output unavailable 時不再讀 stale trainer list 開 export dialog。
 - 最新 Visualization saliency settings cleanup 也讓 settings dialog defaults 先走 readonly

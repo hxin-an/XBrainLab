@@ -26,6 +26,8 @@ from .saliency_views.plot_3d_view import Saliency3DPlotWidget
 from .saliency_views.spectrogram_view import SaliencySpectrogramWidget
 from .saliency_views.topomap_view import SaliencyTopographicMapWidget
 
+_MISSING = object()
+
 
 class VisualizationPanel(BasePanel):
     """Panel for visualizing data and model explanations with unified controls.
@@ -199,13 +201,16 @@ class VisualizationPanel(BasePanel):
             list: Trainer instances available for visualization.
 
         """
-        return self.controller.get_trainers()
+        trainers = self._trainers_from_application_query()
+        if trainers is not None:
+            return trainers
+        return [] if self.controller is None else self.controller.get_trainers()
 
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
         self.last_application_query = execute_application_command(
             self,
-            VisualizeCommand(view="summary"),
+            VisualizeCommand(view="summary", include_objects=True),
             refresh=False,
         )
         if self._application_query_blocks_display(self.last_application_query):
@@ -307,7 +312,10 @@ class VisualizationPanel(BasePanel):
         current_widget = self.tabs.currentWidget()
         self.last_application_query = execute_application_command(
             self,
-            VisualizeCommand(view=self.tabs.tabText(self.tabs.currentIndex())),
+            VisualizeCommand(
+                view=self.tabs.tabText(self.tabs.currentIndex()),
+                include_objects=True,
+            ),
             refresh=False,
         )
         if self._application_query_blocks_display(self.last_application_query):
@@ -332,7 +340,17 @@ class VisualizationPanel(BasePanel):
         run_data = self.run_combo.currentData()
 
         if run_data == "average" or run_name == "Average":
-            eval_record = self.controller.get_averaged_record(trainer)
+            averaged_record = self._averaged_record_from_application_query(trainer)
+            if averaged_record is _MISSING:
+                if (
+                    self._visualization_query_payload() is not None
+                    or self.controller is None
+                ):
+                    eval_record = None
+                else:
+                    eval_record = self.controller.get_averaged_record(trainer)
+            else:
+                eval_record = averaged_record
             if not eval_record:
                 self._show_widget_error(current_widget, "No finished runs to average.")
                 return
@@ -413,6 +431,37 @@ class VisualizationPanel(BasePanel):
             diagnostics.get("payload_type") == "visualization_summary"
             and diagnostics.get("available") is False
         )
+
+    def _visualization_query_payload(self) -> dict | None:
+        result = self.last_application_query
+        if result is None or result.failed:
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "visualization_summary":
+            return None
+        return diagnostics
+
+    def _trainers_from_application_query(self):
+        payload = self._visualization_query_payload()
+        if payload is None:
+            return None
+        return list(payload.get("trainer_objects") or [])
+
+    def _averaged_record_from_application_query(self, trainer):
+        payload = self._visualization_query_payload()
+        if payload is None:
+            return _MISSING
+        trainer_index = self._current_trainer_index(trainer)
+        records = payload.get("averaged_records") or []
+        if trainer_index < 0 or trainer_index >= len(records):
+            return _MISSING
+        return records[trainer_index]
+
+    def _current_trainer_index(self, trainer) -> int:
+        for index in range(1, self.plan_combo.count()):
+            if self.plan_combo.itemData(index) is trainer:
+                return index - 1
+        return -1
 
     def _application_query_message(self) -> str:
         result = self.last_application_query

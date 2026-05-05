@@ -125,19 +125,25 @@ class AnalysisCommandService:
             if available_views
             else "No visualization views are ready yet."
         )
+        diagnostics: dict[str, Any] = {
+            "payload_type": "visualization_summary",
+            "available": bool(available_views),
+            "view": command.view,
+            "available_views": available_views,
+            "trainer_count": len(trainers),
+            "channel_count": state.visualization.channel_count,
+            "montage_available": state.visualization.montage_available,
+            "saliency_configured": state.visualization.saliency_configured,
+            "saliency_available": state.visualization.saliency_available,
+        }
+        if command.include_objects:
+            diagnostics["trainer_objects"] = trainers
+            diagnostics["averaged_records"] = [
+                self._safe_averaged_record(trainer) for trainer in trainers
+            ]
         return (
             message,
-            {
-                "payload_type": "visualization_summary",
-                "available": bool(available_views),
-                "view": command.view,
-                "available_views": available_views,
-                "trainer_count": len(trainers),
-                "channel_count": state.visualization.channel_count,
-                "montage_available": state.visualization.montage_available,
-                "saliency_configured": state.visualization.saliency_configured,
-                "saliency_available": state.visualization.saliency_available,
-            },
+            diagnostics,
         )
 
     def handle_saliency(self, command: Command) -> HandlerResult:
@@ -269,6 +275,13 @@ class AnalysisCommandService:
         except Exception:
             logger.debug("Failed to build evaluation model summary", exc_info=True)
             return ""
+
+    def _safe_averaged_record(self, trainer: Any) -> Any:
+        try:
+            return self.visualization.get_averaged_record(trainer)
+        except Exception:
+            logger.debug("Failed to build averaged visualization record", exc_info=True)
+            return None
 
     @staticmethod
     def _run_finished(run: Any) -> bool:

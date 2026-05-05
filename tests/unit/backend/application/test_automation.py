@@ -82,13 +82,16 @@ def test_mcp_tool_specs_use_same_command_schema():
     assert "label_carrier_remap" in preview_choices["properties"]
     evaluate_schema = tools[CommandName.EVALUATE.value]["inputSchema"]
     assert "include_objects" not in evaluate_schema["properties"]
+    visualize_schema = tools[CommandName.VISUALIZE.value]["inputSchema"]
+    assert "include_objects" not in visualize_schema["properties"]
 
 
-def test_automation_rejects_evaluation_ui_object_payload_flag():
+@pytest.mark.parametrize("command_name", [CommandName.EVALUATE, CommandName.VISUALIZE])
+def test_automation_rejects_ui_object_payload_flag(command_name):
     with pytest.raises(AutomationPayloadError, match="include_objects"):
         build_command_from_payload(
             {
-                "command": CommandName.EVALUATE.value,
+                "command": command_name.value,
                 "arguments": {"include_objects": True},
             },
         )

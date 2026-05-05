@@ -348,6 +348,7 @@ class VisualizeCommand:
     """Read visualization readiness and available view summaries."""
 
     view: str | None = None
+    include_objects: bool = False
 
     @property
     def name(self) -> CommandName:

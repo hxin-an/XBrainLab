@@ -913,7 +913,12 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Visualization panel cleanup 也把 readonly `VisualizeCommand` 結果接到 controls/render
   gate：visualization blocked / unavailable 時不再讀 stale injected
   `VisualizationController.get_trainers()`，而是保持 `Select a plan` 並用使用者可讀訊息提示
-  目前沒有 visualization views ready。Visualization sidebar 的 `Export Saliency` 也補上 readonly
+  目前沒有 visualization views ready。後續 object-payload cleanup 又讓 successful
+  `VisualizeCommand(include_objects=True)` 回傳 UI render 所需的 trainer objects 和 averaged
+  records；real `Study` panel 有 service payload 時不再讀 stale injected
+  `VisualizationController.get_trainers()` / `get_averaged_record()`。這個 object payload flag
+  也是 UI-only：automation / MCP `visualize` schema 不暴露也不接受它。Visualization sidebar 的
+  `Export Saliency` 也補上 readonly
   `SaliencyCommand` export gate；saliency output 不可用時不再讀 stale trainer list 開 export dialog。
   最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable

@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from PyQt6.QtWidgets import QWidget
 
+from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
 
 
 def _widget_factory(parent=None):
     widget = QWidget(parent)
-    widget.show_error = MagicMock()
-    widget.update_plot = MagicMock()
-    widget.repaint = MagicMock()
+    mock_widget = cast(Any, widget)
+    mock_widget.show_error = MagicMock()
+    mock_widget.update_plot = MagicMock()
+    mock_widget.repaint = MagicMock()
     return widget
 
 
@@ -67,6 +70,12 @@ def _make_trainer(name="EEGNet", repeats=2):
     return trainer
 
 
+def _current_mock_widget(panel) -> Any:
+    widget = panel.tabs.currentWidget()
+    assert widget is not None
+    return cast(Any, widget)
+
+
 def test_visualization_panel_layout_and_sidebar(qtbot):
     panel, _ctrl = _make_panel(qtbot)
 
@@ -109,7 +118,7 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     panel.tabs.setCurrentIndex(0)
     panel.plan_combo.setCurrentIndex(1)
     panel.run_combo.setCurrentIndex(0)
-    current_widget = panel.tabs.currentWidget()
+    current_widget = _current_mock_widget(panel)
 
     panel.on_update()
 
@@ -144,7 +153,7 @@ def test_visualization_panel_preserves_selection_on_training_stopped(qtbot):
 
 def test_visualization_panel_shows_placeholder_without_valid_selection(qtbot):
     panel, _ctrl = _make_panel(qtbot)
-    current_widget = panel.tabs.currentWidget()
+    current_widget = _current_mock_widget(panel)
     current_widget.show_error.reset_mock()
 
     panel.on_update()
@@ -177,7 +186,7 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     panel, ctrl = _make_panel(qtbot, parent=main_window)
     ctrl.get_trainers.return_value = [_make_trainer("StaleNet", repeats=1)]
     ctrl.get_trainers.reset_mock()
-    current_widget = panel.tabs.currentWidget()
+    current_widget = _current_mock_widget(panel)
     current_widget.show_error.reset_mock()
 
     panel.update_panel()
@@ -192,3 +201,54 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     assert panel.plan_combo.itemText(0) == "Select a plan"
     assert panel.run_combo.count() == 0
     current_widget.show_error.assert_called()
+
+
+def test_visualization_panel_uses_application_payload_before_stale_controller(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_trainer = _make_trainer("ServiceNet", repeats=1)
+    average_record = MagicMock()
+    query_result = CommandResult.success_result(
+        command_name="visualize",
+        message="Visualization summary ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "available": True,
+            "trainer_objects": [service_trainer],
+            "averaged_records": [average_record],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        lambda *_args, **_kwargs: query_result,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    ctrl.get_trainers.return_value = [_make_trainer("StaleNet", repeats=1)]
+    ctrl.get_averaged_record.return_value = MagicMock()
+    ctrl.get_trainers.reset_mock()
+    ctrl.get_averaged_record.reset_mock()
+
+    panel.refresh_combos()
+
+    ctrl.get_trainers.assert_not_called()
+    assert panel.plan_combo.count() == 2
+    assert panel.plan_combo.itemText(1) == "Fold 1 (ServiceNet)"
+
+    panel.run_combo.setCurrentText("Average")
+    current_widget = _current_mock_widget(panel)
+    current_widget.update_plot.reset_mock()
+    panel.on_update()
+
+    ctrl.get_averaged_record.assert_not_called()
+    current_widget.update_plot.assert_called()
+    args, _kwargs = current_widget.update_plot.call_args
+    assert args[1] is service_trainer
+    assert args[4] is average_record

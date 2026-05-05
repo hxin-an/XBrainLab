@@ -370,13 +370,16 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
 
 
 def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
-    if command_name is CommandName.EVALUATE:
+    if command_name in {CommandName.EVALUATE, CommandName.VISUALIZE}:
         return frozenset({"include_objects"})
     return frozenset()
 
 
 def _field_hidden_from_automation(command_type: type[Any], field_name: str) -> bool:
-    return command_type is EvaluateCommand and field_name == "include_objects"
+    return (
+        command_type in {EvaluateCommand, VisualizeCommand}
+        and field_name == "include_objects"
+    )
 
 
 def _command_field_schema(

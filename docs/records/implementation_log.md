@@ -3145,3 +3145,35 @@ clients keep the serializable query contract.
 
 - This does not certify evaluation screenshots, full analysis UX, or all remaining Visualization /
   Evaluation controller read paths.
+
+## 2026-05-06 Visualization Panel Object Payload Rendering
+
+### 狀態
+
+`VisualizeCommand` can now return an optional UI object payload with trainer objects and averaged
+evaluation records. In real `Study` contexts, Visualization panel rendering uses that service
+payload for plan controls and average-run rendering instead of falling back to injected
+`VisualizationController` reads. The UI-only `include_objects` flag is hidden from automation / MCP
+command schemas and rejected by the automation payload builder.
+
+### 已可宣稱
+
+- A stale injected visualization controller can no longer override a successful service-backed
+  visualization payload for trainer list or averaged-record rendering.
+- MCP/headless `visualize` schemas do not expose the UI object payload flag.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/analysis_service.py`,
+  `XBrainLab/backend/application/automation.py`,
+  `XBrainLab/backend/application/commands.py`, `XBrainLab/ui/panels/visualization/panel.py`
+- Tests：`tests/unit/backend/application/test_analysis_service.py`,
+  `tests/unit/backend/application/test_automation.py`,
+  `tests/unit/ui/test_visualization_panel_redesign.py`,
+  `tests/unit/ui/test_visualization_panel_coverage.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not certify saliency map / spectrogram / topomap / 3D canvas screenshot acceptance or
+  full analysis workflow UX.

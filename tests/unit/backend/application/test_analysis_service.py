@@ -77,6 +77,9 @@ class _VisualizationController:
     def get_trainers(self) -> list[str]:
         return ["trainer-a"]
 
+    def get_averaged_record(self, trainer: Any) -> str:
+        return f"{trainer}-average"
+
     def set_saliency_params(self, params: dict[str, Any]) -> None:
         self.params = params
 
@@ -235,3 +238,17 @@ def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:
     assert preprocess.applied_montage == (["Cz"], [(0.0, 0.0, 0.0)])
     assert montage_message == "Applied montage 'standard_1020' to 1 channel(s)."
     assert montage == {"channel_count": 1, "montage_name": "standard_1020"}
+
+
+def test_analysis_service_can_return_ui_visualization_objects() -> None:
+    state = _state(saliency_available=True, saliency_configured=True, finished_runs=1)
+    service, _visualization, _preprocess = _service(state=state)
+
+    _message, diagnostics = _expect_payload(
+        service.handle_visualize(
+            VisualizeCommand(view="summary", include_objects=True)
+        ),
+    )
+
+    assert diagnostics["trainer_objects"] == ["trainer-a"]
+    assert diagnostics["averaged_records"] == ["trainer-a-average"]
