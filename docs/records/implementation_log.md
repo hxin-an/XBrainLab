@@ -55,7 +55,9 @@ handler use it for metadata edit / batch metadata, smart parse, remove files, di
 clear dataset, channel selection, and post-load label compatibility fallback. Visualization saliency
 settings and AgentManager montage confirmation also use the helper. The helper allows fallback only
 for mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does
-not return a `CommandResult`.
+not return a `CommandResult`. `tests/architecture_compliance.py` now guards this boundary by
+failing direct controller mutation calls inside UI `result is None` branches unless they go through
+the explicit fallback helper.
 
 ### 已可宣稱
 
@@ -63,13 +65,14 @@ not return a `CommandResult`.
   silently mutate their controllers if the command helper fails to provide an ApplicationService
   result.
 - Existing mock / legacy unit-test compatibility fallback remains available.
+- The architecture compliance gate now prevents reintroducing direct controller mutation fallback
+  inside missing-command-result branches.
 
 ### Evidence 入口
 
-- Code: `XBrainLab/ui/application_capabilities.py`,
-  `XBrainLab/ui/panels/training/sidebar.py`
-- Tests: `tests/unit/ui/test_application_capabilities.py`,
-  `tests/unit/ui/test_sidebars_and_components.py`
+- Code: `XBrainLab/ui/application_capabilities.py`, touched UI fallback call sites,
+  `tests/architecture_compliance.py`
+- Tests: focused UI fallback tests plus `tests/architecture_compliance.py`
 - Detailed validation commands：`docs/records/worklog.md`
 
 ### 不能宣稱完成

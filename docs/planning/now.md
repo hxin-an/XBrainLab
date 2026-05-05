@@ -81,6 +81,9 @@
 - 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings 和 assistant montage
   confirmation fallback 改成同一個 mock / legacy-only helper。剩餘 `result is None` path 主要是
   Data Interpretation service-unavailable critical / false return 或已顯式 helper fallback。
+- 最新 architecture guard slice 已把這條 boundary 寫進 `tests/architecture_compliance.py`：UI 的
+  `result is None` branch 若直接呼叫 controller mutation，會 fail；mock / legacy fallback 必須透過
+  `run_legacy_controller_fallback()`。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。

@@ -27,6 +27,33 @@ FORBIDDEN_PRODUCT_LLM_TOKENS = (
     "XBRAINLAB_SHOW_LEGACY_REMOTE_LLM",
 )
 REMOTE_SDK_DEFAULT_DEPS = ("openai", "google-genai")
+UI_CONTROLLER_FALLBACK_METHODS = (
+    "_run_legacy_label_import",
+    "_run_metadata_update_fallback",
+    "apply_channel_selection",
+    "apply_data_splitting",
+    "apply_epoching",
+    "apply_filter",
+    "apply_labels_batch",
+    "apply_labels_legacy",
+    "apply_montage",
+    "apply_normalization",
+    "apply_resample",
+    "apply_rereference",
+    "apply_smart_parse",
+    "clean_dataset",
+    "clean_datasets",
+    "clear_history",
+    "import_files",
+    "remove_files",
+    "reset_preprocess",
+    "set_model_holder",
+    "set_saliency_params",
+    "set_training_option",
+    "start_training",
+    "stop_training",
+    "update_metadata",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -112,6 +139,13 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    fallback_violations = check_ui_controller_fallbacks(Path(root_dir))
+    if fallback_violations:
+        print("\nUI Controller Fallback Violations Found:")
+        for violation in fallback_violations:
+            print(f" - {violation}")
+        return 1
+
     print("\nArchitecture compliant!")
     return 0
 
@@ -143,6 +177,69 @@ def check_local_only_llm_runtime(root_dir: Path) -> list[str]:
         )
 
     return violations
+
+
+def check_ui_controller_fallbacks(root_dir: Path) -> list[str]:
+    """Return UI branches that silently mutate controllers on missing results."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.If):
+                continue
+            test_source = ast.get_source_segment(source, node.test) or ""
+            if "result" not in test_source or "None" not in test_source:
+                continue
+            violations.extend(
+                (
+                    f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                    f"{_call_name(call.func)} directly in {test_source!r}; use "
+                    "run_legacy_controller_fallback() for mock/legacy-only fallback."
+                )
+                for call in _forbidden_fallback_calls(node.body)
+            )
+    return violations
+
+
+def _forbidden_fallback_calls(nodes: list[ast.stmt]) -> list[ast.Call]:
+    calls: list[ast.Call] = []
+    for node in nodes:
+        visitor = _ControllerFallbackVisitor()
+        visitor.visit(node)
+        calls.extend(visitor.violations)
+    return calls
+
+
+class _ControllerFallbackVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        call_name = _call_name(node.func)
+        if call_name == "run_legacy_controller_fallback":
+            return
+        if call_name in UI_CONTROLLER_FALLBACK_METHODS:
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _call_name(func: ast.expr) -> str:
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return ""
 
 
 def _read_poetry_default_dependency_names(pyproject: Path) -> set[str]:

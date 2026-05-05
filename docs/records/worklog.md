@@ -37,6 +37,24 @@
 
 ## 2026-05-05
 
+### 17:14 UI fallback architecture guard
+
+- 做了什麼：
+  - 在 `tests/architecture_compliance.py` 新增 UI fallback static guard。
+  - Guard 會掃 `XBrainLab/ui/**/*.py` 的 `result is None` / `*_result is None` branch；若 branch
+    直接呼叫 controller mutation 方法，且不是透過 `run_legacy_controller_fallback()`，就 fail。
+- 結果：
+  - 目前 UI fallback audit 的成果被 architecture gate 保護，後續新增 silent controller fallback
+    會被 `poetry run python tests/architecture_compliance.py` 擋下。
+  - 這只守 controller fallback boundary；不代表 observer/manual refresh cleanup 已完成。
+- 證據：
+  - `poetry run ruff check tests/architecture_compliance.py` -> pass。
+  - `poetry run basedpyright tests/architecture_compliance.py` -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 跑 full docs/static gates 後提交；下一步回到 command-driven refresh coordinator 的剩餘
+    observer/manual refresh cleanup 或 Data Interpretation mature wizard。
+
 ### 17:07 Visualization / AgentManager fallback boundary
 
 - 做了什麼：
