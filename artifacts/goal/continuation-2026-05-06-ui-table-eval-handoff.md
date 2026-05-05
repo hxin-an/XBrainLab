@@ -30,6 +30,10 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+865b7c6 ui: flag clipped rows in walkthrough artifacts
+61312fc ui: route training updates through refresh coordinator
+1067c18 ui: prevent clipped interpretation review rows
+f4a4bfb eval: require explicit release gate for full local runs
 3ecb698 ui: release metrics chart canvas on close
 62b7f64 ui: clean up confusion matrix canvas
 5ab35ba ui: release saliency canvases on replace
@@ -97,6 +101,9 @@ bb57beb ui: use backend truth for split replacement
   - latest polish fixes clipped Review Summary rows; `tree_state()` records
     `vertical_scrollbar_max` and `partial_visible_rows`, and the refreshed replay shows
     `partial_visible_rows=[]` for preview and remap dialogs.
+  - consolidated human-like walkthrough quality review now fails on any captured
+    `partial_visible_rows` for table/tree widgets; latest artifact checks `15` widgets with
+    `0` geometry findings and `0` clipped-row findings.
 - Label/Event review table readability:
   - label-carrier `Format` column widened so `BIDS events` remains visible in product-width dialog.
 - Dataset loaded table artifact:
@@ -104,9 +111,11 @@ bb57beb ui: use backend truth for split replacement
   - `Labels (4)` is muted text, not success-green.
 - Automated geometry guard:
   - `table_state()` now records `widget_width`, `panel_width`, `table_right_x`,
-    `right_boundary_x`, and `right_gap_to_boundary`.
+    `right_boundary_x`, `right_gap_to_boundary`, `vertical_scrollbar_max`, and
+    `partial_visible_rows`.
   - `build_table_geometry_review()` now fails if a table fills only its own viewport but leaves a
-    visible gap before the content boundary.
+    visible gap before the content boundary, or if a captured table/tree widget shows a
+    half-visible row at the viewport edge.
   - Latest `artifacts/ui/data-interpretation-replay.json` records
     `widget_width=1020`, `table_right_x=1020`, `right_boundary_x=1020`,
     `right_gap_to_boundary=0` for the 1280px loaded Dataset capture.
