@@ -3349,6 +3349,55 @@
       "import_label_button_enabled": true,
       "import_label_button_tooltip": "Add labels to loaded data and update the current recipe trace.",
       "table_rows": 2,
+      "table": {
+        "headers": [
+          "File",
+          "Subject",
+          "Session",
+          "Chan",
+          "Hz",
+          "Epochs",
+          "Events"
+        ],
+        "rows": [
+          [
+            "sub-01_task-mi_run-1_raw.fif",
+            "S01",
+            "session-01",
+            "4",
+            "128.0",
+            "1",
+            "Events (6)"
+          ],
+          [
+            "sub-01_task-mi_run-2_raw.fif",
+            "01",
+            "0",
+            "4",
+            "128.0",
+            "1",
+            "Labels (4)"
+          ]
+        ],
+        "resize_modes": [
+          "Stretch",
+          "ResizeToContents",
+          "ResizeToContents",
+          "ResizeToContents",
+          "ResizeToContents",
+          "ResizeToContents",
+          "ResizeToContents"
+        ],
+        "column_widths": [
+          608,
+          70,
+          77,
+          51,
+          48,
+          66,
+          74
+        ]
+      },
       "visible_panel_text": [],
       "screenshot": "data-interpretation-applied.png"
     },

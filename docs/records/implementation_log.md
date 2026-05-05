@@ -42,6 +42,48 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Data Entry Routing And Dataset Table Fit
+
+### 狀態
+
+General user wording such as `Load ...` / `Import my EEG folder ...` now routes to Data
+Interpretation `scan_source` instead of the legacy `load_data` compatibility path, while explicit
+legacy / direct compatibility wording still maps to `load_data`. The saved 118-case deterministic,
+primary, and fallback local tool-call artifacts were refreshed on cached non-China local models.
+
+The Dataset / Data Interpretation UI also received a focused product polish pass: preview dialog
+tables now fit their panels with stretch + elide behavior, `Review Summary` uses lower-contrast dark
+alternating rows, and the Dataset table uses a stretch `File` column so loaded rows fill the main
+panel instead of collapsing left.
+
+### 已可宣稱
+
+- New data-entry language in agent eval now prefers Data Interpretation for normal file / folder /
+  BIDS import requests.
+- Automated UI replay evidence shows Dataset table columns fill the main panel, and `Events` /
+  `Labels` visible text separates recording events from external labels.
+- Tool-call benchmark artifacts still show deterministic / primary / fallback `118 / 118`, with
+  primary and fallback each repeated `3` times.
+
+### Evidence 入口
+
+- Tool-call dashboard：`artifacts/agent_evals/dashboard.md`
+- Data Interpretation replay：`artifacts/ui/data-interpretation-replay.json`
+- Screenshots：`artifacts/ui/data-interpretation-preview.png`、
+  `artifacts/ui/data-interpretation-applied.png`
+- Detailed commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這仍不是 Windows human desktop acceptance、完整 mature import wizard、長時間 ChatPanel
+  workflow 或 MCP HTTP / long-running automation closure。
+- 這個 UI pass 修的是 table fit / contrast / Dataset table semantics，不是全介面重設計。
+
+### 下一手重點
+
+繼續把 mature Data Interpretation editor、assistant narrow composition、Windows launcher 真人驗收
+和 long-running MCP / local-model workflow 分開驗證，不要讓 benchmark PASS 蓋過產品缺口。
+
 ## 2026-05-05 Walkthrough Resource Smoke Boundary
 
 ### 狀態

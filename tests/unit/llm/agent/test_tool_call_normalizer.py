@@ -61,6 +61,20 @@ def test_normalizes_bids_scan_hint_from_source_path():
     assert params["source_hint"] == "bids"
 
 
+def test_normalizes_folder_hint_to_bids_when_user_names_bids_root():
+    tool_name, params = normalize_tool_call(
+        "scan_source",
+        {"source_path": "/data/bids_ambiguous", "source_hint": "folder"},
+        latest_user_text=(
+            "Scan BIDS root /data/bids_ambiguous and keep label ambiguity "
+            "for confirmation."
+        ),
+    )
+
+    assert tool_name == "scan_source"
+    assert params == {"source_path": "/data/bids_ambiguous", "source_hint": "bids"}
+
+
 def test_normalizes_subject_override_into_preview_choices():
     tool_name, params = normalize_tool_call(
         "preview_interpretation",
@@ -119,15 +133,26 @@ def test_drops_null_optional_parameters():
     assert params == {"l_freq": 4.0, "h_freq": 40.0}
 
 
-def test_latest_load_intent_keeps_legacy_load_tool_when_model_scans():
+def test_latest_load_intent_keeps_data_interpretation_scan_tool():
     tool_name, params = normalize_tool_call(
         "scan_source",
         {"source_path": "/missing/file.gdf"},
         latest_user_text="Load /missing/file.gdf",
     )
 
+    assert tool_name == "scan_source"
+    assert params == {"source_path": "/missing/file.gdf"}
+
+
+def test_explicit_legacy_load_intent_can_use_compatibility_tool():
+    tool_name, params = normalize_tool_call(
+        "scan_source",
+        {"source_path": "/data/A01T.gdf"},
+        latest_user_text="Use legacy load_data for /data/A01T.gdf",
+    )
+
     assert tool_name == "load_data"
-    assert params == {"paths": ["/missing/file.gdf"]}
+    assert params == {"paths": ["/data/A01T.gdf"]}
 
 
 def test_recipe_reload_uses_absolute_path_from_latest_turn():

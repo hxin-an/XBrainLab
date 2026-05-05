@@ -67,6 +67,50 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     }
 
 
+def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01.fif"],
+            "label_carriers": ["/tmp/source/sub-01_task-mi_run-01_events.tsv"],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/source/sub-01_task-mi_run-01_events.tsv",
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "TSV",
+                    "label_candidates": ["trial_type", "value"],
+                    "anchor_candidates": ["onset", "sample"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "event",
+                    "role": "class cue labels",
+                },
+            ],
+            "warnings": ["Review label-event mapping before applying."],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    assert dialog.label_carrier_tree.textElideMode() == Qt.TextElideMode.ElideRight
+    assert dialog.event_tree.textElideMode() == Qt.TextElideMode.ElideRight
+    assert dialog.review_tree.textElideMode() == Qt.TextElideMode.ElideRight
+    assert dialog.label_carrier_tree.horizontalScrollBarPolicy() == (
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    assert dialog.review_tree.horizontalScrollBarPolicy() == (
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
+    assert dialog.review_tree.alternatingRowColors()
+    assert "alternate-background-color" in dialog.styleSheet()
+    assert "#ffffff" not in dialog.styleSheet().lower()
+    assert "#000000" not in dialog.styleSheet().lower()
+
+
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

@@ -37,6 +37,76 @@
 
 ## 2026-05-05
 
+### 11:55 Data-entry routing and Dataset table fit
+
+- 做了什麼：
+  - 把一般使用者資料入口語句從 legacy `load_data` 轉到 Data Interpretation
+    `scan_source`：例如 `Load /path/file.gdf`、`Import my EEG folder ...` 會進 scan /
+    preview / validate 主線；只有明確說 legacy / direct compatibility 的語句才保留
+    `load_data`。
+  - 修正 BIDS source hint normalization：path 或最新 prompt 提到 BIDS 時，`scan_source`
+    argument 會收斂成 `source_hint=bids`。
+  - 刷新 deterministic / local primary / local fallback tool-call eval artifacts；local models
+    使用已存在 cache，未下載新模型。
+  - 依使用者截圖修正 Data Interpretation preview dialog：label carrier、events、recipe trace
+    tables 使用 stretch + elide，避免超出欄框；`Review Summary` 使用較低對比 dark
+    alternating row。
+  - 修正 Dataset panel table：`File` 欄 stretch 填滿主 panel，其餘欄 resize-to-contents；
+    `Events` 欄改成 `Events (n)` / `Labels (n)`，muted green 只代表 external labels。
+  - `capture_data_interpretation_replay.py` 現在保存 Dataset table headers、rows、resize modes
+    和 column widths，讓 replay artifact 能直接驗證主 panel 是否被欄位填滿。
+- 結果：
+  - Focused UI replay JSON 顯示 Dataset table resize modes 為 `File=Stretch`、其他欄
+    `ResizeToContents`，rows 為 `Events (6)` / `Labels (4)`。
+  - Local tool-call dashboard 顯示 deterministic / primary / fallback 都為 `118 / 118`；
+    primary / fallback 各重跑 `3` 次。
+  - 初次 broad gate 發現兩個需要收斂的問題：`basedpyright` 對 `QTreeWidget.header()` optional
+    access 報錯；agent controller test 還期待舊 `file path` wording。已修成 header guard 與
+    Data Interpretation `source path` expectation。
+- 證據：
+  - Resource preflight：
+    `poetry run python scripts/dev/inspect_local_assistant_runtime.py`
+    -> primary / fallback cached、runtime `gpu-ready`、cache usage `15.34 GB`、no download。
+  - Deterministic eval：
+    `poetry run python scripts/agent/evals/run_tool_call_eval.py --output-dir artifacts/agent_evals/deterministic --repeat-count 3`
+    -> `118 / 118`；root latest artifacts copied from deterministic output。
+  - Local primary：
+    `poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role primary --repeat-count 3 --output-dir artifacts/agent_evals/local_primary`
+    -> final rerun `118 / 118`。
+  - Local fallback：
+    `poetry run python scripts/agent/evals/run_local_tool_call_eval.py --model-role fallback --repeat-count 3 --output-dir artifacts/agent_evals/local_fallback`
+    -> `118 / 118`。
+  - Dashboard：
+    `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals --output artifacts/agent_evals/dashboard.md`
+    -> refreshed `artifacts/agent_evals/dashboard.md`。
+  - Focused UI gate：
+    `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py -q`
+    -> `23 passed`。
+  - Focused agent gate：
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_intent.py tests/unit/llm/agent/test_tool_call_normalizer.py -q`
+    -> `42 passed`。
+  - Replay artifact：
+    `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`，刷新 `artifacts/ui/data-interpretation-preview.png`、
+    `artifacts/ui/data-interpretation-applied.png` 和
+    `artifacts/ui/data-interpretation-replay.json`。
+  - Post-change gates：
+    `git diff --check` -> pass；
+    `timeout 300s poetry run ruff check .` -> pass；
+    `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `3 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - 這支撐 Data Interpretation-first data-entry routing、Dataset table fill behavior 和 focused
+    import UI table polish；仍不是 Windows human desktop acceptance、完整 mature import wizard、
+    長時間 ChatPanel workflow 或 MCP HTTP / long-running automation closure。
+
 ### 08:20 Backend train confirmation command gate
 
 - 做了什麼：

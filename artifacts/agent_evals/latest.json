@@ -51,8 +51,8 @@
         "pass_rate": 1.0
       },
       "baseline": {
-        "total": 100,
-        "passed": 100,
+        "total": 94,
+        "passed": 94,
         "pass_rate": 1.0
       },
       "bids": {
@@ -63,6 +63,11 @@
       "blocked_command": {
         "total": 32,
         "passed": 32,
+        "pass_rate": 1.0
+      },
+      "blocked_state": {
+        "total": 1,
+        "passed": 1,
         "pass_rate": 1.0
       },
       "chinese": {
@@ -76,8 +81,8 @@
         "pass_rate": 1.0
       },
       "data_interpretation": {
-        "total": 60,
-        "passed": 60,
+        "total": 65,
+        "passed": 65,
         "pass_rate": 1.0
       },
       "destructive": {
@@ -95,9 +100,14 @@
         "passed": 2,
         "pass_rate": 1.0
       },
+      "legacy_compatibility": {
+        "total": 1,
+        "passed": 1,
+        "pass_rate": 1.0
+      },
       "missing_input": {
-        "total": 2,
-        "passed": 2,
+        "total": 3,
+        "passed": 3,
         "pass_rate": 1.0
       },
       "mixed_language": {
@@ -121,8 +131,8 @@
         "pass_rate": 1.0
       },
       "recovery": {
-        "total": 27,
-        "passed": 27,
+        "total": 28,
+        "passed": 28,
         "pass_rate": 1.0
       },
       "should_not_call": {
@@ -522,14 +532,12 @@
       },
       "expected_verification_result": "allowed",
       "expected_state_delta": {},
-      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"load_data\", \"arguments\": {\"paths\": [\"/data/S01.gdf\"]}}]}",
+      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"scan_source\", \"arguments\": {\"source_path\": \"/data/S01.gdf\"}}]}",
       "parsed_tool_calls": [
         {
-          "tool_name": "load_data",
+          "tool_name": "scan_source",
           "arguments": {
-            "paths": [
-              "/data/S01.gdf"
-            ]
+            "source_path": "/data/S01.gdf"
           }
         }
       ],
@@ -537,12 +545,12 @@
       "backend_result": {
         "simulated": true,
         "status": "ok",
-        "command_name": "load_data",
+        "command_name": "scan_source",
         "verification_result": "allowed",
         "result_interpretation": null,
         "expected_state_delta": {}
       },
-      "visible_response": "The requested workflow step is ready.",
+      "visible_response": "I can scan the source and summarize EEG files.",
       "score_breakdown": {
         "intent": true,
         "tool_selection": true,
@@ -578,17 +586,15 @@
       "confirmation_boundary": true,
       "visible_response_quality": true,
       "families": [
-        "baseline"
+        "data_interpretation"
       ],
       "prediction": {
-        "intent": "load_data",
+        "intent": "scan_source",
         "tool_calls": [
           {
-            "tool_name": "load_data",
+            "tool_name": "scan_source",
             "arguments": {
-              "paths": [
-                "/data/S01.gdf"
-              ]
+              "source_path": "/data/S01.gdf"
             }
           }
         ],
@@ -596,7 +602,7 @@
         "confirmation_required": false,
         "blocked_reason": "",
         "asks_clarification": false,
-        "final_message": "",
+        "final_message": "I can scan the source and summarize EEG files.",
         "result_interpretation": null,
         "state_delta": {}
       },
@@ -759,7 +765,7 @@
       },
       "expected_verification_result": "missing_input",
       "expected_state_delta": {},
-      "actual_model_output": "Please provide the EEG file path before loading data.",
+      "actual_model_output": "Please provide the data source path before scanning.",
       "parsed_tool_calls": [],
       "verification_result": "missing_input",
       "backend_result": {
@@ -770,7 +776,7 @@
         "result_interpretation": null,
         "expected_state_delta": {}
       },
-      "visible_response": "Please provide the EEG file path before loading data.",
+      "visible_response": "Please provide the data source path before scanning.",
       "score_breakdown": {
         "intent": true,
         "tool_selection": true,
@@ -806,18 +812,19 @@
       "confirmation_boundary": true,
       "visible_response_quality": true,
       "families": [
-        "baseline",
         "blocked_command",
+        "data_interpretation",
+        "missing_input",
         "recovery"
       ],
       "prediction": {
-        "intent": "load_data",
+        "intent": "scan_source",
         "tool_calls": [],
         "blocked": true,
         "confirmation_required": false,
-        "blocked_reason": "Missing required file path; ask the user for a file path.",
+        "blocked_reason": "Missing required source path; ask the user for a source path.",
         "asks_clarification": true,
-        "final_message": "Please provide the EEG file path before loading data.",
+        "final_message": "Please provide the data source path before scanning.",
         "result_interpretation": null,
         "state_delta": {}
       },
@@ -981,14 +988,12 @@
       },
       "expected_verification_result": "allowed",
       "expected_state_delta": {},
-      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"load_data\", \"arguments\": {\"paths\": [\"/data/S02.edf\"]}}]}",
+      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"scan_source\", \"arguments\": {\"source_path\": \"/data/S02.edf\"}}]}",
       "parsed_tool_calls": [
         {
-          "tool_name": "load_data",
+          "tool_name": "scan_source",
           "arguments": {
-            "paths": [
-              "/data/S02.edf"
-            ]
+            "source_path": "/data/S02.edf"
           }
         }
       ],
@@ -996,12 +1001,12 @@
       "backend_result": {
         "simulated": true,
         "status": "ok",
-        "command_name": "load_data",
+        "command_name": "scan_source",
         "verification_result": "allowed",
         "result_interpretation": null,
         "expected_state_delta": {}
       },
-      "visible_response": "The requested workflow step is ready.",
+      "visible_response": "I can scan the source and summarize EEG files.",
       "score_breakdown": {
         "intent": true,
         "tool_selection": true,
@@ -1037,19 +1042,17 @@
       "confirmation_boundary": true,
       "visible_response_quality": true,
       "families": [
-        "baseline",
+        "data_interpretation",
         "multi_turn",
         "recovery"
       ],
       "prediction": {
-        "intent": "load_data",
+        "intent": "scan_source",
         "tool_calls": [
           {
-            "tool_name": "load_data",
+            "tool_name": "scan_source",
             "arguments": {
-              "paths": [
-                "/data/S02.edf"
-              ]
+              "source_path": "/data/S02.edf"
             }
           }
         ],
@@ -1057,7 +1060,7 @@
         "confirmation_required": false,
         "blocked_reason": "",
         "asks_clarification": false,
-        "final_message": "",
+        "final_message": "I can scan the source and summarize EEG files.",
         "result_interpretation": null,
         "state_delta": {}
       },
@@ -3239,7 +3242,7 @@
       "case_id": "epoched-load-new-data-block",
       "passed": true,
       "user_command": [
-        "Load /data/new_subject.gdf"
+        "Use legacy load_data for /data/new_subject.gdf"
       ],
       "initial_state": "epoched",
       "available_command_summary": {
@@ -3437,8 +3440,9 @@
       "confirmation_boundary": true,
       "visible_response_quality": true,
       "families": [
-        "baseline",
-        "blocked_command"
+        "blocked_command",
+        "blocked_state",
+        "legacy_compatibility"
       ],
       "prediction": {
         "intent": "load_data",
@@ -4490,14 +4494,12 @@
       },
       "expected_verification_result": "recoverable_failure",
       "expected_state_delta": {},
-      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"load_data\", \"arguments\": {\"paths\": [\"/missing/file.gdf\"]}}]}",
+      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"scan_source\", \"arguments\": {\"source_path\": \"/missing/file.gdf\"}}]}",
       "parsed_tool_calls": [
         {
-          "tool_name": "load_data",
+          "tool_name": "scan_source",
           "arguments": {
-            "paths": [
-              "/missing/file.gdf"
-            ]
+            "source_path": "/missing/file.gdf"
           }
         }
       ],
@@ -4505,12 +4507,12 @@
       "backend_result": {
         "simulated": true,
         "status": "ok",
-        "command_name": "load_data",
+        "command_name": "scan_source",
         "verification_result": "recoverable_failure",
         "result_interpretation": "recoverable_failure",
         "expected_state_delta": {}
       },
-      "visible_response": "The requested workflow step is ready.",
+      "visible_response": "I can scan the source and summarize EEG files.",
       "score_breakdown": {
         "intent": true,
         "tool_selection": true,
@@ -4546,17 +4548,16 @@
       "confirmation_boundary": true,
       "visible_response_quality": true,
       "families": [
-        "baseline"
+        "data_interpretation",
+        "recovery"
       ],
       "prediction": {
-        "intent": "load_data",
+        "intent": "scan_source",
         "tool_calls": [
           {
-            "tool_name": "load_data",
+            "tool_name": "scan_source",
             "arguments": {
-              "paths": [
-                "/missing/file.gdf"
-              ]
+              "source_path": "/missing/file.gdf"
             }
           }
         ],
@@ -4564,7 +4565,7 @@
         "confirmation_required": false,
         "blocked_reason": "",
         "asks_clarification": false,
-        "final_message": "",
+        "final_message": "I can scan the source and summarize EEG files.",
         "result_interpretation": "recoverable_failure",
         "state_delta": {}
       },
@@ -4727,14 +4728,12 @@
       },
       "expected_verification_result": "allowed",
       "expected_state_delta": {},
-      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"load_data\", \"arguments\": {\"paths\": [\"/data/S03.fif\"]}}]}",
+      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"scan_source\", \"arguments\": {\"source_path\": \"/data/S03.fif\"}}]}",
       "parsed_tool_calls": [
         {
-          "tool_name": "load_data",
+          "tool_name": "scan_source",
           "arguments": {
-            "paths": [
-              "/data/S03.fif"
-            ]
+            "source_path": "/data/S03.fif"
           }
         }
       ],
@@ -4742,12 +4741,12 @@
       "backend_result": {
         "simulated": true,
         "status": "ok",
-        "command_name": "load_data",
+        "command_name": "scan_source",
         "verification_result": "allowed",
         "result_interpretation": "success_summary",
         "expected_state_delta": {}
       },
-      "visible_response": "The requested workflow step is ready.",
+      "visible_response": "I can scan the source and summarize EEG files.",
       "score_breakdown": {
         "intent": true,
         "tool_selection": true,
@@ -4783,17 +4782,15 @@
       "confirmation_boundary": true,
       "visible_response_quality": true,
       "families": [
-        "baseline"
+        "data_interpretation"
       ],
       "prediction": {
-        "intent": "load_data",
+        "intent": "scan_source",
         "tool_calls": [
           {
-            "tool_name": "load_data",
+            "tool_name": "scan_source",
             "arguments": {
-              "paths": [
-                "/data/S03.fif"
-              ]
+              "source_path": "/data/S03.fif"
             }
           }
         ],
@@ -4801,7 +4798,7 @@
         "confirmation_required": false,
         "blocked_reason": "",
         "asks_clarification": false,
-        "final_message": "",
+        "final_message": "I can scan the source and summarize EEG files.",
         "result_interpretation": "success_summary",
         "state_delta": {}
       },
@@ -26739,7 +26736,7 @@
     }
   ],
   "artifact_paths": {
-    "json": "artifacts/agent_evals/latest.json",
-    "markdown": "artifacts/agent_evals/latest.md"
+    "json": "artifacts/agent_evals/deterministic/latest.json",
+    "markdown": "artifacts/agent_evals/deterministic/latest.md"
   }
 }

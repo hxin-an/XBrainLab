@@ -218,6 +218,50 @@ UI baseline capture 結果：
   monitor / DPI behavior, XDF / LSL stream selection, complex MAT/GDF anchor reconciliation, or
   real-data manual certification.
 
+2026-05-05 Dataset table fit and data-entry routing follow-up:
+
+- Product/UI change:
+  - Data Interpretation preview dialog tables now use constrained stretch + elide behavior so label
+    carriers, events, and recipe trace stay inside the dialog instead of overflowing.
+  - `Review Summary` keeps structured rows but uses lower-contrast dark alternating rows.
+  - Dataset panel table now sets the `File` column to `Stretch` and the remaining columns to
+    `ResizeToContents`, so loaded rows fill the main panel while still allowing user resize.
+  - Dataset visible text now distinguishes recording events (`Events (n)`) from external labels
+    (`Labels (n)`); muted green is reserved for external labels.
+- Agent/eval change:
+  - General data-entry wording such as `Load ...` and folder import requests now route to
+    Data Interpretation `scan_source`; explicit legacy/direct compatibility wording still routes to
+    `load_data`.
+  - BIDS path / prompt hints are normalized toward `source_hint=bids`.
+- Focused evidence:
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py -q`
+    -> `23 passed`.
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; replay JSON records Dataset table headers, rows, resize modes, and column widths.
+  - `artifacts/ui/data-interpretation-replay.json` shows `File=Stretch`, other columns
+    `ResizeToContents`, and rows containing `Events (6)` / `Labels (4)`.
+  - Deterministic eval and cached local primary / fallback evals were refreshed at
+    `artifacts/agent_evals/dashboard.md`; deterministic, primary, and fallback all remain
+    `118 / 118`, with local roles repeated `3` times.
+- Post-change gates:
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+- Claim boundary: this supports the automated replay condition that Dataset table columns fill the
+  main panel and general import language routes through Data Interpretation. It does not prove
+  mature import wizard completion, Windows human desktop acceptance, or long-running assistant /
+  MCP workflow closure.
+
 2026-05-05 MCP stdio adapter session boundary:
 
 - Adapter change:

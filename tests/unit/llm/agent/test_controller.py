@@ -433,7 +433,8 @@ class TestProcessToolCalls:
         )
 
         assert (
-            message == "Required file path must be an actual path provided by the user."
+            message
+            == "Required source path must be an actual path provided by the user."
         )
 
 

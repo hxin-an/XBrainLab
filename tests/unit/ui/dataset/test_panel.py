@@ -2,9 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QHeaderView, QMainWindow, QMessageBox
 
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
+from XBrainLab.ui.styles.theme import Theme
 
 
 @pytest.fixture
@@ -132,6 +133,78 @@ def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
 
     assert panel.table.rowCount() == 1
     assert panel.table.item(0, 0).text() == "test.set"
+
+
+def test_dataset_panel_table_uses_available_width_for_file_names(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+
+    header = panel.table.horizontalHeader()
+
+    assert header.sectionResizeMode(0) == QHeaderView.ResizeMode.Stretch
+    for column in range(1, panel.table.columnCount()):
+        assert (
+            header.sectionResizeMode(column) == QHeaderView.ResizeMode.ResizeToContents
+        )
+    assert panel.table.textElideMode() == Qt.TextElideMode.ElideRight
+
+
+def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    internal_events = MagicMock()
+    internal_events.configure_mock(
+        **{
+            "get_filename.return_value": "internal_events.set",
+            "get_subject_name.return_value": "Sub01",
+            "get_session_name.return_value": "Sess01",
+            "get_nchan.return_value": 32,
+            "get_sfreq.return_value": 250,
+            "get_epochs_length.return_value": 0,
+            "has_event.return_value": True,
+            "is_raw.return_value": True,
+            "is_labels_imported.return_value": False,
+            "get_event_list.return_value": ([1, 2, 3], {}),
+        }
+    )
+    imported_labels = MagicMock()
+    imported_labels.configure_mock(
+        **{
+            "get_filename.return_value": "imported_labels.set",
+            "get_subject_name.return_value": "Sub02",
+            "get_session_name.return_value": "Sess02",
+            "get_nchan.return_value": 32,
+            "get_sfreq.return_value": 250,
+            "get_epochs_length.return_value": 0,
+            "has_event.return_value": True,
+            "is_raw.return_value": True,
+            "is_labels_imported.return_value": True,
+            "get_event_list.return_value": ([1, 2], {}),
+        }
+    )
+    mock_controller.get_loaded_data_list.return_value = [
+        internal_events,
+        imported_labels,
+    ]
+
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.update_panel()
+
+    internal_item = panel.table.item(0, 6)
+    imported_item = panel.table.item(1, 6)
+
+    assert internal_item.text() == "Events (3)"
+    assert internal_item.toolTip() == "Events detected in the recording."
+    assert imported_item.text() == "Labels (2)"
+    assert imported_item.toolTip() == "External labels are attached to this recording."
+    assert imported_item.foreground().color().name().lower() == (Theme.LOG_INFO.lower())
 
 
 def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QPushButton
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QHeaderView,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+)
 
 from scripts.dev.capture_data_interpretation_replay import (
     apply_replay_review_choices,
     dataset_sidebar_state,
+    table_state,
     tree_rows,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
@@ -77,3 +84,36 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
         "enabled": False,
         "tooltip": "Load raw data before applying smart parse.",
     }
+
+
+def test_table_state_records_rows_and_resize_modes(qtbot) -> None:
+    table = QTableWidget(2, 3)
+    qtbot.addWidget(table)
+    table.setHorizontalHeaderLabels(["File", "Subject", "Events"])
+    header = table.horizontalHeader()
+    header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+    header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+    table.setItem(0, 0, table_item("sub-01.fif"))
+    table.setItem(0, 1, table_item("S01"))
+    table.setItem(0, 2, table_item("Events (6)"))
+    table.setItem(1, 0, table_item("sub-02.fif"))
+    table.setItem(1, 1, table_item("S02"))
+    table.setItem(1, 2, table_item("Labels (4)"))
+
+    state = table_state(table)
+
+    assert state["headers"] == ["File", "Subject", "Events"]
+    assert state["rows"] == [
+        ["sub-01.fif", "S01", "Events (6)"],
+        ["sub-02.fif", "S02", "Labels (4)"],
+    ]
+    assert state["resize_modes"] == [
+        "Stretch",
+        "ResizeToContents",
+        "ResizeToContents",
+    ]
+
+
+def table_item(text: str) -> QTableWidgetItem:
+    return QTableWidgetItem(text)

@@ -35,6 +35,8 @@ def infer_user_intent(text: str) -> str:
         return "no_tool"
     if _is_ambiguous_workflow_request(normalized):
         return "ask_clarification"
+    if _is_explicit_legacy_load_request(normalized):
+        return "load_data"
     if "reset" in normalized or "clear the dataset" in normalized:
         return "reset_session"
     if "重設" in normalized or "清空" in normalized:
@@ -82,6 +84,8 @@ def infer_user_intent(text: str) -> str:
         return "apply_interpretation"
     if _is_chinese_data_interpretation_request(normalized):
         return "scan_source"
+    if _is_english_data_interpretation_request(normalized):
+        return "scan_source"
     if (
         "interpret data source" in normalized
         or "interpret my eeg dataset" in normalized
@@ -127,8 +131,6 @@ def infer_user_intent(text: str) -> str:
         return "train"
     if "eegnet" in normalized or ("model" in normalized and "use" in normalized):
         return "configure_training"
-    if "load" in normalized:
-        return "load_data"
     return "unknown"
 
 
@@ -207,3 +209,45 @@ def _is_chinese_data_interpretation_request(normalized: str) -> bool:
             "資料",
         )
     )
+
+
+def _is_explicit_legacy_load_request(normalized: str) -> bool:
+    """Return True only when the user explicitly asks for compatibility loading."""
+    return (
+        "load_data" in normalized
+        or "legacy load" in normalized
+        or "legacy compatibility" in normalized
+        or "compatibility path" in normalized
+        or "direct load" in normalized
+    )
+
+
+def _is_english_data_interpretation_request(normalized: str) -> bool:
+    """Detect user-facing data-entry phrasing that should start scan_source."""
+    data_entry_verbs = (
+        r"\bload(?:ing)?\b",
+        r"\bimport(?:ing)?\b",
+        r"\bopen(?:ing)?\b",
+        r"\bread(?:ing)?\b",
+    )
+    if not any(re.search(pattern, normalized) for pattern in data_entry_verbs):
+        return False
+    data_entry_objects = (
+        "data",
+        "dataset",
+        "source",
+        "file",
+        "folder",
+        "eeg",
+        "bci",
+        "bids",
+        ".gdf",
+        ".edf",
+        ".bdf",
+        ".set",
+        ".vhdr",
+        ".xdf",
+        "/",
+        "\\",
+    )
+    return any(marker in normalized for marker in data_entry_objects)

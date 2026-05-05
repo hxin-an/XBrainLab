@@ -32,12 +32,21 @@ def test_infers_preview_metadata_intents():
 
 
 def test_infers_multilingual_no_call_and_clarification_boundaries():
+    assert infer_user_intent("Load /data/A01T.gdf") == "scan_source"
+    assert infer_user_intent("Import my EEG folder /data/session01") == "scan_source"
     assert infer_user_intent("幫我讀這份腦波資料 /data/A01T.gdf") == "scan_source"
     assert infer_user_intent("幫我 scan 這個 BIDS root /data/bids") == ("scan_source")
     assert infer_user_intent("現在為什麼不能 train?") == "no_tool"
     assert infer_user_intent("什麼是 epoch?") == "no_tool"
     assert infer_user_intent("幫我處理資料") == "ask_clarification"
     assert infer_user_intent("幫我切 epoch event 769") == "create_epoch"
+
+
+def test_legacy_direct_load_requires_explicit_compatibility_intent():
+    assert infer_user_intent("Use legacy load_data for /data/A01T.gdf") == "load_data"
+    assert infer_user_intent("Direct load compatibility path /data/A01T.gdf") == (
+        "load_data"
+    )
 
 
 def test_maps_intent_to_application_command():

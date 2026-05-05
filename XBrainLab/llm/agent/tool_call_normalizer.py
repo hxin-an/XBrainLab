@@ -184,11 +184,10 @@ def _normalize_scan_args(params: dict[str, Any], latest_user_text: str) -> None:
         if source_path:
             params["source_path"] = source_path
     source_path = params.get("source_path")
-    if (
-        isinstance(source_path, str)
-        and "bids" in source_path.lower()
-        and "source_hint" not in params
-    ):
+    mentions_bids = (
+        isinstance(source_path, str) and "bids" in source_path.lower()
+    ) or "bids" in latest_user_text.lower()
+    if mentions_bids:
         params["source_hint"] = "bids"
     source_hint = params.get("source_hint")
     valid_hints = {

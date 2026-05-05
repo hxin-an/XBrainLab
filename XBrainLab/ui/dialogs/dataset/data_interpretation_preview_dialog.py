@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
+    QHeaderView,
     QLabel,
     QTreeWidget,
     QTreeWidgetItem,
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.ui.core.base_dialog import BaseDialog
+from XBrainLab.ui.styles.theme import Theme
 
 
 class DataInterpretationPreviewDialog(BaseDialog):
@@ -67,6 +69,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return str(self.validation_decision.get("decision", "unknown"))
 
     def init_ui(self) -> None:
+        self._apply_product_tree_style()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
         layout.setSpacing(12)
@@ -133,11 +136,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self._populate_files()
-        self.file_tree.setColumnWidth(0, 260)
-        self.file_tree.setColumnWidth(1, 120)
-        self.file_tree.setColumnWidth(2, 140)
-        self.file_tree.setColumnWidth(3, 180)
-        self.file_tree.setColumnWidth(4, 80)
+        self._fit_tree_columns(
+            self.file_tree,
+            (260, 110, 120, 150, 70),
+            stretch_column=0,
+        )
         metadata_layout.addWidget(self.file_tree)
         layout.addWidget(metadata_group)
 
@@ -162,14 +165,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self._populate_label_carrier_tree()
-        self.label_carrier_tree.setColumnWidth(0, 120)
-        self.label_carrier_tree.setColumnWidth(1, 180)
-        self.label_carrier_tree.setColumnWidth(2, 100)
-        self.label_carrier_tree.setColumnWidth(3, 120)
-        self.label_carrier_tree.setColumnWidth(4, 110)
-        self.label_carrier_tree.setColumnWidth(5, 110)
-        self.label_carrier_tree.setColumnWidth(6, 120)
-        self.label_carrier_tree.setColumnWidth(7, 150)
+        self._fit_tree_columns(
+            self.label_carrier_tree,
+            (150, 145, 70, 115, 105, 105, 110, 140),
+            stretch_column=7,
+        )
         label_layout.addWidget(self.label_carrier_tree)
 
         self.event_tree = QTreeWidget()
@@ -180,9 +180,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             | QAbstractItemView.EditTrigger.EditKeyPressed,
         )
         self._populate_event_tree()
-        self.event_tree.setColumnWidth(0, 220)
-        self.event_tree.setColumnWidth(1, 160)
-        self.event_tree.setColumnWidth(2, 520)
+        self._fit_tree_columns(self.event_tree, (220, 150, 420), stretch_column=2)
         label_layout.addWidget(self.event_tree)
         layout.addWidget(label_group, stretch=1)
 
@@ -196,9 +194,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.review_tree.setUniformRowHeights(True)
         self.review_tree.setMinimumHeight(120)
         self.review_tree.setMaximumHeight(170)
-        self.review_tree.setColumnWidth(0, 160)
-        self.review_tree.setColumnWidth(1, 160)
-        self.review_tree.setColumnWidth(2, 640)
+        self._fit_tree_columns(self.review_tree, (150, 145, 520), stretch_column=2)
         self._populate_review_tree()
         review_layout.addWidget(self.review_tree)
         layout.addWidget(review_group)
@@ -250,6 +246,65 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label.setWordWrap(True)
         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         return label
+
+    def _apply_product_tree_style(self) -> None:
+        self.setStyleSheet(
+            f"""
+            QTreeWidget {{
+                background-color: {Theme.BACKGROUND_DARK};
+                alternate-background-color: #242424;
+                color: {Theme.TEXT_MUTED};
+                border: 1px solid {Theme.BACKGROUND_LIGHT};
+                selection-background-color: {Theme.BLUE_PRESSED};
+                selection-color: {Theme.TEXT_MUTED};
+            }}
+            QTreeWidget::item {{
+                padding: 4px 6px;
+                border-bottom: 1px solid #2a2a2a;
+            }}
+            QHeaderView::section {{
+                background-color: {Theme.BACKGROUND_MID};
+                color: {Theme.TEXT_SECONDARY};
+                padding: 5px 6px;
+                border: 0;
+                border-right: 1px solid {Theme.BACKGROUND_LIGHT};
+                border-bottom: 1px solid {Theme.BACKGROUND_LIGHT};
+            }}
+            QComboBox {{
+                background-color: {Theme.BACKGROUND_MID};
+                color: {Theme.TEXT_MUTED};
+                border: 1px solid {Theme.BACKGROUND_LIGHT};
+                padding: 2px 6px;
+            }}
+            """
+        )
+
+    @staticmethod
+    def _fit_tree_columns(
+        tree: QTreeWidget,
+        widths: tuple[int, ...],
+        *,
+        stretch_column: int,
+    ) -> None:
+        tree.setTextElideMode(Qt.TextElideMode.ElideRight)
+        tree.setWordWrap(False)
+        tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        header = tree.header()
+        if header is None:
+            return
+        header.setMinimumSectionSize(56)
+        header.setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        header.setStretchLastSection(False)
+        for column, width in enumerate(widths):
+            tree.setColumnWidth(column, width)
+            mode = (
+                QHeaderView.ResizeMode.Stretch
+                if column == stretch_column
+                else QHeaderView.ResizeMode.Interactive
+            )
+            header.setSectionResizeMode(column, mode)
 
     def _file_count(self) -> int:
         files = self.scan_result.get("eeg_files", []) or []

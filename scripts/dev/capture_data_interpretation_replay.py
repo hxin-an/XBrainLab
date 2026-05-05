@@ -19,7 +19,15 @@ import mne
 import numpy as np
 from PIL import Image
 from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
-from PyQt6.QtWidgets import QApplication, QComboBox, QLabel, QTreeWidget, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QHeaderView,
+    QLabel,
+    QTableWidget,
+    QTreeWidget,
+    QWidget,
+)
 
 from XBrainLab.backend.application import (
     ApplicationService,
@@ -157,6 +165,39 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
         "channel_selection": button_state(sidebar.chan_select_btn),
         "clear_dataset": button_state(sidebar.clear_btn),
     }
+
+
+def table_state(table: QTableWidget) -> dict[str, Any]:
+    """Return visible table text and resize policy for replay evidence."""
+    header = table.horizontalHeader()
+    return {
+        "headers": [
+            table.horizontalHeaderItem(column).text()
+            if table.horizontalHeaderItem(column) is not None
+            else ""
+            for column in range(table.columnCount())
+        ],
+        "rows": [
+            [
+                table.item(row, column).text()
+                if table.item(row, column) is not None
+                else ""
+                for column in range(table.columnCount())
+            ]
+            for row in range(table.rowCount())
+        ],
+        "resize_modes": [
+            _resize_mode_name(header.sectionResizeMode(column))
+            for column in range(table.columnCount())
+        ],
+        "column_widths": [
+            table.columnWidth(column) for column in range(table.columnCount())
+        ],
+    }
+
+
+def _resize_mode_name(mode: QHeaderView.ResizeMode) -> str:
+    return mode.name
 
 
 def tree_rows(tree: QTreeWidget) -> list[list[str]]:
@@ -363,6 +404,7 @@ def capture_replay(app: QApplication) -> int:
                             window.dataset_panel.sidebar.import_label_btn.toolTip()
                         ),
                         "table_rows": window.dataset_panel.table.rowCount(),
+                        "table": table_state(window.dataset_panel.table),
                         "visible_panel_text": visible_texts(window.dataset_panel),
                         "screenshot": APPLIED_SCREENSHOT.name,
                     },

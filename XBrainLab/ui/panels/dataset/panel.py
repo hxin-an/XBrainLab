@@ -89,9 +89,17 @@ class DatasetPanel(BasePanel):
         )
         header = self.table.horizontalHeader()
         if header:
-            header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for column, width in enumerate((100, 70, 92, 50, 52, 56, 68)):
+            header.setStretchLastSection(False)
+            header.setMinimumSectionSize(48)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            for column in range(1, 7):
+                header.setSectionResizeMode(
+                    column,
+                    QHeaderView.ResizeMode.ResizeToContents,
+                )
+        for column, width in enumerate((180, 74, 104, 54, 58, 64, 92)):
             self.table.setColumnWidth(column, width)
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(
             QAbstractItemView.SelectionMode.ExtendedSelection,
@@ -214,15 +222,19 @@ class DatasetPanel(BasePanel):
                         count = -1
 
                     count_str = "?" if count == -1 else str(count)
-                    item_ev = QTableWidgetItem(f"Yes ({count_str})")
-
                     if data.is_labels_imported():
-                        item_ev.setForeground(QBrush(QColor(Theme.ACCENT_SUCCESS)))
+                        item_ev = QTableWidgetItem(f"Labels ({count_str})")
+                        item_ev.setForeground(QBrush(QColor(Theme.LOG_INFO)))
+                        item_ev.setToolTip(
+                            "External labels are attached to this recording."
+                        )
                     else:
-                        item_ev.setData(Qt.ItemDataRole.ForegroundRole, None)
+                        item_ev = QTableWidgetItem(f"Events ({count_str})")
+                        item_ev.setToolTip("Events detected in the recording.")
                 else:
-                    item_ev = QTableWidgetItem("No")
+                    item_ev = QTableWidgetItem("No events")
                     item_ev.setForeground(QBrush(QColor(Theme.TEXT_SECONDARY)))
+                    item_ev.setToolTip("No events or labels detected.")
 
                 item_ev.setFlags(item_ev.flags() ^ Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, 6, item_ev)
