@@ -321,6 +321,21 @@ class PreprocessSidebar(QWidget):
         if self.panel and hasattr(self.panel, "update_panel"):
             self.panel.update_panel()
 
+    def _notify_update_after_legacy_result(self, result) -> None:
+        if result is None:
+            self.notify_update()
+
+    def _update_main_info_after_legacy_result(self, result) -> None:
+        if (
+            result is None
+            and self.main_window
+            and hasattr(
+                self.main_window,
+                "update_info_panel",
+            )
+        ):
+            self.main_window.update_info_panel()
+
     def _show_command_failure(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
 
@@ -366,7 +381,7 @@ class PreprocessSidebar(QWidget):
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
-                    self.notify_update()
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Filtering applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Filtering failed: {e}")
@@ -397,7 +412,7 @@ class PreprocessSidebar(QWidget):
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
-                    self.notify_update()
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Resampling applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Resample failed: {e}")
@@ -433,7 +448,7 @@ class PreprocessSidebar(QWidget):
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
-                    self.notify_update()
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Re-reference applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Re-reference failed: {e}")
@@ -463,7 +478,7 @@ class PreprocessSidebar(QWidget):
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
-                    self.notify_update()
+                    self._notify_update_after_legacy_result(result)
                     QMessageBox.information(self, "Success", "Normalization applied.")
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Normalization failed: {e}")
@@ -515,13 +530,8 @@ class PreprocessSidebar(QWidget):
                         self._show_command_failure("Error", result.message)
                         return
                     if applied:
-                        self.notify_update()
-                        # Update main window info if needed (legacy)
-                        if self.main_window and hasattr(
-                            self.main_window,
-                            "update_info_panel",
-                        ):
-                            self.main_window.update_info_panel()
+                        self._notify_update_after_legacy_result(result)
+                        self._update_main_info_after_legacy_result(result)
 
                         QMessageBox.information(
                             self,
@@ -572,9 +582,8 @@ class PreprocessSidebar(QWidget):
             elif result.failed:
                 self._show_command_failure("Error", result.message)
                 return
-            self.notify_update()
-            if self.main_window and hasattr(self.main_window, "update_info_panel"):
-                self.main_window.update_info_panel()
+            self._notify_update_after_legacy_result(result)
+            self._update_main_info_after_legacy_result(result)
             QMessageBox.information(self, "Success", "Preprocessing reset.")
         except Exception as e:
             logger.error("Reset failed: %s", e)

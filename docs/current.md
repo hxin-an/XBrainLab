@@ -767,7 +767,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   manual refresh；direct `LoadDataCommand` compatibility fallback 的 service-success path 也不再
   手動刷新；Dataset sidebar 的 channel selection 和 clear dataset service-success path 也已移交
   coordinator；Dataset table inline subject/session metadata edit 的 service-success path 也不再
-  手動刷新。後續仍要把剩餘 manual refresh / controller observer path 收斂。
+  手動刷新；Preprocess sidebar 的 filter / resample / rereference / normalize / epoch / reset
+  service-success path 也不再手動刷新 panel 或 main info。後續仍要把剩餘 manual refresh /
+  controller observer path 收斂。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training

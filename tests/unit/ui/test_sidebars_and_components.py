@@ -153,6 +153,25 @@ class TestPreprocessSidebar:
             sidebar.open_normalize()
             sidebar.panel.controller.apply_normalization.assert_called_once()
 
+    def test_open_normalize_service_success_uses_coordinator_refresh(self, sidebar):
+        from XBrainLab.backend.application import PreprocessCommand
+
+        with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.NormalizeDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_params.return_value = "z-score"
+            sidebar.open_normalize()
+
+        assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
+        sidebar.panel.controller.apply_normalization.assert_not_called()
+        sidebar.panel.update_panel.assert_not_called()
+
     def test_open_epoching_accepted(self, sidebar):
         with (
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
@@ -199,7 +218,7 @@ class TestPreprocessSidebar:
             sidebar.reset_preprocess()
 
         sidebar.panel.controller.reset_preprocess.assert_not_called()
-        sidebar.panel.update_panel.assert_called()
+        sidebar.panel.update_panel.assert_not_called()
 
     def test_reset_preprocess_uses_reset_capability_when_preprocess_locked(
         self,
@@ -239,7 +258,7 @@ class TestPreprocessSidebar:
 
         assert isinstance(mock_execute.call_args.args[1], ResetPreprocessCommand)
         sidebar.panel.controller.reset_preprocess.assert_not_called()
-        sidebar.panel.update_panel.assert_called()
+        sidebar.panel.update_panel.assert_not_called()
 
     def test_reset_preprocess_blocked_by_reset_capability_before_confirm(
         self,

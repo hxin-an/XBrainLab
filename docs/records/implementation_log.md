@@ -246,6 +246,36 @@ legacy `None` fallback still refreshes manually.
 Classify remaining callback-driven refreshes before deciding whether to refactor them into the
 coordinator or preserve them as explicit observer/event bridges.
 
+## 2026-05-05 Preprocess Sidebar Refresh Cleanup
+
+### 狀態
+
+Preprocess sidebar operation and reset service-success paths now use coordinator-owned refresh.
+Filter, resample, rereference, normalize, epoch, and reset no longer call `notify_update()` or
+`update_info_panel()` after successful service-backed commands. Mock / legacy `None` fallback still
+refreshes manually.
+
+### 已可宣稱
+
+- Preprocess sidebar mutating command success no longer duplicates panel or main-info refresh.
+- Existing mock / legacy fallback update behavior remains covered.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish UI refresh target architecture. Callback-driven training/preprocess state
+  changes, observer bridges, and tab-switch refresh remain separate mechanisms.
+
+### 下一手重點
+
+Classify remaining callback / observer refresh paths and avoid converting them blindly unless the
+coordinator can preserve event semantics.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態

@@ -37,6 +37,42 @@
 
 ## 2026-05-05
 
+### 18:06 Preprocess sidebar refresh coordinator slice
+
+- 做了什麼：
+  - 在 `PreprocessSidebar` 新增 `_notify_update_after_legacy_result()` 和
+    `_update_main_info_after_legacy_result()`。
+  - filter / resample / rereference / normalize / epoch / reset service-success path 不再直接
+    `notify_update()` 或 `update_info_panel()`。
+  - 先改 service-backed normalize 與 reset tests 建立紅燈，要求成功 command 不直接刷新 panel。
+- 結果：
+  - Preprocess sidebar mutating service-success path 交給 command refresh coordinator。
+  - mock / legacy `None` fallback 仍保留手動 panel / main info refresh。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_normalize_service_success_uses_coordinator_refresh tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_service_success_does_not_fallback_to_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_uses_reset_capability_when_preprocess_locked -q`
+    -> `3 failed`，皆為 `panel.update_panel()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_normalize_service_success_uses_coordinator_refresh tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_normalize_accepted tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_service_success_does_not_fallback_to_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_uses_reset_capability_when_preprocess_locked tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess -q`
+    -> `5 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/preprocess/test_preprocess_panel_normalize.py -q`
+    -> `67 passed`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `922 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+
 ### 17:59 Dataset inline metadata refresh coordinator slice
 
 - 做了什麼：
