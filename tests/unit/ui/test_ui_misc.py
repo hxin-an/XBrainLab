@@ -153,7 +153,7 @@ class TestDatasetActionHandler:
 
         assert isinstance(mock_execute.call_args.args[1], LoadDataCommand)
         handler.panel.controller.import_files.assert_not_called()
-        handler.panel.update_panel.assert_called()
+        handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")

@@ -136,7 +136,6 @@ class DatasetActionHandler:
                             lambda: controller.import_files(filepaths),
                         )
                         return
-                    self.panel.update_panel()
                     QMessageBox.information(
                         self.panel,
                         "Data imported",

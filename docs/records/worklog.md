@@ -37,6 +37,43 @@
 
 ## 2026-05-05
 
+### 17:47 Direct load compatibility refresh coordinator slice
+
+- 做了什麼：
+  - 把 Data Interpretation unavailable / not-handled 時的 `LoadDataCommand` service-success
+    `panel.update_panel()` 移除。
+  - 先改既有 direct-load compatibility 測試建立紅燈：service-backed `LoadDataCommand` 成功後不應
+    fallback controller，也不應在 action handler 直接刷新 Dataset panel。
+- 結果：
+  - direct file load compatibility service-success path 交給 command refresh coordinator。
+  - controller `import_files` fallback 仍只在 command helper 回 `None` 時透過 explicit
+    mock / legacy-only helper 觸發。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_service_load_success_does_not_fallback_to_controller -q`
+    -> failed；`panel.update_panel()` 被呼叫。
+  - 修正後 focused tests：
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_service_load_success_does_not_fallback_to_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_success -q`
+    -> `2 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q`
+    -> `127 passed`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `920 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+  - 這不把 direct `LoadDataCommand` 升格成 product data-entry model；Data Interpretation 仍是資料入口主線。
+
 ### 17:42 Post-load label compatibility refresh coordinator slice
 
 - 做了什麼：

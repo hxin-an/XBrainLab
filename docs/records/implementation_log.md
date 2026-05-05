@@ -155,13 +155,15 @@ successful `ApplyInterpretationCommand` paths no longer call `DatasetPanel.updat
 The Dataset panel refresh is owned by `execute_application_command()` and
 `refresh_after_command()` based on `CommandResult.changed_state`. Post-load label compatibility
 also follows that boundary for service-backed `ImportLabelsCommand` success; only mock / legacy
-`None` fallback refreshes manually.
+`None` fallback refreshes manually. Direct `LoadDataCommand` compatibility fallback also no longer
+duplicates Dataset panel refresh on service success.
 
 ### 已可宣稱
 
 - Data Interpretation file import, folder/BIDS import, and recipe reload apply no longer duplicate
   Dataset panel refresh in the action handler on service success.
 - Service-backed post-load label compatibility no longer duplicates Dataset panel refresh.
+- Service-backed direct-load compatibility no longer duplicates Dataset panel refresh.
 - Existing service-unavailable handling remains explicit instead of falling back to controller
   mutation.
 
@@ -175,7 +177,8 @@ also follows that boundary for service-backed `ImportLabelsCommand` success; onl
 
 - This does not finish the UI refresh target architecture. Inline metadata table refresh,
   observer events, and tab-switch refresh still need audit. Post-load label compatibility remains
-  a legacy compatibility path, not the Data Interpretation-first product workflow.
+  a legacy compatibility path, and direct load remains a compatibility fallback, not the Data
+  Interpretation-first product workflow.
 
 ### 下一手重點
 
