@@ -176,6 +176,9 @@
   `tests/architecture_compliance.py`：有 capability surface 的 UI command path 不可再用
   `controller.is_training()`、`has_datasets()`、`get_trainer()` gating，除非在 explicit
   `capability is None` legacy branch。
+- 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
+  `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
+  legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。

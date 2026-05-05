@@ -488,7 +488,9 @@ class PreprocessSidebar(QWidget):
             )
             return
 
-        if self.check_lock() or not self.check_data_loaded():
+        if epoch_capability is None and (
+            self.check_lock() or not self.check_data_loaded()
+        ):
             return
 
         data_list = self.controller.get_preprocessed_data_list()

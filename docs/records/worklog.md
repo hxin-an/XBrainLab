@@ -9229,3 +9229,41 @@
   - Not run. This is a static architecture guard / Training UI cleanup under the fast dev gate.
 - 不能宣稱：
   - This does not complete controller fallback removal or prove all controller read paths are gone.
+
+### 2026-05-06 Preprocess epoch capability-truth cleanup
+
+- scope：
+  - Fix a Preprocess sidebar command-gating mismatch where `open_epoching()` could be blocked by
+    `preprocess` capability despite `create_epoch` being enabled.
+- red / focused test：
+  - Added
+    `TestPreprocessSidebar.test_open_epoching_uses_epoch_capability_not_preprocess_block`.
+  - It failed because `open_epoching()` called `check_lock()` after confirming `create_epoch`
+    capability was enabled; `check_lock()` showed the `preprocess` blocked reason
+    `Load raw data before preprocessing.`
+- 做了什麼：
+  - `open_epoching()` now uses `create_epoch` capability as the authoritative command gate.
+  - `check_lock()` / `check_data_loaded()` remain only for no-capability mock / legacy paths.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block -q`
+    -> failed because warning was shown and no command was executed.
+  - After fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_accepted tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_legacy_result_refreshes_shared_status -q`
+    -> `3 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess -q`
+    -> `61 passed`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` ->
+    `23 passed`.
+    `poetry run mkdocs build --strict` -> passed.
+- local eval：
+  - Not run. This is a Preprocess UI command-gate cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete full preprocessing / epoching UI walkthrough or real-data manual
+    acceptance.

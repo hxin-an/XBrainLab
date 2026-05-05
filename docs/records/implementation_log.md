@@ -2949,3 +2949,29 @@ unless the read is explicitly inside a `capability is None` legacy branch.
 
 - This guard covers a focused Training readiness smell. It does not prove that every UI read path is
   command-driven or that all controller read dependencies are gone.
+
+## 2026-05-06 Preprocess Epoch Capability Truth
+
+### 狀態
+
+Preprocess epoching now uses the backend `create_epoch` capability as the authoritative gate for
+opening the epoch dialog. When `create_epoch` is enabled, `open_epoching()` no longer re-checks the
+separate `preprocess` capability through `check_lock()` / `check_data_loaded()`, which could block
+a valid epoching path with a preprocess-only reason.
+
+### 已可宣稱
+
+- An enabled `create_epoch` capability is no longer vetoed by a separate `preprocess` blocked
+  reason in the UI.
+- Legacy controller lock/data checks remain for mock / no-capability contexts.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a focused Preprocess sidebar gate cleanup. It does not certify full preprocessing /
+  epoching UI acceptance or real-data manual review.

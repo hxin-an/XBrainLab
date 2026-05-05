@@ -138,6 +138,9 @@ of stale controller `has_datasets()` / `get_trainer()` state.
 Start Training also follows backend capability truth: when the `train` capability is enabled, the
 UI dispatches `TrainCommand` even if `TrainingController.is_training()` is stale. Controller
 running checks remain only for no-capability mock / legacy paths.
+Preprocess epoching follows the `create_epoch` capability directly: when `create_epoch` is enabled,
+`open_epoching()` no longer re-checks the separate `preprocess` capability through `check_lock()` /
+`check_data_loaded()`, so a valid epoching path is not blocked by a preprocess-only reason.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller

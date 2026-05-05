@@ -870,6 +870,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `tests/architecture_compliance.py`：有 `get_command_capability()` 的 UI command path 不可用
   `controller.is_training()`、`has_datasets()` 或 `get_trainer()` 做 gating，除非明確在
   `capability is None` legacy branch。
+  最新 Preprocess epoching cleanup 修掉另一個 capability 混用：`open_epoching()` 現在以
+  `create_epoch` capability 判定是否可進入 epoch dialog；當 `create_epoch` enabled 時，不會再被
+  `preprocess` capability 的 blocked reason 透過 `check_lock()` / `check_data_loaded()` 誤擋。
+  舊 controller lock/data checks 只保留給 no-capability mock / legacy path。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
