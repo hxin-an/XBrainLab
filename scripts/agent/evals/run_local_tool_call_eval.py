@@ -79,6 +79,7 @@ TOOL_INTENTS: dict[str, str] = {
 VRAM_PRESSURE_FREE_MIB = 2048
 VRAM_PRESSURE_USED_RATIO = 0.90
 FULL_LOCAL_GATE_REPEAT_COUNT = 3
+RELEASE_LOCAL_EVAL_GATES = {"release", "thesis"}
 
 
 def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
@@ -531,6 +532,7 @@ def render_local_markdown_report(result: dict[str, Any]) -> str:
                 "",
                 f"- ok: `{preflight.get('ok')}`",
                 f"- gate: `{preflight.get('gate')}`",
+                f"- eval gate: `{preflight.get('eval_gate')}`",
                 f"- resource pressure: `{preflight.get('resource_pressure')}`",
                 f"- selected cases: `{preflight.get('selected_cases')}`",
                 f"- cache usage: `{preflight.get('cache_usage')}`",
@@ -801,6 +803,7 @@ def build_local_eval_resource_preflight(
     *,
     model_id: str,
     model_role: str,
+    eval_gate: str = "candidate",
     repeat_count: int,
     case_ids: list[str] | None,
     case_limit: int | None,
@@ -835,13 +838,37 @@ def build_local_eval_resource_preflight(
     estimated_vram_gb = spec.estimated_vram_gb if spec is not None else None
     gpu = gpu_snapshot if gpu_snapshot is not None else _collect_gpu_memory_snapshot()
     pressure = _resource_pressure(gpu, estimated_vram_gb)
-    ok = not (full_local_gate and pressure == "high")
+    normalized_eval_gate = eval_gate.lower()
+    release_gate = normalized_eval_gate in RELEASE_LOCAL_EVAL_GATES
+    gate_mismatch = full_local_gate and not release_gate
+    resource_blocked = full_local_gate and pressure == "high"
+    ok = not gate_mismatch and not resource_blocked
     gate = (
-        "release/thesis full local"
+        f"{normalized_eval_gate} full local"
         if full_local_gate
-        else "fast/candidate local subset"
+        else f"{normalized_eval_gate} local subset"
     )
-    if ok:
+    if gate_mismatch and resource_blocked:
+        message = (
+            "full local x3 is a release/thesis gate, and VRAM is nearly full; "
+            "refusing to start local eval. Pass --eval-gate release or "
+            "--eval-gate thesis only when refreshing a formal benchmark claim, "
+            "and free GPU memory before rerunning."
+        )
+    elif gate_mismatch:
+        message = (
+            "full local x3 is a release/thesis gate; pass --eval-gate release "
+            "or --eval-gate thesis only when refreshing a formal benchmark "
+            "claim. Routine changes should use deterministic changed cases or "
+            "a primary subset."
+        )
+    elif resource_blocked:
+        message = (
+            "VRAM is nearly full; refusing to start a full local x3 eval. "
+            "Run deterministic or changed-case eval first, or free GPU memory "
+            "before release/thesis local eval."
+        )
+    elif ok:
         message = (
             "Resource preflight passed for this eval gate."
             if pressure != "high"
@@ -849,16 +876,13 @@ def build_local_eval_resource_preflight(
             "small primary subset until memory is freed."
         )
     else:
-        message = (
-            "VRAM is nearly full; refusing to start a full local x3 eval. "
-            "Run deterministic or changed-case eval first, or free GPU memory "
-            "before release/thesis local eval."
-        )
+        message = "Resource preflight failed."
 
     return {
         "ok": ok,
         "message": message,
         "gate": gate,
+        "eval_gate": normalized_eval_gate,
         "model_id": model_id,
         "model_role": model_role,
         "repeat_count": repeat_count,
@@ -970,6 +994,7 @@ def write_resource_preflight_artifact(
         "",
         f"- ok: `{preflight.get('ok')}`",
         f"- gate: `{preflight.get('gate')}`",
+        f"- eval gate: `{preflight.get('eval_gate')}`",
         f"- model: `{preflight.get('model_id')}`",
         f"- repeat count: `{preflight.get('repeat_count')}`",
         f"- selected cases: `{preflight.get('selected_cases')}`",
@@ -997,6 +1022,15 @@ def main(argv: list[str] | None = None) -> int:
         default="configured",
         help="Model role to evaluate when --model is not provided.",
     )
+    parser.add_argument(
+        "--eval-gate",
+        choices=("fast", "candidate", "release", "thesis"),
+        default="candidate",
+        help=(
+            "Validation gate for this local eval. Full suite repeat>=3 requires "
+            "release or thesis."
+        ),
+    )
     parser.add_argument("--repeat-count", type=int, default=3)
     parser.add_argument("--case-limit", type=int, default=None)
     parser.add_argument("--case-id", action="append", default=None)
@@ -1011,6 +1045,7 @@ def main(argv: list[str] | None = None) -> int:
     resource_preflight = build_local_eval_resource_preflight(
         model_id=model_id,
         model_role=args.model_role,
+        eval_gate=args.eval_gate,
         repeat_count=args.repeat_count,
         case_ids=args.case_id,
         case_limit=args.case_limit,

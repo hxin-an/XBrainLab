@@ -10697,3 +10697,56 @@
 - 不能宣稱：
   - This does not certify full Evaluation tab UX, long-run memory trend behavior, or human desktop
     acceptance.
+
+### 2026-05-06 Explicit local eval gate guard
+
+- scope：
+  - Turn the user's local eval tiering reminder into an executable CLI guard.
+  - Full primary/fallback x3 should remain a release / thesis evidence gate, not something routine
+    UI/backend/prompt slices can start by accident.
+- red / focused tests：
+  - Added `test_resource_preflight_requires_release_gate_for_full_suite_x3`.
+  - Added `test_cli_requires_explicit_release_gate_before_full_local_x3`.
+  - Red gate failed because `build_local_eval_resource_preflight()` had no `eval_gate` argument
+    and the CLI would start full local x3 under normal VRAM pressure.
+- 做了什麼：
+  - Added `--eval-gate fast|candidate|release|thesis` to
+    `scripts/agent/evals/run_local_tool_call_eval.py`; default is `candidate`.
+  - Full-suite repeat `3` local eval now requires `--eval-gate release` or `--eval-gate thesis`.
+  - If default candidate gate or high VRAM pressure blocks the run, the CLI writes
+    `resource_preflight.json` / `.md` before any local model is loaded.
+  - Preflight artifacts and local eval markdown now include the declared eval gate.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py::test_resource_preflight_requires_release_gate_for_full_suite_x3 tests/unit/scripts/test_run_local_tool_call_eval.py::test_cli_requires_explicit_release_gate_before_full_local_x3 -q`
+    -> failed as expected.
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py::test_resource_preflight_requires_release_gate_for_full_suite_x3 tests/unit/scripts/test_run_local_tool_call_eval.py::test_cli_requires_explicit_release_gate_before_full_local_x3 tests/unit/scripts/test_run_local_tool_call_eval.py::test_resource_preflight_blocks_full_local_gate_under_vram_pressure tests/unit/scripts/test_run_local_tool_call_eval.py::test_resource_preflight_allows_changed_case_gate_under_vram_pressure tests/unit/scripts/test_run_local_tool_call_eval.py::test_cli_writes_preflight_artifact_and_aborts_full_fallback -q`
+    -> `5 passed`.
+  - Local eval runner regression:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py -q`
+    -> `39 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/agent/evals/run_local_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright scripts/agent/evals/run_local_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `40 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `489 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a runner guard / validation policy slice; no formal benchmark claim is being
+    refreshed.
+- 不能宣稱：
+  - This does not refresh deterministic or local model benchmark artifacts.
+  - Human desktop acceptance, import wizard maturity, and product completion remain open.

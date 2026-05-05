@@ -1033,7 +1033,9 @@ Do not run full primary/fallback x3 local eval for routine changes.
 
 RTX 5070 Ti 16GB has already shown near-full VRAM pressure on fallback x3. If VRAM is nearly full,
 do not start a full fallback x3 run. Use deterministic changed cases or primary subset unless the
-work is explicitly a release / thesis evidence gate.
+work is explicitly a release / thesis evidence gate. The local eval CLI now also requires
+full-suite repeat `3` local runs to declare `--eval-gate release` or `--eval-gate thesis`; the
+default candidate gate writes `resource_preflight.*` and exits before model startup.
 
 ## Still Cannot Claim Product Complete
 

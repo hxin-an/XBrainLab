@@ -571,6 +571,7 @@ def test_resource_preflight_allows_changed_case_gate_under_vram_pressure():
     preflight = build_local_eval_resource_preflight(
         model_id="microsoft/Phi-3.5-mini-instruct",
         model_role="fallback",
+        eval_gate="candidate",
         repeat_count=1,
         case_ids=["empty-scan-source-folder"],
         case_limit=None,
@@ -591,6 +592,34 @@ def test_resource_preflight_allows_changed_case_gate_under_vram_pressure():
     assert preflight["resource_pressure"] == "high"
     assert preflight["full_local_gate"] is False
     assert preflight["selected_cases"] == 1
+
+
+def test_resource_preflight_requires_release_gate_for_full_suite_x3():
+    preflight = build_local_eval_resource_preflight(
+        model_id="microsoft/Phi-3.5-mini-instruct",
+        model_role="fallback",
+        eval_gate="candidate",
+        repeat_count=3,
+        case_ids=None,
+        case_limit=None,
+        cache_dir="/tmp/xbrainlab-models",
+        cache_usage_bytes_value=0,
+        available_disk_bytes_value=100_000_000_000,
+        gpu_snapshot={
+            "available": True,
+            "index": 0,
+            "name": "RTX 5070 Ti",
+            "total_mib": 16_384,
+            "used_mib": 1_024,
+            "free_mib": 15_360,
+        },
+    )
+
+    assert preflight["ok"] is False
+    assert preflight["eval_gate"] == "candidate"
+    assert preflight["resource_pressure"] == "normal"
+    assert preflight["full_local_gate"] is True
+    assert "release/thesis" in preflight["message"]
 
 
 def test_cli_writes_preflight_artifact_and_aborts_full_fallback(
@@ -640,3 +669,53 @@ def test_cli_writes_preflight_artifact_and_aborts_full_fallback(
     payload = json.loads(artifact.read_text(encoding="utf-8"))
     assert payload["ok"] is False
     assert payload["resource_pressure"] == "high"
+
+
+def test_cli_requires_explicit_release_gate_before_full_local_x3(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval._collect_gpu_memory_snapshot",
+        lambda: {
+            "available": True,
+            "index": 0,
+            "name": "RTX 5070 Ti",
+            "total_mib": 16_384,
+            "used_mib": 1_024,
+            "free_mib": 15_360,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval.cache_usage_bytes",
+        lambda _cache_dir: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval.available_disk_bytes",
+        lambda _cache_dir: 100_000_000_000,
+    )
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval.run_local_eval",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local eval should require an explicit release gate"),
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--model-role",
+            "fallback",
+            "--repeat-count",
+            "3",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert exit_code == 2
+    artifact = tmp_path / "resource_preflight.json"
+    assert artifact.exists()
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["eval_gate"] == "candidate"
+    assert "release/thesis" in payload["message"]

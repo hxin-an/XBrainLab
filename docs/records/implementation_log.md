@@ -3608,3 +3608,31 @@ preview worker when restarting preview generation or closing the dialog.
 ### 不能宣稱完成
 
 - This is not a long-running dataset-generation soak test or a full PyQt thread lifecycle audit.
+
+## 2026-05-06 Explicit Local Eval Gate Guard
+
+### 狀態
+
+`scripts/agent/evals/run_local_tool_call_eval.py` now requires full-suite repeat-`3` local evals to
+declare `--eval-gate release` or `--eval-gate thesis` before loading a local model. The default
+candidate gate writes `resource_preflight.json` / `.md` and exits instead of accidentally starting
+primary/fallback x3.
+
+### 已可宣稱
+
+- Routine verifier / normalizer / prompt / UI-refresh slices have a CLI guard against launching
+  full local x3 from the default candidate gate.
+- The existing disk / cache / `nvidia-smi` preflight is preserved and still blocks release/thesis
+  full local x3 when VRAM pressure is high.
+
+### Evidence 入口
+
+- Source：`scripts/agent/evals/run_local_tool_call_eval.py`
+- Tests：`tests/unit/scripts/test_run_local_tool_call_eval.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not refresh local benchmark artifacts or update the thesis score claim. Formal
+  release/thesis evidence still needs intentional full deterministic + primary x3 + fallback x3
+  with resource / latency artifacts.
