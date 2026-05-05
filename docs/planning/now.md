@@ -258,6 +258,9 @@
 - 最新 event display polish 已把 visible `label_carrier` / `trial_type` event-role item
   humanized 成 `Label carrier` / `Trial type`，backend choices 仍保存原始 key。Label / event
   group title 也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。
+- 最新 wizard selector polish 也把 label carrier combo 顯示從 raw `trial_type` / `onset` 改成
+  `Trial type` / `Onset`，並把 `Review Summary` alternate row contrast 再降低；recipe choices
+  仍保存 raw source column value。
 - 最新 decision-copy polish 已把 wizard 頂部狀態從 `Validation needs confirmation...` 改成
   `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file
   guidance，減少 backend wording 暴露。

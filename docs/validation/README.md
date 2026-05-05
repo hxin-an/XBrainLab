@@ -355,6 +355,9 @@ Windows desktop acceptance.
     layouts.
   - Dataset visible text now distinguishes recording events (`Events (n)`) from external labels
     (`Labels (n)`) without using success-green coloring for external labels.
+  - 2026-05-06 wizard selector polish keeps backend values such as `trial_type` in recipe choices
+    but displays label-carrier selector text as `Trial type` / `Onset`; the `Review Summary`
+    alternate row color was lowered to `#232323` to reduce striping.
 - Agent/eval change:
   - General data-entry wording such as `Load ...` and folder import requests now route to
     Data Interpretation `scan_source`; explicit legacy/direct compatibility wording still routes to
@@ -385,6 +388,9 @@ Windows desktop acceptance.
     `artifacts/ui/data-interpretation-preview.png`,
     `artifacts/ui/data-interpretation-remap.png`, and
     `artifacts/ui/data-interpretation-applied.png`.
+  - Latest human-like walkthrough refresh remains passed: `26 / 26` phases, `20` screenshots,
+    table geometry checked for `15` widgets with `0` findings, and human desktop acceptance still
+    explicitly not performed.
   - Deterministic eval and cached local primary / fallback evals were refreshed at
     `artifacts/agent_evals/dashboard.md`; deterministic, primary, and fallback all remain
     `118 / 118`, with local roles repeated `3` times.

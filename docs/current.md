@@ -135,6 +135,9 @@ artifact 也新增 `event_rows`，但 recipe choices 仍保存 `class cue` 等 b
 event display polish 又把 visible event-role item 從 `label_carrier` / `trial_type` 這類 source /
 internal key 改成人話 `Label carrier` / `Trial type`，backend choices 仍保存原 key；label /
 event 區塊標題也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。最新
+wizard polish 又把 label carrier selector 顯示從 raw `trial_type` / `onset` 類 source keys 改成
+`Trial type` / `Onset` 等人話 label，並把 `Review Summary` alternate row 再降到更克制的
+dark-theme contrast；backend recipe choices 仍保存原始欄位值。最新
 decision-copy slice 又把 wizard 頂部狀態從 `Validation needs confirmation...` 改成使用者語言
 `Review and confirm these choices before applying.` / `Ready to apply.` / replacement-file guidance；
 artifact visible text 已刷新。後續 slice 又新增 format capability

@@ -8917,3 +8917,43 @@
 - 不能宣稱：
   - This does not complete full command-driven UI refresh or remove all callback-specific refresh
     paths.
+
+### 2026-05-06 Data Interpretation selector and review contrast polish
+
+- scope：
+  - Address user-visible Data Interpretation preview polish without changing backend recipe values.
+  - Keep table geometry / elide behavior, but reduce raw-looking selector text and harsh Review
+    Summary striping.
+- red / focused tests：
+  - Updated `test_data_interpretation_preview_dialog_tables_fit_product_layout` to require visible
+    label-field selector text `Trial type` while preserving `currentData() == "trial_type"`.
+  - The test initially failed because the selector still showed raw `trial_type` and the style sheet
+    still used `#252525` as the Review Summary alternate background.
+- 做了什麼：
+  - `DataInterpretationPreviewDialog._text_choices()` now humanizes displayed label / anchor choice
+    labels while keeping the raw value as combo data.
+  - Lowered `InterpretationReviewSummary` alternate row color from `#252525` to `#232323`.
+  - Updated existing selector tests to interact with visible user-facing combo labels, while still
+    asserting raw recipe choices are saved.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_tables_fit_product_layout -q`
+    -> failed on missing `#232323` and raw selector display.
+  - After fix:
+    same focused test -> `1 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py::test_dataset_panel_refits_table_after_loaded_rows_settle tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color -q`
+    -> `20 passed`.
+  - UI replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `data-interpretation-remap.png`, `data-interpretation-applied.png`, and
+    `data-interpretation-replay.json`.
+  - Human-like walkthrough:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` shows status
+    `passed`, `26 / 26` phases, `20` screenshots, table geometry checked for `15` widgets with
+    `0` findings, and resource smoke passed.
+- 不能宣稱：
+  - This does not close mature Data Interpretation wizard completion, recipe diff UX, complex
+    GDF/MAT anchor reconciliation, XDF/LSL parser work, or Windows human desktop acceptance.

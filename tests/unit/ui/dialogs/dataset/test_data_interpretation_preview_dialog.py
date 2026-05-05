@@ -128,9 +128,17 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
         assert abs(header.length() - viewport.width()) <= 2
     assert dialog.review_tree.alternatingRowColors()
     assert "alternate-background-color" in dialog.styleSheet()
-    assert "#252525" in dialog.styleSheet().lower()
+    assert "#232323" in dialog.styleSheet().lower()
     assert "#ffffff" not in dialog.styleSheet().lower()
     assert "#000000" not in dialog.styleSheet().lower()
+
+    label_field_selector = dialog.label_carrier_tree.itemWidget(
+        dialog.label_carrier_tree.topLevelItem(0),
+        3,
+    )
+    assert isinstance(label_field_selector, QComboBox)
+    assert label_field_selector.currentText() == "Trial type"
+    assert label_field_selector.currentData() == "trial_type"
 
 
 def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot):
@@ -386,8 +394,8 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_review(qtbot):
     assert isinstance(anchor_selector, QComboBox)
     assert isinstance(time_selector, QComboBox)
     assert isinstance(role_selector, QComboBox)
-    label_selector.setCurrentText("classlabel")
-    anchor_selector.setCurrentText("cue_onset")
+    label_selector.setCurrentText("Classlabel")
+    anchor_selector.setCurrentText("Cue onset")
     time_selector.setCurrentText("Sample index")
     role_selector.setCurrentText("Class cue labels")
 
@@ -446,7 +454,7 @@ def test_data_interpretation_preview_dialog_uses_label_carrier_selectors(qtbot):
     assert isinstance(granularity_selector, QComboBox)
     assert isinstance(role_selector, QComboBox)
 
-    anchor_selector.setCurrentText("cue_onset")
+    anchor_selector.setCurrentText("Cue onset")
     time_selector.setCurrentText("Sample index")
     role_selector.setCurrentText("Class cue labels")
 

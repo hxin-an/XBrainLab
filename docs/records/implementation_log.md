@@ -2724,3 +2724,31 @@ Preprocess sidebar mock / legacy epoch-reset shared-status fallback now uses the
 
 - This is a compatibility-path refresh cleanup. UI refresh remains partially mixed and the broader
   coordinator/fallback audit is still open.
+
+## 2026-05-06 Data Interpretation Wizard Selector Polish
+
+### 狀態
+
+Data Interpretation label-carrier selectors now display human-readable labels such as `Trial type`
+and `Onset` while preserving raw source values such as `trial_type` in saved recipe choices. The
+Review Summary alternate row contrast was reduced again for a quieter dark-theme table.
+
+### 已可宣稱
+
+- The wizard no longer exposes common label/event selector values as raw snake_case in the visible
+  combo text.
+- Refreshed UI walkthrough artifacts still pass automated screenshot, visible-text, and table
+  geometry checks.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`
+- Tests：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is UI polish evidence, not mature import-wizard completion or Windows human desktop
+  acceptance.

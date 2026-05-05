@@ -280,7 +280,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             }}
             QTreeWidget#InterpretationReviewSummary {{
                 background-color: #212121;
-                alternate-background-color: #252525;
+                alternate-background-color: #232323;
             }}
             QTreeWidget::item {{
                 padding: 4px 6px;
@@ -362,7 +362,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         palette = tree.palette()
         if tree.objectName() == "InterpretationReviewSummary":
             base = QColor("#212121")
-            alternate = QColor("#252525")
+            alternate = QColor("#232323")
         else:
             base = QColor("#202020")
             alternate = QColor("#242424")
@@ -919,7 +919,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         for value in values:
             text = str(value).strip()
             if text:
-                choices.append((text, text))
+                choices.append(
+                    (DataInterpretationPreviewDialog._label_choice_display(text), text)
+                )
         return choices
 
     @staticmethod

@@ -3195,8 +3195,8 @@
           "events.tsv",
           "sub-01_task-mi_run-2_raw.fif",
           "BIDS events",
-          "trial_type",
-          "onset",
+          "Trial type",
+          "Onset",
           "Seconds",
           "Trial",
           "Class cue labels"
@@ -3338,8 +3338,8 @@
               "events.tsv",
               "sub-01_task-mi_run-2_raw.fif",
               "BIDS events",
-              "trial_type",
-              "onset",
+              "Trial type",
+              "Onset",
               "Seconds",
               "Trial",
               "Class cue labels"
