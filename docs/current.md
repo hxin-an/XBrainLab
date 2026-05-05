@@ -804,7 +804,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 downstream coordinator cleanup 又讓
   `training_changed` command result 刷新 Evaluation / Visualization readiness、`epoch_changed`
   刷新 Visualization readiness、`evaluation_changed` 也刷新 Visualization readiness，減少這些
-  analysis panels 對 observer-only refresh 的依賴。後續仍要把
+  analysis panels 對 observer-only refresh 的依賴。2026-05-05 reviewer finding 已明確接受：
+  這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
+  validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
+  closure。後續仍要把
   剩餘 manual refresh / callback-specific observer path 收斂或明確標成 event bridge。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
@@ -817,7 +820,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   並暴露錯誤，而不是 silent controller mutation。後續 Preprocess、Dataset、Visualization 和
   AgentManager fallback audit 已沿用同一 helper；`tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。這是 product runtime fallback boundary，
-  不是 controller 已完全退場。
+  不是 controller 已完全退場；下一個 architecture cleanup milestone 仍是確認 product runtime
+  mutating path 不 silent fallback 到 controller mutation，controller fallback 只可保留給 explicit
+  mock / unit-test compatibility 或 isolated legacy adapter。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory
   expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的
   primary prompt；`attach_labels` 也已從這些 stage 的主工具語言移除。read-only
@@ -864,7 +869,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   artifact 也已完成。HTTP transport 和 long-running training through MCP 尚未完成。
 - Data Interpretation 目前是強化中的 baseline wizard，不是 final import system。仍缺 mature
   embedded label editor、raw trigger selector、complex GDF / MAT anchor reconciliation、XDF /
-  LSL full parser、full real-data manual certification 和更成熟的 recipe diff / review UX。
+  LSL full parser、full real-data manual certification 和更成熟的 recipe diff / review UX。這是
+  product follow-up，不應被現有 UI replay / backend JSON / eval dashboard 包裝成 final import
+  system。
 
 ## 目前執行中
 

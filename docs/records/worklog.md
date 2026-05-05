@@ -8142,3 +8142,26 @@
 - 不能宣稱：
   - This is narrow composer polish only; it is not a complete ChatPanel product design pass,
     Windows human acceptance, or long local-model session verification.
+
+### 2026-05-05 20:18 Reviewer architecture finding truth sync
+
+- scope：
+  - Preserve latest backend / UI refresh reviewer finding after the placeholder slice reached a
+    commit boundary.
+- 做了什麼：
+  - Updated `docs/current.md`, `docs/planning/now.md`, `docs/planning/roadmap.md`, and
+    `docs/records/implementation_log.md`.
+  - Kept the finding as follow-up TODO rather than interrupting current validation/local eval
+    closure.
+- current truth：
+  - Backend command spine is substantially improved but still only partially aligned with target.
+  - UI refresh remains mixed: command-result coordinator baseline plus observer/manual/tab-switch /
+    callback paths.
+  - Product runtime mutating workflows must not silently fall back to controller mutation; remaining
+    fallback is only acceptable as explicit mock / unit-test compatibility or isolated legacy
+    adapter.
+  - Data Interpretation remains a strengthened baseline wizard, not a mature final import system.
+- 不能宣稱：
+  - This documentation sync does not close the `UI Command Refresh Coordinator + Controller Fallback
+    Audit` milestone, full controller fallback removal, mature import wizard, or human desktop
+    acceptance.

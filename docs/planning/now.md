@@ -71,7 +71,9 @@
   evaluation / visualization refresh 關閉二次 refresh，coordinator 也有 re-entrancy guard。這是
   first slice，不是 target closure；下一步仍是 `UI Command Refresh Coordinator + Controller
   Fallback Audit` 的剩餘盤點：把 product runtime controller fallback 與 mock / legacy
-  compatibility fallback 明確分離，並持續收斂 observer/manual refresh。
+  compatibility fallback 明確分離，並持續收斂 observer/manual refresh。2026-05-05 最新 reviewer
+  finding 將這列為 follow-up，而不是目前 validation / local eval closure 的中斷點；在
+  product-complete 前仍不可宣稱 UI refresh 或 controller fallback 已 fully aligned。
 - 最新 Training sidebar refresh cleanup 已把 generate dataset、configure model/settings、start
   training 和 clear history 的 post-command `check_ready_to_train()` 改成 legacy fallback-only；
   real `Study` success path 由 coordinator 依 `CommandResult.changed_state` refresh readiness。
@@ -777,7 +779,11 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    compatibility service-success refresh、direct load compatibility service-success refresh，以及
    Dataset sidebar channel-selection / clear-dataset refresh、Dataset inline metadata refresh 已先
    收回 coordinator。Preprocess sidebar service-success refresh 和 Visualization control sidebar
-   montage / saliency service-success refresh 也已收回 coordinator。
+   montage / saliency service-success refresh 也已收回 coordinator。Suggested follow-up milestone
+   remains non-blocking for current validation closure but required for product-complete:
+   `CommandResult.changed_state` -> expected panel/sidebar/assistant refresh tests, no silent
+   controller mutation in product runtime, and controller reduced to adapter / read-only rendering /
+   legacy compatibility boundaries.
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

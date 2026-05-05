@@ -2173,3 +2173,23 @@ The narrow assistant screenshot now shows the full placeholder without truncatin
 
 - 這不是 complete ChatPanel product design pass、human Windows desktop acceptance，或 long
   local-model session verification。
+
+## 2026-05-05 Architecture Follow-Up Truth Sync
+
+### 狀態
+
+Latest backend / UI refresh reviewer findings have been folded back into current truth and planning:
+the command spine is substantially improved, but UI refresh and controller fallback remain
+partially aligned follow-up work, not target closure.
+
+### 已可宣稱
+
+- `UI Command Refresh Coordinator + Controller Fallback Audit` remains the named architecture
+  follow-up milestone.
+- Data Interpretation remains documented as a strengthened baseline wizard, not a mature final
+  import system.
+
+### 不能宣稱完成
+
+- This is a documentation truth sync only. It does not close command-driven UI refresh, remove all
+  controller fallback boundaries, or complete human desktop acceptance.
