@@ -851,7 +851,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `Set Montage` 的 missing-result branch 從 silent no-op 改成同一 explicit mock / legacy fallback
   boundary。最新 Dataset import boundary slice 也讓 `scan_source` capability 存在時的 file import
   不再把 Data Interpretation command-sequence unavailable 旁路成 `LoadDataCommand` / legacy
-  `import_files`；只有 mock / legacy context 才能走舊 fallback。`tests/architecture_compliance.py` 也會阻擋
+  `import_files`；只有 mock / legacy context 才能走舊 fallback。最新 Training model-selection
+  cleanup 又移除了一個 service-success path 對 stale controller state 的依賴：
+  `ConfigureTrainingCommand` 成功後，UI 以 command success 和剛選定的 model holder 呈現
+  success，不再回讀 `TrainingController.get_model_holder()` 來否定 command result。legacy fallback
+  branch 仍保留 controller verification。`tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
   mutating controller method；合法 controller mutation 必須在 `run_legacy_controller_fallback()`

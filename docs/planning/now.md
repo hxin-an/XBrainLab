@@ -161,6 +161,9 @@
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若
   command helper 意外回 `None`，會拒絕 fallback。
+- 最新 Training model-selection cleanup 又把 service-success branch 從 stale controller echo 裡拿出來：
+  `ConfigureTrainingCommand` 成功後不再回讀 `TrainingController.get_model_holder()` 才決定是否
+  顯示 success；controller verification 只留在 explicit mock / legacy fallback branch。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。
@@ -844,7 +847,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    panel refresh、Data Interpretation apply / recipe reload refresh、post-load label
    compatibility service-success refresh、direct load compatibility service-success refresh，以及
    Dataset sidebar channel-selection / clear-dataset refresh、Dataset inline metadata refresh 已先
-   收回 coordinator。Preprocess sidebar service-success refresh 和 Visualization control sidebar
+   收回 coordinator；Training model-selection service-success controller echo 也已收斂到
+   command-success path。Preprocess sidebar service-success refresh 和 Visualization control sidebar
    montage / saliency service-success refresh 也已收回 coordinator。Suggested follow-up milestone
    remains non-blocking for current validation closure but required for product-complete:
    `CommandResult.changed_state` -> expected panel/sidebar/assistant refresh tests, no silent

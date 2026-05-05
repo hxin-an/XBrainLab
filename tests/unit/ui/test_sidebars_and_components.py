@@ -522,6 +522,42 @@ class TestTrainingSidebar:
             sidebar.select_model()
             sidebar.panel.controller.set_model_holder.assert_called_once()
 
+    def test_select_model_service_success_does_not_read_stale_controller(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import ConfigureTrainingCommand
+
+        sidebar.panel.controller.is_training.return_value = False
+        sidebar.panel.controller.get_model_holder.return_value = None
+        mock_holder = MagicMock()
+        mock_holder.target_model.__name__ = "EEGNet"
+        mock_holder.model_params_map = {"channels": 8}
+        mock_holder.pretrained_weight_path = None
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info,
+            patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_critical,
+        ):
+            mock_dialog.return_value.exec.return_value = True
+            mock_dialog.return_value.get_result.return_value = mock_holder
+            sidebar.select_model()
+
+        command = mock_execute.call_args.args[1]
+        assert isinstance(command, ConfigureTrainingCommand)
+        assert command.model_name == "EEGNet"
+        sidebar.panel.controller.set_model_holder.assert_not_called()
+        sidebar.panel.controller.get_model_holder.assert_not_called()
+        mock_critical.assert_not_called()
+        mock_info.assert_called_once_with(sidebar, "Success", "Model selected: EEGNet")
+
     def test_select_model_uses_backend_configure_capability_before_dialog(
         self,
         sidebar,

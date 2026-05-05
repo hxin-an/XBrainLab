@@ -9078,3 +9078,35 @@
 - 不能宣稱：
   - This does not remove direct-load compatibility or complete mature Data Interpretation wizard /
     recipe UX work.
+
+### 2026-05-06 Training model selection command-truth cleanup
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` on a narrow Training
+    sidebar path.
+  - Remove the service-success dependency on stale controller echo state after
+    `ConfigureTrainingCommand`.
+- red / focused test：
+  - Added
+    `TestTrainingSidebar.test_select_model_service_success_does_not_read_stale_controller`.
+  - It failed because `select_model()` still called `TrainingController.get_model_holder()` after
+    a successful service command and treated a stale `None` as failure.
+- 做了什麼：
+  - `TrainingSidebar.select_model()` now stores the selected model name before dispatching
+    `ConfigureTrainingCommand`.
+  - Service-success path displays success from the command result and selected model holder.
+  - Legacy fallback path still reads `controller.get_model_holder()` to verify the old controller
+    mutation applied in mock / non-`Study` compatibility contexts.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_service_success_does_not_read_stale_controller -q`
+    -> failed because `get_model_holder()` was called.
+  - After fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_service_success_does_not_read_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_accepted -q`
+    -> `2 passed`.
+- local eval：
+  - Not run. This is a UI command-truth cleanup, so it stays under the fast dev gate and does not
+    justify full primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not finish controller fallback removal, command-driven UI refresh closure, or human
+    training workflow acceptance.

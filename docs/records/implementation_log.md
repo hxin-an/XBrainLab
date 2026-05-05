@@ -2839,3 +2839,29 @@ where no `scan_source` capability is visible.
 
 - This does not remove legacy `LoadDataCommand` compatibility or complete the full Data
   Interpretation wizard maturity work.
+
+## 2026-05-06 Training Model Selection Command Truth
+
+### 狀態
+
+Training model selection now treats a successful `ConfigureTrainingCommand` as the product truth
+for the service-backed UI path. The success message uses the selected model holder and command
+success instead of re-reading `TrainingController.get_model_holder()`, which could be stale in a
+command-driven UI path.
+
+### 已可宣稱
+
+- Service-success model selection no longer depends on controller echo state to show success.
+- Legacy fallback still verifies through the controller, but only in explicit mock / non-`Study`
+  compatibility contexts.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one training UI command-truth cleanup. It does not complete the full UI refresh
+  coordinator, controller fallback audit, or human desktop training acceptance.

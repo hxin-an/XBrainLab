@@ -126,6 +126,11 @@ Dataset file import keeps `LoadDataCommand` / `DatasetController.import_files()`
 mock / legacy fallback when no ApplicationService command surface is visible. If the real
 `scan_source` capability exists, a Data Interpretation command-sequence unavailable result is shown
 as an interpretation error and does not fall back to direct load.
+Training model selection also avoids a controller-truth echo on the service-success path:
+after `ConfigureTrainingCommand` succeeds, the user-facing success message is based on the
+command result and selected model holder instead of re-reading `TrainingController.get_model_holder()`.
+The legacy fallback branch still verifies through the controller because that branch is explicitly
+for mock / non-`Study` compatibility.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation。
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit

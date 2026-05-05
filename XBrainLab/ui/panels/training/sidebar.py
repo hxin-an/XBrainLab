@@ -378,10 +378,11 @@ class TrainingSidebar(QWidget):
             if model_holder is None:
                 QMessageBox.warning(self, "Model Selection", "No model was selected.")
                 return
+            selected_model_name = model_holder.target_model.__name__
             result = execute_application_command(
                 self,
                 ConfigureTrainingCommand(
-                    model_name=model_holder.target_model.__name__,
+                    model_name=selected_model_name,
                     model_params=dict(model_holder.model_params_map),
                     pretrained_weight_path=model_holder.pretrained_weight_path,
                 ),
@@ -391,19 +392,23 @@ class TrainingSidebar(QWidget):
                     self,
                     lambda: self.controller.set_model_holder(model_holder),
                 )
+                model_holder = self.controller.get_model_holder()
+                if model_holder is None:
+                    QMessageBox.critical(
+                        self,
+                        "Model Selection Failed",
+                        "The selected model was not applied.",
+                    )
+                    return
+                selected_model_name = model_holder.target_model.__name__
             elif result.failed:
                 QMessageBox.critical(self, "Model Selection Failed", result.message)
                 return
-            model_holder = self.controller.get_model_holder()
-            if model_holder is None:
-                QMessageBox.critical(
-                    self,
-                    "Model Selection Failed",
-                    "The selected model was not applied.",
-                )
-                return
-            model_name = model_holder.target_model.__name__
-            QMessageBox.information(self, "Success", f"Model selected: {model_name}")
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Model selected: {selected_model_name}",
+            )
             self._check_ready_after_legacy_result(result)
 
     def training_setting(self):
