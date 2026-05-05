@@ -141,6 +141,8 @@
   owner callback 觸發 Training / Evaluation / Visualization scope。
 - 最新 visualization observer cleanup 已把 `montage_changed` / `saliency_changed` 納入同一套
   coordinator-owned scope；VisualizationPanel 是 owner，helper / secondary context 不再刷新錯誤 panel。
+- 最新 shared info refresh cleanup 修正了 `MainWindow.update_info_panel()`：refresh coordinator 的
+  shared info refresh 現在會呼叫 `InfoPanelService.notify_all()`，更新所有已註冊 aggregate info panels。
 - 最新 downstream refresh coordinator cleanup 已讓 `training_changed` 刷新 Evaluation /
   Visualization readiness、`epoch_changed` 刷新 Visualization readiness、`evaluation_changed`
   也刷新 Visualization readiness。這把一部分 analysis panel readiness 從 observer-only 補刷新

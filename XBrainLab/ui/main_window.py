@@ -514,6 +514,12 @@ class MainWindow(QMainWindow):
 
     def update_info_panel(self):
         """Refresh the aggregate info panel if it exists."""
+        info_service = getattr(self, "info_service", None)
+        notify_all = getattr(info_service, "notify_all", None)
+        if callable(notify_all):
+            notify_all()
+            return
+
         if hasattr(self, "info_panel"):
             self.info_panel.update_info()
 

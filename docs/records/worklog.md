@@ -8868,3 +8868,22 @@
 - 不能宣稱：
   - This is not full command-driven UI refresh closure; high-frequency training live updates and
     remaining manual/event-specific refreshes still need ownership/audit.
+
+### 2026-05-06 MainWindow shared info refresh uses InfoPanelService
+
+- scope：
+  - Make the refresh coordinator's shared info refresh real in product MainWindow, not only in
+    test doubles.
+- red / focused tests：
+  - Added `test_update_info_panel_uses_info_service`; it failed because
+    `MainWindow.update_info_panel()` only checked `self.info_panel`, while product MainWindow owns
+    `self.info_service`.
+  - Added legacy fallback coverage for injected contexts without `info_service`.
+- 做了什麼：
+  - `MainWindow.update_info_panel()` now calls `InfoPanelService.notify_all()` when available.
+  - Kept direct `info_panel.update_info()` as a legacy / injected fallback.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_main_window_sync.py::test_update_info_panel_uses_info_service tests/unit/ui/test_main_window_sync.py::test_update_info_panel_keeps_legacy_direct_panel_fallback -q`
+    -> `2 passed`.
+- 不能宣稱：
+  - This does not complete command-driven UI refresh; it fixes one shared status dispatch gap.

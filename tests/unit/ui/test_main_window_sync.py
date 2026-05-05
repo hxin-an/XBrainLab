@@ -106,6 +106,25 @@ def test_switch_page_delegates_navigation_refresh(main_window):
     refresh.assert_called_once_with(main_window, 4)
 
 
+def test_update_info_panel_uses_info_service(main_window):
+    """Shared refresh should update registered AggregateInfoPanel instances."""
+    main_window.info_service = MagicMock()
+
+    main_window.update_info_panel()
+
+    main_window.info_service.notify_all.assert_called_once()
+
+
+def test_update_info_panel_keeps_legacy_direct_panel_fallback(main_window):
+    """Older injected contexts without InfoPanelService can still update directly."""
+    delattr(main_window, "info_service")
+    main_window.info_panel = MagicMock()
+
+    main_window.update_info_panel()
+
+    main_window.info_panel.update_info.assert_called_once()
+
+
 def test_switch_page_skips_panel_without_update_panel(mock_study, qtbot):
     """Panels without update_panel should not break navigation refresh."""
     with (

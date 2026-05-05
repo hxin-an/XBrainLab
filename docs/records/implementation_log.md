@@ -2675,3 +2675,29 @@ by other known observer events.
 
 - UI refresh remains partially mixed; this does not remove all observer/manual refresh paths or
   complete the command-driven refresh coordinator milestone.
+
+## 2026-05-06 Shared Info Refresh Service Delegation
+
+### 狀態
+
+`MainWindow.update_info_panel()` now delegates to `InfoPanelService.notify_all()` when the service is
+available. This makes refresh-coordinator shared status refresh update registered sidebar aggregate
+info panels in real MainWindow contexts. A direct `info_panel.update_info()` fallback remains only
+for injected / legacy contexts that do not have `info_service`.
+
+### 已可宣稱
+
+- Command/navigation/observer shared refresh no longer depends on a nonexistent
+  `MainWindow.info_panel` attribute in product MainWindow.
+- Legacy injected tests without `InfoPanelService` can still update a direct info panel.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/main_window.py`
+- Tests：`tests/unit/ui/test_main_window_sync.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This fixes shared aggregate info dispatch only. It does not complete the broader UI refresh
+  coordinator audit.

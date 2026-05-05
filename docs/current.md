@@ -822,7 +822,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   Preprocess / Training / Visualization；training lifecycle events 則由 TrainingPanel owner
   callback 一次刷新 Training / Evaluation / Visualization。最新 visualization observer cleanup
   也把 `montage_changed` / `saliency_changed` 納入 coordinator route，由 VisualizationPanel
-  owner bridge 刷新 Visualization 和 shared status，避免 helper / secondary context 自己刷新錯誤 panel。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
+  owner bridge 刷新 Visualization 和 shared status，避免 helper / secondary context 自己刷新錯誤 panel。
+  最新 shared info refresh cleanup 也修正 `MainWindow.update_info_panel()`：coordinator 現在會透過
+  `InfoPanelService.notify_all()` 更新已註冊的 aggregate info panels，而不是只嘗試不存在的
+  `MainWindow.info_panel`。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
   這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
   validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
   closure。後續仍要把
