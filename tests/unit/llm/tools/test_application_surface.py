@@ -70,6 +70,22 @@ def test_blocked_tool_reasons_are_grouped_by_application_command():
     assert "apply_bandpass_filter" not in blocked
 
 
+def test_mapped_tool_missing_params_returns_input_failure():
+    study = Study()
+    raw = MagicMock()
+    raw.get_filename.return_value = "sample.fif"
+    raw.get_filepath.return_value = "/tmp/sample.fif"
+    study.data_manager.loaded_data_list = [raw]
+
+    result = execute_application_tool_command(study, "apply_bandpass_filter", {})
+
+    assert result is not None
+    assert result.ok is False
+    assert result.command_name == CommandName.PREPROCESS.value
+    assert result.error_type == "input"
+    assert "Required inputs" in result.message
+
+
 def test_clear_dataset_surface_preserves_reset_confirmation_boundary():
     study = Study()
     raw = MagicMock()

@@ -73,6 +73,7 @@ TOOL_TO_COMMAND: dict[str, CommandName] = {
 }
 
 READ_ONLY_TOOLS = frozenset({"list_files", "get_dataset_info", "switch_panel"})
+UI_REQUEST_TOOLS = frozenset({"set_montage"})
 
 
 @dataclass(frozen=True)
@@ -370,15 +371,44 @@ def execute_application_tool_command(
     """Execute a tool through ApplicationService when a direct command exists.
 
     ``None`` means the tool still needs the legacy real-tool path, either
-    because it is read-only/UI-side or because the provided parameters are not
-    enough to safely construct a backend command.
+    because it is read-only/UI-side or because the study is not a real
+    ApplicationService-backed runtime. Real mapped workflow tools fail closed
+    with a typed input result when arguments cannot build a command.
     """
     if not isinstance(study, Study) or isinstance(study, Mock):
         return None
 
     command = _command_for_tool(tool_name, params)
     if command is None:
-        return None
+        if tool_name in UI_REQUEST_TOOLS:
+            return None
+
+        mapped_command = TOOL_TO_COMMAND.get(tool_name)
+        if mapped_command is None:
+            return None
+
+        if availability is None:
+            try:
+                availability = get_tool_availability(study, tool_name)
+            except CapabilityPolicyUnavailableError:
+                return None
+
+        if not availability.enabled:
+            return ToolCommandResult.blocked(
+                tool_name,
+                availability,
+                state=_state_snapshot_dict(study),
+            )
+
+        return ToolCommandResult.failure(
+            tool_name,
+            "Required inputs are missing for this workflow command.",
+            command_name=mapped_command.value,
+            state=_state_snapshot_dict(study),
+            capability=availability.to_dict(),
+            error_type="input",
+            recoverable=True,
+        )
 
     if availability is None:
         try:

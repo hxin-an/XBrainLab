@@ -189,7 +189,8 @@ Windows desktop acceptance.
 
 - real `Study` mapped workflow tools no longer fall back to legacy real-tool execution when
   `execute_application_tool_command()` cannot construct an ApplicationService command from missing
-  or unsafe arguments.
+  or unsafe arguments. Explicit UI-request tools such as `set_montage` remain on the UI
+  confirmation request path.
 - example covered: `apply_bandpass_filter` with missing low/high frequency while preprocessing is
   otherwise capability-enabled now returns a structured input failure and does not call the legacy
   tool.
@@ -198,7 +199,7 @@ Windows desktop acceptance.
   -> `1 passed`.
 - related agent/tool gate:
   `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/integration/agent/test_tool_call_eval.py -q`
-  -> `183 passed`.
+  -> `184 passed`.
 - focused lint/type:
   `poetry run ruff check XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
   -> pass;

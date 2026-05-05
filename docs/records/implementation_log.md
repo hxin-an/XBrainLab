@@ -2396,8 +2396,9 @@ observer, and shared-status refresh. Nested tab-switch refresh for the same main
 ### 狀態
 
 Real `Study` mapped workflow tools now fail closed when missing or unsafe arguments prevent
-construction of an ApplicationService command. The controller returns a typed input failure and does
-not fall back to legacy real-tool execution.
+construction of an ApplicationService command. `application_surface` returns a typed input failure
+and does not fall back to legacy real-tool execution. Explicit UI-request tools such as
+`set_montage` remain on the UI confirmation request path.
 
 ### 已可宣稱
 

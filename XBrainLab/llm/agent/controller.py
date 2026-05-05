@@ -1032,43 +1032,6 @@ class LLMController(QObject):
                     params,
                 )
                 if raw_result is None:
-                    mapped_command = TOOL_TO_COMMAND.get(command_name)
-                    if mapped_command is not None:
-                        try:
-                            availability = get_tool_availability(
-                                self.study,
-                                command_name,
-                            )
-                        except CapabilityPolicyUnavailable:
-                            availability = None
-                        if availability is not None:
-                            result = ToolCommandResult.failure(
-                                command_name,
-                                (
-                                    "Required inputs are missing for this workflow "
-                                    "command."
-                                ),
-                                command_name=mapped_command.value,
-                                state=self._application_state_payload(),
-                                capability=availability.to_dict(),
-                                error_type="input",
-                                recoverable=True,
-                            )
-                            if self.metrics.current_turn:
-                                self.metrics.current_turn.record_tool(
-                                    command_name,
-                                    False,
-                                    (_time.monotonic() - t0) * 1000,
-                                    result.message,
-                                )
-                            self.status_update.emit(
-                                self._summarize_tool_result(
-                                    command_name,
-                                    False,
-                                    result,
-                                )
-                            )
-                            return False, result
                     raw_result = tool.execute(self.study, **params)
             except Exception as e:
                 elapsed = (_time.monotonic() - t0) * 1000
