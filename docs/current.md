@@ -826,7 +826,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    product runtime fallback 全面盤點，明確分離 mock / legacy compatibility fallback。
    Training sidebar 已完成第一個 explicit fallback boundary slice；Preprocess sidebar 也已把
    filter / resample / rereference / normalize / epoch / reset fallback 改成 mock / legacy
-   non-`Study` only。下一步可把相同 helper 推到 Dataset / Visualization / AgentManager 的剩餘
+   non-`Study` only。Dataset data-table/action fallback 也已收斂 metadata edit / batch metadata、
+   smart parse、remove files、direct file import、clear dataset、channel selection 和 post-load label
+   compatibility fallback；下一步可把相同 helper 推到 Visualization / AgentManager 的剩餘
    `result is None` controller fallback。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把

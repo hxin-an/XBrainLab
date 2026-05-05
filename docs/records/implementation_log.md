@@ -42,21 +42,23 @@
 ### 下一手重點
 ```
 
-## 2026-05-05 Training And Preprocess Fallback Boundary
+## 2026-05-05 UI Controller Fallback Boundary Slices
 
 ### 狀態
 
-The controller fallback audit now has explicit runtime boundaries for Training and Preprocess
-sidebars. Training sidebar fallback paths for split cleanup / dataset generation, model selection,
-training settings, start / stop training, and clear history now use
+The controller fallback audit now has explicit runtime boundaries for Training, Preprocess, and
+Dataset UI paths. Training sidebar fallback paths for split cleanup / dataset generation, model
+selection, training settings, start / stop training, and clear history now use
 `run_legacy_controller_fallback()`. Preprocess sidebar uses the same helper for filter / resample /
-rereference / normalize / epoch / reset fallback. The helper allows fallback only for mock / legacy
-non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does not return a
-`CommandResult`.
+rereference / normalize / epoch / reset fallback. Dataset panel / sidebar / action handler use it
+for metadata edit / batch metadata, smart parse, remove files, direct file import, clear dataset,
+channel selection, and post-load label compatibility fallback. The helper allows fallback only for
+mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does not
+return a `CommandResult`.
 
 ### 已可宣稱
 
-- Training and Preprocess sidebars real product runtime will not silently mutate their controllers
+- Training, Preprocess, and Dataset real product runtime will not silently mutate their controllers
   if the command helper fails to provide an ApplicationService result.
 - Existing mock / legacy unit-test compatibility fallback remains available.
 
@@ -70,13 +72,13 @@ non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does 
 
 ### 不能宣稱完成
 
-- This is not a full controller fallback audit. Dataset, Visualization, and AgentManager fallback
-  sites still need the same explicit boundary.
+- This is not a full controller fallback audit. Visualization and AgentManager fallback sites still
+  need the same explicit boundary.
 
 ### 下一手重點
 
-Apply the same helper pattern to the remaining UI `result is None` controller fallbacks, prioritizing
-Dataset metadata / smart parse / remove-file actions and Preprocess operations.
+Apply the same helper pattern to the remaining UI `result is None` controller fallbacks,
+prioritizing Visualization control sidebar and AgentManager montage confirmation.
 
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 

@@ -101,8 +101,10 @@ mock / legacy non-`Study` context 執行 controller fallback；real `Study` cont
 helper 意外回 `None`，會拒絕 fallback，避免 product runtime silent controller mutation。目前已覆蓋
 split cleanup / generate dataset、model selection、training settings、start / stop training 和
 clear history。Preprocess sidebar 也已用同一 helper 覆蓋 filter / resample / rereference /
-normalize / epoch / reset fallback。Dataset / Visualization / AgentManager 的剩餘 fallback 還在後續
-audit 範圍。
+normalize / epoch / reset fallback。Dataset data-table/action paths 也已用同一 helper 覆蓋
+metadata edit / batch metadata、smart parse、remove files、direct file import、clear dataset、
+channel selection 和 post-load label compatibility fallback。Visualization / AgentManager 的剩餘
+fallback 還在後續 audit 範圍。
 
 仍未完成：
 

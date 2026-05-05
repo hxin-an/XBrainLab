@@ -17,6 +17,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.theme import Theme
@@ -315,7 +316,10 @@ class DatasetPanel(BasePanel):
                     UpdateMetadataCommand(index=row, subject=new_value),
                 )
                 if result is None:
-                    controller.update_metadata(row, subject=new_value)
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: controller.update_metadata(row, subject=new_value),
+                    )
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()
@@ -329,7 +333,10 @@ class DatasetPanel(BasePanel):
                     UpdateMetadataCommand(index=row, session=new_value),
                 )
                 if result is None:
-                    controller.update_metadata(row, session=new_value)
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: controller.update_metadata(row, session=new_value),
+                    )
                 elif result.failed:
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()

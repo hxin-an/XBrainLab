@@ -30,6 +30,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.dialogs.dataset import (
     DataInterpretationPreviewDialog,
@@ -126,7 +127,10 @@ class DatasetActionHandler:
                         )
                         return
                     if result is None:
-                        controller.import_files(filepaths)
+                        run_legacy_controller_fallback(
+                            self.panel,
+                            lambda: controller.import_files(filepaths),
+                        )
                         return
                     self.panel.update_panel()
                     QMessageBox.information(
@@ -686,7 +690,10 @@ class DatasetActionHandler:
                 ApplySmartParseCommand(results=results),
             )
             if result is None:
-                count = controller.apply_smart_parse(results)
+                count = run_legacy_controller_fallback(
+                    self.panel,
+                    lambda: controller.apply_smart_parse(results),
+                )
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
@@ -783,12 +790,15 @@ class DatasetActionHandler:
                 ImportLabelsCommand(plan=plan),
             )
             if result is None:
-                count = self._run_legacy_label_import(
-                    target_files,
-                    label_map,
-                    mapping,
-                    selected_event_names,
-                    plan,
+                count = run_legacy_controller_fallback(
+                    self.panel,
+                    lambda: self._run_legacy_label_import(
+                        target_files,
+                        label_map,
+                        mapping,
+                        selected_event_names,
+                        plan,
+                    ),
                 )
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
@@ -1072,17 +1082,24 @@ class DatasetActionHandler:
                 UpdateMetadataCommand(updates=updates),
             )
             if result is None:
-                for update in updates:
-                    kwargs = {}
-                    if update.subject is not None:
-                        kwargs["subject"] = update.subject
-                    if update.session is not None:
-                        kwargs["session"] = update.session
-                    controller.update_metadata(update.index, **kwargs)
+                run_legacy_controller_fallback(
+                    self.panel,
+                    lambda: self._run_metadata_update_fallback(controller, updates),
+                )
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
             self.panel.update_panel()
+
+    @staticmethod
+    def _run_metadata_update_fallback(controller, updates) -> None:
+        for update in updates:
+            kwargs = {}
+            if update.subject is not None:
+                kwargs["subject"] = update.subject
+            if update.session is not None:
+                kwargs["session"] = update.session
+            controller.update_metadata(update.index, **kwargs)
 
     def _remove_files(self, rows):
         remove_capability = get_command_capability(
@@ -1122,7 +1139,10 @@ class DatasetActionHandler:
                         "Dataset controller unavailable.",
                     )
                     return
-                controller.remove_files(rows)
+                run_legacy_controller_fallback(
+                    self.panel,
+                    lambda: controller.remove_files(rows),
+                )
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return

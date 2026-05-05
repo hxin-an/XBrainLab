@@ -20,6 +20,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog
@@ -363,7 +364,10 @@ class DatasetSidebar(QWidget):
                         ),
                     )
                     if command_result is None:
-                        self.controller.apply_channel_selection(result)
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_channel_selection(result),
+                        )
                     elif command_result.failed:
                         QMessageBox.critical(
                             self,
@@ -418,7 +422,7 @@ class DatasetSidebar(QWidget):
                 ResetSessionCommand(confirmed=True),
             )
             if result is None:
-                self.controller.clean_dataset()
+                run_legacy_controller_fallback(self, self.controller.clean_dataset)
             elif result.failed:
                 QMessageBox.critical(
                     self,

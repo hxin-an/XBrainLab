@@ -37,6 +37,30 @@
 
 ## 2026-05-05
 
+### 17:01 Dataset fallback boundary
+
+- 做了什麼：
+  - 延續 controller fallback audit，把 Dataset panel / sidebar / action handler 的 metadata edit /
+    batch metadata、smart parse、remove files、direct file import、clear dataset、channel selection
+    和 post-load label compatibility fallback 改成 `run_legacy_controller_fallback()`。
+  - 先加紅燈：real `Study` + `execute_application_command()` 意外回 `None` 時，remove files
+    不可呼叫 `controller.remove_files()`。
+- 結果：
+  - Dataset product runtime 不會在 missing CommandResult 時 silent fallback 到 dataset controller
+    mutation；mock / legacy non-`Study` tests 仍保留相容 fallback。
+  - Data Interpretation service-unavailable branches 保持原本 critical / false behavior，不混進
+    controller fallback helper。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_refuses_real_study_controller_fallback -q`
+    -> failed；`controller.remove_files()` 仍被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_refuses_real_study_controller_fallback tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_session tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_success tests/unit/ui/dataset/test_panel.py::test_dataset_panel_on_item_changed -q`
+    -> `5 passed`。
+  - Focused ruff / basedpyright on touched files -> pass / `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 跑 broader UI/docs/static gates 後提交；Visualization / AgentManager fallback 還未完成。
+
 ### 16:56 Preprocess sidebar fallback boundary
 
 - 做了什麼：

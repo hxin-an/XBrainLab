@@ -1001,6 +1001,29 @@ class TestDatasetActionHandler:
         handler._remove_files([0, 1])
         handler.panel.controller.remove_files.assert_called_once_with([0, 1])
 
+    def test_remove_files_refuses_real_study_controller_fallback(self, handler):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        study.data_manager.loaded_data_list = [MagicMock()]
+        handler.panel.study = study
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=None,
+            ),
+            pytest.raises(RuntimeError, match="real Study"),
+        ):
+            mock_mb.StandardButton.Yes = 1
+            mock_mb.StandardButton.No = 2
+            mock_mb.question.return_value = 1
+            handler._remove_files([0])
+
+        handler.panel.controller.remove_files.assert_not_called()
+
     def test_remove_files_uses_backend_capability_before_confirm(self, handler):
         from XBrainLab.backend.study import Study
 
