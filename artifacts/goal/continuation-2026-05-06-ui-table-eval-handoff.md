@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+62b7f64 ui: clean up confusion matrix canvas
 5ab35ba ui: release saliency canvases on replace
 f9acb77 ui: release plot window figures on close
 28c144a ui: ignore stale preprocess psd results
@@ -275,6 +276,11 @@ bb57beb ui: use backend truth for split replacement
     `deleteLater()`, and clear references.
   - This is focused canvas lifecycle coverage, not full saliency UX or long-run visualization
     memory trend evidence.
+- Confusion matrix canvas cleanup:
+  - `ConfusionMatrixWidget.update_plot()` and close now close the current figure, detach /
+    `deleteLater()` existing canvas or message widgets, and clear references before drawing new
+    content.
+  - This is focused Evaluation tab widget cleanup, not full evaluation UI soak evidence.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -932,6 +938,37 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 5ab35ba; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_update_none_releases_previous_canvas_and_children \
+  tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_creates \
+  tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_update_plot_no_data \
+  -q
+# 3 passed for 62b7f64
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  tests/unit/ui/test_ui_components.py::TestConfusionMatrix \
+  tests/unit/ui/test_ui_components.py::TestMetricsBarChart \
+  -q
+# 29 passed for 62b7f64
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 62b7f64
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 62b7f64
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 62b7f64; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
