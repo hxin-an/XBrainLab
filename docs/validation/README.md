@@ -165,6 +165,14 @@ include_objects=True)` as the shared render source for Preprocess panel and plot
 controller data-list read remains only for query-unavailable mock / legacy fallback. It does not
 prove plot visual quality, large-data plotting performance, or full preprocessing workflow UX.
 
+Visualization failed-query trainer fallback gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_get_trainers_does_not_fallback_after_failed_query -q`
+-> `1 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization.py -q`
+-> `47 passed`。This supports `VisualizationPanel.get_trainers()` refusing stale controller trainers
+after ApplicationService visualization query failure. It does not prove visualization UX acceptance,
+interactive 3D rendering, or post-training desktop human verification.
+
 SinglePlotWindow close cleanup gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_close_releases_current_figure_and_qt_widgets tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_creates tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_has_figure_canvas -q`
 -> `3 passed`；

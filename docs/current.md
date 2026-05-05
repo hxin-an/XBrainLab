@@ -980,7 +980,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 export trainer cleanup 又讓 saliency 可匯出時改用
   `VisualizeCommand(include_objects=True)` 的 service-backed `trainer_objects` 開 export dialog；
   `panel.get_trainers()` / `VisualizationController.get_trainers()` 只留在 query unavailable 的
-  mock / legacy fallback helper。
+  mock / legacy fallback helper。最新 follow-up 又讓 `VisualizationPanel.get_trainers()` 在已有
+  failed ApplicationService visualization query 時直接回空 list，不再 fall back 到 stale
+  controller trainers。
   最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。

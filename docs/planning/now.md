@@ -257,6 +257,9 @@
   `VisualizeCommand(include_objects=True)` 的 service-backed `trainer_objects`；real `Study`
   export dialog 不再從 `panel.get_trainers()` / `VisualizationController.get_trainers()` 取 stale
   trainer list，controller read 只留在 query unavailable 的 mock / legacy fallback helper。
+- 最新 Visualization get-trainers follow-up 也修掉 failed-query 後的 public method fallback：
+  `VisualizationPanel.get_trainers()` 若已持有 failed ApplicationService visualization query，會回
+  `[]`，不再讀 stale controller trainers。
 - 最新 Visualization saliency settings cleanup 也讓 settings dialog defaults 先走 readonly
   `SaliencyCommand` summary diagnostics；stale `VisualizationController.get_saliency_params()`
   只留在 query unavailable 的 mock / legacy fallback helper。

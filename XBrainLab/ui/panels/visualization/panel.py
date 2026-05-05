@@ -204,6 +204,8 @@ class VisualizationPanel(BasePanel):
         trainers = self._trainers_from_application_query()
         if trainers is not None:
             return trainers
+        if self.last_application_query is not None:
+            return []
         return [] if self.controller is None else self.controller.get_trainers()
 
     def refresh_combos(self):

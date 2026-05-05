@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from PyQt6.QtWidgets import QWidget
 
-from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
 
@@ -201,6 +201,29 @@ def test_visualization_panel_uses_application_query_before_stale_controller_trai
     assert panel.plan_combo.itemText(0) == "Select a plan"
     assert panel.run_combo.count() == 0
     current_widget.show_error.assert_called()
+
+
+def test_visualization_get_trainers_does_not_fallback_after_failed_query(qtbot):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    stale_trainer = _make_trainer("StaleNet", repeats=1)
+    ctrl.get_trainers.return_value = [stale_trainer]
+    ctrl.get_trainers.reset_mock()
+    panel.last_application_query = CommandResult.failure_result(
+        command_name="visualize",
+        message="Visualization is not ready.",
+        state={},
+        changed_state=ChangedState(),
+        error_type=ErrorType.PRECONDITION,
+        recoverable=True,
+    )
+
+    assert panel.get_trainers() == []
+    ctrl.get_trainers.assert_not_called()
 
 
 def test_visualization_panel_uses_application_payload_before_stale_controller(

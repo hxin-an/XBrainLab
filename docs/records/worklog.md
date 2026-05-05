@@ -37,6 +37,52 @@
 
 ## 2026-05-06
 
+### 06:40 Visualization failed-query trainer fallback cleanup
+
+- scope：
+  - Continue read-side command-truth cleanup for Visualization.
+  - Prevent `VisualizationPanel.get_trainers()` from rendering stale controller trainers after a
+    failed ApplicationService visualization query.
+- red / focused tests：
+  - Added `test_visualization_get_trainers_does_not_fallback_after_failed_query`.
+  - Red gate failed because `get_trainers()` returned stale `controller.get_trainers()` after
+    `last_application_query` was a failed `CommandResult`.
+- 做了什麼：
+  - `VisualizationPanel.get_trainers()` now returns service payload trainers when available.
+  - If `last_application_query` exists but has no usable payload, it returns `[]` instead of
+    falling back to controller trainers.
+  - Controller trainer fallback remains only when no ApplicationService query result exists, which
+    preserves mock / legacy panel compatibility.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_get_trainers_does_not_fallback_after_failed_query -q`
+    -> failed as expected on stale trainer return.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Visualization regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization.py -q`
+    -> `47 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_redesign.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_redesign.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+- local eval：
+  - Not run. This is a Visualization UI render-source cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not prove visualization UX acceptance, post-training desktop walkthrough, interactive
+    3D rendering, or human desktop acceptance.
+
 ### 06:30 Preprocess plotter render query source
 
 - scope：

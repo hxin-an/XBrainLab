@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Visualization Failed Query Fallback Cleanup
+
+### 狀態
+
+`VisualizationPanel.get_trainers()` no longer falls back to
+`VisualizationController.get_trainers()` after an ApplicationService visualization query has failed.
+It now returns an empty list for that state, keeping the UI aligned with the backend blocked /
+unavailable result instead of rendering stale trainers.
+
+### 已可宣稱
+
+- A failed `VisualizeCommand` query remains authoritative for trainer availability in
+  `VisualizationPanel.get_trainers()`.
+- Focused visualization panel tests cover the failed-query boundary and existing render behavior.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/panel.py`
+- Tests: `tests/unit/ui/test_visualization_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not visualization product UX acceptance, interactive desktop 3D verification, or
+  post-training Windows human walkthrough evidence.
+
+### 下一手重點
+
+Continue read-side fallback audit for public UI methods that can be called outside their normal
+service-query setup path.
+
 ## 2026-05-06 Preprocess Plotter Query Source
 
 ### 狀態
