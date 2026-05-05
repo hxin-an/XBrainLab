@@ -653,6 +653,9 @@
   - `Add Labels to Loaded Data` compatibility path 現在會在 empty state disable，tooltip 引導
     使用者先 interpret data source；action 也會尊重 backend `ImportLabelsCommand`
     capability block。
+  - Channel Selection dialog 的 loaded data list 現在先走
+    `QueryStateCommand(query="data_lists", include_objects=True)`；controller loaded-list read 只留在
+    no-capability mock / legacy path。
   - Reviewed MAT sample-index anchor apply 已新增窄路徑：當 wizard 明確選定 MAT label field、
     MAT anchor、`time_model=sample_index`、`granularity=trial` 和 class map 時，backend 會把
     MAT labels + anchor 轉成 MNE-style event array，透過 `apply_labels_batch` 套用，並保存

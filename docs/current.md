@@ -289,7 +289,10 @@ applied-state enabled recipe-trace tooltip。最新 UI capability slice 又讓 r
 sidebar 直接讀 backend `import_labels` 和 `preprocess` capability：button disabled state /
 tooltip 和 Channel Selection preflight 不再只靠 controller-local `has_data` / lock 判斷。latest
 follow-up 也把 Channel Selection 的 controller-local `has_data` / `is_locked` checks 限縮到
-mock / legacy path；real `Study` path 以 backend `preprocess` capability 為準。它仍
+mock / legacy path；real `Study` path 以 backend `preprocess` capability 為準。最新 follow-up
+又讓 Channel Selection dialog 的 loaded data list 先走
+`QueryStateCommand(query="data_lists", include_objects=True)`；`DatasetController.get_loaded_data_list()`
+只留在 no-capability mock / legacy path。它仍
 不是完整 Data Interpretation 內嵌 label editor。後續 Smart Parse capability slice 也讓
 `open_smart_parser()` 在 real Study path 先讀 backend `apply_smart_parse` capability；沒有 raw data
 時不會打開 parser dialog，而會顯示 shared blocked reason。latest follow-up 也把 Smart Parse

@@ -155,6 +155,9 @@ Dataset table rendering now follows the same query-backed source: `DatasetPanel.
 uses `QueryStateCommand(query="data_lists", include_objects=True)` for loaded data rows in real
 `Study` contexts. `DatasetController.get_loaded_data_list()` remains only for no-ApplicationService
 mock / legacy rendering.
+Dataset sidebar Channel Selection dialog population also uses the `data_lists` query in
+command-capable contexts; controller loaded-list reads are limited to no-capability mock / legacy
+dialog population.
 Post-load label compatibility target selection now reads selected row objects from the Dataset
 table's `UserRole` data before opening `ImportLabelDialog`; controller loaded-list reads are only a
 mock / legacy fallback when table row objects are unavailable.

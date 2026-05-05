@@ -1,5 +1,7 @@
 """Sidebar widget for the dataset panel: info, operations, and controls."""
 
+from typing import Any
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -14,6 +16,7 @@ from XBrainLab.backend.application import (
     CommandName,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
     ResetSessionCommand,
 )
 from XBrainLab.ui.application_capabilities import (
@@ -354,7 +357,7 @@ class DatasetSidebar(QWidget):
         if reply == QMessageBox.StandardButton.No:
             return
 
-        data_list = self.controller.get_loaded_data_list()
+        data_list = self._loaded_data_list_for_channel_selection(preprocess_capability)
         dialog = ChannelSelectionDialog(self, data_list)
         if dialog.exec():
             result = dialog.get_result()
@@ -391,6 +394,24 @@ class DatasetSidebar(QWidget):
                         "Error",
                         f"Channel selection failed: {e}",
                     )
+
+    def _loaded_data_list_for_channel_selection(
+        self,
+        preprocess_capability,
+    ) -> list[Any]:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="data_lists", include_objects=True),
+            refresh=False,
+        )
+        if result is None:
+            if preprocess_capability is None:
+                return self.controller.get_loaded_data_list()
+            return []
+        if result.failed:
+            return []
+        data_list = result.diagnostics.get("loaded_data_list")
+        return list(data_list) if isinstance(data_list, list) else []
 
     def clear_dataset(self):
         """Prompt the user and clear the entire loaded dataset."""

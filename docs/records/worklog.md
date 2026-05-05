@@ -9884,3 +9884,39 @@
 - 不能宣稱：
   - This does not make post-load label import the primary workflow or complete the import wizard
     embedded label editor.
+
+### 2026-05-06 Channel Selection dialog query source
+
+- scope：
+  - Continue Dataset sidebar read-side command-truth cleanup.
+  - Move Channel Selection dialog data population away from direct controller loaded-list reads in
+    real command-capable contexts.
+- red / focused test：
+  - Added `test_open_channel_selection_uses_query_data_before_stale_controller`.
+  - Red gate failed because `DatasetSidebar.open_channel_selection()` called
+    `controller.get_loaded_data_list()` after backend capability allowed the action.
+- 做了什麼：
+  - `DatasetSidebar.open_channel_selection()` now queries
+    `QueryStateCommand(query="data_lists", include_objects=True)` with `refresh=False` before
+    opening `ChannelSelectionDialog`.
+  - `DatasetController.get_loaded_data_list()` remains only for no-capability mock / legacy dialog
+    population.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_uses_query_data_before_stale_controller -q`
+    -> failed on `controller.get_loaded_data_list()`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Dataset sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `11 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a Dataset sidebar UI cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete all Dataset controller read-path cleanup or Data Interpretation wizard
+    acceptance.
