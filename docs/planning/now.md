@@ -354,6 +354,8 @@
     一句 `reapplied`。
   - Recipe reload 若發現 saved selected EEG file 不在 current scan 中，validation 會是
     `blocked`，不允許 apply 進入 runtime import failure。
+  - Recipe reload 若發現 saved label/event carrier 不在 current scan 中，也會 `blocked`，避免
+    recipe replay 靜默丟失 external labels。
   - 最新 UI table-fit polish 讓 label / event / recipe trace tables 用 stretch + elide 控制欄寬，
     `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄 stretch
     填滿主 panel，其他欄保留 resize-to-contents，避免載入後表格內縮。

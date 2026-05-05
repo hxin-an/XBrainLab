@@ -336,6 +336,36 @@ UI baseline capture 結果：
   resolve label carrier remapping, renamed-file ambiguity, complex anchor reconciliation, or mature
   recipe conflict editing.
 
+2026-05-05 Recipe reload missing label/event carrier blocker:
+
+- Product/backend change:
+  - Reloaded recipes now preserve required saved label/event carriers in candidate choices.
+  - If a required saved carrier is absent from the current scan, validation becomes `blocked`
+    before apply, preventing silent external-label loss.
+  - Matching accepts exact path or basename, consistent with saved EEG file matching.
+- Focused evidence:
+  - Red tests initially showed `choices_from_import_recipe()` did not expose required carriers,
+    candidate validation did not block missing carriers, and reload validation stayed
+    `needs_confirmation`.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py::test_choices_from_import_recipe_recreates_review_choices tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_blocks_missing_saved_label_carrier -q`
+    -> `6 passed`.
+- Post-change gates:
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `107 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `5 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+- Claim boundary: this supports early blocking for missing saved label/event carriers. It does not
+  implement carrier remapping, renamed-carrier resolution, or anchor reconciliation UI.
+
 2026-05-05 MCP stdio adapter session boundary:
 
 - Adapter change:

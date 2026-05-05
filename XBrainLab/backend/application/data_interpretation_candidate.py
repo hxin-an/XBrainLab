@@ -121,6 +121,16 @@ def build_interpretation_candidate(
             + ", ".join(missing_selected_files)
             + "."
         )
+    missing_label_carriers = _required_label_carriers_missing_from_scan(
+        choices,
+        scan.label_carriers,
+    )
+    if missing_label_carriers:
+        blocked_reasons.append(
+            "Saved label/event carrier(s) were not found in the current scan: "
+            + ", ".join(missing_label_carriers)
+            + "."
+        )
 
     return InterpretationCandidate(
         candidate_id=candidate_id,
@@ -228,10 +238,38 @@ def _selected_files_missing_from_scan(
     selected_files: list[str],
     scanned_files: list[str],
 ) -> list[str]:
-    scanned_exact = {str(item) for item in scanned_files}
-    scanned_names = {Path(str(item)).name or str(item) for item in scanned_files}
+    return _paths_missing_from_scan(selected_files, scanned_files)
+
+
+def _required_label_carriers_missing_from_scan(
+    choices: dict[str, Any],
+    scanned_carriers: list[str],
+) -> list[str]:
+    required = _string_list(choices.get("required_label_carriers"))
+    label_carrier_choices = choices.get("label_carrier_choices")
+    if isinstance(label_carrier_choices, dict):
+        required.extend(
+            str(key).strip() for key in label_carrier_choices if str(key).strip()
+        )
+    return _paths_missing_from_scan(required, scanned_carriers)
+
+
+def _string_list(payload: Any) -> list[str]:
+    if not isinstance(payload, list):
+        return []
+    result: list[str] = []
+    for item in payload:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def _paths_missing_from_scan(required: list[str], scanned: list[str]) -> list[str]:
+    scanned_exact = {str(item) for item in scanned}
+    scanned_names = {Path(str(item)).name or str(item) for item in scanned}
     missing: list[str] = []
-    for item in selected_files:
+    for item in required:
         text = str(item)
         name = Path(text).name or text
         if text in scanned_exact or name in scanned_names:
@@ -250,7 +288,9 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         traces.append("choices:class_map")
     if _string_mapping(choices.get("event_roles")):
         traces.append("choices:event_roles")
-    if _normalize_label_carrier_choices(choices.get("label_carrier_choices")):
+    if _normalize_label_carrier_choices(
+        choices.get("label_carrier_choices")
+    ) or _string_list(choices.get("required_label_carriers")):
         traces.append("choices:label_carriers")
     return traces
 

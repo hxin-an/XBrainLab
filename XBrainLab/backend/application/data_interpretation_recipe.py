@@ -126,6 +126,9 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
     choices: dict[str, Any] = {"recipe_id": recipe.recipe_id}
     if recipe.selected_eeg_files:
         choices["selected_eeg_files"] = list(recipe.selected_eeg_files)
+    required_label_carriers = _required_label_carriers_from_recipe(recipe)
+    if required_label_carriers:
+        choices["required_label_carriers"] = required_label_carriers
     metadata_overrides = _metadata_overrides_from_recipe(recipe.metadata)
     if metadata_overrides:
         choices["metadata_overrides"] = metadata_overrides
@@ -139,6 +142,21 @@ def choices_from_import_recipe(recipe: ImportRecipe) -> dict[str, Any]:
     if recipe.class_map:
         choices["class_map"] = dict(recipe.class_map)
     return choices
+
+
+def _required_label_carriers_from_recipe(recipe: ImportRecipe) -> list[str]:
+    carriers: list[str] = []
+    for value in recipe.label_carriers:
+        text = str(value).strip()
+        if text and text not in carriers:
+            carriers.append(text)
+    for item in recipe.label_carrier_plan:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("path") or "").strip()
+        if text and text not in carriers:
+            carriers.append(text)
+    return carriers
 
 
 def _metadata_overrides_from_recipe(

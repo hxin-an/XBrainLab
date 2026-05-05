@@ -327,6 +327,32 @@ def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):
     assert reload_result.state.interpretation.validation_decision == "blocked"
 
 
+def test_reload_recipe_blocks_missing_saved_label_carrier(tmp_path):
+    service = ApplicationService()
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    recipe_path = tmp_path / "missing-label-carrier-recipe.json"
+    missing_events = tmp_path / "missing_events.tsv"
+    ImportRecipe(
+        recipe_id="recipe-missing-label",
+        interpretation_id="interpretation-1",
+        source_path=str(tmp_path),
+        source_kind="folder",
+        selected_eeg_files=[str(fif_path)],
+        label_carriers=[str(missing_events)],
+    ).write_json(str(recipe_path))
+
+    reload_result = service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert reload_result.ok is True
+    decision = reload_result.diagnostics["validation_decision"]
+    assert decision["decision"] == "blocked"
+    assert "missing_events.tsv" in decision["blocked_reasons"][0]
+    assert "label/event carrier" in decision["blocked_reasons"][0]
+    assert reload_result.state.interpretation.validation_decision == "blocked"
+
+
 def test_application_service_failed_command_sets_and_clears_last_error(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)

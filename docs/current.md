@@ -502,6 +502,10 @@ evidence；仍不是完整 recipe diff editor 或 human desktop acceptance。
 `selected_eeg_files` 在重新 scan 結果中找不到，candidate validation 會變成 `blocked`，並用
 `Selected EEG file(s) were not found in the current scan: ...` 這類人話 reason 擋在 apply
 前，不再等到 import runtime failure。
+同一 blocker pattern 也已套到 saved label/event carrier：recipe reload 會把 saved
+`label_carriers` / `label_carrier_plan.path` 帶回 candidate choices，若 current scan 找不到對應
+carrier，validation 會以 `Saved label/event carrier(s) were not found in the current scan: ...`
+擋下，避免 recipe replay 靜默丟失 external labels。
 
 ## 可信狀態
 

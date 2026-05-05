@@ -37,6 +37,45 @@
 
 ## 2026-05-05
 
+### 12:25 Recipe reload missing label-carrier blocker
+
+- 做了什麼：
+  - 延續 missing selected EEG blocker，補上 saved label/event carrier 消失時的 validation
+    boundary。recipe replay 不應靜默丟失 external labels。
+  - 先加三個紅燈：
+    - `choices_from_import_recipe()` 要把 recipe 的 `label_carriers` 帶成
+      `required_label_carriers`。
+    - `build_interpretation_candidate()` 要對 missing required label carrier 產生 blocked reason。
+    - `ReloadInterpretationRecipeCommand` 載入含 missing label carrier 的 recipe 時，validation
+      decision 要是 `blocked`。
+  - `choices_from_import_recipe()` 現在會從 `recipe.label_carriers` 和
+    `recipe.label_carrier_plan[].path` 建立 `required_label_carriers`。
+  - candidate builder 會用 exact path 或 basename 比對 required carriers 與 scan result；找不到
+    時加入 `Saved label/event carrier(s) were not found in the current scan: ...`，並在 recipe trace
+    保留 `choices:label_carriers`。
+- 結果：
+  - 初始紅燈：missing label carrier 不會 block，reload validation 還是
+    `needs_confirmation`。
+  - 現在 saved label/event carrier missing from rescan 會在 apply 前 blocked。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_recipe.py::test_choices_from_import_recipe_recreates_review_choices tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_blocks_missing_saved_label_carrier -q`
+    -> `6 passed`。
+  - Post-change gates：
+    `git diff --check` -> pass；
+    `timeout 300s poetry run ruff check .` -> pass；
+    `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `107 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `5 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`。
+- 接續 / 本輪剩餘：
+  - 這處理 missing label carrier，不是完整 remap UI；renamed carrier ambiguity、manual remap 和
+    anchor reconciliation 仍需要 mature import wizard conflict editor。
+
 ### 12:17 Recipe reload missing-file blocker
 
 - 做了什麼：

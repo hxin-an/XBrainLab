@@ -83,6 +83,7 @@ def test_choices_from_import_recipe_recreates_review_choices():
         source_path="/data",
         source_kind="bids",
         selected_eeg_files=["/data/sub-01.fif"],
+        label_carriers=["/data/events.tsv"],
         label_carrier_plan=[
             {
                 "path": "/data/events.tsv",
@@ -137,6 +138,7 @@ def test_choices_from_import_recipe_recreates_review_choices():
 
     assert choices["recipe_id"] == "recipe-1"
     assert choices["selected_eeg_files"] == ["/data/sub-01.fif"]
+    assert choices["required_label_carriers"] == ["/data/events.tsv"]
     assert choices["metadata_overrides"] == {
         "sub-01.fif": {"subject": "S01", "task": "motor-imagery"}
     }

@@ -97,3 +97,21 @@ def test_build_interpretation_candidate_blocks_selected_files_missing_from_scan(
 
     assert "missing_raw.fif" in candidate.blocked_reasons[0]
     assert "not found in the current scan" in candidate.blocked_reasons[0]
+
+
+def test_build_interpretation_candidate_blocks_required_label_carriers_missing_from_scan():
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(label_carriers=["/data/sub-01_task-mi_events.tsv"]),
+        choices={
+            "recipe_id": "recipe-1",
+            "required_label_carriers": [
+                "/data/sub-01_task-mi_events.tsv",
+                "/data/missing_events.tsv",
+            ],
+        },
+    )
+
+    assert "missing_events.tsv" in candidate.blocked_reasons[0]
+    assert "label/event carrier" in candidate.blocked_reasons[0]
+    assert "choices:label_carriers" in candidate.recipe_trace
