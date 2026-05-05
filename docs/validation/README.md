@@ -305,6 +305,37 @@ UI baseline capture 結果：
   full recipe diff editing, complex conflict resolution, Windows human desktop acceptance, or mature
   import wizard closure.
 
+2026-05-05 Recipe reload missing selected EEG blocker:
+
+- Product/backend change:
+  - If a reloaded recipe selects an EEG file that the current rescan cannot find, the interpretation
+    candidate now records a blocked reason before apply.
+  - Matching accepts exact path or basename so a moved but otherwise identical source tree can still
+    be reviewed without false blocking.
+- Focused evidence:
+  - Unit red test initially failed because missing selected EEG files produced no blocked reason.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_blocks_missing_saved_eeg_file -q`
+    -> `4 passed`.
+  - Focused `ruff check` on touched candidate/workflow tests -> pass.
+  - Focused `basedpyright` on touched candidate/workflow tests -> `0 errors, 0 warnings, 0 notes`.
+- Post-change gates:
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `106 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `4 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+- Claim boundary: this supports early blocking for missing saved selected EEG files. It does not yet
+  resolve label carrier remapping, renamed-file ambiguity, complex anchor reconciliation, or mature
+  recipe conflict editing.
+
 2026-05-05 MCP stdio adapter session boundary:
 
 - Adapter change:

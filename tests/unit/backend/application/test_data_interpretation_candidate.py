@@ -80,3 +80,20 @@ def test_build_interpretation_candidate_blocks_empty_selection():
 
     assert candidate.selected_eeg_files == []
     assert "No EEG files were selected for interpretation." in candidate.blocked_reasons
+
+
+def test_build_interpretation_candidate_blocks_selected_files_missing_from_scan():
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(eeg_files=["/data/sub-01_task-mi_raw.fif"]),
+        choices={
+            "recipe_id": "recipe-1",
+            "selected_eeg_files": [
+                "/data/sub-01_task-mi_raw.fif",
+                "/data/missing_raw.fif",
+            ],
+        },
+    )
+
+    assert "missing_raw.fif" in candidate.blocked_reasons[0]
+    assert "not found in the current scan" in candidate.blocked_reasons[0]

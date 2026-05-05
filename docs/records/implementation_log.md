@@ -48,12 +48,15 @@
 
 Recipe reload preview now compares saved recipe selections with the current rescan before validation.
 The backend preview payload exposes reviewable diff rows for EEG files, label carriers, and saved
-choices; the Data Interpretation wizard renders those rows in `Review Summary`.
+choices; the Data Interpretation wizard renders those rows in `Review Summary`. Follow-up hardening
+also blocks reload candidates when a saved selected EEG file is missing from the current scan, so
+apply cannot fall through into a runtime import failure.
 
 ### 已可宣稱
 
 - Reloaded recipes no longer show only a generic `reapplied` message; the user can see whether saved
   files / label carriers still match the current scan.
+- Missing saved EEG files are now a validation blocker before apply.
 - Human-like walkthrough evidence was refreshed, including `07-recipe-reloaded.png`.
 
 ### Evidence 入口

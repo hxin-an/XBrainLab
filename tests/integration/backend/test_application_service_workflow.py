@@ -13,6 +13,7 @@ from XBrainLab.backend.application import (
     CreateEpochCommand,
     EvaluateCommand,
     GenerateDatasetCommand,
+    ImportRecipe,
     LoadDataCommand,
     PreprocessCommand,
     PreprocessOperation,
@@ -300,6 +301,30 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
     assert dataset_result.state.dataset.split_summary["train_count"] == 4
     assert dataset_result.state.dataset.split_summary["val_count"] == 1
     assert dataset_result.state.dataset.split_summary["test_count"] == 1
+
+
+def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):
+    service = ApplicationService()
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    recipe_path = tmp_path / "missing-file-recipe.json"
+    missing_path = tmp_path / "missing_raw.fif"
+    ImportRecipe(
+        recipe_id="recipe-missing",
+        interpretation_id="interpretation-1",
+        source_path=str(tmp_path),
+        source_kind="folder",
+        selected_eeg_files=[str(fif_path), str(missing_path)],
+    ).write_json(str(recipe_path))
+
+    reload_result = service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+
+    assert reload_result.ok is True
+    decision = reload_result.diagnostics["validation_decision"]
+    assert decision["decision"] == "blocked"
+    assert "missing_raw.fif" in decision["blocked_reasons"][0]
+    assert reload_result.state.interpretation.validation_decision == "blocked"
 
 
 def test_application_service_failed_command_sets_and_clears_last_error(tmp_path):

@@ -37,6 +37,46 @@
 
 ## 2026-05-05
 
+### 12:17 Recipe reload missing-file blocker
+
+- 做了什麼：
+  - 在 recipe reload diff 之後補一個 safety boundary：若 saved recipe 的 selected EEG file
+    不在 current scan 裡，不能等到 apply/import runtime 才失敗。
+  - 先加紅燈 unit test，要求 `build_interpretation_candidate()` 對 missing selected EEG file
+    產生 blocked reason。
+  - `data_interpretation_candidate.py` 現在會用 exact path 或 basename 比對 selected files
+    與 scanned files；找不到的 saved selection 會加入
+    `Selected EEG file(s) were not found in the current scan: ...`。
+  - 加 integration test：手寫含 missing selected EEG 的 recipe，`ReloadInterpretationRecipeCommand`
+    會成功產生 preview，但 validation decision 是 `blocked`，state snapshot 也記錄 blocked。
+- 結果：
+  - 初始紅燈：missing selected EEG file 沒有 blocked reason。
+  - 現在 reload candidate 在 apply 前就被 validation layer 擋下。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_blocks_selected_files_missing_from_scan -q`
+    -> 初始紅燈，後續通過。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_blocks_missing_saved_eeg_file -q`
+    -> `4 passed`。
+  - `poetry run basedpyright XBrainLab/backend/application/data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/integration/backend/test_application_service_workflow.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run ruff check XBrainLab/backend/application/data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_candidate.py tests/integration/backend/test_application_service_workflow.py`
+    -> pass。
+  - Post-change gates：
+    `git diff --check` -> pass；
+    `timeout 300s poetry run ruff check .` -> pass；
+    `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `106 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `4 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`。
+- 接續 / 本輪剩餘：
+  - 這只處理 selected EEG missing。Label carrier conflict / remap、renamed source root 和
+    anchor reconciliation 仍需要 mature import wizard conflict UI。
+
 ### 12:08 Recipe reload comparison rows
 
 - 做了什麼：

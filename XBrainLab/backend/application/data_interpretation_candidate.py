@@ -111,6 +111,16 @@ def build_interpretation_candidate(
     confirmation_items = sorted(set(confirmation_items))
     if not selected_files:
         blocked_reasons.append("No EEG files were selected for interpretation.")
+    missing_selected_files = _selected_files_missing_from_scan(
+        selected_files,
+        scan.eeg_files,
+    )
+    if missing_selected_files:
+        blocked_reasons.append(
+            "Selected EEG file(s) were not found in the current scan: "
+            + ", ".join(missing_selected_files)
+            + "."
+        )
 
     return InterpretationCandidate(
         candidate_id=candidate_id,
@@ -212,6 +222,23 @@ def _string_mapping(payload: Any) -> dict[str, str]:
         for key, value in payload.items()
         if str(value).strip()
     }
+
+
+def _selected_files_missing_from_scan(
+    selected_files: list[str],
+    scanned_files: list[str],
+) -> list[str]:
+    scanned_exact = {str(item) for item in scanned_files}
+    scanned_names = {Path(str(item)).name or str(item) for item in scanned_files}
+    missing: list[str] = []
+    for item in selected_files:
+        text = str(item)
+        name = Path(text).name or text
+        if text in scanned_exact or name in scanned_names:
+            continue
+        if name not in missing:
+            missing.append(name)
+    return missing
 
 
 def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
