@@ -9920,3 +9920,71 @@
 - 不能宣稱：
   - This does not complete all Dataset controller read-path cleanup or Data Interpretation wizard
     acceptance.
+
+### 2026-05-06 Evaluation object-payload render source
+
+- scope：
+  - Continue analysis UI read-side command-truth cleanup.
+  - Prevent a successful real `Study` evaluation query from rendering stale injected controller
+    plans, pooled metrics, or summary text.
+- red / focused test：
+  - Added `test_analysis_service_can_return_ui_evaluation_objects`.
+  - Added `test_evaluation_panel_uses_application_payload_before_stale_controller`.
+  - Red gates failed because `EvaluateCommand` had no object payload option and
+    `EvaluationPanel.update_panel()` still called `controller.get_plans()` after a successful
+    service query.
+- 做了什麼：
+  - Added optional `EvaluateCommand.include_objects`.
+  - `AnalysisCommandService.handle_evaluate()` now includes `plan_objects`,
+    `pooled_eval_results`, and `model_summaries` when object payloads are requested.
+  - `EvaluationPanel.update_panel()` requests that payload and uses it for plan list, average
+    metrics, and summary rendering before falling back to controller reads.
+  - `include_objects` is UI-only for `EvaluateCommand`: automation / MCP schemas hide it, and
+    `build_command_from_payload()` rejects it so external clients cannot request non-serializable
+    UI object payloads.
+  - Controller reads remain for mock / legacy contexts where no service query payload exists.
+  - `.basedpyright/baseline.json` dropped by `3` after optional-controller typing was cleaned in
+    the touched panel.
+- validation：
+  - Red gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py::test_analysis_service_can_return_ui_evaluation_objects -q`
+    -> failed on missing `include_objects`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_uses_application_payload_before_stale_controller -q`
+    -> failed on stale `controller.get_plans()`.
+  - Focused pass:
+    same commands -> `1 passed` each.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    -> `12 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/backend/application/analysis_service.py XBrainLab/backend/application/commands.py XBrainLab/ui/panels/evaluation/panel.py tests/unit/backend/application/test_analysis_service.py tests/unit/ui/test_evaluation_panel_redesign.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/analysis_service.py XBrainLab/backend/application/commands.py XBrainLab/ui/panels/evaluation/panel.py tests/unit/backend/application/test_analysis_service.py tests/unit/ui/test_evaluation_panel_redesign.py`
+    -> `0 errors, 0 warnings, 0 notes`; baseline count dropped from `110` to `107`.
+  - Automation guard:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_automation.py::test_automation_rejects_evaluation_ui_object_payload_flag tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_use_same_command_schema -q`
+    -> `2 passed`.
+    `poetry run ruff check XBrainLab/backend/application/automation.py tests/unit/backend/application/test_automation.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/automation.py tests/unit/backend/application/test_automation.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Slice gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `112 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    -> `9 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a UI/backend query-truth cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not certify evaluation screenshots, full analysis UX, or all remaining
+    Evaluation/Visualization controller read paths.

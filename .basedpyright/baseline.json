@@ -594,32 +594,6 @@
                 }
             }
         ],
-        "./XBrainLab/ui/panels/evaluation/panel.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 32,
-                    "endColumn": 54,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 38,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py": [
             {
                 "code": "reportArgumentType",

@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application.results import ChangedState, CommandResult
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
@@ -223,6 +224,72 @@ def test_evaluation_panel_uses_application_query_before_stale_controller_plans(q
     assert panel.model_combo.count() == 1
     assert panel.model_combo.itemText(0) == "No Data Available"
     assert panel.run_combo.count() == 0
+
+
+def test_evaluation_panel_uses_application_payload_before_stale_controller(
+    qtbot, monkeypatch
+):
+    """Real Study rendering should use service query payload, not stale controller reads."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_plan = MockPlanHolder("Service Plan")
+    query_result = CommandResult.success_result(
+        command_name="evaluate",
+        message="Evaluation summary ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "evaluation_summary",
+            "available": True,
+            "plan_objects": [service_plan],
+            "pooled_eval_results": [
+                (
+                    [0, 1],
+                    [0, 1],
+                    {
+                        0: {
+                            "precision": 1.0,
+                            "recall": 1.0,
+                            "f1-score": 1.0,
+                            "support": 1,
+                        },
+                    },
+                ),
+            ],
+            "model_summaries": [
+                {
+                    "plan": "Service plan summary",
+                    "runs": [
+                        "Service run 1 summary",
+                        "Service run 2 summary",
+                    ],
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        lambda *_args, **_kwargs: query_result,
+    )
+    stale_controller = MagicMock()
+    stale_controller.get_plans.return_value = [MockPlanHolder("Stale Plan")]
+    stale_controller.get_model_summary_str.return_value = "Stale Summary"
+    stale_controller.get_pooled_eval_result.return_value = (None, None, {})
+
+    panel = EvaluationPanel(controller=stale_controller, parent=RealMainWindow())
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+
+    stale_controller.get_plans.assert_not_called()
+    stale_controller.get_model_summary_str.assert_not_called()
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.itemText(0) == "Fold 1: Service Plan"
+    assert panel.summary_text.toPlainText() == "Service plan summary"
 
 
 def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):

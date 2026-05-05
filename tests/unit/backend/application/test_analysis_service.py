@@ -65,6 +65,10 @@ class _EvaluationController:
     ) -> tuple[list[int], list[int], dict[str, Any]]:
         return [], [], {"accuracy": np.float32(0.75)}
 
+    def get_model_summary_str(self, plan: _Plan, record: _Run | None = None) -> str:
+        suffix = " run" if record is not None else ""
+        return f"{plan.get_name()} summary{suffix}"
+
 
 class _VisualizationController:
     def __init__(self) -> None:
@@ -179,6 +183,25 @@ def test_analysis_service_summarizes_finished_evaluation_runs() -> None:
     assert diagnostics["finished_run_count"] == 1
     assert diagnostics["plans"][0]["name"] == "Plan A"
     assert diagnostics["plans"][0]["metrics"] == {"accuracy": 0.75}
+
+
+def test_analysis_service_can_return_ui_evaluation_objects() -> None:
+    plan = _Plan("Plan A", [_Run(finished=True), _Run(finished=False)])
+    service, _visualization, _preprocess = _service(
+        evaluation=_EvaluationController([plan]),
+    )
+
+    _message, diagnostics = _expect_payload(
+        service.handle_evaluate(EvaluateCommand(include_objects=True)),
+    )
+
+    assert diagnostics["plan_objects"] == [plan]
+    assert diagnostics["pooled_eval_results"][0][2] == {"accuracy": 0.75}
+    assert diagnostics["model_summaries"][0]["plan"] == "Plan A summary"
+    assert diagnostics["model_summaries"][0]["runs"] == [
+        "Plan A summary run",
+        "Plan A summary run",
+    ]
 
 
 def test_analysis_service_visualize_saliency_and_montage_handlers() -> None:

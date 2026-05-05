@@ -1,6 +1,6 @@
 # Thesis Tool-Call Evaluation Protocol
 
-最後更新：`2026-05-04`
+最後更新：`2026-05-06`
 
 這份文件定義 XBrainLab 要支撐碩士論文主張時使用的驗證 protocol。論文主 evidence 是
 assistant 的 tool-call accuracy：它是否選對工具、給對參數、遵守當前 workflow state、正確處理
@@ -114,6 +114,23 @@ case 數量不能只停在 demo 級：
 deterministic tool-call eval 可以證明 scoring framework 和 scripted policy 正確，但不能宣稱
 local LLM 真實 tool-call 能力。local LLM tool-call eval 需要在產品主線穩定後，以同一批 cases
 重跑 primary / fallback model，並記錄 parser failure、verification failure、retry 和 recovery。
+
+## Local Eval Gate 分層
+
+Local tool-call eval 不是每個小修都跑 full primary / fallback x3。正式 thesis claim 需要
+完整重跑；日常 verifier、normalizer、prompt、case wording、UI refresh 或 backend cleanup
+只應使用較小 gate：
+
+| Gate | 使用時機 | 模型 / 重跑策略 |
+| --- | --- | --- |
+| Fast dev gate | 日常小切片、回歸修正、changed / failed cases。 | deterministic eval；repeat `1`；不跑 fallback model。 |
+| Candidate gate | 需要真 local model 驗證受影響 case family。 | primary model；affected families；repeat `1` 或 `2`。 |
+| Release / thesis gate | 更新正式 benchmark claim 或 thesis evidence artifact。 | deterministic full suite；primary full suite x3；fallback full suite x3；刷新 dashboard。 |
+
+Release / thesis local gate 前必須先記錄 disk / cache / `nvidia-smi` VRAM preflight。RTX
+5070 Ti 16GB 已在 fallback x3 觀察到高壓 VRAM boundary；若 VRAM 幾乎滿載，不應啟動 full
+fallback x3，而要保存 `resource_preflight.*` 並延後 formal local rerun，或改跑 fast dev /
+candidate gate。這種 blocked preflight 不能被寫成 thesis-ready rerun。
 
 ## Scripted Replay
 
@@ -317,10 +334,14 @@ artifacts/thesis/<run_id>/
 
 ## Current Gap
 
-目前已建立 deterministic tool-call eval baseline 和 EEG split audit helper / artifact schema /
-validator script。尚未完成的是正式 local LLM primary / fallback tool-call accuracy runner、
-case-level report、failure taxonomy、confidence interval / repeat-run policy，以及可重跑的
-thesis evidence matrix。
+目前已建立 deterministic tool-call eval baseline、local primary / fallback runner、case-level
+scorer、dashboard、failure taxonomy、repeat-run artifact 和 resource preflight guard。最新
+benchmark slice 使用同一 `121` cases，deterministic / primary / fallback artifacts 均已刷新；這可
+作為該 benchmark 的 thesis-candidate tool-call evidence。
+
+尚未完成的是把這些 artifact 整理成正式 thesis report/evidence matrix、補 confidence interval
+或統計呈現、並在每次更新正式 claim 前依 release / thesis gate 重跑與保存 resource/latency
+條件。tool-call benchmark 也不能取代 UI、launcher、MCP 或 import wizard 的產品驗收 evidence。
 
 external EEG dataset runner、repeat runs、baseline comparison 和 statistical reporting 是可選的
 pipeline support，不是目前 thesis 主線。這些不能取代 local LLM 真實 tool-call accuracy run。

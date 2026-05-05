@@ -904,7 +904,12 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Evaluation panel cleanup 則把 readonly `EvaluateCommand` 結果接到顯示 gate：real
   `Study` path 若 ApplicationService 回 blocked / unavailable evaluation，panel 不再繼續讀
   stale injected `EvaluationController.get_plans()` 來顯示過期 plan，而是清成
-  `No Data Available`。
+  `No Data Available`。後續 object-payload cleanup 又讓 successful
+  `EvaluateCommand(include_objects=True)` 回傳 UI render 所需的 plan objects、pooled metrics 和
+  model summaries；real `Study` panel 有 service payload 時不再讀 stale injected
+  `EvaluationController.get_plans()` / `get_pooled_eval_result()` /
+  `get_model_summary_str()`。這個 object payload flag 是 UI-only：automation / MCP `evaluate`
+  schema 不暴露也不接受它，避免 external client 要求非序列化 UI object。
   最新 Visualization panel cleanup 也把 readonly `VisualizeCommand` 結果接到 controls/render
   gate：visualization blocked / unavailable 時不再讀 stale injected
   `VisualizationController.get_trainers()`，而是保持 `Select a plan` 並用使用者可讀訊息提示

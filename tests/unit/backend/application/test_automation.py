@@ -80,6 +80,18 @@ def test_mcp_tool_specs_use_same_command_schema():
     ]["choices"]
     assert "eeg_file_remap" in preview_choices["properties"]
     assert "label_carrier_remap" in preview_choices["properties"]
+    evaluate_schema = tools[CommandName.EVALUATE.value]["inputSchema"]
+    assert "include_objects" not in evaluate_schema["properties"]
+
+
+def test_automation_rejects_evaluation_ui_object_payload_flag():
+    with pytest.raises(AutomationPayloadError, match="include_objects"):
+        build_command_from_payload(
+            {
+                "command": CommandName.EVALUATE.value,
+                "arguments": {"include_objects": True},
+            },
+        )
 
 
 def test_legacy_compatibility_commands_are_not_primary_mcp_workflow():

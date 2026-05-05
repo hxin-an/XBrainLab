@@ -302,6 +302,13 @@ def execute_automation_payload(
 
 def _construct_command(command_name: CommandName, arguments: dict[str, Any]) -> Command:
     command_type = COMMAND_TYPES[command_name]
+    ui_only = _ui_only_command_fields(command_name)
+    requested_ui_only = sorted(set(arguments) & ui_only)
+    if requested_ui_only:
+        raise AutomationPayloadError(
+            f"{command_name.value} received UI-only arguments: "
+            f"{', '.join(requested_ui_only)}"
+        )
     field_map = {field.name: field for field in fields(command_type)}
     unknown = sorted(set(arguments) - set(field_map))
     if unknown:
@@ -342,6 +349,8 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
     required: list[str] = []
     type_hints = get_type_hints(command_type)
     for field_info in fields(command_type):
+        if _field_hidden_from_automation(command_type, field_info.name):
+            continue
         annotation = type_hints.get(field_info.name, field_info.type)
         properties[field_info.name] = _command_field_schema(
             command_type,
@@ -358,6 +367,16 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
     if required:
         schema["required"] = required
     return schema
+
+
+def _ui_only_command_fields(command_name: CommandName) -> frozenset[str]:
+    if command_name is CommandName.EVALUATE:
+        return frozenset({"include_objects"})
+    return frozenset()
+
+
+def _field_hidden_from_automation(command_type: type[Any], field_name: str) -> bool:
+    return command_type is EvaluateCommand and field_name == "include_objects"
 
 
 def _command_field_schema(

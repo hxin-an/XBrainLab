@@ -50,15 +50,19 @@ class AnalysisCommandService:
             raise TypeError("Invalid command for evaluate")
         plans = self._safe_call_list(self.evaluation.get_plans)
         summaries = []
+        pooled_eval_results: list[Any] = []
+        model_summaries: list[dict[str, Any]] = []
         for plan_idx, plan in enumerate(plans):
             runs = self._safe_plan_runs(plan)
             finished = [run for run in runs if self._run_finished(run)]
             metrics: dict[str, Any] = {}
+            pooled_result: Any = None
             if finished:
                 try:
-                    _labels, _outputs, metrics = self.evaluation.get_pooled_eval_result(
+                    labels, outputs, metrics = self.evaluation.get_pooled_eval_result(
                         plan,
                     )
+                    pooled_result = (labels, outputs, metrics)
                 except Exception:
                     logger.debug("Failed to pool evaluation metrics", exc_info=True)
                     metrics = {}
@@ -71,22 +75,35 @@ class AnalysisCommandService:
                     "metrics": self._json_safe(metrics),
                 }
             )
+            if command.include_objects:
+                pooled_eval_results.append(pooled_result)
+                model_summaries.append(
+                    {
+                        "plan": self._safe_model_summary(plan),
+                        "runs": [self._safe_model_summary(plan, run) for run in runs],
+                    },
+                )
         finished_total = sum(item["finished_run_count"] for item in summaries)
         message = (
             "Evaluation summary ready."
             if finished_total
             else "No completed training runs are available for evaluation yet."
         )
+        diagnostics: dict[str, Any] = {
+            "payload_type": "evaluation_summary",
+            "available": finished_total > 0,
+            "target": command.target,
+            "plan_count": len(plans),
+            "finished_run_count": finished_total,
+            "plans": summaries,
+        }
+        if command.include_objects:
+            diagnostics["plan_objects"] = plans
+            diagnostics["pooled_eval_results"] = pooled_eval_results
+            diagnostics["model_summaries"] = model_summaries
         return (
             message,
-            {
-                "payload_type": "evaluation_summary",
-                "available": finished_total > 0,
-                "target": command.target,
-                "plan_count": len(plans),
-                "finished_run_count": finished_total,
-                "plans": summaries,
-            },
+            diagnostics,
         )
 
     def handle_visualize(self, command: Command) -> HandlerResult:
@@ -245,6 +262,13 @@ class AnalysisCommandService:
             return str(plan.get_name())
         except Exception:
             return f"Plan {idx + 1}"
+
+    def _safe_model_summary(self, plan: Any, record: Any | None = None) -> str:
+        try:
+            return str(self.evaluation.get_model_summary_str(plan, record))
+        except Exception:
+            logger.debug("Failed to build evaluation model summary", exc_info=True)
+            return ""
 
     @staticmethod
     def _run_finished(run: Any) -> bool:

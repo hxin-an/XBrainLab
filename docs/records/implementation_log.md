@@ -3112,3 +3112,36 @@ message.
 ### 不能宣稱完成
 
 - This does not validate generated saliency files or saliency canvas correctness.
+
+## 2026-05-06 Evaluation Panel Object Payload Rendering
+
+### 狀態
+
+`EvaluateCommand` can now return an optional UI object payload with plan objects, pooled evaluation
+results, and model summaries. In real `Study` contexts, Evaluation panel rendering uses that
+service payload and does not fall back to injected `EvaluationController` reads for plans, pooled
+average metrics, or model summary text. The UI-only `include_objects` flag is hidden from
+automation / MCP command schemas and rejected by the automation payload builder, so external
+clients keep the serializable query contract.
+
+### 已可宣稱
+
+- A stale injected evaluation controller can no longer override a successful service-backed
+  evaluation payload in the main Evaluation panel.
+- The previous display gate now covers both blocked/unavailable evaluation and successful
+  service-backed rendering.
+- MCP/headless `evaluate` schemas do not expose the UI object payload flag.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/analysis_service.py`,
+  `XBrainLab/backend/application/commands.py`, `XBrainLab/ui/panels/evaluation/panel.py`
+- Tests：`tests/unit/backend/application/test_analysis_service.py`,
+  `tests/unit/backend/application/test_automation.py`,
+  `tests/unit/ui/test_evaluation_panel_redesign.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not certify evaluation screenshots, full analysis UX, or all remaining Visualization /
+  Evaluation controller read paths.

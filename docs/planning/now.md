@@ -196,7 +196,12 @@
   `DatasetController.get_filenames()` 只留在 query unavailable 的 mock / legacy fallback helper。
 - 最新 Evaluation panel query cleanup 已讓 real `Study` `EvaluateCommand` result gate display：
   evaluation blocked / unavailable 時不再讀 stale injected controller plans，而是顯示
-  `No Data Available`。
+  `No Data Available`。最新 object-payload follow-up 也讓 successful
+  `EvaluateCommand(include_objects=True)` 攜帶 plan objects、pooled metrics 和 model summaries；
+  real `Study` Evaluation panel 有 service payload 時不再回讀 stale injected
+  `EvaluationController.get_plans()` / `get_pooled_eval_result()` /
+  `get_model_summary_str()`。`include_objects` 是 UI-only，automation / MCP `evaluate` schema
+  不暴露也不接受它。
 - 最新 Visualization panel query cleanup 已讓 real `Study` `VisualizeCommand` result gate controls /
   render：visualization blocked / unavailable 時不再讀 stale injected controller trainers，而是保留
   `Select a plan` 並顯示 user-facing readiness message。這仍不是 saliency/canvas screenshot

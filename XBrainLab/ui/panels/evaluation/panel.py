@@ -110,7 +110,7 @@ class EvaluationPanel(BasePanel):
 
         self.last_application_query = execute_application_command(
             self,
-            EvaluateCommand(),
+            EvaluateCommand(include_objects=True),
             refresh=False,
         )
         if self._application_query_blocks_display():
@@ -134,7 +134,9 @@ class EvaluationPanel(BasePanel):
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
 
-        plans = self.controller.get_plans()
+        plans = self._plans_from_application_query()
+        if plans is None:
+            plans = [] if self.controller is None else self.controller.get_plans()
         if plans:
             for i, plan in enumerate(plans):
                 self.model_combo.addItem(f"Fold {i + 1}: {plan.get_name()}", plan)
@@ -180,6 +182,22 @@ class EvaluationPanel(BasePanel):
             diagnostics.get("payload_type") == "evaluation_summary"
             and diagnostics.get("available") is False
         )
+
+    def _evaluation_query_payload(self) -> dict | None:
+        """Return the current service-backed evaluation payload, if available."""
+        result = self.last_application_query
+        if result is None or result.failed:
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "evaluation_summary":
+            return None
+        return diagnostics
+
+    def _plans_from_application_query(self):
+        payload = self._evaluation_query_payload()
+        if payload is None:
+            return None
+        return list(payload.get("plan_objects") or [])
 
     def _show_no_data_available(self) -> None:
         self.model_combo.blockSignals(True)
@@ -248,11 +266,14 @@ class EvaluationPanel(BasePanel):
             if not plan:
                 return
 
-            (
-                pooled_labels,
-                pooled_outputs,
-                metrics,
-            ) = self.controller.get_pooled_eval_result(plan)
+            pooled_result = self._pooled_result_from_application_query(plan)
+            if pooled_result is None:
+                if self._evaluation_query_payload() is not None:
+                    return
+                if self.controller is None:
+                    return
+                pooled_result = self.controller.get_pooled_eval_result(plan)
+            pooled_labels, pooled_outputs, metrics = pooled_result
 
             if pooled_labels is None:
                 return
@@ -308,8 +329,58 @@ class EvaluationPanel(BasePanel):
 
     def update_model_summary(self, plan, record=None):
         """Generate and display model summary."""
-        summary_str = self.controller.get_model_summary_str(plan, record)
+        summary_str = self._summary_from_application_query(plan, record)
+        if summary_str is None:
+            summary_str = (
+                ""
+                if self.controller is None
+                else self.controller.get_model_summary_str(plan, record)
+            )
         self.summary_text.setText(summary_str)
+
+    def _pooled_result_from_application_query(self, plan):
+        payload = self._evaluation_query_payload()
+        if payload is None:
+            return None
+        plan_index = self._current_plan_index(plan)
+        results = payload.get("pooled_eval_results") or []
+        if plan_index < 0 or plan_index >= len(results):
+            return None
+        return results[plan_index]
+
+    def _summary_from_application_query(self, plan, record=None) -> str | None:
+        payload = self._evaluation_query_payload()
+        if payload is None:
+            return None
+        plan_index = self._current_plan_index(plan)
+        summaries = payload.get("model_summaries") or []
+        if plan_index < 0 or plan_index >= len(summaries):
+            return ""
+        summary = summaries[plan_index] or {}
+        if record is None:
+            return str(summary.get("plan") or "")
+        run_index = self._plan_run_index(plan, record)
+        run_summaries = summary.get("runs") or []
+        if 0 <= run_index < len(run_summaries):
+            return str(run_summaries[run_index] or "")
+        return str(summary.get("plan") or "")
+
+    def _current_plan_index(self, plan) -> int:
+        for index in range(self.model_combo.count()):
+            if self.model_combo.itemData(index) is plan:
+                return index
+        return -1
+
+    @staticmethod
+    def _plan_run_index(plan, record) -> int:
+        try:
+            records = list(plan.get_plans())
+        except Exception:
+            return -1
+        for index, item in enumerate(records):
+            if item is record:
+                return index
+        return -1
 
     def update_info(self):
         """Update the aggregate info panel."""

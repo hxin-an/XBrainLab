@@ -336,6 +336,7 @@ class EvaluateCommand:
     """Read evaluation metrics and run summaries from the active backend."""
 
     target: str | None = None
+    include_objects: bool = False
 
     @property
     def name(self) -> CommandName:
