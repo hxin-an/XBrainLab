@@ -5890,3 +5890,47 @@
     training acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Stop training capability truth
+
+- scope：
+  - UI/backend command truth alignment for Training sidebar `Stop Training`。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `TrainingSidebar.stop_training()` returned early when controller-local `is_training()` was
+    false and did not read backend `stop_training` capability.
+  - A stale controller-local false could make Stop Training do nothing while backend state had an
+    active training run.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_uses_backend_capability_when_controller_stale tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_blocked_by_backend_capability_before_command -q`
+    initially failed: stale false skipped the command, and backend-disabled state still called the
+    command path.
+- 做了什麼：
+  - Added `stop_training` capability preflight for real `Study` paths.
+  - Kept controller-local early return only for mock / legacy non-Study paths.
+- validation：
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_uses_backend_capability_when_controller_stale tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_blocked_by_backend_capability_before_command -q`
+    -> `2 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `47 passed`.
+  - backend stop-training smoke:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py::test_training_service_start_stop_and_clear_history tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes tests/unit/backend/application/test_application_service.py::test_capability_policy_covers_all_declared_commands -q`
+    -> `3 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one stop-action boundary alignment, not full long-running training human acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.

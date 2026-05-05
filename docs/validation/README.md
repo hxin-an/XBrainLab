@@ -2257,6 +2257,29 @@ policy 對齊。它仍不是完整 visualization UI product acceptance 或 deskt
 這批 evidence 支撐 training configuration dialogs 與 backend capability policy 對齊。它仍不是完整
 training setup UX 或 long-running training acceptance。
 
+2026-05-05 Stop training capability follow-up：
+
+- UI/action:
+  - `TrainingSidebar.stop_training()` now checks backend `stop_training` capability for real
+    `Study` paths.
+  - Real backend running state still executes `StopTrainingCommand` even if controller-local
+    `is_training()` is stale false.
+  - Empty / not-running real `Study` state shows `No training run is active.` and does not call the
+    command layer.
+- targeted gates:
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_uses_backend_capability_when_controller_stale tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_blocked_by_backend_capability_before_command -q`
+    -> `2 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `47 passed`.
+  - backend stop-training smoke:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py::test_training_service_start_stop_and_clear_history tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes tests/unit/backend/application/test_application_service.py::test_capability_policy_covers_all_declared_commands -q`
+    -> `3 passed`.
+
+這批 evidence 支撐 stop-training UI action 與 backend capability policy 對齊。它仍不是完整
+long-running training human acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

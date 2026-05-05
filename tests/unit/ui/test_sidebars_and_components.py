@@ -371,6 +371,57 @@ class TestTrainingSidebar:
         sidebar.stop_training()
         sidebar.panel.controller.stop_training.assert_called()
 
+    def test_stop_training_uses_backend_capability_when_controller_stale(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import StopTrainingCommand
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        trainer = MagicMock()
+        trainer.is_running.return_value = True
+        study.training_manager.trainer = trainer
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.is_training.return_value = False
+
+        with patch(
+            "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+            return_value=_command_result(),
+        ) as mock_execute:
+            sidebar.stop_training()
+
+        assert isinstance(mock_execute.call_args.args[1], StopTrainingCommand)
+        sidebar.panel.controller.stop_training.assert_not_called()
+        assert sidebar.btn_stop.isEnabled() is False
+
+    def test_stop_training_blocked_by_backend_capability_before_command(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.return_value = True
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+            ) as mock_execute,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.stop_training()
+
+        mock_execute.assert_not_called()
+        mock_warning.assert_called_once_with(
+            sidebar,
+            "Stop Training Blocked",
+            "No training run is active.",
+        )
+        sidebar.panel.controller.stop_training.assert_not_called()
+
     def test_clear_history(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 

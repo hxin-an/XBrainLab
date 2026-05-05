@@ -998,3 +998,26 @@ Training sidebar model selection / training settings dialogs 現在會先讀 bac
 ### 不能宣稱完成
 
 - 這不是完整 training setup UX 或 long-running training acceptance。
+
+## 2026-05-05 Stop Training Capability Truth
+
+### 狀態
+
+Training sidebar `Stop Training` 現在會先讀 backend `stop_training` capability。real backend 正在
+training 時，即使 controller-local state stale false，也會執行 `StopTrainingCommand`；未在
+training 時則顯示 shared blocked reason。
+
+### 已可宣稱
+
+- Stop Training UI action 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 controller-local compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 long-running training human acceptance。

@@ -448,19 +448,30 @@ class TrainingSidebar(QWidget):
 
     def stop_training(self):
         """Request the controller to stop the current training run."""
-        if self.controller.is_training():
-            result = execute_application_command(self, StopTrainingCommand())
-            if result is None:
-                self.controller.stop_training()
-            elif result.failed:
-                QMessageBox.warning(
-                    self,
-                    "Warning",
-                    f"Failed to stop training: {result.message}",
-                )
-                return
-            self.btn_stop.setEnabled(False)
-            # Controller will emit stopped event which panel handles
+        stop_capability = get_command_capability(self, CommandName.STOP_TRAINING)
+        if stop_capability is not None and not stop_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Stop Training Blocked",
+                blocked_reason(stop_capability, "No training run is active."),
+            )
+            return
+
+        if stop_capability is None and not self.controller.is_training():
+            return
+
+        result = execute_application_command(self, StopTrainingCommand())
+        if result is None:
+            self.controller.stop_training()
+        elif result.failed:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                f"Failed to stop training: {result.message}",
+            )
+            return
+        self.btn_stop.setEnabled(False)
+        # Controller will emit stopped event which panel handles
 
     def clear_history(self):
         """Clear all training history records.
