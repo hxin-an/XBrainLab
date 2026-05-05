@@ -513,6 +513,15 @@ class DatasetActionHandler:
 
     def _save_interpretation_recipe(self) -> str:
         """Persist the latest applied interpretation recipe if requested."""
+        recipe_block_reason = self._recipe_save_block_reason()
+        if recipe_block_reason is not None:
+            QMessageBox.warning(
+                self.panel,
+                "Recipe Save Blocked",
+                recipe_block_reason,
+            )
+            return ""
+
         recipe_path, _ = QFileDialog.getSaveFileName(
             self.panel,
             "Save Interpretation Recipe",
@@ -535,6 +544,18 @@ class DatasetActionHandler:
         if recipe_path:
             return "Recipe saved."
         return "Recipe kept in this session."
+
+    def _recipe_save_block_reason(self) -> str | None:
+        save_capability = get_command_capability(
+            self.panel,
+            CommandName.SAVE_INTERPRETATION_RECIPE,
+        )
+        if save_capability is not None and not save_capability.enabled:
+            return blocked_reason(
+                save_capability,
+                "Apply an interpretation before saving a recipe.",
+            )
+        return None
 
     @staticmethod
     def _interpretation_source_and_choices(
@@ -795,6 +816,8 @@ class DatasetActionHandler:
         diagnostics = getattr(result, "diagnostics", {}) or {}
         if not bool(diagnostics.get("recipe_updated")):
             return ""
+        if self._recipe_save_block_reason() is not None:
+            return "Interpretation recipe trace updated in this session."
         reply = QMessageBox.question(
             self.panel,
             "Save Updated Recipe",

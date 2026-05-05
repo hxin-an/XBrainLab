@@ -1088,3 +1088,26 @@ empty real `Study` path 不再先要求 destructive confirmation；mock / legacy
 ### 不能宣稱完成
 
 - 這不是完整 reset / new-session human desktop acceptance。
+
+## 2026-05-05 Data Interpretation Recipe-Save Capability Truth
+
+### 狀態
+
+Data Interpretation recipe save UI 現在會先讀 backend `save_interpretation_recipe` capability。
+blocked real `Study` path 不再先開 file-save dialog；label import recipe trace update 也不會在
+save capability blocked 時提出「Save Updated Recipe」確認。
+
+### 已可宣稱
+
+- Recipe save prompt 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 file dialog / command fallback compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 import wizard recipe UX acceptance。

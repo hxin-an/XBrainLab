@@ -579,6 +579,47 @@ class TestDatasetActionHandler:
         mock_mb.information.assert_called_once()
         assert "Recipe saved." in mock_mb.information.call_args.args[2]
 
+    def test_save_interpretation_recipe_uses_backend_capability_before_file_dialog(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            message = handler._save_interpretation_recipe()
+
+        assert message == ""
+        mock_fd.getSaveFileName.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Apply an interpretation before saving a recipe."
+            in mock_mb.warning.call_args.args[2]
+        )
+
+    def test_offer_label_recipe_save_skips_confirmation_when_save_blocked(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        result = SimpleNamespace(diagnostics={"recipe_updated": True})
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            message = handler._offer_label_recipe_save(result)
+
+        assert message == "Interpretation recipe trace updated in this session."
+        mock_mb.question.assert_not_called()
+        mock_fd.getSaveFileName.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")

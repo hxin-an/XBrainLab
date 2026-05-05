@@ -295,7 +295,9 @@ tooltip 和 Channel Selection preflight 不再只靠 controller-local `has_data`
 時不會打開 parser dialog，而會顯示 shared blocked reason。後續 remove-files preflight 也讓
 context-menu remove 在 backend `remove_files` capability disabled 時先顯示 shared blocked
 reason，不再先要求使用者確認不可執行的 raw-data mutation。後續 batch metadata preflight 同樣
-改讀 backend `update_metadata` capability，blocked 時不再先開 subject/session input dialog。舊
+改讀 backend `update_metadata` capability，blocked 時不再先開 subject/session input dialog。recipe
+save path 也已改成先讀 backend `save_interpretation_recipe` capability；blocked 時不會先開檔案
+儲存對話框，label-import recipe trace 更新也不會提出無法成立的「現在儲存」確認。舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：
 `scripts/agent/evals/run_local_tool_call_eval.py` 會用同一份 `54` cases / scorer 接 primary /
@@ -688,7 +690,7 @@ true local model desktop session。
   eval runner 也不能替代 true ChatPanel multi-turn / tool-command walkthrough。
 - UI import / preprocess / epoch / channel selection、split / model / training setting dialogs、
   evaluation / visualization / saliency query / settings gate、training configuration dialogs / start-stop capability /
-  clear-history、reset preprocess / clear-dataset session、metadata update / inline editability、smart parse、remove files、label import、AgentManager / Visualization sidebar montage blocked
+  clear-history、reset preprocess / clear-dataset session、metadata update / inline editability、smart parse、remove files、label import、recipe save、AgentManager / Visualization sidebar montage blocked
   preflight / confirmation 已有 service-backed command adapter；Start Training button 現在也會在 backend long-running capability 要求時顯示
   confirmation。mock / unit-test compatibility fallback 仍保留，但 real `Study` path 走
   `ApplicationService.execute()`。

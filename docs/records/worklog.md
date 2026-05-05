@@ -6070,3 +6070,60 @@
     desktop acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Data Interpretation recipe-save capability truth
+
+- scope：
+  - UI/backend command truth alignment for Data Interpretation recipe save prompts。
+  - No backend command schema, agent tool, MCP tool, or screenshot artifact change.
+- problem：
+  - `_save_interpretation_recipe()` opened the file-save dialog before consulting backend
+    `save_interpretation_recipe` capability.
+  - Label import recipe trace updates could ask the user whether to save a recipe even when backend
+    capability said recipe saving was blocked.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_save_interpretation_recipe_uses_backend_capability_before_file_dialog tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_offer_label_recipe_save_skips_confirmation_when_save_blocked -q`
+    initially failed because the file dialog / save confirmation path remained reachable.
+- 做了什麼：
+  - Added a shared `save_interpretation_recipe` capability preflight before file-save dialog
+    creation.
+  - Skipped the label-import save confirmation when backend save capability is blocked, keeping the
+    message scoped to session recipe trace.
+  - Kept mock / legacy non-Study file dialog and command fallback behavior.
+- validation：
+  - focused red + capability boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_save_interpretation_recipe_uses_backend_capability_before_file_dialog tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_offer_label_recipe_save_skips_confirmation_when_save_blocked -q`
+    -> red before implementation, then `2 passed`.
+  - recipe save regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_saves_recipe_when_requested tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe -q`
+    -> `2 passed`.
+  - Dataset action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `58 passed`.
+  - backend recipe regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply -q`
+    -> `3 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `102 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one recipe save confirmation-boundary cleanup, not full import wizard recipe UX
+    acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.

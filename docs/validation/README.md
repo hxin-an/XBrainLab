@@ -2346,6 +2346,44 @@ long-running training human acceptance。
 這批 evidence 支撐 Dataset clear action 與 backend reset-session confirmation policy 對齊。它仍
 不是完整 reset/new-session human desktop acceptance。
 
+2026-05-05 Data Interpretation recipe save capability follow-up：
+
+- UI/action:
+  - `DatasetActionHandler._save_interpretation_recipe()` now checks backend
+    `save_interpretation_recipe` capability before opening the file-save dialog.
+  - Label import recipe trace updates skip the `Save Updated Recipe` confirmation when backend
+    capability says saving is blocked; the success message stays at session-trace scope.
+  - mock / legacy non-Study paths keep the existing file dialog and command fallback behavior.
+- targeted gates:
+  - focused red + capability boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_save_interpretation_recipe_uses_backend_capability_before_file_dialog tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_offer_label_recipe_save_skips_confirmation_when_save_blocked -q`
+    -> first run failed, implementation run passed.
+  - recipe save regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_saves_recipe_when_requested tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe -q`
+    -> `2 passed`.
+  - Dataset action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `58 passed`.
+  - backend recipe regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_service.py tests/unit/backend/application/test_application_service.py::test_data_interpretation_recipe_save_and_reload_rescans_without_apply -q`
+    -> `3 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `102 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 recipe save UI confirmation boundary 與 backend capability policy 對齊。它仍
+不是完整 import wizard recipe UX acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:
