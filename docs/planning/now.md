@@ -154,8 +154,9 @@
   收回 `CommandResult.changed_state` scope。
 - 最新 TrainingPanel high-level callback cleanup 已讓 `training_started`、`training_stopped`、
   `config_changed` 和 `history_cleared` 在各自 event-specific UI 更新後刷新 aggregate info panel
-  和 assistant backend status；`training_updated` 仍保留為 high-frequency live update path，不走
-  shared status refresh。
+  和 assistant backend status；最新 follow-up 已把 `training_updated` 也納入 training-owner
+  coordinator scope，避免 live training refresh 漏掉 Evaluation / Visualization readiness 或 shared
+  status。
 - 最新 observer refresh architecture guard 已寫進 `tests/architecture_compliance.py`：新增的
   `_create_bridge(..., self.update_panel)` 或 direct
   `_create_bridge(..., self.refresh_from_observer)` 都會 fail；simple refresh 要走

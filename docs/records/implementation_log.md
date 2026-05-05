@@ -3671,3 +3671,30 @@ the bottom.
 - This is a review-summary clipping fix and replay evidence refresh. It does not complete the
   mature Data Interpretation wizard, Windows desktop acceptance, or full real-data import
   certification.
+
+## 2026-05-06 Training Updated Refresh Route
+
+### 狀態
+
+`training_updated` observer events now use the same training-owner coordinator scope as
+`training_started` / `training_stopped`: Training, Evaluation, Visualization, aggregate info, and
+assistant backend status are refreshed through `refresh_after_observer()`.
+
+### 已可宣稱
+
+- Live training progress refresh no longer stays local to TrainingPanel in the central coordinator
+  path.
+- Evaluation / Visualization readiness can refresh from the training-owner `training_updated`
+  route without secondary observer panels duplicating the event.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`,
+  `tests/unit/ui/test_panel_event_bridges.py`, `tests/unit/ui/training/test_training_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one observer-route cleanup. UI refresh remains a mixed command / observer / manual model,
+  and the broader `UI Command Refresh Coordinator + Controller Fallback Audit` remains open.

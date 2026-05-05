@@ -862,7 +862,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   analysis panels 對 observer-only refresh 的依賴。最新 TrainingPanel callback cleanup 又讓
   `training_started`、`training_stopped`、`config_changed` 和 `history_cleared` 這些高層事件
   handler 在完成自身 UI 更新後刷新 aggregate info panel 和 assistant backend status；
-  high-frequency `training_updated` 仍維持 event-specific live update loop。最新 observer
+  最新 follow-up 也把 high-frequency `training_updated` 納入 training-owner coordinator scope，
+  live progress update 不再只停在 TrainingPanel 自身刷新。最新 observer
   event-scope cleanup 又讓 `data_changed` 和 `preprocess_changed` 這兩種 known observer event
   使用 coordinator changed-state scope：`data_changed` 只由 DatasetPanel owner bridge 一次刷新
   Dataset / Preprocess / Training，`preprocess_changed` 只由 PreprocessPanel owner bridge 一次刷新

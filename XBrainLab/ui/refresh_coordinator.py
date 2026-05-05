@@ -20,6 +20,7 @@ _OBSERVER_EVENT_REFRESH_ROUTES = {
     "preprocess_changed": ("preprocess_panel", ChangedState(preprocessed_changed=True)),
     "training_started": ("training_panel", ChangedState(training_changed=True)),
     "training_stopped": ("training_panel", ChangedState(training_changed=True)),
+    "training_updated": ("training_panel", ChangedState(training_changed=True)),
     "config_changed": ("training_panel", ChangedState(training_changed=True)),
     "history_cleared": ("training_panel", ChangedState(training_changed=True)),
     "montage_changed": (

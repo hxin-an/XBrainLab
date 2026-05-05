@@ -373,6 +373,24 @@ def test_training_lifecycle_observer_uses_training_owner_scope():
     assert main_window.agent_manager.refresh_calls == 1
 
 
+def test_training_updated_observer_uses_training_owner_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.training_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="training_updated")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
 def test_secondary_training_lifecycle_observer_does_not_duplicate_central_scope():
     main_window = _main_window()
     info = _attach_info_spy(main_window)

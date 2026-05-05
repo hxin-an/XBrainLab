@@ -191,6 +191,12 @@ refreshed `artifacts/ui/data-interpretation-preview.png`,
 automated PyQt replay claim that the review summary no longer shows clipped rows in this fixture;
 it does not prove mature import-wizard UX or Windows human desktop acceptance.
 
+Training updated refresh route gate:
+`poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/training/test_training_panel.py -q`
+-> `54 passed`。This supports the central coordinator route for `training_updated` refreshing
+Training / Evaluation / Visualization and shared status from the TrainingPanel owner. It does not
+complete full command-driven UI refresh coordination or remove observer/manual refresh paths.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

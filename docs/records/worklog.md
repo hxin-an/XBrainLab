@@ -10808,3 +10808,49 @@
 - 不能宣稱：
   - This does not complete mature Data Interpretation wizard UX, full real-data manual
     certification, Windows desktop acceptance, or product completion.
+
+### 2026-05-06 Training updated refresh route
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` with a focused observer
+    route cleanup.
+  - Bring live `training_updated` refresh into the same owner-scoped coordinator path as the other
+    training lifecycle events.
+- red / focused tests：
+  - Added `test_training_updated_observer_uses_training_owner_scope`.
+  - Red gate failed because `training_updated` was missing from `_OBSERVER_EVENT_REFRESH_ROUTES`,
+    so only TrainingPanel refreshed and Evaluation / Visualization readiness stayed untouched.
+- 做了什麼：
+  - Added `training_updated` to the central refresh route with `ChangedState(training_changed=True)`.
+  - The TrainingPanel owner now refreshes Training / Evaluation / Visualization plus aggregate info
+    and assistant backend status for live training updates.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_training_updated_observer_uses_training_owner_scope -q`
+    -> failed as expected on missing Evaluation / Visualization refresh.
+  - Focused pass:
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_training_updated_observer_uses_training_owner_scope tests/unit/ui/test_refresh_coordinator.py::test_training_lifecycle_observer_uses_training_owner_scope tests/unit/ui/test_refresh_coordinator.py::test_secondary_training_lifecycle_observer_does_not_duplicate_central_scope -q`
+    -> `3 passed`.
+  - UI refresh regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `54 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+- local eval：
+  - Not run. This is UI refresh coordinator logic under the fast dev gate.
+- 不能宣稱：
+  - This does not complete full command-driven UI refresh coordination, remove all observer paths,
+    or close controller fallback audit.
