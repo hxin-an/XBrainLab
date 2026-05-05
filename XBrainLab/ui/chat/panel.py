@@ -164,9 +164,7 @@ class ChatPanel(QWidget):
         input_layout.setSpacing(10)
 
         self.input_field = QLineEdit()
-        self.input_field.setPlaceholderText(
-            "Ask about data, preprocessing, epoching, datasets, or training..."
-        )
+        self.input_field.setPlaceholderText("Ask about EEG workflow")
         self.input_field.setStyleSheet(INPUT_FIELD_STYLE)
         self.input_field.returnPressed.connect(self._on_send)
         input_layout.addWidget(self.input_field, 1)

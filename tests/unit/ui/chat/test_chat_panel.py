@@ -27,6 +27,13 @@ class TestChatPanelInit:
     def test_has_input_area(self, chat_panel):
         assert isinstance(chat_panel.input_field, QLineEdit)
 
+    def test_input_placeholder_is_short_for_narrow_panel(self, chat_panel):
+        placeholder = chat_panel.input_field.placeholderText()
+
+        assert placeholder == "Ask about EEG workflow"
+        assert len(placeholder) <= 24
+        assert "preprocessing, epoching" not in placeholder
+
     def test_has_send_button(self, chat_panel):
         assert isinstance(chat_panel.send_btn, QToolButton)
 

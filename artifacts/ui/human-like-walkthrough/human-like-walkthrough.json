@@ -2850,7 +2850,7 @@
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
         "No EEG files are open yet.",
         "Scan data source",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -2954,7 +2954,7 @@
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
         "No EEG files are open yet.",
         "Scan data source",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -3054,7 +3054,7 @@
       "phase": "assistant_normal_message",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/13-assistant-normal.png",
       "visible_text": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -3135,7 +3135,7 @@
       "phase": "assistant_missing_input_clarification",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/14-assistant-clarification.png",
       "visible_text": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -3218,7 +3218,7 @@
       "phase": "assistant_blocked_command",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/15-assistant-blocked.png",
       "visible_text": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -3301,7 +3301,7 @@
       "phase": "assistant_successful_tool_result",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/16-assistant-success.png",
       "visible_text": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -3406,7 +3406,7 @@
       "phase": "assistant_narrow_panel",
       "screenshot": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/17-assistant-narrow.png",
       "visible_text": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "button_state": [
@@ -3507,7 +3507,7 @@
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
         "No EEG files are open yet.",
         "Scan data source",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send",
         "XBrainLab",
         "↻",
@@ -3743,7 +3743,7 @@
         "Smart Parse Metadata",
         "Channel Selection",
         "Clear Dataset",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send",
         "XBrainLab",
         "↻",
@@ -4342,7 +4342,7 @@
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
         "No EEG files are open yet.",
         "Scan data source",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "assistant_repeated_open_close": [
@@ -4350,27 +4350,27 @@
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
         "No EEG files are open yet.",
         "Scan data source",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "assistant_normal_message": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "assistant_missing_input_clarification": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "assistant_blocked_command": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "assistant_successful_tool_result": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "assistant_narrow_panel": [
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send"
       ],
       "reset_new_session_boundary": [
@@ -4391,7 +4391,7 @@
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
         "No EEG files are open yet.",
         "Scan data source",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send",
         "XBrainLab",
         "↻",
@@ -4413,7 +4413,7 @@
         "Smart Parse Metadata",
         "Channel Selection",
         "Clear Dataset",
-        "Ask about data, preprocessing, epoching, datasets, or training...",
+        "Ask about EEG workflow",
         "Send",
         "XBrainLab",
         "↻",
@@ -17845,33 +17845,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 974492,
+      "pid": 975742,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 836436
+      "max_rss_kb": 835836
     },
     {
       "label": "before_close",
-      "pid": 974492,
+      "pid": 975742,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068312
+      "max_rss_kb": 1067992
     },
     {
       "label": "after_close",
-      "pid": 974492,
+      "pid": 975742,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068312
+      "max_rss_kb": 1067992
     }
   ],
   "ui_quality_review": {
@@ -18038,10 +18038,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 231876,
+      "rss_growth_kb": 232156,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 3.788
+  "elapsed_seconds": 3.764
 }

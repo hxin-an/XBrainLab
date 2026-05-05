@@ -2147,3 +2147,29 @@ within the coarse threshold.
 
 - 這不是 Windows launcher / dual-monitor / DPI human acceptance，也不是 long-session local-model
   soak 或 leak proof。
+
+## 2026-05-05 ChatPanel Composer Placeholder Polish
+
+### 狀態
+
+ChatPanel composer placeholder was shortened from a long workflow list to `Ask about EEG workflow`.
+The narrow assistant screenshot now shows the full placeholder without truncating into
+`prepro...`.
+
+### 已可宣稱
+
+- The ChatPanel input placeholder fits the automated narrow-panel screenshot.
+- The copy remains user-facing and avoids developer/tool wording.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/chat/panel.py`
+- Tests：`tests/unit/ui/chat/test_chat_panel.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/12-assistant-empty.png`,
+  `artifacts/ui/human-like-walkthrough/17-assistant-narrow.png`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 complete ChatPanel product design pass、human Windows desktop acceptance，或 long
+  local-model session verification。

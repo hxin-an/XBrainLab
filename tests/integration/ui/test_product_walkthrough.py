@@ -106,7 +106,8 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert panel.feature_btn.isHidden()
     assert panel.mode_btn.isHidden()
     assert panel.step_mode_status_label.isHidden()
-    assert "Ask about data" in panel.input_field.placeholderText()
+    assert panel.input_field.placeholderText() == "Ask about EEG workflow"
+    assert len(panel.input_field.placeholderText()) <= 24
 
     visible_first_layer = " ".join(
         child.text()

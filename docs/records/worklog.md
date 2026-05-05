@@ -8104,3 +8104,41 @@
 - 不能宣稱：
   - This is still automated unit regression, not human desktop acceptance or full command-driven UI
     refresh closure.
+
+### 2026-05-05 20:12 ChatPanel composer placeholder polish
+
+- scope：
+  - ChatPanel bottom composer placeholder in docked / narrow panel screenshots.
+- problem：
+  - `12-assistant-empty.png` showed the old placeholder truncated as `Ask about data, prepro...`.
+- red / focused tests：
+  - Added a ChatPanel unit test requiring the composer placeholder to be
+    `Ask about EEG workflow`, max length `24`, and no long `preprocessing, epoching` list.
+  - The test failed before implementation against the old long placeholder.
+  - Integration product walkthrough test then failed because it still expected the old
+    `Ask about data` placeholder.
+- 做了什麼：
+  - Replaced the long placeholder with `Ask about EEG workflow`.
+  - Refreshed the consolidated human-like walkthrough artifact.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py -q`
+    -> `41 passed`.
+  - `poetry run ruff check XBrainLab/ui/chat/panel.py tests/unit/ui/chat/test_chat_panel.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/chat/panel.py tests/unit/ui/chat/test_chat_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; refreshed consolidated screenshots and JSON/Markdown.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `55 passed`.
+  - focused `ruff check` including `tests/integration/ui/test_product_walkthrough.py` -> pass.
+  - focused `basedpyright` including `tests/integration/ui/test_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- evidence：
+  - `12-assistant-empty.png` and `17-assistant-narrow.png` now show the full
+    `Ask about EEG workflow` placeholder.
+  - Walkthrough JSON records `Ask about EEG workflow` in visible text and no old
+    `Ask about data, prepro` match.
+- 不能宣稱：
+  - This is narrow composer polish only; it is not a complete ChatPanel product design pass,
+    Windows human acceptance, or long local-model session verification.
