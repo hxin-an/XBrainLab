@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+bdfebfa ui: guard training history fallback
+8f0299d docs: refresh handoff after visualization query guard
 18f2c87 ui: guard visualization query fallback
 55bb2e5 docs: refresh handoff after evaluation query guard
 fdea34a ui: guard evaluation query fallback
@@ -111,6 +113,13 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Training history query-none render fallback:
+  - real `Study` Training panel now treats a missing
+    `QueryStateCommand(query="training_history", include_objects=True)` result as unavailable
+    command truth.
+  - it clears to an empty training display instead of recovering through stale
+    `TrainingController.get_formatted_history()`.
+  - mock / legacy rendering still uses explicit `run_legacy_controller_fallback()`.
 - Visualization query-none render fallback:
   - real `Study` Visualization panel now treats a missing
     `VisualizeCommand(include_objects=True)` result as unavailable command truth.
@@ -1254,6 +1263,33 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 18f2c87; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/training/test_training_panel.py::test_training_panel_refuses_real_study_query_none_controller_history \
+  -q
+# 1 passed for bdfebfa after red failure on stale TrainingController.get_formatted_history()
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/training/test_training_panel.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  -q
+# 33 passed for bdfebfa
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for bdfebfa
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for bdfebfa
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for bdfebfa; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
