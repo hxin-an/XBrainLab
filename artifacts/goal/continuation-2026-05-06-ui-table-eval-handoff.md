@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+e067e73 ui: render training history from state query
 f2ccf95 ui: render visualization from service payload
 a00a5d5 ui: render evaluation from service payload
 c6c7e5b ui: query channel selection data
@@ -179,6 +180,13 @@ bb57beb ui: use backend truth for split replacement
   - `Training Settings` now checks `QueryStateCommand(query="state")` for
     `state.training.training_option` before opening the settings dialog.
   - `TrainingController.get_training_option()` is only used in mock / legacy query fallback.
+- Training history query render source:
+  - `QueryStateCommand(query="training_history", include_objects=True)` now returns service-backed
+    training history rows for table rendering and plot selection.
+  - A real `Study` Training panel uses that payload before falling back to
+    `TrainingController.get_formatted_history()`.
+  - The query returns serializable row summaries by default and plan/record objects only for
+    `include_objects=True`.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -528,6 +536,30 @@ poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for f2ccf95; basedpyright baseline decreased by 2;
 # mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q
+# 114 passed for e067e73
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/training/test_training_panel.py \
+  -q
+# 18 passed for e067e73
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for e067e73
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for e067e73
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for e067e73; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
