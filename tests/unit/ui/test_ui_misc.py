@@ -714,6 +714,22 @@ class TestDatasetActionHandler:
         handler._remove_files([0, 1])
         handler.panel.controller.remove_files.assert_called_once_with([0, 1])
 
+    def test_remove_files_uses_backend_capability_before_confirm(self, handler):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+
+        with patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb:
+            handler._remove_files([0, 1])
+
+        mock_mb.question.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Load raw data before removing files." in mock_mb.warning.call_args.args[2]
+        )
+        handler.panel.controller.remove_files.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_batch_set_session(self, mock_mb, handler):
         handler.panel.controller = MagicMock()

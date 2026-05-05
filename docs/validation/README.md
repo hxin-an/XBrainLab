@@ -2098,6 +2098,26 @@ attach-label 心智模型。它仍不是完整 embedded Data Interpretation labe
 這批 evidence 支撐 Smart Parse UI preflight 與 backend capability policy 對齊。它仍不是完整
 UI mutating-path audit 或 human desktop acceptance。
 
+2026-05-05 Dataset Remove Files capability follow-up：
+
+- UI/action:
+  - `_remove_files()` now checks backend `remove_files` capability before showing the destructive
+    confirmation dialog.
+  - Empty real `Study` state shows the shared backend reason
+    `Load raw data before removing files.` instead of asking the user to confirm a blocked action.
+- targeted gates:
+  - focused red + compatibility paths:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_uses_backend_capability_before_confirm tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_context_menu_remove -q`
+    -> `3 passed`.
+  - Dataset action/panel regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py -q`
+    -> `61 passed`.
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+
+這批 evidence 支撐 context-menu Remove Files UI preflight 與 backend capability policy 對齊。它
+仍不是完整 UI mutating-path audit 或 human desktop acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

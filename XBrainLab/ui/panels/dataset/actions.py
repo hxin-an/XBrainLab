@@ -1037,6 +1037,21 @@ class DatasetActionHandler:
             self.panel.update_panel()
 
     def _remove_files(self, rows):
+        remove_capability = get_command_capability(
+            self.panel,
+            CommandName.REMOVE_FILES,
+        )
+        if remove_capability is not None and not remove_capability.enabled:
+            QMessageBox.warning(
+                self.panel,
+                "Remove Files Blocked",
+                blocked_reason(
+                    remove_capability,
+                    "Load raw data before removing files.",
+                ),
+            )
+            return
+
         if (
             QMessageBox.question(
                 self.panel,

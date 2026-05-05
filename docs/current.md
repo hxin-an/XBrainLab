@@ -292,7 +292,9 @@ sidebar 直接讀 backend `import_labels` 和 `preprocess` capability：button d
 tooltip 和 Channel Selection preflight 不再只靠 controller-local `has_data` / lock 判斷。它仍
 不是完整 Data Interpretation 內嵌 label editor。後續 Smart Parse capability slice 也讓
 `open_smart_parser()` 在 real Study path 先讀 backend `apply_smart_parse` capability；沒有 raw data
-時不會打開 parser dialog，而會顯示 shared blocked reason。舊
+時不會打開 parser dialog，而會顯示 shared blocked reason。後續 remove-files preflight 也讓
+context-menu remove 在 backend `remove_files` capability disabled 時先顯示 shared blocked
+reason，不再先要求使用者確認不可執行的 raw-data mutation。舊
 `load_data / attach_labels` 仍不能宣稱已完全退出產品心智模型。
 同日後續 slice 新增真 local LLM tool-call runner：
 `scripts/agent/evals/run_local_tool_call_eval.py` 會用同一份 `54` cases / scorer 接 primary /
