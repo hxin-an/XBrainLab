@@ -30,10 +30,13 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+8a6722a test: guard post-command controller echo
+cc302bc ui: trust training model command result
+6e1e254 ui: keep file import on interpretation path
+845396d ui: guard visualization montage fallback
+a5645c1 docs: add ui table eval handoff
 1e3c1a7 test: record dataset table fill geometry
 538256c ui: widen interpretation carrier columns
-5106710 ui: polish interpretation review tables
-fc6bc79 ui: route preprocess legacy shared refresh
 ```
 
 ## What Was Closed In This Slice
@@ -56,6 +59,18 @@ fc6bc79 ui: route preprocess legacy shared refresh
   - Latest `artifacts/ui/data-interpretation-replay.json` records
     `widget_width=1020`, `table_right_x=1020`, `right_boundary_x=1020`,
     `right_gap_to_boundary=0` for the 1280px loaded Dataset capture.
+- Visualization sidebar `Set Montage` missing-result handling:
+  - no longer silently returns when `execute_application_command()` unexpectedly returns `None`.
+  - mock / legacy contexts use `run_legacy_controller_fallback()`; real `Study` contexts refuse
+    controller fallback.
+- Dataset file import boundary:
+  - if `scan_source` capability exists but Data Interpretation command sequencing is unavailable,
+    the UI shows `Interpretation unavailable`.
+  - it does not fall through to `LoadDataCommand` or `DatasetController.import_files()`.
+- Training model selection command truth:
+  - service-success path now trusts `ConfigureTrainingCommand` and the selected model holder.
+  - it no longer re-reads stale `TrainingController.get_model_holder()` before showing success.
+  - architecture compliance now guards this controller echo pattern.
 
 ## Validation Already Run
 
@@ -81,9 +96,33 @@ poetry run basedpyright
 poetry run mkdocs build --strict
 poetry run python tests/architecture_compliance.py
 # all passed; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  -q
+# 46 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  tests/unit/ui/dataset/test_panel.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  -q
+# 89 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  tests/unit/ui/training/test_training_panel.py \
+  -q
+# 48 passed
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 20 passed
 ```
 
-No local LLM eval was run for this UI/layout slice.
+No local LLM eval was run for these UI / architecture guard slices.
 
 ## Tool-Call Eval Gate Policy
 
@@ -131,10 +170,10 @@ work is explicitly a release / thesis evidence gate.
 ## Suggested Next Slices
 
 1. Continue `UI Command Refresh Coordinator + Controller Fallback Audit`.
-   - Pick one remaining mutating UI path.
-   - Add a focused test that service-success does not fall back to controller mutation in real
-     `Study` context.
-   - Route post-command refresh through the coordinator.
+   - Audit remaining `result is None` branches and controller read echoes.
+   - Keep product runtime mutations on ApplicationService, with controller fallback only in explicit
+     mock / legacy branches.
+   - Continue routing post-command refresh through the coordinator.
 2. Continue Data Interpretation wizard maturity.
    - Add a small recipe diff/review UX slice or a safer label-carrier edit slice with screenshot
      artifact.

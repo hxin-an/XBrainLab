@@ -9119,3 +9119,19 @@
 - 不能宣稱：
   - This does not finish controller fallback removal, command-driven UI refresh closure, or human
     training workflow acceptance.
+
+### 2026-05-06 Continuation handoff refresh after fallback/echo slices
+
+- scope：
+  - Keep the continuation artifact current after new validated local commits.
+  - Preserve the user's fast / candidate / release eval gate policy so routine UI/backend changes do
+    not trigger full primary/fallback x3 local eval under 16GB VRAM pressure.
+- 做了什麼：
+  - Updated `artifacts/goal/continuation-2026-05-06-ui-table-eval-handoff.md` with latest commits:
+    visualization montage fallback boundary, Data Interpretation file-import fallback boundary,
+    Training model-selection command truth, and the post-command controller echo architecture guard.
+  - Added the focused validation commands already run for those slices.
+- local eval：
+  - Not run. This is a handoff/current-truth artifact update after UI/architecture slices.
+- 不能宣稱：
+  - This is continuity documentation only; it does not close product completion blockers.
