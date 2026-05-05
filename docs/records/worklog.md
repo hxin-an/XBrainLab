@@ -9002,3 +9002,17 @@
 - 不能宣稱：
   - This is an automated layout guard and artifact refresh. It does not replace Windows / DPI /
     multi-monitor human desktop acceptance.
+
+### 2026-05-06 UI table / eval-gate handoff
+
+- scope：
+  - Preserve current truth for the next runner after the UI table polish / geometry guard slice.
+  - Re-state the user's eval layering policy so routine UI/backend changes do not trigger full
+    primary/fallback x3 local eval under 16GB VRAM pressure.
+- 做了什麼：
+  - Added `artifacts/goal/continuation-2026-05-06-ui-table-eval-handoff.md`.
+  - The handoff lists latest validated commits, expected protected dirty files, validation already
+    run, no-local-eval boundary for this slice, remaining product blockers, and suggested next
+    slices.
+- 不能宣稱：
+  - This is an operational handoff only; it does not advance product completion by itself.
