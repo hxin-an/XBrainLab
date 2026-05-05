@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+d8221bb ui: source rereference dialog from state query
 9a5d0ef ui: clean up 3d visualization widgets
 5ff0790 training: bound force cleanup waits
 5940b7d llm: release local runtime on shutdown
@@ -248,6 +249,12 @@ bb57beb ui: use backend truth for split replacement
     method checks before clearing the reference.
   - This is focused 3D widget lifecycle coverage, not interactive desktop 3D / PyVista render
     acceptance or an OpenGL soak.
+- Preprocess re-reference dialog query source:
+  - command-capable `open_rereference()` now gets dialog data through
+    `QueryStateCommand(query="data_lists", include_objects=True)`.
+  - stale `PreprocessController.get_preprocessed_data_list()` remains only for no-capability
+    mock / legacy dialog population.
+  - This continues the controller-read audit; it does not finish the full Preprocess UI workflow.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -783,6 +790,35 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 9a5d0ef; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_uses_query_data_list_before_stale_controller \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_rereference_accepted \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller \
+  -q
+# 3 passed for d8221bb
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  tests/unit/ui/preprocess \
+  -q
+# 65 passed for d8221bb
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for d8221bb
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for d8221bb
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for d8221bb; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
