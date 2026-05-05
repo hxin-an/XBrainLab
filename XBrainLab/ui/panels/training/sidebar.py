@@ -326,7 +326,8 @@ class TrainingSidebar(QWidget):
                 "Success",
                 "Data splitting configuration saved.",
             )
-            self.check_ready_to_train()
+            if generator:
+                self._check_ready_after_legacy_result(result)
 
     def _data_splitting_blocked(self) -> bool:
         generate_capability = get_command_capability(
@@ -356,6 +357,10 @@ class TrainingSidebar(QWidget):
             and clear_capability is not None
             and clear_capability.enabled
         )
+
+    def _check_ready_after_legacy_result(self, result) -> None:
+        if result is None:
+            self.check_ready_to_train()
 
     def select_model(self):
         """Open the model-selection dialog and store the chosen model.
@@ -399,7 +404,7 @@ class TrainingSidebar(QWidget):
                 return
             model_name = model_holder.target_model.__name__
             QMessageBox.information(self, "Success", f"Model selected: {model_name}")
-            self.check_ready_to_train()
+            self._check_ready_after_legacy_result(result)
 
     def training_setting(self):
         """Open the training-settings dialog and store the configuration.
@@ -449,7 +454,7 @@ class TrainingSidebar(QWidget):
                 )
                 return
             QMessageBox.information(self, "Success", "Training settings saved.")
-            self.check_ready_to_train()
+            self._check_ready_after_legacy_result(result)
 
     def start_training_ui_action(self):
         """Start training via the application command spine and enable stop.
@@ -502,7 +507,7 @@ class TrainingSidebar(QWidget):
                     )
                     return
                 self.btn_stop.setEnabled(True)
-                self.check_ready_to_train()
+                self._check_ready_after_legacy_result(result)
                 # Panel should know training started to update log?
                 # Observer in Panel handles "training_started" event.
         except Exception as e:
@@ -581,7 +586,7 @@ class TrainingSidebar(QWidget):
                 QMessageBox.warning(self, "Warning", result.message)
                 return
 
-            self.check_ready_to_train()
+            self._check_ready_after_legacy_result(result)
         except Exception as e:
             QMessageBox.warning(self, "Warning", f"Error clearing history: {e}")
 

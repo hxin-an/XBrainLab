@@ -85,6 +85,38 @@ the explicit fallback helper.
 Audit remaining UI `result is None` branches to confirm they are service-unavailable error handling,
 not product runtime mutation fallback; then continue the command-driven refresh coordinator cleanup.
 
+## 2026-05-05 Training Readiness Refresh Cleanup
+
+### 狀態
+
+Training sidebar is the first manual-refresh cleanup under the command refresh coordinator. Service
+success paths for generate dataset, configure model, configure training settings, start training,
+and clear history no longer call `check_ready_to_train()` directly from the action handler. They now
+leave real `Study` readiness refresh to `refresh_after_command()` and `training_panel.update_panel()`.
+Mock / legacy non-`Study` fallback still refreshes readiness manually.
+
+### 已可宣稱
+
+- Training readiness no longer has duplicated service-success refresh logic in the action handler.
+- Legacy fallback behavior remains covered.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/sidebar.py`
+- Test: `tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_uses_coordinator_for_readiness`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete UI refresh target architecture. Dataset / Preprocess / other panels still
+  contain manual `update_panel()` refresh paths that need the same treatment.
+
+### 下一手重點
+
+Apply the same service-success versus legacy-fallback split to Dataset and Preprocess manual
+`update_panel()` calls, then consider an architecture guard for duplicated post-command local
+refresh.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態

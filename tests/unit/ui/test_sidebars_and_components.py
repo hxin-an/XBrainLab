@@ -773,6 +773,40 @@ class TestTrainingSidebar:
         assert mock_execute.call_args.args[1].confirmed is True
         sidebar.panel.controller.start_training.assert_not_called()
 
+    def test_start_training_service_success_uses_coordinator_for_readiness(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        capability = SimpleNamespace(
+            enabled=True,
+            reasons=[],
+            requires_confirmation=True,
+            confirmation_required=False,
+        )
+
+        sidebar.panel.controller.is_training.return_value = False
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.get_command_capability",
+                return_value=capability,
+            ),
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ),
+            patch.object(sidebar, "check_ready_to_train") as mock_check_ready,
+        ):
+            sidebar.start_training_ui_action()
+
+        mock_check_ready.assert_not_called()
+
     def test_start_training_error(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False
         sidebar.panel.controller.start_training.side_effect = RuntimeError("fail")

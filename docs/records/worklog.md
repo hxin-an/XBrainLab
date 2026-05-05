@@ -37,6 +37,33 @@
 
 ## 2026-05-05
 
+### 17:22 Training readiness refresh coordinator slice
+
+- 做了什麼：
+  - 在 Training sidebar 先收斂 post-command manual refresh：generate dataset、select model、
+    training settings、start training 和 clear history 的 service-backed success path 不再直接呼叫
+    `check_ready_to_train()`。
+  - 新增 `_check_ready_after_legacy_result()`，只有 mock / legacy fallback (`result is None`) 才手動
+    refresh readiness；real `Study` success path 由 `refresh_after_command()` / `training_panel.update_panel()`
+    觸發 readiness refresh。
+  - 先加紅燈：`TrainCommand` service success 後不應在 same action handler 直接呼叫
+    `check_ready_to_train()`。
+- 結果：
+  - Training sidebar 是第一條從 command success local refresh 轉向 coordinator-owned refresh 的 UI
+    workflow。
+  - 這不代表 Dataset / Preprocess / other panels 的 manual `update_panel()` 已全部收斂。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_uses_coordinator_for_readiness -q`
+    -> failed；`check_ready_to_train()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_uses_coordinator_for_readiness tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_ui_action tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_accepted tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_accepted tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_clear_history -q`
+    -> `5 passed`。
+  - Focused ruff / basedpyright on touched files -> pass / `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 跑 broader UI/docs/static gates 後提交；下一步可把同樣模式推到 Dataset / Preprocess manual
+    `update_panel()` calls。
+
 ### 17:14 UI fallback architecture guard
 
 - 做了什麼：
