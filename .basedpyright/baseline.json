@@ -594,16 +594,6 @@
                 }
             }
         ],
-        "./XBrainLab/ui/panels/dataset/panel.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 56,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/ui/panels/evaluation/panel.py": [
             {
                 "code": "reportOptionalMemberAccess",

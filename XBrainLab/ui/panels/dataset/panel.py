@@ -1,5 +1,7 @@
 """Dataset panel for managing EEG data loading, metadata, and table display."""
 
+from typing import Any
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
@@ -11,7 +13,11 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
 )
 
-from XBrainLab.backend.application import CommandName, UpdateMetadataCommand
+from XBrainLab.backend.application import (
+    CommandName,
+    QueryStateCommand,
+    UpdateMetadataCommand,
+)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
     LegacyControllerFallbackUnavailableError,
@@ -229,7 +235,14 @@ class DatasetPanel(BasePanel):
         self.table.blockSignals(True)  # Prevent itemChanged triggering during update
         self.table.setRowCount(0)
 
-        data_list = self.controller.get_loaded_data_list()
+        queried_data_list = self._query_loaded_data_list_for_render()
+        controller = self.controller
+        if controller is None:
+            data_list = []
+        elif queried_data_list is None:
+            data_list = controller.get_loaded_data_list()
+        else:
+            data_list = queried_data_list
         metadata_capability = get_command_capability(self, CommandName.UPDATE_METADATA)
         metadata_editable = (
             metadata_capability.enabled if metadata_capability is not None else True
@@ -321,6 +334,19 @@ class DatasetPanel(BasePanel):
         self.table.blockSignals(False)
         self._fit_table_columns_to_viewport()
         self._schedule_table_column_fit()
+
+    def _query_loaded_data_list_for_render(self) -> list[Any] | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="data_lists", include_objects=True),
+            refresh=False,
+        )
+        if result is None:
+            return None
+        if result.failed:
+            return []
+        data_list = result.diagnostics.get("loaded_data_list")
+        return list(data_list) if isinstance(data_list, list) else []
 
     @staticmethod
     def _metadata_item(

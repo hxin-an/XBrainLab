@@ -63,6 +63,34 @@ def loaded_data_stub(filename: str, *, labels_imported: bool = False) -> MagicMo
     return data
 
 
+def test_update_panel_uses_query_data_list_before_stale_controller(qtbot):
+    study = Study()
+    data = loaded_data_stub("sub-01_task-mi_raw.fif")
+    study.loaded_data_list = [data]
+
+    controller = MagicMock()
+    controller.study = study
+    controller.is_locked.return_value = False
+    controller.get_loaded_data_list.side_effect = AssertionError(
+        "stale loaded list should not be read",
+    )
+
+    real_window = QMainWindow()
+    cast(Any, real_window).study = study
+    panel = DatasetPanel(controller=controller, parent=real_window)
+    qtbot.addWidget(real_window)
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+
+    controller.get_loaded_data_list.assert_not_called()
+    assert panel.table.rowCount() == 1
+    file_item = panel.table.item(0, 0)
+    assert file_item is not None
+    assert file_item.text() == "sub-01_task-mi_raw.fif"
+    real_window.close()
+
+
 def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
     # Create a REAL QMainWindow to serve as parent

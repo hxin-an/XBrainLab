@@ -9816,3 +9816,36 @@
 - 不能宣稱：
   - This does not complete the full UI refresh coordinator closure or all controller read-path
     cleanup; it removes one aggregate-info query failure fallback.
+
+### 2026-05-06 Dataset table render query source
+
+- scope：
+  - Continue UI read-side command-truth cleanup for the Dataset page.
+  - Move Dataset table row rendering away from direct controller loaded-list reads in real `Study`
+    contexts.
+- red / focused test：
+  - Added `test_update_panel_uses_query_data_list_before_stale_controller`.
+  - Red gate failed because `DatasetPanel.update_panel()` unconditionally called
+    `controller.get_loaded_data_list()`.
+- 做了什麼：
+  - `DatasetPanel.update_panel()` now queries
+    `QueryStateCommand(query="data_lists", include_objects=True)` with `refresh=False`.
+  - Direct `DatasetController.get_loaded_data_list()` rendering fallback remains only for
+    no-ApplicationService mock / legacy contexts.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_update_panel_uses_query_data_list_before_stale_controller -q`
+    -> failed on `controller.get_loaded_data_list()`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Dataset panel regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py -q`
+    -> `14 passed`.
+  - Focused type gate:
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`; baseline count dropped by `1`.
+- local eval：
+  - Not run. This is a Dataset UI render-source cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete all Dataset action-helper list reads, label import target selection, or
+    full Data Interpretation wizard UX acceptance.

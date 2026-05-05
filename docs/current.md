@@ -914,6 +914,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Preprocess panel render cleanup 也讓 history / preview / plotter refresh 先走
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` refresh 不再從
   `PreprocessPanel.update_panel()` 直接讀 stale `PreprocessController.get_preprocessed_data_list()`。
+  最新 Dataset table render cleanup 也讓 `DatasetPanel.update_panel()` 先走同一個 `data_lists`
+  query；real `Study` table rows 不再從 `DatasetController.get_loaded_data_list()` 取得，該 read
+  只留給 no-ApplicationService mock / legacy rendering。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

@@ -214,6 +214,9 @@
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study`
   `PreprocessPanel.update_panel()` 不再直接讀 stale
   `PreprocessController.get_preprocessed_data_list()`。
+- 最新 Dataset table render cleanup 也讓 `DatasetPanel.update_panel()` 先走
+  `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` table rows 不再直接讀
+  stale `DatasetController.get_loaded_data_list()`。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。最新 guard follow-up

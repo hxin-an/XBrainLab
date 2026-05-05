@@ -151,6 +151,10 @@ Preprocess panel history / preview / plot refresh also uses the same `data_lists
 `Study` contexts. `PreprocessPanel.update_panel()` passes queried preprocessed / original objects
 into the plotter, while direct controller list reads remain only for no-ApplicationService
 compatibility rendering.
+Dataset table rendering now follows the same query-backed source: `DatasetPanel.update_panel()`
+uses `QueryStateCommand(query="data_lists", include_objects=True)` for loaded data rows in real
+`Study` contexts. `DatasetController.get_loaded_data_list()` remains only for no-ApplicationService
+mock / legacy rendering.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller
@@ -348,9 +352,10 @@ Assistant 不是直接塞在 `MainWindow` 內部，而是由 `AgentManager` 管�
 目前仍未完成的 UI product evidence：
 
 - Windows Desktop shortcut 人工 click-through 到 assistant 對話還沒完成。
-- label import dialog planning、montage picker / matching、read-only table / plot population
-  仍有 controller / UI-request compatibility path；實際 smart parse、label import 和
-  montage confirmation apply 已接 service adapter。
+- label import dialog planning、montage picker / matching、部分 read-only detail population
+  仍有 controller / UI-request compatibility path；Dataset table 和 Preprocess plot/history render
+  已接 `data_lists` query，實際 smart parse、label import 和 montage confirmation apply 已接 service
+  adapter。
 - reset / new session 的 destructive confirmation 還需要完整 product walkthrough。
 
 ## Aggregate Info 更新
