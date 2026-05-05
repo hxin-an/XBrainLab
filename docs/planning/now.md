@@ -647,6 +647,9 @@
     使用者手打 filename。
   - Post-load `Add Labels to Loaded Data` dialog 現在會顯示 target EEG files 和 recipe trace
     impact，避免使用者在 compatibility label flow 中看不到 labels 會套到哪裡。
+  - Post-load label compatibility target selection 現在優先使用 Dataset table row 的 `UserRole`
+    data；selected/all-row target files 不再為了開 dialog 回讀 stale
+    `DatasetController.get_loaded_data_list()`。
   - `Add Labels to Loaded Data` compatibility path 現在會在 empty state disable，tooltip 引導
     使用者先 interpret data source；action 也會尊重 backend `ImportLabelsCommand`
     capability block。

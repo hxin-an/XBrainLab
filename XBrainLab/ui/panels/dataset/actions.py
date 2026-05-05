@@ -7,7 +7,14 @@ running smart parse, and managing event filtering.
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMenu, QMessageBox
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QInputDialog,
+    QMenu,
+    QMessageBox,
+    QTableWidgetItem,
+)
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -963,11 +970,30 @@ class DatasetActionHandler:
             else:
                 return []
 
+        table_targets = self._target_files_from_table_rows(selected_rows)
+        if table_targets is not None:
+            return table_targets
+
         data_list = self.controller.get_loaded_data_list()
         self._last_target_file_indices = [
             i for i in selected_rows if i < len(data_list)
         ]
         return [data_list[i] for i in self._last_target_file_indices]
+
+    def _target_files_from_table_rows(self, selected_rows):
+        target_files = []
+        target_indices = []
+        for row in selected_rows:
+            item = self.panel.table.item(row, 0)
+            if not isinstance(item, QTableWidgetItem):
+                return None
+            data = item.data(Qt.ItemDataRole.UserRole)
+            if data is None:
+                return None
+            target_files.append(data)
+            target_indices.append(row)
+        self._last_target_file_indices = target_indices
+        return target_files
 
     def _build_label_import_plan(
         self,

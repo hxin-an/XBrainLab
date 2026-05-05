@@ -9849,3 +9849,38 @@
 - 不能宣稱：
   - This does not complete all Dataset action-helper list reads, label import target selection, or
     full Data Interpretation wizard UX acceptance.
+
+### 2026-05-06 Label import target selection from table rows
+
+- scope：
+  - Continue Dataset read-side controller cleanup in the post-load label compatibility path.
+  - Avoid re-reading loaded files from the controller after the Dataset table already owns the
+    selected row objects.
+- red / focused test：
+  - Added `test_import_label_uses_table_user_role_before_stale_controller_list`.
+  - Red gate failed because `_get_target_files_for_import()` called
+    `controller.get_loaded_data_list()`.
+- 做了什麼：
+  - `_get_target_files_for_import()` now first resolves selected/all-row target files from the
+    Dataset table's column-0 `Qt.UserRole` data.
+  - The controller loaded-list read remains as a mock / legacy fallback when table row objects are
+    unavailable.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_uses_table_user_role_before_stale_controller_list -q`
+    -> failed on `controller.get_loaded_data_list()`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Dataset action regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `67 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a Dataset label compatibility UI cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not make post-load label import the primary workflow or complete the import wizard
+    embedded label editor.

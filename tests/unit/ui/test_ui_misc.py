@@ -1320,6 +1320,37 @@ class TestDatasetActionHandler:
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
+    def test_import_label_uses_table_user_role_before_stale_controller_list(
+        self,
+        mock_dlg,
+        mock_mb,
+        handler,
+    ):
+        from PyQt6.QtCore import Qt
+        from PyQt6.QtWidgets import QTableWidgetItem
+
+        idx = MagicMock()
+        idx.row.return_value = 0
+        data_obj = MagicMock()
+        item = QTableWidgetItem("sub-01_task-mi_raw.fif")
+        item.setData(Qt.ItemDataRole.UserRole, data_obj)
+
+        handler.panel.table.rowCount.return_value = 1
+        handler.panel.table.selectedIndexes.return_value = [idx]
+        handler.panel.table.item.return_value = item
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.get_loaded_data_list.side_effect = AssertionError(
+            "stale loaded list should not be read",
+        )
+        mock_dlg.return_value.exec.return_value = False
+
+        handler.import_label()
+
+        mock_dlg.assert_called_once_with(handler.panel, target_files=[data_obj])
+        handler.panel.controller.get_loaded_data_list.assert_not_called()
+
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")
     def test_import_label_null_label_map(self, mock_dlg, mock_mb, handler):
         idx = MagicMock()
         idx.row.return_value = 0
