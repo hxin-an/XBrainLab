@@ -207,6 +207,10 @@
   `QueryStateCommand(query="state")` 的 `state.epoch.channel_names`；stale
   `VisualizationController.get_channel_names()` 只留在 query unavailable 的 mock / legacy
   fallback helper。
+- 最新 Preprocess panel render cleanup 也讓 history / preview / plotter refresh 先走
+  `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study`
+  `PreprocessPanel.update_panel()` 不再直接讀 stale
+  `PreprocessController.get_preprocessed_data_list()`。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。最新 guard follow-up

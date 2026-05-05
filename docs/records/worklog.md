@@ -9746,3 +9746,39 @@
 - 不能宣稱：
   - This does not prove all controller read paths are gone; it prevents this specific stale
     Preprocess render read from returning.
+
+### 2026-05-06 Preprocess panel render query source
+
+- scope：
+  - Continue UI read-side command-truth cleanup for the Preprocess page.
+  - Move Preprocess panel history / preview / plotter refresh away from direct controller
+    preprocessed-list reads in real `Study` contexts.
+- red / focused test：
+  - Added `test_update_panel_uses_query_data_lists_before_stale_controller`.
+  - Red gate failed because `PreprocessPanel.update_panel()` unconditionally called
+    `controller.get_preprocessed_data_list()`.
+- 做了什麼：
+  - `PreprocessPanel.update_panel()` and `update_plot_only()` now query
+    `QueryStateCommand(query="data_lists", include_objects=True)` with `refresh=False`.
+  - The queried preprocessed / original objects are passed into
+    `PreprocessPlotter.plot_sample_data(data_list=..., original_data_list=...)`.
+  - `PreviewWidget.request_plot_update` now routes through `PreprocessPanel.update_plot_only()`,
+    so user control changes use the same query-backed render source.
+  - Direct controller list reads remain only for no-ApplicationService mock / legacy rendering.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_panel_uses_query_data_lists_before_stale_controller -q`
+    -> failed on `controller.get_preprocessed_data_list()`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Preprocess panel / plotter regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_plotter.py -q`
+    -> `37 passed`.
+  - Focused type gate:
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`; baseline count dropped by `1`.
+- local eval：
+  - Not run. This is a Preprocess UI render-source cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not certify plot visual quality, large-data plotting performance, memory cleanup, or
+    full command-driven UI refresh closure.

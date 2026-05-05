@@ -147,6 +147,10 @@ Preprocess epoching follows the `create_epoch` capability directly: when `create
 The epoching dialog data list is now loaded through `QueryStateCommand(query="data_lists",
 include_objects=True)` in command-capable contexts; `PreprocessController.get_preprocessed_data_list()`
 is limited to no-capability mock / legacy dialog population.
+Preprocess panel history / preview / plot refresh also uses the same `data_lists` query in real
+`Study` contexts. `PreprocessPanel.update_panel()` passes queried preprocessed / original objects
+into the plotter, while direct controller list reads remain only for no-ApplicationService
+compatibility rendering.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller

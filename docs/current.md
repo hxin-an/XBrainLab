@@ -908,6 +908,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 montage setup cleanup 也把 channel-name dialog defaults 改成先讀
   `QueryStateCommand(query="state")` 裡的 `state.epoch.channel_names`；controller
   `get_channel_names()` 只保留在 query unavailable 的 mock / legacy fallback helper。
+  最新 Preprocess panel render cleanup 也讓 history / preview / plotter refresh 先走
+  `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` refresh 不再從
+  `PreprocessPanel.update_panel()` 直接讀 stale `PreprocessController.get_preprocessed_data_list()`。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

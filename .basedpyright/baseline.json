@@ -630,16 +630,6 @@
                 }
             }
         ],
-        "./XBrainLab/ui/panels/preprocess/panel.py": [
-            {
-                "code": "reportOptionalMemberAccess",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py": [
             {
                 "code": "reportArgumentType",

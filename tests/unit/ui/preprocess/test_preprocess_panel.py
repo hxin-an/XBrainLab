@@ -1,3 +1,4 @@
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,7 +41,7 @@ def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtb
     """Test initialization creates controller."""
     # Use real objects for inheritance check
     real_window = QMainWindow()
-    real_window.study = mock_main_window.study
+    cast(Any, real_window).study = mock_main_window.study
 
     panel = PreprocessPanel(parent=real_window)
     qtbot.addWidget(panel)
@@ -51,14 +52,50 @@ def test_preprocess_panel_init_controller(mock_main_window, mock_controller, qtb
     real_window.close()
 
 
+def test_update_panel_uses_query_data_lists_before_stale_controller(qtbot):
+    from XBrainLab.backend.study import Study
+
+    study = Study()
+    raw = MagicMock()
+    raw.is_raw.return_value = True
+    raw.get_preprocess_history.return_value = ["bandpass"]
+    raw.get_epochs_length.return_value = 1.0
+    raw.get_mne.return_value.ch_names = ["C3", "C4"]
+    raw.get_mne.return_value.times = [0.0, 1.0]
+    study.loaded_data_list = [raw]
+    study.preprocessed_data_list = [raw]
+
+    controller = MagicMock()
+    controller.study = study
+    controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "stale preprocessed list should not be read",
+    )
+    dataset_controller = MagicMock()
+
+    panel = PreprocessPanel(
+        controller=controller,
+        dataset_controller=dataset_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.plotter.plot_sample_data = MagicMock()
+
+    panel.update_panel()
+
+    controller.get_preprocessed_data_list.assert_not_called()
+    panel.plotter.plot_sample_data.assert_called_once_with(
+        data_list=[raw],
+        original_data_list=[raw],
+    )
+
+
 def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
     """Test filtering delegates to controller."""
     mock_controller.has_data.return_value = True
 
     # Use real window
     real_window = QMainWindow()
-    real_window.study = mock_main_window.study
-    real_window.refresh_panels = MagicMock()
+    cast(Any, real_window).study = mock_main_window.study
+    cast(Any, real_window).refresh_panels = MagicMock()
 
     panel = PreprocessPanel(parent=real_window)
     qtbot.addWidget(panel)
@@ -91,8 +128,8 @@ def test_preprocess_panel_resample(mock_main_window, mock_controller, qtbot):
     mock_controller.has_data.return_value = True
     # Use real window
     real_window = QMainWindow()
-    real_window.study = mock_main_window.study
-    real_window.refresh_panels = MagicMock()
+    cast(Any, real_window).study = mock_main_window.study
+    cast(Any, real_window).refresh_panels = MagicMock()
 
     panel = PreprocessPanel(parent=real_window)
     qtbot.addWidget(panel)
@@ -121,8 +158,8 @@ def test_preprocess_panel_epoching(mock_main_window, mock_controller, qtbot):
     mock_controller.has_data.return_value = True
     # Use real window
     real_window = QMainWindow()
-    real_window.study = mock_main_window.study
-    real_window.refresh_panels = MagicMock()
+    cast(Any, real_window).study = mock_main_window.study
+    cast(Any, real_window).refresh_panels = MagicMock()
 
     panel = PreprocessPanel(parent=real_window)
     qtbot.addWidget(panel)
@@ -155,7 +192,7 @@ def test_preprocess_panel_reset(mock_main_window, mock_controller, qtbot):
     """Test reset delegates to controller."""
     mock_controller.has_data.return_value = True
     real_window = QMainWindow()
-    real_window.study = mock_main_window.study
+    cast(Any, real_window).study = mock_main_window.study
 
     panel = PreprocessPanel(parent=real_window)
     qtbot.addWidget(panel)
@@ -186,8 +223,8 @@ class TestPreprocessSidebarOps:
     def setup(self, mock_main_window, mock_controller, qtbot):
         mock_controller.has_data.return_value = True
         real_window = QMainWindow()
-        real_window.study = mock_main_window.study
-        real_window.refresh_panels = MagicMock()
+        cast(Any, real_window).study = mock_main_window.study
+        cast(Any, real_window).refresh_panels = MagicMock()
         panel = PreprocessPanel(parent=real_window)
         qtbot.addWidget(panel)
         yield panel, mock_controller, real_window

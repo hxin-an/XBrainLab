@@ -4,7 +4,7 @@ Handles time-domain and frequency-domain (PSD) signal rendering
 with support for original-vs-current overlays and event markers.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pyqtgraph as pg
@@ -147,7 +147,12 @@ class PreprocessPlotter:
 
         return f, pxx, f_orig, pxx_orig
 
-    def plot_sample_data(self):
+    def plot_sample_data(
+        self,
+        *,
+        data_list: list[Any] | None = None,
+        original_data_list: list[Any] | None = None,
+    ):
         """Main plotting routine."""
         # 1. Clear previous plots
         self.widget.plot_time.clear()
@@ -162,12 +167,13 @@ class PreprocessPlotter:
         self.widget.plot_freq.addItem(self.widget.h_line_freq)
         self.widget.plot_freq.addItem(self.widget.label_freq)
 
-        if not self.controller or not self.controller.has_data():
-            return
+        if data_list is None:
+            if not self.controller or not self.controller.has_data():
+                return
+            data_list = self.controller.get_preprocessed_data_list()
 
-        data_list = self.controller.get_preprocessed_data_list()
-        orig_list = []
-        if hasattr(self.controller, "study"):
+        orig_list = original_data_list or []
+        if original_data_list is None and hasattr(self.controller, "study"):
             orig_list = self.controller.study.loaded_data_list
 
         if not data_list:

@@ -1,7 +1,11 @@
 """Preprocessing panel for signal filtering, resampling, and epoching."""
 
+from typing import Any
+
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from XBrainLab.backend.application import QueryStateCommand
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
@@ -47,7 +51,7 @@ class PreprocessPanel(BasePanel):
         self.plotter = PreprocessPlotter(self.preview_widget, self.controller)
 
         # 5. Connect Component Signals
-        self.preview_widget.request_plot_update.connect(self.plotter.plot_sample_data)
+        self.preview_widget.request_plot_update.connect(self.update_plot_only)
 
         # 6. Setup Bridges & UI
         self._setup_bridges()
@@ -87,7 +91,18 @@ class PreprocessPanel(BasePanel):
             self.sidebar.update_sidebar()
 
         # Update History
-        data_list = self.controller.get_preprocessed_data_list()
+        queried_lists = self._query_data_lists_for_render()
+        original_data_list: list[Any] = []
+        controller = self.controller
+        if controller is None:
+            data_list = []
+        elif queried_lists is None:
+            data_list = controller.get_preprocessed_data_list()
+            study = getattr(controller, "study", None)
+            if study is not None:
+                original_data_list = list(getattr(study, "loaded_data_list", []))
+        else:
+            data_list, original_data_list = queried_lists
         is_epoched = False
         if data_list:
             first_data = data_list[0]
@@ -130,10 +145,39 @@ class PreprocessPanel(BasePanel):
             self.preview_widget.time_spin.setRange(0, duration)
             self.preview_widget.time_slider.setRange(0, int(duration * 10))
 
-            self.plotter.plot_sample_data()
+            self.plotter.plot_sample_data(
+                data_list=data_list,
+                original_data_list=original_data_list,
+            )
         else:
             self.preview_widget.reset_view()
 
     def update_plot_only(self):
         """Trigger a plot refresh without updating the sidebar or history."""
-        self.plotter.plot_sample_data()
+        queried_lists = self._query_data_lists_for_render()
+        if queried_lists is None:
+            self.plotter.plot_sample_data()
+            return
+        data_list, original_data_list = queried_lists
+        self.plotter.plot_sample_data(
+            data_list=data_list,
+            original_data_list=original_data_list,
+        )
+
+    def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="data_lists", include_objects=True),
+            refresh=False,
+        )
+        if result is None:
+            return None
+        if result.failed:
+            return [], []
+        diagnostics = result.diagnostics
+        preprocessed = diagnostics.get("preprocessed_data_list")
+        loaded = diagnostics.get("loaded_data_list")
+        return (
+            list(preprocessed) if isinstance(preprocessed, list) else [],
+            list(loaded) if isinstance(loaded, list) else [],
+        )
