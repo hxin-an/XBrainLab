@@ -30,9 +30,12 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+a7b7222 ui: gate epoching with create capability
+343f8f9 docs: refresh handoff after readiness guard
 d5388e7 test: guard capability-gated controller readiness
 57b5d9c docs: refresh handoff after train gate audit
 82576f5 ui: prefer train capability over stale controller
+7a59e39 docs: refresh handoff after split audit
 bb57beb ui: use backend truth for split replacement
 ```
 
@@ -83,6 +86,11 @@ bb57beb ui: use backend truth for split replacement
     `controller.has_datasets()`, and `controller.get_trainer()` in command paths that already have
     backend capability truth.
   - Such reads must live in explicit `capability is None` legacy branches.
+- Preprocess epoch command truth:
+  - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
+  - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
+    capability through `check_lock()` / `check_data_loaded()`.
+  - Legacy controller lock/data checks remain only for no-capability mock / legacy contexts.
 
 ## Validation Already Run
 
@@ -132,6 +140,20 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 
 poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
 # 23 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  tests/unit/ui/preprocess \
+  -q
+# 61 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+poetry run mkdocs build --strict
+# all passed for a7b7222; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
