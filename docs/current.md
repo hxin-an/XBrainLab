@@ -889,6 +889,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `VisualizationController.get_trainers()`，而是保持 `Select a plan` 並用使用者可讀訊息提示
   目前沒有 visualization views ready。Visualization sidebar 的 `Export Saliency` 也補上 readonly
   `SaliencyCommand` export gate；saliency output 不可用時不再讀 stale trainer list 開 export dialog。
+  最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
+  summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
+  的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

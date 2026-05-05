@@ -201,7 +201,23 @@ class ControlSidebar(QWidget):
             )
             return
 
-        win = SaliencySettingDialog(self, self.controller.get_saliency_params())
+        query_result = execute_application_command(
+            self,
+            SaliencyCommand(),
+            refresh=False,
+        )
+        if query_result is not None and query_result.failed:
+            QMessageBox.warning(
+                self,
+                "Saliency blocked" if query_result.recoverable else "Saliency failed",
+                query_result.message,
+            )
+            return
+
+        win = SaliencySettingDialog(
+            self,
+            self._saliency_dialog_params(query_result),
+        )
         if win.exec():
             params = win.get_result()
             if params:
@@ -224,6 +240,18 @@ class ControlSidebar(QWidget):
                 QMessageBox.information(self, "Success", "Saliency parameters set")
 
                 self._on_update_after_legacy_result(result)
+
+    def _saliency_dialog_params(self, query_result) -> dict | None:
+        if query_result is None:
+            return run_legacy_controller_fallback(
+                self,
+                self.controller.get_saliency_params,
+            )
+        diagnostics = getattr(query_result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "saliency_summary":
+            return None
+        params = diagnostics.get("params")
+        return params if isinstance(params, dict) else None
 
     def export_saliency(self):
         """Open the saliency-export dialog to save computed saliency data."""

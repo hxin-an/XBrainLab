@@ -336,6 +336,56 @@ def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
     mock_panel.on_update.assert_not_called()
 
 
+def test_sidebar_set_saliency_uses_query_defaults_before_stale_controller(
+    mock_panel,
+    qtbot,
+):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    mock_panel.controller.get_saliency_params.return_value = {
+        "stale": {"nt_samples": 99},
+    }
+    query_result = MagicMock(
+        failed=False,
+        diagnostics={
+            "payload_type": "saliency_summary",
+            "params": {"SmoothGrad": {"nt_samples": 4}},
+        },
+    )
+    configure_result = MagicMock(failed=False)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            side_effect=[query_result, configure_result],
+        ) as mock_execute,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ),
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = {
+            "SmoothGrad": {"nt_samples": 5},
+        }
+
+        sidebar.set_saliency()
+
+    mock_panel.controller.get_saliency_params.assert_not_called()
+    mock_dialog.assert_called_once_with(
+        sidebar,
+        {"SmoothGrad": {"nt_samples": 4}},
+    )
+    first_command = mock_execute.call_args_list[0].args[1]
+    second_command = mock_execute.call_args_list[1].args[1]
+    assert isinstance(first_command, SaliencyCommand)
+    assert isinstance(second_command, SaliencyCommand)
+    assert second_command.params == {"SmoothGrad": {"nt_samples": 5}}
+    mock_panel.controller.set_saliency_params.assert_not_called()
+
+
 def test_sidebar_export_saliency_uses_query_before_stale_trainers(qtbot):
     controller = MagicMock()
     main_window = QMainWindow()

@@ -204,6 +204,26 @@ def update_sidebar(self):
     assert "capability is None" in violations[0]
 
 
+def test_capability_readiness_guard_flags_saliency_params_after_capability(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def set_saliency(self):
+    capability = get_command_capability(self, CommandName.SALIENCY)
+    if capability is not None and not capability.enabled:
+        return
+    params = self.controller.get_saliency_params()
+    return SaliencyDialog(self, params)
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.get_saliency_params" in violations[0]
+    assert "capability is None" in violations[0]
+
+
 def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,
