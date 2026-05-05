@@ -8,6 +8,13 @@ from XBrainLab.backend.application import ChangedState, CommandResult
 from XBrainLab.backend.utils.logger import logger
 
 _REFRESHING_MAIN_WINDOWS: set[int] = set()
+_PANEL_NAMES_BY_INDEX = (
+    "dataset_panel",
+    "preprocess_panel",
+    "training_panel",
+    "evaluation_panel",
+    "visualization_panel",
+)
 
 
 def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
@@ -37,6 +44,14 @@ def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
         return refreshed
     finally:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
+
+
+def refresh_after_navigation(main_window: Any, index: int) -> bool:
+    """Refresh the visible workflow panel selected by top-level navigation."""
+    if index < 0 or index >= len(_PANEL_NAMES_BY_INDEX):
+        return False
+    panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
+    return _call_noarg(panel, "update_panel")
 
 
 def find_main_window(context: Any) -> Any | None:

@@ -1,3 +1,4 @@
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -97,6 +98,14 @@ def test_switch_page_only_updates_target_panel(main_window):
         panel.update_panel.assert_not_called()
 
 
+def test_switch_page_delegates_navigation_refresh(main_window):
+    """Panel refresh scope should live in the refresh coordinator."""
+    with patch("XBrainLab.ui.main_window.refresh_after_navigation") as refresh:
+        main_window.switch_page(4)
+
+    refresh.assert_called_once_with(main_window, 4)
+
+
 def test_switch_page_skips_panel_without_update_panel(mock_study, qtbot):
     """Panels without update_panel should not break navigation refresh."""
     with (
@@ -105,7 +114,7 @@ def test_switch_page_skips_panel_without_update_panel(mock_study, qtbot):
         patch("XBrainLab.ui.main_window.MainWindow.apply_vscode_theme"),
     ):
         window = MainWindow(mock_study)
-        window.dataset_panel = QWidget()
+        cast(Any, window).dataset_panel = QWidget()
         window.preprocess_panel = MagicMock(spec=QWidget)
         window.preprocess_panel.update_panel = MagicMock()
         window.training_panel = MagicMock(spec=QWidget)

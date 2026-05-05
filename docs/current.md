@@ -774,7 +774,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   UI action 在 `execute_application_command()` 後不可再直接呼叫 `update_panel()`、
   `check_ready_to_train()`、`notify_update()`、`on_update()`、`update_info_panel()` 或
   `refresh_backend_status()`，除非是 explicit `refresh=False` query path 或 failure / legacy
-  fallback branch。後續仍要把剩餘 manual refresh / controller observer path 收斂。
+  fallback branch。最新 tab-switch cleanup 又把 `MainWindow.switch_page()` 的 panel-index refresh
+  mapping 移到 `refresh_after_navigation()`，讓 command result refresh 和 navigation refresh 都由
+  `refresh_coordinator` 承接。後續仍要把剩餘 manual refresh / controller observer path 收斂。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training

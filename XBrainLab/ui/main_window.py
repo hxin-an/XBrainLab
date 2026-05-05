@@ -5,7 +5,6 @@ AI assistant integration, and debug tool execution.
 """
 
 import sys
-from typing import Any
 
 from PyQt6 import sip
 from PyQt6.QtCore import QRect, QSettings, QSize, Qt, QTimer, pyqtSignal
@@ -34,6 +33,7 @@ from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 from XBrainLab.ui.panels.training.panel import TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
+from XBrainLab.ui.refresh_coordinator import refresh_after_navigation
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.window_placement import (
     bounded_window_position,
@@ -412,21 +412,7 @@ class MainWindow(QMainWindow):
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
 
-        # Unified Update Logic: Always call update_panel() on result
-        target_panel: Any = None
-        if index == 0 and hasattr(self, "dataset_panel"):
-            target_panel = self.dataset_panel
-        elif index == 1 and hasattr(self, "preprocess_panel"):
-            target_panel = self.preprocess_panel
-        elif index == 2 and hasattr(self, "training_panel"):
-            target_panel = self.training_panel
-        elif index == 3 and hasattr(self, "evaluation_panel"):
-            target_panel = self.evaluation_panel
-        elif index == 4 and hasattr(self, "visualization_panel"):
-            target_panel = self.visualization_panel
-
-        if target_panel and hasattr(target_panel, "update_panel"):
-            target_panel.update_panel()
+        refresh_after_navigation(self, index)
 
     def init_panels(self):
         """Initializes and adds all main functional panels to the stacked widget.

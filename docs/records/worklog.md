@@ -37,6 +37,47 @@
 
 ## 2026-05-05
 
+### 18:36 UI tab-switch refresh coordinator slice
+
+- 做了什麼：
+  - 新增 `refresh_after_navigation(main_window, index)`，把 Dataset / Preprocess / Training /
+    Evaluation / Visualization navigation index 到 panel refresh 的 mapping 放進
+    `XBrainLab.ui.refresh_coordinator`。
+  - `MainWindow.switch_page()` 現在只負責切換 `QStackedWidget` 和 navigation button checked state，
+    然後委派 `refresh_after_navigation()`。
+  - 先補 tests 建立紅燈：`refresh_after_navigation` 尚不存在時，coordinator / delegation tests
+    import failure。
+  - 順手修正 touched test 內既有 `MainWindow.dataset_panel = QWidget()` 的 basedpyright 型別問題，
+    用 `cast(Any, window)` 保留 runtime 測試語意。
+- 結果：
+  - Tab-switch refresh scope 不再 hard-code 在 `MainWindow` 裡；command-result refresh 和
+    navigation refresh 都由 `refresh_coordinator` 定義。
+  - 行為保持不變：切換頁面只刷新目標 panel，未知 index 不刷新。
+  - 這仍不是 observer / callback refresh closure。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_navigation_refreshes_only_selected_panel tests/unit/ui/test_refresh_coordinator.py::test_navigation_refresh_ignores_unknown_panel_index tests/unit/ui/test_main_window_sync.py::test_switch_page_delegates_navigation_refresh -q`
+    -> import error，`refresh_after_navigation` 尚不存在。
+  - Focused pass：
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `15 passed`。
+  - Focused lint/type：
+    `poetry run ruff check XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/main_window.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py`
+    -> pass。
+    `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/main_window.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - Broader UI regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `926 passed`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。下一步可分類 observer bridge / callback refresh path。
+
 ### 18:29 UI post-command refresh architecture guard
 
 - 做了什麼：

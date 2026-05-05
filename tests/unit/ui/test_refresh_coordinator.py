@@ -5,7 +5,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from XBrainLab.backend.application import ChangedState, CommandResult
-from XBrainLab.ui.refresh_coordinator import refresh_after_command
+from XBrainLab.ui.refresh_coordinator import (
+    refresh_after_command,
+    refresh_after_navigation,
+)
 
 
 class _PanelSpy:
@@ -143,3 +146,29 @@ def test_refresh_is_not_reentrant_for_same_main_window():
     assert refreshed is True
     assert main_window.dataset_panel.update_calls == 1
     assert nested_results == [False]
+
+
+def test_navigation_refreshes_only_selected_panel():
+    main_window = _main_window()
+
+    refreshed = refresh_after_navigation(main_window, 2)
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+
+
+def test_navigation_refresh_ignores_unknown_panel_index():
+    main_window = _main_window()
+
+    refreshed = refresh_after_navigation(main_window, 99)
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0

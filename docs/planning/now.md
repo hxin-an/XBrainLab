@@ -98,6 +98,10 @@
   在 service-backed `execute_application_command()` 後不可再直接呼叫 local refresh method；只允許
   explicit `refresh=False` query path 或 failure / legacy fallback branch。這能防止剛清掉的
   duplicated service-success refresh 回流，但不代表 observer/manual/tab-switch refresh 已全部收斂。
+- 最新 tab-switch refresh cleanup 已把 `MainWindow.switch_page()` 的 hard-coded panel refresh mapping
+  移到 `refresh_after_navigation()`；navigation refresh scope 現在也由
+  `XBrainLab.ui.refresh_coordinator` 定義。這是小切片，還不代表 observer / callback refresh 已
+  收斂。
 - 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若

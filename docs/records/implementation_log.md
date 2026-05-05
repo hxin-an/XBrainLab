@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 UI Navigation Refresh Coordinator Slice
+
+### 狀態
+
+Tab-switch refresh is now delegated to `XBrainLab.ui.refresh_coordinator`. `MainWindow.switch_page()`
+keeps ownership of stacked-widget navigation and checked nav-button state, then calls
+`refresh_after_navigation()` for the visible workflow panel. The panel-index mapping now lives beside
+the command-result refresh mapping instead of being hard-coded inside `MainWindow`.
+
+### 已可宣稱
+
+- Command-result refresh and navigation refresh now share one coordinator module for panel refresh
+  scope.
+- `MainWindow` no longer owns workflow panel refresh mapping.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/main_window.py`
+- Tests: `tests/unit/ui/test_refresh_coordinator.py`, `tests/unit/ui/test_main_window_sync.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete UI refresh target architecture. Observer bridges, callback-driven refresh,
+  import-finished handling, and some panel-local refresh paths still need classification.
+
+### 下一手重點
+
+Continue by classifying observer / callback refresh paths and deciding which are legitimate event
+bridges versus remaining duplicated workflow refresh.
+
 ## 2026-05-05 UI Post-command Refresh Architecture Guard
 
 ### 狀態
