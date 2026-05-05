@@ -1957,3 +1957,28 @@ Preprocess, Training, Evaluation, and Visualization panels no longer repeat
 
 - 這不是 full command-driven UI refresh closure；observer/manual/tab-switch/assistant refresh 仍是
   mixed model，`UI Command Refresh Coordinator + Controller Fallback Audit` 仍是 follow-up。
+
+## 2026-05-05 UI Downstream Analysis Refresh Scope
+
+### 狀態
+
+`refresh_after_command()` now refreshes downstream analysis readiness from command-result state
+changes: `training_changed` refreshes Evaluation and Visualization panels, `epoch_changed`
+refreshes Visualization, and `evaluation_changed` also refreshes Visualization.
+
+### 已可宣稱
+
+- A training / epoch / evaluation command result no longer depends only on controller observer events
+  to update analysis readiness surfaces.
+- The refresh scope is covered by focused coordinator tests.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 full command-driven UI refresh closure；remaining manual / callback-specific refresh paths
+  still need audit.

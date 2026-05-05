@@ -97,9 +97,15 @@ def _panel_names_for(changed: ChangedState) -> tuple[str, ...]:
         or changed.training_changed
     ):
         panel_names.append("training_panel")
-    if changed.evaluation_changed:
+    if changed.training_changed or changed.evaluation_changed:
         panel_names.append("evaluation_panel")
-    if changed.visualization_changed:
+    if (
+        changed.preprocessed_changed
+        or changed.epoch_changed
+        or changed.training_changed
+        or changed.evaluation_changed
+        or changed.visualization_changed
+    ):
         panel_names.append("visualization_panel")
     return tuple(dict.fromkeys(panel_names))
 

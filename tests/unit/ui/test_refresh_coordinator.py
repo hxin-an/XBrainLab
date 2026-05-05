@@ -109,6 +109,66 @@ def test_analysis_changes_refresh_only_analysis_panels_and_shared_status():
     assert main_window.agent_manager.refresh_calls == 1
 
 
+def test_training_change_refreshes_downstream_analysis_readiness():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(training_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_epoch_change_refreshes_visualization_readiness():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(epoch_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_evaluation_change_refreshes_visualization_readiness():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(main_window=main_window)
+
+    refreshed = refresh_after_command(
+        context,
+        _result(ChangedState(evaluation_changed=True)),
+    )
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 1
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
 def test_no_state_change_does_not_refresh_ui():
     main_window = _main_window()
     info = _attach_info_spy(main_window)

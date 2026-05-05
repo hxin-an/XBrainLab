@@ -7775,3 +7775,54 @@
   - 這不是 full command-driven UI refresh closure。
   - 這不改變 Data Interpretation wizard maturity、Windows human desktop acceptance 或 local LLM
     eval claim。
+
+### 2026-05-05 19:20 UI downstream analysis refresh scope
+
+- scope：
+  - Narrow `UI Command Refresh Coordinator + Controller Fallback Audit` slice。
+  - 把 training / epoch / evaluation state changes 對 Evaluation / Visualization readiness 的刷新
+    明確放進 `refresh_after_command()`。
+- problem：
+  - 前一版 coordinator 只在 `training_changed` 時刷新 Training panel，只在
+    `evaluation_changed` / `visualization_changed` 時刷新對應 analysis panel。
+  - Evaluation / Visualization panel 的 readiness 其實也取決於 training plan/history、epoch
+    availability 和 evaluation result state；若只靠 controller observer 補刷新，command result
+    scope 還是不完整。
+- red / focused tests：
+  - 新增 tests 要求：
+    - `training_changed=True` refresh Training + Evaluation + Visualization。
+    - `epoch_changed=True` refresh Preprocess + Training + Visualization。
+    - `evaluation_changed=True` refresh Evaluation + Visualization。
+  - 實作前三個測試都在 expected downstream panel call count 上 fail。
+- 做了什麼：
+  - 更新 `XBrainLab.ui.refresh_coordinator._panel_names_for()`：
+    - `training_changed` 現在也刷新 `evaluation_panel` / `visualization_panel`。
+    - `epoch_changed` / `preprocessed_changed` 現在會刷新 `visualization_panel` readiness。
+    - `evaluation_changed` 現在也刷新 `visualization_panel` readiness。
+  - 更新 current truth、UI architecture、now、roadmap 和 implementation log，保守標成 partial
+    command-driven refresh improvement。
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py -q`
+    -> `10 passed`.
+  - `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_application_capabilities.py -q`
+    -> `15 passed`.
+  - `poetry run ruff check XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `933 passed`.
+- 不能宣稱：
+  - 這不是 full command-driven UI refresh closure。
+  - 這不移除 callback-specific observer handlers，也不證明 full train -> evaluate ->
+    visualization desktop acceptance。
