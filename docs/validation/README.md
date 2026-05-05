@@ -2138,6 +2138,31 @@ UI mutating-path audit 或 human desktop acceptance。
 這批 evidence 支撐 context-menu batch metadata UI preflight 與 backend capability policy 對齊。它
 仍不是完整 UI mutating-path audit 或 human desktop acceptance。
 
+2026-05-05 Montage dialog capability follow-up：
+
+- UI/action:
+  - `AgentManager.open_montage_picker_dialog()` now checks backend `apply_montage` capability
+    before opening `PickMontageDialog` for real `Study` paths.
+  - Empty real `Study` state shows the shared backend reason
+    `Create epochs before applying a montage.` instead of opening a dialog or relying only on a
+    local epoch-data guard.
+  - Accepted montage on real `Study` goes through `ApplyMontageCommand`; UI-side preprocess
+    controller fallback remains only for mock / legacy non-Study compatibility.
+- targeted gates:
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q`
+    -> `5 passed`.
+  - AgentManager UI regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep -q`
+    -> `48 passed`.
+  - backend command handler regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_montage_command_routes_confirmed_positions tests/unit/backend/application/test_analysis_service.py -q`
+    -> `3 passed`.
+
+這批 evidence 支撐 montage dialog blocked / success path 與 backend capability policy 對齊。它仍
+不是完整 visualization UI product acceptance、interactive desktop render 驗收或 Windows human
+desktop click-through。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

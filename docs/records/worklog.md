@@ -5660,3 +5660,50 @@
 - 不能宣稱：
   - This is one context-menu metadata alignment, not complete UI product closure.
   - It does not prove human desktop acceptance or complete remaining mutating-path audit.
+
+### 2026-05-05 Montage dialog capability truth
+
+- scope：
+  - UI/backend command truth alignment for AgentManager montage picker。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `open_montage_picker_dialog()` relied on a local `epoch_data` guard before opening the montage
+    dialog, then executed `ApplyMontageCommand` after user acceptance.
+  - That meant the blocked UX did not read the shared backend `apply_montage` capability reason,
+    and tests still emphasized the UI-side preprocess-controller fallback.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q`
+    initially failed because empty real `Study` showed `Error: No epoch data available for montage.`
+    instead of `Create epochs before applying a montage.`
+- 做了什麼：
+  - Added `apply_montage` capability preflight before opening `PickMontageDialog` for real
+    `Study` paths.
+  - Added real `Study` success coverage proving accepted montage goes through
+    `ApplyMontageCommand` and does not call the UI-side fallback controller.
+  - Updated the AgentManager docstring to reflect command-layer primary behavior and mock /
+    legacy fallback boundaries.
+- validation：
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker -q`
+    -> `5 passed`.
+  - AgentManager UI regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep -q`
+    -> `48 passed`.
+  - backend command handler regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_montage_command_routes_confirmed_positions tests/unit/backend/application/test_analysis_service.py -q`
+    -> `3 passed`.
+  - `poetry run ruff check XBrainLab/ui/components/agent_manager.py tests/unit/ui/test_agent_manager_coverage.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one montage dialog alignment, not full visualization UI product acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path audit.

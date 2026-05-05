@@ -880,3 +880,27 @@ Dataset context-menu `Set Subject` / `Set Session` batch metadata flow 現在會
 ### 不能宣稱完成
 
 - 這不是完整 UI mutating-path audit closure；training / visualization remaining paths 仍需盤點。
+
+## 2026-05-05 Montage Dialog Capability Truth
+
+### 狀態
+
+AgentManager montage picker 現在會先讀 backend `apply_montage` capability。real `Study` path
+在缺 epochs 時顯示 shared blocked reason，不打開 montage dialog；使用者接受 montage 後經由
+`ApplyMontageCommand` / `AnalysisCommandService` 套用。
+
+### 已可宣稱
+
+- Montage blocked / success path 與 ApplicationService capability policy 對齊。
+- UI-side preprocess controller fallback 被限制在 mock / legacy non-Study compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/agent_manager.py`
+- Tests：`tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 visualization UI product acceptance，也不是 Windows human desktop click-through。
+- 仍需持續盤點其他 panel / dialog 的 real runtime controller mutation bypass。

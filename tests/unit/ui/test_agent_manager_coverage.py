@@ -242,3 +242,53 @@ class TestMontagePicker:
         ):
             m.open_montage_picker_dialog({})
         m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
+
+    def test_real_study_montage_blocked_by_backend_capability(self):
+        """Real Study UI paths must use the shared capability policy."""
+        from XBrainLab.backend.study import Study
+
+        m = _make_manager()
+        m.study = Study()
+        status_bar = MagicMock()
+        m.main_window.statusBar.return_value = status_bar
+
+        with patch(
+            "XBrainLab.ui.components.agent_manager.PickMontageDialog",
+        ) as mock_dialog:
+            m.open_montage_picker_dialog({})
+
+        mock_dialog.assert_not_called()
+        status_bar.showMessage.assert_called_with(
+            "Create epochs before applying a montage.",
+        )
+
+    def test_real_study_montage_success_uses_application_service(self):
+        """Real Study acceptance applies montage through the command service."""
+        from XBrainLab.backend.study import Study
+
+        m = _make_manager()
+        m.study = Study()
+        m.preprocess_controller = MagicMock()
+        m.chat_panel.debug_mode = True
+        epoch_data = MagicMock()
+        epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
+        m.study.epoch_data = epoch_data
+        mock_dialog = MagicMock()
+        mock_dialog.exec.return_value = True
+        mock_dialog.get_result.return_value = (
+            ["C3", "C4"],
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        )
+
+        with patch(
+            "XBrainLab.ui.components.agent_manager.PickMontageDialog",
+            return_value=mock_dialog,
+        ):
+            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        epoch_data.set_channels.assert_called_once_with(
+            ["C3", "C4"],
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        )
+        m.preprocess_controller.apply_montage.assert_not_called()
+        m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")

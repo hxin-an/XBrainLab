@@ -17,13 +17,17 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import ApplyMontageCommand
+from XBrainLab.backend.application import ApplyMontageCommand, CommandName
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
 from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
@@ -1124,8 +1128,9 @@ class AgentManager(QObject):
         """Open the montage picker dialog for channel configuration.
 
         Presents a ``PickMontageDialog`` pre-populated with an optional
-        montage suggestion from the agent. On acceptance, applies the
-        montage via the preprocess controller.
+        montage suggestion from the agent. Real Study-backed paths use the
+        ApplicationService command layer; legacy mock paths may fall back to
+        the preprocess controller for test compatibility.
 
         Args:
             params: Dictionary with optional ``"montage_name"`` key.
@@ -1133,13 +1138,26 @@ class AgentManager(QObject):
         """
         montage_name = params.get("montage_name")  # Pre-selected montage from Agent
 
-        if not self.study.epoch_data:
+        capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+        if capability is not None and not capability.enabled:
+            sb = self.main_window.statusBar()
+            if sb:
+                sb.showMessage(
+                    blocked_reason(
+                        capability,
+                        "Create epochs before applying a montage.",
+                    ),
+                )
+            return
+
+        epoch_data = self.study.epoch_data
+        if not epoch_data:
             sb = self.main_window.statusBar()
             if sb:
                 sb.showMessage("Error: No epoch data available for montage.")
             return
 
-        chs = self.study.epoch_data.get_mne().info["ch_names"]
+        chs = epoch_data.get_mne().info["ch_names"]
         dialog = PickMontageDialog(self.main_window, chs, default_montage=montage_name)
 
         if dialog.exec():
