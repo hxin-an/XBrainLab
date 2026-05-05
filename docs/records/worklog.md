@@ -5621,3 +5621,42 @@
 - 不能宣稱：
   - This is one context-menu action alignment, not complete UI product closure.
   - It does not prove human desktop acceptance or complete remaining mutating-path audit.
+
+### 2026-05-05 Dataset batch-metadata capability truth
+
+- scope：
+  - UI/backend command truth alignment for Dataset context-menu batch metadata edits。
+  - No command schema, backend handler, MCP, agent, recipe, or screenshot artifact change.
+- problem：
+  - `_batch_set()` opened the Subject / Session input dialog before checking whether backend
+    capability policy allowed `update_metadata`.
+  - In a real `Study` empty/blocked state, this could ask for metadata input that the command layer
+    would reject with `Load raw data before updating metadata.`
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_uses_backend_capability_before_prompt -q`
+    initially failed at `QInputDialog.getText()`, proving the prompt path was reached.
+- 做了什麼：
+  - Added a backend `update_metadata` capability preflight before the Subject / Session input
+    dialog.
+  - Kept existing mock / legacy non-Study behavior for controller fallback tests.
+- validation：
+  - focused red + compatibility paths:
+    `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_uses_backend_capability_before_prompt tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_session tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_context_menu_session -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py -q`
+    -> `62 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 120s git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one context-menu metadata alignment, not complete UI product closure.
+  - It does not prove human desktop acceptance or complete remaining mutating-path audit.

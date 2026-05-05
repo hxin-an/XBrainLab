@@ -740,6 +740,26 @@ class TestDatasetActionHandler:
             0, session="sess1"
         )
 
+    def test_batch_set_uses_backend_capability_before_prompt(self, handler):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QInputDialog") as mock_input,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler._batch_set([0], "Session")
+
+        mock_input.getText.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Load raw data before updating metadata."
+            in (mock_mb.warning.call_args.args[2])
+        )
+        handler.panel.controller.update_metadata.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_get_target_files_no_selection_apply_all(self, mock_mb, handler):
         handler.panel.table.selectedIndexes.return_value = []

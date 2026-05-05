@@ -1002,6 +1002,21 @@ class DatasetActionHandler:
             self._remove_files(rows)
 
     def _batch_set(self, rows, attr):
+        metadata_capability = get_command_capability(
+            self.panel,
+            CommandName.UPDATE_METADATA,
+        )
+        if metadata_capability is not None and not metadata_capability.enabled:
+            QMessageBox.warning(
+                self.panel,
+                "Metadata Update Blocked",
+                blocked_reason(
+                    metadata_capability,
+                    "Load raw data before updating metadata.",
+                ),
+            )
+            return
+
         text, ok = QInputDialog.getText(self.panel, f"Set {attr}", f"Enter {attr}:")
         if ok and text:
             controller = self.controller

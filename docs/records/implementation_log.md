@@ -857,3 +857,26 @@ blocked reason。
 
 - 這不是完整 Dataset context-menu audit closure；batch metadata preflight 和其他 remaining
   UI mutating paths 仍需盤點。
+
+## 2026-05-05 Dataset Batch Metadata Capability Truth
+
+### 狀態
+
+Dataset context-menu `Set Subject` / `Set Session` batch metadata flow 現在會先讀 backend
+`update_metadata` capability。real `Study` path 在沒有 raw data 或 raw-edit boundary blocked 時
+不會先打開輸入框，而是顯示 shared backend blocked reason。
+
+### 已可宣稱
+
+- Batch metadata UI preflight 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 仍保留 controller fallback 行為。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 UI mutating-path audit closure；training / visualization remaining paths 仍需盤點。

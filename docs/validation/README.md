@@ -2118,6 +2118,26 @@ UI mutating-path audit 或 human desktop acceptance。
 這批 evidence 支撐 context-menu Remove Files UI preflight 與 backend capability policy 對齊。它
 仍不是完整 UI mutating-path audit 或 human desktop acceptance。
 
+2026-05-05 Dataset Batch Metadata capability follow-up：
+
+- UI/action:
+  - `_batch_set()` now checks backend `update_metadata` capability before opening the Subject /
+    Session input dialog.
+  - Empty real `Study` state shows the shared backend reason
+    `Load raw data before updating metadata.` instead of asking for metadata that cannot be applied.
+- targeted gates:
+  - focused red + compatibility paths:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_uses_backend_capability_before_prompt tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_session tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_context_menu_session -q`
+    -> `3 passed`.
+  - Dataset action/panel regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py -q`
+    -> `62 passed`.
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+
+這批 evidence 支撐 context-menu batch metadata UI preflight 與 backend capability policy 對齊。它
+仍不是完整 UI mutating-path audit 或 human desktop acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:
