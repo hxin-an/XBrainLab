@@ -150,7 +150,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         metadata_layout.addWidget(self.file_tree)
         layout.addWidget(metadata_group)
 
-        label_group = QGroupBox("Labels, Events, and Recipe Trace")
+        label_group = QGroupBox("Label and Event Interpretation")
         label_layout = QVBoxLayout(label_group)
         self.label_carrier_tree = QTreeWidget()
         self.label_carrier_tree.setHeaderLabels(
@@ -470,7 +470,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
         event_roles = self.preview.get("event_roles") or {}
         if isinstance(event_roles, dict):
             for name, role in event_roles.items():
-                tree_item = QTreeWidgetItem([str(name), "event role", str(role)])
+                tree_item = QTreeWidgetItem(
+                    [self._event_role_display_name(str(name)), "event role", str(role)]
+                )
+                tree_item.setToolTip(0, f"Source event field: {name}")
                 self._event_role_items.append((tree_item, str(name), str(role)))
                 self.event_tree.addTopLevelItem(tree_item)
                 self._install_event_role_selector(tree_item, str(role))
@@ -923,6 +926,12 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def _label_choice_display(value: str) -> str:
         cleaned = value.replace("_", " ").strip()
         return cleaned[:1].upper() + cleaned[1:] if cleaned else value
+
+    @staticmethod
+    def _event_role_display_name(value: str) -> str:
+        if value == "label_carrier":
+            return "Label carrier"
+        return DataInterpretationPreviewDialog._label_choice_display(value)
 
     def _label_target_selector(self) -> QComboBox:
         selector = QComboBox(self.label_carrier_tree)

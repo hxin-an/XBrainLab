@@ -128,7 +128,10 @@ selector controls：label field、anchor、time model、granularity 和 role 都
 UI replay 顯示人話 `Seconds`、`Trial`、`Class cue labels`，但 recipe choices 仍保存 backend
 需要的 `seconds`、`trial`、`class cue labels`。最新 UI selector slice 又把 event role rows
 從 free-text edit 收斂成 `QComboBox` selector；`trial_type` 會以 `Class cue` 這類人話顯示，
-artifact 也新增 `event_rows`，但 recipe choices 仍保存 `class cue` 等 backend values。後續 slice 又新增 format capability
+artifact 也新增 `event_rows`，但 recipe choices 仍保存 `class cue` 等 backend values。最新
+event display polish 又把 visible event-role item 從 `label_carrier` / `trial_type` 這類 source /
+internal key 改成人話 `Label carrier` / `Trial type`，backend choices 仍保存原 key；label /
+event 區塊標題也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。後續 slice 又新增 format capability
 boundaries：scan / preview 會列出 GDF、EDF / BDF、EEGLAB、BrainVision、MNE FIF、MAT labels、
 CSV / TSV / BIDS events、TXT labels 和 XDF / LSL 的 supported / needs-review / blocked 邊界；
 dialog `Review Summary` 會用人話顯示這些邊界，XDF / LSL 目前會明確提示 stream selection

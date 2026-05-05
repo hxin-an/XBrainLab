@@ -7927,3 +7927,53 @@
     -> pass with existing MkDocs Material warning.
 - 不能宣稱：
   - This docs sync is not product completion and adds no new runtime evidence.
+
+### 2026-05-05 19:40 Data Interpretation event display polish
+
+- scope：
+  - Data Interpretation preview dialog visible text polish.
+  - Preserve backend choice keys and recipe payload shape.
+- problem：
+  - Latest screenshot review showed the Event table exposing internal-looking `label_carrier` as
+    visible first-layer text.
+  - The label/event group title still said `Labels, Events, and Recipe Trace`, although recipe trace
+    is now reviewed in the structured `Review Summary`.
+- red / focused tests：
+  - Added a UI test requiring visible event role names to show `Label carrier` / `Trial type` while
+    `get_result()["choices"]["event_roles"]` keeps backend keys such as `label_carrier`.
+  - Added a UI test assertion requiring the group title `Label and Event Interpretation`.
+  - Both assertions failed before implementation.
+  - Extended replay helper test then failed because it still searched the visible row by raw
+    `trial_type` after the UI was humanized.
+- 做了什麼：
+  - Humanized event-role item text with `_event_role_display_name()`, while storing the original
+    key in `_event_role_items`.
+  - Added source-key tooltip for event-role rows.
+  - Updated replay helper matching to use that source-field tooltip, so replay can operate the
+    visible `Trial type` row while preserving backend `trial_type` choices.
+  - Renamed the group title to `Label and Event Interpretation`.
+  - Refreshed Data Interpretation replay artifacts.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `31 passed`.
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`, and
+    `artifacts/ui/data-interpretation-replay.json`.
+  - `git diff --check` -> pass.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+- evidence：
+  - Screenshot review of `artifacts/ui/data-interpretation-preview.png` shows `Label carrier`,
+    `Onset`, `Duration`, and `Trial type` rows, not visible `label_carrier`.
+  - Replay JSON `dialog.event_rows` records `Label carrier`; backend payload still keeps
+    `label_carrier` where it belongs.
+  - Replay JSON `review_choices.event_roles.trial_type` is `class cue`, confirming the replay still
+    changes the backend event-role choice through the humanized row.
+- 不能宣稱：
+  - This is UI-visible wording polish, not full mature import wizard editor, raw trigger selector,
+    or Windows human desktop acceptance.

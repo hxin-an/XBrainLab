@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QComboBox
 
-from scripts.dev.capture_data_interpretation_replay import tree_rows
+from scripts.dev.capture_data_interpretation_replay import (
+    source_event_field_matches,
+    tree_rows,
+)
 from scripts.dev.capture_human_like_product_walkthrough import (
     REQUIRED_PHASES,
     apply_review_choices,
@@ -228,14 +231,15 @@ def test_apply_review_choices_updates_event_role_selector(qtbot) -> None:
     role_item = None
     for index in range(dialog.event_tree.topLevelItemCount()):
         item = dialog.event_tree.topLevelItem(index)
-        if item is not None and item.text(0) == "trial_type":
+        if item is not None and source_event_field_matches(item, "trial_type"):
             role_item = item
             break
     assert role_item is not None
+    assert role_item.text(0) == "Trial type"
     role_selector = dialog.event_tree.itemWidget(role_item, 2)
     assert isinstance(role_selector, QComboBox)
 
     apply_review_choices(dialog)
 
     assert role_selector.currentData() == "class cue"
-    assert ["trial_type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
+    assert ["Trial type", "event role", "Class cue"] in tree_rows(dialog.event_tree)

@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QTableWidget,
     QTreeWidget,
+    QTreeWidgetItem,
     QWidget,
 )
 
@@ -283,12 +284,22 @@ def apply_replay_review_choices(
 
     for index in range(dialog.event_tree.topLevelItemCount()):
         event_item = dialog.event_tree.topLevelItem(index)
-        if event_item is not None and event_item.text(0) == "trial_type":
+        if event_item is not None and source_event_field_matches(
+            event_item,
+            "trial_type",
+        ):
             set_tree_cell(dialog.event_tree, event_item, 2, "Class cue")
 
     dialog_result = dialog.get_result()
     choices = dialog_result.get("choices", {})
     return choices if isinstance(choices, dict) else {}
+
+
+def source_event_field_matches(item: QTreeWidgetItem, source_field: str) -> bool:
+    """Match a source event field after the UI has humanized its visible label."""
+    tooltip_match = item.toolTip(0) == f"Source event field: {source_field}"
+    legacy_visible_match = item.text(0) == source_field
+    return tooltip_match or legacy_visible_match
 
 
 def capture_replay(app: QApplication) -> int:

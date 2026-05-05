@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from scripts.dev.capture_data_interpretation_replay import (
     apply_replay_review_choices,
     dataset_sidebar_state,
+    source_event_field_matches,
     table_state,
     tree_rows,
 )
@@ -40,10 +41,11 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
     role_item = None
     for index in range(dialog.event_tree.topLevelItemCount()):
         item = dialog.event_tree.topLevelItem(index)
-        if item is not None and item.text(0) == "trial_type":
+        if item is not None and source_event_field_matches(item, "trial_type"):
             role_item = item
             break
     assert role_item is not None
+    assert role_item.text(0) == "Trial type"
     role_selector = dialog.event_tree.itemWidget(role_item, 2)
     assert isinstance(role_selector, QComboBox)
     assert role_selector.currentData() == "class label candidate"
@@ -51,7 +53,7 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
     apply_replay_review_choices(dialog)
 
     assert role_selector.currentData() == "class cue"
-    assert ["trial_type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
+    assert ["Trial type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
     assert dialog.get_result()["choices"]["event_roles"] == {"trial_type": "class cue"}
 
 
@@ -60,6 +62,7 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
         pass
 
     sidebar = SidebarStub()
+    smart_parse_btn: QPushButton | None = None
     for name, text in {
         "import_btn": "Interpret EEG Source",
         "import_folder_btn": "Interpret Folder",
@@ -72,9 +75,12 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
         button = QPushButton(text)
         qtbot.addWidget(button)
         setattr(sidebar, name, button)
+        if name == "smart_parse_btn":
+            smart_parse_btn = button
 
-    sidebar.smart_parse_btn.setEnabled(False)
-    sidebar.smart_parse_btn.setToolTip("Load raw data before applying smart parse.")
+    assert smart_parse_btn is not None
+    smart_parse_btn.setEnabled(False)
+    smart_parse_btn.setToolTip("Load raw data before applying smart parse.")
 
     state = dataset_sidebar_state(sidebar)
 

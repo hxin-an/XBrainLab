@@ -1,7 +1,13 @@
 """Tests for the Data Interpretation preview dialog."""
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QHeaderView, QPlainTextEdit
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialogButtonBox,
+    QGroupBox,
+    QHeaderView,
+    QPlainTextEdit,
+)
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -50,6 +56,8 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
     )
     assert dialog.file_tree.topLevelItemCount() == 1
     assert dialog.event_tree.topLevelItemCount() == 4
+    group_titles = {group.title() for group in dialog.findChildren(QGroupBox)}
+    assert "Label and Event Interpretation" in group_titles
     assert "Found 1 EEG file" in dialog.summary_label.text()
     assert "Validation needs confirmation" in dialog.decision_label.text()
     review_text = _tree_text(dialog.review_tree)
@@ -240,7 +248,7 @@ def test_data_interpretation_preview_dialog_returns_event_role_review(qtbot):
 
     for index in range(dialog.event_tree.topLevelItemCount()):
         item = dialog.event_tree.topLevelItem(index)
-        if item is not None and item.text(0) == "cue":
+        if item is not None and item.text(0) == "Cue":
             role_selector = dialog.event_tree.itemWidget(item, 2)
             assert isinstance(role_selector, QComboBox)
             assert not (item.flags() & Qt.ItemFlag.ItemIsEditable)
@@ -252,6 +260,45 @@ def test_data_interpretation_preview_dialog_returns_event_role_review(qtbot):
     assert result["choices"]["event_roles"] == {
         "cue": "class cue",
         "onset": "time anchor",
+    }
+
+
+def test_data_interpretation_preview_dialog_humanizes_event_role_names(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "event_roles": {
+                "label_carrier": "external label or event source",
+                "trial_type": "class cue",
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    visible_names = []
+    for index in range(dialog.event_tree.topLevelItemCount()):
+        item = dialog.event_tree.topLevelItem(index)
+        if item is not None:
+            visible_names.append(item.text(0))
+
+    assert "Label carrier" in visible_names
+    assert "Trial type" in visible_names
+    assert "label_carrier" not in visible_names
+
+    for index in range(dialog.event_tree.topLevelItemCount()):
+        item = dialog.event_tree.topLevelItem(index)
+        if item is not None and item.text(0) == "Label carrier":
+            selector = dialog.event_tree.itemWidget(item, 2)
+            assert isinstance(selector, QComboBox)
+            selector.setCurrentText("Ignored")
+
+    result = dialog.get_result()
+
+    assert result["choices"]["event_roles"] == {
+        "label_carrier": "ignored",
+        "trial_type": "class cue",
     }
 
 

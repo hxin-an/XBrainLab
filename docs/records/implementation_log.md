@@ -1932,6 +1932,38 @@ header 內縮或外溢。Review Summary 也改成低對比 dark-theme alternate 
 - 這不是 Windows Desktop 真人 click-through、雙螢幕 / DPI acceptance，或完整 mature import
   wizard redesign。
 
+## 2026-05-05 Data Interpretation Event Display Polish
+
+### 狀態
+
+Data Interpretation preview dialog now humanizes event-role item names in the visible event table.
+Internal keys such as `label_carrier` remain in backend choices / recipe payloads, but the UI shows
+`Label carrier`, `Onset`, `Duration`, and `Trial type`. The label/event group title was also changed
+to `Label and Event Interpretation` so recipe trace stays conceptually in `Review Summary`.
+The replay helper now matches event-role rows through the source-field tooltip, so automated replay
+can operate the humanized `Trial type` row while still saving backend `trial_type` recipe choices.
+
+### 已可宣稱
+
+- The latest Data Interpretation replay screenshot no longer exposes the internal
+  `label_carrier` event-role key as first-layer visible text.
+- Backend choice keys are preserved for recipe replay and command compatibility.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`,
+  `scripts/dev/capture_data_interpretation_replay.py`
+- Tests：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`,
+  `tests/unit/scripts/test_capture_data_interpretation_replay.py`,
+  `tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`, `artifacts/ui/data-interpretation-replay.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 full mature import wizard editor、raw trigger selector 或 Windows human acceptance。
+
 ## 2026-05-05 UI Refresh Bridge Helper Cleanup
 
 ### 狀態

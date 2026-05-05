@@ -3209,22 +3209,22 @@
           "Review alignment, anchor, and class map before apply."
         ],
         [
-          "label_carrier",
+          "Label carrier",
           "event role",
           "External label or event source"
         ],
         [
-          "onset",
+          "Onset",
           "event role",
           "Time anchor"
         ],
         [
-          "duration",
+          "Duration",
           "event role",
           "Event duration"
         ],
         [
-          "trial_type",
+          "Trial type",
           "event role",
           "Class cue"
         ]

@@ -2282,6 +2282,42 @@ review 欄位。它仍不是完整 embedded post-load label import editor、raw 
 UI replay 會實際操作 selector 並保存 visible row。它仍不是完整 raw trigger selector、
 complex anchor reconciliation、Windows human acceptance 或全格式 real-data certification。
 
+2026-05-05 Data Interpretation event display polish：
+
+- UI:
+  - visible event-role item names now use user-facing text such as `Label carrier`, `Onset`,
+    `Duration`, and `Trial type` instead of exposing source/internal keys like `label_carrier`.
+  - the group title is now `Label and Event Interpretation`; recipe trace remains in the structured
+    `Review Summary` table.
+  - backend choice keys are still preserved for recipe replay and command compatibility.
+- TDD evidence:
+  - focused UI test first failed because visible event-role rows still exposed
+    `label_carrier` / `trial_type`.
+  - group-title assertion first failed because the dialog still displayed
+    `Labels, Events, and Recipe Trace`.
+  - replay helper test first failed because it still searched the visible event row by raw
+    `trial_type` instead of the source-field tooltip after UI humanization.
+- replay artifact refreshed:
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+  - `artifacts/ui/data-interpretation-preview.png`
+  - `artifacts/ui/data-interpretation-remap.png`
+  - `artifacts/ui/data-interpretation-replay.json`
+  - screenshot review shows the visible event rows as `Label carrier`, `Onset`, `Duration`, and
+    `Trial type`.
+  - replay JSON `dialog.event_rows` records `Label carrier`; backend payloads still keep
+    `label_carrier`.
+- targeted gates:
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+  - `31 passed`
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+
+這批 evidence 支撐 Data Interpretation preview 不再把 `label_carrier` 這類 internal-looking key
+當成第一層可見文字。它仍不是 full mature import wizard editor、raw trigger selector、Windows
+human acceptance 或全格式 real-data certification。
+
 2026-05-05 Data Interpretation recipe reload rehydration：
 
 - backend:

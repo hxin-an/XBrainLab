@@ -206,6 +206,9 @@
   也把 event role rows 改成 selector，不再要求使用者手打 role text。Replay artifact 現在保存
   `event_rows`，可見 `trial_type -> Class cue`，recipe choices 仍保存 backend value
   `class cue`。
+- 最新 event display polish 已把 visible `label_carrier` / `trial_type` event-role item
+  humanized 成 `Label carrier` / `Trial type`，backend choices 仍保存原始 key。Label / event
+  group title 也改成 `Label and Event Interpretation`，recipe trace 留在 `Review Summary`。
 - 最新 Dataset / Data Interpretation table-fit slice 已把 Dataset 主表和 wizard tree table 改成依
   viewport 等比例重算欄寬：整體欄位會填滿主 panel，文字用 elide 處理，不再用高對比
   `Review Summary` 條紋或綠色 success 語意顯示 external labels。Artifact：
