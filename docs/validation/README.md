@@ -2186,6 +2186,29 @@ desktop click-through。
 這批 evidence 支撐 Visualization sidebar montage blocked / success path 與 backend capability
 policy 對齊。它仍不是完整 visualization UI product acceptance 或 desktop render 驗收。
 
+2026-05-05 Training clear-history capability follow-up：
+
+- UI/action:
+  - `TrainingSidebar.clear_history()` now checks backend `clear_training_history` capability before
+    showing the destructive confirmation dialog for real `Study` paths.
+  - Empty real `Study` state shows `No training history is available to clear.` from backend
+    capability policy, and does not ask the user to confirm an impossible cleanup.
+  - mock / legacy non-Study tests keep the existing controller-local `is_training()` guard and
+    fallback behavior.
+- targeted gates:
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_clear_history_uses_backend_capability_before_confirm -q`
+    -> `1 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `43 passed`.
+  - backend training command regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py tests/unit/backend/application/test_application_service.py::test_clear_datasets_and_training_history_commands_route_cleanup tests/unit/backend/application/test_application_service.py::test_evaluate_and_clear_history_block_when_trainer_has_no_plan_history tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `6 passed`.
+
+這批 evidence 支撐 destructive clear-history UI boundary 與 backend capability policy 對齊。它仍
+不是完整 training UI / long-running training human acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

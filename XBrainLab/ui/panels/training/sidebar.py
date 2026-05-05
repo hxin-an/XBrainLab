@@ -452,7 +452,21 @@ class TrainingSidebar(QWidget):
         Blocked while training is running.
         """
         try:
-            if self.controller.is_training():
+            clear_capability = get_command_capability(
+                self,
+                CommandName.CLEAR_TRAINING_HISTORY,
+            )
+            if clear_capability is not None and not clear_capability.enabled:
+                QMessageBox.warning(
+                    self,
+                    "Clear History Blocked",
+                    blocked_reason(
+                        clear_capability,
+                        "No training history is available to clear.",
+                    ),
+                )
+                return
+            if clear_capability is None and self.controller.is_training():
                 QMessageBox.warning(
                     self,
                     "Warning",

@@ -5753,3 +5753,48 @@
   - This is one visualization sidebar alignment, not full visualization UI product acceptance.
   - It does not prove desktop render, Windows human click-through, or complete remaining
     mutating-path audit.
+
+### 2026-05-05 Training clear-history capability truth
+
+- scope：
+  - UI/backend command truth alignment for Training sidebar `Clear History` destructive action。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `TrainingSidebar.clear_history()` asked for destructive confirmation before checking backend
+    `clear_training_history` capability.
+  - In empty real `Study` state this could ask the user to confirm an impossible cleanup that the
+    command layer would later reject.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_clear_history_uses_backend_capability_before_confirm -q`
+    initially failed because `QMessageBox.question()` was called.
+- 做了什麼：
+  - Added `clear_training_history` capability preflight before destructive confirmation for real
+    `Study` paths.
+  - Kept controller-local `is_training()` warning and controller fallback only for mock / legacy
+    non-Study paths.
+- validation：
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_clear_history_uses_backend_capability_before_confirm -q`
+    -> `1 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `43 passed`.
+  - backend training command regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py tests/unit/backend/application/test_application_service.py::test_clear_datasets_and_training_history_commands_route_cleanup tests/unit/backend/application/test_application_service.py::test_evaluate_and_clear_history_block_when_trainer_has_no_plan_history tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `6 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one destructive-action boundary alignment, not full training UI product acceptance.
+  - It does not prove long-running training human acceptance or complete remaining mutating-path
+    audit.

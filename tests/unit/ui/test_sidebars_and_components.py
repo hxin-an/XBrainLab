@@ -309,6 +309,28 @@ class TestTrainingSidebar:
         assert isinstance(mock_execute.call_args.args[1], ClearTrainingHistoryCommand)
         sidebar.panel.controller.clear_history.assert_not_called()
 
+    def test_clear_history_uses_backend_capability_before_confirm(self, sidebar):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.is_training.return_value = False
+
+        with (
+            patch.object(QMessageBox, "question") as mock_question,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.clear_history()
+
+        mock_question.assert_not_called()
+        mock_warning.assert_called_once_with(
+            sidebar,
+            "Clear History Blocked",
+            "No training history is available to clear.",
+        )
+        sidebar.panel.controller.clear_history.assert_not_called()
+
     def test_training_setting_while_training(self, sidebar):
         sidebar.panel.controller.is_training.return_value = True
         with patch("PyQt6.QtWidgets.QMessageBox.warning"):

@@ -929,3 +929,26 @@ controller-local epoch 判斷不再覆蓋 backend command truth。
 
 - 這不是完整 visualization UI product acceptance，也不是 desktop render / Windows click-through
   驗收。
+
+## 2026-05-05 Training Clear-History Capability Truth
+
+### 狀態
+
+Training sidebar `Clear History` 現在會先讀 backend `clear_training_history` capability。real
+`Study` path 在沒有 training history 時不再先跳 destructive confirmation，而是顯示 shared
+blocked reason。
+
+### 已可宣稱
+
+- Training clear-history confirmation boundary 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 controller-local compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 training UI / long-running training human acceptance。
