@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+fe978ce ui: keep visualization failed query authoritative
 d786276 ui: query preprocess plot data through service
 aea3d3a docs: refresh handoff after walkthrough geometry gate
 865b7c6 ui: flag clipped rows in walkthrough artifacts
@@ -126,6 +127,11 @@ bb57beb ui: use backend truth for split replacement
   - Direct `plot_sample_data()` calls use `QueryStateCommand(query="data_lists",
     include_objects=True)` before controller reads.
   - Controller data-list reads remain only for query-unavailable mock / legacy fallback.
+- Visualization failed-query trainer fallback:
+  - `VisualizationPanel.get_trainers()` now returns `[]` when an ApplicationService visualization
+    query has failed.
+  - Stale `VisualizationController.get_trainers()` fallback remains only when no ApplicationService
+    query exists for mock / legacy panel compatibility.
 - Visualization sidebar `Set Montage` missing-result handling:
   - no longer silently returns when `execute_application_command()` unexpectedly returns `None`.
   - mock / legacy contexts use `run_legacy_controller_fallback()`; real `Study` contexts refuse
