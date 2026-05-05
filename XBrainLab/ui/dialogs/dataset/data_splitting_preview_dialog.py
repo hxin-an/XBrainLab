@@ -33,6 +33,8 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 from .manual_split_dialog import ManualSplitDialog
 
 DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
+PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC = 0.2
+PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC = 1.0
 
 
 class DataSplitterHolder(DataSplitter):
@@ -363,6 +365,7 @@ class DataSplittingPreviewDialog(BaseDialog):
 
     def preview(self):
         """Start background dataset generation and update the tree view."""
+        self._interrupt_preview_worker(PREVIEW_WORKER_RESTART_JOIN_TIMEOUT_SEC)
         self.datasets = []
         if self.tree:
             self.tree.clear()
@@ -378,9 +381,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         for splitter in self.val_splitter_list:
             if hasattr(splitter, "to_thread"):
                 splitter.to_thread()
-
-        if self.dataset_generator:
-            self.dataset_generator.set_interrupt()
 
         self.dataset_generator = DatasetGenerator(
             self.epoch_data,
@@ -458,9 +458,16 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Stop the polling timer and interrupt background workers on close."""
         if self.timer:
             self.timer.stop()
+        self._interrupt_preview_worker(PREVIEW_WORKER_CLOSE_JOIN_TIMEOUT_SEC)
+        super().closeEvent(event)
+
+    def _interrupt_preview_worker(self, join_timeout: float) -> None:
+        """Interrupt and briefly wait for the active preview worker."""
         if self.dataset_generator:
             self.dataset_generator.set_interrupt()
-        super().closeEvent(event)
+        worker = self.preview_worker
+        if worker and worker.is_alive() and worker is not threading.current_thread():
+            worker.join(timeout=join_timeout)
 
     def get_result(self):
         """Return the finalized DatasetGenerator.

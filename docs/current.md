@@ -876,6 +876,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `DataSplittingDialog` 會用 service-backed epoch/generator context，不再初始化時直接讀 stale
   `TrainingController.get_epoch_data()` / `get_dataset_generator()`。controller reads 只留在
   query unavailable 的 mock / legacy dialog fallback。
+  最新 Data Splitting preview thread cleanup 讓 preview restart / dialog close 會 interrupt
+  active `DatasetGenerator` 並 short-join preview worker；這是 focused lifecycle smoke，不是
+  long-running dataset-generation soak test。
   最新 Start Training cleanup 也把 start gate 改成 backend `train` capability 優先：real
   command-capable path 若 capability enabled，stale `TrainingController.is_training()` 不會再讓
   Start button silently skip `TrainCommand`；controller running check 只留給 no-capability mock /

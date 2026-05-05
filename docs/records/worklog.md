@@ -10223,3 +10223,57 @@
 - 不能宣稱：
   - This does not redesign the Data Splitting dialog UX, remove all Training sidebar fallback
     paths, or certify long-running dataset-generation thread cleanup.
+
+### 2026-05-06 Data Splitting preview worker cleanup
+
+- scope：
+  - Improve focused thread/job lifecycle cleanup for Data Splitting preview generation.
+  - Prevent dialog close and repeated preview restarts from only interrupting the active
+    `DatasetGenerator` without waiting for the Python worker thread.
+- red / focused tests：
+  - Added `test_close_stops_timer_and_generator` assertion that close calls worker `join()`.
+  - Added `test_preview_interrupts_and_joins_previous_worker`.
+  - Red gates failed because `closeEvent()` / `preview()` called `set_interrupt()` but never joined
+    the preview worker.
+- 做了什麼：
+  - Added bounded preview-worker cleanup to `DataSplittingPreviewDialog`.
+  - `preview()` now interrupts and short-joins the previous preview worker before starting a new
+    generator.
+  - `closeEvent()` now stops the timer, interrupts the generator, and short-joins the worker before
+    delegating to Qt close handling.
+- validation：
+  - Red gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_data_splitting.py::TestDataSplittingPreviewDialogSplitters::test_close_stops_timer_and_generator -q`
+    -> failed because `join()` was not called.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_data_splitting.py::TestDataSplittingPreviewDialogSplitters::test_preview_interrupts_and_joins_previous_worker -q`
+    -> failed because `join()` was not called.
+  - Focused pass:
+    same commands -> `1 passed` each.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_data_splitting.py tests/unit/ui/dialogs/test_data_splitting.py tests/unit/ui/dataset/test_data_splitting.py tests/unit/ui/test_panels_and_dialogs.py -q`
+    -> `105 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py tests/unit/ui/test_data_splitting.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py tests/unit/ui/test_data_splitting.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - Slice gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_data_splitting.py tests/unit/ui/dialogs/test_data_splitting.py tests/unit/ui/dataset/test_data_splitting.py tests/unit/ui/test_panels_and_dialogs.py -q`
+    -> `105 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a UI thread lifecycle cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This is not a long-running dataset-generation soak test, memory leak proof, or full PyQt worker
+    lifecycle certification.

@@ -3259,3 +3259,28 @@ contexts. Controller epoch/generator reads remain as query-unavailable mock / le
 
 - This does not redesign the Data Splitting dialog UX, remove all Training sidebar fallback paths,
   or certify long-running dataset-generation thread cleanup.
+
+## 2026-05-06 Data Splitting Preview Worker Cleanup
+
+### 狀態
+
+`DataSplittingPreviewDialog` now interrupts the active dataset generator and briefly joins the
+preview worker when restarting preview generation or closing the dialog.
+
+### 已可宣稱
+
+- Repeated preview changes and dialog close no longer rely on interrupt-only behavior for preview
+  workers; focused tests cover interrupt + bounded join.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_splitting_preview_dialog.py`
+- Tests：`tests/unit/ui/test_data_splitting.py`,
+  `tests/unit/ui/dialogs/test_data_splitting.py`,
+  `tests/unit/ui/dataset/test_data_splitting.py`,
+  `tests/unit/ui/test_panels_and_dialogs.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not a long-running dataset-generation soak test or a full PyQt thread lifecycle audit.

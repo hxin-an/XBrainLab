@@ -178,6 +178,9 @@
   `DataSplittingDialog` 初始化使用 service-backed epoch/generator context，stale
   `TrainingController.get_epoch_data()` / `get_dataset_generator()` 只留在 query unavailable 的
   mock / legacy dialog fallback。
+- 最新 Data Splitting preview thread cleanup 讓 preview restart / dialog close 會 interrupt
+  active `DatasetGenerator` 並 short-join preview worker；這是 focused lifecycle smoke，不是
+  long-running dataset-generation soak test。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入
