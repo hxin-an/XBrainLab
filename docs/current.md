@@ -103,7 +103,9 @@ replay 也有第一份 artifact：`scripts/dev/capture_data_interpretation_repla
 result。最新 replay JSON 也保存表格幾何 evidence：Dataset table 與 preview/remap dialog 的
 metadata、label carriers、event roles、Review Summary tables 都有 `header_length`、
 `viewport_width`、`column_widths`、`horizontal_scrollbar_max` 和 `text_elide_mode`，可重跑確認欄位填滿
-容器且沒有水平外溢。Data Interpretation preview dialog 已硬化成第一版 import wizard review surface：
+容器且沒有水平外溢。最新 geometry evidence 又對 Dataset table 增加 `widget_width`、
+`panel_width`、`table_right_x`、`right_boundary_x` 和 `right_gap_to_boundary`，確認載入資料後
+table 會貼齊 sidebar 邊界而不是只讓欄位填滿一個內縮 viewport。Data Interpretation preview dialog 已硬化成第一版 import wizard review surface：
 可見 `Select source | Scan result | Preview | Confirm | Apply | Save recipe` 流程、source/readiness、
 BIDS status、metadata preview、label/event/recipe trace、confirmation 和 recipe save 選項；最新 UI
 polish 已把 warning / confirmation / downstream impact / format boundary 從大段文字框改成

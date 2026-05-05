@@ -8965,3 +8965,40 @@
 - 不能宣稱：
   - This does not close mature Data Interpretation wizard completion, recipe diff UX, complex
     GDF/MAT anchor reconciliation, XDF/LSL parser work, or Windows human desktop acceptance.
+
+### 2026-05-06 Dataset table main-panel fill evidence
+
+- scope：
+  - Follow up on the user screenshot where loaded Dataset rows looked like they only filled a narrow
+    left block while the main panel still had empty space before the sidebar.
+  - Add evidence for the table widget boundary itself, not only `header_length == viewport_width`.
+- red / focused tests：
+  - Added `test_table_state_records_main_panel_fill_gap`; it failed because `table_state()` did not
+    accept `panel` / `right_boundary` and could not record table-to-sidebar gaps.
+  - Added `test_build_ui_quality_review_flags_table_gap_to_sidebar`; it failed because the
+    human-like walkthrough quality review ignored a `right_gap_to_boundary` underfill even when
+    header / viewport geometry looked healthy.
+- 做了什麼：
+  - `table_state()` now records `widget_width`, `panel_width`, `table_right_x`,
+    `right_boundary_x`, and `right_gap_to_boundary` when a panel and sidebar boundary are supplied.
+  - The human-like walkthrough UI quality review now marks table geometry as failed when a recorded
+    table-to-content-boundary gap exceeds the existing width tolerance.
+  - Refreshed UI replay / walkthrough artifacts; `artifacts/ui/data-interpretation-replay.json`
+    records `widget_width=1020`, `table_right_x=1020`, `right_boundary_x=1020`, and
+    `right_gap_to_boundary=0` for the 1280px loaded Dataset capture.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py::test_table_state_records_main_panel_fill_gap tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_build_ui_quality_review_flags_table_gap_to_sidebar -q`
+    -> failed on missing `table_state(..., panel=..., right_boundary=...)` support and no underfill
+    finding.
+  - After fix:
+    same focused test command -> `2 passed`.
+  - UI replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - Human-like walkthrough:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; walkthrough status remains `passed`.
+- 不能宣稱：
+  - This is an automated layout guard and artifact refresh. It does not replace Windows / DPI /
+    multi-monitor human desktop acceptance.

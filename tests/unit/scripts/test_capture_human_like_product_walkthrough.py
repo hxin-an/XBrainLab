@@ -271,6 +271,37 @@ def test_build_ui_quality_review_flags_overflowing_table_geometry() -> None:
     )
 
 
+def test_build_ui_quality_review_flags_table_gap_to_sidebar() -> None:
+    phases = [
+        {
+            "phase": "dataset_loaded",
+            "screenshot": "",
+            "visible_text": ["Dataset"],
+            "button_state": [],
+            "workflow_state": {},
+            "notes": {
+                "ui_geometry": {
+                    "dataset_table": {
+                        "header_length": 640,
+                        "viewport_width": 640,
+                        "horizontal_scrollbar_max": 0,
+                        "right_gap_to_boundary": 220,
+                        "headers": ["File", "Subject", "Events"],
+                    }
+                }
+            },
+        }
+    ]
+
+    review = build_ui_quality_review(phases, screenshots={})
+
+    assert review["automated_checks_passed"] is False
+    finding = review["table_geometry_review"]["findings"][0]
+    assert finding["phase"] == "dataset_loaded"
+    assert finding["right_gap_to_boundary"] == 220
+    assert finding["fills_content_boundary"] is False
+
+
 def test_merge_ui_quality_into_pass_fail_summary_blocks_passed_status() -> None:
     summary = {
         "passed": True,

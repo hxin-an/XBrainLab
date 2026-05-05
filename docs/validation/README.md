@@ -74,6 +74,12 @@ leak-proof soak test，也不能替代長時間 local model / training desktop s
 sidebar action，不再用 success-green 表示一個尚未執行且會修改資料的操作。
 同輪 artifact 也驗證 assistant empty-state / status visible text 只顯示 Data Interpretation
 主線 `Scan data source`，不再把 legacy `load_data` / `attach_labels` 轉成新使用者主流程提示。
+最新 Dataset table geometry guard 又把 `right_gap_to_boundary` 納入 replay / walkthrough
+artifact。`artifacts/ui/data-interpretation-replay.json` 目前記錄 `widget_width=1020`、
+`table_right_x=1020`、`right_boundary_x=1020`、`right_gap_to_boundary=0`，證明 1280px
+capture 中載入資料後 table widget 直接貼齊 sidebar；human-like walkthrough 的較窄 capture
+同樣記錄 `right_gap_to_boundary=0`。這是 automated layout evidence，仍需真人桌面驗收判斷
+整體視覺品質。
 ChatPanel composer polish follow-up gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
 -> `55 passed`。

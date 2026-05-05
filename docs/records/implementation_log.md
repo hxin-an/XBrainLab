@@ -2756,3 +2756,33 @@ review table.
 
 - This is UI polish evidence, not mature import-wizard completion or Windows human desktop
   acceptance.
+
+## 2026-05-06 Dataset Table Main-Panel Fill Evidence
+
+### 狀態
+
+UI replay artifacts now record Dataset table widget geometry against the sidebar boundary, not only
+header length versus viewport width. The automated quality review fails if a table's columns fill
+their own viewport but the table widget leaves a visible gap before the sidebar.
+
+### 已可宣稱
+
+- The loaded Dataset table artifact now records `right_gap_to_boundary=0`, so the latest replay
+  checks the user-reported main-panel underfill failure mode directly.
+- Existing muted external-label display remains intact; this slice did not reintroduce success-green
+  label rows.
+
+### Evidence 入口
+
+- Source：`scripts/dev/capture_data_interpretation_replay.py`,
+  `scripts/dev/capture_human_like_product_walkthrough.py`
+- Tests：`tests/unit/scripts/test_capture_data_interpretation_replay.py`,
+  `tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+- Artifacts：`artifacts/ui/data-interpretation-replay.json`,
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated layout evidence. It does not replace human Windows desktop acceptance or a full
+  visual design review on the user's monitor / DPI setup.

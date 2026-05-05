@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import (
     QComboBox,
+    QHBoxLayout,
     QHeaderView,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QWidget,
 )
 
 from scripts.dev.capture_data_interpretation_replay import (
@@ -124,6 +126,29 @@ def test_table_state_records_rows_and_resize_modes(qtbot) -> None:
     assert state["stretch_last_section"] is False
     assert state["header_length"] > 0
     assert state["viewport_width"] > 0
+
+
+def test_table_state_records_main_panel_fill_gap(qtbot) -> None:
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    layout = QHBoxLayout(panel)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
+    table = QTableWidget(1, 2, panel)
+    sidebar = QWidget(panel)
+    sidebar.setFixedWidth(160)
+    layout.addWidget(table, stretch=1)
+    layout.addWidget(sidebar, stretch=0)
+    panel.resize(760, 360)
+    panel.show()
+    qtbot.wait(0)
+
+    state = table_state(table, panel=panel, right_boundary=sidebar)
+
+    assert state["panel_width"] == panel.width()
+    assert state["right_boundary_x"] == sidebar.x()
+    assert abs(state["right_gap_to_boundary"]) <= 2
+    assert state["widget_width"] > state["viewport_width"]
 
 
 def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:

@@ -272,7 +272,9 @@
   `data-interpretation-applied.png`。最新 artifact refresh 又把 dialog table geometry 寫進
   `artifacts/ui/data-interpretation-replay.json`，包含 preview/remap metadata、label carrier、event
   role 和 review summary 的 `header_length == viewport_width`、`horizontal_scrollbar_max=0`、
-  `column_widths` 和 `text_elide_mode` evidence。
+  `column_widths` 和 `text_elide_mode` evidence。後續 Dataset table fill guard 又把
+  `right_gap_to_boundary=0` 寫進 replay / walkthrough artifact，確認載入資料後 table widget
+  本身貼齊 sidebar，不只是欄位填滿一個內縮 viewport。
 - 最新 human-like walkthrough refresh 也把 table geometry 納入 top-level UI quality gate：
   `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` 目前 `status=passed`，
   table geometry review 檢查 `15` 個 table/tree widgets、`0` findings；載入資料後 Dataset

@@ -340,6 +340,8 @@
             "stretch_last_section": false,
             "header_length": 533,
             "viewport_width": 534,
+            "widget_width": 536,
+            "widget_x": 0,
             "column_widths": [
               141,
               65,
@@ -350,7 +352,11 @@
               79
             ],
             "horizontal_scrollbar_max": 0,
-            "text_elide_mode": "ElideRight"
+            "text_elide_mode": "ElideRight",
+            "panel_width": 796,
+            "table_right_x": 536,
+            "right_boundary_x": 536,
+            "right_gap_to_boundary": 0
           }
         }
       }
@@ -1838,6 +1844,8 @@
             "stretch_last_section": false,
             "header_length": 509,
             "viewport_width": 510,
+            "widget_width": 536,
+            "widget_x": 0,
             "column_widths": [
               130,
               63,
@@ -1848,7 +1856,11 @@
               75
             ],
             "horizontal_scrollbar_max": 0,
-            "text_elide_mode": "ElideRight"
+            "text_elide_mode": "ElideRight",
+            "panel_width": 796,
+            "table_right_x": 536,
+            "right_boundary_x": 536,
+            "right_gap_to_boundary": 0
           }
         }
       }
@@ -2104,6 +2116,8 @@
             "stretch_last_section": false,
             "header_length": 509,
             "viewport_width": 510,
+            "widget_width": 536,
+            "widget_x": 0,
             "column_widths": [
               130,
               63,
@@ -2114,7 +2128,11 @@
               75
             ],
             "horizontal_scrollbar_max": 0,
-            "text_elide_mode": "ElideRight"
+            "text_elide_mode": "ElideRight",
+            "panel_width": 796,
+            "table_right_x": 536,
+            "right_boundary_x": 536,
+            "right_gap_to_boundary": 0
           }
         }
       }
@@ -9566,6 +9584,8 @@
           "stretch_last_section": false,
           "header_length": 533,
           "viewport_width": 534,
+          "widget_width": 536,
+          "widget_x": 0,
           "column_widths": [
             141,
             65,
@@ -9576,7 +9596,11 @@
             79
           ],
           "horizontal_scrollbar_max": 0,
-          "text_elide_mode": "ElideRight"
+          "text_elide_mode": "ElideRight",
+          "panel_width": 796,
+          "table_right_x": 536,
+          "right_boundary_x": 536,
+          "right_gap_to_boundary": 0
         }
       },
       "data_interpretation_scan_result": {
@@ -10056,6 +10080,8 @@
           "stretch_last_section": false,
           "header_length": 509,
           "viewport_width": 510,
+          "widget_width": 536,
+          "widget_x": 0,
           "column_widths": [
             130,
             63,
@@ -10066,7 +10092,11 @@
             75
           ],
           "horizontal_scrollbar_max": 0,
-          "text_elide_mode": "ElideRight"
+          "text_elide_mode": "ElideRight",
+          "panel_width": 796,
+          "table_right_x": 536,
+          "right_boundary_x": 536,
+          "right_gap_to_boundary": 0
         }
       },
       "data_interpretation_apply": {
@@ -10112,6 +10142,8 @@
           "stretch_last_section": false,
           "header_length": 509,
           "viewport_width": 510,
+          "widget_width": 536,
+          "widget_x": 0,
           "column_widths": [
             130,
             63,
@@ -10122,7 +10154,11 @@
             75
           ],
           "horizontal_scrollbar_max": 0,
-          "text_elide_mode": "ElideRight"
+          "text_elide_mode": "ElideRight",
+          "panel_width": 796,
+          "table_right_x": 536,
+          "right_boundary_x": 536,
+          "right_gap_to_boundary": 0
         }
       },
       "data_interpretation_reload_recipe": {
@@ -19497,33 +19533,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1011732,
+      "pid": 1013657,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 836484
+      "max_rss_kb": 837464
     },
     {
       "label": "before_close",
-      "pid": 1011732,
+      "pid": 1013657,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068516
+      "max_rss_kb": 1069896
     },
     {
       "label": "after_close",
-      "pid": 1011732,
+      "pid": 1013657,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1068516
+      "max_rss_kb": 1069896
     }
   ],
   "ui_quality_review": {
@@ -19694,9 +19730,15 @@
           "header_length": 533,
           "viewport_width": 534,
           "width_gap": 1,
+          "widget_width": 536,
+          "panel_width": 796,
+          "table_right_x": 536,
+          "right_boundary_x": 536,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19732,9 +19774,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19769,9 +19817,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19807,9 +19861,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19835,9 +19895,15 @@
           "header_length": 972,
           "viewport_width": 972,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19865,9 +19931,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19902,9 +19974,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19940,9 +20018,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19968,9 +20052,15 @@
           "header_length": 972,
           "viewport_width": 972,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20000,9 +20090,15 @@
           "header_length": 509,
           "viewport_width": 510,
           "width_gap": 1,
+          "widget_width": 536,
+          "panel_width": 796,
+          "table_right_x": 536,
+          "right_boundary_x": 536,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20040,9 +20136,15 @@
           "header_length": 509,
           "viewport_width": 510,
           "width_gap": 1,
+          "widget_width": 536,
+          "panel_width": 796,
+          "table_right_x": 536,
+          "right_boundary_x": 536,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20078,9 +20180,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20115,9 +20223,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20153,9 +20267,15 @@
           "header_length": 982,
           "viewport_width": 982,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20181,9 +20301,15 @@
           "header_length": 972,
           "viewport_width": 972,
           "width_gap": 0,
+          "widget_width": 0,
+          "panel_width": 0,
+          "table_right_x": 0,
+          "right_boundary_x": 0,
+          "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
           "fits_panel": true,
           "fills_panel": true,
+          "fills_content_boundary": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20198,7 +20324,7 @@
           "alternating_row_colors": true
         }
       ],
-      "boundary": "Automated geometry smoke checks header length, viewport width, and horizontal scrollbar state. Human review still decides visual polish."
+      "boundary": "Automated geometry smoke checks header length, viewport width, horizontal scrollbar state, and table-to-content-boundary gaps. Human review still decides visual polish."
     },
     "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, and selected snake_case command leakage.",
     "human_design_review_boundary": "This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions."
@@ -20218,10 +20344,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 232032,
+      "rss_growth_kb": 232432,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.167
+  "elapsed_seconds": 4.133
 }

@@ -170,7 +170,12 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
     }
 
 
-def table_state(table: QTableWidget) -> dict[str, Any]:
+def table_state(
+    table: QTableWidget,
+    *,
+    panel: QWidget | None = None,
+    right_boundary: QWidget | None = None,
+) -> dict[str, Any]:
     """Return visible table text and resize policy for replay evidence."""
     header = table.horizontalHeader()
     headers: list[str] = []
@@ -198,19 +203,30 @@ def table_state(table: QTableWidget) -> dict[str, Any]:
     )
     viewport = table.viewport()
     scrollbar = table.horizontalScrollBar()
-    return {
+    state: dict[str, Any] = {
         "headers": headers,
         "rows": rows,
         "resize_modes": resize_modes,
         "stretch_last_section": stretch_last_section,
         "header_length": header_length,
         "viewport_width": viewport.width() if viewport is not None else 0,
+        "widget_width": table.width(),
+        "widget_x": table.x(),
         "column_widths": [
             table.columnWidth(column) for column in range(table.columnCount())
         ],
         "horizontal_scrollbar_max": scrollbar.maximum() if scrollbar is not None else 0,
         "text_elide_mode": table.textElideMode().name,
     }
+    if panel is not None:
+        state["panel_width"] = panel.width()
+        table_right = table.mapTo(panel, QPoint(table.width(), 0)).x()
+        state["table_right_x"] = table_right
+        if right_boundary is not None:
+            boundary_left = right_boundary.mapTo(panel, QPoint(0, 0)).x()
+            state["right_boundary_x"] = boundary_left
+            state["right_gap_to_boundary"] = boundary_left - table_right
+    return state
 
 
 def _resize_mode_name(mode: QHeaderView.ResizeMode) -> str:
@@ -568,7 +584,11 @@ def capture_replay(app: QApplication) -> int:
                             window.dataset_panel.sidebar.import_label_btn.toolTip()
                         ),
                         "table_rows": window.dataset_panel.table.rowCount(),
-                        "table": table_state(window.dataset_panel.table),
+                        "table": table_state(
+                            window.dataset_panel.table,
+                            panel=window.dataset_panel,
+                            right_boundary=window.dataset_panel.sidebar,
+                        ),
                         "visible_panel_text": visible_texts(window.dataset_panel),
                         "screenshot": APPLIED_SCREENSHOT.name,
                     },

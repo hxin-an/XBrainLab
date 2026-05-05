@@ -268,7 +268,11 @@ def _run_walkthrough_steps(
         notes={
             "current_panel": "Dataset",
             "ui_geometry": {
-                "dataset_table": table_state(window.dataset_panel.table),
+                "dataset_table": table_state(
+                    window.dataset_panel.table,
+                    panel=window.dataset_panel,
+                    right_boundary=window.dataset_panel.sidebar,
+                ),
             },
         },
     )
@@ -414,7 +418,11 @@ def _run_walkthrough_steps(
             "blocked": blocked_probe,
             "unconfirmed_apply": command_summary(apply_without_confirmation),
             "ui_geometry": {
-                "dataset_table": table_state(window.dataset_panel.table),
+                "dataset_table": table_state(
+                    window.dataset_panel.table,
+                    panel=window.dataset_panel,
+                    right_boundary=window.dataset_panel.sidebar,
+                ),
             },
         },
     )
@@ -425,7 +433,11 @@ def _run_walkthrough_steps(
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
             "ui_geometry": {
-                "dataset_table": table_state(window.dataset_panel.table),
+                "dataset_table": table_state(
+                    window.dataset_panel.table,
+                    panel=window.dataset_panel,
+                    right_boundary=window.dataset_panel.sidebar,
+                ),
             },
         },
     )
@@ -1359,11 +1371,21 @@ def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
                 continue
             horizontal_scrollbar_max = geometry_int(state, "horizontal_scrollbar_max")
             width_gap = viewport_width - header_length
+            has_right_boundary = "right_gap_to_boundary" in state
+            right_gap_to_boundary = (
+                geometry_int(state, "right_gap_to_boundary")
+                if has_right_boundary
+                else 0
+            )
             fits_panel = (
                 header_length <= viewport_width + GEOMETRY_WIDTH_TOLERANCE_PX
                 and horizontal_scrollbar_max == 0
             )
             fills_panel = width_gap <= GEOMETRY_WIDTH_TOLERANCE_PX
+            fills_content_boundary = (
+                not has_right_boundary
+                or abs(right_gap_to_boundary) <= GEOMETRY_WIDTH_TOLERANCE_PX
+            )
             row = {
                 "phase": phase_name,
                 "widget": widget_name,
@@ -1374,16 +1396,22 @@ def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
                 "header_length": header_length,
                 "viewport_width": viewport_width,
                 "width_gap": width_gap,
+                "widget_width": geometry_int(state, "widget_width"),
+                "panel_width": geometry_int(state, "panel_width"),
+                "table_right_x": geometry_int(state, "table_right_x"),
+                "right_boundary_x": geometry_int(state, "right_boundary_x"),
+                "right_gap_to_boundary": right_gap_to_boundary,
                 "horizontal_scrollbar_max": horizontal_scrollbar_max,
                 "fits_panel": fits_panel,
                 "fills_panel": fills_panel,
+                "fills_content_boundary": fills_content_boundary,
                 "resize_modes": list(state.get("resize_modes", [])),
                 "column_widths": list(state.get("column_widths", [])),
                 "text_elide_mode": state.get("text_elide_mode"),
                 "alternating_row_colors": state.get("alternating_row_colors"),
             }
             rows.append(row)
-            if not fits_panel or not fills_panel:
+            if not fits_panel or not fills_panel or not fills_content_boundary:
                 findings.append(row)
     return {
         "passed": bool(rows) and not findings,
@@ -1393,7 +1421,8 @@ def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
         "rows": rows,
         "boundary": (
             "Automated geometry smoke checks header length, viewport width, "
-            "and horizontal scrollbar state. Human review still decides visual polish."
+            "horizontal scrollbar state, and table-to-content-boundary gaps. "
+            "Human review still decides visual polish."
         ),
     }
 

@@ -3847,6 +3847,8 @@
         "stretch_last_section": false,
         "header_length": 993,
         "viewport_width": 994,
+        "widget_width": 1020,
+        "widget_x": 0,
         "column_widths": [
           321,
           112,
@@ -3857,7 +3859,11 @@
           150
         ],
         "horizontal_scrollbar_max": 0,
-        "text_elide_mode": "ElideRight"
+        "text_elide_mode": "ElideRight",
+        "panel_width": 1280,
+        "table_right_x": 1020,
+        "right_boundary_x": 1020,
+        "right_gap_to_boundary": 0
       },
       "visible_panel_text": [],
       "screenshot": "data-interpretation-applied.png"
