@@ -37,6 +37,50 @@
 
 ## 2026-05-06
 
+### 04:55 Training force-clean thread handle guard
+
+- 做了什麼：
+  - 檢查 training cleanup path，發現 `TrainingManager.clean_trainer(force_update=True)` 可能在
+    trainer background job 還活著時把 `trainer` handle 清掉。
+  - 先補紅燈 tests：`Trainer.clean(force_update=True)` 應 interrupt 後 bounded join running
+    job；若 join 後 thread 仍 alive 應 raise；manager cleanup failure 不應清掉 trainer handle。
+  - 實作 `TRAINER_CLEAN_JOIN_TIMEOUT_SEC` 和 `Trainer.clean(..., wait_timeout=...)`，非 job thread
+    上的 force cleanup 會 join；若 timeout 仍 alive，回 `RuntimeError`。
+- 結果：
+  - Focused red tests 已轉綠。
+  - Training controller / application / backend integration regression 通過。
+  - 這是 thread-handle safety guard，不是 long-running training soak。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/backend/training/test_trainer.py::test_trainer_force_clean_joins_running_job tests/unit/backend/training/test_trainer.py::test_trainer_force_clean_raises_when_job_stays_running -q`
+    -> `2 failed`，`join()` 未呼叫且未 raise。
+  - Focused pass：
+    `poetry run pytest --capture=sys tests/unit/backend/training/test_trainer.py::test_trainer_force_clean_joins_running_job tests/unit/backend/training/test_trainer.py::test_trainer_force_clean_raises_when_job_stays_running tests/unit/backend/test_training_manager.py::TestCleanTrainer::test_force_update_keeps_trainer_when_cleanup_fails -q`
+    -> `3 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/backend/training/test_trainer.py tests/unit/backend/test_training_manager.py -q`
+    -> `40 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/backend/controller/test_training_controller.py tests/unit/backend/application/test_training_service.py tests/unit/backend/application/test_lifecycle_service.py -q`
+    -> `19 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`。
+  - Focused lint/type：
+    `poetry run ruff check XBrainLab/backend/training/trainer.py tests/unit/backend/training/test_trainer.py tests/unit/backend/test_training_manager.py`
+    -> pass。
+    `poetry run basedpyright XBrainLab/backend/training/trainer.py tests/unit/backend/training/test_trainer.py tests/unit/backend/test_training_manager.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material advisory。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。未跑 full local LLM primary / fallback x3，因為這不是
+    release / thesis evidence closure。
+
 ### 04:45 Local runtime shutdown cleanup
 
 - 做了什麼：

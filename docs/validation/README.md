@@ -104,6 +104,15 @@ Local runtime shutdown lifecycle gate:
 -> `99 passed`。This supports backend unload / engine close / worker shutdown contract and
 controller close wiring. It is still not GPU leak-proof soak evidence or human desktop acceptance.
 
+Training force-clean lifecycle gate:
+`poetry run pytest --capture=sys tests/unit/backend/training/test_trainer.py tests/unit/backend/test_training_manager.py -q`
+-> `40 passed`；
+`poetry run pytest --capture=sys tests/unit/backend/controller/test_training_controller.py tests/unit/backend/application/test_training_service.py tests/unit/backend/application/test_lifecycle_service.py -q`
+-> `19 passed`；
+`poetry run pytest --capture=sys tests/integration/backend -q`
+-> `7 passed`。This supports bounded force-clean thread handling and preserving the trainer handle
+on cleanup timeout. It is not long-running training soak evidence.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

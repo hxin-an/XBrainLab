@@ -7,6 +7,8 @@ from ..utils import validate_list_type
 from ..utils.logger import logger
 from .training_plan import TrainingPlanHolder
 
+TRAINER_CLEAN_JOIN_TIMEOUT_SEC = 2.0
+
 
 class Status(Enum):
     """Enumeration of possible trainer states.
@@ -161,12 +163,17 @@ class Trainer:
         """
         return self.job_thread is not None and self.job_thread.is_alive()
 
-    def clean(self, force_update: bool = False) -> None:
+    def clean(
+        self,
+        force_update: bool = False,
+        wait_timeout: float = TRAINER_CLEAN_JOIN_TIMEOUT_SEC,
+    ) -> None:
         """Stop and clean up the training job.
 
         Args:
             force_update: If ``True``, forcefully interrupt training.
                 If ``False``, raises an error when training is still running.
+            wait_timeout: Seconds to wait for a running training thread to stop.
 
         Raises:
             RuntimeError: If training is still in progress and
@@ -175,6 +182,14 @@ class Trainer:
         """
         if force_update:
             self.set_interrupt()
+            thread = self.job_thread
+            if thread is not None and thread.is_alive():
+                if thread is threading.current_thread():
+                    return
+                thread.join(timeout=wait_timeout)
+                if thread.is_alive():
+                    raise RuntimeError("Training did not stop within cleanup timeout")
+                self.job_thread = None
         elif self.is_running():
             raise RuntimeError("Training still in progress")
 

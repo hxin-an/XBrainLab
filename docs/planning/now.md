@@ -189,6 +189,10 @@
   可用時清 cache；`LLMEngine.close()` 會卸載 cached backend；`AgentWorker.shutdown()` 會停止
   timeout timer、bounded interrupt / wait generation thread，並在 controller close 時執行。這是
   assistant lifecycle resource cleanup，不是 GPU leak-proof soak。
+- 最新 training lifecycle cleanup 讓 `Trainer.clean(force_update=True)` 對 running job 設 interrupt
+  後 bounded join background thread；若 training thread 未停止會 raise，讓
+  `TrainingManager.clean_trainer()` 保留 trainer handle，避免失去後續取消 / status 查詢入口。
+  這是 thread-handle safety guard，不是 long-running training soak。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

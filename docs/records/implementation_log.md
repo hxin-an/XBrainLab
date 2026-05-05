@@ -42,6 +42,41 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Training Thread Cleanup Guard
+
+### 狀態
+
+Training cleanup now preserves the job handle if interruption does not stop the background thread
+within a bounded wait. `Trainer.clean(force_update=True)` sets the interrupt flag, joins the running
+job thread with a timeout, clears the thread handle only after it has stopped, and raises if the
+thread is still alive. `TrainingManager.clean_trainer()` therefore does not drop the trainer handle
+when cleanup fails.
+
+### 已可宣稱
+
+- Force cleanup no longer silently loses the only trainer handle while a training job is still
+  alive.
+- Focused trainer / manager tests and training controller / application regressions cover the
+  cleanup contract.
+
+### Evidence 入口
+
+- Code: `XBrainLab/backend/training/trainer.py`,
+  `XBrainLab/backend/training_manager.py`
+- Tests: trainer, training manager, training controller, training service / lifecycle, backend
+  integration
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not a long-running training soak, full GPU leak proof, or UI desktop stop-training
+  acceptance.
+
+### 下一手重點
+
+Continue resource cleanup around visualization/saliency windows, MCP long-running job contracts,
+and UI-observable stop / reset boundaries.
+
 ## 2026-05-06 Local Runtime Shutdown Cleanup
 
 ### 狀態

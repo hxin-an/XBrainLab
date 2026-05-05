@@ -30,6 +30,10 @@ slice 又新增 `LocalBackend.unload()`、`LLMEngine.close()` 和 `AgentWorker.s
 close 會 bounded 停止 generation thread、卸載 cached backend，並在可用時清 CUDA cache。這降低
 assistant open/close 與 model switch 後的 GPU/cache 殘留風險，但仍不是長時間 true local model
 桌面 soak。
+同一輪 training lifecycle cleanup 也讓 `Trainer.clean(force_update=True)` 在中斷 training job
+後 bounded join background thread；若 thread 未在 timeout 內停止會回錯並保留 trainer handle，
+避免 `TrainingManager.clean_trainer()` 在 job 仍存活時把取消 handle 清掉。這是 thread lifecycle
+guard，不是完整長時間 training soak。
 
 2026-05-03 人工產品審核 follow-up 又補了一輪產品級修正：Assistant dock 頂部不再顯示
 chip dump，chat panel 內也不再放 `Conversation` 標題、第二條狀態列或 developer mode
