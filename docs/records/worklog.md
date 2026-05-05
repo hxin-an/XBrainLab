@@ -37,6 +37,43 @@
 
 ## 2026-05-05
 
+### 08:06 RAG legacy data-entry example filter
+
+- 做了什麼：
+  - 檢查 RAG gold-set / retriever，發現 bundled `gold_set.json` 仍有大量
+    `load_data` / `attach_labels` examples；即使 stage prompt 已降權 legacy tools，RAG few-shot
+    context 仍可能把舊資料入口工具重新注入 local LLM prompt。
+  - 新增 `XBrainLab/llm/rag/example_policy.py`，定義 primary RAG examples 不得包含
+    `load_data`、`attach_labels`、`import_labels`。
+  - `RAGIndexer.load_gold_set()` 和 `BM25Index.build_from_json()` 會跳過 legacy compatibility
+    examples。
+  - `RAGRetriever.get_similar_examples()` 在 dense candidates 和 final ranking 都會套同一 policy，
+    保護已存在的舊 Qdrant collection；policy 會辨識 list / dict / `tool` / `command` /
+    OpenAI-style `function.name` metadata 形狀。
+  - 補 unit tests 覆蓋 policy、bundled gold set BM25 build、以及 old vector store 回傳 legacy
+    top candidate 時 retriever 仍只格式化 primary `scan_source` example。
+- 結果：
+  - RAG prompt context 不再把 legacy data-entry examples 放進 local LLM prompt。
+  - `gold_set.json` 暫未全面改寫；historical examples 仍留在檔案中，但 ingestion / retrieval
+    boundary 會排除它們。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/llm/rag/test_example_policy.py -q`
+    -> `5 passed`。
+  - `poetry run pytest --capture=sys tests/unit/llm/rag/test_example_policy.py tests/unit/test_llm_backend.py tests/unit/llm/agent/test_assembler_stage.py -q`
+    -> `31 passed`。
+  - `poetry run ruff check XBrainLab/llm/rag tests/unit/llm/rag/test_example_policy.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/llm/rag tests/unit/llm/rag/test_example_policy.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `git diff --check` -> pass。
+  - `timeout 300s poetry run ruff check .` -> pass。
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 後續應把 old gold-set content 逐步改成 Data Interpretation positive / blocked /
+    recovery examples；目前這個 slice 先確保舊 examples 不再污染 prompt。
+
 ### 07:55 ChatPanel next-step legacy status cleanup
 
 - 做了什麼：

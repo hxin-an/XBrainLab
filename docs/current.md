@@ -251,6 +251,10 @@ capability policy 與 stage allowlist 取交集，避免 backend compatibility p
 legacy tool 重新塞回主 prompt。`load_data` / `attach_labels` 仍在 schema taxonomy、parser /
 verification 和 `DataCompatibilityCommandService` 作為 legacy compatibility surface，但新
 agent 心智模型已改以 Data Interpretation scan / preview / validate / apply / recipe 為資料入口。
+最新 RAG prompt cleanup 又把 bundled gold-set / BM25 / dense retrieval 都接上同一個
+primary-workflow policy：含 `load_data`、`attach_labels` 或 `import_labels` 的 examples 不會
+被新 indexer 建入，也會在 retriever formatting 前被過濾，避免已存在的舊 local Qdrant
+collection 把 legacy few-shot examples 注入 prompt。
 最新 automation / MCP schema cleanup 也把 legacy data-entry boundary 寫進
 `AutomationCommandSpec` 和 MCP `tools/list` metadata：`load_data`、`attach_labels`、
 `import_labels` 會標成 `legacy_compatibility=True`、`primary_workflow=False`，並列出 Data

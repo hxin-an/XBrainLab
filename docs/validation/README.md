@@ -313,6 +313,12 @@ UI baseline capture 結果：
   -> `46 passed`；broader agent/tool gate -> `468 passed`；agent integration -> `7 passed`；
   backend application regression -> `96 passed`；backend integration -> `3 passed`；
   ruff / basedpyright / architecture compliance / MkDocs strict / diff check also passed。
+- RAG prompt cleanup 覆蓋 bundled gold-set ingestion、BM25 keyword index 和 dense retriever
+  formatting：含 `load_data` / `attach_labels` / `import_labels` 的 legacy examples 會被排除，
+  即使舊 Qdrant collection 已存在也不會進 prompt。Focused evidence：
+  `tests/unit/llm/rag/test_example_policy.py` -> `5 passed`；broader RAG / assembler gate：
+  `tests/unit/llm/rag/test_example_policy.py tests/unit/test_llm_backend.py tests/unit/llm/agent/test_assembler_stage.py`
+  -> `31 passed`。
 - Automation / MCP legacy compatibility metadata cleanup 覆蓋
   `AutomationCommandSpec` 和 MCP `tools/list` `x_xbrainlab` metadata；`load_data` /
   `attach_labels` / `import_labels` 仍可相容呼叫，但 schema 會標示 `legacy_compatibility=True`、

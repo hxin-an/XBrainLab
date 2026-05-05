@@ -92,6 +92,9 @@
   capability policy 與 stage allowlist 取交集，避免 compatibility tool 被 policy 重新帶回主
   prompt。legacy tools 仍保留在 schema taxonomy / parser / verification 裡作 compatibility
   path，不是新 agent 資料入口主語言。
+- 最新 RAG prompt cleanup 已讓 `RAGIndexer`、`BM25Index` 和 `RAGRetriever` 過濾含
+  `load_data` / `attach_labels` / `import_labels` 的 legacy examples；這同時保護新建 RAG
+  index 和已存在的舊 local Qdrant collection。
 - 最新 ChatPanel product-status cleanup 已把 assistant empty-state / next-step status 從 visible
   legacy `Load EEG data` / `Attach labels` 收斂成 `Scan data source`，並在 ChatPanel status
   rendering 層過濾 `load_data` / `attach_labels` / `import_labels` compatibility commands。

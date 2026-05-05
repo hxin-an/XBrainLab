@@ -11,6 +11,7 @@ the goal as complete.
 
 Recent local commits:
 
+- `assistant: filter legacy rag examples` (current handoff slice)
 - `0e36405 assistant: neutralize legacy tool labels`
 - `6e289ed ui: prefer interpretation next step`
 - `27d3920 test: gate walkthrough resource smoke`
@@ -63,10 +64,15 @@ UI runtime / product-language cleanup:
 - Legacy compatibility tool fallback labels are neutralized to `Import data` /
   `Add labels to loaded data`; assistant visible summaries no longer say
   `Load EEG data` / `Attach labels`.
+- RAG prompt context now shares the product data-entry boundary. `RAGIndexer`,
+  `BM25Index`, and `RAGRetriever` filter examples containing `load_data`,
+  `attach_labels`, or `import_labels`, including old Qdrant candidates that
+  still exist in a user's local collection.
 
 Docs updated:
 
 - `docs/current.md`
+- `docs/architecture/agent.md`
 - `docs/architecture/backend.md`
 - `docs/planning/now.md`
 - `docs/planning/roadmap.md`
@@ -88,6 +94,7 @@ timeout 300s poetry run python tests/architecture_compliance.py
 poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q
 poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q
 poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_legacy_load_summary_uses_neutral_product_language tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_product_status_updates_empty_state_and_chips tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout -q
+poetry run pytest --capture=sys tests/unit/llm/rag/test_example_policy.py tests/unit/test_llm_backend.py tests/unit/llm/agent/test_assembler_stage.py -q
 timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
 ```
 
@@ -96,6 +103,8 @@ Observed results:
 - human-like walkthrough script tests: `11 passed`
 - ChatPanel / AgentManager / product walkthrough focused suite: `75 passed`
 - legacy label summary focused gate: `3 passed`
+- RAG example policy focused gate: `5 passed`
+- broader RAG / assembler focused gate: `31 passed`
 - consolidated walkthrough artifact: status `passed`, `26 / 26` phases,
   `20` screenshots, human desktop acceptance `not performed`
 - full ruff: pass
@@ -121,8 +130,11 @@ Known validation note:
 2. Continue legacy data-entry containment.
    - `load_data` / `attach_labels` should remain compatibility coverage, not
      product UI / agent mental model.
-   - Next useful audit: old RAG gold set, legacy real-tool tests, parser /
-     verifier compatibility paths, and any visible transcript labels.
+   - RAG prompt injection is now filtered, but the old gold-set content still
+     needs a real rewrite into Data Interpretation positive / blocked /
+     recovery examples.
+   - Next useful audit: legacy real-tool tests, parser / verifier compatibility
+     paths, and any visible transcript labels.
 
 3. Continue Data Interpretation product work.
    - Mature import wizard editor, raw trigger selector, complex MAT/GDF anchor

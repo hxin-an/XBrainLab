@@ -22,6 +22,7 @@ except ImportError:
     rest = None
 
 from .config import RAGConfig
+from .example_policy import is_primary_workflow_example
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class RAGIndexer:
                 "tool_calls": json.dumps(item.get("expected_tool_calls")),
             }
 
-            if content:
+            if content and is_primary_workflow_example(metadata):
                 docs.append(Document(page_content=content, metadata=metadata))
 
         logger.info("Loaded %s documents from %s", len(docs), json_path)

@@ -106,6 +106,39 @@ ChatPanel status rendering 也會過濾 legacy compatibility commands。若 lega
 盤點剩餘 legacy real-tool / RAG gold-set / test expectations，確認它們是 compatibility coverage
 而不是產品主語言。
 
+## 2026-05-05 RAG Legacy Example Policy
+
+### 狀態
+
+RAG prompt context 現在跟 agent primary tool surface 使用同一個資料入口邊界：含
+`load_data`、`attach_labels` 或 `import_labels` 的 bundled gold-set examples 不會被建入
+新 index，也會在 BM25 / dense retriever 回傳後、格式化進 prompt 前被過濾。這避免舊 few-shot
+example 把 local LLM 帶回 legacy data-entry tools。
+
+### 已可宣稱
+
+- 新建 RAG index 不會收 legacy data-entry examples。
+- 已存在的舊 Qdrant collection 即使回傳 legacy candidate，也會在 prompt 注入前被排除。
+- RAG / assembler focused regression 通過。
+
+### Evidence 入口
+
+- Policy：`XBrainLab/llm/rag/example_policy.py`
+- Boundaries：`XBrainLab/llm/rag/indexer.py`、`XBrainLab/llm/rag/bm25.py`、
+  `XBrainLab/llm/rag/retriever.py`
+- Tests：`tests/unit/llm/rag/test_example_policy.py`
+
+### 不能宣稱完成
+
+- 這不是 RAG corpus 全面重寫；gold set 仍需要補更多 Data Interpretation positive /
+  blocked / recovery examples。
+- 這不取代 118-case local LLM tool-call eval 或 ChatPanel true local-model walkthrough。
+
+### 下一手重點
+
+把剩餘 historical RAG examples 轉成 Data Interpretation-first examples，並確認 real-tool legacy
+tests 只覆蓋 compatibility，不再當作 product prompt evidence。
+
 ## 2026-05-05 MCP Stdio Adapter Session Boundary
 
 ### 狀態

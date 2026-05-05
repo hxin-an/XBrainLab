@@ -296,6 +296,12 @@ prompt。parser / confidence / verification 仍從 prompt-facing schema taxonomy
 tool，所以 legacy repair path 可測；但 primary prompt、Data Loaded guidance 和 Preprocessed
 guidance 都引導 Data Interpretation scan / preview / validate / apply / recipe。
 
+同日後續 RAG cleanup 把 bundled gold-set examples 也納入同一條邊界：
+`RAGIndexer`、`BM25Index` 和 `RAGRetriever` 會透過
+`XBrainLab/llm/rag/example_policy.py` 排除含 `load_data` / `attach_labels` /
+`import_labels` 的 examples。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
+collection，避免 legacy few-shot examples 被重新注入 local LLM prompt。
+
 目前主要 stage 包括：
 
 - `empty`
