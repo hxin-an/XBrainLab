@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+5940b7d llm: release local runtime on shutdown
+cc1b03e docs: refresh handoff after downloader lifecycle cleanup
 435d9a9 llm: clean up model downloader lifecycle
 51a6149 ui: clean up split preview worker
 9816f85 docs: refresh handoff after split context query
@@ -221,6 +223,16 @@ bb57beb ui: use backend truth for split replacement
     teardown cleanup popups.
   - This is focused lifecycle coverage, not a long-running local model soak or Windows desktop
     acceptance.
+- Local runtime shutdown cleanup:
+  - `LocalBackend.unload()` releases model / tokenizer references, runs garbage collection, and
+    clears CUDA cache when CUDA is available.
+  - `LLMEngine.close()` unloads cached local backends and clears active backend references; stale
+    backend reloads now unload the old backend before replacement.
+  - `AgentWorker.shutdown()` stops timeout timers, interrupts / bounded-waits generation threads,
+    keeps running generation threads alive until Qt emits finished, and closes the engine.
+  - `LLMController.close()` calls worker shutdown before bounded-waiting the worker thread.
+  - This is assistant lifecycle resource cleanup, not a long-running true local model UI soak or
+    GPU leak-proof acceptance.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -673,6 +685,35 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 435d9a9; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys \
+  tests/unit/llm/core/test_local_backend.py \
+  tests/unit/llm/core/test_engine.py \
+  tests/unit/llm/core/test_backend_local.py \
+  tests/unit/llm/core/test_engine_hotswap.py \
+  -q
+# 37 passed for 5940b7d
+
+poetry run pytest --capture=sys \
+  tests/unit/llm/agent/test_worker.py \
+  tests/unit/llm/test_worker_coverage.py \
+  tests/unit/llm/agent/test_worker_timeout.py \
+  -q
+# 39 passed for 5940b7d
+
+poetry run pytest --capture=sys \
+  tests/unit/llm/agent/test_controller.py \
+  tests/unit/llm/agent/test_controller_cov.py \
+  tests/unit/llm/agent/test_controller_integration.py \
+  -q
+# 99 passed for 5940b7d
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 5940b7d; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
