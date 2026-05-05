@@ -30,13 +30,12 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+bb57beb ui: use backend truth for split replacement
+e2a7d90 docs: refresh product handoff after ui audit
 8a6722a test: guard post-command controller echo
 cc302bc ui: trust training model command result
 6e1e254 ui: keep file import on interpretation path
 845396d ui: guard visualization montage fallback
-a5645c1 docs: add ui table eval handoff
-1e3c1a7 test: record dataset table fill geometry
-538256c ui: widen interpretation carrier columns
 ```
 
 ## What Was Closed In This Slice
@@ -71,6 +70,11 @@ a5645c1 docs: add ui table eval handoff
   - service-success path now trusts `ConfigureTrainingCommand` and the selected model holder.
   - it no longer re-reads stale `TrainingController.get_model_holder()` before showing success.
   - architecture compliance now guards this controller echo pattern.
+- Training split replacement command truth:
+  - real `Study` path uses backend `generate_dataset` / `clear_datasets` capability truth to decide
+    whether existing generated datasets / trainer must be cleared before a new split.
+  - stale `TrainingController.has_datasets()` / `get_trainer()` no longer skips confirmation and
+    `ClearDatasetsCommand`.
 
 ## Validation Already Run
 
@@ -116,7 +120,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
   tests/unit/ui/training/test_training_panel.py \
   -q
-# 48 passed
+# 49 passed
 
 poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
 # 20 passed
