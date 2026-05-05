@@ -5,6 +5,7 @@ import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
 
 from XBrainLab.backend.application import ApplyMontageCommand
+from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
 
 # Ensure QApplication exists
@@ -70,6 +71,74 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         assert command.positions == [(0.0, 0.0, 0.0)]
         mock_panel.controller.set_montage.assert_not_called()
         mock_info.assert_called_once()
+
+
+def test_sidebar_set_montage_blocked_by_backend_capability(qtbot):
+    controller = MagicMock()
+    controller.has_epoch_data.return_value = True
+    controller.get_channel_names.return_value = ["Ch1", "Ch2"]
+    main_window = QMainWindow()
+    main_window.study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+    ):
+        sidebar.set_montage()
+
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once_with(
+        sidebar,
+        "Montage blocked",
+        "Create epochs before applying a montage.",
+    )
+
+
+def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
+    controller = MagicMock()
+    controller.has_epoch_data.return_value = False
+    controller.get_channel_names.return_value = ["Ch1", "Ch2"]
+    main_window = QMainWindow()
+    main_window.study = Study()
+    epoch_data = MagicMock()
+    epoch_data.get_mne.return_value.info = {"ch_names": ["Ch1", "Ch2"]}
+    main_window.study.epoch_data = epoch_data
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ) as mock_info,
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = (
+            ["Ch1", "Ch2"],
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        )
+
+        sidebar.set_montage()
+
+    epoch_data.set_channels.assert_called_once_with(
+        ["Ch1", "Ch2"],
+        [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+    )
+    mock_info.assert_called_once()
 
 
 def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):

@@ -10,8 +10,16 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application import ApplyMontageCommand, SaliencyCommand
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.backend.application import (
+    ApplyMontageCommand,
+    CommandName,
+    SaliencyCommand,
+)
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.visualization import (
     ExportSaliencyDialog,
@@ -133,7 +141,16 @@ class ControlSidebar(QWidget):
 
     def set_montage(self):
         """Open the montage-picker dialog and apply channel positions."""
-        if not self.controller.has_epoch_data():
+        capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
+        if capability is not None and not capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Montage blocked",
+                blocked_reason(capability, "Create epochs before applying a montage."),
+            )
+            return
+
+        if capability is None and not self.controller.has_epoch_data():
             QMessageBox.warning(self, "Warning", "No epoch data available.")
             return
 

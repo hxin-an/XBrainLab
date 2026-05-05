@@ -688,8 +688,8 @@ true local model desktop session。
   eval runner 也不能替代 true ChatPanel multi-turn / tool-command walkthrough。
 - UI import / preprocess / epoch / channel selection、split / model / training setting dialogs、
   evaluation / visualization / saliency query、training start-stop / reset、metadata update、
-  smart parse、remove files、label import、montage blocked preflight / confirmation 已有
-  service-backed command adapter；Start Training button 現在也會在 backend long-running capability 要求時顯示
+  smart parse、remove files、label import、AgentManager / Visualization sidebar montage blocked
+  preflight / confirmation 已有 service-backed command adapter；Start Training button 現在也會在 backend long-running capability 要求時顯示
   confirmation。mock / unit-test compatibility fallback 仍保留，但 real `Study` path 走
   `ApplicationService.execute()`。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory

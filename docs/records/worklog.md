@@ -5707,3 +5707,49 @@
 - 不能宣稱：
   - This is one montage dialog alignment, not full visualization UI product acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path audit.
+
+### 2026-05-05 Visualization sidebar montage capability truth
+
+- scope：
+  - UI/backend command truth alignment for Visualization sidebar `Set Montage`。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `ControlSidebar.set_montage()` checked `controller.has_epoch_data()` before reading backend
+    capability policy.
+  - In real runtime this could open a dialog while backend would block, or let stale
+    controller-local state block an otherwise enabled `apply_montage` command.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_blocked_by_backend_capability tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_real_study_uses_application_service -q`
+    initially failed: blocked real `Study` opened `PickMontageDialog`, and backend-ready real
+    `Study` was stopped by controller-local `has_epoch_data()`.
+- 做了什麼：
+  - Added `apply_montage` capability preflight before `PickMontageDialog` for real `Study` paths.
+  - Kept controller-local no-epoch warning only for mock / legacy non-Study paths.
+  - Added real `Study` success coverage proving accepted sidebar montage uses
+    `ApplyMontageCommand` and updates epoch channel positions through ApplicationService.
+- validation：
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_blocked_by_backend_capability tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_real_study_uses_application_service -q`
+    -> `2 passed`.
+  - Visualization sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_dialogs_extra.py::TestControlSidebar -q`
+    -> `10 passed`.
+  - backend command handler regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_montage_command_routes_confirmed_positions tests/unit/backend/application/test_analysis_service.py -q`
+    -> `3 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one visualization sidebar alignment, not full visualization UI product acceptance.
+  - It does not prove desktop render, Windows human click-through, or complete remaining
+    mutating-path audit.

@@ -2163,6 +2163,29 @@ UI mutating-path audit 或 human desktop acceptance。
 不是完整 visualization UI product acceptance、interactive desktop render 驗收或 Windows human
 desktop click-through。
 
+2026-05-05 Visualization sidebar montage capability follow-up：
+
+- UI/action:
+  - `ControlSidebar.set_montage()` now checks backend `apply_montage` capability before opening
+    `PickMontageDialog` for real `Study` paths.
+  - Empty real `Study` state shows `Create epochs before applying a montage.` from backend
+    capability policy.
+  - Real `Study` success path uses `ApplyMontageCommand`; stale controller-local
+    `has_epoch_data()` no longer blocks an otherwise enabled backend command.
+- targeted gates:
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_blocked_by_backend_capability tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_real_study_uses_application_service -q`
+    -> `2 passed`.
+  - Visualization sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_dialogs_extra.py::TestControlSidebar -q`
+    -> `10 passed`.
+  - backend command handler regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_apply_montage_command_routes_confirmed_positions tests/unit/backend/application/test_analysis_service.py -q`
+    -> `3 passed`.
+
+這批 evidence 支撐 Visualization sidebar montage blocked / success path 與 backend capability
+policy 對齊。它仍不是完整 visualization UI product acceptance 或 desktop render 驗收。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:
