@@ -9,6 +9,7 @@ from XBrainLab.backend.study import Study
 
 from .analysis_service import AnalysisCommandService
 from .capabilities import CapabilityPolicy, build_capability_policy
+from .command_gate import ensure_command_allowed
 from .commands import (
     ApplyInterpretationCommand,
     ApplyMontageCommand,
@@ -47,8 +48,6 @@ from .data_table_service import DataTableCommandService
 from .dataset_generation_service import DatasetGenerationCommandService
 from .errors import (
     ApplicationError,
-    ConfirmationRequiredError,
-    PreconditionError,
     map_exception,
 )
 from .lifecycle_service import LifecycleCommandService
@@ -347,9 +346,14 @@ class ApplicationService:
         """Execute a training-configuration command."""
         return self.execute(command)
 
-    def train(self, command: TrainCommand | None = None) -> CommandResult:
+    def train(
+        self,
+        command: TrainCommand | None = None,
+        *,
+        confirmed: bool = False,
+    ) -> CommandResult:
         """Execute a train command."""
-        return self.execute(command or TrainCommand())
+        return self.execute(command or TrainCommand(confirmed=confirmed))
 
     def stop_training(self) -> CommandResult:
         """Execute a stop-training command."""
@@ -396,35 +400,7 @@ class ApplicationService:
         command: Command,
         state: ApplicationStateSnapshot,
     ) -> None:
-        name = command_name(command)
-        capability = build_capability_policy(state).get(name)
-        if (
-            name
-            in (
-                CommandName.APPLY_INTERPRETATION,
-                CommandName.CLEAR_DATASETS,
-                CommandName.CLEAR_TRAINING_HISTORY,
-                CommandName.RESET_PREPROCESS,
-                CommandName.RESET_SESSION,
-                CommandName.NEW_SESSION,
-            )
-            and capability.confirmation_required
-            and isinstance(
-                command,
-                (
-                    ClearDatasetsCommand,
-                    ClearTrainingHistoryCommand,
-                    ApplyInterpretationCommand,
-                    ResetPreprocessCommand,
-                    ResetSessionCommand,
-                    NewSessionCommand,
-                ),
-            )
-            and not command.confirmed
-        ):
-            raise ConfirmationRequiredError(f"{name.value} requires confirmation.")
-        if not capability.enabled:
-            raise PreconditionError("; ".join(capability.reasons))
+        ensure_command_allowed(command, state)
 
     @staticmethod
     def _normalize_handler_result(result: HandlerResult) -> tuple[str, dict[str, Any]]:

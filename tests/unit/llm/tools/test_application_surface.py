@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,6 +32,33 @@ def test_agent_tool_policy_reuses_application_train_reasons():
     assert start_training.command_name == CommandName.TRAIN.value
     assert start_training.reasons == tuple(application_train.reasons)
     assert "Generate datasets before training." in start_training.reasons
+
+
+def test_start_training_surface_preserves_backend_confirmation_boundary():
+    study = Study()
+    raw = MagicMock()
+    raw.get_filename.return_value = "sample.fif"
+    raw.get_filepath.return_value = "/tmp/sample.fif"
+    study.loaded_data_list = [raw]
+    cast(Any, study).datasets = [object()]
+    cast(Any, study).model_holder = object()
+    cast(Any, study).training_option = object()
+    training = study.get_controller("training")
+    training.start_training = MagicMock()
+
+    unconfirmed = execute_application_tool_command(study, "start_training", {})
+    confirmed = execute_application_tool_command(
+        study,
+        "start_training",
+        {"confirmed": True},
+    )
+
+    assert unconfirmed is not None
+    assert unconfirmed.ok is False
+    assert unconfirmed.error_type == "confirmation_required"
+    assert confirmed is not None
+    assert confirmed.ok is True
+    training.start_training.assert_called_once()
 
 
 def test_blocked_tool_reasons_are_grouped_by_application_command():

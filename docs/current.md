@@ -203,6 +203,11 @@ file import 在 `LoadDataCommand` 成功後不再再呼叫 controller import；P
 是否開始可能耗時且使用 CPU/GPU 的訓練；拒絕時不會執行 `TrainCommand`，service 成功時不再
 fallback 到 controller。Automated Qt replay artifact 在
 `artifacts/ui/training-start-confirmation/`，它不是 human desktop acceptance。
+最新 backend command-gate cleanup 把這條 boundary 下沉到 Command API：`TrainCommand` 現在
+有 `confirmed` 欄位，`XBrainLab/backend/application/command_gate.py` 會先檢查 capability
+blocked reason，再統一檢查 `confirmation_required` / `requires_confirmation`。因此 unready
+training 仍回「Generate datasets before training」這類 precondition；backend-ready 但未 confirmed
+的 `train` 會被 `confirmation_required` 擋下，不會只靠 UI/agent 外層自律。
 最新 Data Interpretation boundary cleanup 把 GDF / EDF-BDF / EEGLAB / BrainVision / FIF /
 MAT / CSV-TSV / TXT / BIDS events / XDF-LSL format capability matrix 從大型
 `data_interpretation.py` 抽到 `DataInterpretationFormats` focused module，scanner /

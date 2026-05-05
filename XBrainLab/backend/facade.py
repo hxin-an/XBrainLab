@@ -543,9 +543,9 @@ class BackendFacade:
         self._raise_if_failed(result)
 
     # --- Training Execution ---
-    def run_training(self):
+    def run_training(self, *, confirmed: bool = False):
         """Start training (threaded)."""
-        result = self.service.execute(TrainCommand())
+        result = self.service.execute(TrainCommand(confirmed=confirmed))
         self._raise_if_failed(result)
 
     def stop_training(self):

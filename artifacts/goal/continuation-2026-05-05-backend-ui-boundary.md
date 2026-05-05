@@ -11,6 +11,7 @@ the goal as complete.
 
 Recent local commits:
 
+- `backend: gate train confirmation in command layer` (current handoff slice)
 - `assistant: filter legacy rag examples` (current handoff slice)
 - `0e36405 assistant: neutralize legacy tool labels`
 - `6e289ed ui: prefer interpretation next step`
@@ -68,6 +69,11 @@ UI runtime / product-language cleanup:
   `BM25Index`, and `RAGRetriever` filter examples containing `load_data`,
   `attach_labels`, or `import_labels`, including old Qdrant candidates that
   still exist in a user's local collection.
+- Long-running `train` confirmation is now enforced by the backend command
+  gate, not only by UI / agent convention. `TrainCommand` carries
+  `confirmed`, unready train still returns precondition reasons, and
+  backend-ready unconfirmed train returns `confirmation_required` without
+  calling the training controller.
 
 Docs updated:
 
@@ -95,6 +101,11 @@ poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_produ
 poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/ui/components/test_agent_manager.py tests/integration/ui/test_product_walkthrough.py -q
 poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_legacy_load_summary_uses_neutral_product_language tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_product_status_updates_empty_state_and_chips tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout -q
 poetry run pytest --capture=sys tests/unit/llm/rag/test_example_policy.py tests/unit/test_llm_backend.py tests/unit/llm/agent/test_assembler_stage.py -q
+poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_train_command_blocked_until_backend_ready tests/unit/backend/application/test_application_service.py::test_train_command_requires_confirmation_before_long_running_start -q
+poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py::test_start_training_surface_preserves_backend_confirmation_boundary tests/unit/llm/agent/test_controller.py::TestOnUserConfirmed::test_approved_executes_and_finalises tests/unit/llm/agent/test_controller.py::TestOnUserConfirmed::test_approved_failure_triggers_retry tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_does_not_fallback_to_controller -q
+poetry run pytest --capture=sys tests/unit/backend/application -q
+poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q
+poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q
 timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
 ```
 
@@ -105,6 +116,11 @@ Observed results:
 - legacy label summary focused gate: `3 passed`
 - RAG example policy focused gate: `5 passed`
 - broader RAG / assembler focused gate: `31 passed`
+- backend train confirmation focused gate: `2 passed`
+- agent/application surface/UI confirmation adapter gate: `4 passed`
+- backend application suite: `102 passed`
+- agent/tool suite: `470 passed`
+- training UI focused suite: `42 passed`
 - consolidated walkthrough artifact: status `passed`, `26 / 26` phases,
   `20` screenshots, human desktop acceptance `not performed`
 - full ruff: pass
@@ -144,6 +160,7 @@ Known validation note:
 4. Keep product closure blockers explicit.
    - Windows human desktop acceptance, dual-monitor / DPI behavior, long real
      local-model desktop sessions, long-running ChatPanel workflow, interactive
-     desktop 3D, and MCP HTTP / long-running job boundaries remain unfinished.
+     desktop 3D, and MCP HTTP / long-running job progress / cancel / recovery
+     boundaries remain unfinished.
 
 Do not mark product complete until those blockers have real evidence.

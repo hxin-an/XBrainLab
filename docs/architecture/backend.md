@@ -63,6 +63,12 @@ mock / legacy adapter 回傳 `None` 的相容情境。
 後續 Training sidebar cleanup 也把重新 split 前的 dataset cleanup 和 Clear History 接回
 `ClearDatasetsCommand` / `ClearTrainingHistoryCommand`；successful service result 不再落回
 training controller mutation。
+最新 command-gate cleanup 又把 capability / confirmation enforcement 從
+`ApplicationService._ensure_command_allowed()` 的硬編碼清單抽到
+`XBrainLab/backend/application/command_gate.py`。`train` 的 long-running confirmation 現在由
+Command API 本身執行：`TrainCommand` 新增 `confirmed` 欄位，未 confirmed 的 backend-ready
+training request 會回 `confirmation_required`，而 backend-unready request 仍先回 capability
+precondition reason。
 最新 Data Interpretation boundary cleanup 把 format capability taxonomy 抽到
 `data_interpretation_formats.py`；Data Interpretation lifecycle module 現在呼叫 focused format
 boundary helper，而不是同時承接 scanner / candidate / format matrix 細節。
@@ -436,6 +442,8 @@ blocked reason 時使用 `BackendFacade.get_state()` / `get_capabilities()`。
   holder 建立、optimizer / device / evaluation option resolve、training option snapshot 和
   training lifecycle notification；`ApplicationService` 只做 dispatch、policy gate 和 result
   envelope。
+- `train` 的 long-running confirmation 由 `command_gate.py` 在 `ApplicationService.execute()`
+  前檢查；UI / agent / headless adapter 只有在人類確認後才傳 `TrainCommand(confirmed=True)`。
 - UI Training sidebar 的 Clear History action 會透過 `ClearTrainingHistoryCommand` 進入
   `TrainingCommandService`；只有 mock / legacy `None` adapter 情境才回到 controller fallback。
 - `generate_dataset`、`clear_datasets`、split config、split audit、rollback 和

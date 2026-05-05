@@ -66,6 +66,10 @@
   capability 需要 confirmation 時先顯示 long-running confirmation；拒絕時不執行 command，service
   success path 不再 fallback 到 controller。Automated Qt replay artifact：
   `artifacts/ui/training-start-confirmation/`。
+- 最新 backend command-gate cleanup 已把 long-running `train` confirmation 下沉到 Command API。
+  `TrainCommand(confirmed=False)` 在 backend ready 時會回 `confirmation_required` 且不啟動訓練；
+  backend unready 時仍先回 precondition blocked reason。UI / agent confirmation 後會注入
+  `confirmed=True`。
 - 最新 Data Interpretation boundary cleanup 已把 format capability taxonomy 抽到
   `data_interpretation_formats.py`，讓 scanner / candidate lifecycle 與 format matrix 邊界分離。
 - 後續 Data Interpretation boundary cleanup 已把 metadata resolution / BIDS summary / recipe

@@ -502,7 +502,10 @@ class TestOnUserConfirmed:
 
         ctrl.on_user_confirmed(True)
 
-        ctrl._execute_tool_no_loop.assert_called_once_with("clear_dataset", {})
+        ctrl._execute_tool_no_loop.assert_called_once_with(
+            "clear_dataset",
+            {"confirmed": True},
+        )
         assert ctrl._pending_confirmation is None
         assert ctrl._tool_failure_count == 0
 
@@ -550,6 +553,10 @@ class TestOnUserConfirmed:
 
         ctrl.on_user_confirmed(True)
 
+        ctrl._execute_tool_no_loop.assert_called_once_with(
+            "start_training",
+            {"confirmed": True},
+        )
         assert ctrl._tool_failure_count == 1
         ctrl._generate_response.assert_called_once()
 

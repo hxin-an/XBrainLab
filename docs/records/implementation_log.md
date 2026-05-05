@@ -506,6 +506,41 @@ controller。
 後續應把 button-driven train -> evaluate -> visualization / saliency flow 納入 UI-observable
 walkthrough，並繼續補 Windows desktop human acceptance。
 
+## 2026-05-05 Backend Command Gate Confirmation Boundary
+
+### 狀態
+
+Long-running / destructive confirmation 不再只靠 UI 或 agent 外層自律。`ApplicationService`
+現在委派 `command_gate.py` 做 capability 和 confirmation gate；`TrainCommand` 新增
+`confirmed` 欄位，backend-ready 但未 confirmed 的 training request 會被 command layer 擋下。
+
+### 已可宣稱
+
+- Backend-unready `train` 仍回 precondition reason，不會錯誤要求 confirmation。
+- Backend-ready `TrainCommand(confirmed=False)` 回 `confirmation_required`，且不呼叫 training
+  controller。
+- UI / agent / application tool surface 在使用者確認後才傳 `confirmed=True`。
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/command_gate.py`
+- Source：`XBrainLab/backend/application/commands.py`
+- Source：`XBrainLab/llm/tools/application_surface.py`
+- Tests：`tests/unit/backend/application/test_application_service.py`
+- Tests：`tests/unit/llm/tools/test_application_surface.py`
+- Tests：`tests/unit/llm/agent/test_controller.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+
+### 不能宣稱完成
+
+- 這不是 MCP long-running job / progress / cancel model。
+- 這不是完整 training completion / evaluation / saliency desktop acceptance。
+
+### 下一手重點
+
+繼續把 remaining destructive / long-running automation entry 檢查成同一種 pattern，尤其 MCP
+job boundary、training cancel / recovery、以及 UI-observable full training path。
+
 ## 2026-05-05 Backend Command Boundary Cleanup
 
 ### 狀態

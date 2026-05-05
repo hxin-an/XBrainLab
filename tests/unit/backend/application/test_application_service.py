@@ -1140,6 +1140,24 @@ def test_train_command_blocked_until_backend_ready():
     assert result.state.training.has_trainer is False
 
 
+def test_train_command_requires_confirmation_before_long_running_start():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.loaded_data_list = [raw]
+    cast(Any, service.study).datasets = [object()]
+    cast(Any, service.study).model_holder = object()
+    cast(Any, service.study).training_option = object()
+    service.training.start_training = MagicMock()
+
+    result = service.execute(TrainCommand())
+    confirmed = service.execute(TrainCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.CONFIRMATION_REQUIRED
+    assert confirmed.ok is True
+    service.training.start_training.assert_called_once()
+
+
 def test_every_declared_command_returns_result_envelope():
     service = ApplicationService(Study())
     commands = [

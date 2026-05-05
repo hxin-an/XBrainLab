@@ -399,6 +399,7 @@ class TestTrainingSidebar:
             sidebar.start_training_ui_action()
 
         assert isinstance(mock_execute.call_args.args[1], TrainCommand)
+        assert mock_execute.call_args.args[1].confirmed is True
         sidebar.panel.controller.start_training.assert_not_called()
 
     def test_start_training_error(self, sidebar):

@@ -304,6 +304,7 @@ class TrainCommand:
 
     append: bool = True
     interactive: bool = True
+    confirmed: bool = False
 
     @property
     def name(self) -> CommandName:

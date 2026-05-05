@@ -413,7 +413,7 @@ class TrainingSidebar(QWidget):
                     )
                     if reply == QMessageBox.StandardButton.No:
                         return
-                result = execute_application_command(self, TrainCommand())
+                result = execute_application_command(self, TrainCommand(confirmed=True))
                 if result is None:
                     self.controller.start_training()
                 elif result.failed:

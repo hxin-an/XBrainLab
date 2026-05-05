@@ -609,7 +609,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         )
 
     if tool_name == "start_training":
-        return TrainCommand()
+        return TrainCommand(confirmed=bool(params.get("confirmed", False)))
 
     if tool_name == "evaluate":
         return EvaluateCommand(target=_optional_str(params.get("target")))
@@ -625,7 +625,7 @@ def _command_for_tool(tool_name: str, params: dict[str, Any]) -> Command | None:
         )
 
     if tool_name == "clear_dataset":
-        return ResetSessionCommand(confirmed=True)
+        return ResetSessionCommand(confirmed=bool(params.get("confirmed", False)))
 
     if tool_name == "query_state":
         return QueryStateCommand(

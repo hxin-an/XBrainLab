@@ -37,6 +37,56 @@
 
 ## 2026-05-05
 
+### 08:20 Backend train confirmation command gate
+
+- 做了什麼：
+  - 使用 `architecture-reviewer` / `refactor-slicer` / `tdd-guard` 檢查 backend command gate，
+    發現 `train` capability 已標成 long-running / `requires_confirmation=True`，但
+    backend-ready `ApplicationService.execute(TrainCommand())` 仍會直接啟動 training；confirmation
+    主要只靠 UI / agent 外層。
+  - 先加紅燈測試：
+    `test_train_command_requires_confirmation_before_long_running_start`，確認未 confirmed 的
+    backend-ready training request 目前會錯誤成功並呼叫 `start_training()`。
+  - 新增 `XBrainLab/backend/application/command_gate.py`，讓 `ApplicationService` 委派 focused
+    gate：先檢查 capability enabled / blocked reason，再檢查
+    `confirmation_required` / `requires_confirmation` 和 command 的 `confirmed` 欄位。
+  - `TrainCommand` 新增 `confirmed` 欄位；Training sidebar、agent confirmation resume、
+    application tool surface 和 real training facade 會在人類確認後傳 `confirmed=True`。
+  - 同步修正 agent `clear_dataset` confirmation resume，不再依賴 application surface 無條件
+    `ResetSessionCommand(confirmed=True)` 的隱性旁路。
+- 結果：
+  - Unready `train` 仍回 precondition blocked reason，例如 `Generate datasets before training`。
+  - Backend-ready 但未 confirmed 的 `train` 會回 `confirmation_required`，且不呼叫 training
+    controller。
+  - Backend-ready 且 confirmed 的 `train` 才會執行。
+- 證據：
+  - Red test：
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_train_command_requires_confirmation_before_long_running_start -q`
+    -> failed because `TrainCommand()` returned ok and called training start。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_train_command_blocked_until_backend_ready tests/unit/backend/application/test_application_service.py::test_train_command_requires_confirmation_before_long_running_start -q`
+    -> `2 passed`。
+  - `poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py::test_start_training_surface_preserves_backend_confirmation_boundary tests/unit/llm/agent/test_controller.py::TestOnUserConfirmed::test_approved_executes_and_finalises tests/unit/llm/agent/test_controller.py::TestOnUserConfirmed::test_approved_failure_triggers_retry tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_does_not_fallback_to_controller -q`
+    -> `4 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `102 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `42 passed`。
+  - Focused `basedpyright` on touched backend / agent / UI files -> `0 errors, 0 warnings, 0 notes`。
+  - `git diff --check` -> pass。
+  - `timeout 300s poetry run ruff check .` -> pass。
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`。
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`。
+- 接續 / 本輪剩餘：
+  - MCP long-running job / progress / cancel / recovery 仍未完成；這個 slice 只修 Command API
+    confirmation enforcement。
+
 ### 08:06 RAG legacy data-entry example filter
 
 - 做了什麼：

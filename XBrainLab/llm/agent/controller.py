@@ -1213,7 +1213,7 @@ class LLMController(QObject):
         params: dict[str, Any],
     ) -> dict[str, Any]:
         """Inject backend confirmation fields after the user approves."""
-        if command_name == "apply_interpretation":
+        if command_name in {"apply_interpretation", "clear_dataset", "start_training"}:
             return {**params, "confirmed": True}
         return params
 

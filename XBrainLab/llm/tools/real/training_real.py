@@ -122,7 +122,7 @@ class RealStartTrainingTool(BaseStartTrainingTool):
         facade = BackendFacade(study)
 
         try:
-            facade.run_training()
+            facade.run_training(confirmed=bool(kwargs.get("confirmed", False)))
         except Exception as e:
             return f"Failed to start training: {e!s}"
         else:

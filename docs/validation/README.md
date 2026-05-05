@@ -368,6 +368,13 @@ UI baseline capture 結果：
   backend integration -> `3 passed`；agent/tool regression -> `468 passed`；agent integration ->
   `7 passed`；ruff / basedpyright / architecture compliance / MkDocs strict / diff check passed。
   這是 automated Qt replay，不是 human desktop acceptance。
+- Backend command-gate confirmation cleanup 覆蓋 long-running `train` 不再只靠 UI/agent 外層
+  confirmation：unready train 仍回 precondition，backend-ready unconfirmed train 回
+  `confirmation_required` 且不呼叫 training controller；confirmed train 才執行。Focused evidence：
+  backend confirmation tests -> `2 passed`；agent / application surface / UI confirmation adapters ->
+  `4 passed`；backend application suite -> `102 passed`；agent/tool suite -> `470 passed`；
+  training UI focused suite -> `42 passed`；backend integration -> `3 passed`；agent integration ->
+  `7 passed`；ruff / basedpyright / architecture compliance / MkDocs strict / diff check passed。
 - Dataset source-entry UI options slice gate 覆蓋 Data Interpretation source type visibility：
   Dataset sidebar 現在有 `Interpret Data Source`、`Interpret Folder / BIDS` 和
   `Reload Import Recipe` 三個 source entry，folder/BIDS 和 recipe reload 走 Data Interpretation
