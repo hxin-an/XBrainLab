@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+f2ccf95 ui: render visualization from service payload
 a00a5d5 ui: render evaluation from service payload
 c6c7e5b ui: query channel selection data
 0cea91e docs: refresh handoff after label target cleanup
@@ -147,6 +148,14 @@ bb57beb ui: use backend truth for split replacement
     controls and shows a user-facing readiness message before reading injected controller trainers.
   - The basedpyright baseline dropped from 115 to 112 suppressed errors after replacing dynamic
     `show_error` calls with a typed helper.
+- Visualization panel object-payload render source:
+  - `VisualizeCommand(include_objects=True)` now returns UI-only trainer objects and averaged
+    records for service-backed rendering.
+  - A real `Study` Visualization panel uses that service payload for plan controls and average-run
+    rendering before falling back to controller reads.
+  - Automation / MCP `visualize` schemas hide and reject `include_objects`, keeping external
+    clients on the serializable query contract.
+  - `.basedpyright/baseline.json` dropped by 2 more suppressed errors.
 - Saliency export query gate:
   - `Export Saliency` now checks readonly `SaliencyCommand` readiness before reading trainer lists
     or opening the export dialog.
@@ -492,6 +501,32 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for a00a5d5; basedpyright baseline decreased by 3;
+# mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q
+# 114 passed for f2ccf95
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  -q
+# 28 passed for f2ccf95
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for f2ccf95
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for f2ccf95
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for f2ccf95; basedpyright baseline decreased by 2;
 # mkdocs still prints the existing Material advisory
 ```
 
