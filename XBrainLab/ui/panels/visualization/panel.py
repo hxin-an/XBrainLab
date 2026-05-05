@@ -80,6 +80,9 @@ class VisualizationPanel(BasePanel):
             self._create_refresh_bridge(training_ctrl, "training_stopped")
             self._create_refresh_bridge(training_ctrl, "history_cleared")
             self._create_refresh_bridge(training_ctrl, "config_changed")
+        if self.controller:
+            self._create_refresh_bridge(self.controller, "montage_changed")
+            self._create_refresh_bridge(self.controller, "saliency_changed")
         if self.preprocess_controller:
             self._create_refresh_bridge(
                 self.preprocess_controller,

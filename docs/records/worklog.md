@@ -8844,3 +8844,27 @@
 - 不能宣稱：
   - This is command argument boundary cleanup. It does not certify interactive desktop 3D rendering
     or the full visualization workflow.
+
+### 2026-05-05 Visualization observer events routed through coordinator
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` with a narrow observer
+    cleanup slice.
+  - Route `montage_changed` / `saliency_changed` through the same coordinator owner-scope pattern as
+    dataset / preprocess / training events.
+- red / focused tests：
+  - Added coordinator test where a helper context with `panel=visualization_panel` receives
+    `saliency_changed`; it failed because the visualization panel was not refreshed.
+  - Added secondary-context test for `montage_changed`; it failed because unknown events refreshed
+    the wrong source panel.
+  - Added VisualizationPanel bridge tests for `montage_changed` and `saliency_changed`; both failed
+    because the panel did not subscribe to its controller events.
+- 做了什麼：
+  - Added `montage_changed` and `saliency_changed` routes to `refresh_coordinator`.
+  - Added VisualizationPanel owner bridges for both visualization controller events.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_visualization_observer_uses_visualization_scope_from_helper_context tests/unit/ui/test_refresh_coordinator.py::test_secondary_visualization_observer_does_not_duplicate_central_scope tests/unit/ui/test_panel_event_bridges.py::test_visualization_panel_refreshes_on_montage_changed tests/unit/ui/test_panel_event_bridges.py::test_visualization_panel_refreshes_on_saliency_changed -q`
+    -> `4 passed`.
+- 不能宣稱：
+  - This is not full command-driven UI refresh closure; high-frequency training live updates and
+    remaining manual/event-specific refreshes still need ownership/audit.

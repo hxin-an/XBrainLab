@@ -820,7 +820,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   使用 coordinator changed-state scope：`data_changed` 只由 DatasetPanel owner bridge 一次刷新
   Dataset / Preprocess / Training，`preprocess_changed` 只由 PreprocessPanel owner bridge 一次刷新
   Preprocess / Training / Visualization；training lifecycle events 則由 TrainingPanel owner
-  callback 一次刷新 Training / Evaluation / Visualization。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
+  callback 一次刷新 Training / Evaluation / Visualization。最新 visualization observer cleanup
+  也把 `montage_changed` / `saliency_changed` 納入 coordinator route，由 VisualizationPanel
+  owner bridge 刷新 Visualization 和 shared status，避免 helper / secondary context 自己刷新錯誤 panel。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
   這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
   validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
   closure。後續仍要把

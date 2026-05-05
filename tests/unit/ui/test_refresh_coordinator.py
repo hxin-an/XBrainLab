@@ -391,6 +391,44 @@ def test_secondary_training_lifecycle_observer_does_not_duplicate_central_scope(
     assert main_window.agent_manager.refresh_calls == 0
 
 
+def test_visualization_observer_uses_visualization_scope_from_helper_context():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    context = SimpleNamespace(
+        main_window=main_window,
+        panel=main_window.visualization_panel,
+    )
+
+    refreshed = refresh_after_observer(context, event_name="saliency_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_visualization_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.evaluation_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="montage_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
 def test_unknown_observer_event_keeps_source_panel_scope():
     main_window = _main_window()
     info = _attach_info_spy(main_window)

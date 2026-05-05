@@ -139,6 +139,8 @@
   no-op，避免同一 backend observer event 重複刷新整組 panels。後續同 slice 也把
   `training_started` / `training_stopped` / `config_changed` / `history_cleared` 交給 TrainingPanel
   owner callback 觸發 Training / Evaluation / Visualization scope。
+- 最新 visualization observer cleanup 已把 `montage_changed` / `saliency_changed` 納入同一套
+  coordinator-owned scope；VisualizationPanel 是 owner，helper / secondary context 不再刷新錯誤 panel。
 - 最新 downstream refresh coordinator cleanup 已讓 `training_changed` 刷新 Evaluation /
   Visualization readiness、`epoch_changed` 刷新 Visualization readiness、`evaluation_changed`
   也刷新 Visualization readiness。這把一部分 analysis panel readiness 從 observer-only 補刷新

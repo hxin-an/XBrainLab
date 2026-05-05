@@ -22,6 +22,14 @@ _OBSERVER_EVENT_REFRESH_ROUTES = {
     "training_stopped": ("training_panel", ChangedState(training_changed=True)),
     "config_changed": ("training_panel", ChangedState(training_changed=True)),
     "history_cleared": ("training_panel", ChangedState(training_changed=True)),
+    "montage_changed": (
+        "visualization_panel",
+        ChangedState(visualization_changed=True),
+    ),
+    "saliency_changed": (
+        "visualization_panel",
+        ChangedState(visualization_changed=True),
+    ),
 }
 
 

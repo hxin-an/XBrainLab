@@ -262,3 +262,41 @@ def test_visualization_panel_refreshes_on_preprocess_events(qtbot):
         qtbot.wait(50)
 
     mock_update.assert_called_once_with(panel)
+
+
+def test_visualization_panel_refreshes_on_montage_changed(qtbot):
+    visualization_controller = Observable()
+
+    with (
+        patch.object(VisualizationPanel, "init_ui"),
+        patch.object(VisualizationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = VisualizationPanel(
+            controller=visualization_controller,
+            training_controller=Observable(),
+        )
+        qtbot.addWidget(panel)
+
+        visualization_controller.notify("montage_changed")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)
+
+
+def test_visualization_panel_refreshes_on_saliency_changed(qtbot):
+    visualization_controller = Observable()
+
+    with (
+        patch.object(VisualizationPanel, "init_ui"),
+        patch.object(VisualizationPanel, "update_panel", autospec=True) as mock_update,
+    ):
+        panel = VisualizationPanel(
+            controller=visualization_controller,
+            training_controller=Observable(),
+        )
+        qtbot.addWidget(panel)
+
+        visualization_controller.notify("saliency_changed")
+        qtbot.wait(50)
+
+    mock_update.assert_called_once_with(panel)

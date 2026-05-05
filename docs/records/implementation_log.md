@@ -2647,3 +2647,31 @@ ApplicationService.
 
 - This does not complete interactive desktop 3D / PyVista acceptance or broader visualization UX
   certification.
+
+## 2026-05-05 Visualization Observer Refresh Scope
+
+### 狀態
+
+Visualization controller observer events now participate in the UI refresh coordinator. The
+VisualizationPanel owns `montage_changed` and `saliency_changed`; those events refresh the
+Visualization panel plus shared info / assistant status through the same coordinator boundary used
+by other known observer events.
+
+### 已可宣稱
+
+- Legacy/mock visualization controller events no longer depend on an unclassified local observer
+  path.
+- Helper or secondary contexts for visualization events do not refresh the wrong panel.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`,
+  `XBrainLab/ui/panels/visualization/panel.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`,
+  `tests/unit/ui/test_panel_event_bridges.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- UI refresh remains partially mixed; this does not remove all observer/manual refresh paths or
+  complete the command-driven refresh coordinator milestone.
