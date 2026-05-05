@@ -3034,3 +3034,29 @@ training readiness checks.
 
 - This does not complete full command-driven UI refresh coordination or remove all controller reads
   used for table rendering / dialog data population.
+
+## 2026-05-06 Evaluation Panel Query Display Gate
+
+### 狀態
+
+Evaluation panel now treats the readonly `EvaluateCommand` result as the display gate in real
+`Study` contexts. If ApplicationService reports evaluation blocked or unavailable, the panel clears
+to `No Data Available` instead of reading stale injected `EvaluationController.get_plans()` data.
+
+### 已可宣稱
+
+- A stale controller plan list can no longer override an ApplicationService evaluation block in the
+  real `Study` UI path.
+- Mock / legacy panel tests still keep their controller-backed rendering path when no real
+  ApplicationService query is available.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/evaluation/panel.py`
+- Tests：`tests/unit/ui/test_evaluation_panel_redesign.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a focused display gate. It does not convert all Evaluation / Visualization rendering to
+  query-result payloads or certify analysis screenshots.

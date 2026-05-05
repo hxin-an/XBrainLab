@@ -113,6 +113,9 @@ class EvaluationPanel(BasePanel):
             EvaluateCommand(),
             refresh=False,
         )
+        if self._application_query_blocks_display():
+            self._show_no_data_available()
+            return
 
         previous_plan = (
             self.model_combo.currentData() if hasattr(self, "model_combo") else None
@@ -161,16 +164,34 @@ class EvaluationPanel(BasePanel):
                 # No models found despite plans? unlikely but possible
                 self.plot_stack.setCurrentIndex(1)
         else:
-            self.model_combo.addItem("No Data Available")
-            self.run_combo.clear()
-            self.matrix_widget.update_plot(None)  # Clear plot
-            self.bar_chart.update_plot({})  # Clear bar chart
-            self.metrics_table.update_data({})
-            self.summary_text.clear()
-            # Show No Data Label
-            self.plot_stack.setCurrentIndex(1)
+            self._show_no_data_available()
 
         self.model_combo.blockSignals(False)
+
+    def _application_query_blocks_display(self) -> bool:
+        """Return whether ApplicationService says evaluation is not displayable."""
+        result = self.last_application_query
+        if result is None:
+            return False
+        if result.failed:
+            return True
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        return (
+            diagnostics.get("payload_type") == "evaluation_summary"
+            and diagnostics.get("available") is False
+        )
+
+    def _show_no_data_available(self) -> None:
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        self.model_combo.addItem("No Data Available")
+        self.model_combo.blockSignals(False)
+        self.run_combo.clear()
+        self.matrix_widget.update_plot(None)
+        self.bar_chart.update_plot({})
+        self.metrics_table.update_data({})
+        self.summary_text.clear()
+        self.plot_stack.setCurrentIndex(1)
 
     def on_model_changed(self, index, preferred_run=None, preferred_run_text=""):
         """Handle model selection change."""

@@ -9360,3 +9360,43 @@
 - 不能宣稱：
   - This does not complete the UI refresh coordinator, all controller read removal, or human desktop
     Data Interpretation acceptance.
+
+### 2026-05-06 Evaluation panel query display gate
+
+- scope：
+  - Continue UI/backend truth alignment for readonly analysis rendering.
+  - Prevent a real `Study` Evaluation panel from showing stale injected controller plans when
+    ApplicationService says evaluation is blocked / unavailable.
+- red / focused test：
+  - Added
+    `test_evaluation_panel_uses_application_query_before_stale_controller_plans`.
+  - It failed because `EvaluationPanel.update_panel()` called stale
+    `EvaluationController.get_plans()` even after `EvaluateCommand` returned
+    `Create a training plan before evaluating results.`
+- 做了什麼：
+  - Added `_application_query_blocks_display()` and `_show_no_data_available()` helpers.
+  - `update_panel()` now clears to `No Data Available` before controller plan rendering when a real
+    `EvaluateCommand` result is failed or reports an unavailable evaluation summary.
+  - Mock / legacy contexts still use the existing controller-backed rendering path when
+    `execute_application_command()` returns `None`.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_uses_application_query_before_stale_controller_plans -q`
+    -> failed because `stale_controller.get_plans()` was called.
+  - After fix:
+    same focused command -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    -> `8 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `22 passed`.
+  - Static gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed.
+- local eval：
+  - Not run. This is an Evaluation panel readonly query display cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete Visualization query-result rendering, analysis screenshot acceptance, or
+    full UI refresh coordinator closure.

@@ -880,6 +880,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `create_epoch` capability 判定是否可進入 epoch dialog；當 `create_epoch` enabled 時，不會再被
   `preprocess` capability 的 blocked reason 透過 `check_lock()` / `check_data_loaded()` 誤擋。
   舊 controller lock/data checks 只保留給 no-capability mock / legacy path。
+  最新 Evaluation panel cleanup 則把 readonly `EvaluateCommand` 結果接到顯示 gate：real
+  `Study` path 若 ApplicationService 回 blocked / unavailable evaluation，panel 不再繼續讀
+  stale injected `EvaluationController.get_plans()` 來顯示過期 plan，而是清成
+  `No Data Available`。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

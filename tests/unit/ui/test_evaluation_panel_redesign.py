@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.evaluation.confusion_matrix import ConfusionMatrixWidget
 from XBrainLab.ui.panels.evaluation.metrics_bar_chart import MetricsBarChartWidget
@@ -192,6 +193,36 @@ def test_evaluation_panel_logic(qtbot):
     # Test Show Percentage Toggle
     panel.chk_percentage.setChecked(True)
     panel.chk_percentage.setChecked(False)
+
+
+def test_evaluation_panel_uses_application_query_before_stale_controller_plans(qtbot):
+    """Real Study evaluation query should gate stale controller plan rendering."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    main_window = RealMainWindow()
+    stale_controller = MagicMock()
+    stale_controller.get_plans.return_value = [MockPlanHolder("Stale Plan")]
+    stale_controller.get_model_summary_str.return_value = "Stale Summary"
+
+    panel = EvaluationPanel(controller=stale_controller, parent=main_window)
+    qtbot.addWidget(panel)
+
+    panel.update_panel()
+
+    assert panel.last_application_query is not None
+    assert panel.last_application_query.failed
+    assert (
+        "Create a training plan before evaluating results."
+        in panel.last_application_query.message
+    )
+    stale_controller.get_plans.assert_not_called()
+    assert panel.model_combo.count() == 1
+    assert panel.model_combo.itemText(0) == "No Data Available"
+    assert panel.run_combo.count() == 0
 
 
 def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):
