@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+699e829 ui: gate evaluation display with query result
+c4dc092 docs: refresh handoff after dataset sidebar audit
 0c3de01 ui: render dataset sidebar from capabilities
 b0b7b09 docs: refresh handoff after readiness echo guard
 e309996 test: guard training readiness controller echoes
@@ -101,6 +103,11 @@ bb57beb ui: use backend truth for split replacement
   - `DatasetSidebar.update_sidebar()` no longer reads stale lock/data controller state when backend
     command capabilities are present.
   - Those controller reads remain only in explicit no-capability legacy branches.
+- Evaluation panel query display gate:
+  - A real `Study` Evaluation panel now uses the readonly `EvaluateCommand` result as the display
+    gate.
+  - If ApplicationService reports evaluation blocked or unavailable, the panel clears to
+    `No Data Available` instead of reading stale injected controller plans.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -201,6 +208,19 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 0c3de01; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  -q
+# 22 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 699e829; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
