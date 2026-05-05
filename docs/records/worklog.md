@@ -8571,3 +8571,45 @@
 - 不能宣稱：
   - This is a guardrail only. It does not complete full command-driven UI refresh, remove
     controller observer bridges, or replace human desktop acceptance.
+
+### 2026-05-05 Data Interpretation replay table geometry evidence
+
+- scope：
+  - Strengthen UI-observable evidence for the user-reported Dataset table / Data Interpretation
+    preview table fit issues.
+  - No backend workflow or local LLM change.
+- current gap：
+  - `artifacts/ui/data-interpretation-replay.json` recorded Dataset table geometry, but preview and
+    remap dialog trees only recorded visible rows.
+  - That meant label/event/review table overflow had to be judged mostly from screenshots.
+- red / focused test：
+  - Added `test_tree_state_records_rows_and_fit_geometry`, requiring a Data Interpretation
+    `QTreeWidget` state payload to include rows, interactive resize modes, no stretch-last-section,
+    `header_length == viewport_width`, `horizontal_scrollbar_max == 0`, elide mode, and alternating
+    row state.
+- 做了什麼：
+  - Added `tree_state()` to `scripts/dev/capture_data_interpretation_replay.py`.
+  - Preview and remap dialog states now include table geometry for metadata, label carriers, event
+    roles, and Review Summary.
+  - Refreshed `artifacts/ui/data-interpretation-replay.json` and screenshots through the offscreen
+    replay script.
+- evidence：
+  - Preview/remap dialog metadata, label carriers, events, and review summary all record
+    `horizontal_scrollbar_max=0`.
+  - Review Summary example: `header_length=972`, `viewport_width=972`, `column_widths=[179, 173, 620]`,
+    `text_elide_mode=ElideRight`.
+  - Dataset table remains `header_length=994`, `viewport_width=994`, `column_widths=[321, 113, 150, 75, 86, 99, 150]`.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py::test_tree_state_records_rows_and_fit_geometry -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py -q`
+    -> `34 passed`.
+  - `poetry run ruff check scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> pass.
+  - `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This strengthens automated UI artifact evidence only. It is not mature import wizard completion
+    or human desktop acceptance.

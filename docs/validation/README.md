@@ -355,12 +355,18 @@ Windows desktop acceptance.
     -> `3 passed`.
   - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
     -> exit `0`; replay JSON records Dataset table headers, rows, resize modes, and column widths.
+    Latest replay also records preview/remap dialog tree geometry for metadata, label carriers,
+    event roles, and Review Summary: `header_length`, `viewport_width`, `column_widths`,
+    `horizontal_scrollbar_max`, and `text_elide_mode`.
   - `xvfb-run -a poetry run python scripts/dev/capture_data_interpretation_replay.py`
     -> failed once with the existing WSLg / Wayland maximized-state protocol error; not used as
     acceptance evidence.
   - `artifacts/ui/data-interpretation-replay.json` shows interactive resize modes,
     `header_length == viewport_width`, proportional column widths
     `[321, 113, 150, 75, 86, 99, 150]`, and rows containing `Events (6)` / `Labels (4)`.
+  - Latest dialog geometry evidence shows preview/remap metadata, label carriers, events, and review
+    summary all with `horizontal_scrollbar_max=0`; example review summary widths are
+    `[179, 173, 620]` with `header_length=972` and `viewport_width=972`.
   - Refreshed screenshots:
     `artifacts/ui/data-interpretation-preview.png`,
     `artifacts/ui/data-interpretation-remap.png`, and

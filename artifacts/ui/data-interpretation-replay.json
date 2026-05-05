@@ -3276,6 +3276,223 @@
           "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
         ]
       ],
+      "tables": {
+        "metadata": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "S01",
+              "session-01",
+              "motor-imagery",
+              "1"
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "01",
+              "",
+              "mi",
+              "2"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "label_carriers": {
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "sub-01_task-mi_run-2_raw.fif",
+              "BIDS events",
+              "trial_type",
+              "onset",
+              "Seconds",
+              "Trial",
+              "Class cue labels"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "events": {
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "label / event carrier",
+              "Review alignment, anchor, and class map before apply."
+            ],
+            [
+              "Label carrier",
+              "event role",
+              "External label or event source"
+            ],
+            [
+              "Onset",
+              "event role",
+              "Time anchor"
+            ],
+            [
+              "Duration",
+              "event role",
+              "Event duration"
+            ],
+            [
+              "Trial type",
+              "event role",
+              "Class cue"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "review_summary": {
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "rows": [
+            [
+              "Warning",
+              "Review",
+              "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+            ],
+            [
+              "Warning",
+              "Review",
+              "External label/event carriers require preview before apply."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm label carrier alignment, anchor event, and class map before applying."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+            ],
+            [
+              "Downstream impact",
+              "After apply",
+              "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+            ],
+            [
+              "Format capability",
+              "Needs review",
+              "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 972,
+          "viewport_width": 972,
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        }
+      },
       "review_choices": {
         "metadata_overrides": {
           "sub-01_task-mi_run-1_raw.fif": {
@@ -3351,6 +3568,183 @@
           "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
         ]
       ],
+      "tables": {
+        "metadata": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "",
+              "",
+              "",
+              ""
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "",
+              "",
+              "",
+              ""
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "label_carriers": {
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "Needs review",
+              "TSV",
+              "",
+              "",
+              "Needs review",
+              "Needs review",
+              "External labels"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "events": {
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "label / event carrier",
+              "Review alignment, anchor, and class map before apply."
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "review_summary": {
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "rows": [
+            [
+              "Remap EEG file",
+              "Select",
+              "sub-01_task-mi_run-1_raw.fif"
+            ],
+            [
+              "Remap label carrier",
+              "Select",
+              "events.tsv"
+            ],
+            [
+              "Reloaded recipe",
+              "Reapplied",
+              "Saved recipe choices were reapplied before validation."
+            ],
+            [
+              "Blocked reason",
+              "Blocked",
+              "Selected EEG file(s) were not found in the current scan: old_raw.fif."
+            ],
+            [
+              "Blocked reason",
+              "Blocked",
+              "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 972,
+          "viewport_width": 972,
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        }
+      },
       "remap_choices": {
         "eeg_file_remap": {
           "<replay_source>/old_raw.fif": "<replay_source>/sub-01_task-mi_run-1_raw.fif"

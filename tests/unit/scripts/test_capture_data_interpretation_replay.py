@@ -14,6 +14,7 @@ from scripts.dev.capture_data_interpretation_replay import (
     source_event_field_matches,
     table_state,
     tree_rows,
+    tree_state,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -123,6 +124,52 @@ def test_table_state_records_rows_and_resize_modes(qtbot) -> None:
     assert state["stretch_last_section"] is False
     assert state["header_length"] > 0
     assert state["viewport_width"] > 0
+
+
+def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_task-mi_run-01.fif"],
+            "label_carriers": ["/tmp/source/sub-01_task-mi_run-01_events.tsv"],
+        },
+        preview={
+            "label_carrier_preview": [
+                {
+                    "path": "/tmp/source/sub-01_task-mi_run-01_events.tsv",
+                    "name": "sub-01_task-mi_run-01_events.tsv",
+                    "format": "BIDS events",
+                    "label_candidates": ["trial_type"],
+                    "anchor_candidates": ["onset"],
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                    "role": "class cue labels",
+                },
+            ],
+            "event_roles": {"trial_type": "class cue"},
+            "recipe_trace": ["scan:scan-1", "candidate:candidate-1"],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(760, 720)
+    dialog.show()
+    qtbot.wait(0)
+    dialog._fit_all_tree_columns_to_viewport()
+
+    state = tree_state(dialog.review_tree)
+
+    assert state["headers"] == ["Item", "Status", "What it means"]
+    assert state["rows"]
+    assert state["resize_modes"] == ["Interactive", "Interactive", "Interactive"]
+    assert state["stretch_last_section"] is False
+    assert abs(state["header_length"] - state["viewport_width"]) <= 2
+    assert state["horizontal_scrollbar_max"] == 0
+    assert state["text_elide_mode"] == "ElideRight"
+    assert state["alternating_row_colors"] is True
 
 
 def table_item(text: str) -> QTableWidgetItem:

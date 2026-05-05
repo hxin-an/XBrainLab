@@ -232,6 +232,41 @@ def tree_rows(tree: QTreeWidget) -> list[list[str]]:
     return rows
 
 
+def tree_state(tree: QTreeWidget) -> dict[str, Any]:
+    """Return visible tree text and geometry evidence for replay artifacts."""
+    header = tree.header()
+    headers: list[str] = []
+    for column in range(tree.columnCount()):
+        header_item = tree.headerItem()
+        headers.append(header_item.text(column) if header_item is not None else "")
+    resize_modes = (
+        [
+            _resize_mode_name(header.sectionResizeMode(column))
+            for column in range(tree.columnCount())
+        ]
+        if header is not None
+        else []
+    )
+    viewport = tree.viewport()
+    scrollbar = tree.horizontalScrollBar()
+    return {
+        "headers": headers,
+        "rows": tree_rows(tree),
+        "resize_modes": resize_modes,
+        "stretch_last_section": (
+            bool(header.stretchLastSection()) if header is not None else False
+        ),
+        "header_length": header.length() if header is not None else 0,
+        "viewport_width": viewport.width() if viewport is not None else 0,
+        "column_widths": [
+            tree.columnWidth(column) for column in range(tree.columnCount())
+        ],
+        "horizontal_scrollbar_max": scrollbar.maximum() if scrollbar is not None else 0,
+        "text_elide_mode": tree.textElideMode().name,
+        "alternating_row_colors": tree.alternatingRowColors(),
+    }
+
+
 def set_tree_cell(tree: QTreeWidget, item: Any, column: int, text: str) -> None:
     """Set a tree cell through its widget when the column has an editor."""
     widget = tree.itemWidget(item, column)
@@ -355,6 +390,14 @@ def capture_replay(app: QApplication) -> int:
                 "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
                 "event_rows": tree_rows(dialog.event_tree),
                 "review_summary_rows": sanitized(tree_rows(dialog.review_tree)),
+                "tables": sanitized(
+                    {
+                        "metadata": tree_state(dialog.file_tree),
+                        "label_carriers": tree_state(dialog.label_carrier_tree),
+                        "events": tree_state(dialog.event_tree),
+                        "review_summary": tree_state(dialog.review_tree),
+                    }
+                ),
                 "review_choices": sanitized(dialog_choices),
                 "apply_button_enabled": dialog.decision != "blocked",
                 "save_recipe_checked": dialog.save_recipe_check.isChecked(),
@@ -435,6 +478,14 @@ def capture_replay(app: QApplication) -> int:
                 "decision": remap_dialog.decision,
                 "visible_text": visible_texts(remap_dialog),
                 "review_summary_rows": sanitized(tree_rows(remap_dialog.review_tree)),
+                "tables": sanitized(
+                    {
+                        "metadata": tree_state(remap_dialog.file_tree),
+                        "label_carriers": tree_state(remap_dialog.label_carrier_tree),
+                        "events": tree_state(remap_dialog.event_tree),
+                        "review_summary": tree_state(remap_dialog.review_tree),
+                    }
+                ),
                 "remap_choices": sanitized(
                     remap_dialog.get_result().get("choices", {})
                 ),

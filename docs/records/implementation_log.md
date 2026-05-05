@@ -2470,3 +2470,31 @@ branches. Direct product-path calls such as `controller.update_metadata()` or
 
 - This is a guardrail only. It does not remove existing controller observer bridges, complete
   command-driven UI refresh, or prove human desktop acceptance.
+
+## 2026-05-05 Data Interpretation Table Geometry Evidence
+
+### 狀態
+
+Data Interpretation replay artifacts now record table geometry for the preview and remap dialogs,
+not only visible rows. The artifact captures metadata, label carrier, event role, and Review
+Summary tree `header_length`, `viewport_width`, `column_widths`, `horizontal_scrollbar_max`, and
+`text_elide_mode`.
+
+### 已可宣稱
+
+- The saved UI-observable replay can prove the Dataset table and Data Interpretation review tables
+  fill their visible containers without horizontal overflow in the automated replay condition.
+
+### Evidence 入口
+
+- Replay：`artifacts/ui/data-interpretation-replay.json`
+- Screenshots：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`,
+  `artifacts/ui/data-interpretation-applied.png`
+- Tests：`tests/unit/scripts/test_capture_data_interpretation_replay.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is UI-observable automated evidence only. It does not replace human Windows desktop
+  acceptance or complete the mature import wizard editor.
