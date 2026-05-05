@@ -167,6 +167,9 @@
 - 最新 architecture guard follow-up 已把這條 pattern 寫入 `tests/architecture_compliance.py`，
   防止 service-backed success path 在 `execute_application_command()` 後用 controller echo
   重新判定 command success。
+- 最新 Training split cleanup 又把 existing-dataset replacement preflight 收回 backend
+  capability truth：real `Study` path 不再依賴 stale `TrainingController.has_datasets()` /
+  `get_trainer()` 來決定是否要先確認並送 `ClearDatasetsCommand`。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。

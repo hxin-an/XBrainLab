@@ -9135,3 +9135,35 @@
   - Not run. This is a handoff/current-truth artifact update after UI/architecture slices.
 - 不能宣稱：
   - This is continuity documentation only; it does not close product completion blockers.
+
+### 2026-05-06 Training split replacement capability-truth cleanup
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` on Training data
+    splitting.
+  - Prevent stale controller state from skipping the destructive replacement confirmation and
+    `ClearDatasetsCommand` in real `Study` paths.
+- red / focused test：
+  - Added
+    `TestTrainingSidebar.test_split_data_uses_backend_replacement_boundary_when_controller_stale`.
+  - It failed because `split_data()` checked `TrainingController.has_datasets()` /
+    `get_trainer()` after the dialog; a stale `False` controller echo skipped
+    `QMessageBox.question()` and did not dispatch `ClearDatasetsCommand`.
+- 做了什麼：
+  - Added `TrainingSidebar._should_clear_datasets_before_split()`.
+  - Real `Study` path now uses backend `generate_dataset` / `clear_datasets` capabilities to decide
+    whether an existing generated dataset / trainer can be replaced.
+  - Mock / legacy path keeps the existing controller reads because no ApplicationService capability
+    is available there.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_uses_backend_replacement_boundary_when_controller_stale -q`
+    -> failed because the confirmation prompt was not called.
+  - After fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_uses_backend_replacement_boundary_when_controller_stale tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_allows_backend_replacement_boundary tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_service_success_does_not_fallback_to_controller -q`
+    -> `3 passed`.
+- local eval：
+  - Not run. This is a Training sidebar capability-truth cleanup and stays under the fast dev gate.
+- 不能宣稱：
+  - This does not complete full controller fallback removal, command-driven UI refresh closure, or
+    human training workflow acceptance.

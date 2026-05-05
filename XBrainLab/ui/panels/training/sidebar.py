@@ -275,7 +275,7 @@ class TrainingSidebar(QWidget):
 
         win = DataSplittingDialog(self, self.controller)
         if win.exec():
-            if self.controller.has_datasets() or self.controller.get_trainer():
+            if self._should_clear_datasets_before_split():
                 reply = QMessageBox.question(
                     self,
                     "Reset Training Data",
@@ -357,6 +357,16 @@ class TrainingSidebar(QWidget):
             and clear_capability is not None
             and clear_capability.enabled
         )
+
+    def _should_clear_datasets_before_split(self) -> bool:
+        """Return whether applying a new split must clear existing training data."""
+        generate_capability = get_command_capability(
+            self,
+            CommandName.GENERATE_DATASET,
+        )
+        if generate_capability is not None:
+            return self._can_replace_existing_dataset(generate_capability.reasons)
+        return bool(self.controller.has_datasets() or self.controller.get_trainer())
 
     def _check_ready_after_legacy_result(self, result) -> None:
         if result is None:

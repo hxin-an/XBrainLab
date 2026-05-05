@@ -2870,3 +2870,30 @@ from returning in service-backed success branches.
 
 - This is one training UI command-truth cleanup. It does not complete the full UI refresh
   coordinator, controller fallback audit, or human desktop training acceptance.
+
+## 2026-05-06 Training Split Replacement Capability Truth
+
+### 狀態
+
+Training data-splitting replacement now uses backend capability truth before relying on controller
+state. In real `Study` contexts, when `generate_dataset` is blocked only by existing generated
+datasets / trainer and `clear_datasets` is enabled, the UI asks for confirmation and dispatches
+`ClearDatasetsCommand` before `GenerateDatasetCommand`, even if the controller echo is stale.
+
+### 已可宣稱
+
+- Existing-dataset replacement preflight no longer depends on
+  `TrainingController.has_datasets()` / `get_trainer()` in real `Study` paths.
+- Mock / legacy contexts still use the old controller reads because no ApplicationService
+  capability surface is available there.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one Training sidebar capability-truth cleanup. It does not complete the full UI refresh
+  coordinator, controller fallback audit, or human desktop training workflow acceptance.

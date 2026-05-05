@@ -506,6 +506,58 @@ class TestTrainingSidebar:
         assert isinstance(commands[0], ClearDatasetsCommand)
         assert isinstance(commands[1], GenerateDatasetCommand)
 
+    def test_split_data_uses_backend_replacement_boundary_when_controller_stale(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import (
+            ClearDatasetsCommand,
+            GenerateDatasetCommand,
+        )
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.is_raw.return_value = True
+        study.data_manager.loaded_data_list = [raw]
+        study.data_manager.preprocessed_data_list = [raw]
+        study.data_manager.epoch_data = MagicMock()
+        study.data_manager.datasets = [MagicMock()]
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.has_datasets.return_value = False
+        sidebar.panel.controller.get_trainer.return_value = None
+        generator = MagicMock()
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
+            ) as mock_dialog,
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as mock_question,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = generator
+            sidebar.split_data()
+
+        mock_warning.assert_not_called()
+        mock_question.assert_called_once()
+        commands = [call.args[1] for call in mock_execute.call_args_list]
+        assert isinstance(commands[0], ClearDatasetsCommand)
+        assert isinstance(commands[1], GenerateDatasetCommand)
+        sidebar.panel.controller.clean_datasets.assert_not_called()
+        sidebar.panel.controller.apply_data_splitting.assert_not_called()
+
     def test_select_model_accepted(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False
         mock_holder = MagicMock()

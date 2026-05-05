@@ -859,6 +859,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `tests/architecture_compliance.py`：service-backed success path 不可在
   `execute_application_command()` 後用 `TrainingController.get_model_holder()` 這種 controller
   echo 重新判定 command success；echo reads 只允許在 explicit legacy fallback branch。
+  最新 Training split cleanup 又把 existing-dataset replacement 判斷改成 backend capability
+  truth：real `Study` path 若 `generate_dataset` 只因 existing dataset / trainer 被 block，但
+  `clear_datasets` enabled，UI 會要求 confirmation 並先送 `ClearDatasetsCommand`，不再依賴
+  stale `TrainingController.has_datasets()` / `get_trainer()` 判斷是否要清資料。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
