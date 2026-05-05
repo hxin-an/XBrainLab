@@ -1,6 +1,6 @@
 # XBrainLab Implementation Log
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-06`
 
 ## 這份文件的用途
 
@@ -41,6 +41,37 @@
 
 ### 下一手重點
 ```
+
+## 2026-05-06 Visualization 3D Widget Cleanup
+
+### 狀態
+
+The 3D saliency plot widget now has a focused Qt teardown guard. `clear_plot()` detaches layout
+children, schedules non-plotter child widgets for `deleteLater()`, and closes / deletes the PyVista
+plotter through runtime-safe method checks before clearing the plotter reference.
+
+### 已可宣稱
+
+- Repeated 3D plot clearing no longer leaves ordinary child widgets without `deleteLater()`.
+- Focused offscreen tests cover placeholder cleanup, plotter close/delete cleanup, and the existing
+  headless 3D blocked-before-QtInteractor guard.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py`
+- Tests: `tests/unit/ui/test_visualization.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not interactive desktop 3D / PyVista render acceptance, OpenGL soak evidence, or human
+  Windows desktop verification.
+
+### 下一手重點
+
+Continue visualization lifecycle/resource hardening only where tests or UI artifacts can observe a
+real leak or cleanup regression; keep interactive 3D desktop acceptance listed as a remaining
+human/desktop verification blocker.
 
 ## 2026-05-06 Training Thread Cleanup Guard
 

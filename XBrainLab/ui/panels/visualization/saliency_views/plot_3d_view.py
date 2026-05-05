@@ -59,6 +59,8 @@ class Saliency3DPlotWidget(QWidget):
         self.plot_layout.addWidget(lbl)
 
     def clear_plot(self):
+        plotter = self.plotter_widget
+
         # Remove existing widgets
         for i in reversed(range(self.plot_layout.count())):
             item = self.plot_layout.itemAt(i)
@@ -66,11 +68,18 @@ class Saliency3DPlotWidget(QWidget):
                 w = item.widget()
                 if w:
                     w.setParent(None)
+                    if w is not plotter:
+                        w.deleteLater()
 
         # Clean up plotter if exists
-        if self.plotter_widget:
-            with contextlib.suppress(Exception):
-                self.plotter_widget.close()
+        if plotter:
+            close_plotter = getattr(plotter, "close", None)
+            if callable(close_plotter):
+                with contextlib.suppress(Exception):
+                    close_plotter()
+            delete_later = getattr(plotter, "deleteLater", None)
+            if callable(delete_later):
+                delete_later()
             self.plotter_widget = None
 
     def update_plot(self, plan, trainer, method, absolute, eval_record):

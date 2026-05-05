@@ -113,6 +113,14 @@ Training force-clean lifecycle gate:
 -> `7 passed`。This supports bounded force-clean thread handling and preserving the trainer handle
 on cleanup timeout. It is not long-running training soak evidence.
 
+Visualization 3D widget cleanup gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot_schedules_child_widgets_for_deletion tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
+-> `3 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/components/test_plot_figure_window.py -q`
+-> `59 passed`。This supports the 3D saliency widget child / plotter cleanup contract and the
+existing headless blocked-before-QtInteractor behavior. It is not interactive desktop 3D / PyVista
+render acceptance, OpenGL soak evidence, or human Windows desktop verification.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

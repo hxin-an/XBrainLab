@@ -193,6 +193,10 @@
   後 bounded join background thread；若 training thread 未停止會 raise，讓
   `TrainingManager.clean_trainer()` 保留 trainer handle，避免失去後續取消 / status 查詢入口。
   這是 thread-handle safety guard，不是 long-running training soak。
+- 最新 visualization 3D cleanup 讓 `Saliency3DPlotWidget.clear_plot()` 在清空 plot layout 時
+  detached child widgets、對非 plotter child 排程 `deleteLater()`，並對 PyVista plotter 使用
+  close / deleteLater 的 runtime-safe cleanup；這是反覆切換 3D view 的 Qt lifecycle guard，
+  不是 interactive desktop 3D / OpenGL soak 或 Windows human desktop acceptance。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

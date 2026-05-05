@@ -10419,3 +10419,54 @@
 - 不能宣稱：
   - This is not a long-running dataset-generation soak test, memory leak proof, or full PyQt worker
     lifecycle certification.
+
+### 2026-05-06 Visualization 3D plotter widget cleanup
+
+- scope：
+  - Continue focused visualization/saliency resource cleanup after training and dataset preview
+    lifecycle slices.
+  - Prevent `Saliency3DPlotWidget.clear_plot()` from only detaching layout children without
+    scheduling ordinary child widgets for Qt deletion.
+  - Keep this as a fast dev gate slice; no local LLM primary/fallback eval was run.
+- red / focused tests：
+  - Added `test_clear_plot_schedules_child_widgets_for_deletion`.
+  - Red gate failed because a temporary child `QLabel` was detached but not scheduled for
+    `deleteLater()`.
+- 做了什麼：
+  - `clear_plot()` now stores the active plotter, detaches every layout child, schedules non-plotter
+    child widgets for `deleteLater()`, then closes / deletes the plotter via runtime-safe method
+    checks and clears `plotter_widget`.
+  - Avoided double-delete by letting the plotter-specific block own plotter close/delete while the
+    layout loop handles other children.
+  - `.basedpyright/baseline.json` dropped by one suppressed `QtInteractor.close` attribute error.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot_schedules_child_widgets_for_deletion -q`
+    -> failed because `label.deleted` stayed `False`.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot_schedules_child_widgets_for_deletion tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
+    -> `3 passed`.
+  - Visualization regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/components/test_plot_figure_window.py -q`
+    -> `59 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py tests/unit/ui/test_visualization.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py tests/unit/ui/test_visualization.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Slice gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a UI widget lifecycle cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not certify interactive desktop 3D / PyVista render, OpenGL soak behavior, full
+    Visualization product UX, or human Windows desktop acceptance.

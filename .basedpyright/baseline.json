@@ -870,14 +870,6 @@
         ],
         "./XBrainLab/ui/panels/visualization/saliency_views/plot_3d_view.py": [
             {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportArgumentType",
                 "range": {
                     "startColumn": 39,

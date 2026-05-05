@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -207,6 +208,50 @@ class TestSaliency3DPlotWidget:
             w.clear_plot()
             # Calling twice should be fine
             w.clear_plot()
+
+    def test_clear_plot_schedules_child_widgets_for_deletion(self, qtbot):
+        with patch(
+            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
+        ):
+            from PyQt6.QtWidgets import QLabel, QWidget
+
+            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+                Saliency3DPlotWidget,
+            )
+
+            class CleanupLabel(QLabel):
+                deleted = False
+
+                def deleteLater(self):
+                    self.deleted = True
+                    super().deleteLater()
+
+            class CleanupPlotter(QWidget):
+                closed = False
+                deleted = False
+
+                def close(self):
+                    self.closed = True
+                    return super().close()
+
+                def deleteLater(self):
+                    self.deleted = True
+                    super().deleteLater()
+
+            w = Saliency3DPlotWidget(parent=None)
+            qtbot.addWidget(w)
+            label = CleanupLabel("temporary")
+            plotter = CleanupPlotter()
+            w.plot_layout.addWidget(label)
+            w.plot_layout.addWidget(plotter)
+            cast(Any, w).plotter_widget = plotter
+
+            w.clear_plot()
+
+            assert label.deleted is True
+            assert plotter.closed is True
+            assert plotter.deleted is True
+            assert w.plotter_widget is None
 
     def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot):
         with patch(
