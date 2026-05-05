@@ -210,6 +210,7 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
         if isinstance(value, str):
             normalized_choices[key] = _clean_choice_value(key, value)
     for key in (
+        "recipe_id",
         "subject",
         "session",
         "task",
@@ -219,6 +220,12 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
         "class_map",
         "anchor",
         "selected_eeg_files",
+        "required_label_carriers",
+        "eeg_file_remap",
+        "label_carrier_remap",
+        "label_carrier_choices",
+        "event_roles",
+        "metadata_overrides",
     ):
         if key not in params:
             continue
@@ -246,6 +253,8 @@ def _normalize_preview_args(params: dict[str, Any], latest_user_text: str) -> No
     event_role = _extract_event_role(latest_user_text)
     if event_role:
         normalized_choices.setdefault("event_role", event_role)
+    for key, value in _extract_recipe_remap_choices(latest_user_text).items():
+        normalized_choices.setdefault(key, value)
     normalized_choices = {
         key: value
         for key, value in normalized_choices.items()
@@ -452,6 +461,32 @@ def _extract_path(text: str) -> str | None:
     if not match:
         return None
     return match.group(0).rstrip(".")
+
+
+def _extract_paths(text: str) -> list[str]:
+    return [
+        item.rstrip(".") for item in re.findall(r"(?<![A-Za-z0-9_.-])/[^\s,;]+", text)
+    ]
+
+
+def _extract_recipe_remap_choices(text: str) -> dict[str, dict[str, str]]:
+    lowered = text.lower()
+    if "remap" not in lowered and "map" not in lowered:
+        return {}
+    paths = _extract_paths(text)
+    if len(paths) < 2:
+        return {}
+    remap_key = (
+        "label_carrier_remap"
+        if (
+            "label carrier" in lowered
+            or "event carrier" in lowered
+            or "events.tsv" in lowered
+        )
+        and "eeg file" not in lowered
+        else "eeg_file_remap"
+    )
+    return {remap_key: {paths[0]: paths[1]}}
 
 
 def _is_absolute_path(value: str) -> bool:

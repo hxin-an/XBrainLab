@@ -59,6 +59,14 @@ def infer_user_intent(text: str) -> str:
         normalized
     ):
         return "reload_interpretation_recipe"
+    if "remap" in normalized and (
+        "recipe" in normalized
+        or "eeg file" in normalized
+        or "label carrier" in normalized
+        or "event carrier" in normalized
+        or "saved" in normalized
+    ):
+        return "preview_interpretation"
     if "save" in normalized and "recipe" in normalized:
         return "save_interpretation_recipe"
     if "儲存" in normalized and "recipe" in normalized:
@@ -73,6 +81,7 @@ def infer_user_intent(text: str) -> str:
         or "task" in normalized
         or "run" in normalized
         or "event role" in normalized
+        or "remap" in normalized
         or has_it
     ):
         return "preview_interpretation"

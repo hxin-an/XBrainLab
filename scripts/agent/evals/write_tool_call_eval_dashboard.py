@@ -196,6 +196,18 @@ def _claim_boundary(results: list[dict[str, Any]]) -> list[str]:
             "Deterministic eval alone is not thesis-ready evidence.",
             "Run local primary and fallback models at least three times each.",
         ]
+    deterministic_total = _deterministic_case_count(results)
+    local_totals = {
+        int(item.get("total_cases") or item.get("summary", {}).get("total_cases", 0))
+        for item in local_results
+    }
+    if deterministic_total and (
+        any(total != deterministic_total for total in local_totals)
+    ):
+        return [
+            "Local model results do not cover the latest deterministic case suite; rerun primary and fallback local models before claiming thesis evidence for new cases.",
+            "Deterministic-only new cases cannot be claimed as local LLM tool-call evidence.",
+        ]
     all_non_exploratory = all(not item.get("exploratory") for item in local_results)
     min_pass = min(
         item.get("summary", {}).get("pass_rate", 0.0) for item in local_results
@@ -209,6 +221,16 @@ def _claim_boundary(results: list[dict[str, Any]]) -> list[str]:
         "Local tool-call eval is not thesis-ready yet.",
         "Improve prompt, schema, parser, verifier, state snapshot, or model choice before claiming thesis evidence.",
     ]
+
+
+def _deterministic_case_count(results: list[dict[str, Any]]) -> int:
+    for result in results:
+        if result.get("runner") in {"deterministic-scripted-baseline", "deterministic"}:
+            return int(
+                result.get("total_cases")
+                or result.get("summary", {}).get("total_cases", 0)
+            )
+    return 0
 
 
 def _result_label(result: dict[str, Any]) -> str:

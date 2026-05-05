@@ -166,10 +166,13 @@ XBrainLab/llm/core/models
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
 
 目前 primary / fallback local LLM 已通過 GPU prompt smoke 和 structured-output smoke。
-Goal 1 後續也新增真 local LLM tool-call runner；最新 thesis-candidate benchmark 使用 `117`
-cases，primary / fallback raw output 各重跑 `3` 次，artifact 顯示 primary / fallback 都是
-`117 / 117` pass。這支撐目前 benchmark slice 的 tool-call thesis-candidate claim，但仍不能
-替代 ChatPanel 長時間 workflow、Windows launcher、UI usability 或 human desktop acceptance。
+Goal 1 後續也新增真 local LLM tool-call runner；上一輪 thesis-candidate local benchmark 使用
+`118` cases，primary / fallback raw output 各重跑 `3` 次，artifact 顯示 primary / fallback
+都是 `118 / 118` pass。最新 deterministic suite 已擴到 `121` cases，補上 recipe reload
+`choices.eeg_file_remap` / `choices.label_carrier_remap` / missing remap target clarification，
+但 primary / fallback local x3 尚未針對這個 remap-expanded suite 重跑。這支撐目前已重跑的
+benchmark slice，不可替代 ChatPanel 長時間 workflow、Windows launcher、UI usability 或
+human desktop acceptance。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端

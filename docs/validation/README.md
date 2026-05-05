@@ -3528,6 +3528,25 @@ thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
 - error-recovery accuracy。
 - repeated local-model stability。
 
+2026-05-05 recipe remap schema/eval refresh:
+
+- Shared schema: `PreviewInterpretationCommand.choices` now uses
+  `data_interpretation_choice_schema.py` in both agent tool definitions and
+  `backend.application.automation.command_specs()` / MCP tool specs.
+- Coverage added: deterministic suite now includes explicit recipe reload
+  `choices.eeg_file_remap`, explicit `choices.label_carrier_remap`, and a missing remap target
+  clarification/no-call boundary.
+- Artifact: `artifacts/agent_evals/latest.json` / `.md` refreshed with repeat count `3`,
+  `121 / 121` deterministic pass, recipe_reload family `3 / 3`, and no failures.
+  `artifacts/agent_evals/dashboard.md` now shows deterministic `121` cases beside local `118`
+  cases and explicitly flags that local models must be rerun before claiming the new cases.
+- Focused tests:
+  `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/backend/application/test_automation.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `277 passed`.
+- Claim boundary: this refresh proves deterministic schema/scorer/planner coverage. The primary /
+  fallback local model x3 artifacts are still the previous `118` case suite and must be rerun before
+  claiming local LLM thesis readiness for the remap-expanded `121` case suite.
+
 舊 `scripts/agent/benchmarks/*` 可以作為歷史參考，但不能直接視為新的 thesis evidence。新的 scoring system 需要對齊 local-only runtime、State Manager、Verification Layer 和未來 Application Service / Command API。
 
 ## 目前優先驗證

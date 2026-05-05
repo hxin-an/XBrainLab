@@ -50,11 +50,45 @@ def test_dashboard_compares_models_and_families(tmp_path: Path):
     assert "Thesis Claim Boundary" in dashboard
 
 
+def test_dashboard_warns_when_local_results_do_not_cover_latest_cases(
+    tmp_path: Path,
+):
+    eval_dir = tmp_path / "agent_evals"
+    primary_dir = eval_dir / "local_primary"
+    primary_dir.mkdir(parents=True)
+
+    _write_result(
+        eval_dir / "latest.json",
+        "deterministic",
+        "deterministic",
+        1.0,
+        total_cases=121,
+    )
+    _write_result(
+        primary_dir / "local_primary.json",
+        "local-llm",
+        "microsoft/Phi-4-mini-instruct",
+        1.0,
+        total_cases=118,
+    )
+    (primary_dir / "local_latest.json").write_text(
+        json.dumps({"latest_result": "local_primary.json"}),
+        encoding="utf-8",
+    )
+
+    dashboard_path = write_dashboard(eval_dir)
+    dashboard = dashboard_path.read_text(encoding="utf-8")
+
+    assert "do not cover the latest deterministic case suite" in dashboard
+    assert "supports a thesis-candidate tool-call claim" not in dashboard
+
+
 def _write_result(
     path: Path,
     runner: str,
     model_id: str,
     pass_rate: float,
+    total_cases: int = 117,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -63,9 +97,9 @@ def _write_result(
         "repeat_count": 3,
         "exploratory": False,
         "summary": {
-            "total_cases": 117,
-            "passed_cases": int(pass_rate * 117),
-            "failed_cases": 117 - int(pass_rate * 117),
+            "total_cases": total_cases,
+            "passed_cases": int(pass_rate * total_cases),
+            "failed_cases": total_cases - int(pass_rate * total_cases),
             "pass_rate": pass_rate,
             "intent_accuracy": pass_rate,
             "local_llm_reliability_accuracy": pass_rate,

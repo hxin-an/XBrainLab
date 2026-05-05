@@ -624,6 +624,66 @@ def build_eval_cases() -> list[EvalCase]:
             expected_state_delta={"interpretation_changed": True},
         ),
         EvalCase(
+            "recipe-preview-eeg-file-remap",
+            "Recipe reload preview accepts explicit saved EEG file remap",
+            "previewed_confirmation",
+            [
+                "Preview again and remap saved EEG file "
+                "/recipe/old_raw.fif to /data/new_raw.fif."
+            ],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {
+                        "choices": {
+                            "eeg_file_remap": {
+                                "/recipe/old_raw.fif": "/data/new_raw.fif",
+                            }
+                        }
+                    },
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+            families=("recipe_reload", "data_interpretation"),
+        ),
+        EvalCase(
+            "recipe-preview-label-carrier-remap",
+            "Recipe reload preview accepts explicit label carrier remap",
+            "previewed_confirmation",
+            [
+                "Preview again and remap label carrier "
+                "/recipe/events.tsv to /data/events.tsv."
+            ],
+            "preview_interpretation",
+            [
+                ExpectedToolCall(
+                    "preview_interpretation",
+                    {
+                        "choices": {
+                            "label_carrier_remap": {
+                                "/recipe/events.tsv": "/data/events.tsv",
+                            }
+                        }
+                    },
+                )
+            ],
+            expected_state_delta={"interpretation_changed": True},
+            families=("recipe_reload", "label_ambiguity", "data_interpretation"),
+        ),
+        EvalCase(
+            "recipe-preview-remap-missing-target",
+            "Recipe remap without a replacement asks for clarification",
+            "previewed_confirmation",
+            ["Remap the missing saved EEG file before applying."],
+            "preview_interpretation",
+            expected_verification_result="missing_input",
+            expected_blocked=True,
+            expected_reason_terms=["remap target"],
+            expected_recovery=True,
+            families=("recipe_reload", "missing_input", "data_interpretation"),
+        ),
+        EvalCase(
             "multi-turn-scan-preview",
             "Scan then preview trajectory ends with preview tool",
             "scanned",
@@ -1626,6 +1686,20 @@ def predict_case(case: EvalCase) -> Prediction:
         blocked = block_from_policy(policy, CommandName.PREVIEW_INTERPRETATION)
         if blocked:
             return blocked_prediction(intent, [], blocked)
+        if is_recipe_remap_request(last_turn) and len(extract_paths(last_turn)) < 2:
+            return Prediction(
+                intent=intent,
+                tool_calls=[],
+                blocked=True,
+                asks_clarification=True,
+                blocked_reason=(
+                    "Missing recipe remap target; ask which saved file maps to "
+                    "which current replacement file."
+                ),
+                final_message=(
+                    "Please provide the saved file and the replacement remap target."
+                ),
+            )
         choices = extract_interpretation_choices(last_turn)
         args = {"choices": choices} if choices else {}
         return Prediction(
@@ -2364,7 +2438,44 @@ def extract_interpretation_choices(text: str) -> dict[str, Any]:
     )
     if event_role:
         choices["event_role"] = event_role.group(1)
+    choices.update(extract_recipe_remap_choices(text))
     return choices
+
+
+def is_recipe_remap_request(text: str) -> bool:
+    """Return whether text is asking to remap recipe reload choices."""
+    lowered = text.lower()
+    return ("remap" in lowered or "map" in lowered) and any(
+        marker in lowered
+        for marker in (
+            "recipe",
+            "saved",
+            "eeg file",
+            "label carrier",
+            "event carrier",
+        )
+    )
+
+
+def extract_recipe_remap_choices(text: str) -> dict[str, Any]:
+    """Extract simple saved-file-to-current-file recipe remap choices."""
+    if not is_recipe_remap_request(text):
+        return {}
+    paths = extract_paths(text)
+    if len(paths) < 2:
+        return {}
+    lowered = text.lower()
+    remap_key = (
+        "label_carrier_remap"
+        if (
+            "label carrier" in lowered
+            or "event carrier" in lowered
+            or "events.tsv" in lowered
+        )
+        and "eeg file" not in lowered
+        else "eeg_file_remap"
+    )
+    return {remap_key: {paths[0]: paths[1]}}
 
 
 def user_confirmed(text: str) -> bool:

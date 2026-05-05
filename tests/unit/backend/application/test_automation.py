@@ -41,6 +41,27 @@ def test_command_specs_cover_application_commands_with_autonomy_policy():
     assert apply_spec.input_schema["properties"]["confirmed"]["type"] == "boolean"
 
 
+def test_preview_command_spec_exposes_recipe_remap_choices():
+    service = ApplicationService(Study())
+
+    specs = {spec.name: spec for spec in command_specs(service)}
+    choices = specs[CommandName.PREVIEW_INTERPRETATION.value].input_schema[
+        "properties"
+    ]["choices"]
+
+    assert choices["additionalProperties"] is False
+    assert choices["properties"]["eeg_file_remap"]["additionalProperties"] == {
+        "type": "string"
+    }
+    assert choices["properties"]["label_carrier_remap"]["additionalProperties"] == {
+        "type": "string"
+    }
+    carrier_choice = choices["properties"]["label_carrier_choices"][
+        "additionalProperties"
+    ]
+    assert "target_file" in carrier_choice["properties"]
+
+
 def test_mcp_tool_specs_use_same_command_schema():
     service = ApplicationService(Study())
 
@@ -54,6 +75,11 @@ def test_mcp_tool_specs_use_same_command_schema():
         tools[CommandName.SCAN_SOURCE.value]["x_xbrainlab"]["taxonomy"]
         == "data_interpretation"
     )
+    preview_choices = tools[CommandName.PREVIEW_INTERPRETATION.value]["inputSchema"][
+        "properties"
+    ]["choices"]
+    assert "eeg_file_remap" in preview_choices["properties"]
+    assert "label_carrier_remap" in preview_choices["properties"]
 
 
 def test_legacy_compatibility_commands_are_not_primary_mcp_workflow():

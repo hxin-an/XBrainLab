@@ -100,6 +100,12 @@ orchestration，state truth 不再混在 handler 檔案裡。
 MCP `tools/list` `x_xbrainlab` metadata 都會標示 `legacy_compatibility=True`、
 `primary_workflow=False`，並列出 Data Interpretation scan / preview / validate / apply / recipe
 作為 preferred commands。這不移除相容工具，但避免 external MCP/headless client 把它們理解成新資料入口主線。
+後續 remap schema cleanup 又把 `PreviewInterpretationCommand.choices` schema 抽成
+`data_interpretation_choice_schema.py`，agent `preview_interpretation` tool definition、
+headless `command_specs()` 和 MCP `tools/list` 共用同一份 `eeg_file_remap` /
+`label_carrier_remap` / `label_carrier_choices` / `metadata_overrides` contract。recipe reload
+remap 不再只是 UI/backend 私有能力；external agent 和 headless payload 也能走同一個
+`preview_interpretation(choices=...)` command truth。
 
 ## 一句話架構
 

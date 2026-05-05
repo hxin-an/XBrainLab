@@ -123,6 +123,72 @@ def test_moves_preview_label_fields_into_choices_and_drops_empty_values():
     }
 
 
+def test_moves_preview_recipe_remap_fields_into_choices():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {
+            "eeg_file_remap": {"/recipe/old_raw.fif": "/data/new_raw.fif"},
+            "label_carrier_remap": {"/recipe/events.tsv": "/data/events.tsv"},
+            "label_carrier_choices": {
+                "/recipe/events.tsv": {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                }
+            },
+        },
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {
+            "eeg_file_remap": {"/recipe/old_raw.fif": "/data/new_raw.fif"},
+            "label_carrier_remap": {"/recipe/events.tsv": "/data/events.tsv"},
+            "label_carrier_choices": {
+                "/recipe/events.tsv": {
+                    "label_field": "trial_type",
+                    "anchor": "onset",
+                    "time_model": "seconds",
+                    "granularity": "trial",
+                }
+            },
+        }
+    }
+
+
+def test_extracts_recipe_eeg_remap_from_latest_preview_text():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {},
+        latest_user_text=(
+            "Preview again and remap saved EEG file "
+            "/recipe/old_raw.fif to /data/new_raw.fif."
+        ),
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {"eeg_file_remap": {"/recipe/old_raw.fif": "/data/new_raw.fif"}}
+    }
+
+
+def test_extracts_recipe_label_carrier_remap_from_latest_preview_text():
+    tool_name, params = normalize_tool_call(
+        "preview_interpretation",
+        {},
+        latest_user_text=(
+            "Preview again and remap label carrier "
+            "/recipe/events.tsv to /data/events.tsv."
+        ),
+    )
+
+    assert tool_name == "preview_interpretation"
+    assert params == {
+        "choices": {"label_carrier_remap": {"/recipe/events.tsv": "/data/events.tsv"}}
+    }
+
+
 def test_drops_null_optional_parameters():
     tool_name, params = normalize_tool_call(
         "apply_standard_preprocess",

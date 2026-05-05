@@ -9,6 +9,7 @@ from XBrainLab.llm.agent.verifier import (
     VerificationLayer,
     VerificationResult,
 )
+from XBrainLab.llm.tools.definitions.dataset_def import BasePreviewInterpretationTool
 
 
 def _error_message(result: VerificationResult) -> str:
@@ -280,6 +281,36 @@ class TestToolSchemaValidator:
         )
         assert not r.is_valid
         assert "choices" in _error_message(r)
+
+    def test_preview_choice_schema_accepts_recipe_remap_mappings(self):
+        v = ToolSchemaValidator(
+            {"preview_interpretation": BasePreviewInterpretationTool().parameters}
+        )
+
+        r = v.validate(
+            "preview_interpretation",
+            {
+                "choices": {
+                    "eeg_file_remap": {
+                        "/recipe/sub-01_task-mi_raw.fif": "/data/sub-01_raw.fif",
+                    },
+                    "label_carrier_remap": {
+                        "/recipe/events.tsv": "/data/events.tsv",
+                    },
+                    "label_carrier_choices": {
+                        "/data/events.tsv": {
+                            "label_field": "trial_type",
+                            "anchor": "onset",
+                            "time_model": "seconds",
+                            "granularity": "trial",
+                            "target_file": "/data/sub-01_raw.fif",
+                        }
+                    },
+                }
+            },
+        )
+
+        assert r.is_valid
 
 
 # ---------------------------------------------------------------------------

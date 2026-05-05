@@ -1349,3 +1349,32 @@ artifact 也已刷新，會保存 empty / applied Dataset sidebar 全部 button 
 ### 不能宣稱完成
 
 - 這不是完整 Dataset page visual design pass 或 UI-observable walkthrough acceptance。
+
+## 2026-05-05 Agent / Headless Recipe Remap Schema Truth
+
+### 狀態
+
+Data Interpretation recipe reload remap choices are now part of the shared command schema, not
+only a backend/UI private path. Agent `preview_interpretation`, headless automation specs, and MCP
+tool specs expose the same `choices.eeg_file_remap` / `choices.label_carrier_remap` contract.
+
+### 已可宣稱
+
+- Recipe reload remap is represented in the unified command truth for UI, agent, headless, and MCP.
+- Deterministic tool-call eval now covers explicit EEG-file remap, explicit label-carrier remap, and
+  missing remap-target clarification.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/data_interpretation_choice_schema.py`
+- Tests：`tests/unit/llm/agent/test_tool_call_normalizer.py`,
+  `tests/unit/backend/application/test_automation.py`,
+  `tests/integration/agent/test_tool_call_eval.py`
+- Artifact：`artifacts/agent_evals/latest.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- Primary / fallback local LLM x3 artifacts still need rerun on the new `121` case suite.
+- This does not complete the full recipe conflict editor, anchor reconciliation, or human desktop
+  acceptance.

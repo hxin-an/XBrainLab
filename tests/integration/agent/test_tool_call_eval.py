@@ -60,6 +60,20 @@ def test_deterministic_tool_call_eval_passes_and_writes_artifacts(tmp_path: Path
         "blocked_command",
         "data_interpretation",
     }.issubset(set(apply_lock_case.families))
+    remap_case = next(
+        (case for case in cases if case.case_id == "recipe-preview-eeg-file-remap"),
+        None,
+    )
+    assert remap_case is not None
+    assert remap_case.expected_tools[0].tool_name == "preview_interpretation"
+    assert remap_case.expected_tools[0].arguments == {
+        "choices": {
+            "eeg_file_remap": {
+                "/recipe/old_raw.fif": "/data/new_raw.fif",
+            }
+        }
+    }
+    assert {"recipe_reload", "data_interpretation"}.issubset(set(remap_case.families))
 
     result = run_eval(repeat_count=2)
     summary = result["summary"]

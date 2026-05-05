@@ -6880,3 +6880,74 @@
     multi-file matching heuristics.
   - This is not full recipe conflict editing, anchor reconciliation, or Windows human desktop
     acceptance.
+
+### 2026-05-05 Agent/headless recipe remap schema truth
+
+- scope：
+  - Align Data Interpretation recipe reload remap with agent tool schema, headless automation schema,
+    MCP tool specs, local tool-call prompt, normalizer, and deterministic eval.
+  - No UI layout or backend apply behavior change in this slice.
+- problem：
+  - Backend/UI could handle `eeg_file_remap` / `label_carrier_remap`, but the agent/headless schema
+    still treated `preview_interpretation.choices` as the older narrow metadata/label shape.
+  - Without schema/eval coverage, assistant/MCP clients could miss the remap path or fall back to
+    legacy `load_data` / `attach_labels` thinking.
+- red / focused tests：
+  - New focused tests initially failed because preview choices lacked `metadata_overrides`,
+    `label_carrier_choices`, `eeg_file_remap`, and `label_carrier_remap`; automation/MCP command
+    schema exposed `choices` as an unstructured object; verifier rejected remap mappings; normalizer
+    left remap fields outside `choices`; deterministic eval failed the new remap cases.
+- 做了什麼：
+  - Added `data_interpretation_choice_schema.py` as the shared schema for
+    `PreviewInterpretationCommand.choices`.
+  - `BasePreviewInterpretationTool.parameters`, `command_specs()`, and `mcp_tool_specs()` now expose
+    the same remap / label-carrier / metadata choices contract.
+  - `normalize_tool_call()` now moves top-level remap fields into `choices` and extracts explicit
+    "remap saved EEG file X to Y" / "remap label carrier X to Y" text into
+    `choices.eeg_file_remap` / `choices.label_carrier_remap`.
+  - Intent inference and deterministic/local eval prompts now treat recipe remap as
+    `preview_interpretation`; missing saved/replacement pair asks clarification instead of guessing.
+  - Deterministic eval cases increased to `121`, adding recipe reload EEG-file remap,
+    label-carrier remap, and missing remap target.
+- validation：
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py::TestDataInterpretationDefinitions::test_preview_choices_are_structured_for_labels_and_metadata tests/unit/backend/application/test_automation.py::test_preview_command_spec_exposes_recipe_remap_choices tests/unit/backend/application/test_automation.py::test_mcp_tool_specs_use_same_command_schema tests/unit/llm/agent/test_verification_layer.py::TestToolSchemaValidator::test_preview_choice_schema_accepts_recipe_remap_mappings tests/unit/llm/agent/test_tool_call_normalizer.py::test_moves_preview_recipe_remap_fields_into_choices tests/unit/llm/agent/test_tool_call_normalizer.py::test_extracts_recipe_eeg_remap_from_latest_preview_text tests/unit/llm/agent/test_tool_call_normalizer.py::test_extracts_recipe_label_carrier_remap_from_latest_preview_text tests/integration/agent/test_tool_call_eval.py::test_deterministic_tool_call_eval_passes_and_writes_artifacts tests/unit/scripts/test_run_local_tool_call_eval.py::test_prompt_includes_recipe_remap_choices_for_preview tests/unit/scripts/test_run_local_tool_call_eval.py::test_scores_recipe_eeg_file_remap_tool_call tests/unit/scripts/test_run_local_tool_call_eval.py::test_scores_recipe_remap_missing_target_as_clarification -q`
+    -> red first, then `11 passed`.
+  - `poetry run python scripts/agent/evals/run_tool_call_eval.py --repeat-count 3 --output-dir artifacts/agent_evals`
+    -> wrote `artifacts/agent_evals/latest.json` / `.md`, deterministic `121 / 121`.
+  - `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+    -> refreshed `artifacts/agent_evals/dashboard.md`; dashboard now shows deterministic `121`
+    beside local `118` and warns that local models need rerun for new cases.
+  - `poetry run ruff check XBrainLab/backend/application/automation.py XBrainLab/backend/application/data_interpretation_choice_schema.py XBrainLab/llm/agent/intent.py XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/definitions/dataset_def.py scripts/agent/evals/run_tool_call_eval.py scripts/agent/evals/run_local_tool_call_eval.py tests/unit/llm/tools/test_definitions.py tests/unit/backend/application/test_automation.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/integration/agent/test_tool_call_eval.py tests/unit/scripts/test_run_local_tool_call_eval.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/backend/application/automation.py XBrainLab/backend/application/data_interpretation_choice_schema.py XBrainLab/llm/agent/intent.py XBrainLab/llm/agent/tool_call_normalizer.py XBrainLab/llm/tools/definitions/dataset_def.py scripts/agent/evals/run_tool_call_eval.py scripts/agent/evals/run_local_tool_call_eval.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_definitions.py tests/unit/backend/application/test_automation.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/unit/scripts/test_run_local_tool_call_eval.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `277 passed`.
+  - `git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `110 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `477 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+- evidence：
+  - `artifacts/agent_evals/latest.md` shows total cases `121`, pass `121`, recipe_reload family
+    `3 / 3`.
+  - `artifacts/agent_evals/dashboard.md` shows `recipe_reload` only in deterministic results and
+    blocks a local thesis claim for the new cases until primary / fallback rerun.
+- 不能宣稱：
+  - Primary / fallback local LLM x3 have not yet been rerun on the remap-expanded `121` cases; the
+    previous local artifact remains `118 / 118`.
+  - This does not complete full recipe conflict editing, automatic rename matching, anchor
+    reconciliation, or human desktop acceptance.

@@ -7,6 +7,10 @@ parameters.  Concrete (mock or real) implementations must override
 
 from typing import Any
 
+from XBrainLab.backend.application.data_interpretation_choice_schema import (
+    data_interpretation_choices_schema,
+)
+
 from ..base import BaseTool
 
 
@@ -110,81 +114,7 @@ class BasePreviewInterpretationTool(BaseTool):
                     "description": "Optional scan id. Defaults to the latest scan.",
                 },
                 "choices": {
-                    "type": "object",
-                    "properties": {
-                        "selected_eeg_files": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": (
-                                "Selected EEG files from the latest scan result."
-                            ),
-                        },
-                        "label_carrier": {
-                            "type": "string",
-                            "enum": [
-                                "embedded_events",
-                                "external_file",
-                                "bids_events",
-                                "edf_annotations",
-                                "xdf_stream",
-                                "none",
-                                "unknown",
-                            ],
-                            "description": (
-                                "Where labels/events come from for this import."
-                            ),
-                        },
-                        "event_role": {
-                            "type": "string",
-                            "enum": [
-                                "stimulus",
-                                "response",
-                                "trial",
-                                "annotation",
-                                "unknown",
-                            ],
-                            "description": "Role assigned to event markers.",
-                        },
-                        "class_map": {
-                            "type": "object",
-                            "description": (
-                                "Map raw event or label values to class names."
-                            ),
-                        },
-                        "anchor": {
-                            "type": "string",
-                            "enum": [
-                                "sample",
-                                "timestamp",
-                                "onset_seconds",
-                                "lsl_time",
-                                "unknown",
-                            ],
-                            "description": "Time anchor for labels/events.",
-                        },
-                        "subject": {
-                            "type": "string",
-                            "description": "Subject metadata override.",
-                        },
-                        "session": {
-                            "type": "string",
-                            "description": "Session metadata override.",
-                        },
-                        "task": {
-                            "type": "string",
-                            "description": "Task metadata override.",
-                        },
-                        "run": {
-                            "type": "string",
-                            "description": "Run metadata override.",
-                        },
-                    },
-                    "additionalProperties": False,
-                    "description": (
-                        "Optional overrides such as selected_eeg_files, event roles, "
-                        "class map, recipe id, or metadata choices like subject, "
-                        "session, task, and run."
-                    ),
+                    **data_interpretation_choices_schema(),
                 },
             },
         }

@@ -106,6 +106,13 @@
   在 `AutomationCommandSpec` 和 MCP `tools/list` metadata 中標為 legacy compatibility、非
   primary workflow，並提供 Data Interpretation preferred commands；MCP/headless client 仍可呼叫
   相容工具，但 schema 不再把它們包成新資料入口主線。
+- 最新 agent/headless remap schema cleanup 已把 Data Interpretation preview choices schema 抽成
+  `data_interpretation_choice_schema.py`，讓 agent `preview_interpretation` tool definition、
+  headless `command_specs()` 和 MCP `tools/list` 共用 `choices.eeg_file_remap` /
+  `choices.label_carrier_remap` / `label_carrier_choices` / `metadata_overrides` contract。
+  Tool-call normalizer / prompt 現在可把 recipe reload remap request 收斂到
+  `preview_interpretation(choices=...)`，缺 replacement 時要求 clarification，不改走 legacy
+  load / attach labels。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -174,6 +181,11 @@
   import wizard 驗收。
 - 2026-05-05 follow-up 已把 downstream-locked `apply_interpretation` wrong-tool temptation case
   納入 deterministic、primary 和 fallback local rerun；dashboard 已同步刷新。
+- 2026-05-05 remap schema follow-up 又把 deterministic suite 擴到 `121` cases：
+  recipe reload EEG file remap、label carrier remap、missing remap target clarification 全部進
+  `artifacts/agent_evals/latest.json` / `.md`，deterministic `121 / 121` x `3` pass。primary /
+  fallback 真 local model x3 尚未對新的 `121` case suite 重跑；在重跑前不能宣稱 remap-expanded
+  local LLM thesis-ready。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存
@@ -360,6 +372,8 @@
     saved carrier 映射到 current scan replacement，並沿用原本 metadata / label / anchor / role
     choices；UI selector 已接上，blocked reload dialog 可讓使用者選 replacement，並在 apply 前
     re-preview / re-validate。
+  - Agent / headless / MCP schema 也已共用同一份 preview choices contract；assistant 應把 remap
+    request 走 `preview_interpretation(choices=...)`，缺 saved/replacement pair 時要求補充。
   - 最新 UI table-fit polish 讓 label / event / recipe trace tables 用 stretch + elide 控制欄寬，
     `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄承接剩餘寬度
     並填滿主 panel，其他欄保留穩定寬度，避免載入後表格內縮。
@@ -513,11 +527,10 @@ Goal 1 至少要包含：
 9. **Evaluation baseline**
    - deterministic / engineering tool-call cases 覆蓋 Data Interpretation、metadata resolution、
      autonomy boundary、blocked、confirmation、missing parameter、recipe reload。
-     （目前 deterministic baseline 已擴為 `118 / 118` pass；第 `118` case 是
-     downstream-locked `apply_interpretation` wrong-tool temptation。）
+     （目前 deterministic baseline 已擴為 `121 / 121` pass；新增三個 recipe remap cases。）
    - local LLM runner 使用同一份 cases 接 primary / fallback raw output，各重跑 `3` 次；
-     目前 primary `118 / 118` pass、fallback `118 / 118` pass，可作為 thesis-candidate
-     tool-call benchmark evidence。apply-lock case 的 local raw output 仍可能提出 direct blocked
+     目前 primary `118 / 118` pass、fallback `118 / 118` pass，尚未覆蓋新的 `121` case remap
+     suite。apply-lock case 的 local raw output 仍可能提出 direct blocked
      `apply_interpretation`，但 scorer / verifier 只把它當 capability-policy blocked response；
      任何 scan / reset / configure 等替代工具會被計為 failure。
    - dashboard 必須能顯示 overall pass rate、case family、metric breakdown、failure taxonomy、
@@ -642,8 +655,9 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 - 不能宣稱 agent 已達理想架構，除非它已遷移到新 tool taxonomy 並受 autonomy policy 約束。
 - 不能把 prompt smoke 當成真 local LLM ChatPanel walkthrough。
 - 不能把 deterministic eval 當成 local LLM 真實 tool-call accuracy；目前 primary / fallback
-  真模型 `118` case runner 已有 `118 / 118` x `3` evidence。這只支撐 tool-call benchmark，
-  不代表 ChatPanel / launcher / import wizard 產品驗收完成。
+  真模型 `118` case runner 已有 `118 / 118` x `3` evidence，但新的 remap-expanded `121`
+  case suite 尚未重跑 local x3。這只支撐已重跑 tool-call benchmark slice，不代表 ChatPanel /
+  launcher / import wizard 產品驗收完成。
 - 不能把 backend scripted replay 的文字報告當成 UI 行為正確；UI replay 要有人眼可審查 artifact。
 - 不能把 mock-heavy tests 當成真實 workflow evidence。
 - 不能把 dashboard PASS 當成產品完成或 thesis claim 成立。

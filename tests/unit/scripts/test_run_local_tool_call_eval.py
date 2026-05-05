@@ -55,6 +55,16 @@ def test_prompt_hides_substitute_tools_when_direct_command_is_blocked():
     assert '"name": "clear_dataset"' not in prompt
 
 
+def test_prompt_includes_recipe_remap_choices_for_preview():
+    case = _case("recipe-preview-eeg-file-remap")
+    messages = build_prompt_messages(case)
+
+    assert "choices.eeg_file_remap" in messages[0]["content"]
+    assert "choices.label_carrier_remap" in messages[0]["content"]
+    assert '"eeg_file_remap"' in messages[-1]["content"]
+    assert '"label_carrier_remap"' in messages[-1]["content"]
+
+
 def test_scores_local_tool_call_output():
     case = _case("empty-scan-source-folder")
     raw_output = (
@@ -163,6 +173,41 @@ def test_scores_command_only_json_as_tool_call_when_available():
     assert score.parsed_tool_calls == [
         {"tool_name": "validate_interpretation", "arguments": {}}
     ]
+
+
+def test_scores_recipe_eeg_file_remap_tool_call():
+    case = _case("recipe-preview-eeg-file-remap")
+    raw_output = (
+        '{"tool_name":"preview_interpretation","parameters":{"choices":{'
+        '"eeg_file_remap":{"/recipe/old_raw.fif":"/data/new_raw.fif"}}}}'
+    )
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.parsed_tool_calls == [
+        {
+            "tool_name": "preview_interpretation",
+            "arguments": {
+                "choices": {
+                    "eeg_file_remap": {
+                        "/recipe/old_raw.fif": "/data/new_raw.fif",
+                    }
+                }
+            },
+        }
+    ]
+
+
+def test_scores_recipe_remap_missing_target_as_clarification():
+    case = _case("recipe-preview-remap-missing-target")
+    raw_output = "Please provide the saved file and the replacement remap target."
+
+    score = score_local_case(case, [raw_output, raw_output, raw_output])
+
+    assert score.passed
+    assert score.verification_result == "missing_input"
+    assert score.score_breakdown["clarification_behavior"]
 
 
 def test_scores_latest_turn_intent_not_joined_history():

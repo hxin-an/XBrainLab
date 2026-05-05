@@ -47,6 +47,7 @@ from .commands import (
     ValidateInterpretationCommand,
     VisualizeCommand,
 )
+from .data_interpretation_choice_schema import data_interpretation_choices_schema
 from .results import _serialize
 from .service import ApplicationService
 
@@ -342,7 +343,11 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
     type_hints = get_type_hints(command_type)
     for field_info in fields(command_type):
         annotation = type_hints.get(field_info.name, field_info.type)
-        properties[field_info.name] = _json_schema_for_type(annotation)
+        properties[field_info.name] = _command_field_schema(
+            command_type,
+            field_info.name,
+            annotation,
+        )
         if field_info.default is MISSING and field_info.default_factory is MISSING:
             required.append(field_info.name)
     schema: dict[str, Any] = {
@@ -353,6 +358,16 @@ def _command_input_schema(command_type: type[Any]) -> dict[str, Any]:
     if required:
         schema["required"] = required
     return schema
+
+
+def _command_field_schema(
+    command_type: type[Any],
+    field_name: str,
+    annotation: Any,
+) -> dict[str, Any]:
+    if command_type is PreviewInterpretationCommand and field_name == "choices":
+        return data_interpretation_choices_schema()
+    return _json_schema_for_type(annotation)
 
 
 def _json_schema_for_type(annotation: Any) -> dict[str, Any]:

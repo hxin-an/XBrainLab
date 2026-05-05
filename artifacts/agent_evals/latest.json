@@ -22,10 +22,10 @@
   "fixture_source_paths": [
     "/mnt/d/workspace_v2/projects/lab/XBrainLab/scripts/agent/evals/run_tool_call_eval.py"
   ],
-  "total_cases": 118,
+  "total_cases": 121,
   "summary": {
-    "total_cases": 118,
-    "passed_cases": 118,
+    "total_cases": 121,
+    "passed_cases": 121,
     "failed_cases": 0,
     "pass_rate": 1.0,
     "intent_accuracy": 1.0,
@@ -61,8 +61,8 @@
         "pass_rate": 1.0
       },
       "blocked_command": {
-        "total": 32,
-        "passed": 32,
+        "total": 33,
+        "passed": 33,
         "pass_rate": 1.0
       },
       "blocked_state": {
@@ -81,8 +81,8 @@
         "pass_rate": 1.0
       },
       "data_interpretation": {
-        "total": 65,
-        "passed": 65,
+        "total": 68,
+        "passed": 68,
         "pass_rate": 1.0
       },
       "destructive": {
@@ -96,8 +96,8 @@
         "pass_rate": 1.0
       },
       "label_ambiguity": {
-        "total": 2,
-        "passed": 2,
+        "total": 3,
+        "passed": 3,
         "pass_rate": 1.0
       },
       "legacy_compatibility": {
@@ -106,8 +106,8 @@
         "pass_rate": 1.0
       },
       "missing_input": {
-        "total": 3,
-        "passed": 3,
+        "total": 4,
+        "passed": 4,
         "pass_rate": 1.0
       },
       "mixed_language": {
@@ -130,9 +130,14 @@
         "passed": 4,
         "pass_rate": 1.0
       },
+      "recipe_reload": {
+        "total": 3,
+        "passed": 3,
+        "pass_rate": 1.0
+      },
       "recovery": {
-        "total": 28,
-        "passed": 28,
+        "total": 29,
+        "passed": 29,
         "pass_rate": 1.0
       },
       "should_not_call": {
@@ -9519,6 +9524,696 @@
         "state_delta": {
           "interpretation_changed": true
         }
+      },
+      "failures": []
+    },
+    {
+      "case_id": "recipe-preview-eeg-file-remap",
+      "passed": true,
+      "user_command": [
+        "Preview again and remap saved EEG file /recipe/old_raw.fif to /data/new_raw.fif."
+      ],
+      "initial_state": "previewed_confirmation",
+      "available_command_summary": {
+        "enabled": [
+          "scan_source",
+          "preview_interpretation",
+          "validate_interpretation",
+          "reload_interpretation_recipe",
+          "load_data",
+          "configure_training",
+          "query_state",
+          "reset_session",
+          "new_session"
+        ],
+        "blocked": [
+          {
+            "command": "apply_interpretation",
+            "reasons": [
+              "Validate an interpretation before applying it."
+            ]
+          },
+          {
+            "command": "save_interpretation_recipe",
+            "reasons": [
+              "Apply an interpretation before saving a recipe."
+            ]
+          },
+          {
+            "command": "attach_labels",
+            "reasons": [
+              "Load raw data before attaching labels."
+            ]
+          },
+          {
+            "command": "import_labels",
+            "reasons": [
+              "Load raw data before attaching labels."
+            ]
+          },
+          {
+            "command": "update_metadata",
+            "reasons": [
+              "Load raw data before updating metadata."
+            ]
+          },
+          {
+            "command": "apply_smart_parse",
+            "reasons": [
+              "Load raw data before applying smart parse."
+            ]
+          },
+          {
+            "command": "remove_files",
+            "reasons": [
+              "Load raw data before removing files."
+            ]
+          },
+          {
+            "command": "preprocess",
+            "reasons": [
+              "Load raw data before preprocessing."
+            ]
+          },
+          {
+            "command": "create_epoch",
+            "reasons": [
+              "Preprocess data before creating epochs."
+            ]
+          },
+          {
+            "command": "generate_dataset",
+            "reasons": [
+              "Create epochs before generating datasets."
+            ]
+          },
+          {
+            "command": "clear_datasets",
+            "reasons": [
+              "No generated datasets or training plans to clear."
+            ]
+          },
+          {
+            "command": "train",
+            "reasons": [
+              "Load raw data before training.",
+              "Generate datasets before training.",
+              "Select a model before training.",
+              "Configure training options before training."
+            ]
+          },
+          {
+            "command": "stop_training",
+            "reasons": [
+              "No training run is active."
+            ]
+          },
+          {
+            "command": "clear_training_history",
+            "reasons": [
+              "No training history is available to clear."
+            ]
+          },
+          {
+            "command": "evaluate",
+            "reasons": [
+              "Create a training plan before evaluating results."
+            ]
+          },
+          {
+            "command": "visualize",
+            "reasons": [
+              "Create epochs, complete training, or configure saliency before opening visualization views."
+            ]
+          },
+          {
+            "command": "saliency",
+            "reasons": [
+              "Create epochs, generate datasets, or select a model and training settings before querying saliency readiness."
+            ]
+          },
+          {
+            "command": "apply_montage",
+            "reasons": [
+              "Create epochs before applying a montage."
+            ]
+          },
+          {
+            "command": "reset_preprocess",
+            "reasons": [
+              "Load raw data before resetting preprocessing."
+            ]
+          }
+        ],
+        "confirmation": [
+          {
+            "command": "train",
+            "decision_boundary": "long_running"
+          }
+        ]
+      },
+      "expected_verification_result": "allowed",
+      "expected_state_delta": {
+        "interpretation_changed": true
+      },
+      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"preview_interpretation\", \"arguments\": {\"choices\": {\"eeg_file_remap\": {\"/recipe/old_raw.fif\": \"/data/new_raw.fif\"}}}}]}",
+      "parsed_tool_calls": [
+        {
+          "tool_name": "preview_interpretation",
+          "arguments": {
+            "choices": {
+              "eeg_file_remap": {
+                "/recipe/old_raw.fif": "/data/new_raw.fif"
+              }
+            }
+          }
+        }
+      ],
+      "verification_result": "allowed",
+      "backend_result": {
+        "simulated": true,
+        "status": "ok",
+        "command_name": "preview_interpretation",
+        "verification_result": "allowed",
+        "result_interpretation": null,
+        "expected_state_delta": {
+          "interpretation_changed": true
+        }
+      },
+      "visible_response": "Previewing the candidate interpretation.",
+      "score_breakdown": {
+        "intent": true,
+        "tool_selection": true,
+        "argument_correctness": true,
+        "state_aware": true,
+        "verification_result": true,
+        "state_delta": true,
+        "blocked_command": true,
+        "recovery": true,
+        "tool_result_interpretation": true,
+        "trajectory_quality": true,
+        "runtime_safety": true,
+        "local_llm_reliability": true,
+        "tool_or_no_tool_decision": true,
+        "clarification_behavior": true,
+        "confirmation_boundary": true,
+        "visible_response_quality": true
+      },
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "verification_result_match": true,
+      "state_delta": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "tool_or_no_tool_decision": true,
+      "clarification_behavior": true,
+      "confirmation_boundary": true,
+      "visible_response_quality": true,
+      "families": [
+        "data_interpretation",
+        "recipe_reload"
+      ],
+      "prediction": {
+        "intent": "preview_interpretation",
+        "tool_calls": [
+          {
+            "tool_name": "preview_interpretation",
+            "arguments": {
+              "choices": {
+                "eeg_file_remap": {
+                  "/recipe/old_raw.fif": "/data/new_raw.fif"
+                }
+              }
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "final_message": "Previewing the candidate interpretation.",
+        "result_interpretation": null,
+        "state_delta": {
+          "interpretation_changed": true
+        }
+      },
+      "failures": []
+    },
+    {
+      "case_id": "recipe-preview-label-carrier-remap",
+      "passed": true,
+      "user_command": [
+        "Preview again and remap label carrier /recipe/events.tsv to /data/events.tsv."
+      ],
+      "initial_state": "previewed_confirmation",
+      "available_command_summary": {
+        "enabled": [
+          "scan_source",
+          "preview_interpretation",
+          "validate_interpretation",
+          "reload_interpretation_recipe",
+          "load_data",
+          "configure_training",
+          "query_state",
+          "reset_session",
+          "new_session"
+        ],
+        "blocked": [
+          {
+            "command": "apply_interpretation",
+            "reasons": [
+              "Validate an interpretation before applying it."
+            ]
+          },
+          {
+            "command": "save_interpretation_recipe",
+            "reasons": [
+              "Apply an interpretation before saving a recipe."
+            ]
+          },
+          {
+            "command": "attach_labels",
+            "reasons": [
+              "Load raw data before attaching labels."
+            ]
+          },
+          {
+            "command": "import_labels",
+            "reasons": [
+              "Load raw data before attaching labels."
+            ]
+          },
+          {
+            "command": "update_metadata",
+            "reasons": [
+              "Load raw data before updating metadata."
+            ]
+          },
+          {
+            "command": "apply_smart_parse",
+            "reasons": [
+              "Load raw data before applying smart parse."
+            ]
+          },
+          {
+            "command": "remove_files",
+            "reasons": [
+              "Load raw data before removing files."
+            ]
+          },
+          {
+            "command": "preprocess",
+            "reasons": [
+              "Load raw data before preprocessing."
+            ]
+          },
+          {
+            "command": "create_epoch",
+            "reasons": [
+              "Preprocess data before creating epochs."
+            ]
+          },
+          {
+            "command": "generate_dataset",
+            "reasons": [
+              "Create epochs before generating datasets."
+            ]
+          },
+          {
+            "command": "clear_datasets",
+            "reasons": [
+              "No generated datasets or training plans to clear."
+            ]
+          },
+          {
+            "command": "train",
+            "reasons": [
+              "Load raw data before training.",
+              "Generate datasets before training.",
+              "Select a model before training.",
+              "Configure training options before training."
+            ]
+          },
+          {
+            "command": "stop_training",
+            "reasons": [
+              "No training run is active."
+            ]
+          },
+          {
+            "command": "clear_training_history",
+            "reasons": [
+              "No training history is available to clear."
+            ]
+          },
+          {
+            "command": "evaluate",
+            "reasons": [
+              "Create a training plan before evaluating results."
+            ]
+          },
+          {
+            "command": "visualize",
+            "reasons": [
+              "Create epochs, complete training, or configure saliency before opening visualization views."
+            ]
+          },
+          {
+            "command": "saliency",
+            "reasons": [
+              "Create epochs, generate datasets, or select a model and training settings before querying saliency readiness."
+            ]
+          },
+          {
+            "command": "apply_montage",
+            "reasons": [
+              "Create epochs before applying a montage."
+            ]
+          },
+          {
+            "command": "reset_preprocess",
+            "reasons": [
+              "Load raw data before resetting preprocessing."
+            ]
+          }
+        ],
+        "confirmation": [
+          {
+            "command": "train",
+            "decision_boundary": "long_running"
+          }
+        ]
+      },
+      "expected_verification_result": "allowed",
+      "expected_state_delta": {
+        "interpretation_changed": true
+      },
+      "actual_model_output": "{\"tool_calls\": [{\"tool_name\": \"preview_interpretation\", \"arguments\": {\"choices\": {\"label_carrier_remap\": {\"/recipe/events.tsv\": \"/data/events.tsv\"}}}}]}",
+      "parsed_tool_calls": [
+        {
+          "tool_name": "preview_interpretation",
+          "arguments": {
+            "choices": {
+              "label_carrier_remap": {
+                "/recipe/events.tsv": "/data/events.tsv"
+              }
+            }
+          }
+        }
+      ],
+      "verification_result": "allowed",
+      "backend_result": {
+        "simulated": true,
+        "status": "ok",
+        "command_name": "preview_interpretation",
+        "verification_result": "allowed",
+        "result_interpretation": null,
+        "expected_state_delta": {
+          "interpretation_changed": true
+        }
+      },
+      "visible_response": "Previewing the candidate interpretation.",
+      "score_breakdown": {
+        "intent": true,
+        "tool_selection": true,
+        "argument_correctness": true,
+        "state_aware": true,
+        "verification_result": true,
+        "state_delta": true,
+        "blocked_command": true,
+        "recovery": true,
+        "tool_result_interpretation": true,
+        "trajectory_quality": true,
+        "runtime_safety": true,
+        "local_llm_reliability": true,
+        "tool_or_no_tool_decision": true,
+        "clarification_behavior": true,
+        "confirmation_boundary": true,
+        "visible_response_quality": true
+      },
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "verification_result_match": true,
+      "state_delta": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "tool_or_no_tool_decision": true,
+      "clarification_behavior": true,
+      "confirmation_boundary": true,
+      "visible_response_quality": true,
+      "families": [
+        "data_interpretation",
+        "label_ambiguity",
+        "recipe_reload"
+      ],
+      "prediction": {
+        "intent": "preview_interpretation",
+        "tool_calls": [
+          {
+            "tool_name": "preview_interpretation",
+            "arguments": {
+              "choices": {
+                "label_carrier_remap": {
+                  "/recipe/events.tsv": "/data/events.tsv"
+                }
+              }
+            }
+          }
+        ],
+        "blocked": false,
+        "confirmation_required": false,
+        "blocked_reason": "",
+        "asks_clarification": false,
+        "final_message": "Previewing the candidate interpretation.",
+        "result_interpretation": null,
+        "state_delta": {
+          "interpretation_changed": true
+        }
+      },
+      "failures": []
+    },
+    {
+      "case_id": "recipe-preview-remap-missing-target",
+      "passed": true,
+      "user_command": [
+        "Remap the missing saved EEG file before applying."
+      ],
+      "initial_state": "previewed_confirmation",
+      "available_command_summary": {
+        "enabled": [
+          "scan_source",
+          "preview_interpretation",
+          "validate_interpretation",
+          "reload_interpretation_recipe",
+          "load_data",
+          "configure_training",
+          "query_state",
+          "reset_session",
+          "new_session"
+        ],
+        "blocked": [
+          {
+            "command": "apply_interpretation",
+            "reasons": [
+              "Validate an interpretation before applying it."
+            ]
+          },
+          {
+            "command": "save_interpretation_recipe",
+            "reasons": [
+              "Apply an interpretation before saving a recipe."
+            ]
+          },
+          {
+            "command": "attach_labels",
+            "reasons": [
+              "Load raw data before attaching labels."
+            ]
+          },
+          {
+            "command": "import_labels",
+            "reasons": [
+              "Load raw data before attaching labels."
+            ]
+          },
+          {
+            "command": "update_metadata",
+            "reasons": [
+              "Load raw data before updating metadata."
+            ]
+          },
+          {
+            "command": "apply_smart_parse",
+            "reasons": [
+              "Load raw data before applying smart parse."
+            ]
+          },
+          {
+            "command": "remove_files",
+            "reasons": [
+              "Load raw data before removing files."
+            ]
+          },
+          {
+            "command": "preprocess",
+            "reasons": [
+              "Load raw data before preprocessing."
+            ]
+          },
+          {
+            "command": "create_epoch",
+            "reasons": [
+              "Preprocess data before creating epochs."
+            ]
+          },
+          {
+            "command": "generate_dataset",
+            "reasons": [
+              "Create epochs before generating datasets."
+            ]
+          },
+          {
+            "command": "clear_datasets",
+            "reasons": [
+              "No generated datasets or training plans to clear."
+            ]
+          },
+          {
+            "command": "train",
+            "reasons": [
+              "Load raw data before training.",
+              "Generate datasets before training.",
+              "Select a model before training.",
+              "Configure training options before training."
+            ]
+          },
+          {
+            "command": "stop_training",
+            "reasons": [
+              "No training run is active."
+            ]
+          },
+          {
+            "command": "clear_training_history",
+            "reasons": [
+              "No training history is available to clear."
+            ]
+          },
+          {
+            "command": "evaluate",
+            "reasons": [
+              "Create a training plan before evaluating results."
+            ]
+          },
+          {
+            "command": "visualize",
+            "reasons": [
+              "Create epochs, complete training, or configure saliency before opening visualization views."
+            ]
+          },
+          {
+            "command": "saliency",
+            "reasons": [
+              "Create epochs, generate datasets, or select a model and training settings before querying saliency readiness."
+            ]
+          },
+          {
+            "command": "apply_montage",
+            "reasons": [
+              "Create epochs before applying a montage."
+            ]
+          },
+          {
+            "command": "reset_preprocess",
+            "reasons": [
+              "Load raw data before resetting preprocessing."
+            ]
+          }
+        ],
+        "confirmation": [
+          {
+            "command": "train",
+            "decision_boundary": "long_running"
+          }
+        ]
+      },
+      "expected_verification_result": "missing_input",
+      "expected_state_delta": {},
+      "actual_model_output": "Please provide the saved file and the replacement remap target.",
+      "parsed_tool_calls": [],
+      "verification_result": "missing_input",
+      "backend_result": {
+        "simulated": true,
+        "status": "failed",
+        "command_name": null,
+        "verification_result": "missing_input",
+        "result_interpretation": null,
+        "expected_state_delta": {}
+      },
+      "visible_response": "Please provide the saved file and the replacement remap target.",
+      "score_breakdown": {
+        "intent": true,
+        "tool_selection": true,
+        "argument_correctness": true,
+        "state_aware": true,
+        "verification_result": true,
+        "state_delta": true,
+        "blocked_command": true,
+        "recovery": true,
+        "tool_result_interpretation": true,
+        "trajectory_quality": true,
+        "runtime_safety": true,
+        "local_llm_reliability": true,
+        "tool_or_no_tool_decision": true,
+        "clarification_behavior": true,
+        "confirmation_boundary": true,
+        "visible_response_quality": true
+      },
+      "intent": true,
+      "tool_selection": true,
+      "argument_correctness": true,
+      "state_aware": true,
+      "verification_result_match": true,
+      "state_delta": true,
+      "blocked_command": true,
+      "recovery": true,
+      "tool_result_interpretation": true,
+      "trajectory_quality": true,
+      "runtime_safety": true,
+      "local_llm_reliability": true,
+      "tool_or_no_tool_decision": true,
+      "clarification_behavior": true,
+      "confirmation_boundary": true,
+      "visible_response_quality": true,
+      "families": [
+        "blocked_command",
+        "data_interpretation",
+        "missing_input",
+        "recipe_reload",
+        "recovery"
+      ],
+      "prediction": {
+        "intent": "preview_interpretation",
+        "tool_calls": [],
+        "blocked": true,
+        "confirmation_required": false,
+        "blocked_reason": "Missing recipe remap target; ask which saved file maps to which current replacement file.",
+        "asks_clarification": true,
+        "final_message": "Please provide the saved file and the replacement remap target.",
+        "result_interpretation": null,
+        "state_delta": {}
       },
       "failures": []
     },
@@ -26736,7 +27431,7 @@
     }
   ],
   "artifact_paths": {
-    "json": "artifacts/agent_evals/deterministic/latest.json",
-    "markdown": "artifacts/agent_evals/deterministic/latest.md"
+    "json": "artifacts/agent_evals/latest.json",
+    "markdown": "artifacts/agent_evals/latest.md"
   }
 }

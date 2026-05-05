@@ -196,6 +196,18 @@ class TestDataInterpretationDefinitions:
         assert "bids_events" in choices["properties"]["label_carrier"]["enum"]
         assert "event_role" in choices["properties"]
         assert "subject" in choices["properties"]
+        assert "metadata_overrides" in choices["properties"]
+        assert "label_carrier_choices" in choices["properties"]
+        assert "eeg_file_remap" in choices["properties"]
+        assert (
+            choices["properties"]["eeg_file_remap"]["additionalProperties"]["type"]
+            == "string"
+        )
+        assert "label_carrier_remap" in choices["properties"]
+        assert (
+            choices["properties"]["label_carrier_remap"]["additionalProperties"]["type"]
+            == "string"
+        )
 
     def test_legacy_data_tools_are_marked_in_descriptions(self):
         assert "Legacy compatibility" in _property_value(BaseLoadDataTool.description)
