@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+0c3de01 ui: render dataset sidebar from capabilities
+b0b7b09 docs: refresh handoff after readiness echo guard
 e309996 test: guard training readiness controller echoes
 a6a6ba1 docs: refresh handoff after epoch gate audit
 a7b7222 ui: gate epoching with create capability
@@ -93,6 +95,12 @@ bb57beb ui: use backend truth for split replacement
     `has_training_option()` controller reads.
   - `TrainingSidebar.check_ready_to_train()` uses an explicit service-capability branch versus
     no-capability legacy branch.
+- Dataset sidebar capability-first render:
+  - The architecture guard now also covers `DatasetController.is_locked()` and `has_data()` reads
+    in capability-backed UI paths.
+  - `DatasetSidebar.update_sidebar()` no longer reads stale lock/data controller state when backend
+    command capabilities are present.
+  - Those controller reads remain only in explicit no-capability legacy branches.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -177,6 +185,22 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for e309996; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  -q
+# 16 passed
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 25 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 0c3de01; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
