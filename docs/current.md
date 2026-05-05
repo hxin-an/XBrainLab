@@ -220,39 +220,17 @@ fallback 到 controller。Automated Qt replay artifact 在
 blocked reason，再統一檢查 `confirmation_required` / `requires_confirmation`。因此 unready
 training 仍回「Generate datasets before training」這類 precondition；backend-ready 但未 confirmed
 的 `train` 會被 `confirmation_required` 擋下，不會只靠 UI/agent 外層自律。
-最新 Data Interpretation boundary cleanup 把 GDF / EDF-BDF / EEGLAB / BrainVision / FIF /
-MAT / CSV-TSV / TXT / BIDS events / XDF-LSL format capability matrix 從大型
-`data_interpretation.py` 抽到 `DataInterpretationFormats` focused module，scanner /
-candidate lifecycle 不再直接承接 format taxonomy 細節。
-下一個 Data Interpretation boundary cleanup 又把 subject / session / task / run metadata
-resolution、BIDS entity summary 和 recipe metadata rehydration 抽到
-`data_interpretation_metadata.py`；大型 lifecycle module 降到約 `928` 行，但 scanner /
-candidate / preview / validation / recipe flow 仍在同一 domain module，後續還可繼續拆。
-後續 recipe boundary cleanup 又把 `ImportRecipe` serialization、JSON load/write、recipe
-rehydration 和 applied interpretation -> recipe builder 抽到 `data_interpretation_recipe.py`；
-`data_interpretation.py` 目前降到約 `822` 行，仍保留 scanner、candidate / preview builder、
-validator 和 label carrier planner。
-最新 label carrier boundary cleanup 把 MAT / CSV / TSV / BIDS events / TXT carrier candidate
-planning、user choice normalization、anchor/time/granularity defaults 和 MAT / tabular column
-inspection 抽到 `data_interpretation_label_carriers.py`；`data_interpretation.py` 目前約 `581`
-行，主要保留 lifecycle dataclasses、scan / candidate / preview / validate 和 metadata override。
-最新 review boundary cleanup 又把 `InterpretationPreview` / `ValidationDecision`、preview
-payload builder 和 safe / needs-confirmation / blocked validator 抽到
-`data_interpretation_review.py`；`data_interpretation.py` 目前約 `463` 行，主要保留 scanner、
-candidate builder、metadata override 和 lifecycle dataclasses。這是 backend internal boundary
-cleanup，不是 mature import wizard completion。
-最新 scanner boundary cleanup 又把 `ScanResult`、`scan_source_path()`、source kind
-classification、BIDS source detection、candidate-file traversal 和 scan warning / blocked reason
-assembly 抽到 `data_interpretation_scan.py`；`data_interpretation.py` 目前約 `286` 行，主要保留
-candidate builder、metadata override 和 applied interpretation lifecycle dataclass。
-最新 candidate boundary cleanup 又把 `InterpretationCandidate`、scan + user choices -> candidate
-builder、metadata override、event/class mapping 和 candidate recipe trace 抽到
-`data_interpretation_candidate.py`；`data_interpretation.py` 目前約 `75` 行，保留 shared
-decision enum、`AppliedInterpretation` 和 public compatibility re-exports。
-最新 Data Interpretation session-state cleanup 又把 lifecycle object stores、latest-id resolver、
-snapshot assembly、clear 和 post-load label import recipe recording 抽到
-`data_interpretation_state.py`；`DataInterpretationCommandService` 目前約 `297` 行，主要保留 command
-handler orchestration，不再同時承接 state truth。
+Data Interpretation backend boundary cleanup 已把原本集中在大型 domain module 的責任拆到
+focused modules：format capability taxonomy 在 `data_interpretation_formats.py`，metadata /
+BIDS / recipe rehydration 在 `data_interpretation_metadata.py`，recipe serialization 在
+`data_interpretation_recipe.py`，label carrier planning 在
+`data_interpretation_label_carriers.py`，preview / validation review 在
+`data_interpretation_review.py`，source scanner 在 `data_interpretation_scan.py`，candidate
+builder / metadata override 在 `data_interpretation_candidate.py`，session stores / latest-id /
+snapshot assembly 在 `data_interpretation_state.py`。`data_interpretation.py` 目前只保留 shared
+decision enum、`AppliedInterpretation` 和 public compatibility re-exports；`DataInterpretationCommandService`
+主要保留 command handler orchestration，不再同時承接 state truth。這是 backend internal
+boundary cleanup，不是 mature import wizard completion。
 最新 Data Interpretation UI source-entry slice 讓 Dataset sidebar 明確提供三個資料入口：
 `Interpret Data Source`（EEG file(s)）、`Interpret Folder / BIDS` 和 `Reload Import Recipe`。
 folder/BIDS root 與 recipe reload 都走 Data Interpretation command path；UI-observable artifact 在
