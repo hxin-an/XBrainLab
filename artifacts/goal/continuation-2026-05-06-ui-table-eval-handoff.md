@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+a86b1b2 ui: guard preprocess render query fallback
+1fd080a docs: refresh handoff after dialog fallback guard
 a315170 ui: guard dialog query fallback paths
 1ade9d2 docs: refresh handoff after label target fallback
 b6b6d00 ui: block stale label target fallback
@@ -349,6 +351,9 @@ bb57beb ui: use backend truth for split replacement
     user control changes on the same query-backed render source.
   - `.basedpyright/baseline.json` dropped by one suppressed error after touched Preprocess tests
     and panel typing were cleaned up.
+  - latest render fallback slice also guards query-none fallback: real `Study` panel refresh /
+    direct plotter calls render no data / skip plotting instead of reading stale
+    `PreprocessController.get_preprocessed_data_list()`.
 - Aggregate info query-failure boundary:
   - real `Study` `InfoPanelService` keeps aggregate info on
     `QueryStateCommand(query="data_lists", include_objects=True)`.
@@ -1109,6 +1114,34 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for a315170; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_refuses_real_study_query_none_controller_fallback \
+  -q
+# 2 passed for a86b1b2 after red failures on stale Preprocess controller reads
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/preprocess \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  -q
+# 73 passed for a86b1b2
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for a86b1b2
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for a86b1b2
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for a86b1b2; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
