@@ -8282,3 +8282,40 @@
   - This is simple observer shared-status cleanup only. Callback-specific observer handlers,
     command-only refresh closure, full controller fallback removal, and human desktop acceptance
     remain open.
+
+### 2026-05-05 21:08 Dataset import observer deduplication
+
+- scope：
+  - PreprocessPanel / TrainingPanel subscriptions to DatasetController events.
+- current gap：
+  - `DatasetController.import_files()` emits `data_changed` on success and then emits
+    `import_finished(success_count, errors)`.
+  - PreprocessPanel and TrainingPanel listened to both as simple refresh events, so one successful
+    legacy import refreshed each panel twice.
+- red / focused test：
+  - Updated panel event bridge tests to model a successful legacy import as
+    `data_changed` followed by `import_finished(1, [])`, and require one refresh.
+  - Red result:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py::test_preprocess_panel_refreshes_once_for_successful_dataset_import tests/unit/ui/test_panel_event_bridges.py::test_training_panel_refreshes_once_for_successful_dataset_import -q`
+    -> `2 failed`; both panels refreshed twice.
+- 做了什麼：
+  - Removed dataset `import_finished` simple refresh bridges from PreprocessPanel and TrainingPanel.
+  - Kept dataset `data_changed` simple refresh bridges, which are the source of truth for successful
+    legacy import state changes.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py::test_preprocess_panel_refreshes_once_for_successful_dataset_import tests/unit/ui/test_panel_event_bridges.py::test_training_panel_refreshes_once_for_successful_dataset_import -q`
+    -> `2 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py tests/unit/ui/test_panel_event_bridges.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py tests/unit/ui/test_panel_event_bridges.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `12 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This removes one duplicate observer refresh path. It does not classify all callback-specific
+    observer handlers, remove controller observers, or complete UI command-refresh closure.

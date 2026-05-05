@@ -190,8 +190,8 @@ signal 寫進 backend controller。
 | panel | 主要監聽事件 | refresh / handler |
 | --- | --- | --- |
 | `DatasetPanel` | `data_changed`、`import_finished` | simple refresh bridge owns success refresh; `DatasetActionHandler.on_import_finished()` only surfaces import warnings |
-| `PreprocessPanel` | `preprocess_changed`、dataset `data_changed`、dataset `import_finished` | simple refresh bridge |
-| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset/preprocess events | start/stop/config/history handlers、`update_loop()`、simple refresh bridge |
+| `PreprocessPanel` | `preprocess_changed`、dataset `data_changed` | simple refresh bridge |
+| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset `data_changed`、preprocess events | start/stop/config/history handlers、`update_loop()`、simple refresh bridge |
 | `EvaluationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed` | simple refresh bridge |
 | `VisualizationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed` | simple refresh bridge |
 

@@ -60,7 +60,6 @@ class PreprocessPanel(BasePanel):
 
             if self.dataset_controller:
                 self._create_refresh_bridge(self.dataset_controller, "data_changed")
-                self._create_refresh_bridge(self.dataset_controller, "import_finished")
 
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""

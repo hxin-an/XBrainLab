@@ -124,7 +124,6 @@ class TrainingPanel(BasePanel):
         # Connect to Dataset events (Updates info panel and check readiness)
         if self.dataset_controller:
             self._create_refresh_bridge(self.dataset_controller, "data_changed")
-            self._create_refresh_bridge(self.dataset_controller, "import_finished")
         if self.preprocess_controller:
             self._create_refresh_bridge(
                 self.preprocess_controller,

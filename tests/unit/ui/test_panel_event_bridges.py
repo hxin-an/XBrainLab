@@ -9,7 +9,7 @@ from XBrainLab.ui.panels.training.panel import TrainingPanel
 from XBrainLab.ui.panels.visualization.panel import VisualizationPanel
 
 
-def test_preprocess_panel_refreshes_on_dataset_events(qtbot):
+def test_preprocess_panel_refreshes_once_for_successful_dataset_import(qtbot):
     preprocess_controller = Observable()
     dataset_controller = Observable()
 
@@ -31,11 +31,10 @@ def test_preprocess_panel_refreshes_on_dataset_events(qtbot):
 
         dataset_controller.notify("data_changed")
         qtbot.wait(50)
-        dataset_controller.notify("import_finished")
+        dataset_controller.notify("import_finished", 1, [])
         qtbot.wait(50)
 
-    assert mock_update.call_count == 2
-    mock_update.assert_any_call(panel)
+    mock_update.assert_called_once_with(panel)
 
 
 def test_preprocess_panel_observer_events_use_refresh_coordinator(qtbot):
@@ -68,7 +67,7 @@ def test_preprocess_panel_observer_events_use_refresh_coordinator(qtbot):
     mock_refresh.assert_called_once_with(panel)
 
 
-def test_training_panel_refreshes_on_dataset_events(qtbot):
+def test_training_panel_refreshes_once_for_successful_dataset_import(qtbot):
     training_controller = Observable()
     dataset_controller = Observable()
 
@@ -84,11 +83,10 @@ def test_training_panel_refreshes_on_dataset_events(qtbot):
 
         dataset_controller.notify("data_changed")
         qtbot.wait(50)
-        dataset_controller.notify("import_finished")
+        dataset_controller.notify("import_finished", 1, [])
         qtbot.wait(50)
 
-    assert mock_update.call_count == 2
-    mock_update.assert_any_call(panel)
+    mock_update.assert_called_once_with(panel)
 
 
 def test_training_panel_refreshes_on_preprocess_events(qtbot):

@@ -2268,3 +2268,27 @@ and assistant backend status through the shared coordinator.
 
 - This is not full command-driven UI refresh closure; callback-specific observer handlers and
   product runtime fallback audit remain open.
+
+## 2026-05-05 Dataset Import Observer Deduplication
+
+### 狀態
+
+PreprocessPanel and TrainingPanel no longer subscribe to dataset `import_finished` as a simple
+refresh event. Successful legacy imports already emit dataset `data_changed`, so those downstream
+panels refresh once through the shared observer bridge.
+
+### 已可宣稱
+
+- Legacy dataset import success no longer triggers duplicate Preprocess / Training panel refresh via
+  both `data_changed` and `import_finished`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/panel.py`, `XBrainLab/ui/panels/training/panel.py`
+- Tests：`tests/unit/ui/test_panel_event_bridges.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one observer deduplication slice, not full observer callback classification or full
+  command-driven UI refresh closure.

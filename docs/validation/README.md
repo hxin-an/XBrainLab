@@ -150,9 +150,14 @@ UI baseline capture 結果：
   - Successful legacy controller imports refresh through the `data_changed` simple refresh bridge;
     `import_finished` now only surfaces warning messages and avoids a duplicate Dataset panel
     refresh.
+  - PreprocessPanel and TrainingPanel no longer subscribe to dataset `import_finished` for simple
+    refresh; successful legacy imports refresh them once through dataset `data_changed`.
   - focused gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
     -> `65 passed`.
+  - observer bridge gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `12 passed`.
 - static / docs gates for these slices:
   - `git diff --check` -> pass.
   - `poetry run ruff check .` -> pass.
