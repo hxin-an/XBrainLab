@@ -203,6 +203,15 @@ class VisualizationPanel(BasePanel):
 
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""
+        self.last_application_query = execute_application_command(
+            self,
+            VisualizeCommand(view="summary"),
+            refresh=False,
+        )
+        if self._application_query_blocks_display(self.last_application_query):
+            self._clear_plan_controls()
+            return
+
         trainers = self.get_trainers()
         previous_plan = self.plan_combo.currentData()
         previous_plan_text = self.plan_combo.currentText()
@@ -295,22 +304,24 @@ class VisualizationPanel(BasePanel):
 
     def on_update(self):
         """Gather settings and call update_plot on current tab."""
+        current_widget = self.tabs.currentWidget()
         self.last_application_query = execute_application_command(
             self,
             VisualizeCommand(view=self.tabs.tabText(self.tabs.currentIndex())),
             refresh=False,
         )
+        if self._application_query_blocks_display(self.last_application_query):
+            self._show_widget_error(current_widget, self._application_query_message())
+            return
+
         plan_name = self.plan_combo.currentText()
         run_name = self.run_combo.currentText()
         method_name = self.method_combo.currentText()
         absolute = self.abs_check.isChecked()
 
-        current_widget = self.tabs.currentWidget()
-
         if plan_name not in self.friendly_map or not run_name:
             # Clear or show placeholder
-            if current_widget and hasattr(current_widget, "show_error"):
-                current_widget.show_error("Please select a Plan and Run.")
+            self._show_widget_error(current_widget, "Please select a Plan and Run.")
             return
 
         trainer = self.friendly_map[plan_name]
@@ -323,8 +334,7 @@ class VisualizationPanel(BasePanel):
         if run_data == "average" or run_name == "Average":
             eval_record = self.controller.get_averaged_record(trainer)
             if not eval_record:
-                if current_widget and hasattr(current_widget, "show_error"):
-                    current_widget.show_error("No finished runs to average.")
+                self._show_widget_error(current_widget, "No finished runs to average.")
                 return
             target_plan = trainer.get_plans()[0]  # Dummy plan for context
         elif run_data is not None:
@@ -353,8 +363,10 @@ class VisualizationPanel(BasePanel):
                 logger.warning("Failed to find plan for run %s: %s", run_name, e)
 
         if not eval_record:
-            if current_widget and hasattr(current_widget, "show_error"):
-                current_widget.show_error("Selected run has no evaluation record.")
+            self._show_widget_error(
+                current_widget,
+                "Selected run has no evaluation record.",
+            )
             return
 
         # Call update_plot on the active widget
@@ -390,3 +402,38 @@ class VisualizationPanel(BasePanel):
         # Explicitly trigger update to ensure plot is shown even if signals were
         # suppressed
         self.on_update()
+
+    def _application_query_blocks_display(self, result) -> bool:
+        if result is None:
+            return False
+        if result.failed:
+            return True
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        return (
+            diagnostics.get("payload_type") == "visualization_summary"
+            and diagnostics.get("available") is False
+        )
+
+    def _application_query_message(self) -> str:
+        result = self.last_application_query
+        if result is not None and getattr(result, "message", ""):
+            return str(result.message)
+        return "No visualization views are ready yet."
+
+    def _clear_plan_controls(self) -> None:
+        self.plan_combo.blockSignals(True)
+        self.run_combo.blockSignals(True)
+        self.plan_combo.clear()
+        self.plan_combo.addItem("Select a plan")
+        self.run_combo.clear()
+        self.friendly_map = {}
+        self.plan_combo.blockSignals(False)
+        self.run_combo.blockSignals(False)
+
+    @staticmethod
+    def _show_widget_error(widget, message: str) -> bool:
+        show_error = getattr(widget, "show_error", None)
+        if not callable(show_error):
+            return False
+        show_error(message)
+        return True

@@ -157,6 +157,9 @@ branches, and architecture compliance guards this pattern.
 Evaluation panel now also uses the readonly `EvaluateCommand` result as a display gate. If a real
 `Study` ApplicationService query reports evaluation blocked or unavailable, the panel clears to
 `No Data Available` instead of reading stale injected `EvaluationController.get_plans()` data.
+Visualization panel follows the same display-gate pattern for readonly `VisualizeCommand`: blocked
+or unavailable visualization state clears plan/run controls and shows a user-facing readiness
+message before any stale injected `VisualizationController.get_trainers()` data can render.
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit
 mock / legacy adapter：real `Study` context 會拒絕 direct `loader.apply(study)`，並提示使用
 Data Interpretation workflow。`find_study()` 現在也會透過 `controller.study` 辨識 real

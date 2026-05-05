@@ -884,6 +884,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `Study` path 若 ApplicationService 回 blocked / unavailable evaluation，panel 不再繼續讀
   stale injected `EvaluationController.get_plans()` 來顯示過期 plan，而是清成
   `No Data Available`。
+  最新 Visualization panel cleanup 也把 readonly `VisualizeCommand` 結果接到 controls/render
+  gate：visualization blocked / unavailable 時不再讀 stale injected
+  `VisualizationController.get_trainers()`，而是保持 `Select a plan` 並用使用者可讀訊息提示
+  目前沒有 visualization views ready。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

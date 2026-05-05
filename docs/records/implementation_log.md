@@ -3060,3 +3060,31 @@ to `No Data Available` instead of reading stale injected `EvaluationController.g
 
 - This is a focused display gate. It does not convert all Evaluation / Visualization rendering to
   query-result payloads or certify analysis screenshots.
+
+## 2026-05-06 Visualization Panel Query Display Gate
+
+### 狀態
+
+Visualization panel now treats readonly `VisualizeCommand` results as the controls/render gate in
+real `Study` contexts. If ApplicationService reports visualization blocked or unavailable, the
+panel clears plan/run controls and shows a user-facing readiness message before reading injected
+`VisualizationController.get_trainers()`.
+
+### 已可宣稱
+
+- Stale visualization trainer lists can no longer override an ApplicationService visualization
+  readiness block in the real `Study` UI path.
+- Mock / legacy visualization tests still use the controller-backed rendering path when no real
+  ApplicationService query is available.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/visualization/panel.py`
+- Tests：`tests/unit/ui/test_visualization_panel_redesign.py`,
+  `tests/unit/ui/test_visualization_panel_coverage.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not certify saliency map / spectrogram / topomap / 3D canvas screenshot acceptance or
+  full analysis workflow UX.

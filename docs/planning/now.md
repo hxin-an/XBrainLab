@@ -183,7 +183,11 @@
   legacy lock/data reads 只留在 explicit no-capability branch。
 - 最新 Evaluation panel query cleanup 已讓 real `Study` `EvaluateCommand` result gate display：
   evaluation blocked / unavailable 時不再讀 stale injected controller plans，而是顯示
-  `No Data Available`。Visualization query-result rendering 還未同等收斂。
+  `No Data Available`。
+- 最新 Visualization panel query cleanup 已讓 real `Study` `VisualizeCommand` result gate controls /
+  render：visualization blocked / unavailable 時不再讀 stale injected controller trainers，而是保留
+  `Select a plan` 並顯示 user-facing readiness message。這仍不是 saliency/canvas screenshot
+  acceptance。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。

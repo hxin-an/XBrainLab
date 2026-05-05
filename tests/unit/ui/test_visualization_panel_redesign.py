@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from PyQt6.QtWidgets import QWidget
 
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.utils.observer import Observable
 
 
@@ -19,7 +20,7 @@ def _info_panel_factory(*args, **kwargs):
     return QWidget()
 
 
-def _make_panel(qtbot, training_controller=None):
+def _make_panel(qtbot, training_controller=None, parent=None):
     mock_ctrl = MagicMock()
     mock_ctrl.get_trainers.return_value = []
     mock_ctrl.get_averaged_record.return_value = MagicMock()
@@ -51,6 +52,7 @@ def _make_panel(qtbot, training_controller=None):
         panel = VisualizationPanel(
             controller=mock_ctrl,
             training_controller=training_controller,
+            parent=parent,
         )
         qtbot.addWidget(panel)
 
@@ -161,3 +163,32 @@ def test_visualization_panel_update_panel_refreshes_combos_and_tab(qtbot):
 
     mock_info.assert_called_once()
     mock_update.assert_called_once()
+
+
+def test_visualization_panel_uses_application_query_before_stale_controller_trainers(
+    qtbot,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    main_window = RealMainWindow()
+    panel, ctrl = _make_panel(qtbot, parent=main_window)
+    ctrl.get_trainers.return_value = [_make_trainer("StaleNet", repeats=1)]
+    ctrl.get_trainers.reset_mock()
+    current_widget = panel.tabs.currentWidget()
+    current_widget.show_error.reset_mock()
+
+    panel.update_panel()
+
+    assert panel.last_application_query is not None
+    assert panel.last_application_query.failed
+    assert "Create epochs, complete training, or configure saliency" in (
+        panel.last_application_query.message
+    )
+    ctrl.get_trainers.assert_not_called()
+    assert panel.plan_combo.count() == 1
+    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.run_combo.count() == 0
+    current_widget.show_error.assert_called()

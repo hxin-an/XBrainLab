@@ -9400,3 +9400,46 @@
 - 不能宣稱：
   - This does not complete Visualization query-result rendering, analysis screenshot acceptance, or
     full UI refresh coordinator closure.
+
+### 2026-05-06 Visualization panel query display gate
+
+- scope：
+  - Continue UI/backend truth alignment for readonly analysis rendering.
+  - Prevent real `Study` Visualization controls from showing stale injected controller trainers when
+    ApplicationService says visualization is blocked / unavailable.
+- red / focused test：
+  - Added
+    `test_visualization_panel_uses_application_query_before_stale_controller_trainers`.
+  - It failed because `VisualizationPanel.update_panel()` called stale
+    `VisualizationController.get_trainers()` after `VisualizeCommand` returned
+    `Create epochs, complete training, or configure saliency before opening visualization views.`
+- 做了什麼：
+  - Added visualization query display helpers for blocked/unavailable results.
+  - `refresh_combos()` now queries `VisualizeCommand(view="summary")` and clears plan/run controls
+    before controller trainer rendering when ApplicationService blocks visualization.
+  - `on_update()` now shows the user-facing command message instead of continuing to stale
+    controller plan/run resolution when the query is blocked.
+  - Mock / legacy contexts still use the controller-backed rendering path when
+    `execute_application_command()` returns `None`.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_panel_uses_application_query_before_stale_controller_trainers -q`
+    -> failed because `ctrl.get_trainers()` was called.
+  - After fix:
+    same focused command -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `27 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_evaluation_panel_redesign.py -q`
+    -> `35 passed`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes` and refreshed the baseline from
+    115 to 112 existing suppressed errors.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed.
+- local eval：
+  - Not run. This is a Visualization panel readonly query display cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not certify saliency/canvas screenshot acceptance, full analysis workflow UX, or
+    human desktop rendering.
