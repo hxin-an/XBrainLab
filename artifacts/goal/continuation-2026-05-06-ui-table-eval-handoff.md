@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+435d9a9 llm: clean up model downloader lifecycle
 51a6149 ui: clean up split preview worker
 9816f85 docs: refresh handoff after split context query
 4ddfa92 ui: source split dialog context from service
@@ -210,6 +211,16 @@ bb57beb ui: use backend truth for split replacement
   - `DataSplittingPreviewDialog.closeEvent()` stops the timer, interrupts the generator, and
     short-joins the worker before Qt close handling.
   - This is focused lifecycle coverage, not a long-running dataset-generation soak test.
+- Local model downloader lifecycle cleanup:
+  - `DownloadWorker.run()` now reaps the subprocess after terminal queue messages and closes the
+    multiprocessing queue after the worker loop exits.
+  - cancel uses bounded terminate / kill joins instead of an unbounded process join.
+  - `ModelDownloader.shutdown()` cancels the worker, requests `QThread.quit()`, then bounded-waits
+    for thread cleanup.
+  - `ModelSettingsDialog.reject()` / `closeEvent()` now use that shutdown path while suppressing
+    teardown cleanup popups.
+  - This is focused lifecycle coverage, not a long-running local model soak or Windows desktop
+    acceptance.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -641,9 +652,30 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 51a6149; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys \
+  tests/unit/llm/core/test_downloader.py \
+  tests/unit/llm/test_coverage_boost.py::TestDownloadWorkerRun \
+  tests/unit/llm/test_misc_coverage.py::TestModelDownloaderCoverage \
+  tests/unit/test_llm_backend.py::TestDownloader \
+  -q
+# 27 passed for 435d9a9
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dialogs/test_model_settings.py \
+  tests/unit/ui/test_local_bootstrap_validation.py \
+  -q
+# 25 passed for 435d9a9
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 435d9a9; mkdocs still prints the existing Material advisory
 ```
 
-No local LLM eval was run for these UI / architecture guard slices.
+No local LLM eval was run for these UI / architecture / lifecycle guard slices.
 
 ## Tool-Call Eval Gate Policy
 
