@@ -782,3 +782,30 @@ services / handlers，同時保持 UI、agent、headless、MCP 只走同一套 c
 
 下一輪 backend work 應確認新 UI / agent 心智模型不回到舊 `load_data / attach_labels`，並檢查
 UI / agent / MCP 是否仍有產品主路徑旁路。
+
+## 2026-05-05 Dataset Sidebar Capability Truth
+
+### 狀態
+
+Dataset sidebar 的 `Add Labels to Loaded Data` 和 `Channel Selection` visible state 現在會讀
+ApplicationService capability policy。real `Study` path 不再只靠 controller-local `has_data` /
+lock 判斷來啟用 label compatibility 或打開 channel selection dialog。
+
+### 已可宣稱
+
+- Empty real Study state 下，`Add Labels to Loaded Data` 會依 backend `import_labels`
+  capability disabled，tooltip 顯示 shared blocked reason。
+- Channel Selection click preflight 會先檢查 backend `preprocess` capability；沒有 raw data 時
+  顯示 shared blocked reason，不開啟 selector dialog。
+- mock / legacy `None` adapter tests 仍保留 controller fallback compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 Data Interpretation wizard editor，也不是 Windows human desktop acceptance。
+- 其他 panel 的 read-only controller refresh 和 mock fallback 仍需持續盤點。

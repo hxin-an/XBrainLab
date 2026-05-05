@@ -5022,6 +5022,12 @@
     -> pass with existing MkDocs Material warning.
   - `timeout 120s git diff --check`
     -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
 - 不能宣稱：
   - This is recipe serialization boundary cleanup, not a product-complete Data Interpretation wizard.
   - Scanner, candidate / preview builder, validator, and label carrier planner still remain in
@@ -5500,3 +5506,42 @@
     recovery support.
   - This is not desktop UI control certification; stdio MCP remains a headless ApplicationService
     session.
+
+### 2026-05-05 Dataset sidebar capability truth
+
+- scope：
+  - UI/backend command truth alignment for Dataset sidebar。
+  - No command schema, backend handler, MCP, agent, recipe, or screenshot artifact change.
+- problem：
+  - Real `Study` Dataset sidebar still used controller-local `has_data` / lock state for
+    `Add Labels to Loaded Data` and Channel Selection preflight.
+  - That could enable label compatibility or open a channel-selection dialog even when
+    ApplicationService capability policy would block the command.
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_uses_backend_import_label_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_uses_backend_preprocess_capability -q`
+    initially failed because Add Labels stayed enabled in an empty real Study and Channel Selection
+    opened the dialog instead of showing the backend `Load raw data before preprocessing.` reason.
+- 做了什麼：
+  - `DatasetSidebar.update_sidebar()` now reads `import_labels` capability for Add Labels enabled
+    state and tooltip.
+  - Channel Selection enabled state / tooltip and click preflight now read the backend `preprocess`
+    capability when the sidebar is backed by a real `Study`.
+  - Existing mock / legacy controller fallback remains for tests and non-Study compatibility paths.
+- validation：
+  - focused red tests after implementation -> `2 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_service_load_success_does_not_fallback_to_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_reviews_then_applies -q`
+    -> `14 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `46 passed`.
+  - `timeout 300s poetry run ruff format --check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `timeout 120s git diff --check`
+    -> pass.
+- 不能宣稱：
+  - This is a Dataset sidebar capability alignment slice, not full UI product completion.
+  - It does not replace human desktop acceptance, mature import wizard editor work, or a complete
+    UI mutating-path audit.

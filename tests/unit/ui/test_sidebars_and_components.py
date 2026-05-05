@@ -453,6 +453,48 @@ class TestDatasetSidebar:
     def test_update_sidebar(self, sidebar):
         sidebar.update_sidebar()
 
+    def test_update_sidebar_uses_backend_import_label_capability(self, qtbot):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        panel = _make_panel_mock()
+        panel.main_window.study = Study()
+        panel.controller.has_data.return_value = True
+        panel.controller.is_locked.return_value = False
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        sb.update_sidebar()
+
+        assert not sb.import_label_btn.isEnabled()
+        assert "Load raw data before attaching labels." in (
+            sb.import_label_btn.toolTip()
+        )
+
+    def test_open_channel_selection_uses_backend_preprocess_capability(self, qtbot):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        panel = _make_panel_mock()
+        panel.main_window.study = Study()
+        panel.controller.has_data.return_value = True
+        panel.controller.is_locked.return_value = False
+        panel.controller.get_loaded_data_list.return_value = [MagicMock()]
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+            ) as mock_dialog,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+        ):
+            sb.open_channel_selection()
+
+        mock_dialog.assert_not_called()
+        mock_warning.assert_called_once()
+        assert "Load raw data before preprocessing." in mock_warning.call_args.args[2]
+
     def test_open_channel_selection_accepted(self, sidebar):
         sidebar.panel.controller.has_data.return_value = True
         sidebar.panel.controller.is_locked.return_value = False

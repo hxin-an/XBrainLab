@@ -11,11 +11,16 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application import (
+    CommandName,
     PreprocessCommand,
     PreprocessOperation,
     ResetSessionCommand,
 )
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    blocked_reason,
+    execute_application_command,
+    get_command_capability,
+)
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset import ChannelSelectionDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -186,8 +191,21 @@ class DatasetSidebar(QWidget):
                     "Review a saved import recipe before applying it",
                 )
 
-            # Channel Selection
-            if is_locked:
+            preprocess_capability = get_command_capability(
+                self,
+                CommandName.PREPROCESS,
+            )
+            if preprocess_capability is not None:
+                self.chan_select_btn.setEnabled(preprocess_capability.enabled)
+                self.chan_select_btn.setToolTip(
+                    "Select specific channels to keep"
+                    if preprocess_capability.enabled
+                    else blocked_reason(
+                        preprocess_capability,
+                        "Load raw data before selecting channels.",
+                    ),
+                )
+            elif is_locked:
                 self.chan_select_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
                 )
@@ -204,13 +222,26 @@ class DatasetSidebar(QWidget):
                     "Auto-extract Subject/Session from filenames",
                 )
 
-            has_data = bool(self.controller.has_data())
-            if is_locked:
+            import_label_capability = get_command_capability(
+                self,
+                CommandName.IMPORT_LABELS,
+            )
+            if import_label_capability is not None:
+                self.import_label_btn.setEnabled(import_label_capability.enabled)
+                self.import_label_btn.setToolTip(
+                    "Add labels to loaded data and update the current recipe trace."
+                    if import_label_capability.enabled
+                    else blocked_reason(
+                        import_label_capability,
+                        "Interpret a data source before adding labels.",
+                    ),
+                )
+            elif is_locked:
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Dataset is locked. Reset before changing labels.",
                 )
-            elif not has_data:
+            elif not bool(self.controller.has_data()):
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Interpret a data source before adding labels.",
@@ -230,6 +261,18 @@ class DatasetSidebar(QWidget):
         Shows a confirmation prompt before applying.
         """
         if not self.controller:
+            return
+
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        if preprocess_capability is not None and not preprocess_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Channel Selection Blocked",
+                blocked_reason(
+                    preprocess_capability,
+                    "Load raw data before selecting channels.",
+                ),
+            )
             return
 
         if not self.controller.has_data():
