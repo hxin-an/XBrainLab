@@ -155,6 +155,46 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_not_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_import_data_does_not_bypass_interpretation_when_command_surface_exists(
+        self,
+        mock_mb,
+        mock_fd,
+        handler,
+    ):
+        from XBrainLab.backend.application import CommandName
+        from XBrainLab.backend.application.capabilities import CommandCapability
+
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileNames.return_value = (["/a.set"], "")
+
+        with (
+            patch.object(
+                handler, "_run_data_interpretation_import", return_value=False
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.get_command_capability",
+                return_value=CommandCapability(
+                    command_name=CommandName.SCAN_SOURCE.value,
+                    enabled=True,
+                ),
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            ) as mock_execute,
+        ):
+            handler.import_data()
+
+        mock_execute.assert_not_called()
+        handler.panel.controller.import_files.assert_not_called()
+        mock_mb.critical.assert_called_once_with(
+            handler.panel,
+            "Interpretation unavailable",
+            "Data Interpretation command service is unavailable.",
+        )
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")

@@ -119,6 +119,13 @@ class DatasetActionHandler:
             try:
                 handled = self._run_data_interpretation_import(list(filepaths))
                 if not handled:
+                    if scan_capability is not None:
+                        QMessageBox.critical(
+                            self.panel,
+                            "Interpretation unavailable",
+                            "Data Interpretation command service is unavailable.",
+                        )
+                        return
                     result = execute_application_command(
                         self.panel,
                         LoadDataCommand(paths=list(filepaths)),

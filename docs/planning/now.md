@@ -166,7 +166,9 @@
   Visualization / AgentManager fallback 還要沿同一模式盤點。
 - 最新 Dataset fallback audit slice 已把 metadata edit / batch metadata、smart parse、remove files、
   direct file import、clear dataset、channel selection 和 post-load label compatibility fallback 改成
-  同一個 mock / legacy-only helper。剩餘 Visualization / AgentManager fallback 還要沿同一模式盤點。
+  同一個 mock / legacy-only helper。最新 file-import boundary follow-up 也讓 `scan_source`
+  capability 存在時不再從 Data Interpretation unavailable 旁路到 `LoadDataCommand` / legacy
+  `import_files`。剩餘 Visualization / AgentManager fallback 還要沿同一模式盤點。
 - 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings、Visualization
   sidebar `Set Montage` 和 assistant montage confirmation fallback 改成同一個 mock / legacy-only
   helper。剩餘 `result is None` path 主要是

@@ -122,6 +122,10 @@ metadata edit / batch metadata、smart parse、remove files、direct file import
 channel selection 和 post-load label compatibility fallback。Visualization saliency settings 和
 Visualization sidebar / AgentManager montage confirmation fallback 也已用同一 helper 覆蓋。剩餘 `result is None` branches
 主要是 service-unavailable UI error / blocked return，而不是 controller mutation fallback。
+Dataset file import keeps `LoadDataCommand` / `DatasetController.import_files()` only as a
+mock / legacy fallback when no ApplicationService command surface is visible. If the real
+`scan_source` capability exists, a Data Interpretation command-sequence unavailable result is shown
+as an interpretation error and does not fall back to direct load.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation。
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit

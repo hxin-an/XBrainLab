@@ -2813,3 +2813,29 @@ can still use `VisualizationController.set_montage()`; real `Study` contexts are
 
 - This is one fallback-boundary cleanup. It does not complete the full UI refresh coordinator audit,
   desktop visualization acceptance, or OpenGL / PyVista human verification.
+
+## 2026-05-06 Data Interpretation File-Import Fallback Boundary
+
+### 狀態
+
+Dataset file import no longer falls back to `LoadDataCommand` / legacy `import_files` when a real
+Data Interpretation command surface is present but the scan/preview/validate/apply sequence is
+unavailable. The direct-load compatibility path remains available only for mock / legacy contexts
+where no `scan_source` capability is visible.
+
+### 已可宣稱
+
+- Product file import keeps Data Interpretation as the primary data-entry language.
+- An unavailable Data Interpretation command sequence in a command-capable UI path surfaces an
+  interpretation error instead of silently switching mental models to legacy load.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not remove legacy `LoadDataCommand` compatibility or complete the full Data
+  Interpretation wizard maturity work.

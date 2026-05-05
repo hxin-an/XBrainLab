@@ -9048,3 +9048,33 @@
 - 不能宣稱：
   - This does not complete full controller fallback removal, command-driven UI refresh closure,
     visualization render acceptance, or human Windows desktop verification.
+
+### 2026-05-06 Dataset import does not bypass Data Interpretation command surface
+
+- scope：
+  - Keep file import aligned with the product rule that Data Interpretation is the primary data
+    entry path.
+  - Preserve legacy direct load only for mock / legacy contexts where no ApplicationService
+    command surface is visible.
+- red / focused test：
+  - Added
+    `TestDatasetActionHandler.test_import_data_does_not_bypass_interpretation_when_command_surface_exists`.
+  - It failed because `_run_data_interpretation_import()` returning `False` caused
+    `import_data()` to call `LoadDataCommand` even when `scan_source` capability existed.
+- 做了什麼：
+  - `DatasetActionHandler.import_data()` now checks the already-read `scan_source` capability before
+    direct-load fallback.
+  - If Data Interpretation command-sequence handling returns unavailable in a command-capable path,
+    the UI shows `Interpretation unavailable` and does not execute `LoadDataCommand` or
+    `controller.import_files`.
+  - Mock / legacy import fallback remains unchanged when `scan_source` capability is absent.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_does_not_bypass_interpretation_when_command_surface_exists -q`
+    -> failed because `LoadDataCommand` was called.
+  - After fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_does_not_bypass_interpretation_when_command_surface_exists tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_service_load_success_does_not_fallback_to_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_success -q`
+    -> `3 passed`.
+- 不能宣稱：
+  - This does not remove direct-load compatibility or complete mature Data Interpretation wizard /
+    recipe UX work.
