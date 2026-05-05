@@ -4,9 +4,8 @@ from typing import Any
 
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
-from XBrainLab.backend.application import QueryStateCommand
-from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
 from XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter import PreprocessPlotter
 from XBrainLab.ui.panels.preprocess.preview_widget import PreviewWidget
@@ -165,19 +164,4 @@ class PreprocessPanel(BasePanel):
         )
 
     def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
-        result = execute_application_command(
-            self,
-            QueryStateCommand(query="data_lists", include_objects=True),
-            refresh=False,
-        )
-        if result is None:
-            return None
-        if result.failed:
-            return [], []
-        diagnostics = result.diagnostics
-        preprocessed = diagnostics.get("preprocessed_data_list")
-        loaded = diagnostics.get("loaded_data_list")
-        return (
-            list(preprocessed) if isinstance(preprocessed, list) else [],
-            list(loaded) if isinstance(loaded, list) else [],
-        )
+        return query_preprocess_render_lists(self)

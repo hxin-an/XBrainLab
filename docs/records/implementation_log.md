@@ -42,6 +42,41 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Preprocess Plotter Query Source
+
+### 狀態
+
+Preprocess panel and plotter render paths now share one service-backed data-list query helper.
+`PreprocessPlotter.plot_sample_data()` first asks ApplicationService for
+`QueryStateCommand(query="data_lists", include_objects=True)` when the caller did not provide
+explicit lists. Controller list reads remain only for query-unavailable mock / legacy fallback.
+
+### 已可宣稱
+
+- Real `Study` plot refresh no longer falls back to stale `PreprocessController` lists just because
+  a caller omitted `data_list`.
+- Focused tests cover the shared query helper and the plotter refusing stale controller reads when
+  service data is available.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/data_query.py`,
+  `XBrainLab/ui/panels/preprocess/panel.py`,
+  `XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py`
+- Tests: `tests/unit/ui/preprocess/test_data_query.py`,
+  `tests/unit/ui/preprocess/test_preprocess_plotter.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not plot visual acceptance, large-data plotting performance proof, preprocessing memory
+  soak, or full command-driven UI refresh closure.
+
+### 下一手重點
+
+Continue auditing read-side controller fallbacks in UI panels where real `Study` runtime can still
+display stale controller state instead of ApplicationService query truth.
+
 ## 2026-05-06 Automated Walkthrough Geometry Gate Hardening
 
 ### 狀態

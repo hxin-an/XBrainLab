@@ -156,6 +156,15 @@ Preprocess PSD stale-result gate:
 -> `45 passed`。This supports stale-result rejection for async PSD plot workers. It does not prove
 worker cancellation, long-running preprocessing performance, or memory leak behavior.
 
+Preprocess plotter render query-source gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_data_query.py tests/unit/ui/preprocess/test_preprocess_plotter.py -q`
+-> `25 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+-> `70 passed`。This supports service-backed `QueryStateCommand(query="data_lists",
+include_objects=True)` as the shared render source for Preprocess panel and plotter refresh. The
+controller data-list read remains only for query-unavailable mock / legacy fallback. It does not
+prove plot visual quality, large-data plotting performance, or full preprocessing workflow UX.
+
 SinglePlotWindow close cleanup gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_close_releases_current_figure_and_qt_widgets tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_creates tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_has_figure_canvas -q`
 -> `3 passed`；

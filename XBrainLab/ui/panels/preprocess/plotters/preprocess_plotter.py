@@ -13,6 +13,7 @@ from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.worker import Worker
+from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 from XBrainLab.ui.styles.theme import Theme
 
 if TYPE_CHECKING:
@@ -171,13 +172,18 @@ class PreprocessPlotter:
         self.widget.plot_freq.addItem(self.widget.h_line_freq)
         self.widget.plot_freq.addItem(self.widget.label_freq)
 
-        if data_list is None:
-            if not self.controller or not self.controller.has_data():
-                return
-            data_list = self.controller.get_preprocessed_data_list()
-
         orig_list = original_data_list or []
-        if original_data_list is None and hasattr(self.controller, "study"):
+        if data_list is None:
+            queried_lists = query_preprocess_render_lists(self)
+            if queried_lists is not None:
+                data_list, orig_list = queried_lists
+            else:
+                if not self.controller or not self.controller.has_data():
+                    return
+                data_list = self.controller.get_preprocessed_data_list()
+                if original_data_list is None and hasattr(self.controller, "study"):
+                    orig_list = self.controller.study.loaded_data_list
+        elif original_data_list is None and hasattr(self.controller, "study"):
             orig_list = self.controller.study.loaded_data_list
 
         if not data_list:

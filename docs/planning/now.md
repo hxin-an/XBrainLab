@@ -268,6 +268,10 @@
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study`
   `PreprocessPanel.update_panel()` 不再直接讀 stale
   `PreprocessController.get_preprocessed_data_list()`。
+- 最新 Preprocess render follow-up 已把同一 service-backed data-list query 抽成
+  `query_preprocess_render_lists()`，並接到 `PreprocessPlotter.plot_sample_data()` 的
+  no-explicit-data path；real `Study` plot refresh 不再因 caller 漏傳 data list 就回到 stale
+  controller list。
 - 最新 Preprocess plotter async cleanup 讓 PSD worker result 帶 plot generation guard；快速重繪時
   stale PSD result 不會覆寫新的 frequency plot。這是 UI responsiveness / stale-result guard，
   不是 long-running preprocessing performance soak。

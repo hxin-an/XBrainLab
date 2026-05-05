@@ -154,6 +154,32 @@ def test_plot_no_data(mock_widget, mock_controller):
     mock_widget.plot_time.plot.assert_not_called()
 
 
+def test_plot_sample_data_uses_service_query_before_controller(
+    mock_widget,
+    mock_controller,
+):
+    """Service-backed render data should win over potentially stale controller reads."""
+    raw_obj = mock_controller.get_preprocessed_data_list()[0]
+    mock_controller.has_data.side_effect = AssertionError("stale controller read")
+    mock_controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "stale controller read"
+    )
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+            return_value=([raw_obj], []),
+        ) as execute,
+        patch("XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker"),
+    ):
+        plotter.plot_sample_data()
+
+    execute.assert_called_once_with(plotter)
+    mock_controller.has_data.assert_not_called()
+    mock_widget.plot_time.plot.assert_called()
+
+
 class TestGetChanData:
     """Tests for _get_chan_data covering raw and epoch paths."""
 

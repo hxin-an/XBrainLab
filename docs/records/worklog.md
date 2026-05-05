@@ -37,6 +37,58 @@
 
 ## 2026-05-06
 
+### 06:30 Preprocess plotter render query source
+
+- scope：
+  - Continue read-side command-truth cleanup for the Preprocess page.
+  - Prevent `PreprocessPlotter.plot_sample_data()` from reading stale controller data lists in a
+    real command-capable context when the caller did not pass explicit render lists.
+- red / focused tests：
+  - Added `test_plot_sample_data_uses_service_query_before_controller`.
+  - Red gate failed because `preprocess_plotter.py` had no application query helper and the no-data
+    argument path went straight to `controller.has_data()` /
+    `controller.get_preprocessed_data_list()`.
+- 做了什麼：
+  - Added `XBrainLab/ui/panels/preprocess/data_query.py` with
+    `query_preprocess_render_lists(context)`.
+  - `PreprocessPanel._query_data_lists_for_render()` and
+    `PreprocessPlotter.plot_sample_data()` now share this helper.
+  - Plotter direct calls use `QueryStateCommand(query="data_lists", include_objects=True)` first;
+    controller list reads remain only when the query helper returns `None` for mock / legacy
+    contexts.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_uses_service_query_before_controller -q`
+    -> failed as expected because the module had no `execute_application_command` / query path.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Helper / plotter regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_data_query.py tests/unit/ui/preprocess/test_preprocess_plotter.py -q`
+    -> `25 passed`.
+  - Preprocess UI regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `70 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/data_query.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_data_query.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/data_query.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_data_query.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+- local eval：
+  - Not run. This is a Preprocess UI render-source cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not prove plot visual quality, large-data plotting performance, memory cleanup, full
+    preprocessing workflow UX, or human desktop acceptance.
+
 ### 04:55 Training force-clean thread handle guard
 
 - 做了什麼：
