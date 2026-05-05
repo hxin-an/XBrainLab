@@ -278,8 +278,10 @@ transport，實際 tool call 仍包這層 automation adapter，而不是繞過 c
 controller internals。每個 stdio `tools/call` structured result 都會標出
 `adapter.mode=headless_mcp_stdio`、stable session id 和 `ui_refresh.supported=False`，避免把
 headless MCP session 誤認成桌面 UI control。對 `train` 這類 long-running command，stdio
-adapter 目前回 `long_running_job_required`，不做同步阻塞執行；HTTP job API、progress、
-cancel、recovery 和 resource lock 仍是後續 architecture work。
+adapter 會先保留 backend capability / precondition truth：unready training 回 shared blocked
+reason；只有 capability 已 enabled 的 long-running training 才回
+`long_running_job_required`，不做同步阻塞執行。HTTP job API、progress、cancel、recovery 和
+resource lock 仍是後續 architecture work。
 
 `ApplicationService` 會拿同一組 cached controllers：
 

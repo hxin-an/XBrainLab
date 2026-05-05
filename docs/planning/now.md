@@ -184,8 +184,10 @@
   - `tools/call` structured result 現在包含 `adapter` boundary：`mode=headless_mcp_stdio`、
     `transport=stdio`、stable `session_id`、`ui_refresh_supported=False`，明確表示 stdio MCP
     是 headless ApplicationService session，不刷新 desktop UI。
-  - `train` over stdio 現在回 structured `long_running_job_required`，不會同步啟動長時間訓練；
-    artifact 會標出 HTTP job API / progress / cancel 尚未支援。
+  - `train` over stdio 現在先保留 backend readiness：unready training 會回 shared
+    precondition reason，不會被 job-boundary error 遮掉；只有 backend-ready / enabled 的
+    long-running `train` 才回 structured `long_running_job_required`。artifact 會標出
+    `train result boundary` 和是否真的到達 job boundary。
   - 這支撐 external stdio client path，不代表 Windows release registration、HTTP transport
     或 long-running training through MCP 已完成。
 - MCP Inspector-style release config baseline 已新增：
