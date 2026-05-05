@@ -30,12 +30,10 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+d5388e7 test: guard capability-gated controller readiness
+57b5d9c docs: refresh handoff after train gate audit
 82576f5 ui: prefer train capability over stale controller
 bb57beb ui: use backend truth for split replacement
-7a59e39 docs: refresh handoff after split audit
-e2a7d90 docs: refresh product handoff after ui audit
-8a6722a test: guard post-command controller echo
-cc302bc ui: trust training model command result
 ```
 
 ## What Was Closed In This Slice
@@ -80,6 +78,11 @@ cc302bc ui: trust training model command result
     `TrainCommand`.
   - stale `TrainingController.is_training()` no longer silently skips an enabled backend train
     command.
+- Capability-gated readiness architecture guard:
+  - `tests/architecture_compliance.py` now flags `controller.is_training()`,
+    `controller.has_datasets()`, and `controller.get_trainer()` in command paths that already have
+    backend capability truth.
+  - Such reads must live in explicit `capability is None` legacy branches.
 
 ## Validation Already Run
 
@@ -128,7 +131,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
 # 50 passed
 
 poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
-# 20 passed
+# 23 passed
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
