@@ -2233,6 +2233,30 @@ policy 對齊。它仍不是完整 visualization UI product acceptance 或 deskt
 這批 evidence 支撐 reset-preprocess lifecycle UI boundary 與 backend capability policy 對齊。它
 仍不是完整 reset / new-session human desktop acceptance。
 
+2026-05-05 Training configuration dialog capability follow-up：
+
+- UI/action:
+  - `TrainingSidebar.select_model()` and `TrainingSidebar.training_setting()` now check backend
+    `configure_training` capability before opening model / training-settings dialogs for real
+    `Study` paths.
+  - Real backend training-running state shows `Stop training before changing training
+    configuration.` and does not open configuration dialogs, even if controller-local
+    `is_training()` is stale.
+  - mock / legacy non-Study paths keep the existing controller-local compatibility guard.
+- targeted gates:
+  - focused red + dialog gate:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_uses_backend_configure_capability_before_dialog tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_backend_configure_capability_before_dialog -q`
+    -> `2 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `45 passed`.
+  - backend configure-training smoke:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py::test_training_service_configures_model_and_options tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes tests/unit/backend/application/test_application_service.py::test_capability_policy_covers_all_declared_commands -q`
+    -> `3 passed`.
+
+這批 evidence 支撐 training configuration dialogs 與 backend capability policy 對齊。它仍不是完整
+training setup UX 或 long-running training acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

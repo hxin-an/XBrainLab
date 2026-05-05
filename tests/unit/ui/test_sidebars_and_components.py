@@ -325,6 +325,36 @@ class TestTrainingSidebar:
             sidebar.select_model()
             sidebar.panel.controller.set_model_holder.assert_called_once()
 
+    def test_select_model_uses_backend_configure_capability_before_dialog(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        trainer = MagicMock()
+        trainer.is_running.return_value = True
+        study.training_manager.trainer = trainer
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.is_training.return_value = False
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+            ) as mock_dialog,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.select_model()
+
+        mock_dialog.assert_not_called()
+        mock_warning.assert_called_once_with(
+            sidebar,
+            "Training Configuration Blocked",
+            "Stop training before changing training configuration.",
+        )
+
     def test_on_training_started_disables_buttons(self, sidebar):
         sidebar.on_training_started()
         # After training starts, stop button or UI state should update
@@ -413,6 +443,36 @@ class TestTrainingSidebar:
             MockDlg.return_value.get_result.return_value = MagicMock()
             sidebar.training_setting()
             sidebar.panel.controller.set_training_option.assert_called_once()
+
+    def test_training_setting_uses_backend_configure_capability_before_dialog(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        trainer = MagicMock()
+        trainer.is_running.return_value = True
+        study.training_manager.trainer = trainer
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.is_training.return_value = False
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog"
+            ) as mock_dialog,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.training_setting()
+
+        mock_dialog.assert_not_called()
+        mock_warning.assert_called_once_with(
+            sidebar,
+            "Training Configuration Blocked",
+            "Stop training before changing training configuration.",
+        )
 
     def test_start_training_ui_action(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False

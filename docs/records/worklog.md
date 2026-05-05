@@ -5845,3 +5845,48 @@
     acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Training configuration dialog capability truth
+
+- scope：
+  - UI/backend command truth alignment for Training sidebar model selection and training settings。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `select_model()` and `training_setting()` checked controller-local `is_training()` before
+    opening dialogs, but did not read backend `configure_training` capability.
+  - A stale controller-local false could open configuration dialogs while backend policy would
+    reject the command because training is running.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_uses_backend_configure_capability_before_dialog tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_backend_configure_capability_before_dialog -q`
+    initially failed because both dialogs were opened.
+- 做了什麼：
+  - Added a shared `_configuration_blocked()` helper backed by `configure_training` capability for
+    real `Study` paths.
+  - Kept controller-local training-running warnings only for mock / legacy non-Study paths.
+- validation：
+  - focused red + dialog gate:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_uses_backend_configure_capability_before_dialog tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_backend_configure_capability_before_dialog -q`
+    -> `2 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `45 passed`.
+  - backend configure-training smoke:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_training_service.py::test_training_service_configures_model_and_options tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes tests/unit/backend/application/test_application_service.py::test_capability_policy_covers_all_declared_commands -q`
+    -> `3 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one configuration-dialog boundary alignment, not full training setup UX or long-running
+    training acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.

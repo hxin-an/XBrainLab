@@ -975,3 +975,26 @@ locked 狀態仍可執行 reset command，empty state 則顯示 shared blocked r
 ### 不能宣稱完成
 
 - 這不是完整 reset / new-session human desktop acceptance。
+
+## 2026-05-05 Training Configuration Dialog Capability Truth
+
+### 狀態
+
+Training sidebar model selection / training settings dialogs 現在會先讀 backend
+`configure_training` capability。real `Study` path 在 training running 時不開設定 dialog，而是
+顯示 shared blocked reason。
+
+### 已可宣稱
+
+- Training configuration dialogs 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 controller-local compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 training setup UX 或 long-running training acceptance。

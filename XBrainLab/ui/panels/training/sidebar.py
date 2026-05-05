@@ -203,6 +203,28 @@ class TrainingSidebar(QWidget):
 
     # --- Actions ---
 
+    def _configuration_blocked(self, fallback_message: str) -> bool:
+        """Return whether training configuration edits should be blocked."""
+        configure_capability = get_command_capability(
+            self,
+            CommandName.CONFIGURE_TRAINING,
+        )
+        if configure_capability is not None and not configure_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Training Configuration Blocked",
+                blocked_reason(configure_capability, fallback_message),
+            )
+            return True
+        if configure_capability is None and self.controller.is_training():
+            QMessageBox.warning(
+                self,
+                "Training Running",
+                fallback_message,
+            )
+            return True
+        return False
+
     def split_data(self):
         """Open the data-splitting dialog and apply the configuration.
 
@@ -287,12 +309,9 @@ class TrainingSidebar(QWidget):
 
         Blocked while training is running.
         """
-        if self.controller.is_training():
-            QMessageBox.warning(
-                self,
-                "Training Running",
-                "Cannot change model while training is running.",
-            )
+        if self._configuration_blocked(
+            "Cannot change model while training is running.",
+        ):
             return
 
         win = ModelSelectionDialog(self, self.controller)
@@ -331,12 +350,9 @@ class TrainingSidebar(QWidget):
 
         Blocked while training is running.
         """
-        if self.controller.is_training():
-            QMessageBox.warning(
-                self,
-                "Training Running",
-                "Cannot change training settings while training is running.",
-            )
+        if self._configuration_blocked(
+            "Cannot change training settings while training is running.",
+        ):
             return
 
         win = TrainingSettingDialog(self, self.controller)
