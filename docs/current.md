@@ -833,7 +833,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `InfoPanelService.notify_all()` 更新已註冊的 aggregate info panels，而不是只嘗試不存在的
   `MainWindow.info_panel`。最新 Preprocess legacy/mock refresh cleanup 也把 epoch / reset 後仍保留的
   shared-status fallback 改成 `refresh_shared_status()`，所以 compatibility path 不再只刷新 aggregate
-  info 而漏掉 assistant backend status。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
+  info 而漏掉 assistant backend status。最新 Aggregate Info query-failure cleanup 又讓 real
+  `Study` `InfoPanelService` 在 `QueryStateCommand(query="data_lists", include_objects=True)`
+  失敗時回空 summary 並記 log，不再 fallback 到 dataset / preprocess controller list reads 顯示另一套
+  stale truth。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
   這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
   validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
   closure。後續仍要把

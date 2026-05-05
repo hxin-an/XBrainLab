@@ -120,15 +120,20 @@ class InfoPanelService(QObject):
     def _query_data_lists(self):
         """Return raw/preprocessed lists through ApplicationService when possible."""
         if isinstance(self.study, Study) and not isinstance(self.study, Mock):
-            result = BackendFacade(self.study).service.execute(
-                QueryStateCommand(query="data_lists", include_objects=True),
-            )
+            try:
+                result = BackendFacade(self.study).service.execute(
+                    QueryStateCommand(query="data_lists", include_objects=True),
+                )
+            except Exception as exc:
+                logger.error("Info panel state query failed: %s", exc)
+                return [], []
             if result.ok:
                 return (
                     list(result.diagnostics.get("loaded_data_list", [])),
                     list(result.diagnostics.get("preprocessed_data_list", [])),
                 )
             logger.debug("Info panel state query failed: %s", result.message)
+            return [], []
 
         loaded = []
         if self.study.get_controller("dataset"):

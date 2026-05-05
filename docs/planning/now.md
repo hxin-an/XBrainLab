@@ -143,6 +143,9 @@
   coordinator-owned scope；VisualizationPanel 是 owner，helper / secondary context 不再刷新錯誤 panel。
 - 最新 shared info refresh cleanup 修正了 `MainWindow.update_info_panel()`：refresh coordinator 的
   shared info refresh 現在會呼叫 `InfoPanelService.notify_all()`，更新所有已註冊 aggregate info panels。
+- 最新 Aggregate Info query-failure cleanup 也讓 real `Study` `InfoPanelService` 在
+  `QueryStateCommand(query="data_lists", include_objects=True)` 失敗時回空 summary 並記 log，不再
+  fallback 到 dataset / preprocess controller list reads 顯示 stale truth。
 - 最新 Preprocess compatibility refresh cleanup 把 epoch / reset 的 mock-legacy shared status
   fallback 改走 `refresh_shared_status()`，避免只刷新 aggregate info 而漏掉 assistant backend status。
 - 最新 downstream refresh coordinator cleanup 已讓 `training_changed` 刷新 Evaluation /

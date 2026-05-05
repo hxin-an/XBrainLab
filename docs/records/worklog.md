@@ -9782,3 +9782,37 @@
 - 不能宣稱：
   - This does not certify plot visual quality, large-data plotting performance, memory cleanup, or
     full command-driven UI refresh closure.
+
+### 2026-05-06 Aggregate Info query-failure boundary
+
+- scope：
+  - Continue UI shared-refresh truth cleanup.
+  - Prevent real `Study` aggregate info refresh from falling back to controller list reads when
+    the ApplicationService data-list query fails.
+- red / focused test：
+  - Added `test_real_study_query_failure_does_not_fallback_to_controller_lists`.
+  - Red gate failed because `InfoPanelService._query_data_lists()` logged the failed query and then
+    read `DatasetController.get_loaded_data_list()` / `PreprocessController.get_preprocessed_data_list()`.
+- 做了什麼：
+  - `InfoPanelService._query_data_lists()` now returns empty loaded / preprocessed lists for real
+    `Study` query failures and logs execution exceptions.
+  - Controller-list fallback remains only for mock / legacy non-`Study` contexts.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py::test_real_study_query_failure_does_not_fallback_to_controller_lists -q`
+    -> failed on stale controller list read.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Info panel regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py tests/unit/ui/components/test_info_panel.py -q`
+    -> `11 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/info_panel_service.py tests/unit/ui/components/test_info_panel_service.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/info_panel_service.py tests/unit/ui/components/test_info_panel_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a shared UI refresh truth cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete the full UI refresh coordinator closure or all controller read-path
+    cleanup; it removes one aggregate-info query failure fallback.

@@ -1,6 +1,7 @@
 import weakref
+from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -91,6 +92,39 @@ def test_successful_legacy_import_updates_info_once(qtbot):
         loaded_data_list=["raw"],
         preprocessed_data_list=[],
     )
+
+
+def test_real_study_query_failure_does_not_fallback_to_controller_lists():
+    study = Study()
+    service = InfoPanelService(study)
+    study.get_controller("dataset").get_loaded_data_list = MagicMock(
+        side_effect=AssertionError("stale loaded list should not be read"),
+    )
+    study.get_controller("preprocess").get_preprocessed_data_list = MagicMock(
+        side_effect=AssertionError("stale preprocessed list should not be read"),
+    )
+    panel = MagicMock()
+
+    facade = SimpleNamespace(
+        service=SimpleNamespace(
+            execute=MagicMock(
+                return_value=SimpleNamespace(ok=False, message="query failed"),
+            ),
+        ),
+    )
+
+    with patch(
+        "XBrainLab.ui.components.info_panel_service.BackendFacade",
+        return_value=facade,
+    ):
+        service.register(panel)
+
+    panel.update_info.assert_called_once_with(
+        loaded_data_list=[],
+        preprocessed_data_list=[],
+    )
+    study.get_controller("dataset").get_loaded_data_list.assert_not_called()
+    study.get_controller("preprocess").get_preprocessed_data_list.assert_not_called()
 
 
 def test_weak_ref_cleanup(service):

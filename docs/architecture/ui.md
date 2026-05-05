@@ -363,12 +363,14 @@ Aggregate info panel 的集中更新由 `InfoPanelService` 負責。
 `InfoPanelService` 目前監聽：
 
 - dataset controller 的 `data_changed`
-- dataset controller 的 `import_finished`
 - preprocess controller 的 `preprocess_changed`
 
-事件發生後，service 會重新從 dataset/preprocess controllers 取得 loaded /
-preprocessed data list，並呼叫已註冊 info panel 的 `update_info(...)`。listeners
-使用 `weakref.WeakSet` 保存，以降低已刪除 widget 被長期持有的風險。
+事件發生後，service 會透過
+`QueryStateCommand(query="data_lists", include_objects=True)` 取得 loaded /
+preprocessed data list，並呼叫已註冊 info panel 的 `update_info(...)`。real `Study`
+query 失敗時會回空 summary 並記 log，不會 fallback 到 controller list reads；mock /
+legacy non-`Study` context 才保留 controller-list compatibility fallback。listeners 使用
+`weakref.WeakSet` 保存，以降低已刪除 widget 被長期持有的風險。
 
 ## 現況邊界
 
