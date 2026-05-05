@@ -30,6 +30,9 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+4ddfa92 ui: source split dialog context from service
+c21d7eb ui: export saliency from service trainers
+338a763 docs: refresh handoff after training history query
 e067e73 ui: render training history from state query
 f2ccf95 ui: render visualization from service payload
 a00a5d5 ui: render evaluation from service payload
@@ -187,6 +190,18 @@ bb57beb ui: use backend truth for split replacement
     `TrainingController.get_formatted_history()`.
   - The query returns serializable row summaries by default and plan/record objects only for
     `include_objects=True`.
+- Visualization export trainer render source:
+  - `Export Saliency` still uses readonly `SaliencyCommand` as the export readiness gate.
+  - When export is ready, it now opens the export dialog from
+    `VisualizeCommand(view="summary", include_objects=True)` `trainer_objects`.
+  - `panel.get_trainers()` / `VisualizationController.get_trainers()` remain only for
+    query-unavailable mock / legacy fallback.
+- Training split dialog context query:
+  - `QueryStateCommand(query="dataset_generation_context", include_objects=True)` now returns the
+    epoch data and current dataset generator needed by `DataSplittingDialog`.
+  - A real `Study` Training sidebar passes that service-backed context into the dialog.
+  - `TrainingController.get_epoch_data()` / `get_dataset_generator()` remain only for
+    query-unavailable mock / legacy dialog fallback.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -560,6 +575,40 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for e067e73; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  -q
+# 42 passed for c21d7eb
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/backend/application/test_state_service.py \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  tests/unit/ui/test_data_splitting.py \
+  tests/unit/ui/dialogs/test_data_splitting.py \
+  -q
+# 114 passed for 4ddfa92
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q
+# 114 passed for 4ddfa92
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for c21d7eb / 4ddfa92
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for c21d7eb / 4ddfa92
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for c21d7eb and 4ddfa92; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
