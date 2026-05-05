@@ -1,6 +1,6 @@
 # XBrainLab Worklog
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-06`
 
 ## 這份文件的用途
 
@@ -9678,3 +9678,33 @@
 - 不能宣稱：
   - This does not verify long-running training, GPU resource behavior, or human desktop training
     acceptance.
+
+### 2026-05-06 Preprocess sidebar capability-first render
+
+- scope：
+  - Continue UI/backend truth alignment for sidebar render state.
+  - Prevent Preprocess sidebar refresh from reading stale
+    `PreprocessController.get_preprocessed_data_list()` when backend capabilities are available.
+- red / focused test：
+  - Added `test_update_sidebar_prefers_backend_capabilities_over_stale_preprocessed_list`.
+  - It failed before implementation because `PreprocessSidebar.update_sidebar()` unconditionally
+    read `controller.get_preprocessed_data_list()`.
+- 做了什麼：
+  - `PreprocessSidebar.update_sidebar()` now treats visible `preprocess` / `create_epoch`
+    capabilities as the render source of truth and avoids the stale controller preprocessed-list
+    read in real command-capable contexts.
+  - The controller preprocessed-list read remains only for no-capability mock / legacy render
+    compatibility.
+- validation：
+  - Focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_preprocessed_list -q`
+    -> `1 passed`.
+  - Sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `22 passed`.
+- local eval：
+  - Not run. This is a Preprocess sidebar render cleanup under the fast dev gate and does not
+    justify primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not complete full preprocessing workflow UX, command-driven UI refresh closure, or
+    human desktop acceptance.

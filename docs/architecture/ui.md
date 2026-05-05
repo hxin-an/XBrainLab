@@ -157,6 +157,10 @@ Dataset sidebar render state follows the same boundary: with backend capabilitie
 `update_sidebar()` no longer reads `DatasetController.is_locked()` / `has_data()` before setting
 button state or tooltips. Those controller reads are limited to explicit no-capability legacy
 branches, and architecture compliance guards this pattern.
+Preprocess sidebar render state now follows the same capability-surface boundary: with
+`preprocess` or `create_epoch` capabilities visible, `update_sidebar()` no longer reads stale
+`PreprocessController.get_preprocessed_data_list()` to infer epoched/lock state. That controller
+read remains only for no-capability mock / legacy rendering.
 Dataset smart-parse dialog setup also reads filenames from
 `QueryStateCommand(query="state")` / `state.raw.files` in real `Study` contexts.
 `DatasetController.get_filenames()` is limited to mock / legacy query fallback.

@@ -879,6 +879,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。
+  最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock render state
+  收回 backend capability surface：real `Study` 有 `preprocess` / `create_epoch` capability 時不再讀
+  stale `PreprocessController.get_preprocessed_data_list()`；該 controller read 只保留給
+  no-capability mock / legacy path。
   最新 Dataset smart-parse cleanup 又把 parser dialog 的 file list 改成先讀
   `QueryStateCommand(query="state")` 裡的 `state.raw.files`；`DatasetController.get_filenames()`
   只保留在 query unavailable 的 mock / legacy fallback helper。

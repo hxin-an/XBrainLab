@@ -53,6 +53,25 @@ class TestPreprocessSidebar:
     def test_update_sidebar(self, sidebar):
         sidebar.update_sidebar()
 
+    def test_update_sidebar_prefers_backend_capabilities_over_stale_preprocessed_list(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.get_preprocessed_data_list.side_effect = (
+            AssertionError("stale preprocessed list should not be read")
+        )
+
+        sidebar.update_sidebar()
+
+        sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
+
     def test_check_lock_unlocked(self, sidebar):
         # check_lock returns False when NOT epoched (action is allowed)
         assert sidebar.check_lock() is False

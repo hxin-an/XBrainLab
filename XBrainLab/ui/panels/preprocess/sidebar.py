@@ -168,13 +168,16 @@ class PreprocessSidebar(QWidget):
         # 1. Update Info Panel
         # Handled by InfoPanelService
 
-        # 2. Update Button States & Lock Status
-        data_list = self.controller.get_preprocessed_data_list()
         is_epoched = False
-
-        if data_list:
-            first_data = data_list[0]
-            is_epoched = not first_data.is_raw()
+        has_capability_surface = (
+            get_command_capability(self, CommandName.PREPROCESS) is not None
+            or get_command_capability(self, CommandName.CREATE_EPOCH) is not None
+        )
+        if not has_capability_surface:
+            data_list = self.controller.get_preprocessed_data_list()
+            if data_list:
+                first_data = data_list[0]
+                is_epoched = not first_data.is_raw()
 
         self._update_button_states(is_epoched)
 
