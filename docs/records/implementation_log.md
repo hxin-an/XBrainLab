@@ -2120,3 +2120,30 @@ outside legacy adapter functions.
 
 - 這不是 full UI command-refresh closure，也不是移除所有 controller read path；只是封住 raw
   loader direct mutation 旁路。
+
+## 2026-05-05 Human-Like Walkthrough Artifact Refresh
+
+### 狀態
+
+The consolidated automated human-like walkthrough was rerun after the latest Data Interpretation
+visible-text slices. The refreshed artifact remains status `passed`, `26 / 26` phases, `20`
+screenshots, and `human_desktop_acceptance=not performed`. The replay JSON now records the updated
+wizard decision copy `Review and confirm these choices before applying.` and resource smoke remains
+within the coarse threshold.
+
+### 已可宣稱
+
+- Automated PyQt replay evidence is synchronized with the current Data Interpretation visible copy.
+- The artifact still distinguishes automated replay from Windows human desktop acceptance.
+
+### Evidence 入口
+
+- Script：`scripts/dev/capture_human_like_product_walkthrough.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md`
+- Screenshots：`artifacts/ui/human-like-walkthrough/*.png`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 Windows launcher / dual-monitor / DPI human acceptance，也不是 long-session local-model
+  soak 或 leak proof。

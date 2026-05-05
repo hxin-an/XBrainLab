@@ -634,9 +634,10 @@ Goal 1 至少要包含：
      目前 consolidated human-like walkthrough artifact 已刷新到 `26 / 26` required phases、`20`
      screenshots，且 artifact 會 top-level index visible text、button state、workflow/backend
      snapshot、UI quality review 和 resource smoke；reset / new-session boundary 已不再顯示
-     stale chat bubbles 或 stale workflow status。最新 resource smoke 會 gate close 後 Python /
-     Qt thread cleanup 和 coarse RSS high-water delta；仍不能替代 human desktop acceptance 或
-     長時間 leak / local model soak。
+     stale chat bubbles 或 stale workflow status。最新 20:03 rerun 也已把 Data Interpretation
+     decision copy 刷到 `Review and confirm these choices before applying.`；resource smoke 會
+     gate close 後 Python / Qt thread cleanup 和 coarse RSS high-water delta；仍不能替代 human
+     desktop acceptance 或長時間 leak / local model soak。
    - 正式 local LLM thesis eval 可以晚一點，但 scorer schema 與 case shape 不能再用舊
      `load_data / attach_labels` 作為主設計；agent primary stage prompt 和 MCP/headless schema
      已先降權 legacy tools，後續 UI language 仍要繼續盤點。

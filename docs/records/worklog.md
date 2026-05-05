@@ -8063,3 +8063,30 @@
 - 不能宣稱：
   - This closes one legacy raw-loader mutation bypass. It does not finish the full controller
     fallback audit, command-driven UI refresh coordinator, or human desktop acceptance.
+
+### 2026-05-05 20:03 Human-like walkthrough artifact refresh
+
+- scope：
+  - Refresh consolidated automated UI-observable human-like walkthrough after Data Interpretation
+    visible-copy and event-row polish.
+- 做了什麼：
+  - Ran `scripts/dev/capture_human_like_product_walkthrough.py` with the current UI.
+  - Refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`,
+    `human-like-walkthrough.md`, and changed screenshots.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`.
+  - Artifact summary remains status `passed`, `26 / 26` required phases, `20` screenshots,
+    `human_desktop_acceptance=not performed`.
+  - Resource smoke remains `passed=True`; RSS growth `231876 KB` / limit `600000 KB`, Qt active
+    thread `0`.
+- evidence：
+  - `human-like-walkthrough.json` visible text now contains
+    `Review and confirm these choices before applying.`
+  - Screenshot review of `04-interpretation-preview.png` shows the updated decision copy and no
+    visible raw `label_carrier` / `trial_type` event-row names.
+  - Screenshot review of `20-eval-dashboard.png` is nonblank and still shows the tool-call dashboard
+    artifact.
+- 不能宣稱：
+  - This is automated PyQt replay evidence only. It does not replace Windows launcher /
+    dual-monitor / DPI human acceptance, long local-model desktop session, or leak-proof soak.
