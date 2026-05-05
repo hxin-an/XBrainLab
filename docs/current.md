@@ -441,7 +441,8 @@ Data Interpretation preview / confirm dialog 的 review surface density、Traini
 readability、Training history compact header、Evaluation page compact controls，以及 ChatPanel
 new conversation / reset 後的 stale bubble / stale workflow status，並把 ChatPanel empty-state
 next step 從 legacy `load_data` / `attach_labels` visible language 收斂成 Data Interpretation
-`Scan data source` 主線，刷新同一份
+`Scan data source` 主線；legacy compatibility tool fallback labels 也改成較中性的
+`Import data` / `Add labels to loaded data`，避免 assistant summary 回到舊主流程語言。已刷新同一份
 walkthrough artifact。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。

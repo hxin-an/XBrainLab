@@ -78,7 +78,9 @@ cancel/cleanup 和 repeated open/close UI smoke。
 
 ChatPanel / AgentManager 的 visible next-step language 現在以 Data Interpretation 為資料入口主線。
 空狀態顯示 `Scan data source`，raw-loaded 狀態不再把 legacy `attach_labels` 包成下一步建議；
-ChatPanel status rendering 也會過濾 legacy compatibility commands。
+ChatPanel status rendering 也會過濾 legacy compatibility commands。若 legacy compatibility tool
+仍因測試或相容路徑被觸發，visible fallback label 也改成中性的 `Import data` /
+`Add labels to loaded data`，不再回到舊的 `Load EEG data` / `Attach labels` 主流程語言。
 
 ### 已可宣稱
 

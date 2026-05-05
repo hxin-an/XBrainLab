@@ -49,6 +49,8 @@
   - `AgentManager._product_next_steps()` 改為 empty state 推 `scan_source`、raw-loaded state 只推
     `preprocess`；ChatPanel status rendering 層新增 legacy command filter，避免 mock / compatibility
     path 把 legacy command 重新帶回可見主 UI。
+  - 追加清理 assistant tool-result fallback label：legacy `load_data` / `attach_labels` 不再顯示成
+    `Load EEG data` / `Attach labels`，改成較中性的 `Import data` / `Add labels to loaded data`。
   - 刷新 consolidated human-like walkthrough artifact。
 - 結果：
   - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` visible text 只看到
@@ -68,6 +70,15 @@
     -> pass。
   - `poetry run basedpyright XBrainLab/ui/chat/panel.py XBrainLab/ui/components/agent_manager.py tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py`
     -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_legacy_load_summary_uses_neutral_product_language tests/unit/ui/chat/test_chat_panel.py::TestChatPanelCallbacks::test_product_status_updates_empty_state_and_chips tests/integration/ui/test_product_walkthrough.py::test_assistant_product_click_through_layout -q`
+    -> `3 passed`。
+  - `poetry run ruff check XBrainLab/llm/agent/controller.py XBrainLab/ui/product_language.py XBrainLab/ui/chat/panel.py tests/unit/llm/agent/test_controller.py tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/llm/agent/controller.py XBrainLab/ui/product_language.py XBrainLab/ui/chat/panel.py tests/unit/llm/agent/test_controller.py tests/unit/ui/chat/test_chat_panel.py tests/integration/ui/test_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - neutral-label follow-up 後重跑 `git diff --check`、full `ruff check .`、full
+    `basedpyright`、`mkdocs build --strict` 和 `architecture_compliance.py` -> pass /
+    `0 errors` / `Architecture compliant!`。
   - Focused basedpyright on the full legacy `tests/unit/ui/components/test_agent_manager.py` file
     still reports pre-existing mock/QMainWindow typing debt; full project basedpyright remains the
     authoritative gate。

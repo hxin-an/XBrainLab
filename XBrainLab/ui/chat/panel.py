@@ -765,8 +765,6 @@ class ChatPanel(QWidget):
     @staticmethod
     def _empty_state_next_text(display_commands: list[str]) -> str:
         """Return compact next-step copy without exposing command identifiers."""
-        if display_commands and display_commands[0] == "Load EEG data":
-            return "Import EEG files · Ask what is ready"
         return " · ".join(display_commands[:3])
 
     @staticmethod

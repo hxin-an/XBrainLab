@@ -733,6 +733,22 @@ class TestPipelineGate:
         assert "raw_result" not in payload
         assert "state" not in payload
 
+    def test_legacy_load_summary_uses_neutral_product_language(self):
+        from XBrainLab.llm.agent.controller import LLMController
+
+        result = ToolCommandResult.failure(
+            "load_data",
+            "Load raw data first.",
+            command_name=CommandName.LOAD_DATA.value,
+            error_type="precondition",
+        )
+
+        summary = LLMController._summarize_tool_result("load_data", False, result)
+
+        assert "Import data is not available yet" in summary
+        assert "Load EEG data" not in summary
+        assert "load_data" not in summary
+
     def test_train_blocked_until_backend_ready(self, ctrl):
         """Train is blocked until dataset/model/training options exist."""
         from XBrainLab.backend.study import Study
