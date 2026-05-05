@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+28c144a ui: ignore stale preprocess psd results
 d8221bb ui: source rereference dialog from state query
 9a5d0ef ui: clean up 3d visualization widgets
 5ff0790 training: bound force cleanup waits
@@ -255,6 +256,11 @@ bb57beb ui: use backend truth for split replacement
   - stale `PreprocessController.get_preprocessed_data_list()` remains only for no-capability
     mock / legacy dialog population.
   - This continues the controller-read audit; it does not finish the full Preprocess UI workflow.
+- Preprocess PSD stale-result guard:
+  - async PSD worker results now carry a plot generation and are ignored if a newer
+    `plot_sample_data()` call has started.
+  - This prevents old PSD results from overwriting the latest frequency plot during rapid preview
+    refresh, but it does not cancel running workers or prove long-run performance.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -819,6 +825,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for d8221bb; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py::test_stale_psd_result_does_not_update_latest_plot \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_async_psd \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_time_domain \
+  -q
+# 3 passed for 28c144a
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py \
+  tests/unit/ui/preprocess \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  -q
+# 45 passed for 28c144a
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 28c144a
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 28c144a
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 28c144a; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
