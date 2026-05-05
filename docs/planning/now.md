@@ -61,11 +61,13 @@
   controller mutation，controller fallback 只留給 mock / legacy `None` adapter 情境。
 - Reviewer follow-up：UI refresh 目前仍是 controller observer events、panel-local manual
   refresh、tab switch refresh、command-result local refresh 和 ChatPanel / agent Qt signal 的
-  混合模式。這是可用 baseline，不是 target closure。下一個 architecture cleanup 應建立
-  `UI Command Refresh Coordinator + Controller Fallback Audit`，讓 mutating command 成功後依
-  `CommandResult.changed_state` 集中刷新 dataset / preprocess / training / analysis /
-  assistant capability state，並把 product runtime controller fallback 與 mock / legacy
-  compatibility fallback 明確分離。
+  混合模式。第一個 cleanup slice 已建立 `refresh_after_command()`，real `Study`
+  `execute_application_command()` 會依 `CommandResult.changed_state` 集中刷新 dataset /
+  preprocess / training / analysis panels、main info panel 和 assistant backend status；query-only
+  evaluation / visualization refresh 關閉二次 refresh，coordinator 也有 re-entrancy guard。這是
+  first slice，不是 target closure；下一步仍是 `UI Command Refresh Coordinator + Controller
+  Fallback Audit` 的剩餘盤點：把 product runtime controller fallback 與 mock / legacy
+  compatibility fallback 明確分離，並持續收斂 observer/manual refresh。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
@@ -683,11 +685,11 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 ```text
 1. 繼續 backend / UI architecture cleanup：ApplicationService 已拆出 Data Interpretation、
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
-   services、Preprocess command service，以及 State / Query services。下一個高價值 milestone 是
-   `UI Command Refresh Coordinator + Controller Fallback Audit`：集中處理
-   `CommandResult.changed_state -> panel / capability / assistant status refresh`，並確認 real
-   `Study` mutating workflow 不 silent fallback 到 controller mutation；controller fallback 只能留在
-   explicit mock / unit-test compatibility 或 isolated legacy adapter。
+   services、Preprocess command service，以及 State / Query services。`UI Command Refresh
+   Coordinator + Controller Fallback Audit` 已完成 first slice；下一步是擴大盤點剩餘
+   observer/manual refresh 和 real `Study` mutating workflow，確認 product runtime 不 silent
+   fallback 到 controller mutation；controller fallback 只能留在 explicit mock / unit-test
+   compatibility 或 isolated legacy adapter。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

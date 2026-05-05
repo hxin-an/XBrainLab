@@ -37,6 +37,35 @@
 
 ## 2026-05-05
 
+### 16:45 UI command refresh coordinator first slice
+
+- 做了什麼：
+  - 先用 failing import test 確認尚無 centralized UI refresh helper，再新增
+    `XBrainLab.ui.refresh_coordinator.refresh_after_command()`。
+  - `execute_application_command()` 在 real `Study` path 執行 `ApplicationService.execute()`
+    後，會依 `CommandResult.changed_state` 刷新 Dataset / Preprocess / Training /
+    Evaluation / Visualization panels、main info panel 和 Assistant backend status。
+  - Evaluation / Visualization panel 的 query-only refresh 改用 `refresh=False`，避免 panel
+    update 內的 query command 再觸發二次 refresh；coordinator 也加 re-entrancy guard，防止同一
+    main window refresh 自我遞迴。
+- 結果：
+  - 這是 `UI Command Refresh Coordinator + Controller Fallback Audit` 的 first slice；它建立
+    command-result-driven refresh 基礎，但仍不能宣稱 UI refresh target closure。
+  - 後續仍要盤點 observer/manual/tab-switch refresh 與剩餘 product runtime controller fallback。
+- 證據：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_application_capabilities.py -q`
+    -> `8 passed`。
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_ui_misc.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `242 passed`。
+  - `poetry run ruff check XBrainLab/ui/application_capabilities.py XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_refresh_coordinator.py`
+    -> pass。
+  - `poetry run basedpyright XBrainLab/ui/application_capabilities.py XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_application_capabilities.py tests/unit/ui/test_refresh_coordinator.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `git diff --check` -> pass。
+- 接續 / 本輪剩餘：
+  - 跑 docs validation / architecture smoke 後提交本地 commit；不要把這個 first slice 說成
+    full controller fallback audit。
+
 ### 16:25 Local tool-call 121-case primary / fallback rerun
 
 - 做了什麼：

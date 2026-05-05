@@ -124,6 +124,7 @@ class EvaluationPanel(BasePanel):
         self.last_application_query = execute_application_command(
             self,
             EvaluateCommand(),
+            refresh=False,
         )
 
         previous_plan = (

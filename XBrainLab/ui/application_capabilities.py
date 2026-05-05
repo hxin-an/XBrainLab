@@ -9,6 +9,7 @@ from XBrainLab.backend.application import Command, CommandName, CommandResult
 from XBrainLab.backend.application.capabilities import CommandCapability
 from XBrainLab.backend.facade import BackendFacade
 from XBrainLab.backend.study import Study
+from XBrainLab.ui.refresh_coordinator import refresh_after_command
 
 
 def find_study(context: Any) -> Any | None:
@@ -56,6 +57,8 @@ def blocked_reason(capability: CommandCapability | None, fallback: str) -> str:
 def execute_application_command(
     context: Any,
     command: Command,
+    *,
+    refresh: bool = True,
 ) -> CommandResult | None:
     """Execute an ApplicationService command for real Study-backed UI paths.
 
@@ -66,4 +69,7 @@ def execute_application_command(
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return None
-    return BackendFacade(study).service.execute(command)
+    result = BackendFacade(study).service.execute(command)
+    if refresh:
+        refresh_after_command(context, result)
+    return result

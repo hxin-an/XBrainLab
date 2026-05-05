@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 UI Command Refresh Coordinator First Slice
+
+### 狀態
+
+The first `UI Command Refresh Coordinator + Controller Fallback Audit` implementation slice is in
+place. Real `Study` UI command execution now calls a centralized refresh helper after
+`ApplicationService.execute()` and maps `CommandResult.changed_state` to the main workflow panels,
+main info panel, and assistant backend status. Evaluation / visualization query-only updates opt out
+of recursive refresh, and the coordinator has a same-window re-entrancy guard.
+
+### 已可宣稱
+
+- There is now a concrete command-result-driven refresh spine for UI commands.
+- The first slice has focused unit coverage and broader offscreen UI regression coverage.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/refresh_coordinator.py`
+- Tests: `tests/unit/ui/test_refresh_coordinator.py`、
+  `tests/unit/ui/test_application_capabilities.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full UI refresh target closure.
+- Controller observer events, panel-local manual refresh, tab-switch refresh, and remaining
+  product-runtime controller fallback still need audit.
+
+### 下一手重點
+
+Continue the same milestone by separating product runtime service-success paths from mock / legacy
+controller fallback, then gradually move panel refresh scope decisions into the coordinator.
+
 ## 2026-05-05 Local Tool-Call 121-Case Rerun
 
 ### 狀態

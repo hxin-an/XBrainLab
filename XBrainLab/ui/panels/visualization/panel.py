@@ -308,6 +308,7 @@ class VisualizationPanel(BasePanel):
         self.last_application_query = execute_application_command(
             self,
             VisualizeCommand(view=self.tabs.tabText(self.tabs.currentIndex())),
+            refresh=False,
         )
         plan_name = self.plan_combo.currentText()
         run_name = self.run_combo.currentText()
@@ -382,7 +383,11 @@ class VisualizationPanel(BasePanel):
 
     def update_info(self):
         """Update the Sidebar Info Panel and refresh combos."""
-        self.last_saliency_query = execute_application_command(self, SaliencyCommand())
+        self.last_saliency_query = execute_application_command(
+            self,
+            SaliencyCommand(),
+            refresh=False,
+        )
         if hasattr(self, "sidebar"):
             self.sidebar.update_info()
 

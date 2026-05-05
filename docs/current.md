@@ -751,11 +751,13 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   confirmation。mock / unit-test compatibility fallback 仍保留，但 real `Study` path 走
   `ApplicationService.execute()`。
 - UI refresh 仍是混合式：controller observer events、panel-local manual refresh、tab switch
-  refresh、command result 後局部 refresh 和 ChatPanel / agent Qt signal path 並存。這能支撐
-  目前 baseline，但不是 target architecture closure。下一個 architecture cleanup milestone
-  應是 `UI Command Refresh Coordinator + Controller Fallback Audit`：所有 mutating command
-  成功後由集中 coordinator 依 `CommandResult.changed_state` refresh dataset / preprocess /
-  training / analysis / assistant capability state，而不是每個 action handler 自己猜刷新範圍。
+  refresh、command result 後局部 refresh 和 ChatPanel / agent Qt signal path 並存。第一個
+  coordinator slice 已新增 `XBrainLab.ui.refresh_coordinator.refresh_after_command()`，real
+  `Study` 的 `execute_application_command()` 會依 `CommandResult.changed_state` 刷新 dataset /
+  preprocess / training / analysis panels、main info panel 和 assistant backend status；query-only
+  evaluation / visualization refresh 會關閉二次 refresh，coordinator 也有 re-entrancy guard。這是
+  target direction 的 first slice，不是 target closure；後續仍要把剩餘 manual refresh /
+  controller observer path 收斂，並完整 audit product runtime fallback。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training
@@ -815,9 +817,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
    services、Preprocess command service，以及 State / Query services；下一輪應檢查是否還有
    UI / agent / MCP 旁路或 wrapper compatibility 心智模型，而不是再把 workflow 塞回 service。
-   新增 follow-up milestone：`UI Command Refresh Coordinator + Controller Fallback Audit`，把
-   UI mutating command 後的 refresh scope 集中到 `CommandResult.changed_state`，並把
-   product runtime controller fallback 與 mock / legacy compatibility fallback 明確分離。
+   `UI Command Refresh Coordinator + Controller Fallback Audit` 已完成第一個集中 refresh
+   helper slice；接下來要把剩餘 panel-local manual refresh / controller observer path 和
+   product runtime fallback 全面盤點，明確分離 mock / legacy compatibility fallback。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。
