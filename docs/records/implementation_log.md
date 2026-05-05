@@ -2413,5 +2413,34 @@ and does not fall back to legacy real-tool execution. Explicit UI-request tools 
 
 ### 不能宣稱完成
 
-- This is runtime boundary hardening. It does not rerun local LLM benchmark artifacts, prove
-  long-form ChatPanel autonomy, or close product acceptance.
+- This is runtime boundary hardening. The local benchmark rerun is recorded in the release gate
+  section below; neither slice proves long-form ChatPanel autonomy or product acceptance.
+
+## 2026-05-05 Tool-Call Eval Release Gate And Resource Boundary
+
+### 狀態
+
+The formal local tool-call benchmark artifacts were refreshed after the mapped-tool command
+boundary hardening. Deterministic, primary local, and fallback local artifacts all cover the same
+`121` cases; primary and fallback each ran `3` repeats and remain `121 / 121`.
+
+### 已可宣稱
+
+- The saved benchmark slice supports a thesis-candidate tool-call claim for this `121` case suite.
+- Full local eval is now documented as a release / thesis gate, not a routine small-change gate.
+- Fallback x3 on RTX 5070 Ti 16GB has recorded resource pressure evidence.
+
+### Evidence 入口
+
+- Dashboard：`artifacts/agent_evals/dashboard.md`
+- Primary：`artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.json`
+- Fallback：`artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.json`
+- Resource pressure：`artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not prove product completion, human Windows desktop acceptance, mature import wizard UX,
+  MCP HTTP / long-running jobs, or long autonomous ChatPanel workflow.
+- Future verifier / normalizer / prompt / UI-refresh slices should use the fast dev or candidate
+  eval gate unless they are updating a formal release / thesis benchmark claim.

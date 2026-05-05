@@ -217,7 +217,9 @@
   load / attach labels。
 - 最新 agent execution boundary cleanup 已讓 real `Study` mapped workflow tools 在缺少必要參數而
   不能組成 ApplicationService command 時，回 structured input failure 並避免 legacy real-tool
-  fallback。這補上 runtime safety；local 121-case benchmark 尚未因此重跑。
+  fallback。這補上 runtime safety；同日後續 release / thesis gate 已刷新 deterministic、primary
+  local 和 fallback local `121` case artifacts，三者仍為 `121 / 121`。fallback full x3
+  resource artifact 顯示 RTX 5070 Ti 16GB 幾乎滿載，後續小修不可預設重跑 fallback x3。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。
@@ -302,6 +304,11 @@
   `artifacts/agent_evals/latest.json` / `.md`，deterministic `121 / 121` x `3` pass。primary /
   fallback 真 local model也已用 cached non-China models 各重跑 `3` 次，兩者都是 `121 / 121`；
   dashboard 已刷新為 deterministic / primary / fallback 同套 cases。
+- Tool-call eval gate 已分層：fast dev gate 只跑 deterministic changed / failed cases、repeat `1`
+  且不跑 fallback；candidate gate 才跑 primary affected families、repeat `1` 或 `2`；release /
+  thesis gate 才跑 deterministic full suite、primary full x3、fallback full x3 和 dashboard。
+  full local gate 前必須記錄 disk / cache / VRAM preflight；本輪 fallback rerun 的 resource pressure
+  已保存到 `artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.*`。
 - MCP stdio external-client walkthrough 已新增：
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` 是只依賴 Python standard library 的 client。
   - client 會啟動 prepared XBrainLab runtime 內的 `scripts/dev/run_mcp_server.py`，並保存

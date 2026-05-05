@@ -8502,5 +8502,39 @@
   - `poetry run basedpyright XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
     -> `0 errors, 0 warnings, 0 notes`.
 - 不能宣稱：
-  - This hardens runtime safety for mapped tools. It does not rerun local LLM primary / fallback
-    artifacts, prove long autonomous ChatPanel operation, or complete agent product acceptance.
+  - This hardens runtime safety for mapped tools. The local benchmark rerun is recorded in the
+    release gate entry below; neither slice proves long autonomous ChatPanel operation or complete
+    agent product acceptance.
+
+### 2026-05-05 Local tool-call release gate and eval layering
+
+- scope：
+  - Refresh formal local tool-call benchmark artifacts after mapped-tool command boundary hardening.
+  - Record the new eval gate policy so future small slices do not automatically trigger full
+    primary / fallback x3 local eval.
+- 做了什麼：
+  - Deterministic artifact was already refreshed at
+    `artifacts/agent_evals/latest.json` / `.md`, `121 / 121`.
+  - Primary full x3 completed with `microsoft/Phi-4-mini-instruct`, `121 / 121`. It initially wrote
+    to `artifacts/agent_evals/` root; the generated artifact was moved into
+    `artifacts/agent_evals/local_primary/` and path metadata was corrected without rerunning.
+  - Fallback full x3 completed with `microsoft/Phi-3.5-mini-instruct`, `121 / 121`, written to
+    `artifacts/agent_evals/local_fallback/`.
+  - Dashboard refreshed:
+    `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`.
+  - Added resource pressure artifact:
+    `artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.md` / `.json`.
+- resource notes：
+  - During fallback x3, RTX 5070 Ti showed `15764 MiB` used, `232 MiB` free, GPU util `99%`,
+    process elapsed `38:40`, RSS `2330376 KB`.
+  - Approximate fallback wall time was about `41 min`.
+  - This is a high-pressure release / thesis gate on 16GB VRAM, not a default dev gate.
+- gate policy：
+  - Fast dev gate：deterministic eval, changed / failed cases only, repeat `1`, no fallback model.
+  - Candidate gate：primary model, affected case families, repeat `1` or `2`.
+  - Release / thesis gate：deterministic full suite, primary full x3, fallback full x3, dashboard
+    refresh, resource pressure recorded.
+- 不能宣稱：
+  - This supports the saved `121` case tool-call benchmark slice only.
+  - It does not prove human desktop acceptance, mature import wizard UX, MCP HTTP / long-running
+    jobs, or long autonomous ChatPanel workflow.

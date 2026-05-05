@@ -350,7 +350,14 @@ response，不算已執行。後續 recipe remap schema follow-up 又把 determi
 target clarification；local primary / fallback 已用 cached non-China local models 各重跑 `3`
 次，primary `microsoft/Phi-4-mini-instruct` 和 fallback `microsoft/Phi-3.5-mini-instruct`
 都是 `121 / 121`，dashboard 已刷新。這支撐目前 remap-expanded benchmark slice；仍不等於
-UI usability、Windows launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。後續
+UI usability、Windows launcher、雙螢幕 / DPI、長時間桌面 session 或 product completion。最新
+agent mapped-tool command boundary hardening 後也已完成同一 `121` case release / thesis gate
+rerun；fallback full x3 在 RTX 5070 Ti 16GB 上觀察到 high resource pressure（約 `15764 MiB`
+VRAM used、`232 MiB` free、fallback wall time 約 `41 min`），resource artifact 在
+`artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.*`。後續 tool-call eval 必須分層：
+fast dev gate 跑 deterministic changed / failed cases、repeat `1`、不跑 fallback；candidate gate
+只跑 primary affected families；只有正式 release / thesis claim 才跑 full deterministic +
+primary x3 + fallback x3 dashboard。後續
 ChatPanel local-model UI
 walkthrough 已新增一輪真模型可見回覆 evidence：
 `scripts/dev/capture_chatpanel_local_walkthrough.py` 會在 `HF_HUB_OFFLINE=1` /
@@ -902,7 +909,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    composition 和整體產品感。
 6. 將 `121` case remap-expanded tool-call dashboard 整理成 thesis report evidence；目前
    deterministic / primary / fallback 都是 `121 / 121`，但不要把它擴張成 UI / launcher /
-   import wizard 產品完成 claim。
+   import wizard 產品完成 claim。日常 tool-call 修正不可預設 full primary / fallback x3；
+   validation gate 分成 deterministic changed-case fast gate、primary subset candidate gate，以及
+   release / thesis full local gate。full fallback x3 需要先做 VRAM / disk / cache preflight，並把
+   latency / resource pressure 寫進 artifact。
 7. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
    主評分。
 

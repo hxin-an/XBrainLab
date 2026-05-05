@@ -171,7 +171,9 @@ Goal 1 後續也新增真 local LLM tool-call runner；目前 thesis-candidate l
 missing remap target clarification，deterministic、primary local 和 fallback local artifacts 都是
 `121 / 121`，primary / fallback raw output 各重跑 `3` 次。這支撐目前已重跑的 benchmark
 slice，不可替代 ChatPanel 長時間 workflow、Windows launcher、UI usability 或 human desktop
-acceptance。最新 agent mapped-tool command-surface hardening 尚未重跑 local `121` case artifacts。
+acceptance。最新 agent mapped-tool command-surface hardening 已完成 release/thesis gate rerun：
+deterministic、primary local 和 fallback local artifacts 仍是同一 `121 / 121` suite，且 fallback
+rerun 記錄了 16 GB VRAM 邊界上的 resource pressure。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端

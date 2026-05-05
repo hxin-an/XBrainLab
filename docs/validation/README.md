@@ -34,6 +34,14 @@ closure。
 | UI-observable automated walkthrough | automated replay 透過真 Qt UI path 產生 screenshots、visible text、button state、workflow state、transcript 和 backend state snapshot，可證明主要 UI path 在 replay 條件下可操作。 | 不能等同真人 Windows desktop acceptance，也不能證明雙螢幕、DPI、launcher、長時間 local model session 都可用。 |
 | Human desktop acceptance | 真人從 Windows desktop launcher 在實際螢幕 / DPI / GPU / local model session 操作並確認。 | 這層目前仍未完成；未完成前不能宣稱 product-complete。 |
 
+Tool-call eval 另採分層 gate，避免每個小修都消耗完整 local benchmark：
+
+| Gate | 使用時機 | 模型 / 重跑策略 |
+| --- | --- | --- |
+| Fast dev gate | verifier、normalizer、prompt、case wording、UI refresh 等日常切片。 | deterministic eval；只跑 changed / failed cases；repeat `1`；不跑 fallback model。 |
+| Candidate gate | 需要真 local model 檢查受影響 case family。 | primary model；affected case families；repeat `1` 或 `2`。 |
+| Release / thesis gate | 更新正式 benchmark claim 或 thesis evidence artifact。 | deterministic full suite；primary full suite x3；fallback full suite x3；dashboard refresh；記錄 VRAM / latency / resource pressure。 |
+
 最新使用者要求的「單一 automated human-like walkthrough」已新增：
 `scripts/dev/capture_human_like_product_walkthrough.py` 產出
 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` 和 `20` 張 screenshots。
@@ -205,9 +213,9 @@ Windows desktop acceptance.
   -> pass;
   `poetry run basedpyright XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
   -> `0 errors, 0 warnings, 0 notes`.
-- Claim boundary: this hardens runtime safety for mapped tools. It does not rerun the local
-  121-case primary/fallback benchmark, prove long autonomous ChatPanel workflow, or close product
-  acceptance.
+- Claim boundary: this hardens runtime safety for mapped tools. The formal local `121` case rerun is
+  recorded in the release/thesis gate section below; neither slice proves long autonomous ChatPanel
+  workflow or product acceptance.
 
 2026-05-05 deterministic tool-call eval follow-up:
 
@@ -3754,6 +3762,37 @@ thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
   `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
   `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`;
   `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+
+2026-05-05 local 121-case release/thesis gate rerun:
+
+- Rerun purpose:
+  - Update the formal benchmark artifact after agent mapped-tool command-surface hardening.
+  - This is a release / thesis evidence gate, not the default gate for small verifier, normalizer,
+    prompt, case wording, or UI refresh changes.
+- Deterministic artifact:
+  - `artifacts/agent_evals/latest.json` / `.md` -> `121 / 121`.
+- Primary local artifact:
+  - `artifacts/agent_evals/local_primary/local_microsoft_phi_4_mini_instruct.json`
+  - `microsoft/Phi-4-mini-instruct`, repeat count `3`, `121 / 121`, stability `100%`.
+  - The run first wrote to the eval root by mistake; the artifact was moved into
+    `local_primary/` without rerunning the model, and its path metadata was corrected.
+- Fallback local artifact:
+  - `artifacts/agent_evals/local_fallback/local_microsoft_phi_3.5_mini_instruct.json`
+  - `microsoft/Phi-3.5-mini-instruct`, repeat count `3`, `121 / 121`, stability `100%`.
+- Dashboard:
+  - `poetry run python scripts/agent/evals/write_tool_call_eval_dashboard.py --eval-dir artifacts/agent_evals`
+    -> `artifacts/agent_evals/dashboard.md` shows deterministic / primary / fallback all on the
+    same `121` cases with `100%` pass and `100%` repeated-run stability.
+- Resource pressure:
+  - resource artifact:
+    `artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.md` /
+    `artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.json`.
+  - observed fallback pressure on RTX 5070 Ti 16GB:
+    `15764 MiB` used, `232 MiB` free, GPU util `99%`, process elapsed `38:40`,
+    approximate fallback wall time about `41 min`.
+  - claim boundary: fallback full x3 is high-pressure release/thesis evidence, not a routine
+    development gate. Future local eval must run resource preflight and prefer deterministic /
+    changed cases / primary subsets unless updating a formal benchmark claim.
 
 舊 `scripts/agent/benchmarks/*` 可以作為歷史參考，但不能直接視為新的 thesis evidence。新的 scoring system 需要對齊 local-only runtime、State Manager、Verification Layer 和未來 Application Service / Command API。
 
