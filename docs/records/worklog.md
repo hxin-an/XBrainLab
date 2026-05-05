@@ -8721,3 +8721,43 @@
 - 不能宣稱：
   - This is not full command-driven UI refresh closure. It does not remove controller observers,
     replace event-specific TrainingPanel callbacks, or complete human desktop acceptance.
+
+### 2026-05-05 Local eval CLI resource preflight guard
+
+- scope：
+  - Prevent routine agent/tool verifier or UI slices from accidentally starting full primary /
+    fallback x3 local eval under RTX 5070 Ti 16GB VRAM pressure.
+  - Keep user-requested eval layering executable in code, not only in docs.
+- red / focused tests：
+  - Added tests that a fallback repeat-`3` full-suite gate under `232 MiB` free VRAM is blocked.
+  - Added tests that the same high-pressure VRAM state still allows a changed-case repeat-`1`
+    gate.
+  - Added CLI test requiring `resource_preflight.json` to be written and local eval not to start
+    when the full fallback gate is blocked.
+- 做了什麼：
+  - `scripts/agent/evals/run_local_tool_call_eval.py` now performs local eval resource preflight
+    before `LLMEngine` startup.
+  - Preflight records selected case count, gate type, model role, repeat count, cache usage,
+    available disk, estimated model VRAM, and first `nvidia-smi` GPU memory row.
+  - If repeat `3` full local eval sees high VRAM pressure, the CLI writes `resource_preflight.json`
+    / `.md` and returns exit code `2`.
+  - Successful local eval results now carry `resource_preflight` metadata into JSON / Markdown
+    artifacts.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py::test_resource_preflight_blocks_full_local_gate_under_vram_pressure tests/unit/scripts/test_run_local_tool_call_eval.py::test_resource_preflight_allows_changed_case_gate_under_vram_pressure tests/unit/scripts/test_run_local_tool_call_eval.py::test_cli_writes_preflight_artifact_and_aborts_full_fallback -q`
+    -> `3 passed`.
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py -q`
+    -> `37 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict`
+    -> pass with the existing MkDocs Material 2.0 advisory banner.
+- 不能宣稱：
+  - This does not rerun local eval or update thesis benchmark scores. It only guards the local eval
+    CLI from unsafe/default full-gate usage under high resource pressure.

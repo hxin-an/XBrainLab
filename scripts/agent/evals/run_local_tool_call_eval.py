@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -35,8 +36,12 @@ from XBrainLab.llm.agent.verifier import PlaceholderArgumentValidator, Verificat
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.model_catalog import (
+    available_disk_bytes,
+    cache_usage_bytes,
     default_local_model_id,
     fallback_local_model_id,
+    format_bytes,
+    local_model_spec,
 )
 from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import READ_ONLY_TOOLS, TOOL_TO_COMMAND
@@ -70,6 +75,10 @@ TOOL_INTENTS: dict[str, str] = {
     "query_state": "query_state",
     "get_dataset_info": "query_state",
 }
+
+VRAM_PRESSURE_FREE_MIB = 2048
+VRAM_PRESSURE_USED_RATIO = 0.90
+FULL_LOCAL_GATE_REPEAT_COUNT = 3
 
 
 def build_prompt_messages(case: EvalCase) -> list[dict[str, str]]:
@@ -353,6 +362,7 @@ def run_local_eval(
     case_limit: int | None = None,
     max_new_tokens: int = 160,
     generator: TextGenerator | None = None,
+    resource_preflight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run local-model evals and return a JSON-friendly report."""
     cases = _select_cases(build_eval_cases(), case_ids=case_ids, case_limit=case_limit)
@@ -423,6 +433,7 @@ def run_local_eval(
         "repeat_count": repeat_count,
         "exploratory": repeat_count < 3 or len(cases) < 50,
         "runtime": runtime,
+        "resource_preflight": resource_preflight or {},
         "method_references": METHOD_REFERENCES,
         "case_source_path": str(Path(__file__).with_name("run_tool_call_eval.py")),
         "fixture_source_paths": [
@@ -510,9 +521,29 @@ def render_local_markdown_report(result: dict[str, Any]) -> str:
         f"- runtime classification: `{runtime.get('classification')}`",
         f"- cache usage: `{runtime.get('cache_usage')}`",
         "",
-        "## Failure Taxonomy",
-        "",
     ]
+    preflight = result.get("resource_preflight") or {}
+    if preflight:
+        gpu = preflight.get("gpu") or {}
+        header.extend(
+            [
+                "## Resource Preflight",
+                "",
+                f"- ok: `{preflight.get('ok')}`",
+                f"- gate: `{preflight.get('gate')}`",
+                f"- resource pressure: `{preflight.get('resource_pressure')}`",
+                f"- selected cases: `{preflight.get('selected_cases')}`",
+                f"- cache usage: `{preflight.get('cache_usage')}`",
+                f"- available disk: `{preflight.get('available_disk')}`",
+                f"- estimated VRAM: `{preflight.get('estimated_vram_gb')}` GB",
+                f"- GPU: `{gpu.get('name', 'unknown')}`",
+                f"- VRAM used/free/total MiB: `{gpu.get('used_mib', 'n/a')}` / "
+                f"`{gpu.get('free_mib', 'n/a')}` / `{gpu.get('total_mib', 'n/a')}`",
+                f"- message: {preflight.get('message')}",
+                "",
+            ],
+        )
+    header.extend(["## Failure Taxonomy", ""])
     taxonomy = result["failure_taxonomy"]
     if taxonomy:
         header.extend(
@@ -766,7 +797,197 @@ def _resolve_model(args: argparse.Namespace) -> str:
     return config.model_name
 
 
-def main() -> int:
+def build_local_eval_resource_preflight(
+    *,
+    model_id: str,
+    model_role: str,
+    repeat_count: int,
+    case_ids: list[str] | None,
+    case_limit: int | None,
+    cache_dir: str | None = None,
+    cache_usage_bytes_value: int | None = None,
+    available_disk_bytes_value: int | None = None,
+    gpu_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return disk/cache/VRAM preflight metadata for a local eval run."""
+    config = LLMConfig.load_from_file() or LLMConfig()
+    resolved_cache_dir = cache_dir or config.cache_dir
+    cache_bytes = (
+        cache_usage_bytes_value
+        if cache_usage_bytes_value is not None
+        else cache_usage_bytes(resolved_cache_dir)
+    )
+    disk_bytes = (
+        available_disk_bytes_value
+        if available_disk_bytes_value is not None
+        else available_disk_bytes(resolved_cache_dir)
+    )
+    selected_cases = len(
+        _select_cases(
+            build_eval_cases(),
+            case_ids=case_ids,
+            case_limit=case_limit,
+        ),
+    )
+    full_suite = case_ids is None and case_limit is None
+    full_local_gate = full_suite and repeat_count >= FULL_LOCAL_GATE_REPEAT_COUNT
+    spec = local_model_spec(model_id)
+    estimated_vram_gb = spec.estimated_vram_gb if spec is not None else None
+    gpu = gpu_snapshot if gpu_snapshot is not None else _collect_gpu_memory_snapshot()
+    pressure = _resource_pressure(gpu, estimated_vram_gb)
+    ok = not (full_local_gate and pressure == "high")
+    gate = (
+        "release/thesis full local"
+        if full_local_gate
+        else "fast/candidate local subset"
+    )
+    if ok:
+        message = (
+            "Resource preflight passed for this eval gate."
+            if pressure != "high"
+            else "GPU memory is under high pressure; run only changed cases or a "
+            "small primary subset until memory is freed."
+        )
+    else:
+        message = (
+            "VRAM is nearly full; refusing to start a full local x3 eval. "
+            "Run deterministic or changed-case eval first, or free GPU memory "
+            "before release/thesis local eval."
+        )
+
+    return {
+        "ok": ok,
+        "message": message,
+        "gate": gate,
+        "model_id": model_id,
+        "model_role": model_role,
+        "repeat_count": repeat_count,
+        "selected_cases": selected_cases,
+        "full_suite": full_suite,
+        "full_local_gate": full_local_gate,
+        "resource_pressure": pressure,
+        "cache_dir": resolved_cache_dir,
+        "cache_usage_bytes": cache_bytes,
+        "cache_usage": format_bytes(cache_bytes),
+        "available_disk_bytes": disk_bytes,
+        "available_disk": format_bytes(disk_bytes),
+        "estimated_vram_gb": estimated_vram_gb,
+        "gpu": gpu,
+    }
+
+
+def _collect_gpu_memory_snapshot() -> dict[str, Any]:
+    """Read current GPU memory from nvidia-smi without making it mandatory."""
+    command = [
+        "nvidia-smi",
+        "--query-gpu=index,name,memory.total,memory.used,memory.free",
+        "--format=csv,noheader,nounits",
+    ]
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed nvidia-smi command, no shell.
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": False, "reason": str(exc)}
+    if completed.returncode != 0:
+        return {
+            "available": False,
+            "reason": (completed.stderr or completed.stdout).strip(),
+        }
+    first_line = next(
+        (line.strip() for line in completed.stdout.splitlines() if line.strip()),
+        "",
+    )
+    if not first_line:
+        return {"available": False, "reason": "nvidia-smi returned no GPU rows."}
+    parts = [part.strip() for part in first_line.split(",", maxsplit=4)]
+    if len(parts) != 5:
+        return {
+            "available": False,
+            "reason": f"Unexpected nvidia-smi row: {first_line}",
+        }
+    try:
+        index = int(parts[0])
+        total_mib = int(parts[2])
+        used_mib = int(parts[3])
+        free_mib = int(parts[4])
+    except ValueError:
+        return {
+            "available": False,
+            "reason": f"Unexpected nvidia-smi row: {first_line}",
+        }
+    return {
+        "available": True,
+        "index": index,
+        "name": parts[1],
+        "total_mib": total_mib,
+        "used_mib": used_mib,
+        "free_mib": free_mib,
+    }
+
+
+def _resource_pressure(
+    gpu: dict[str, Any],
+    estimated_vram_gb: float | None,
+) -> str:
+    if not gpu.get("available"):
+        return "unknown"
+    total_mib = _int_or_zero(gpu.get("total_mib"))
+    used_mib = _int_or_zero(gpu.get("used_mib"))
+    free_mib = _int_or_zero(gpu.get("free_mib"))
+    if total_mib <= 0:
+        return "unknown"
+    estimated_floor = int((estimated_vram_gb or 0.0) * 1024 * 0.25)
+    free_threshold = max(VRAM_PRESSURE_FREE_MIB, estimated_floor)
+    if free_mib < free_threshold or used_mib / total_mib >= VRAM_PRESSURE_USED_RATIO:
+        return "high"
+    return "normal"
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def write_resource_preflight_artifact(
+    preflight: dict[str, Any],
+    output_dir: Path,
+) -> tuple[Path, Path]:
+    """Persist a resource preflight result when local eval is blocked."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "resource_preflight.json"
+    md_path = output_dir / "resource_preflight.md"
+    json_path.write_text(_compact_json(preflight), encoding="utf-8")
+    gpu = preflight.get("gpu") or {}
+    lines = [
+        "# Local Tool-Call Eval Resource Preflight",
+        "",
+        f"- ok: `{preflight.get('ok')}`",
+        f"- gate: `{preflight.get('gate')}`",
+        f"- model: `{preflight.get('model_id')}`",
+        f"- repeat count: `{preflight.get('repeat_count')}`",
+        f"- selected cases: `{preflight.get('selected_cases')}`",
+        f"- resource pressure: `{preflight.get('resource_pressure')}`",
+        f"- cache usage: `{preflight.get('cache_usage')}`",
+        f"- available disk: `{preflight.get('available_disk')}`",
+        f"- estimated VRAM: `{preflight.get('estimated_vram_gb')}` GB",
+        f"- GPU: `{gpu.get('name', 'unknown')}`",
+        f"- VRAM used/free/total MiB: `{gpu.get('used_mib', 'n/a')}` / "
+        f"`{gpu.get('free_mib', 'n/a')}` / `{gpu.get('total_mib', 'n/a')}`",
+        f"- message: {preflight.get('message')}",
+        "",
+    ]
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+    return json_path, md_path
+
+
+def main(argv: list[str] | None = None) -> int:
     """CLI entry point."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default=None, help="Explicit supported model id.")
@@ -785,14 +1006,32 @@ def main() -> int:
         default="artifacts/agent_evals",
         help="Directory for local eval artifacts.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    model_id = _resolve_model(args)
+    resource_preflight = build_local_eval_resource_preflight(
+        model_id=model_id,
+        model_role=args.model_role,
+        repeat_count=args.repeat_count,
+        case_ids=args.case_id,
+        case_limit=args.case_limit,
+    )
+    if not resource_preflight["ok"]:
+        json_path, md_path = write_resource_preflight_artifact(
+            resource_preflight,
+            Path(args.output_dir),
+        )
+        print(resource_preflight["message"])
+        print(f"Wrote {json_path}")
+        print(f"Wrote {md_path}")
+        return 2
 
     result = run_local_eval(
-        model_id=_resolve_model(args),
+        model_id=model_id,
         repeat_count=args.repeat_count,
         case_ids=args.case_id,
         case_limit=args.case_limit,
         max_new_tokens=args.max_new_tokens,
+        resource_preflight=resource_preflight,
     )
     json_path, md_path = write_local_artifacts(result, Path(args.output_dir))
     print(f"Wrote {json_path}")

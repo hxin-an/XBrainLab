@@ -360,7 +360,11 @@ VRAM used、`232 MiB` free、fallback wall time 約 `41 min`），resource artif
 `artifacts/agent_evals/local-eval-resource-pressure-2026-05-05.*`。後續 tool-call eval 必須分層：
 fast dev gate 跑 deterministic changed / failed cases、repeat `1`、不跑 fallback；candidate gate
 只跑 primary affected families；只有正式 release / thesis claim 才跑 full deterministic +
-primary x3 + fallback x3 dashboard。後續
+primary x3 + fallback x3 dashboard。最新 CLI guard 也已讓
+`scripts/agent/evals/run_local_tool_call_eval.py` 在啟動 local model 前寫入 disk / cache /
+`nvidia-smi` VRAM preflight；若 repeat `3` 的 full local gate 偵測到 high VRAM pressure，會先寫
+`resource_preflight.json` / `.md` 並拒絕啟動 full local eval，避免 routine slice 誤跑 full
+fallback x3。後續
 ChatPanel local-model UI
 walkthrough 已新增一輪真模型可見回覆 evidence：
 `scripts/dev/capture_chatpanel_local_walkthrough.py` 會在 `HF_HUB_OFFLINE=1` /
@@ -927,7 +931,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    import wizard 產品完成 claim。日常 tool-call 修正不可預設 full primary / fallback x3；
    validation gate 分成 deterministic changed-case fast gate、primary subset candidate gate，以及
    release / thesis full local gate。full fallback x3 需要先做 VRAM / disk / cache preflight，並把
-   latency / resource pressure 寫進 artifact。
+   latency / resource pressure 寫進 artifact；local eval CLI 現在會在 full local x3 且 VRAM high
+   pressure 時先產生 `resource_preflight.*` 並停止，平常請用 deterministic / changed cases /
+   primary subset gate。
 7. external EEG dataset experiment / statistical reporting 只作 pipeline support，不作 thesis
    主評分。
 

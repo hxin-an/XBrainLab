@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 from scripts.agent.evals.run_local_tool_call_eval import (
+    build_local_eval_resource_preflight,
     build_prompt_messages,
+    main,
     prediction_from_model_output,
     run_local_eval,
     score_local_case,
@@ -537,3 +539,104 @@ def test_run_local_eval_with_fake_generator_and_writes_artifacts(tmp_path: Path)
         {"tool_name": "scan_source", "is_valid": True, "error_message": None}
     ]
     assert "XBrainLab Local Tool-Call Eval" in md_path.read_text(encoding="utf-8")
+
+
+def test_resource_preflight_blocks_full_local_gate_under_vram_pressure():
+    preflight = build_local_eval_resource_preflight(
+        model_id="microsoft/Phi-3.5-mini-instruct",
+        model_role="fallback",
+        repeat_count=3,
+        case_ids=None,
+        case_limit=None,
+        cache_dir="/tmp/xbrainlab-models",
+        cache_usage_bytes_value=0,
+        available_disk_bytes_value=100_000_000_000,
+        gpu_snapshot={
+            "available": True,
+            "index": 0,
+            "name": "RTX 5070 Ti",
+            "total_mib": 16_384,
+            "used_mib": 16_152,
+            "free_mib": 232,
+        },
+    )
+
+    assert preflight["ok"] is False
+    assert preflight["resource_pressure"] == "high"
+    assert preflight["full_local_gate"] is True
+    assert "full local" in preflight["message"]
+
+
+def test_resource_preflight_allows_changed_case_gate_under_vram_pressure():
+    preflight = build_local_eval_resource_preflight(
+        model_id="microsoft/Phi-3.5-mini-instruct",
+        model_role="fallback",
+        repeat_count=1,
+        case_ids=["empty-scan-source-folder"],
+        case_limit=None,
+        cache_dir="/tmp/xbrainlab-models",
+        cache_usage_bytes_value=0,
+        available_disk_bytes_value=100_000_000_000,
+        gpu_snapshot={
+            "available": True,
+            "index": 0,
+            "name": "RTX 5070 Ti",
+            "total_mib": 16_384,
+            "used_mib": 16_152,
+            "free_mib": 232,
+        },
+    )
+
+    assert preflight["ok"] is True
+    assert preflight["resource_pressure"] == "high"
+    assert preflight["full_local_gate"] is False
+    assert preflight["selected_cases"] == 1
+
+
+def test_cli_writes_preflight_artifact_and_aborts_full_fallback(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval._collect_gpu_memory_snapshot",
+        lambda: {
+            "available": True,
+            "index": 0,
+            "name": "RTX 5070 Ti",
+            "total_mib": 16_384,
+            "used_mib": 16_152,
+            "free_mib": 232,
+        },
+    )
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval.cache_usage_bytes",
+        lambda _cache_dir: 0,
+    )
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval.available_disk_bytes",
+        lambda _cache_dir: 100_000_000_000,
+    )
+    monkeypatch.setattr(
+        "scripts.agent.evals.run_local_tool_call_eval.run_local_eval",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("local eval should not start under pressure"),
+        ),
+    )
+
+    exit_code = main(
+        [
+            "--model-role",
+            "fallback",
+            "--repeat-count",
+            "3",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert exit_code == 2
+    artifact = tmp_path / "resource_preflight.json"
+    assert artifact.exists()
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["resource_pressure"] == "high"

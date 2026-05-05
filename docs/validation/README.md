@@ -42,6 +42,12 @@ Tool-call eval 另採分層 gate，避免每個小修都消耗完整 local bench
 | Candidate gate | 需要真 local model 檢查受影響 case family。 | primary model；affected case families；repeat `1` 或 `2`。 |
 | Release / thesis gate | 更新正式 benchmark claim 或 thesis evidence artifact。 | deterministic full suite；primary full suite x3；fallback full suite x3；dashboard refresh；記錄 VRAM / latency / resource pressure。 |
 
+`scripts/agent/evals/run_local_tool_call_eval.py` now performs a CLI resource preflight before
+loading the local model. It records disk/cache and `nvidia-smi` VRAM state in the result artifact;
+if a repeat-`3` full local gate sees high VRAM pressure, it writes `resource_preflight.json` /
+`.md` and exits before starting the model. This guard is for local eval execution only; routine
+development still should use deterministic changed cases or primary subsets.
+
 最新使用者要求的「單一 automated human-like walkthrough」已新增：
 `scripts/dev/capture_human_like_product_walkthrough.py` 產出
 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` 和 `20` 張 screenshots。
@@ -3836,6 +3842,22 @@ thesis evidence 需要一套可重跑的 agent tool-call 評分工具。
   - claim boundary: fallback full x3 is high-pressure release/thesis evidence, not a routine
     development gate. Future local eval must run resource preflight and prefer deterministic /
     changed cases / primary subsets unless updating a formal benchmark claim.
+
+2026-05-05 local eval CLI resource guard:
+
+- Implementation:
+  - `scripts/agent/evals/run_local_tool_call_eval.py` now calls a resource preflight before loading
+    `LLMEngine`.
+  - The preflight records selected case count, gate type, model role, repeat count, cache usage,
+    available disk, estimated model VRAM, and the first `nvidia-smi` GPU memory row.
+  - A repeat-`3` full local gate with high VRAM pressure is blocked before model startup and writes
+    `resource_preflight.json` / `.md` into the requested output directory.
+- Focused gate:
+  `poetry run pytest --capture=sys tests/unit/scripts/test_run_local_tool_call_eval.py -q`
+  -> `37 passed`.
+- Claim boundary:
+  this prevents accidental full local x3 runs under obvious VRAM pressure. It does not prove local
+  model accuracy, long-run stability, or release/thesis evidence by itself.
 
 舊 `scripts/agent/benchmarks/*` 可以作為歷史參考，但不能直接視為新的 thesis evidence。新的 scoring system 需要對齊 local-only runtime、State Manager、Verification Layer 和未來 Application Service / Command API。
 

@@ -2443,6 +2443,33 @@ boundary hardening. Deterministic, primary local, and fallback local artifacts a
 
 - This does not prove product completion, human Windows desktop acceptance, mature import wizard UX,
   MCP HTTP / long-running jobs, or long autonomous ChatPanel workflow.
+
+## 2026-05-05 Local Eval CLI Resource Preflight Guard
+
+### 狀態
+
+The local tool-call eval CLI now performs disk / cache / `nvidia-smi` VRAM preflight before loading
+the local model. Repeat-`3` full-suite local gates are refused when VRAM pressure is high; the CLI
+writes `resource_preflight.json` and `.md` to the requested output directory instead of starting a
+full local run.
+
+### 已可宣稱
+
+- Routine verifier / prompt / UI slices have a programmatic guard against accidentally launching a
+  full primary/fallback x3 eval under obvious VRAM pressure.
+- Local eval artifacts can include the resource preflight metadata used before model startup.
+
+### Evidence 入口
+
+- Source：`scripts/agent/evals/run_local_tool_call_eval.py`
+- Tests：`tests/unit/scripts/test_run_local_tool_call_eval.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a local eval execution guard. It does not replace the release/thesis local model run,
+  dashboard refresh, or resource/latency evidence when a formal benchmark claim is intentionally
+  updated.
 - Future verifier / normalizer / prompt / UI-refresh slices should use the fast dev or candidate
   eval gate unless they are updating a formal release / thesis benchmark claim.
 
