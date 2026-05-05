@@ -30,12 +30,12 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+82576f5 ui: prefer train capability over stale controller
 bb57beb ui: use backend truth for split replacement
+7a59e39 docs: refresh handoff after split audit
 e2a7d90 docs: refresh product handoff after ui audit
 8a6722a test: guard post-command controller echo
 cc302bc ui: trust training model command result
-6e1e254 ui: keep file import on interpretation path
-845396d ui: guard visualization montage fallback
 ```
 
 ## What Was Closed In This Slice
@@ -75,6 +75,11 @@ cc302bc ui: trust training model command result
     whether existing generated datasets / trainer must be cleared before a new split.
   - stale `TrainingController.has_datasets()` / `get_trainer()` no longer skips confirmation and
     `ClearDatasetsCommand`.
+- Start Training command truth:
+  - real command-capable path uses backend `train` capability truth to decide whether to dispatch
+    `TrainCommand`.
+  - stale `TrainingController.is_training()` no longer silently skips an enabled backend train
+    command.
 
 ## Validation Already Run
 
@@ -120,7 +125,7 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
   tests/unit/ui/training/test_training_panel.py \
   -q
-# 49 passed
+# 50 passed
 
 poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
 # 20 passed
