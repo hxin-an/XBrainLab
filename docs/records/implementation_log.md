@@ -1931,3 +1931,29 @@ header 內縮或外溢。Review Summary 也改成低對比 dark-theme alternate 
 
 - 這不是 Windows Desktop 真人 click-through、雙螢幕 / DPI acceptance，或完整 mature import
   wizard redesign。
+
+## 2026-05-05 UI Refresh Bridge Helper Cleanup
+
+### 狀態
+
+Simple observer refresh wiring now goes through `BasePanel._create_refresh_bridge()`. Dataset,
+Preprocess, Training, Evaluation, and Visualization panels no longer repeat
+`_create_bridge(..., refresh_from_observer)` for ordinary observer events.
+
+### 已可宣稱
+
+- Simple observer refresh call sites are easier to audit and still delegate to
+  `refresh_coordinator.refresh_panel()`.
+- Callback-specific observer handlers remain explicit for event-specific behavior.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/core/base_panel.py`, `XBrainLab/ui/panels/*/panel.py`
+- Tests：`tests/unit/ui/core/test_base_panel.py`, `tests/unit/ui/test_panel_event_bridges.py`,
+  `tests/unit/ui/test_refresh_coordinator.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是 full command-driven UI refresh closure；observer/manual/tab-switch/assistant refresh 仍是
+  mixed model，`UI Command Refresh Coordinator + Controller Fallback Audit` 仍是 follow-up。

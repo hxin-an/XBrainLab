@@ -81,6 +81,14 @@ class BasePanel(QWidget):
         """Refresh this panel from a backend observer event via coordinator."""
         return refresh_panel(self)
 
+    def _create_refresh_bridge(
+        self,
+        controller: Observable,
+        event: str,
+    ) -> QtObserverBridge:
+        """Create a bridge for observer events that only refresh this panel."""
+        return self._create_bridge(controller, event, self.refresh_from_observer)
+
     def _create_bridge(
         self,
         controller: Observable,

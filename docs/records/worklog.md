@@ -7727,3 +7727,51 @@
 - 不能宣稱：
   - This is automated PyQt / Xvfb UI-observable evidence, not Windows Desktop human acceptance,
     dual-monitor / DPI acceptance, or complete import-wizard redesign.
+
+### 2026-05-05 19:12 UI refresh bridge helper cleanup
+
+- scope：
+  - 收斂 UI observer refresh wiring 的重複寫法，作為 `UI Command Refresh Coordinator +
+    Controller Fallback Audit` follow-up 的小保存點。
+  - 同步 reviewer finding 到 current truth / now / roadmap：backend command spine 已大幅改善，
+    但 UI refresh 仍是 mixed model，Data Interpretation 仍是 baseline wizard，不是 mature final
+    import system。
+- problem：
+  - 前一個 observer refresh cleanup 已把 simple `event -> update_panel()` 改成
+    `refresh_from_observer()`，但各 panel 仍重複 `_create_bridge(..., self.refresh_from_observer)`。
+  - 這不會造成 product bug，但讓後續 audit 較容易回退成 panel-local refresh pattern。
+- red / focused tests：
+  - 新增 `BasePanel._create_refresh_bridge()` focused test，實作前會因 helper 不存在而失敗。
+- 做了什麼：
+  - 新增 `BasePanel._create_refresh_bridge(controller, event)`，統一委派到
+    `_create_bridge(controller, event, self.refresh_from_observer)`。
+  - Dataset / Preprocess / Training / Evaluation / Visualization panel 的 simple refresh bridges
+    改用 `_create_refresh_bridge()`。
+  - 保留 import-finished、training start/stop/config/history 和 live update loop 等 named callback
+    handlers。
+  - 更新 UI architecture、current truth、now、roadmap 和 implementation log，明確記錄 command
+    spine 仍是 partially aligned，後續仍需 command-driven refresh coordinator 和 controller
+    fallback audit。
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/ui/core/test_base_panel.py::TestCreateBridge::test_create_refresh_bridge_uses_observer_refresh tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_refresh_coordinator.py -q`
+    -> `20 passed`.
+  - `poetry run ruff check XBrainLab/ui/core/base_panel.py XBrainLab/ui/panels/dataset/panel.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/core/test_base_panel.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/core/base_panel.py XBrainLab/ui/panels/dataset/panel.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/core/test_base_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `930 passed`.
+- 不能宣稱：
+  - 這不是 full command-driven UI refresh closure。
+  - 這不改變 Data Interpretation wizard maturity、Windows human desktop acceptance 或 local LLM
+    eval claim。

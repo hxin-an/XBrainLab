@@ -123,21 +123,12 @@ class TrainingPanel(BasePanel):
 
         # Connect to Dataset events (Updates info panel and check readiness)
         if self.dataset_controller:
-            self._create_bridge(
-                self.dataset_controller,
-                "data_changed",
-                self.refresh_from_observer,
-            )
-            self._create_bridge(
-                self.dataset_controller,
-                "import_finished",
-                self.refresh_from_observer,
-            )
+            self._create_refresh_bridge(self.dataset_controller, "data_changed")
+            self._create_refresh_bridge(self.dataset_controller, "import_finished")
         if self.preprocess_controller:
-            self._create_bridge(
+            self._create_refresh_bridge(
                 self.preprocess_controller,
                 "preprocess_changed",
-                self.refresh_from_observer,
             )
 
         # Event-driven update: 'training_updated' signal triggers update_loop

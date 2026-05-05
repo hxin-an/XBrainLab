@@ -77,26 +77,13 @@ class VisualizationPanel(BasePanel):
             training_ctrl = self.controller.study.get_controller("training")
 
         if training_ctrl:
-            self._create_bridge(
-                training_ctrl,
-                "training_stopped",
-                self.refresh_from_observer,
-            )
-            self._create_bridge(
-                training_ctrl,
-                "history_cleared",
-                self.refresh_from_observer,
-            )
-            self._create_bridge(
-                training_ctrl,
-                "config_changed",
-                self.refresh_from_observer,
-            )
+            self._create_refresh_bridge(training_ctrl, "training_stopped")
+            self._create_refresh_bridge(training_ctrl, "history_cleared")
+            self._create_refresh_bridge(training_ctrl, "config_changed")
         if self.preprocess_controller:
-            self._create_bridge(
+            self._create_refresh_bridge(
                 self.preprocess_controller,
                 "preprocess_changed",
-                self.refresh_from_observer,
             )
 
     def init_ui(self):

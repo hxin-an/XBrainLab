@@ -103,3 +103,20 @@ class TestCreateBridge:
         panel._create_bridge(mock_ctrl, "event_a", MagicMock())
         panel._create_bridge(mock_ctrl, "event_b", MagicMock())
         assert len(panel._bridges) == 2
+
+    def test_create_refresh_bridge_uses_observer_refresh(self, qtbot):
+        mock_ctrl = MagicMock()
+        panel = ConcretePanel(controller=mock_ctrl)
+        qtbot.addWidget(panel)
+
+        with patch.object(
+            panel, "_create_bridge", wraps=panel._create_bridge
+        ) as create:
+            bridge = panel._create_refresh_bridge(mock_ctrl, "data_changed")
+
+        assert bridge in panel._bridges
+        create.assert_called_once_with(
+            mock_ctrl,
+            "data_changed",
+            panel.refresh_from_observer,
+        )

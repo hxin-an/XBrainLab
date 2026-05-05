@@ -56,23 +56,11 @@ class PreprocessPanel(BasePanel):
     def _setup_bridges(self):
         """Register Qt observer bridges for preprocess and dataset events."""
         if self.controller:
-            self._create_bridge(
-                self.controller,
-                "preprocess_changed",
-                self.refresh_from_observer,
-            )
+            self._create_refresh_bridge(self.controller, "preprocess_changed")
 
             if self.dataset_controller:
-                self._create_bridge(
-                    self.dataset_controller,
-                    "data_changed",
-                    self.refresh_from_observer,
-                )
-                self._create_bridge(
-                    self.dataset_controller,
-                    "import_finished",
-                    self.refresh_from_observer,
-                )
+                self._create_refresh_bridge(self.dataset_controller, "data_changed")
+                self._create_refresh_bridge(self.dataset_controller, "import_finished")
 
     def init_ui(self):
         """Build the panel layout with preview, history, and sidebar widgets."""
