@@ -1,7 +1,7 @@
 """Tests for the Data Interpretation preview dialog."""
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QPlainTextEdit
+from PyQt6.QtWidgets import QComboBox, QDialogButtonBox, QHeaderView, QPlainTextEdit
 
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -105,8 +105,25 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
     assert dialog.review_tree.horizontalScrollBarPolicy() == (
         Qt.ScrollBarPolicy.ScrollBarAsNeeded
     )
+    for tree, fill_column in (
+        (dialog.file_tree, 0),
+        (dialog.label_carrier_tree, 7),
+        (dialog.event_tree, 2),
+        (dialog.review_tree, 2),
+    ):
+        header = tree.header()
+        assert header is not None
+        assert header.stretchLastSection() == (fill_column == tree.columnCount() - 1)
+        for column in range(tree.columnCount()):
+            expected_mode = (
+                QHeaderView.ResizeMode.Stretch
+                if column == fill_column and fill_column != tree.columnCount() - 1
+                else QHeaderView.ResizeMode.Interactive
+            )
+            assert header.sectionResizeMode(column) == expected_mode
     assert dialog.review_tree.alternatingRowColors()
     assert "alternate-background-color" in dialog.styleSheet()
+    assert "#202020" in dialog.styleSheet().lower()
     assert "#ffffff" not in dialog.styleSheet().lower()
     assert "#000000" not in dialog.styleSheet().lower()
 
@@ -517,6 +534,67 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_diff(qtbot):
     assert "Changed" in details
     assert "missing.fif" in details
     assert "Saved choices" in details
+
+
+def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
+    old_events = "/tmp/source/old_events.tsv"
+    new_events = "/tmp/source/renamed_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": ["/tmp/source/sub-01_raw.fif"],
+            "label_carriers": [new_events],
+        },
+        preview={
+            "recipe_reload_summary": {
+                "message": "Saved recipe choices were reapplied before validation.",
+                "label_carrier_remap_options": [
+                    {
+                        "saved": old_events,
+                        "saved_name": "old_events.tsv",
+                        "candidates": [
+                            {
+                                "path": new_events,
+                                "name": "renamed_events.tsv",
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": [
+                "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+            ],
+        },
+    )
+    qtbot.addWidget(dialog)
+
+    ok_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
+    assert ok_button is not None
+    assert ok_button.isEnabled()
+    assert ok_button.text() == "Apply Remap"
+    assert "needs a label carrier remap" in dialog.decision_label.text()
+    assert "replacement label/event carrier" in dialog.confirmation_label.text()
+    assert "cannot be applied" not in dialog.confirmation_label.text()
+
+    details = _tree_text(dialog.review_tree)
+    assert "Remap label carrier" in details
+    assert "Select" in details
+    assert "old_events.tsv" in details
+
+    selector = next(iter(dialog._label_carrier_remap_widgets.values()))
+    assert isinstance(selector, QComboBox)
+    assert selector.currentData() == new_events
+
+    result = dialog.get_result()
+
+    assert result["confirmed"] is True
+    assert result["choices"]["label_carrier_remap"] == {
+        old_events: new_events,
+    }
 
 
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):

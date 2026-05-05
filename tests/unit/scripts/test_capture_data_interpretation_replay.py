@@ -91,6 +91,7 @@ def test_table_state_records_rows_and_resize_modes(qtbot) -> None:
     qtbot.addWidget(table)
     table.setHorizontalHeaderLabels(["File", "Subject", "Events"])
     header = table.horizontalHeader()
+    assert header is not None
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
     header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -113,6 +114,9 @@ def test_table_state_records_rows_and_resize_modes(qtbot) -> None:
         "ResizeToContents",
         "ResizeToContents",
     ]
+    assert state["stretch_last_section"] is False
+    assert state["header_length"] > 0
+    assert state["viewport_width"] > 0
 
 
 def table_item(text: str) -> QTableWidgetItem:

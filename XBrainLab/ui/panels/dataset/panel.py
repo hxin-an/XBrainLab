@@ -41,6 +41,8 @@ class DatasetPanel(BasePanel):
 
     """
 
+    _TABLE_BASE_WIDTHS: tuple[int, ...] = (240, 84, 112, 56, 64, 74, 112)
+
     def __init__(self, controller=None, parent=None):
         """Initialize the dataset panel.
 
@@ -91,13 +93,9 @@ class DatasetPanel(BasePanel):
         if header:
             header.setStretchLastSection(False)
             header.setMinimumSectionSize(48)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-            for column in range(1, 7):
-                header.setSectionResizeMode(
-                    column,
-                    QHeaderView.ResizeMode.ResizeToContents,
-                )
-        for column, width in enumerate((180, 74, 104, 54, 58, 64, 92)):
+            for column in range(7):
+                header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+        for column, width in enumerate(self._TABLE_BASE_WIDTHS):
             self.table.setColumnWidth(column, width)
         self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -116,6 +114,25 @@ class DatasetPanel(BasePanel):
         # --- Right Side: Sidebar ---
         self.sidebar = DatasetSidebar(self, self)
         main_layout.addWidget(self.sidebar, stretch=0)
+        self._fit_table_columns_to_viewport()
+
+    def resizeEvent(self, event):  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "table"):
+            self._fit_table_columns_to_viewport()
+
+    def _fit_table_columns_to_viewport(self) -> None:
+        """Use the full table panel while keeping columns manually resizable."""
+        viewport = self.table.viewport()
+        if viewport is None:
+            return
+        widths = list(self._TABLE_BASE_WIDTHS)
+        available_width = viewport.width()
+        base_width = sum(widths)
+        if available_width > base_width:
+            widths[0] += available_width - base_width
+        for column, width in enumerate(widths):
+            self.table.setColumnWidth(column, width)
 
     def apply_loader(self, loader):
         """Apply a data loader to the current study.
@@ -224,7 +241,7 @@ class DatasetPanel(BasePanel):
                     count_str = "?" if count == -1 else str(count)
                     if data.is_labels_imported():
                         item_ev = QTableWidgetItem(f"Labels ({count_str})")
-                        item_ev.setForeground(QBrush(QColor(Theme.LOG_INFO)))
+                        item_ev.setForeground(QBrush(QColor(Theme.TEXT_MUTED)))
                         item_ev.setToolTip(
                             "External labels are attached to this recording."
                         )
@@ -243,6 +260,7 @@ class DatasetPanel(BasePanel):
                 item_name.setData(Qt.ItemDataRole.UserRole, data)
 
         self.table.blockSignals(False)
+        self._fit_table_columns_to_viewport()
 
     @staticmethod
     def _metadata_item(

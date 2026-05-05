@@ -3305,6 +3305,55 @@
       "save_recipe_checked": true,
       "screenshot": "data-interpretation-preview.png"
     },
+    "remap_dialog": {
+      "title": "Interpret Data Source",
+      "decision": "blocked",
+      "visible_text": [
+        "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
+        "Reloaded recipe needs label carrier remap.",
+        "Source",
+        "/tmp/xbrainlab_data_interpretation_replay",
+        "Type",
+        "folder",
+        "Files",
+        "2",
+        "Label carriers",
+        "1",
+        "BIDS",
+        "Not detected",
+        "Validation needs a label carrier remap before applying.",
+        "Choose a replacement label/event carrier, then apply the remap to recheck this saved recipe."
+      ],
+      "review_summary_rows": [
+        [
+          "Reloaded recipe",
+          "Reapplied",
+          "Saved recipe choices were reapplied before validation."
+        ],
+        [
+          "Blocked reason",
+          "Blocked",
+          "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
+        ],
+        [
+          "Remap label carrier",
+          "Select",
+          "events.tsv"
+        ]
+      ],
+      "remap_choices": {
+        "label_carrier_choices": {
+          "<replay_source>/events.tsv": {
+            "role": "external labels"
+          }
+        },
+        "label_carrier_remap": {
+          "<replay_source>/old_events.tsv": "<replay_source>/events.tsv"
+        }
+      },
+      "apply_button_enabled": true,
+      "screenshot": "data-interpretation-remap.png"
+    },
     "dataset_panel": {
       "sidebar_buttons": {
         "import_source": {
@@ -3380,22 +3429,25 @@
           ]
         ],
         "resize_modes": [
-          "Stretch",
-          "ResizeToContents",
-          "ResizeToContents",
-          "ResizeToContents",
-          "ResizeToContents",
-          "ResizeToContents",
-          "ResizeToContents"
+          "Interactive",
+          "Interactive",
+          "Interactive",
+          "Interactive",
+          "Interactive",
+          "Interactive",
+          "Interactive"
         ],
+        "stretch_last_section": false,
+        "header_length": 994,
+        "viewport_width": 994,
         "column_widths": [
-          608,
-          70,
-          77,
-          51,
-          48,
-          66,
-          74
+          492,
+          84,
+          112,
+          56,
+          64,
+          74,
+          112
         ]
       },
       "visible_panel_text": [],

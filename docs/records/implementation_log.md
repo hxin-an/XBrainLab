@@ -53,7 +53,8 @@ also blocks reload candidates when a saved selected EEG file is missing from the
 apply cannot fall through into a runtime import failure. The same blocker now covers missing saved
 label/event carriers, so external labels cannot be silently dropped during recipe replay. Backend
 remap support now lets a saved carrier be explicitly mapped to a replacement carrier in the current
-scan while preserving saved label field / anchor / role choices.
+scan while preserving saved label field / anchor / role choices. The wizard now exposes that remap
+as a user-facing selector, then re-previews and re-validates before apply.
 
 ### 已可宣稱
 
@@ -62,6 +63,8 @@ scan while preserving saved label field / anchor / role choices.
 - Missing saved EEG files and label/event carriers are now validation blockers before apply.
 - Explicit backend `label_carrier_remap` can clear the missing-carrier blocker and preserve saved
   choices on the replacement carrier.
+- The UI can resolve the simple renamed-carrier case without falling through to a dead-end blocked
+  dialog.
 - Human-like walkthrough evidence was refreshed, including `07-recipe-reloaded.png`.
 
 ### Evidence 入口
@@ -69,13 +72,13 @@ scan while preserving saved label field / anchor / role choices.
 - Backend/UI tests：`tests/unit/backend/application/test_data_interpretation_review.py`、
   `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
 - Workflow test：`tests/integration/backend/test_application_service_workflow.py`
+- Remap screenshot：`artifacts/ui/data-interpretation-remap.png`
 - Artifact：`artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
 - Walkthrough report：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
 
 ### 不能宣稱完成
 
 - 這不是完整 recipe diff editor，也不是人類 Windows desktop acceptance。
-- Wizard remap selector 尚未接上；目前是 backend/headless truth 已可用。
 - 這不處理複雜 recipe conflict resolution；目前只是讓 rescan comparison 可見。
 
 ### 下一手重點
@@ -94,15 +97,16 @@ primary, and fallback local tool-call artifacts were refreshed on cached non-Chi
 
 The Dataset / Data Interpretation UI also received a focused product polish pass: preview dialog
 tables now fit their panels with stretch + elide behavior, `Review Summary` uses lower-contrast dark
-alternating rows, and the Dataset table uses a stretch `File` column so loaded rows fill the main
-panel instead of collapsing left.
+alternating rows, and the Dataset table keeps interactive columns while assigning remaining width
+to `File` so loaded rows fill the main panel without squeezing filenames.
 
 ### 已可宣稱
 
 - New data-entry language in agent eval now prefers Data Interpretation for normal file / folder /
   BIDS import requests.
 - Automated UI replay evidence shows Dataset table columns fill the main panel, and `Events` /
-  `Labels` visible text separates recording events from external labels.
+  `Labels` visible text separates recording events from external labels without using success-green
+  coloring for labels.
 - Tool-call benchmark artifacts still show deterministic / primary / fallback `118 / 118`, with
   primary and fallback each repeated `3` times.
 

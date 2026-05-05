@@ -114,6 +114,15 @@ def test_build_interpretation_preview_summarizes_recipe_reload_diff():
             "New in scan: events.tsv."
         ),
     } in summary["diff_rows"]
+    assert summary["label_carrier_remap_options"] == [
+        {
+            "saved": "/data/old_events.tsv",
+            "saved_name": "old_events.tsv",
+            "candidates": [
+                {"path": "/data/events.tsv", "name": "events.tsv"},
+            ],
+        }
+    ]
 
 
 def test_validate_interpretation_candidate_needs_confirmation_and_blocked():

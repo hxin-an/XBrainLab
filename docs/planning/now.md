@@ -357,12 +357,13 @@
   - Recipe reload 若發現 saved label/event carrier 不在 current scan 中，也會 `blocked`，避免
     recipe replay 靜默丟失 external labels。
   - Backend 已支援 explicit `label_carrier_remap`，可把 saved carrier 映射到 current scan
-    replacement carrier 並沿用原本 label/anchor/role choices；UI selector 尚未接上。
+    replacement carrier 並沿用原本 label/anchor/role choices；UI selector 已接上，blocked reload
+    dialog 可讓使用者選 replacement carrier，並在 apply 前 re-preview / re-validate。
   - 最新 UI table-fit polish 讓 label / event / recipe trace tables 用 stretch + elide 控制欄寬，
-    `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄 stretch
-    填滿主 panel，其他欄保留 resize-to-contents，避免載入後表格內縮。
+    `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄承接剩餘寬度
+    並填滿主 panel，其他欄保留穩定寬度，避免載入後表格內縮。
   - Dataset table `Events` 欄現在用 `Events (n)` 表示 recording events、`Labels (n)` 表示外部
-    labels；muted green 只用在 external label 狀態。
+    labels；external labels 使用中性文字，不再用綠色表示成功狀態。
   - subject / session / task / run 和 class map review cells 已可產生 dialog `choices`。
   - Dataset action 會在 apply 前用使用者 review choices re-preview / re-validate，再套用新
     candidate。

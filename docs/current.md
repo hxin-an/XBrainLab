@@ -487,10 +487,11 @@ next step 從 legacy `load_data` / `attach_labels` visible language 收斂成 Da
 walkthrough artifact。最新 Dataset / Data Interpretation UI follow-up 又修掉 preview dialog
 的 label / event / recipe trace table overflow、`Review Summary` 高對比黑白條紋，以及 Dataset
 table 載入後欄位內縮問題：table 仍允許使用者動態調整欄寬，但 Dataset table 的 `File` 欄會
-stretch 填滿主 panel，其他欄依內容 resize；`Events` 欄現在用 `Events (n)` / `Labels (n)`
-區分內建 events 與外部 labels，只有外部 labels 使用 muted green。Data Interpretation replay
+承接剩餘寬度並填滿主 panel，其他欄保留穩定寬度；`Events` 欄現在用 `Events (n)` /
+`Labels (n)` 區分內建 events 與外部 labels，不再用綠色把 external labels 包裝成成功狀態。
+Data Interpretation replay
 JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，applied artifact
-顯示 `File=Stretch` 且整體欄位填滿主 panel。這支撐 automated PyQt replay
+顯示全部欄位填滿主 panel。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。
 最新 recipe reload review slice 又把 saved recipe 與重新 scan 的 comparison 補進 preview
@@ -508,8 +509,9 @@ carrier，validation 會以 `Saved label/event carrier(s) were not found in the 
 擋下，避免 recipe replay 靜默丟失 external labels。
 後續 backend remap slice 已允許明確 `label_carrier_remap`，可把 saved carrier path/name 映射到
 current scan 的 replacement carrier；原 recipe 的 label field、anchor、time model、granularity
-和 role choices 會套到 replacement carrier。這支撐 headless / UI 下一步做 manual remap，但
-wizard selector 尚未接上，不能宣稱完整 conflict editor。
+和 role choices 會套到 replacement carrier。最新 UI slice 已把 wizard remap selector 接上：
+blocked reload dialog 會顯示 replacement carrier selector，使用者按 `Apply Remap` 後 UI 會
+re-preview / re-validate 再 apply。這仍不是完整 conflict editor 或複雜 anchor reconciliation。
 
 ## 可信狀態
 

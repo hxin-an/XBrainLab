@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QHeaderView,
     QLabel,
+    QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -53,6 +54,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_target_widgets: dict[int, QComboBox] = {}
         self._label_choice_widgets: dict[tuple[int, int], QComboBox] = {}
+        self._label_carrier_remap_widgets: dict[str, QComboBox] = {}
         self._event_role_widgets: dict[int, QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
         self._class_map_items: list[tuple[QTreeWidgetItem, str, str]] = []
@@ -205,8 +207,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(self.confirmation_label)
 
         self.save_recipe_check = QCheckBox("Save reusable import recipe after applying")
-        self.save_recipe_check.setChecked(self.decision != "blocked")
-        self.save_recipe_check.setEnabled(self.decision != "blocked")
+        apply_allowed = self.decision != "blocked" or self._has_remap_options()
+        self.save_recipe_check.setChecked(apply_allowed)
+        self.save_recipe_check.setEnabled(apply_allowed)
         self.save_recipe_check.setToolTip(
             "Recipe records source, metadata decisions, label carriers, and "
             "confirmations for review or replay."
@@ -224,18 +227,23 @@ class DataInterpretationPreviewDialog(BaseDialog):
         ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if ok_button is not None:
             ok_button.setText(
-                "Confirm and Apply"
+                "Apply Remap"
+                if self.decision == "blocked" and self._has_remap_options()
+                else "Confirm and Apply"
                 if self.decision == "needs_confirmation"
                 else "Apply Interpretation"
             )
-            ok_button.setEnabled(self.decision != "blocked")
+            ok_button.setEnabled(apply_allowed)
         self.button_box.rejected.connect(self.reject)
         self.button_box.accepted.connect(self.accept)
         layout.addWidget(self.button_box)
 
     def get_result(self) -> dict[str, Any]:
         return {
-            "confirmed": self.decision == "needs_confirmation",
+            "confirmed": self.decision == "needs_confirmation"
+            or (
+                self.decision == "blocked" and bool(self._label_carrier_remap_choices())
+            ),
             "save_recipe": self.save_recipe_check.isChecked(),
             "choices": self._edited_choices(),
         }
@@ -252,11 +260,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
             f"""
             QTreeWidget {{
                 background-color: {Theme.BACKGROUND_DARK};
-                alternate-background-color: #242424;
+                alternate-background-color: #222222;
                 color: {Theme.TEXT_MUTED};
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 selection-background-color: {Theme.BLUE_PRESSED};
                 selection-color: {Theme.TEXT_MUTED};
+            }}
+            QTreeWidget#InterpretationReviewSummary {{
+                alternate-background-color: #202020;
             }}
             QTreeWidget::item {{
                 padding: 4px 6px;
@@ -275,6 +286,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 color: {Theme.TEXT_MUTED};
                 border: 1px solid {Theme.BACKGROUND_LIGHT};
                 padding: 2px 6px;
+                min-width: 0px;
             }}
             """
         )
@@ -296,12 +308,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
         header.setDefaultAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        header.setStretchLastSection(False)
+        stretch_last_section = stretch_column == len(widths) - 1
+        header.setStretchLastSection(stretch_last_section)
         for column, width in enumerate(widths):
             tree.setColumnWidth(column, width)
             mode = (
                 QHeaderView.ResizeMode.Stretch
-                if column == stretch_column
+                if column == stretch_column and not stretch_last_section
                 else QHeaderView.ResizeMode.Interactive
             )
             header.setSectionResizeMode(column, mode)
@@ -330,6 +343,8 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _decision_text(self) -> str:
         if self.decision == "blocked":
+            if self._has_remap_options():
+                return "Validation needs a label carrier remap before applying."
             return "Validation blocked: this source cannot be applied yet."
         if self.decision == "needs_confirmation":
             return "Validation needs confirmation before applying."
@@ -531,6 +546,9 @@ class DataInterpretationPreviewDialog(BaseDialog):
         label_carriers = self._label_carrier_choices()
         if label_carriers:
             choices["label_carrier_choices"] = label_carriers
+        label_carrier_remap = self._label_carrier_remap_choices()
+        if label_carrier_remap:
+            choices["label_carrier_remap"] = label_carrier_remap
         return choices
 
     def _metadata_overrides(self) -> dict[str, dict[str, str]]:
@@ -584,6 +602,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         current_value: str,
     ) -> None:
         selector = QComboBox(self.event_tree)
+        self._prepare_table_combo(selector)
         selector.setToolTip("Choose how this event should be used in the recipe.")
         choices = [
             ("Class cue", "class cue"),
@@ -652,6 +671,25 @@ class DataInterpretationPreviewDialog(BaseDialog):
                         changed[choice_key] = current
                 choices[carrier_key] = changed
         return choices
+
+    def _label_carrier_remap_choices(self) -> dict[str, str]:
+        choices: dict[str, str] = {}
+        for saved, selector in self._label_carrier_remap_widgets.items():
+            value = selector.currentData()
+            replacement = str(value) if value is not None else ""
+            if replacement:
+                choices[saved] = replacement
+        return choices
+
+    def _has_remap_options(self) -> bool:
+        return bool(self._label_carrier_remap_options())
+
+    def _label_carrier_remap_options(self) -> list[dict[str, Any]]:
+        summary = self.preview.get("recipe_reload_summary")
+        if not isinstance(summary, dict):
+            return []
+        options = summary.get("label_carrier_remap_options") or []
+        return [dict(item) for item in options if isinstance(item, dict)]
 
     def _install_label_carrier_selectors(
         self,
@@ -726,6 +764,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if not choices and not current_value:
             return
         selector = QComboBox(self.label_carrier_tree)
+        self._prepare_table_combo(selector)
         selector.setToolTip(tooltip)
         if not current_value:
             selector.addItem("Needs review", "")
@@ -761,6 +800,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _label_target_selector(self) -> QComboBox:
         selector = QComboBox(self.label_carrier_tree)
+        self._prepare_table_combo(selector)
         selector.addItem("Needs review")
         for file_path in self.scan_result.get("eeg_files", []) or []:
             text = Path(str(file_path)).name
@@ -852,7 +892,30 @@ class DataInterpretationPreviewDialog(BaseDialog):
             for column in range(3):
                 tree_item.setToolTip(column, detail or status)
             self.review_tree.addTopLevelItem(tree_item)
-        if not rows:
+        remap_added = False
+        for remap in self._label_carrier_remap_options():
+            saved = str(remap.get("saved") or "").strip()
+            if not saved:
+                continue
+            saved_name = str(remap.get("saved_name") or Path(saved).name or saved)
+            tree_item = QTreeWidgetItem(
+                [
+                    "Remap label carrier",
+                    "Select",
+                    saved_name,
+                ]
+            )
+            tree_item.setToolTip(
+                2,
+                "Choose the current label/event carrier that replaces this "
+                "saved recipe carrier.",
+            )
+            self.review_tree.addTopLevelItem(tree_item)
+            selector = self._label_carrier_remap_selector(remap)
+            self._label_carrier_remap_widgets[saved] = selector
+            self.review_tree.setItemWidget(tree_item, 2, selector)
+            remap_added = True
+        if not rows and not remap_added:
             self.review_tree.addTopLevelItem(
                 QTreeWidgetItem(
                     [
@@ -862,6 +925,23 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     ],
                 )
             )
+
+    def _label_carrier_remap_selector(self, remap: dict[str, Any]) -> QComboBox:
+        selector = QComboBox(self.review_tree)
+        self._prepare_table_combo(selector)
+        selector.setToolTip("Choose the replacement label/event carrier.")
+        selector.addItem("Choose replacement", "")
+        for candidate in remap.get("candidates", []) or []:
+            if not isinstance(candidate, dict):
+                continue
+            path = str(candidate.get("path") or "").strip()
+            if not path:
+                continue
+            name = str(candidate.get("name") or Path(path).name or path)
+            selector.addItem(name, path)
+        if selector.count() == 2:
+            selector.setCurrentIndex(1)
+        return selector
 
     def _review_rows(self) -> list[tuple[str, str, str]]:
         rows: list[tuple[str, str, str]] = []
@@ -948,6 +1028,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _confirmation_text(self) -> str:
         if self.decision == "blocked":
+            if self._has_remap_options():
+                return (
+                    "Choose a replacement label/event carrier, then apply the remap "
+                    "to recheck this saved recipe."
+                )
             return "This interpretation is blocked and cannot be applied."
         if self.decision == "needs_confirmation":
             items = self.validation_decision.get("required_confirmations") or []
@@ -957,3 +1042,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
         if self.decision == "safe":
             return "This interpretation can be applied."
         return "Review this interpretation before applying."
+
+    @staticmethod
+    def _prepare_table_combo(selector: QComboBox) -> None:
+        selector.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        selector.setMinimumContentsLength(1)
+        selector.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )

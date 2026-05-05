@@ -135,21 +135,29 @@ def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
     assert panel.table.item(0, 0).text() == "test.set"
 
 
-def test_dataset_panel_table_uses_available_width_for_file_names(
+def test_dataset_panel_table_columns_fill_available_width(
     mock_main_window,
     mock_controller,
     qtbot,
 ):
     panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
     qtbot.addWidget(panel)
+    panel.resize(1280, 480)
+    panel.show()
+    qtbot.wait(0)
+    panel._fit_table_columns_to_viewport()
 
     header = panel.table.horizontalHeader()
+    viewport = panel.table.viewport()
+    assert header is not None
+    assert viewport is not None
 
-    assert header.sectionResizeMode(0) == QHeaderView.ResizeMode.Stretch
-    for column in range(1, panel.table.columnCount()):
-        assert (
-            header.sectionResizeMode(column) == QHeaderView.ResizeMode.ResizeToContents
-        )
+    assert not header.stretchLastSection()
+    for column in range(panel.table.columnCount()):
+        assert header.sectionResizeMode(column) == QHeaderView.ResizeMode.Interactive
+    assert header.length() >= viewport.width() - 2
+    if viewport.width() > sum(DatasetPanel._TABLE_BASE_WIDTHS):
+        assert panel.table.columnWidth(0) > DatasetPanel._TABLE_BASE_WIDTHS[0]
     assert panel.table.textElideMode() == Qt.TextElideMode.ElideRight
 
 
@@ -199,12 +207,16 @@ def test_dataset_panel_events_column_uses_semantic_text_and_muted_color(
 
     internal_item = panel.table.item(0, 6)
     imported_item = panel.table.item(1, 6)
+    assert internal_item is not None
+    assert imported_item is not None
 
     assert internal_item.text() == "Events (3)"
     assert internal_item.toolTip() == "Events detected in the recording."
     assert imported_item.text() == "Labels (2)"
     assert imported_item.toolTip() == "External labels are attached to this recording."
-    assert imported_item.foreground().color().name().lower() == (Theme.LOG_INFO.lower())
+    assert imported_item.foreground().color().name().lower() == (
+        Theme.TEXT_MUTED.lower()
+    )
 
 
 def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot):

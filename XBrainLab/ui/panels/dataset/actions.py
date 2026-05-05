@@ -211,13 +211,6 @@ class DatasetActionHandler:
         )
         if not dialog.exec():
             return
-        if str(decision.get("decision")) == "blocked":
-            QMessageBox.critical(
-                self.panel,
-                "Interpretation blocked",
-                self._decision_reason(decision),
-            )
-            return
 
         raw_dialog_result = dialog.get_result()
         dialog_result = (
@@ -230,7 +223,24 @@ class DatasetActionHandler:
             else {}
         )
         candidate_id = self._optional_payload_id(candidate, "candidate_id")
+        if str(decision.get("decision")) == "blocked" and not dialog_choices:
+            QMessageBox.critical(
+                self.panel,
+                "Interpretation blocked",
+                self._decision_reason(decision),
+            )
+            return
         if dialog_choices:
+            raw_base_choices = candidate.get("choices")
+            base_choices: dict[str, Any] = (
+                {str(key): value for key, value in raw_base_choices.items()}
+                if isinstance(raw_base_choices, dict)
+                else {}
+            )
+            dialog_choices = self._merge_interpretation_choices(
+                base_choices,
+                dialog_choices,
+            )
             preview_result = execute_application_command(
                 self.panel,
                 PreviewInterpretationCommand(

@@ -73,7 +73,8 @@
     `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
     -> `473 passed`。
 - 接續 / 本輪剩餘：
-  - 這是 backend/headless remap truth；wizard selector 尚未接上，不能宣稱完整 manual remap UX。
+  - 當下只支撐 backend/headless remap truth；後續 UI slice 已接上 wizard selector，但仍不能
+    宣稱完整 recipe conflict editor。
 
 ### 12:25 Recipe reload missing label-carrier blocker
 
@@ -220,13 +221,13 @@
   - 依使用者截圖修正 Data Interpretation preview dialog：label carrier、events、recipe trace
     tables 使用 stretch + elide，避免超出欄框；`Review Summary` 使用較低對比 dark
     alternating row。
-  - 修正 Dataset panel table：`File` 欄 stretch 填滿主 panel，其餘欄 resize-to-contents；
-    `Events` 欄改成 `Events (n)` / `Labels (n)`，muted green 只代表 external labels。
+  - 修正 Dataset panel table：第一輪先讓 `File` 欄填滿主 panel，其餘欄依內容收斂；
+    `Events` 欄改成 `Events (n)` / `Labels (n)`。
   - `capture_data_interpretation_replay.py` 現在保存 Dataset table headers、rows、resize modes
     和 column widths，讓 replay artifact 能直接驗證主 panel 是否被欄位填滿。
 - 結果：
-  - Focused UI replay JSON 顯示 Dataset table resize modes 為 `File=Stretch`、其他欄
-    `ResizeToContents`，rows 為 `Events (6)` / `Labels (4)`。
+  - Focused UI replay JSON 顯示 Dataset table rows 為 `Events (6)` / `Labels (4)`；後續 table
+    fill slice 已把實作收斂成 interactive columns + File 欄承接剩餘寬度。
   - Local tool-call dashboard 顯示 deterministic / primary / fallback 都為 `118 / 118`；
     primary / fallback 各重跑 `3` 次。
   - 初次 broad gate 發現兩個需要收斂的問題：`basedpyright` 對 `QTreeWidget.header()` optional
@@ -6745,3 +6746,71 @@
 - 不能宣稱：
   - This is replay evidence for Dataset sidebar visible state, not full human desktop acceptance or
     full Data Interpretation wizard visual redesign.
+
+### 2026-05-05 Recipe reload remap selector and table-fill polish
+
+- scope：
+  - Data Interpretation recipe reload UI for missing saved label/event carrier remap。
+  - Dataset table / Data Interpretation preview table fit and color semantics。
+  - Replay artifact evidence for remap dialog and applied Dataset table layout。
+- problem：
+  - Backend remap existed, but the wizard still dead-ended at a blocked reload dialog when a saved
+    label/event carrier was missing and a replacement was available in the current scan.
+  - The remap dialog showed contradictory blocked copy while enabling `Apply Remap`.
+  - Dataset table could fill the panel by stretching the wrong column, squeezing filenames, and
+    external labels were colored green like a success state.
+- red / focused tests：
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_table_columns_fill_available_width tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_tables_fit_product_layout tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_label_carrier_remap -q`
+    initially failed on header fill policy, green label color, wizard table policy, and remap copy.
+- 做了什麼：
+  - `data_interpretation_review.py` now includes `label_carrier_remap_options` in recipe reload
+    preview summaries when a saved carrier is missing but current carriers are available.
+  - `DataInterpretationPreviewDialog` shows a `Remap label carrier` selector in `Review Summary`,
+    enables `Apply Remap`, returns `choices.label_carrier_remap`, and uses remap-specific user copy.
+  - `DatasetActionHandler.reload_interpretation_recipe()` merges dialog remap choices into the saved
+    recipe choices, then re-runs preview / validate before apply.
+  - Dataset table columns remain interactive; resize handling allocates extra width to `File` so the
+    main panel is filled without squeezing filenames.
+  - External labels now use neutral text (`Labels (n)`) instead of green success coloring.
+  - Replay JSON now records table `stretch_last_section`, `header_length`, `viewport_width`, and
+    `column_widths`.
+- validation：
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_table_columns_fill_available_width tests/unit/ui/dataset/test_panel.py::test_dataset_panel_events_column_uses_semantic_text_and_muted_color tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_tables_fit_product_layout tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_label_carrier_remap tests/unit/scripts/test_capture_data_interpretation_replay.py::test_table_state_records_rows_and_resize_modes -q`
+    -> `5 passed`.
+  - `timeout 300s env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_label_carrier_remap -q`
+    -> `29 passed`.
+  - `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/panel.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py tests/unit/scripts/test_capture_data_interpretation_replay.py`
+    -> pass.
+  - `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py XBrainLab/ui/panels/dataset/panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - `git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `108 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `6 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+- evidence：
+  - `artifacts/ui/data-interpretation-remap.png` shows the replacement selector, remap-specific copy,
+    and `Apply Remap`.
+  - `artifacts/ui/data-interpretation-applied.png` shows the Dataset table filling the main panel,
+    filename readability preserved, and neutral `Events (6)` / `Labels (4)` text.
+  - `artifacts/ui/data-interpretation-replay.json` records `header_length == viewport_width` and
+    column widths `[492, 84, 112, 56, 64, 74, 112]` in the applied capture.
+- 不能宣稱：
+  - This is the simple renamed label/event carrier remap path, not a full recipe conflict editor or
+    complex anchor reconciliation UX.
+  - This is automated PyQt replay evidence, not human Windows desktop acceptance.

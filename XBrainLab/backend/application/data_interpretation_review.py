@@ -177,7 +177,60 @@ def _recipe_reload_summary(
         "reapplied_choice_types": reapplied,
         "message": message,
         "diff_rows": diff_rows,
+        "label_carrier_remap_options": _label_carrier_remap_options(
+            recipe=recipe,
+            scan=scan,
+        ),
     }
+
+
+def _label_carrier_remap_options(
+    *,
+    recipe: Any | None,
+    scan: Any | None,
+) -> list[dict[str, Any]]:
+    if recipe is None or scan is None:
+        return []
+    saved = _raw_label_carrier_paths(recipe)
+    current = _raw_paths(getattr(scan, "label_carriers", []))
+    if not saved or not current:
+        return []
+    current_exact = set(current)
+    current_names = {Path(item).name or item for item in current}
+    candidates = [{"path": item, "name": Path(item).name or item} for item in current]
+    options: list[dict[str, Any]] = []
+    for saved_path in saved:
+        saved_name = Path(saved_path).name or saved_path
+        if saved_path in current_exact or saved_name in current_names:
+            continue
+        options.append(
+            {
+                "saved": saved_path,
+                "saved_name": saved_name,
+                "candidates": candidates,
+            }
+        )
+    return options
+
+
+def _raw_label_carrier_paths(recipe: Any) -> list[str]:
+    values = _raw_paths(getattr(recipe, "label_carriers", []))
+    if values:
+        return values
+    return _raw_paths(
+        item.get("path")
+        for item in getattr(recipe, "label_carrier_plan", [])
+        if isinstance(item, dict)
+    )
+
+
+def _raw_paths(values: Any) -> list[str]:
+    result: list[str] = []
+    for value in values or []:
+        text = str(value or "").strip()
+        if text and text not in result:
+            result.append(text)
+    return result
 
 
 def _recipe_reload_diff_rows(

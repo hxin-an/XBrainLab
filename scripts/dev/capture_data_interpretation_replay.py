@@ -22,6 +22,7 @@ from PyQt6.QtCore import QPoint, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialogButtonBox,
     QHeaderView,
     QLabel,
     QTableWidget,
@@ -47,6 +48,7 @@ SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-1_raw.fif"
 SECOND_SOURCE_PATH = SOURCE_DIR / "sub-01_task-mi_run-2_raw.fif"
 LABEL_PATH = SOURCE_DIR / "events.tsv"
 PREVIEW_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-preview.png"
+REMAP_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-remap.png"
 APPLIED_SCREENSHOT = ARTIFACTS_DIR / "data-interpretation-applied.png"
 REPLAY_JSON = ARTIFACTS_DIR / "data-interpretation-replay.json"
 WINDOW_SIZE = QSize(1280, 800)
@@ -170,26 +172,37 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
 def table_state(table: QTableWidget) -> dict[str, Any]:
     """Return visible table text and resize policy for replay evidence."""
     header = table.horizontalHeader()
-    return {
-        "headers": [
-            table.horizontalHeaderItem(column).text()
-            if table.horizontalHeaderItem(column) is not None
-            else ""
-            for column in range(table.columnCount())
-        ],
-        "rows": [
-            [
-                table.item(row, column).text()
-                if table.item(row, column) is not None
-                else ""
-                for column in range(table.columnCount())
-            ]
-            for row in range(table.rowCount())
-        ],
-        "resize_modes": [
+    headers: list[str] = []
+    for column in range(table.columnCount()):
+        header_item = table.horizontalHeaderItem(column)
+        headers.append(header_item.text() if header_item is not None else "")
+    rows: list[list[str]] = []
+    for row in range(table.rowCount()):
+        row_values: list[str] = []
+        for column in range(table.columnCount()):
+            item = table.item(row, column)
+            row_values.append(item.text() if item is not None else "")
+        rows.append(row_values)
+    resize_modes = (
+        [
             _resize_mode_name(header.sectionResizeMode(column))
             for column in range(table.columnCount())
-        ],
+        ]
+        if header is not None
+        else []
+    )
+    header_length = header.length() if header is not None else 0
+    stretch_last_section = (
+        bool(header.stretchLastSection()) if header is not None else False
+    )
+    viewport = table.viewport()
+    return {
+        "headers": headers,
+        "rows": rows,
+        "resize_modes": resize_modes,
+        "stretch_last_section": stretch_last_section,
+        "header_length": header_length,
+        "viewport_width": viewport.width() if viewport is not None else 0,
         "column_widths": [
             table.columnWidth(column) for column in range(table.columnCount())
         ],
@@ -338,6 +351,66 @@ def capture_replay(app: QApplication) -> int:
             }
             dialog.close()
 
+            remap_dialog = DataInterpretationPreviewDialog(
+                window.dataset_panel,
+                scan_result={
+                    "source_path": str(source_path.parent),
+                    "source_kind": "folder",
+                    "eeg_files": [str(SOURCE_PATH), str(SECOND_SOURCE_PATH)],
+                    "label_carriers": [str(LABEL_PATH)],
+                },
+                preview={
+                    "summary": "Reloaded recipe needs label carrier remap.",
+                    "recipe_reload_summary": {
+                        "message": (
+                            "Saved recipe choices were reapplied before validation."
+                        ),
+                        "label_carrier_remap_options": [
+                            {
+                                "saved": str(SOURCE_DIR / "old_events.tsv"),
+                                "saved_name": "old_events.tsv",
+                                "candidates": [
+                                    {
+                                        "path": str(LABEL_PATH),
+                                        "name": LABEL_PATH.name,
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                },
+                validation_decision={
+                    "decision": "blocked",
+                    "blocked_reasons": [
+                        "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
+                    ],
+                },
+            )
+            remap_dialog.show()
+            app.processEvents()
+            remap_dialog.repaint()
+            app.processEvents()
+            capture_widget(remap_dialog, REMAP_SCREENSHOT)
+            remap_ok_button = remap_dialog.button_box.button(
+                QDialogButtonBox.StandardButton.Ok,
+            )
+            remap_dialog_state = {
+                "title": remap_dialog.windowTitle(),
+                "decision": remap_dialog.decision,
+                "visible_text": visible_texts(remap_dialog),
+                "review_summary_rows": sanitized(tree_rows(remap_dialog.review_tree)),
+                "remap_choices": sanitized(
+                    remap_dialog.get_result().get("choices", {})
+                ),
+                "apply_button_enabled": (
+                    remap_ok_button.isEnabled()
+                    if remap_ok_button is not None
+                    else False
+                ),
+                "screenshot": REMAP_SCREENSHOT.name,
+            }
+            remap_dialog.close()
+
             reviewed_preview = service.execute(
                 PreviewInterpretationCommand(
                     scan_id=scan.diagnostics["scan_result"]["scan_id"],
@@ -384,6 +457,7 @@ def capture_replay(app: QApplication) -> int:
                 },
                 "ui_state": {
                     "dialog": dialog_state,
+                    "remap_dialog": remap_dialog_state,
                     "dataset_panel": {
                         "sidebar_buttons": dataset_sidebar_state(
                             window.dataset_panel.sidebar,
