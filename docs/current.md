@@ -842,6 +842,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的
   primary prompt；`attach_labels` 也已從這些 stage 的主工具語言移除。read-only
   `list_files` / `get_dataset_info` 會被正規化成 typed result。visible transcript 只顯示使用者語言；raw tool payload 保留在 diagnostics。
+  最新 agent execution boundary cleanup 又讓 real `Study` 下的 mapped workflow tool 若無法組成
+  ApplicationService command（例如缺 bandpass low/high frequency），會回 structured input failure
+  並要求補資訊，不會退回 legacy real-tool execution。
   `set_montage` 和 `switch_panel` 仍是 UI request path；真正 montage apply 在 confirmation
   後走 `ApplyMontageCommand`。
 - 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一般回覆 walkthrough、

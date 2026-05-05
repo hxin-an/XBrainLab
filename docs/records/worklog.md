@@ -8470,3 +8470,37 @@
   - This is one refresh coordinator hardening slice. It does not close full command-driven UI
     refresh, controller fallback audit, Data Interpretation wizard maturity, or human desktop
     acceptance.
+
+### 2026-05-05 Agent mapped-tool ApplicationService boundary
+
+- scope：
+  - `LLMController._execute_tool_no_loop()` mapped workflow tool execution.
+- current gap：
+  - `execute_application_tool_command()` correctly returns `None` when it cannot build an
+    ApplicationService command from tool params.
+  - For real `Study` contexts, `LLMController` still treated that `None` as permission to call the
+    legacy real tool. This let a capability-enabled but malformed mapped tool bypass the command
+    layer.
+- red / focused test：
+  - Reworked
+    `tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool`.
+  - Red result:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool -q`
+    -> failed with `runtime` because the legacy tool was executed and raised the test AssertionError.
+- 做了什麼：
+  - If a real `Study` mapped workflow tool is capability-readable but cannot produce an
+    ApplicationService command, `LLMController` now returns `ToolCommandResult.failure(...)` with
+    `error_type=input`.
+  - Mock / legacy non-Study paths still fall through to legacy tool execution for compatibility.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `183 passed`.
+  - `poetry run ruff check XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This hardens runtime safety for mapped tools. It does not rerun local LLM primary / fallback
+    artifacts, prove long autonomous ChatPanel operation, or complete agent product acceptance.

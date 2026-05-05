@@ -215,6 +215,9 @@
   Tool-call normalizer / prompt 現在可把 recipe reload remap request 收斂到
   `preview_interpretation(choices=...)`，缺 replacement 時要求 clarification，不改走 legacy
   load / attach labels。
+- 最新 agent execution boundary cleanup 已讓 real `Study` mapped workflow tools 在缺少必要參數而
+  不能組成 ApplicationService command 時，回 structured input failure 並避免 legacy real-tool
+  fallback。這補上 runtime safety；local 121-case benchmark 尚未因此重跑。
 - Data Interpretation 的 backend command baseline 已新增。
 - agent tool surface 已暴露 Data Interpretation tools，並能使用 backend dynamic confirmation
   boundary。

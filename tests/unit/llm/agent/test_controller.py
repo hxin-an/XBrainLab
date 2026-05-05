@@ -679,8 +679,8 @@ class TestPipelineGate:
         assert payload["ok"] is False
         assert payload["capability"]["command_name"] == "preprocess"
 
-    def test_allowed_tool_executes(self, ctrl):
-        """Tool allowed by ApplicationService policy executes."""
+    def test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool(self, ctrl):
+        """Real Study mapped tools must not bypass ApplicationService on bad args."""
         from XBrainLab.backend.study import Study
 
         ctrl.study = Study()
@@ -688,7 +688,7 @@ class TestPipelineGate:
         ctrl.study.data_manager.loaded_data_list = [raw]
         ctrl.study.data_manager.preprocessed_data_list = []
         mock_tool = MagicMock()
-        mock_tool.execute.return_value = "ok"
+        mock_tool.execute.side_effect = AssertionError("legacy path should not run")
         ctrl.registry.get_tool.return_value = mock_tool
 
         success, result = ctrl._execute_tool_no_loop(
@@ -696,15 +696,12 @@ class TestPipelineGate:
             {},
         )
 
-        assert success
-        assert result.ok is True
+        assert not success
+        assert result.ok is False
         assert result.command_name == "preprocess"
-        assert result.message == "ok"
-        payload = json.loads(
-            ctrl._format_tool_output("apply_bandpass_filter", success, result)
-        )
-        assert payload["ok"] is True
-        assert payload["command_name"] == "preprocess"
+        assert result.error_type == "input"
+        assert "Required inputs" in result.message
+        mock_tool.execute.assert_not_called()
 
     def test_tool_output_history_uses_compact_state_summary(self, ctrl):
         result = ToolCommandResult(

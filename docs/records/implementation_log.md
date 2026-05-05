@@ -2390,3 +2390,27 @@ observer, and shared-status refresh. Nested tab-switch refresh for the same main
 
 - This is a safety hardening slice only. It does not make UI refresh fully command-driven or remove
   controller observer callbacks.
+
+## 2026-05-05 Agent Mapped-Tool Command Boundary
+
+### 狀態
+
+Real `Study` mapped workflow tools now fail closed when missing or unsafe arguments prevent
+construction of an ApplicationService command. The controller returns a typed input failure and does
+not fall back to legacy real-tool execution.
+
+### 已可宣稱
+
+- Capability-enabled agent tools cannot bypass ApplicationService just because required command
+  parameters are missing.
+
+### Evidence 入口
+
+- Source：`XBrainLab/llm/agent/controller.py`
+- Tests：`tests/unit/llm/agent/test_controller.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is runtime boundary hardening. It does not rerun local LLM benchmark artifacts, prove
+  long-form ChatPanel autonomy, or close product acceptance.

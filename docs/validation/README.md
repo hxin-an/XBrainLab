@@ -185,6 +185,29 @@ stronger than the first coordinator slice. It does not complete full command-dri
 remove controller observer callbacks, prove Data Interpretation wizard maturity, or replace human
 Windows desktop acceptance.
 
+2026-05-05 agent mapped-tool ApplicationService boundary hardening:
+
+- real `Study` mapped workflow tools no longer fall back to legacy real-tool execution when
+  `execute_application_tool_command()` cannot construct an ApplicationService command from missing
+  or unsafe arguments.
+- example covered: `apply_bandpass_filter` with missing low/high frequency while preprocessing is
+  otherwise capability-enabled now returns a structured input failure and does not call the legacy
+  tool.
+- focused gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPipelineGate::test_allowed_mapped_tool_missing_params_does_not_use_legacy_tool -q`
+  -> `1 passed`.
+- related agent/tool gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/tools/test_application_surface.py tests/unit/llm/agent/test_verification_layer.py tests/unit/llm/agent/test_tool_call_normalizer.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `183 passed`.
+- focused lint/type:
+  `poetry run ruff check XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/llm/agent/controller.py tests/unit/llm/agent/test_controller.py`
+  -> `0 errors, 0 warnings, 0 notes`.
+- Claim boundary: this hardens runtime safety for mapped tools. It does not rerun the local
+  121-case primary/fallback benchmark, prove long autonomous ChatPanel workflow, or close product
+  acceptance.
+
 2026-05-05 deterministic tool-call eval follow-up:
 
 - 新增 `wrong-tool-temptation-apply-after-epoch` case：state 已有 validated safe Data
