@@ -88,9 +88,12 @@ stdio client path、Inspector CLI / release config baseline 和 Inspector GUI cl
 baseline。最新 MCP boundary slice 又把 `tools/call` structured result 補上 adapter metadata：
 `mode=headless_mcp_stdio`、stable `session_id`、`transport=stdio`、`ui_refresh.supported=False`；
 stdio walkthrough Markdown 也會顯示這個 headless session boundary。最新 hardening 進一步讓 stdio
-MCP 對 `train` 回 `long_running_job_required`，明確表示 stdio 不同步執行長任務，必須等未來
-HTTP job API 才能有 progress / cancel / recovery。這仍不是 HTTP transport、long-running
-training through MCP、Windows launcher 真人驗收或 full MCP client certification。另已新增 non-mocked backend
+MCP 對 `train` 先尊重 backend capability / precondition：資料、dataset、model 或 training
+option 尚未 ready 時會回「Generate datasets before training」這類 readiness reason，不會被
+`long_running_job_required` 遮掉；只有 capability 已 enabled 的 long-running `train` 才回
+`long_running_job_required`，明確表示 stdio 不同步執行長任務，必須等未來 HTTP job API 才能有
+progress / cancel / recovery。這仍不是 HTTP transport、long-running training through MCP、
+Windows launcher 真人驗收或 full MCP client certification。另已新增 non-mocked backend
 workflow evidence：synthetic FIF source 會走 scan -> preview -> validate ->
 confirmation-blocked apply -> confirmed apply -> save recipe -> reload recipe review ->
 preprocess -> epoch -> dataset，並檢查 split audit / train-val-test counts。UI-observable

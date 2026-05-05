@@ -225,22 +225,26 @@ UI baseline capture 結果：
   - `tools/call` structuredContent includes `adapter` metadata:
     `mode=headless_mcp_stdio`, `transport=stdio`, `session_id`, and a `ui_refresh` object with
     `supported=False`.
-  - stdio `train` is now blocked before synchronous execution with
-    `long_running_job_required`; result diagnostics include a `job_boundary` object indicating
-    `http_job_api`, progress, and cancel are not available yet.
+  - stdio `train` now respects backend capability / precondition ordering before the long-running
+    boundary: unready training returns backend readiness reasons such as
+    `Generate datasets before training`, while enabled long-running training returns
+    `long_running_job_required` with a `job_boundary` object indicating `http_job_api`, progress,
+    and cancel are not available yet.
   - MCP tool output schema exposes optional `adapter` property through the same automation schema
     source.
   - `scripts/dev/capture_mcp_stdio_walkthrough.py` summary / Markdown now includes adapter mode,
-    transport, session stability, UI refresh boundary, and the long-running boundary.
+    transport, session stability, UI refresh boundary, train result boundary, and whether the job
+    boundary was reached.
 - Validation:
-  - Initial focused tests failed because stdio `train` only returned ordinary training preconditions
-    and the stdio artifact did not include a long-running boundary.
-  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_long_running_commands_until_job_api_exists tests/integration/mcp/test_stdio_walkthrough_artifact.py::test_capture_mcp_stdio_walkthrough_writes_client_artifact -q`
+  - Initial focused tests for this correction failed because stdio `train` returned
+    `long_running_job_required` even when backend capability was disabled by missing data /
+    dataset / model / training settings.
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_reports_precondition_before_long_running_job_boundary tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists -q`
     -> `2 passed`.
   - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q`
-    -> `6 passed`.
+    -> `8 passed`.
   - `poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
-    -> `9 passed`.
+    -> `10 passed`.
   - `poetry run ruff check XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
     -> pass.
   - `poetry run basedpyright XBrainLab/mcp/server.py XBrainLab/backend/application/automation.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
@@ -250,9 +254,10 @@ UI baseline capture 結果：
   - `git diff --check` -> pass.
   - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
 - Claim boundary: this proves stdio MCP calls expose an explicit headless session/UI-refresh
-  boundary and refuse synchronous long-running training while still using ApplicationService. It
-  does not implement Streamable HTTP, authorization, long-running job progress/cancel/recovery, or
-  desktop UI control certification.
+  boundary, preserve backend readiness errors before job-boundary errors, and refuse synchronous
+  long-running training while still using ApplicationService. It does not implement Streamable
+  HTTP, authorization, long-running job progress/cancel/recovery, or desktop UI control
+  certification.
 
 2026-05-05 backend command boundary cleanup 另有可重跑 focused evidence：
 

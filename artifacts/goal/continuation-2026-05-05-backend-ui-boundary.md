@@ -74,6 +74,13 @@ UI runtime / product-language cleanup:
   `confirmed`, unready train still returns precondition reasons, and
   backend-ready unconfirmed train returns `confirmation_required` without
   calling the training controller.
+- MCP stdio `train` now preserves backend readiness before the stdio job
+  boundary: unready training returns shared precondition reasons, while
+  backend-ready / enabled long-running training returns
+  `long_running_job_required` until HTTP job progress / cancel / recovery
+  exists. The refreshed stdio walkthrough shows `train result boundary:
+  precondition` and `job boundary reached: False` for the default headless
+  session.
 
 Docs updated:
 
@@ -103,9 +110,13 @@ poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py::TestPip
 poetry run pytest --capture=sys tests/unit/llm/rag/test_example_policy.py tests/unit/test_llm_backend.py tests/unit/llm/agent/test_assembler_stage.py -q
 poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_train_command_blocked_until_backend_ready tests/unit/backend/application/test_application_service.py::test_train_command_requires_confirmation_before_long_running_start -q
 poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py::test_start_training_surface_preserves_backend_confirmation_boundary tests/unit/llm/agent/test_controller.py::TestOnUserConfirmed::test_approved_executes_and_finalises tests/unit/llm/agent/test_controller.py::TestOnUserConfirmed::test_approved_failure_triggers_retry tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_does_not_fallback_to_controller -q
+poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_reports_precondition_before_long_running_job_boundary tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists -q
+poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q
+poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
 poetry run pytest --capture=sys tests/unit/backend/application -q
 poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q
 poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_sidebar.py tests/unit/ui/training/test_training_panel.py -q
+poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir artifacts/mcp
 timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py
 ```
 
@@ -118,6 +129,11 @@ Observed results:
 - broader RAG / assembler focused gate: `31 passed`
 - backend train confirmation focused gate: `2 passed`
 - agent/application surface/UI confirmation adapter gate: `4 passed`
+- MCP stdio train boundary focused gate: `2 passed`
+- MCP stdio server + walkthrough artifact gate: `8 passed`
+- MCP stdio unit/integration suite: `10 passed`
+- refreshed MCP stdio walkthrough artifact: default headless `train` result boundary `precondition`,
+  job boundary reached `False`
 - backend application suite: `102 passed`
 - agent/tool suite: `470 passed`
 - training UI focused suite: `42 passed`

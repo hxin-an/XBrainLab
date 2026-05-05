@@ -217,7 +217,11 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- session id stable: `{summary['adapter_boundary']['session_id_stable']}`",
         f"- UI refresh supported: `{summary['adapter_boundary']['ui_refresh_supported']}`",
         f"- UI refresh boundary: {summary['adapter_boundary']['ui_refresh_reason']}",
-        f"- long-running boundary: `{summary['long_running_boundary']['error_type']}`",
+        f"- train result boundary: `{summary['long_running_boundary']['error_type']}`",
+        (
+            "- job boundary reached: "
+            f"`{summary['long_running_boundary']['job_boundary_reached']}`"
+        ),
         f"- long-running job supported: `{summary['long_running_boundary']['supported']}`",
         "",
         "## Tool Calls",
@@ -308,6 +312,9 @@ def _long_running_boundary_summary(steps: list[ClientStep]) -> dict[str, Any]:
             boundary = {}
         return {
             "error_type": str(command_result.get("error_type") or ""),
+            "job_boundary_reached": (
+                command_result.get("error_type") == "long_running_job_required"
+            ),
             "supported": bool(boundary.get("supported")),
             "required_transport": str(boundary.get("required_transport") or ""),
             "supports_progress": bool(boundary.get("supports_progress")),
@@ -315,6 +322,7 @@ def _long_running_boundary_summary(steps: list[ClientStep]) -> dict[str, Any]:
         }
     return {
         "error_type": "",
+        "job_boundary_reached": False,
         "supported": False,
         "required_transport": "",
         "supports_progress": False,

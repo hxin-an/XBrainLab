@@ -1684,6 +1684,9 @@
                   },
                   "interactive": {
                     "type": "boolean"
+                  },
+                  "confirmed": {
+                    "type": "boolean"
                   }
                 }
               },
@@ -2582,7 +2585,7 @@
         "params": {
           "name": "scan_source",
           "arguments": {
-            "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf"
+            "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf"
           }
         }
       },
@@ -2725,7 +2728,7 @@
                   "latest_preview_id": null,
                   "latest_interpretation_id": null,
                   "latest_recipe_id": null,
-                  "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "validation_decision": null,
                   "pending_confirmation": false,
@@ -2737,7 +2740,7 @@
                   "label_carrier_plan": [],
                   "format_capabilities": [
                     {
-                      "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "name": "sub-01_task-mi_run-1.gdf",
                       "format": "GDF",
                       "role": "eeg",
@@ -2784,16 +2787,16 @@
                 "payload_type": "scan_result",
                 "scan_result": {
                   "scan_id": "scan-1",
-                  "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                   "source_hint": "auto",
                   "source_kind": "file",
                   "eeg_files": [
-                    "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf"
+                    "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf"
                   ],
                   "label_carriers": [],
                   "metadata": [
                     {
-                      "file": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "file": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "subject": {
                         "field": "subject",
                         "value": "01",
@@ -2855,7 +2858,7 @@
                   },
                   "format_capabilities": [
                     {
-                      "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "name": "sub-01_task-mi_run-1.gdf",
                       "format": "GDF",
                       "role": "eeg",
@@ -2959,7 +2962,7 @@
                 "latest_preview_id": null,
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": null,
                 "pending_confirmation": false,
@@ -2971,7 +2974,7 @@
                 "label_carrier_plan": [],
                 "format_capabilities": [
                   {
-                    "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                    "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                     "name": "sub-01_task-mi_run-1.gdf",
                     "format": "GDF",
                     "role": "eeg",
@@ -3003,7 +3006,7 @@
             "adapter": {
               "mode": "headless_mcp_stdio",
               "transport": "stdio",
-              "session_id": "mcp-stdio-427a21b33585",
+              "session_id": "mcp-stdio-9056fa9c64d2",
               "ui_refresh": {
                 "supported": false,
                 "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
@@ -3164,7 +3167,7 @@
                   "latest_preview_id": "preview-3",
                   "latest_interpretation_id": null,
                   "latest_recipe_id": null,
-                  "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "validation_decision": null,
                   "pending_confirmation": false,
@@ -3222,7 +3225,7 @@
                   "label_carrier_plan": [],
                   "format_capabilities": [
                     {
-                      "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "name": "sub-01_task-mi_run-1.gdf",
                       "format": "GDF",
                       "role": "eeg",
@@ -3272,10 +3275,10 @@
                 "candidate": {
                   "candidate_id": "candidate-2",
                   "scan_id": "scan-1",
-                  "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "selected_eeg_files": [
-                    "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf"
+                    "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf"
                   ],
                   "label_carriers": [],
                   "label_carrier_plan": [],
@@ -3287,7 +3290,7 @@
                   "granularity": "trial_or_event",
                   "metadata": [
                     {
-                      "file": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "file": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "subject": {
                         "field": "subject",
                         "value": "01",
@@ -3334,7 +3337,7 @@
                   ],
                   "format_capabilities": [
                     {
-                      "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "name": "sub-01_task-mi_run-1.gdf",
                       "format": "GDF",
                       "role": "eeg",
@@ -3410,7 +3413,7 @@
                   ],
                   "format_capabilities": [
                     {
-                      "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "name": "sub-01_task-mi_run-1.gdf",
                       "format": "GDF",
                       "role": "eeg",
@@ -3430,7 +3433,8 @@
                   "event_roles": {
                     "internal_events": "event role candidates"
                   },
-                  "class_map": {}
+                  "class_map": {},
+                  "recipe_reload_summary": {}
                 }
               }
             },
@@ -3525,7 +3529,7 @@
                 "latest_preview_id": "preview-3",
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": null,
                 "pending_confirmation": false,
@@ -3583,7 +3587,7 @@
                 "label_carrier_plan": [],
                 "format_capabilities": [
                   {
-                    "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                    "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                     "name": "sub-01_task-mi_run-1.gdf",
                     "format": "GDF",
                     "role": "eeg",
@@ -3617,7 +3621,7 @@
             "adapter": {
               "mode": "headless_mcp_stdio",
               "transport": "stdio",
-              "session_id": "mcp-stdio-427a21b33585",
+              "session_id": "mcp-stdio-9056fa9c64d2",
               "ui_refresh": {
                 "supported": false,
                 "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
@@ -3778,7 +3782,7 @@
                   "latest_preview_id": "preview-3",
                   "latest_interpretation_id": null,
                   "latest_recipe_id": null,
-                  "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                  "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                   "source_kind": "file",
                   "validation_decision": "needs_confirmation",
                   "pending_confirmation": true,
@@ -3836,7 +3840,7 @@
                   "label_carrier_plan": [],
                   "format_capabilities": [
                     {
-                      "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                       "name": "sub-01_task-mi_run-1.gdf",
                       "format": "GDF",
                       "role": "eeg",
@@ -3992,7 +3996,7 @@
                 "latest_preview_id": "preview-3",
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": "needs_confirmation",
                 "pending_confirmation": true,
@@ -4050,7 +4054,7 @@
                 "label_carrier_plan": [],
                 "format_capabilities": [
                   {
-                    "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                    "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                     "name": "sub-01_task-mi_run-1.gdf",
                     "format": "GDF",
                     "role": "eeg",
@@ -4084,7 +4088,7 @@
             "adapter": {
               "mode": "headless_mcp_stdio",
               "transport": "stdio",
-              "session_id": "mcp-stdio-427a21b33585",
+              "session_id": "mcp-stdio-9056fa9c64d2",
               "ui_refresh": {
                 "supported": false,
                 "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
@@ -4113,19 +4117,17 @@
           "content": [
             {
               "type": "text",
-              "text": "MCP stdio does not execute long-running commands synchronously. Use the desktop UI or a future HTTP job API with progress and cancel support."
+              "text": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training."
             }
           ],
           "structuredContent": {
-            "accepted": false,
+            "accepted": true,
             "command_name": "train",
             "verification": {
               "schema_valid": true,
               "capability_enabled": false,
               "confirmation_required": true,
-              "long_running_job_required": true,
               "reasons": [
-                "MCP stdio does not execute long-running commands synchronously. Use the desktop UI or a future HTTP job API with progress and cancel support.",
                 "Load raw data before training.",
                 "Generate datasets before training.",
                 "Select a model before training.",
@@ -4165,23 +4167,207 @@
             "result": {
               "status": "failed",
               "command_name": "train",
-              "message": "MCP stdio does not execute long-running commands synchronously. Use the desktop UI or a future HTTP job API with progress and cancel support.",
-              "error_type": "long_running_job_required",
-              "recoverable": true,
-              "error_message": "MCP stdio does not execute long-running commands synchronously. Use the desktop UI or a future HTTP job API with progress and cancel support.",
-              "diagnostics": {
-                "job_boundary": {
-                  "supported": false,
-                  "required_transport": "http_job_api",
-                  "supports_progress": false,
-                  "supports_cancel": false
+              "message": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training.",
+              "state": {
+                "pipeline_stage": "empty",
+                "raw": {
+                  "loaded": false,
+                  "count": 0,
+                  "files": [],
+                  "formats": [],
+                  "channels": [],
+                  "metadata": [],
+                  "event_total": 0,
+                  "unique_events": [],
+                  "locked": false,
+                  "diagnostics": {
+                    "runtime_signals": [],
+                    "gdf_duplicate_channel_files": [],
+                    "gdf_duplicate_channel_details": []
+                  }
                 },
-                "capability_reasons": [
-                  "Load raw data before training.",
-                  "Generate datasets before training.",
-                  "Select a model before training.",
-                  "Configure training options before training."
-                ]
+                "preprocessed": {
+                  "available": false,
+                  "count": 0,
+                  "files": [],
+                  "is_epoched": false,
+                  "channel_names": [],
+                  "operations": [],
+                  "diagnostics": {
+                    "runtime_signals": [],
+                    "gdf_duplicate_channel_files": [],
+                    "gdf_duplicate_channel_details": []
+                  }
+                },
+                "epoch": {
+                  "available": false,
+                  "exists": false,
+                  "epoch_count": null,
+                  "n_channels": null,
+                  "n_times": null,
+                  "event_names": [],
+                  "event_ids": null,
+                  "channel_names": []
+                },
+                "dataset": {
+                  "available": false,
+                  "count": 0,
+                  "names": [],
+                  "locked": false,
+                  "generator_exists": false,
+                  "split_summary": {}
+                },
+                "training": {
+                  "has_model": false,
+                  "model_name": null,
+                  "has_training_option": false,
+                  "training_option": {},
+                  "has_trainer": false,
+                  "is_running": false,
+                  "plan_count": 0,
+                  "run_count": 0,
+                  "finished_run_count": 0,
+                  "missing_requirements": [
+                    "Data Splitting",
+                    "Model Selection",
+                    "Training Settings"
+                  ]
+                },
+                "evaluation": {
+                  "available": false,
+                  "total_plans": 0,
+                  "total_runs": 0,
+                  "finished_runs": 0,
+                  "metrics_available": false
+                },
+                "visualization": {
+                  "saliency_configured": false,
+                  "saliency_available": false,
+                  "montage_available": false,
+                  "channel_positions_available": false,
+                  "channel_count": 0
+                },
+                "interpretation": {
+                  "has_scan_result": true,
+                  "has_candidate": true,
+                  "has_preview": true,
+                  "has_validation_decision": true,
+                  "has_applied_interpretation": false,
+                  "has_recipe": false,
+                  "latest_scan_id": "scan-1",
+                  "latest_candidate_id": "candidate-2",
+                  "latest_preview_id": "preview-3",
+                  "latest_interpretation_id": null,
+                  "latest_recipe_id": null,
+                  "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
+                  "source_kind": "file",
+                  "validation_decision": "needs_confirmation",
+                  "pending_confirmation": true,
+                  "blocked_reasons": [],
+                  "warnings": [],
+                  "summary": "Found 1 EEG file(s) and 0 label/event carrier(s).",
+                  "metadata_preview": [
+                    {
+                      "file": "sub-01_task-mi_run-1.gdf",
+                      "subject": {
+                        "field": "subject",
+                        "value": "01",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "subject resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:sub"
+                        ]
+                      },
+                      "session": {
+                        "field": "session",
+                        "value": null,
+                        "source": "missing",
+                        "decision": "needs_confirmation",
+                        "reason": "session BIDS entity is not present for this file.",
+                        "override": null,
+                        "recipe_trace": []
+                      },
+                      "task": {
+                        "field": "task",
+                        "value": "mi",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "task resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:task"
+                        ]
+                      },
+                      "run": {
+                        "field": "run",
+                        "value": "1",
+                        "source": "bids_entity",
+                        "decision": "safe",
+                        "reason": "run resolved from BIDS entity.",
+                        "override": null,
+                        "recipe_trace": [
+                          "bids:run"
+                        ]
+                      }
+                    }
+                  ],
+                  "label_carriers": [],
+                  "label_carrier_plan": [],
+                  "format_capabilities": [
+                    {
+                      "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
+                      "name": "sub-01_task-mi_run-1.gdf",
+                      "format": "GDF",
+                      "role": "eeg",
+                      "status": "needs_review",
+                      "message": "GDF event tables often mix trial starts, cues, artifacts, and class events; confirm trial anchor, class map, and external label alignment before supervised training."
+                    }
+                  ],
+                  "event_roles": {
+                    "internal_events": "event role candidates"
+                  },
+                  "class_map": {},
+                  "label_import_count": 0,
+                  "label_imports": [],
+                  "recipe_path": null
+                },
+                "active_dataset": {
+                  "has_raw_data": false,
+                  "has_preprocessed_data": false,
+                  "has_epoch_data": false,
+                  "has_datasets": false,
+                  "is_locked": false
+                },
+                "active_training": {
+                  "has_model": false,
+                  "has_training_option": false,
+                  "has_trainer": false,
+                  "is_running": false
+                },
+                "last_error": {
+                  "error_type": "precondition",
+                  "message": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training.",
+                  "recoverable": true
+                }
+              },
+              "changed_state": {
+                "raw_changed": false,
+                "preprocessed_changed": false,
+                "epoch_changed": false,
+                "datasets_changed": false,
+                "training_changed": false,
+                "evaluation_changed": false,
+                "visualization_changed": false,
+                "interpretation_changed": false,
+                "error_changed": true
+              },
+              "error_type": "precondition",
+              "recoverable": true,
+              "error_message": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training.",
+              "diagnostics": {
+                "exception_type": "PreconditionError"
               }
             },
             "state": {
@@ -4275,7 +4461,7 @@
                 "latest_preview_id": "preview-3",
                 "latest_interpretation_id": null,
                 "latest_recipe_id": null,
-                "source_path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                "source_path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                 "source_kind": "file",
                 "validation_decision": "needs_confirmation",
                 "pending_confirmation": true,
@@ -4333,7 +4519,7 @@
                 "label_carrier_plan": [],
                 "format_capabilities": [
                   {
-                    "path": "/tmp/xbrainlab-mcp-wmb7xlii/sub-01_task-mi_run-1.gdf",
+                    "path": "/tmp/xbrainlab-mcp-lwjm5z_k/sub-01_task-mi_run-1.gdf",
                     "name": "sub-01_task-mi_run-1.gdf",
                     "format": "GDF",
                     "role": "eeg",
@@ -4362,12 +4548,16 @@
                 "has_trainer": false,
                 "is_running": false
               },
-              "last_error": null
+              "last_error": {
+                "error_type": "precondition",
+                "message": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training.",
+                "recoverable": true
+              }
             },
             "adapter": {
               "mode": "headless_mcp_stdio",
               "transport": "stdio",
-              "session_id": "mcp-stdio-427a21b33585",
+              "session_id": "mcp-stdio-9056fa9c64d2",
               "ui_refresh": {
                 "supported": false,
                 "reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
@@ -4388,15 +4578,16 @@
     "adapter_boundary": {
       "mode": "headless_mcp_stdio",
       "transport": "stdio",
-      "session_id": "mcp-stdio-427a21b33585",
+      "session_id": "mcp-stdio-9056fa9c64d2",
       "session_id_stable": true,
       "ui_refresh_supported": false,
       "ui_refresh_reason": "This MCP server owns a headless ApplicationService session and does not refresh a desktop UI."
     },
     "long_running_boundary": {
-      "error_type": "long_running_job_required",
+      "error_type": "precondition",
+      "job_boundary_reached": false,
       "supported": false,
-      "required_transport": "http_job_api",
+      "required_transport": "",
       "supports_progress": false,
       "supports_cancel": false
     },
@@ -4419,7 +4610,7 @@
       "train": {
         "is_error": true,
         "status": "failed",
-        "text": "MCP stdio does not execute long-running commands synchronously. Use the desktop UI or a future HTTP job API with progress and cancel support."
+        "text": "Load raw data before training.; Generate datasets before training.; Select a model before training.; Configure training options before training."
       }
     }
   }

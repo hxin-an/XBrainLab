@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
+from unittest.mock import MagicMock
 
-from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application import ApplicationService, CommandName
+from XBrainLab.backend.study import Study
 from XBrainLab.mcp.server import PROTOCOL_VERSION, MCPServer
 
 
@@ -138,7 +141,7 @@ def test_tools_call_returns_tool_error_for_schema_repair():
     assert result["structuredContent"]["verification"]["schema_valid"] is False
 
 
-def test_stdio_mcp_blocks_long_running_commands_until_job_api_exists():
+def test_stdio_mcp_reports_precondition_before_long_running_job_boundary():
     server = MCPServer()
     server.handle_message(
         {
@@ -161,10 +164,52 @@ def test_stdio_mcp_blocks_long_running_commands_until_job_api_exists():
     assert response is not None
     result = response["result"]
     assert result["isError"] is True
+    assert "Generate datasets before training" in result["content"][0]["text"]
+    structured = result["structuredContent"]
+    assert structured["accepted"] is True
+    assert structured["verification"]["schema_valid"] is True
+    assert structured["verification"]["capability_enabled"] is False
+    assert "long_running_job_required" not in structured["verification"]
+    assert structured["result"]["error_type"] == "precondition"
+    assert structured["adapter"]["mode"] == "headless_mcp_stdio"
+
+
+def test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists():
+    service = ApplicationService(Study())
+    raw = MagicMock()
+    raw.get_filename.return_value = "sample.fif"
+    raw.get_filepath.return_value = "/tmp/sample.fif"
+    service.study.loaded_data_list = [raw]
+    cast(Any, service.study).datasets = [object()]
+    cast(Any, service.study).model_holder = object()
+    cast(Any, service.study).training_option = object()
+    server = MCPServer(service)
+    server.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": PROTOCOL_VERSION},
+        }
+    )
+
+    response = server.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {"name": "train", "arguments": {"confirmed": True}},
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    assert result["isError"] is True
     assert "long-running" in result["content"][0]["text"]
     structured = result["structuredContent"]
     assert structured["accepted"] is False
     assert structured["verification"]["schema_valid"] is True
+    assert structured["verification"]["capability_enabled"] is True
     assert structured["verification"]["long_running_job_required"] is True
     assert structured["result"]["error_type"] == "long_running_job_required"
     assert structured["result"]["diagnostics"]["job_boundary"] == {

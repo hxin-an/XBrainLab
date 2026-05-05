@@ -164,7 +164,7 @@ class MCPServer:
             }
 
         capability = self._service.get_capabilities().get(name)
-        if capability.long_running:
+        if capability.long_running and capability.enabled:
             execution = self._long_running_boundary_execution(name, capability)
             return {
                 "content": [{"type": "text", "text": _tool_result_text(execution)}],

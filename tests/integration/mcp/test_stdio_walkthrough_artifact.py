@@ -38,10 +38,13 @@ def test_capture_mcp_stdio_walkthrough_writes_client_artifact(tmp_path: Path):
         "ok"
     )
     assert payload["summary"]["tool_results"]["train"]["status"] == "failed"
-    assert payload["summary"]["long_running_boundary"]["error_type"] == (
-        "long_running_job_required"
-    )
+    assert payload["summary"]["long_running_boundary"]["error_type"] == "precondition"
+    assert payload["summary"]["long_running_boundary"]["job_boundary_reached"] is False
     assert payload["summary"]["long_running_boundary"]["supported"] is False
+    assert (
+        "Generate datasets before training"
+        in (payload["summary"]["tool_results"]["train"]["text"])
+    )
     assert "MCP Stdio Walkthrough" in markdown
     assert "headless_mcp_stdio" in markdown
-    assert "long_running_job_required" in markdown
+    assert "job boundary reached: `False`" in markdown

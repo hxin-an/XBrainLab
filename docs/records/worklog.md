@@ -331,14 +331,15 @@
     envelope。
   - 更新 stdio walkthrough summarizer / Markdown，讓 stdlib-only client artifact 直接呈現
     adapter boundary。
-  - 進一步補 `train` over stdio 的 long-running guard：schema valid 後仍不同步執行長任務，
-    而是回 `long_running_job_required` 和 `job_boundary` diagnostics。
+  - 進一步補 `train` over stdio 的 long-running guard：schema valid 後仍不同步執行 enabled
+    long-running 任務，而是回 `long_running_job_required` 和 `job_boundary` diagnostics。
+    後續 08:36 slice 已修正 precedence，未 ready training 會先回 backend precondition。
 - 結果：
   - `artifacts/mcp/stdio-walkthrough.json` / `.md` 已刷新；summary 顯示
     `headless_mcp_stdio`、`transport=stdio`、`session_id_stable=True`、
     `ui_refresh_supported=False`。
-  - stdio walkthrough 現在也包含 `train` call，status 是 `failed`，error type 是
-    `long_running_job_required`，並標出 `http_job_api` / progress / cancel 尚未支援。
+  - stdio walkthrough 現在也包含 `train` call；後續刷新後 default unready path 的 error type 是
+    `precondition`，只有 backend-ready / enabled train 才會到 `long_running_job_required`。
   - MCP adapter 更清楚地避免「HTTP/headless external client 正在刷新桌面 UI」這種錯誤 claim。
 - 證據：
   - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_tools_call_reuses_one_application_service_session -q`
@@ -5441,3 +5442,61 @@
   - This does not prove full button-driven training completion, evaluation, visualization, or
     saliency workflow.
   - MCP long-running job progress / cancel / recovery is still not implemented.
+
+### 2026-05-05 MCP train readiness before job boundary
+
+- scope：
+  - MCP stdio adapter / ApplicationService capability boundary。
+  - No MCP HTTP transport, job API, UI widget, command name, or automation schema change.
+- problem：
+  - Previous MCP hardening returned `long_running_job_required` for every stdio `train` call because
+    `train` is a long-running capability.
+  - That masked real backend readiness failures: a missing dataset / model / training option looked
+    like only an MCP job API limitation.
+- target behavior：
+  - Unready stdio `train` returns the shared backend precondition reasons, including
+    `Generate datasets before training`.
+  - Backend-ready / enabled long-running `train` remains blocked from synchronous stdio execution
+    with `long_running_job_required` and a job-boundary diagnostic.
+  - The stdio walkthrough artifact states whether the job boundary was actually reached.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_reports_precondition_before_long_running_job_boundary tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists -q`
+    initially failed because unready `train` returned the old synchronous long-running block text
+    instead of backend preconditions.
+- 做了什麼：
+  - Changed `MCPServer._call_tool()` to apply the stdio long-running block only when the backend
+    capability is both `long_running` and enabled.
+  - Added tests for both sides of the boundary: unready `train` precondition and ready/enabled
+    `train` job-boundary block.
+  - Updated `capture_mcp_stdio_walkthrough.py` and refreshed
+    `artifacts/mcp/stdio-walkthrough.json` / `.md`; Markdown now shows
+    `train result boundary: precondition` and `job boundary reached: False` for the default
+    headless walkthrough.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py::test_stdio_mcp_reports_precondition_before_long_running_job_boundary tests/unit/mcp/test_server.py::test_stdio_mcp_blocks_enabled_long_running_commands_until_job_api_exists -q`
+    -> `2 passed`.
+  - `poetry run pytest --capture=sys tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py -q`
+    -> `8 passed`.
+  - `poetry run ruff check XBrainLab/mcp/server.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/mcp/server.py scripts/dev/capture_mcp_stdio_walkthrough.py tests/unit/mcp/test_server.py tests/integration/mcp/test_stdio_walkthrough_artifact.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 180s poetry run python scripts/dev/capture_mcp_stdio_walkthrough.py --output-dir artifacts/mcp`
+    -> refreshed `artifacts/mcp/stdio-walkthrough.json` / `.md`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q`
+    -> `10 passed`.
+  - `timeout 120s git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+- 不能宣稱：
+  - This is MCP stdio error-precedence hardening, not HTTP MCP or job progress / cancel /
+    recovery support.
+  - This is not desktop UI control certification; stdio MCP remains a headless ApplicationService
+    session.

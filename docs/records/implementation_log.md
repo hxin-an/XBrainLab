@@ -146,15 +146,18 @@ tests 只覆蓋 compatibility，不再當作 product prompt evidence。
 MCP stdio `tools/call` result 現在明確帶 headless adapter metadata：mode、transport、stable
 session id 和 UI refresh boundary。這讓 external clients 可以分辨「MCP server 擁有自己的
 ApplicationService session」和「正在控制使用者桌面 UI」是兩件不同的事。後續 hardening
-也把 stdio `train` 擋在同步 request 外，回 `long_running_job_required`，避免 external client
-以為 long-running training 已有 progress / cancel job model。
+也把 stdio `train` 的 error precedence 收斂到 backend truth：unready training 先回 capability
+precondition；只有 backend-ready / enabled 的 long-running training 才回
+`long_running_job_required`，避免 external client 以為 missing dataset / model 只是 job API
+尚未實作。
 
 ### 已可宣稱
 
 - MCP stdio tool calls 仍走 `ApplicationService` / automation payload；structured result 現在含
   `adapter.mode=headless_mcp_stdio`、`transport=stdio`、stable `session_id` 和
   `ui_refresh.supported=False`。
-- MCP stdio 對 `train` 會回 recoverable job-boundary error，不會同步啟動長時間訓練。
+- MCP stdio 對 unready `train` 保留 backend precondition reason；對 enabled long-running
+  `train` 才會回 recoverable job-boundary error，不會同步啟動長時間訓練。
 - stdlib-only MCP client walkthrough artifact 已刷新並在 Markdown summary 顯示 adapter boundary。
 
 ### Evidence 入口
