@@ -8090,3 +8090,17 @@
 - 不能宣稱：
   - This is automated PyQt replay evidence only. It does not replace Windows launcher /
     dual-monitor / DPI human acceptance, long local-model desktop session, or leak-proof soak.
+
+### 2026-05-05 20:06 UI unit regression after fallback boundary
+
+- scope：
+  - Broad UI unit regression after `find_study()` started detecting `controller.study` and
+    `DatasetPanel.apply_loader()` became legacy-only.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `937 passed in 107.57s`.
+- evidence：
+  - This covers the wider UI helper/panel unit suite beyond the focused fallback tests.
+- 不能宣稱：
+  - This is still automated unit regression, not human desktop acceptance or full command-driven UI
+    refresh closure.
