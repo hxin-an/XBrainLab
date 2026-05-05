@@ -8437,3 +8437,36 @@
   - This is one callback-specific observer cleanup. It does not make UI refresh fully
     command-driven, remove controller observer events, complete controller fallback audit, or
     replace Windows human desktop acceptance.
+
+### 2026-05-05 Navigation refresh re-entrancy guard
+
+- scope：
+  - `XBrainLab.ui.refresh_coordinator.refresh_after_navigation()`.
+- current gap：
+  - Command, observer, and shared-status refresh had same-main-window re-entrancy guards.
+  - Navigation refresh refreshed the selected panel and shared status but did not guard nested
+    refresh for the same main window.
+- red / focused test：
+  - Added
+    `tests/unit/ui/test_refresh_coordinator.py::test_navigation_refresh_is_not_reentrant_for_same_main_window`.
+  - Red result:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_navigation_refresh_is_not_reentrant_for_same_main_window -q`
+    -> failed because the selected panel was refreshed twice during a nested navigation refresh.
+- 做了什麼：
+  - Added the `_REFRESHING_MAIN_WINDOWS` guard to `refresh_after_navigation()`.
+  - Kept the existing selected-panel refresh plus aggregate info / assistant backend status refresh
+    behavior for the outer navigation call.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_navigation_refresh_is_not_reentrant_for_same_main_window -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `21 passed`.
+  - `poetry run ruff check XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py tests/unit/ui/test_refresh_coordinator.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- 不能宣稱：
+  - This is one refresh coordinator hardening slice. It does not close full command-driven UI
+    refresh, controller fallback audit, Data Interpretation wizard maturity, or human desktop
+    acceptance.

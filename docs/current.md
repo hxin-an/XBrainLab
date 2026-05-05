@@ -794,7 +794,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `MainWindow.switch_page()` 的 panel-index refresh mapping 移到
   `refresh_after_navigation()`，讓 command result refresh 和 navigation refresh 都由
   `refresh_coordinator` 承接；navigation refresh 現在也會更新 aggregate info panel 和 assistant
-  backend status，不再只刷新 selected panel。最新 observer refresh cleanup 又把單純的
+  backend status，不再只刷新 selected panel。最新 navigation hardening 又讓
+  `refresh_after_navigation()` 使用與 command / observer refresh 相同的 same-main-window
+  re-entrancy guard，避免 tab switch refresh 被 nested refresh 重新觸發。最新 observer refresh cleanup 又把單純的
   `event -> update_panel()` bridge 收斂到 `BasePanel.refresh_from_observer()`，再委派
   `refresh_coordinator.refresh_after_observer()`；simple observer refresh 現在會刷新事件來源
   panel、aggregate info panel 和 assistant backend status。這保留 observer bridge 語意，但不再讓

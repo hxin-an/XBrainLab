@@ -226,6 +226,29 @@ def test_navigation_refreshes_selected_panel_and_shared_status():
     assert main_window.agent_manager.refresh_calls == 1
 
 
+def test_navigation_refresh_is_not_reentrant_for_same_main_window():
+    main_window = _main_window()
+    nested_results = []
+
+    class _RecursivePanel:
+        def __init__(self) -> None:
+            self.update_calls = 0
+
+        def update_panel(self) -> None:
+            self.update_calls += 1
+            if self.update_calls == 1:
+                nested_results.append(refresh_after_navigation(main_window, 2))
+
+    panel = _RecursivePanel()
+    main_window.training_panel = panel
+
+    refreshed = refresh_after_navigation(main_window, 2)
+
+    assert refreshed is True
+    assert panel.update_calls == 1
+    assert nested_results == [False]
+
+
 def test_navigation_refresh_ignores_unknown_panel_index():
     main_window = _main_window()
     info = _attach_info_spy(main_window)

@@ -111,7 +111,8 @@
   移到 `refresh_after_navigation()`；navigation refresh scope 現在也由
   `XBrainLab.ui.refresh_coordinator` 定義。最新 follow-up 也把 navigation shared-status refresh
   補進 coordinator：tab switch 會刷新 selected panel、aggregate info panel 和 assistant backend
-  status。這是小切片，還不代表 observer / callback refresh 已收斂。
+  status。最新 navigation guard slice 又把 same-main-window re-entrancy guard 補到
+  `refresh_after_navigation()`。這是小切片，還不代表 observer / callback refresh 已收斂。
 - 最新 observer refresh cleanup 已把 Dataset / Preprocess / Training / Evaluation / Visualization
   的單純 observer `event -> update_panel()` bridge 改成 `refresh_from_observer()`，再委派
   `refresh_after_observer()`；simple observer refresh 現在會刷新事件來源 panel、aggregate info

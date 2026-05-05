@@ -145,9 +145,11 @@ UI baseline capture 結果：
 - navigation shared-status refresh:
   - `refresh_after_navigation()` now refreshes the selected workflow panel plus aggregate info and
     assistant backend status, keeping tab-switch refresh inside the shared coordinator boundary.
+  - `refresh_after_navigation()` also has same-main-window re-entrancy protection, matching command
+    and observer refresh safety behavior.
   - focused gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py -q`
-    -> `19 passed`.
+    -> `21 passed`.
 - Dataset import-finished callback cleanup:
   - Successful legacy controller imports refresh through the `data_changed` simple refresh bridge;
     `import_finished` now only surfaces warning messages and avoids a duplicate Dataset panel

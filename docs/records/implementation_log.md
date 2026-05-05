@@ -2365,3 +2365,28 @@ info and assistant backend status.
 
 - This is one callback-specific observer cleanup. It does not complete full command-driven UI
   refresh, remove controller observers, or replace human desktop acceptance.
+
+## 2026-05-05 Navigation Refresh Re-Entrancy Guard
+
+### 狀態
+
+`refresh_after_navigation()` now uses the same main-window re-entrancy boundary as command,
+observer, and shared-status refresh. Nested tab-switch refresh for the same main window returns
+`False` instead of refreshing the selected panel a second time.
+
+### 已可宣稱
+
+- Navigation refresh has the same same-window recursion protection as the other refresh coordinator
+  entry points.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`,
+  `tests/unit/ui/test_main_window_sync.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a safety hardening slice only. It does not make UI refresh fully command-driven or remove
+  controller observer callbacks.

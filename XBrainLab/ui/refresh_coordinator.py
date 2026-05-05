@@ -46,9 +46,18 @@ def refresh_after_navigation(main_window: Any, index: int) -> bool:
     """Refresh the visible workflow panel selected by top-level navigation."""
     if index < 0 or index >= len(_PANEL_NAMES_BY_INDEX):
         return False
-    panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
-    refreshed = refresh_panel(panel)
-    return _refresh_shared_status(main_window) or refreshed
+
+    main_window_id = id(main_window)
+    if main_window_id in _REFRESHING_MAIN_WINDOWS:
+        return False
+
+    _REFRESHING_MAIN_WINDOWS.add(main_window_id)
+    try:
+        panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
+        refreshed = refresh_panel(panel)
+        return _refresh_shared_status(main_window) or refreshed
+    finally:
+        _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
 
 def refresh_after_observer(context: Any) -> bool:
