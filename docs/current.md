@@ -850,7 +850,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   ApplicationService command（例如缺 bandpass low/high frequency），會回 structured input failure
   並要求補資訊，不會退回 legacy real-tool execution。
   `set_montage` 和 `switch_panel` 仍是 UI request path；真正 montage apply 在 confirmation
-  後走 `ApplyMontageCommand`。
+  後走 `ApplyMontageCommand`。AgentManager 和 Visualization sidebar 現在共用 montage position
+  normalizer，confirmed positions 會先轉成 JSON-safe float tuples，malformed coordinate vectors
+  不會進入 ApplicationService。
 - 真 Windows launcher 尚未人工驗收；true local model ChatPanel 已有一般回覆 walkthrough、
   單步 `query_state` tool-command walkthrough、兩 turn workflow walkthrough artifact，以及
   Data Interpretation `scan_source` -> `preview_interpretation` -> `validate_interpretation`

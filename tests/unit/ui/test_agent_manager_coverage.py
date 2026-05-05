@@ -237,7 +237,10 @@ class TestMontagePicker:
         m.chat_panel.debug_mode = True
         mock_dialog = MagicMock()
         mock_dialog.exec.return_value = True
-        mock_dialog.get_result.return_value = (["Cz", "Fz"], MagicMock())
+        mock_dialog.get_result.return_value = (
+            ["Cz", "Fz"],
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        )
         with patch(
             "XBrainLab.ui.components.agent_manager.PickMontageDialog",
             return_value=mock_dialog,
@@ -294,6 +297,68 @@ class TestMontagePicker:
         )
         m.preprocess_controller.apply_montage.assert_not_called()
         m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
+
+    def test_real_study_montage_normalizes_dialog_position_lists(self):
+        """Agent montage path should share the sidebar's command argument shape."""
+        from XBrainLab.backend.study import Study
+
+        m = _make_manager()
+        m.study = Study()
+        m.preprocess_controller = MagicMock()
+        m.chat_panel.debug_mode = True
+        epoch_data = MagicMock()
+        epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
+        m.study.epoch_data = epoch_data
+        mock_dialog = MagicMock()
+        mock_dialog.exec.return_value = True
+        mock_dialog.get_result.return_value = (
+            ["C3", "C4"],
+            [[0, 0, 0], [1, 0, 0]],
+        )
+
+        with patch(
+            "XBrainLab.ui.components.agent_manager.PickMontageDialog",
+            return_value=mock_dialog,
+        ):
+            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        epoch_data.set_channels.assert_called_once_with(
+            ["C3", "C4"],
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        )
+        m.preprocess_controller.apply_montage.assert_not_called()
+
+    def test_real_study_montage_rejects_malformed_position_vectors(self):
+        """Malformed dialog output should not reach ApplicationService."""
+        from XBrainLab.backend.study import Study
+
+        m = _make_manager()
+        m.study = Study()
+        status_bar = MagicMock()
+        m.main_window.statusBar.return_value = status_bar
+        epoch_data = MagicMock()
+        epoch_data.get_mne.return_value.info = {"ch_names": ["C3"]}
+        m.study.epoch_data = epoch_data
+        mock_dialog = MagicMock()
+        mock_dialog.exec.return_value = True
+        mock_dialog.get_result.return_value = (["C3"], [[0.0, 0.0]])
+
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
+                return_value=mock_dialog,
+            ),
+            patch(
+                "XBrainLab.ui.components.agent_manager.execute_application_command",
+            ) as mock_execute,
+        ):
+            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        mock_execute.assert_not_called()
+        epoch_data.set_channels.assert_not_called()
+        status_bar.showMessage.assert_called_once_with(
+            "Montage setup failed: Each montage position must contain x, y, z values."
+        )
 
     def test_real_study_montage_refuses_controller_fallback(self):
         """Real Study montage must not fall back to preprocess controller."""

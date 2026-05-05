@@ -8820,3 +8820,27 @@
 - 不能宣稱：
   - This is automated PyQt/offscreen evidence, not Windows human desktop acceptance.
   - This does not close the mature Data Interpretation wizard or broader UI polish backlog.
+
+### 2026-05-05 AgentManager / Visualization montage position normalizer
+
+- scope：
+  - Remove a duplicated command-argument truth between Visualization sidebar and AgentManager
+    montage confirmation.
+  - Keep `ApplyMontageCommand` arguments typed as JSON-safe float tuples before service execution.
+- red / focused tests：
+  - Added AgentManager real-`Study` test where dialog returns list positions; it failed because
+    backend received `[[0, 0, 0], [1, 0, 0]]` instead of float tuples.
+  - Added malformed vector test; it exposed that bad UI dialog output could proceed into the command
+    path instead of being blocked at the UI adapter boundary.
+- 做了什麼：
+  - Added `XBrainLab/ui/montage_positions.py::normalize_montage_positions()`.
+  - Reused the helper in Visualization `ControlSidebar.set_montage()` and
+    `AgentManager.open_montage_picker_dialog()`.
+  - AgentManager now shows a concise status-bar message for malformed position vectors and does not
+    call ApplicationService in that case.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_normalizes_dialog_position_lists tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_rejects_malformed_position_vectors tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_real_study_uses_application_service -q`
+    -> `4 passed`.
+- 不能宣稱：
+  - This is command argument boundary cleanup. It does not certify interactive desktop 3D rendering
+    or the full visualization workflow.

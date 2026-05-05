@@ -36,6 +36,7 @@ from XBrainLab.ui.dialogs.local_runtime_first_run_dialog import (
 )
 from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import PickMontageDialog
+from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.product_language import (
     command_labels,
     tool_action_label,
@@ -1164,11 +1165,19 @@ class AgentManager(QObject):
         if dialog.exec():
             chs, positions = dialog.get_result()
             if chs and positions is not None:
+                try:
+                    normalized_positions = normalize_montage_positions(chs, positions)
+                except Exception as exc:
+                    sb = self.main_window.statusBar()
+                    if sb:
+                        sb.showMessage(f"Montage setup failed: {exc}")
+                    return
+
                 result = execute_application_command(
                     self,
                     ApplyMontageCommand(
                         channels=list(chs),
-                        positions=list(positions),
+                        positions=normalized_positions,
                         montage_name=montage_name,
                     ),
                 )

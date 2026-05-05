@@ -2618,3 +2618,32 @@ data, so green was misleading unless a successful result had already occurred.
 
 - This is a visual semantics slice only. It does not complete mature import wizard editing,
   Windows launcher human acceptance, or the broader UI refresh coordinator milestone.
+
+## 2026-05-05 Montage Position Argument Boundary
+
+### 狀態
+
+AgentManager and Visualization sidebar montage confirmation now share a UI helper that normalizes
+dialog-returned channel positions into JSON-safe float tuples before `ApplyMontageCommand` is
+constructed. Malformed coordinate vectors are rejected at the UI adapter boundary and do not reach
+ApplicationService.
+
+### 已可宣稱
+
+- The assistant montage confirmation path and the Visualization sidebar no longer have separate
+  command-argument shaping rules for montage positions.
+- Malformed montage vectors are blocked before service execution.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/montage_positions.py`,
+  `XBrainLab/ui/components/agent_manager.py`,
+  `XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests：`tests/unit/ui/test_agent_manager_coverage.py`,
+  `tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete interactive desktop 3D / PyVista acceptance or broader visualization UX
+  certification.

@@ -27,6 +27,7 @@ from XBrainLab.ui.dialogs.visualization import (
     PickMontageDialog,
     SaliencySettingDialog,
 )
+from XBrainLab.ui.montage_positions import normalize_montage_positions
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -124,22 +125,6 @@ class ControlSidebar(QWidget):
 
     # --- Actions ---
 
-    @staticmethod
-    def _normalize_montage_positions(chs, positions):
-        """Return montage positions as JSON-safe ``(x, y, z)`` tuples."""
-        if isinstance(positions, dict):
-            position_values = [positions[ch] for ch in chs]
-        else:
-            position_values = positions
-
-        normalized = []
-        for position in position_values:
-            coords = list(position)
-            if len(coords) != 3:
-                raise ValueError("Each montage position must contain x, y, z values.")
-            normalized.append((float(coords[0]), float(coords[1]), float(coords[2])))
-        return normalized
-
     def _on_update_after_legacy_result(self, result) -> None:
         if result is None and self.panel and hasattr(self.panel, "on_update"):
             self.panel.on_update()
@@ -166,7 +151,7 @@ class ControlSidebar(QWidget):
             chs, positions = win.get_result()
             if chs is not None and positions is not None:
                 try:
-                    normalized_positions = self._normalize_montage_positions(
+                    normalized_positions = normalize_montage_positions(
                         chs,
                         positions,
                     )
