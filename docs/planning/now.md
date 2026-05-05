@@ -94,6 +94,10 @@
   `None` fallback 才手動刷新。
 - 最新 Visualization control sidebar refresh cleanup 已把 montage / saliency service-success
   `on_update()` 移除；saliency mock / legacy `None` fallback 才手動刷新。
+- 最新 post-command refresh architecture guard 已寫進 `tests/architecture_compliance.py`：UI action
+  在 service-backed `execute_application_command()` 後不可再直接呼叫 local refresh method；只允許
+  explicit `refresh=False` query path 或 failure / legacy fallback branch。這能防止剛清掉的
+  duplicated service-success refresh 回流，但不代表 observer/manual/tab-switch refresh 已全部收斂。
 - 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若

@@ -769,8 +769,12 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   coordinator；Dataset table inline subject/session metadata edit 的 service-success path 也不再
   手動刷新；Preprocess sidebar 的 filter / resample / rereference / normalize / epoch / reset
   service-success path 也不再手動刷新 panel 或 main info；Visualization control sidebar montage /
-  saliency service-success path 也不再直接呼叫 `on_update()`。後續仍要把剩餘 manual refresh /
-  controller observer path 收斂。
+  saliency service-success path 也不再直接呼叫 `on_update()`。最新 architecture guard 又把
+  service-backed command 後的 direct local refresh 納入 `tests/architecture_compliance.py`：
+  UI action 在 `execute_application_command()` 後不可再直接呼叫 `update_panel()`、
+  `check_ready_to_train()`、`notify_update()`、`on_update()`、`update_info_panel()` 或
+  `refresh_backend_status()`，除非是 explicit `refresh=False` query path 或 failure / legacy
+  fallback branch。後續仍要把剩餘 manual refresh / controller observer path 收斂。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training
@@ -779,7 +783,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `run_legacy_controller_fallback()`：split cleanup / generate dataset、model selection、training
   settings、start / stop training 和 clear history 的 controller fallback 現在只允許 mock /
   legacy non-`Study` context；若 real `Study` command helper 意外回 `None`，會拒絕 fallback
-  並暴露錯誤，而不是 silent controller mutation。
+  並暴露錯誤，而不是 silent controller mutation。後續 Preprocess、Dataset、Visualization 和
+  AgentManager fallback audit 已沿用同一 helper；`tests/architecture_compliance.py` 也會阻擋
+  UI `result is None` branch 直接 controller mutation。這是 product runtime fallback boundary，
+  不是 controller 已完全退場。
 - Agent mapped tools 的一批 path 已直接回 `CommandResult`；`load_data` 也已先做 directory
   expansion 再進 command surface，但不再出現在 Empty / Data Loaded / Preprocessed stage 的
   primary prompt；`attach_labels` 也已從這些 stage 的主工具語言移除。read-only

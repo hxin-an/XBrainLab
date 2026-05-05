@@ -54,6 +54,14 @@ UI_CONTROLLER_FALLBACK_METHODS = (
     "stop_training",
     "update_metadata",
 )
+UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
+    "check_ready_to_train",
+    "notify_update",
+    "on_update",
+    "refresh_backend_status",
+    "update_info_panel",
+    "update_panel",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -143,6 +151,13 @@ def check_architecture(root_dir: str) -> int:
     if fallback_violations:
         print("\nUI Controller Fallback Violations Found:")
         for violation in fallback_violations:
+            print(f" - {violation}")
+        return 1
+
+    refresh_violations = check_ui_post_command_local_refreshes(Path(root_dir))
+    if refresh_violations:
+        print("\nUI Post-command Local Refresh Violations Found:")
+        for violation in refresh_violations:
             print(f" - {violation}")
         return 1
 
@@ -257,6 +272,135 @@ def _read_poetry_default_dependency_names(pyproject: Path) -> set[str]:
             continue
         deps.add(line.split("=", 1)[0].strip().strip('"'))
     return deps
+
+
+def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
+    """Return UI code that locally refreshes after service-backed commands."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                violations.extend(
+                    f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                    f"{_call_name(call.func)} after execute_application_command(); "
+                    "service-backed success refresh must go through "
+                    "refresh_after_command(), with local refresh limited to "
+                    "explicit legacy-result helpers."
+                    for call in _post_command_local_refresh_calls(node.body, source)
+                )
+    return violations
+
+
+def _post_command_local_refresh_calls(
+    statements: list[ast.stmt],
+    source: str,
+) -> list[ast.Call]:
+    violations: list[ast.Call] = []
+    command_seen = False
+    for statement in statements:
+        if command_seen:
+            visitor = _PostCommandLocalRefreshVisitor(source)
+            visitor.visit(statement)
+            violations.extend(visitor.violations)
+        violations.extend(
+            _post_command_local_refresh_calls(
+                _nested_statement_bodies(statement), source
+            ),
+        )
+        if _contains_service_backed_command(statement):
+            command_seen = True
+    return violations
+
+
+def _nested_statement_bodies(statement: ast.stmt) -> list[ast.stmt]:
+    bodies: list[ast.stmt] = []
+    for field_name in ("body", "orelse", "finalbody"):
+        value = getattr(statement, field_name, None)
+        if isinstance(value, list):
+            bodies.extend(node for node in value if isinstance(node, ast.stmt))
+    handlers = getattr(statement, "handlers", None)
+    if isinstance(handlers, list):
+        for handler in handlers:
+            body = getattr(handler, "body", None)
+            if isinstance(body, list):
+                bodies.extend(node for node in body if isinstance(node, ast.stmt))
+    return bodies
+
+
+def _contains_service_backed_command(node: ast.AST) -> bool:
+    for child in ast.walk(node):
+        if not isinstance(child, ast.Call):
+            continue
+        if _call_name(child.func) != "execute_application_command":
+            continue
+        if _call_has_refresh_false(child):
+            continue
+        return True
+    return False
+
+
+def _call_has_refresh_false(call: ast.Call) -> bool:
+    for keyword in call.keywords:
+        if keyword.arg != "refresh":
+            continue
+        if isinstance(keyword.value, ast.Constant) and keyword.value.value is False:
+            return True
+    return False
+
+
+class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.violations: list[ast.Call] = []
+
+    def visit_If(self, node: ast.If) -> None:
+        if _is_failure_or_missing_result_guard(node.test):
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _call_name(node.func) in UI_POST_COMMAND_LOCAL_REFRESH_METHODS:
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+def _is_failure_or_missing_result_guard(node: ast.AST) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return False
+    if isinstance(node, ast.Attribute):
+        return node.attr == "failed"
+    if isinstance(node, ast.Compare):
+        return _is_none_failure_compare(node)
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        return any(_is_failure_or_missing_result_guard(value) for value in node.values)
+    return False
+
+
+def _is_none_failure_compare(node: ast.Compare) -> bool:
+    if len(node.ops) != 1 or len(node.comparators) != 1:
+        return False
+    left_is_none = isinstance(node.left, ast.Constant) and node.left.value is None
+    right_is_none = (
+        isinstance(node.comparators[0], ast.Constant)
+        and node.comparators[0].value is None
+    )
+    if not (left_is_none or right_is_none):
+        return False
+    return isinstance(node.ops[0], (ast.Is, ast.Eq))
 
 
 if __name__ == "__main__":

@@ -42,6 +42,40 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 UI Post-command Refresh Architecture Guard
+
+### 狀態
+
+The UI refresh coordinator cleanup now has a static architecture guard for duplicated local refresh.
+`tests/architecture_compliance.py` scans UI action blocks after service-backed
+`execute_application_command()` calls and fails if they directly call panel-local refresh methods
+such as `update_panel()`, `check_ready_to_train()`, `notify_update()`, `on_update()`,
+`update_info_panel()`, or `refresh_backend_status()`. The guard permits explicit query paths with
+`refresh=False` and failure / legacy fallback branches.
+
+### 已可宣稱
+
+- Recently cleaned service-success refresh paths are protected from straightforward regression.
+- The boundary between command-result coordinator refresh and legacy / failure local refresh is now
+  documented and tested.
+
+### Evidence 入口
+
+- Code: `tests/architecture_compliance.py`
+- Tests: `tests/unit/test_architecture_compliance.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete command-driven UI refresh. Controller observer events, tab-switch refresh,
+  callback-driven updates, and remaining manually refreshed non-command flows still need audit.
+
+### 下一手重點
+
+Continue the `UI Command Refresh Coordinator + Controller Fallback Audit` by classifying remaining
+observer / callback refresh paths and adding focused coordinator tests where user-facing behavior can
+be observed.
+
 ## 2026-05-05 UI Controller Fallback Boundary Slices
 
 ### 狀態

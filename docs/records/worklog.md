@@ -37,6 +37,38 @@
 
 ## 2026-05-05
 
+### 18:29 UI post-command refresh architecture guard
+
+- 做了什麼：
+  - 在 `tests/architecture_compliance.py` 新增 post-command local refresh guard。
+  - guard 會掃 `XBrainLab/ui/**/*.py`：service-backed `execute_application_command()` 之後若同一
+    statement block 直接呼叫 `update_panel()`、`check_ready_to_train()`、`notify_update()`、
+    `on_update()`、`update_info_panel()` 或 `refresh_backend_status()` 會 fail。
+  - explicit `refresh=False` query path、failure / `None` guard branch 和 legacy fallback branch 允許
+    保留 local refresh。
+  - 新增 `tests/unit/test_architecture_compliance.py` 覆蓋 direct local refresh violation、
+    legacy helper allowance、`not result.failed` success-branch violation 和 `refresh=False` query
+    allowance。
+- 結果：
+  - 目前 real codebase 通過 guard，代表剛完成的 service-success refresh cleanup 沒有直接回流。
+  - 這只保護 post-command local refresh boundary；observer / callback / tab-switch refresh 仍是
+    後續 cleanup，不可宣稱 UI refresh target closure。
+- 證據：
+  - `git diff --check` -> pass。
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> pass。
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `4 passed`。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - `poetry run ruff check .` -> pass。
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點；下一步仍是分類 observer / callback refresh path，以及把 remaining
+    manual refresh 納入 coordinator 或明確保留為 event bridge。
+
 ### 18:15 Visualization control refresh coordinator slice
 
 - 做了什麼：
