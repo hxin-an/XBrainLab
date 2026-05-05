@@ -19,6 +19,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.visualization import (
@@ -215,7 +216,10 @@ class ControlSidebar(QWidget):
                     SaliencyCommand(params=dict(params)),
                 )
                 if result is None:
-                    self.controller.set_saliency_params(params)
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.set_saliency_params(params),
+                    )
                 elif result.failed:
                     QMessageBox.critical(
                         self,

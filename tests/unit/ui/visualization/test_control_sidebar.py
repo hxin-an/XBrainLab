@@ -205,3 +205,37 @@ def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
             "settings before querying saliency readiness."
         ),
     )
+
+
+def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
+    controller = MagicMock()
+    controller.get_saliency_params.return_value = None
+    main_window = QMainWindow()
+    main_window.study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            return_value=None,
+        ),
+        pytest.raises(RuntimeError, match="real Study"),
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = {
+            "SmoothGrad": {"nt_samples": 1}
+        }
+        sidebar.set_saliency()
+
+    controller.set_saliency_params.assert_not_called()

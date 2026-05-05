@@ -37,6 +37,37 @@
 
 ## 2026-05-05
 
+### 17:07 Visualization / AgentManager fallback boundary
+
+- 做了什麼：
+  - 延續 controller fallback audit，把 Visualization control sidebar 的 saliency settings fallback
+    和 AgentManager montage confirmation fallback 改成 `run_legacy_controller_fallback()`。
+  - 先加紅燈：
+    - real `Study` + missing `CommandResult` 時，saliency settings 不可呼叫
+      `controller.set_saliency_params()`。
+    - real `Study` + missing `CommandResult` 時，assistant montage confirmation 不可呼叫
+      `preprocess_controller.apply_montage()`。
+- 結果：
+  - Visualization / AgentManager 的剩餘 controller mutation fallback 已顯式限制為 mock /
+    legacy non-`Study`。
+  - `rg` 剩餘 `result is None` 命中主要是 service-unavailable critical / false returns，或已用 helper
+    包住的 compatibility fallback。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_refuses_real_study_controller_fallback tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback -q`
+    -> failed；兩者都未 raise。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_refuses_real_study_controller_fallback tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback tests/unit/ui/test_ui_misc.py::TestAgentManagerDeep::test_open_montage_accepted tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_blocked_by_backend_capability -q`
+    -> `4 passed`。
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_agent_manager_coverage.py -q`
+    -> `28 passed`。
+  - Source focused basedpyright:
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/control_sidebar.py XBrainLab/ui/components/agent_manager.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 跑 broader UI/docs/full static gates 後提交；下一步可 audit remaining `result is None` branches
+    是否全部是 non-controller service-unavailable handling，並回到 manual refresh cleanup。
+
 ### 17:01 Dataset fallback boundary
 
 - 做了什麼：

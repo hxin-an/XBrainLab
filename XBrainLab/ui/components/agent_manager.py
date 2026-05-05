@@ -27,6 +27,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
@@ -1172,7 +1173,13 @@ class AgentManager(QObject):
                     ),
                 )
                 if result is None:
-                    self.preprocess_controller.apply_montage(chs, positions)
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.preprocess_controller.apply_montage(
+                            chs,
+                            positions,
+                        ),
+                    )
                 elif result.failed:
                     sb = self.main_window.statusBar()
                     if sb:

@@ -46,20 +46,22 @@
 
 ### 狀態
 
-The controller fallback audit now has explicit runtime boundaries for Training, Preprocess, and
-Dataset UI paths. Training sidebar fallback paths for split cleanup / dataset generation, model
-selection, training settings, start / stop training, and clear history now use
-`run_legacy_controller_fallback()`. Preprocess sidebar uses the same helper for filter / resample /
-rereference / normalize / epoch / reset fallback. Dataset panel / sidebar / action handler use it
-for metadata edit / batch metadata, smart parse, remove files, direct file import, clear dataset,
-channel selection, and post-load label compatibility fallback. The helper allows fallback only for
-mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does not
-return a `CommandResult`.
+The controller fallback audit now has explicit runtime boundaries for Training, Preprocess, Dataset,
+Visualization, and AgentManager UI paths. Training sidebar fallback paths for split cleanup /
+dataset generation, model selection, training settings, start / stop training, and clear history now
+use `run_legacy_controller_fallback()`. Preprocess sidebar uses the same helper for filter /
+resample / rereference / normalize / epoch / reset fallback. Dataset panel / sidebar / action
+handler use it for metadata edit / batch metadata, smart parse, remove files, direct file import,
+clear dataset, channel selection, and post-load label compatibility fallback. Visualization saliency
+settings and AgentManager montage confirmation also use the helper. The helper allows fallback only
+for mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does
+not return a `CommandResult`.
 
 ### 已可宣稱
 
-- Training, Preprocess, and Dataset real product runtime will not silently mutate their controllers
-  if the command helper fails to provide an ApplicationService result.
+- Training, Preprocess, Dataset, Visualization, and AgentManager real product runtime will not
+  silently mutate their controllers if the command helper fails to provide an ApplicationService
+  result.
 - Existing mock / legacy unit-test compatibility fallback remains available.
 
 ### Evidence 入口
@@ -72,13 +74,13 @@ return a `CommandResult`.
 
 ### 不能宣稱完成
 
-- This is not a full controller fallback audit. Visualization and AgentManager fallback sites still
-  need the same explicit boundary.
+- This is not full UI architecture closure. Remaining work is to audit the non-controller
+  `result is None` branches, then continue reducing observer/manual refresh paths.
 
 ### 下一手重點
 
-Apply the same helper pattern to the remaining UI `result is None` controller fallbacks,
-prioritizing Visualization control sidebar and AgentManager montage confirmation.
+Audit remaining UI `result is None` branches to confirm they are service-unavailable error handling,
+not product runtime mutation fallback; then continue the command-driven refresh coordinator cleanup.
 
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 

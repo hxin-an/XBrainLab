@@ -828,8 +828,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    filter / resample / rereference / normalize / epoch / reset fallback 改成 mock / legacy
    non-`Study` only。Dataset data-table/action fallback 也已收斂 metadata edit / batch metadata、
    smart parse、remove files、direct file import、clear dataset、channel selection 和 post-load label
-   compatibility fallback；下一步可把相同 helper 推到 Visualization / AgentManager 的剩餘
-   `result is None` controller fallback。
+   compatibility fallback。Visualization saliency settings 和 AgentManager montage confirmation
+   fallback 也已收斂到同一 helper；目前剩餘 `result is None` path 主要是 service-unavailable
+   blocked / critical / false returns 或已顯式標記的 mock / legacy compatibility fallback，不再是
+   silent product controller mutation。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

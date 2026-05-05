@@ -78,6 +78,9 @@
 - 最新 Dataset fallback audit slice 已把 metadata edit / batch metadata、smart parse、remove files、
   direct file import、clear dataset、channel selection 和 post-load label compatibility fallback 改成
   同一個 mock / legacy-only helper。剩餘 Visualization / AgentManager fallback 還要沿同一模式盤點。
+- 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings 和 assistant montage
+  confirmation fallback 改成同一個 mock / legacy-only helper。剩餘 `result is None` path 主要是
+  Data Interpretation service-unavailable critical / false return 或已顯式 helper fallback。
 - 後續 Training sidebar bypass cleanup 修掉重新 split 前清 datasets 和 Clear History 的 direct
   controller mutation；destructive cleanup 會走 `ClearDatasetsCommand` /
   `ClearTrainingHistoryCommand`，且 Clear History 現在有 user confirmation。
@@ -697,9 +700,10 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    Analysis、Training、Dataset Generation、Lifecycle、Data Compatibility 和 Data Table command
    services、Preprocess command service，以及 State / Query services。`UI Command Refresh
    Coordinator + Controller Fallback Audit` 已完成 first slice；下一步是擴大盤點剩餘
-   observer/manual refresh 和 real `Study` mutating workflow。Training / Preprocess / Dataset
-   fallback 已先改成 explicit mock / legacy-only helper；後續要把 Visualization / AgentManager 的
-   剩餘 fallback 同步收斂，確認 product runtime 不 silent fallback 到 controller mutation。
+   observer/manual refresh 和 real `Study` mutating workflow。Training / Preprocess / Dataset /
+   Visualization / AgentManager fallback 已先改成 explicit mock / legacy-only helper；下一步應
+   audit 剩餘 `result is None` branches 是否全部是 service-unavailable UI error / blocked return，
+   並繼續收斂 observer/manual refresh。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

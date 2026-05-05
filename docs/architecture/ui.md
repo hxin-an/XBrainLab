@@ -103,8 +103,9 @@ split cleanup / generate dataset、model selection、training settings、start /
 clear history。Preprocess sidebar 也已用同一 helper 覆蓋 filter / resample / rereference /
 normalize / epoch / reset fallback。Dataset data-table/action paths 也已用同一 helper 覆蓋
 metadata edit / batch metadata、smart parse、remove files、direct file import、clear dataset、
-channel selection 和 post-load label compatibility fallback。Visualization / AgentManager 的剩餘
-fallback 還在後續 audit 範圍。
+channel selection 和 post-load label compatibility fallback。Visualization saliency settings 和
+AgentManager montage confirmation fallback 也已用同一 helper 覆蓋。剩餘 `result is None` branches
+主要是 service-unavailable UI error / blocked return，而不是 controller mutation fallback。
 
 仍未完成：
 

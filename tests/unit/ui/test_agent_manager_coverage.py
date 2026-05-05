@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _make_manager():
     """Create a stub AgentManager without calling __init__."""
@@ -292,3 +294,35 @@ class TestMontagePicker:
         )
         m.preprocess_controller.apply_montage.assert_not_called()
         m.chat_controller.add_user_message.assert_called_with("Montage Confirmed.")
+
+    def test_real_study_montage_refuses_controller_fallback(self):
+        """Real Study montage must not fall back to preprocess controller."""
+        from XBrainLab.backend.study import Study
+
+        m = _make_manager()
+        m.study = Study()
+        m.preprocess_controller = MagicMock()
+        epoch_data = MagicMock()
+        epoch_data.get_mne.return_value.info = {"ch_names": ["C3", "C4"]}
+        m.study.epoch_data = epoch_data
+        mock_dialog = MagicMock()
+        mock_dialog.exec.return_value = True
+        mock_dialog.get_result.return_value = (
+            ["C3", "C4"],
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)],
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.components.agent_manager.PickMontageDialog",
+                return_value=mock_dialog,
+            ),
+            patch(
+                "XBrainLab.ui.components.agent_manager.execute_application_command",
+                return_value=None,
+            ),
+            pytest.raises(RuntimeError, match="real Study"),
+        ):
+            m.open_montage_picker_dialog({"montage_name": "standard_1020"})
+
+        m.preprocess_controller.apply_montage.assert_not_called()
