@@ -116,6 +116,9 @@
   的單純 observer `event -> update_panel()` bridge 改成 `refresh_from_observer()`，再委派
   `refresh_panel()`。callback-specific handlers 仍保留，例如 import-finished、TrainingPanel
   start/stop 和 live training update loop。
+- 最新 Dataset import-finished callback cleanup 已把 success refresh 移回 `data_changed`
+  simple refresh bridge；`import_finished` callback 只保留 warnings，避免 legacy controller import
+  成功時二次刷新 Dataset panel。
 - 最新 observer refresh helper cleanup 已新增 `BasePanel._create_refresh_bridge()`，並把 Dataset /
   Preprocess / Training / Evaluation / Visualization 的 simple observer refresh call sites 改用
   這個 helper。這是 maintainability cleanup，仍不代表 UI refresh 已完全 command-driven。

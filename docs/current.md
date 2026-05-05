@@ -797,7 +797,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   backend status，不再只刷新 selected panel。最新 observer refresh cleanup 又把單純的
   `event -> update_panel()` bridge 收斂到 `BasePanel.refresh_from_observer()`，再委派
   `refresh_coordinator.refresh_panel()`；這保留 observer bridge 語意，但不再讓每個 panel 直接
-  接 `update_panel()`。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
+  接 `update_panel()`。最新 Dataset import-finished callback cleanup 又把 legacy import success
+  refresh 收斂到 `data_changed` simple refresh bridge；`import_finished` 現在只負責 warning
+  message，不再二次手動刷新 Dataset panel。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
   Visualization 的 simple observer bridge call sites 改成 `BasePanel._create_refresh_bridge()`，
   讓後續 panel 不必重複拼 `_create_bridge(..., refresh_from_observer)`。最新 architecture guard
   已把 `_create_bridge(..., self.update_panel)` 和 direct

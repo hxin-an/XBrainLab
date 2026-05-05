@@ -2217,3 +2217,27 @@ stack navigation and nav-button checked state, then delegates refresh scope to t
 
 - This is not full command-driven UI refresh closure; observer and callback-specific refresh paths
   remain mixed until the larger coordinator audit is complete.
+
+## 2026-05-05 Dataset Import-Finished Refresh Cleanup
+
+### 狀態
+
+Legacy dataset import success refresh is now owned by the `data_changed` simple refresh bridge.
+`DatasetActionHandler.on_import_finished()` no longer performs a second `panel.update_panel()` on
+success; it only surfaces import warnings.
+
+### 已可宣稱
+
+- Successful legacy controller import no longer triggers duplicate Dataset panel refresh through
+  both `data_changed` and `import_finished`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one callback cleanup, not full observer callback classification or command-driven UI
+  refresh closure.

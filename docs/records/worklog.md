@@ -8204,3 +8204,42 @@
   - This is a small tab-switch shared-status cleanup. It does not close full command-driven UI
     refresh, controller fallback removal, observer callback classification, or human desktop
     acceptance.
+
+### 2026-05-05 20:43 Dataset import-finished duplicate refresh cleanup
+
+- scope：
+  - Legacy Dataset controller import callback behavior.
+- current gap：
+  - `DatasetController.import_files()` emits `data_changed` on successful import, then emits
+    `import_finished(success_count, errors)`.
+  - `DatasetPanel` already refreshes from `data_changed`, but
+    `DatasetActionHandler.on_import_finished()` also called `panel.update_panel()` when
+    `success_count > 0`, causing a duplicate manual refresh on the legacy import path.
+- red / focused test：
+  - Updated `test_on_import_finished_success` to require no `panel.update_panel()` call and no
+    warning on success-only completion.
+  - Red result:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_on_import_finished_success -q`
+    -> failed because `update_panel()` was called once.
+- 做了什麼：
+  - Removed success refresh from `DatasetActionHandler.on_import_finished()`.
+  - Updated the docstring to state that successful legacy imports already emit `data_changed`, and
+    that observer event owns panel refresh.
+  - Kept error warning behavior unchanged.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_on_import_finished_success tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_on_import_finished_errors tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_on_import_finished_many_errors -q`
+    -> `3 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `65 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is one observer callback cleanup. It does not remove controller observer events, close the
+    full UI refresh coordinator audit, or replace human desktop acceptance.

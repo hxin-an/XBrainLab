@@ -625,16 +625,14 @@ class DatasetActionHandler:
     def on_import_finished(self, success_count, errors):
         """Handle the import-finished callback from the controller.
 
-        Updates the panel on success and shows warnings for any failures.
+        Shows warnings for failures. Successful legacy imports already emit
+        ``data_changed``, and that observer event owns the panel refresh.
 
         Args:
             success_count: Number of files successfully imported.
             errors: List of error message strings for failed imports.
 
         """
-        if success_count > 0:
-            self.panel.update_panel()
-
         if errors:
             error_msg = "\n".join(errors[:10])
             if len(errors) > 10:

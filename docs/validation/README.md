@@ -141,6 +141,13 @@ UI baseline capture 結果：
   - focused gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_main_window_sync.py -q`
     -> `19 passed`.
+- Dataset import-finished callback cleanup:
+  - Successful legacy controller imports refresh through the `data_changed` simple refresh bridge;
+    `import_finished` now only surfaces warning messages and avoids a duplicate Dataset panel
+    refresh.
+  - focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `65 passed`.
 - static / docs gates for these slices:
   - `git diff --check` -> pass.
   - `poetry run ruff check .` -> pass.

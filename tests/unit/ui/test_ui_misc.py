@@ -945,7 +945,8 @@ class TestDatasetActionHandler:
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_on_import_finished_success(self, mock_mb, handler):
         handler.on_import_finished(2, [])
-        handler.panel.update_panel.assert_called_once()
+        handler.panel.update_panel.assert_not_called()
+        mock_mb.warning.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_on_import_finished_errors(self, mock_mb, handler):
