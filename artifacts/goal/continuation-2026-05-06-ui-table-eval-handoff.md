@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+fdea34a ui: guard evaluation query fallback
+4cfa4c3 docs: refresh handoff after visualization fallback warnings
 3330f1d ui: show visualization fallback refusals
 8034739 docs: refresh handoff after preprocess render guard
 a86b1b2 ui: guard preprocess render query fallback
@@ -107,6 +109,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Evaluation query-none render fallback:
+  - real `Study` Evaluation panel now treats a missing
+    `EvaluateCommand(include_objects=True)` result as unavailable command truth.
+  - it renders `No Data Available` instead of recovering through stale
+    `EvaluationController.get_plans()` / summaries.
+  - mock / legacy rendering still uses explicit `run_legacy_controller_fallback()`.
 - Data Interpretation wizard selector visible text:
   - label carrier selectors show user-facing labels such as `Trial type` / `Onset`.
   - backend recipe choices still preserve raw values such as `trial_type`.
@@ -1182,6 +1190,33 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 3330f1d; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_refuses_real_study_query_none_controller_fallback \
+  -q
+# 1 passed for fdea34a after red failure on stale EvaluationController.get_plans()
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  tests/unit/ui/test_ui_structure_refactored.py \
+  -q
+# 12 passed for fdea34a
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for fdea34a
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for fdea34a
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for fdea34a; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
