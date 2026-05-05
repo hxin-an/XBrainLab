@@ -62,6 +62,7 @@ UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "update_info_panel",
     "update_panel",
 )
+UI_POST_COMMAND_CONTROLLER_ECHO_METHODS = ("get_model_holder",)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -167,6 +168,13 @@ def check_architecture(root_dir: str) -> int:
     if loader_apply_violations:
         print("\nUI Direct Loader Apply Violations Found:")
         for violation in loader_apply_violations:
+            print(f" - {violation}")
+        return 1
+
+    controller_echo_violations = check_ui_post_command_controller_echoes(Path(root_dir))
+    if controller_echo_violations:
+        print("\nUI Post-command Controller Echo Violations Found:")
+        for violation in controller_echo_violations:
             print(f" - {violation}")
         return 1
 
@@ -464,6 +472,38 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_ui_post_command_controller_echoes(root_dir: Path) -> list[str]:
+    """Return UI code that re-reads controller echo state after command success."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                violations.extend(
+                    f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                    f"controller.{_call_name(call.func)}() after "
+                    "execute_application_command(); service-backed success UI "
+                    "must trust CommandResult and selected user inputs, with "
+                    "controller echo reads limited to explicit legacy fallback "
+                    "branches."
+                    for call in _post_command_controller_echo_calls(
+                        node.body,
+                        source,
+                    )
+                )
+    return violations
+
+
 def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
     """Return observer bridges that bypass the simple refresh helper."""
     violations: list[str] = []
@@ -567,6 +607,28 @@ def _post_command_local_refresh_calls(
     return violations
 
 
+def _post_command_controller_echo_calls(
+    statements: list[ast.stmt],
+    source: str,
+) -> list[ast.Call]:
+    violations: list[ast.Call] = []
+    command_seen = False
+    for statement in statements:
+        if command_seen:
+            visitor = _PostCommandControllerEchoVisitor(source)
+            visitor.visit(statement)
+            violations.extend(visitor.violations)
+        violations.extend(
+            _post_command_controller_echo_calls(
+                _nested_statement_bodies(statement),
+                source,
+            ),
+        )
+        if _contains_service_backed_command(statement):
+            command_seen = True
+    return violations
+
+
 def _nested_statement_bodies(statement: ast.stmt) -> list[ast.stmt]:
     bodies: list[ast.stmt] = []
     for field_name in ("body", "orelse", "finalbody"):
@@ -625,6 +687,33 @@ class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         if _call_name(node.func) in UI_POST_COMMAND_LOCAL_REFRESH_METHODS:
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
+class _PostCommandControllerEchoVisitor(ast.NodeVisitor):
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.violations: list[ast.Call] = []
+
+    def visit_If(self, node: ast.If) -> None:
+        if _is_missing_result_guard(node.test):
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        if _is_failure_guard(node.test):
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        call_name = _call_name(node.func)
+        if (
+            call_name in UI_POST_COMMAND_CONTROLLER_ECHO_METHODS
+            and _call_receiver_is_controller(node.func)
+        ):
             self.violations.append(node)
             return
         self.generic_visit(node)

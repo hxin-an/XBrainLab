@@ -2,6 +2,7 @@ from tests.architecture_compliance import (
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
+    check_ui_post_command_controller_echoes,
     check_ui_post_command_local_refreshes,
 )
 
@@ -93,6 +94,50 @@ def run(self):
     )
 
     assert check_ui_post_command_local_refreshes(tmp_path) == []
+
+
+def test_post_command_controller_echo_guard_flags_service_success_echo(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def select_model(self):
+    result = execute_application_command(self, ConfigureTrainingCommand())
+    if result is None:
+        run_legacy_controller_fallback(
+            self,
+            lambda: self.controller.set_model_holder(holder),
+        )
+    elif result.failed:
+        return
+    holder = self.controller.get_model_holder()
+""",
+    )
+
+    violations = check_ui_post_command_controller_echoes(tmp_path)
+
+    assert len(violations) == 1
+    assert "get_model_holder" in violations[0]
+    assert "service-backed success" in violations[0]
+
+
+def test_post_command_controller_echo_guard_allows_legacy_branch(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def select_model(self):
+    result = execute_application_command(self, ConfigureTrainingCommand())
+    if result is None:
+        run_legacy_controller_fallback(
+            self,
+            lambda: self.controller.set_model_holder(holder),
+        )
+        holder = self.controller.get_model_holder()
+    elif result.failed:
+        return
+""",
+    )
+
+    assert check_ui_post_command_controller_echoes(tmp_path) == []
 
 
 def test_observer_bridge_guard_flags_direct_update_panel(tmp_path):

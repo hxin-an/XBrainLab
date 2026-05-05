@@ -9097,6 +9097,9 @@
   - Service-success path displays success from the command result and selected model holder.
   - Legacy fallback path still reads `controller.get_model_holder()` to verify the old controller
     mutation applied in mock / non-`Study` compatibility contexts.
+  - Added an architecture compliance guard that flags service-success reads of
+    `controller.get_model_holder()` after `execute_application_command()`, while allowing the
+    explicit legacy fallback branch.
 - validation：
   - Red gate before fix:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_service_success_does_not_read_stale_controller -q`
@@ -9104,6 +9107,12 @@
   - After fix:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_service_success_does_not_read_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_select_model_accepted -q`
     -> `2 passed`.
+  - Architecture guard red gate before checker implementation:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_post_command_controller_echo_guard_flags_service_success_echo tests/unit/test_architecture_compliance.py::test_post_command_controller_echo_guard_allows_legacy_branch -q`
+    -> failed with missing `check_ui_post_command_controller_echoes`.
+  - After checker implementation:
+    same architecture unit command -> `2 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
 - local eval：
   - Not run. This is a UI command-truth cleanup, so it stays under the fast dev gate and does not
     justify full primary/fallback x3 local eval.

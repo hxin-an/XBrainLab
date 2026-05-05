@@ -855,7 +855,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   cleanup 又移除了一個 service-success path 對 stale controller state 的依賴：
   `ConfigureTrainingCommand` 成功後，UI 以 command success 和剛選定的 model holder 呈現
   success，不再回讀 `TrainingController.get_model_holder()` 來否定 command result。legacy fallback
-  branch 仍保留 controller verification。`tests/architecture_compliance.py` 也會阻擋
+  branch 仍保留 controller verification。最新 architecture guard 已把這條規則納入
+  `tests/architecture_compliance.py`：service-backed success path 不可在
+  `execute_application_command()` 後用 `TrainingController.get_model_holder()` 這種 controller
+  echo 重新判定 command success；echo reads 只允許在 explicit legacy fallback branch。
+  `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
   mutating controller method；合法 controller mutation 必須在 `run_legacy_controller_fallback()`

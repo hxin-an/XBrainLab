@@ -2847,18 +2847,23 @@ where no `scan_source` capability is visible.
 Training model selection now treats a successful `ConfigureTrainingCommand` as the product truth
 for the service-backed UI path. The success message uses the selected model holder and command
 success instead of re-reading `TrainingController.get_model_holder()`, which could be stale in a
-command-driven UI path.
+command-driven UI path. A matching architecture guard now blocks the same controller echo pattern
+from returning in service-backed success branches.
 
 ### 已可宣稱
 
 - Service-success model selection no longer depends on controller echo state to show success.
 - Legacy fallback still verifies through the controller, but only in explicit mock / non-`Study`
   compatibility contexts.
+- `tests/architecture_compliance.py` now flags service-success reads of
+  `controller.get_model_holder()` after `execute_application_command()`, while allowing the
+  explicit legacy fallback branch.
 
 ### Evidence 入口
 
-- Source：`XBrainLab/ui/panels/training/sidebar.py`
-- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Source：`XBrainLab/ui/panels/training/sidebar.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`,
+  `tests/unit/test_architecture_compliance.py`
 - Detailed validation：`docs/records/worklog.md`
 
 ### 不能宣稱完成
