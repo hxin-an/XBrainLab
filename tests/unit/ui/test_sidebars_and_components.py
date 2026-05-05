@@ -517,6 +517,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.application import (
             ClearDatasetsCommand,
             GenerateDatasetCommand,
+            QueryStateCommand,
         )
 
         generator = MagicMock()
@@ -546,8 +547,14 @@ class TestTrainingSidebar:
             sidebar.split_data()
 
         commands = [call.args[1] for call in mock_execute.call_args_list]
-        assert isinstance(commands[0], ClearDatasetsCommand)
-        assert isinstance(commands[1], GenerateDatasetCommand)
+        assert isinstance(commands[0], QueryStateCommand)
+        split_commands = [
+            command
+            for command in commands
+            if not isinstance(command, QueryStateCommand)
+        ]
+        assert isinstance(split_commands[0], ClearDatasetsCommand)
+        assert isinstance(split_commands[1], GenerateDatasetCommand)
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
 
@@ -588,6 +595,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.application import (
             ClearDatasetsCommand,
             GenerateDatasetCommand,
+            QueryStateCommand,
         )
         from XBrainLab.backend.study import Study
 
@@ -625,8 +633,14 @@ class TestTrainingSidebar:
 
         mock_warning.assert_not_called()
         commands = [call.args[1] for call in mock_execute.call_args_list]
-        assert isinstance(commands[0], ClearDatasetsCommand)
-        assert isinstance(commands[1], GenerateDatasetCommand)
+        assert isinstance(commands[0], QueryStateCommand)
+        split_commands = [
+            command
+            for command in commands
+            if not isinstance(command, QueryStateCommand)
+        ]
+        assert isinstance(split_commands[0], ClearDatasetsCommand)
+        assert isinstance(split_commands[1], GenerateDatasetCommand)
 
     def test_split_data_uses_backend_replacement_boundary_when_controller_stale(
         self,
@@ -637,6 +651,7 @@ class TestTrainingSidebar:
         from XBrainLab.backend.application import (
             ClearDatasetsCommand,
             GenerateDatasetCommand,
+            QueryStateCommand,
         )
         from XBrainLab.backend.study import Study
 
@@ -675,10 +690,81 @@ class TestTrainingSidebar:
         mock_warning.assert_not_called()
         mock_question.assert_called_once()
         commands = [call.args[1] for call in mock_execute.call_args_list]
-        assert isinstance(commands[0], ClearDatasetsCommand)
-        assert isinstance(commands[1], GenerateDatasetCommand)
+        assert isinstance(commands[0], QueryStateCommand)
+        split_commands = [
+            command
+            for command in commands
+            if not isinstance(command, QueryStateCommand)
+        ]
+        assert isinstance(split_commands[0], ClearDatasetsCommand)
+        assert isinstance(split_commands[1], GenerateDatasetCommand)
         sidebar.panel.controller.clean_datasets.assert_not_called()
         sidebar.panel.controller.apply_data_splitting.assert_not_called()
+
+    def test_split_data_passes_service_epoch_context_to_dialog(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import (
+            GenerateDatasetCommand,
+            QueryStateCommand,
+        )
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.is_raw.return_value = True
+        study.data_manager.loaded_data_list = [raw]
+        study.data_manager.preprocessed_data_list = [raw]
+        study.data_manager.epoch_data = MagicMock(name="service_epoch_data")
+        study.data_manager.dataset_generator = MagicMock(name="service_generator")
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.get_epoch_data.side_effect = AssertionError(
+            "split dialog context should come from QueryStateCommand",
+        )
+        sidebar.panel.controller.get_dataset_generator.side_effect = AssertionError(
+            "split dialog generator should come from QueryStateCommand",
+        )
+        generator = MagicMock()
+
+        query_result = _command_result(
+            payload_type="dataset_generation_context",
+            epoch_available=True,
+            generator_exists=True,
+            epoch_data=study.data_manager.epoch_data,
+            dataset_generator=study.data_manager.dataset_generator,
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.DataSplittingDialog"
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                side_effect=[query_result, _command_result()],
+            ) as mock_execute,
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = generator
+            sidebar.split_data()
+
+        mock_warning.assert_not_called()
+        assert (
+            mock_dialog.call_args.kwargs["epoch_data"] is study.data_manager.epoch_data
+        )
+        assert (
+            mock_dialog.call_args.kwargs["dataset_generator"]
+            is study.data_manager.dataset_generator
+        )
+        commands = [call.args[1] for call in mock_execute.call_args_list]
+        assert isinstance(commands[0], QueryStateCommand)
+        assert commands[0].query == "dataset_generation_context"
+        assert commands[0].include_objects is True
+        assert isinstance(commands[1], GenerateDatasetCommand)
 
     def test_select_model_accepted(self, sidebar):
         sidebar.panel.controller.is_training.return_value = False

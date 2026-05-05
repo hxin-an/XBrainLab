@@ -10164,3 +10164,62 @@
 - 不能宣稱：
   - This does not certify saliency export file contents, saliency canvas screenshots, or full
     Visualization product UX.
+
+### 2026-05-06 Training split dialog context query
+
+- scope：
+  - Continue Training split read-source cleanup after backend replacement capability truth.
+  - Prevent real `Study` Data Splitting dialog initialization from reading stale
+    `TrainingController.get_epoch_data()` / `get_dataset_generator()`.
+- red / focused tests：
+  - Added `dataset_generation_context` assertions to
+    `test_query_state_service_returns_summary_and_capabilities`.
+  - Added `test_split_data_passes_service_epoch_context_to_dialog`.
+  - Red gates failed because `query_state` did not recognize `dataset_generation_context`, and
+    `split_data()` constructed `DataSplittingDialog` without service-backed epoch/generator kwargs.
+- 做了什麼：
+  - `QueryStateCommandService` now handles `query="dataset_generation_context"` with serializable
+    `epoch_available` / `generator_exists` fields and optional UI objects when
+    `include_objects=True`.
+  - `TrainingSidebar.split_data()` queries that context with `refresh=False` before opening
+    `DataSplittingDialog`.
+  - `DataSplittingDialog` accepts explicit `epoch_data` / `dataset_generator` and falls back to
+    controller reads only when those values are not supplied by the caller.
+- validation：
+  - Red gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py::test_query_state_service_returns_summary_and_capabilities -q`
+    -> failed on unknown `dataset_generation_context`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_passes_service_epoch_context_to_dialog -q`
+    -> failed because no `epoch_data` kwarg reached `DataSplittingDialog`.
+  - Focused pass:
+    same commands -> `1 passed` each.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/test_data_splitting.py tests/unit/ui/dialogs/test_data_splitting.py -q`
+    -> `114 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/backend/application/state_service.py XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py XBrainLab/ui/panels/training/sidebar.py tests/unit/backend/application/test_state_service.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/state_service.py XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py XBrainLab/ui/panels/training/sidebar.py tests/unit/backend/application/test_state_service.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - Slice gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `114 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/test_data_splitting.py tests/unit/ui/dialogs/test_data_splitting.py -q`
+    -> `114 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a UI/backend query-source cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not redesign the Data Splitting dialog UX, remove all Training sidebar fallback
+    paths, or certify long-running dataset-generation thread cleanup.

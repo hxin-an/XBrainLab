@@ -268,7 +268,11 @@ class TrainingSidebar(QWidget):
             )
             return
 
-        win = DataSplittingDialog(self, self.controller)
+        dialog_context = self._data_splitting_dialog_context()
+        if dialog_context is None:
+            return
+
+        win = DataSplittingDialog(self, self.controller, **dialog_context)
         if win.exec():
             if self._should_clear_datasets_before_split():
                 reply = QMessageBox.question(
@@ -352,6 +356,32 @@ class TrainingSidebar(QWidget):
             and clear_capability is not None
             and clear_capability.enabled
         )
+
+    def _data_splitting_dialog_context(self) -> dict | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(
+                query="dataset_generation_context",
+                include_objects=True,
+            ),
+            refresh=False,
+        )
+        if result is None:
+            return {}
+        if result.failed:
+            QMessageBox.warning(
+                self,
+                "Data Splitting Blocked",
+                result.message,
+            )
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "dataset_generation_context":
+            return {}
+        return {
+            "epoch_data": diagnostics.get("epoch_data"),
+            "dataset_generator": diagnostics.get("dataset_generator"),
+        }
 
     def _should_clear_datasets_before_split(self) -> bool:
         """Return whether applying a new split must clear existing training data."""

@@ -173,6 +173,11 @@
 - 最新 Training split cleanup 又把 existing-dataset replacement preflight 收回 backend
   capability truth：real `Study` path 不再依賴 stale `TrainingController.has_datasets()` /
   `get_trainer()` 來決定是否要先確認並送 `ClearDatasetsCommand`。
+- 最新 Training split dialog context cleanup 新增
+  `QueryStateCommand(query="dataset_generation_context", include_objects=True)`；real `Study`
+  `DataSplittingDialog` 初始化使用 service-backed epoch/generator context，stale
+  `TrainingController.get_epoch_data()` / `get_dataset_generator()` 只留在 query unavailable 的
+  mock / legacy dialog fallback。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

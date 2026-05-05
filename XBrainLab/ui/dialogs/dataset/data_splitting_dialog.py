@@ -6,6 +6,7 @@ strategies such as subject-wise, session-wise, or trial-wise splits.
 """
 
 from enum import Enum
+from typing import Any
 
 import numpy as np
 from PyQt6.QtCore import Qt
@@ -33,6 +34,8 @@ from .data_splitting_preview_dialog import (
     DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
+
+_UNSET = object()
 
 
 class DrawColor(Enum):
@@ -345,18 +348,28 @@ class DataSplittingDialog(BaseDialog):
 
     """
 
-    def __init__(self, parent, controller, dataset_generator=None):
+    def __init__(
+        self,
+        parent,
+        controller,
+        dataset_generator: Any = _UNSET,
+        epoch_data: Any = _UNSET,
+    ):
         self.controller = controller
 
-        # Get data through controller
-        self.epoch_data = self.controller.get_epoch_data() if self.controller else None
+        if epoch_data is _UNSET:
+            self.epoch_data = (
+                self.controller.get_epoch_data() if self.controller else None
+            )
+        else:
+            self.epoch_data = epoch_data
 
-        if dataset_generator:
-            self.dataset_generator = dataset_generator
-        elif self.controller:
+        if dataset_generator is _UNSET and self.controller:
             self.dataset_generator = self.controller.get_dataset_generator()
         else:
-            self.dataset_generator = None
+            self.dataset_generator = (
+                None if dataset_generator is _UNSET else dataset_generator
+            )
 
         self.subject_num = 5
         self.session_num = 5

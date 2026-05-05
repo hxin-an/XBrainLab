@@ -582,6 +582,18 @@ class QueryStateCommandService:
                 diagnostics["loaded_data_list"] = loaded
                 diagnostics["preprocessed_data_list"] = preprocessed
             return "Data list query ready.", diagnostics
+        if query == "dataset_generation_context":
+            epoch_data = getattr(self.study, "epoch_data", None)
+            dataset_generator = getattr(self.study, "dataset_generator", None)
+            diagnostics = {
+                "payload_type": "dataset_generation_context",
+                "epoch_available": epoch_data is not None,
+                "generator_exists": dataset_generator is not None,
+            }
+            if command.include_objects:
+                diagnostics["epoch_data"] = epoch_data
+                diagnostics["dataset_generator"] = dataset_generator
+            return "Dataset generation context ready.", diagnostics
         if query == "data_summary":
             return "Dataset summary ready.", self.state_builder.data_summary_from_state(
                 state,

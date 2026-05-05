@@ -3230,3 +3230,32 @@ contexts. Panel/controller trainer reads remain only for query-unavailable mock 
 
 - This does not certify saliency artifact export contents, saliency canvas screenshots, or the full
   Visualization workflow UX.
+
+## 2026-05-06 Training Split Dialog Context Query
+
+### 狀態
+
+`QueryStateCommand(query="dataset_generation_context", include_objects=True)` now provides the
+epoch data and current dataset generator needed by the Data Splitting dialog in real `Study`
+contexts. Controller epoch/generator reads remain as query-unavailable mock / legacy fallback.
+
+### 已可宣稱
+
+- The Training split dialog no longer has to initialize from stale `TrainingController` epoch /
+  generator reads on the service-backed path.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/state_service.py`,
+  `XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py`,
+  `XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/backend/application/test_state_service.py`,
+  `tests/unit/ui/test_sidebars_and_components.py`,
+  `tests/unit/ui/test_data_splitting.py`,
+  `tests/unit/ui/dialogs/test_data_splitting.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not redesign the Data Splitting dialog UX, remove all Training sidebar fallback paths,
+  or certify long-running dataset-generation thread cleanup.

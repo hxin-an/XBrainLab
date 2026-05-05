@@ -237,3 +237,27 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
     )
     assert "plan" in history_objects["rows"][0]
     assert "record" in history_objects["rows"][0]
+
+    split_message, split_context = _expect_payload(
+        query.handle_query_state(QueryStateCommand(query="dataset_generation_context")),
+    )
+    assert split_message == "Dataset generation context ready."
+    assert split_context == {
+        "payload_type": "dataset_generation_context",
+        "epoch_available": True,
+        "generator_exists": True,
+    }
+
+    _split_objects_message, split_context_objects = _expect_payload(
+        query.handle_query_state(
+            QueryStateCommand(
+                query="dataset_generation_context",
+                include_objects=True,
+            ),
+        ),
+    )
+    assert split_context_objects["epoch_data"] is state_builder.study.epoch_data
+    assert (
+        split_context_objects["dataset_generator"]
+        is state_builder.study.dataset_generator
+    )

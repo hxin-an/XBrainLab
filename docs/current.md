@@ -871,6 +871,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   truth：real `Study` path 若 `generate_dataset` 只因 existing dataset / trainer 被 block，但
   `clear_datasets` enabled，UI 會要求 confirmation 並先送 `ClearDatasetsCommand`，不再依賴
   stale `TrainingController.has_datasets()` / `get_trainer()` 判斷是否要清資料。
+  最新 Training split dialog context cleanup 新增
+  `QueryStateCommand(query="dataset_generation_context", include_objects=True)`；real `Study`
+  `DataSplittingDialog` 會用 service-backed epoch/generator context，不再初始化時直接讀 stale
+  `TrainingController.get_epoch_data()` / `get_dataset_generator()`。controller reads 只留在
+  query unavailable 的 mock / legacy dialog fallback。
   最新 Start Training cleanup 也把 start gate 改成 backend `train` capability 優先：real
   command-capable path 若 capability enabled，stale `TrainingController.is_training()` 不會再讓
   Start button silently skip `TrainCommand`；controller running check 只留給 no-capability mock /
