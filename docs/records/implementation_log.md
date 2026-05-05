@@ -2701,3 +2701,26 @@ for injected / legacy contexts that do not have `info_service`.
 
 - This fixes shared aggregate info dispatch only. It does not complete the broader UI refresh
   coordinator audit.
+
+## 2026-05-06 Preprocess Compatibility Shared Status Refresh
+
+### 狀態
+
+Preprocess sidebar mock / legacy epoch-reset shared-status fallback now uses the same
+`refresh_shared_status()` coordinator helper as command, navigation, and observer refresh paths.
+
+### 已可宣稱
+
+- Retained compatibility fallback paths no longer refresh only aggregate info while leaving the
+  assistant backend status stale.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a compatibility-path refresh cleanup. UI refresh remains partially mixed and the broader
+  coordinator/fallback audit is still open.

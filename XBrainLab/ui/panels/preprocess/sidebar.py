@@ -32,6 +32,7 @@ from XBrainLab.ui.dialogs.preprocess import (
     RereferenceDialog,
     ResampleDialog,
 )
+from XBrainLab.ui.refresh_coordinator import refresh_shared_status
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -325,16 +326,9 @@ class PreprocessSidebar(QWidget):
         if result is None:
             self.notify_update()
 
-    def _update_main_info_after_legacy_result(self, result) -> None:
-        if (
-            result is None
-            and self.main_window
-            and hasattr(
-                self.main_window,
-                "update_info_panel",
-            )
-        ):
-            self.main_window.update_info_panel()
+    def _refresh_shared_status_after_legacy_result(self, result) -> None:
+        if result is None:
+            refresh_shared_status(self)
 
     def _show_command_failure(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
@@ -531,7 +525,7 @@ class PreprocessSidebar(QWidget):
                         return
                     if applied:
                         self._notify_update_after_legacy_result(result)
-                        self._update_main_info_after_legacy_result(result)
+                        self._refresh_shared_status_after_legacy_result(result)
 
                         QMessageBox.information(
                             self,
@@ -583,7 +577,7 @@ class PreprocessSidebar(QWidget):
                 self._show_command_failure("Error", result.message)
                 return
             self._notify_update_after_legacy_result(result)
-            self._update_main_info_after_legacy_result(result)
+            self._refresh_shared_status_after_legacy_result(result)
             QMessageBox.information(self, "Success", "Preprocessing reset.")
         except Exception as e:
             logger.error("Reset failed: %s", e)

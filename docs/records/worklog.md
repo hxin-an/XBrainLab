@@ -8887,3 +8887,33 @@
     -> `2 passed`.
 - 不能宣稱：
   - This does not complete command-driven UI refresh; it fixes one shared status dispatch gap.
+
+### 2026-05-06 Preprocess legacy shared status through coordinator
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` with a small compatibility
+    refresh cleanup.
+  - Keep Preprocess service-success paths coordinator-owned while making retained mock / legacy
+    epoch-reset shared-status refresh use the same coordinator helper.
+- red / focused test：
+  - Added `TestPreprocessSidebar.test_open_epoching_legacy_result_refreshes_shared_status`.
+  - It failed because the legacy/mock epoching path called `main_window.update_info_panel()` directly
+    and did not refresh assistant backend status.
+- 做了什麼：
+  - Replaced Preprocess sidebar's direct legacy shared-info helper with
+    `refresh_shared_status(self)`.
+  - Kept local panel refresh limited to explicit legacy/mock `result is None` helper paths; real
+    `Study` service-success paths remain handled by `execute_application_command()` /
+    `refresh_after_command()`.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_legacy_result_refreshes_shared_status -q`
+    -> failed on missing `agent_manager.refresh_backend_status()`.
+  - After fix:
+    same focused test -> `1 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `55 passed`.
+- 不能宣稱：
+  - This does not complete full command-driven UI refresh or remove all callback-specific refresh
+    paths.

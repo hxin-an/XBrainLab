@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-06`
 
 ## 摘要
 
@@ -825,7 +825,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   owner bridge 刷新 Visualization 和 shared status，避免 helper / secondary context 自己刷新錯誤 panel。
   最新 shared info refresh cleanup 也修正 `MainWindow.update_info_panel()`：coordinator 現在會透過
   `InfoPanelService.notify_all()` 更新已註冊的 aggregate info panels，而不是只嘗試不存在的
-  `MainWindow.info_panel`。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
+  `MainWindow.info_panel`。最新 Preprocess legacy/mock refresh cleanup 也把 epoch / reset 後仍保留的
+  shared-status fallback 改成 `refresh_shared_status()`，所以 compatibility path 不再只刷新 aggregate
+  info 而漏掉 assistant backend status。其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
   這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
   validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
   closure。後續仍要把

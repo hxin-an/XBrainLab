@@ -1,6 +1,6 @@
 # UI Architecture
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-06`
 
 ## 範圍
 
@@ -140,6 +140,9 @@ service-backed success path 不再直接呼叫 `panel.update_panel()`；legacy f
 Post-command refresh guard 現在也區分 missing-result compatibility 和 command failure：
 `result is None` branch 不可直接 local refresh，必須走 explicit legacy-result helper；
 `result.failed` branch 可保留 local restore / warning refresh。
+Preprocess sidebar 保留的 mock / legacy epoch-reset shared-status helper 也改走
+`refresh_shared_status()`，讓 compatibility path 的 aggregate info 和 assistant backend status
+與 coordinator shared-status 邊界一致。
 後續 downstream refresh cleanup 又把 analysis readiness scope 補進 coordinator：
 `training_changed` 會刷新 Evaluation / Visualization panel，`epoch_changed` 會刷新 Visualization
 panel，`evaluation_changed` 也會刷新 Visualization panel。這讓 training / epoch / evaluation

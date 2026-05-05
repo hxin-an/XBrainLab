@@ -1,6 +1,6 @@
 # Now
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-06`
 
 這份文件只放短期施工焦點。
 
@@ -143,6 +143,8 @@
   coordinator-owned scope；VisualizationPanel 是 owner，helper / secondary context 不再刷新錯誤 panel。
 - 最新 shared info refresh cleanup 修正了 `MainWindow.update_info_panel()`：refresh coordinator 的
   shared info refresh 現在會呼叫 `InfoPanelService.notify_all()`，更新所有已註冊 aggregate info panels。
+- 最新 Preprocess compatibility refresh cleanup 把 epoch / reset 的 mock-legacy shared status
+  fallback 改走 `refresh_shared_status()`，避免只刷新 aggregate info 而漏掉 assistant backend status。
 - 最新 downstream refresh coordinator cleanup 已讓 `training_changed` 刷新 Evaluation /
   Visualization readiness、`epoch_changed` 刷新 Visualization readiness、`evaluation_changed`
   也刷新 Visualization readiness。這把一部分 analysis panel readiness 從 observer-only 補刷新

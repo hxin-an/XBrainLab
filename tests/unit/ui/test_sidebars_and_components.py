@@ -188,6 +188,32 @@ class TestPreprocessSidebar:
             sidebar.open_epoching()
             sidebar.panel.controller.apply_epoching.assert_called_once()
 
+    def test_open_epoching_legacy_result_refreshes_shared_status(self, sidebar):
+        sidebar.panel.main_window.update_info_panel = MagicMock()
+        sidebar.panel.main_window.agent_manager = SimpleNamespace(
+            refresh_backend_status=MagicMock(),
+        )
+
+        with (
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_params.return_value = (
+                (None, 0),
+                ["left", "right"],
+                -0.5,
+                1.0,
+            )
+            sidebar.panel.controller.apply_epoching.return_value = True
+            sidebar.open_epoching()
+
+        sidebar.panel.controller.apply_epoching.assert_called_once()
+        sidebar.panel.main_window.update_info_panel.assert_called_once()
+        (
+            sidebar.panel.main_window.agent_manager.refresh_backend_status.assert_called_once()
+        )
+
     def test_reset_preprocess(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
