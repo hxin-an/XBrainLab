@@ -175,7 +175,9 @@
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入
   `tests/architecture_compliance.py`：有 capability surface 的 UI command path 不可再用
   `controller.is_training()`、`has_datasets()`、`get_trainer()` gating，除非在 explicit
-  `capability is None` legacy branch。
+  `capability is None` legacy branch。最新 extension 也覆蓋 `validate_ready()`、`has_model()`、
+  `has_training_option()`；`TrainingSidebar.check_ready_to_train()` 已改成 explicit
+  service-capability / no-capability legacy branch。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。

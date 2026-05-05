@@ -146,7 +146,10 @@ Preprocess epoching follows the `create_epoch` capability directly: when `create
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller
 echo 重新判定 command success。最新 guard 也防止有 `get_command_capability()` 的 UI command
 path 用 `controller.is_training()`、`has_datasets()` 或 `get_trainer()` 做 pre-command
-readiness gating，除非該 read 明確落在 `capability is None` legacy branch。
+readiness gating，除非該 read 明確落在 `capability is None` legacy branch；guard extension
+也覆蓋 Training readiness 的 `validate_ready()`、`has_model()`、`has_training_option()` echo。
+`TrainingSidebar.check_ready_to_train()` 已改成明確 service-capability branch / no-capability
+legacy branch，避免 stale controller readiness 混入 real `Study` capability truth。
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit
 mock / legacy adapter：real `Study` context 會拒絕 direct `loader.apply(study)`，並提示使用
 Data Interpretation workflow。`find_study()` 現在也會透過 `controller.study` 辨識 real

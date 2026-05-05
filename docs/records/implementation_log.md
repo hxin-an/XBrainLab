@@ -2975,3 +2975,33 @@ a valid epoching path with a preprocess-only reason.
 
 - This is a focused Preprocess sidebar gate cleanup. It does not certify full preprocessing /
   epoching UI acceptance or real-data manual review.
+
+## 2026-05-06 Training Readiness Guard Extension
+
+### 狀態
+
+Architecture compliance now also guards Training readiness controller echoes. UI command paths that
+already read ApplicationService capability truth may not use `TrainingController.validate_ready()`,
+`has_model()`, or `has_training_option()` unless the read is explicitly in a no-capability legacy
+branch.
+
+`TrainingSidebar.check_ready_to_train()` now separates service-capability readiness from legacy
+controller readiness, keeping real `Study` button state aligned with backend capability policy.
+
+### 已可宣稱
+
+- Training readiness button state is no longer expressed as a mixed capability/controller
+  conditional expression.
+- The architecture guard covers the main Training readiness controller echo family.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`, `XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/test_architecture_compliance.py`,
+  `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is still a focused guard extension. It does not prove all UI read/render paths are fully
+  command-driven or that the UI refresh coordinator is complete.

@@ -9267,3 +9267,48 @@
 - 不能宣稱：
   - This does not complete full preprocessing / epoching UI walkthrough or real-data manual
     acceptance.
+
+### 2026-05-06 Training readiness guard extension
+
+- scope：
+  - Extend the stale-controller readiness architecture guard to Training readiness echo methods.
+  - Keep `TrainingSidebar.check_ready_to_train()` readable as service-capability branch versus
+    no-capability legacy branch.
+- red / focused test：
+  - Added
+    `test_capability_readiness_guard_flags_validate_ready_after_capability`.
+  - It initially failed because `check_ui_capability_gated_controller_readiness()` did not flag
+    `controller.validate_ready()` inside a capability conditional expression.
+  - After extending the guard, `poetry run python tests/architecture_compliance.py` flagged
+    `TrainingSidebar.check_ready_to_train()` as expected.
+- 做了什麼：
+  - Added `validate_ready`, `has_model`, and `has_training_option` to the capability-gated
+    readiness guard method set.
+  - Rewrote `TrainingSidebar.check_ready_to_train()` to read `controller.validate_ready()` only
+    inside the explicit `train_capability is None` legacy branch.
+- validation：
+  - Red gate before guard extension:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_validate_ready_after_capability -q`
+    -> failed with `0` violations.
+  - After guard extension:
+    same architecture unit command -> `1 passed`.
+  - Red product guard before UI cleanup:
+    `poetry run python tests/architecture_compliance.py` -> flagged
+    `XBrainLab/ui/panels/training/sidebar.py:179` for `controller.validate_ready()`.
+  - After UI cleanup:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` ->
+    `24 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_panel.py -q`
+    -> `50 passed`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed.
+- local eval：
+  - Not run. This is a static architecture guard / Training UI readiness cleanup under the fast dev
+    gate.
+- 不能宣稱：
+  - This does not complete command-driven UI refresh coordinator, full controller read removal, or
+    human desktop training acceptance.

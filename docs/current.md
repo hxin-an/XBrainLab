@@ -869,7 +869,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   legacy path。最新 architecture guard follow-up 又把這類 pre-command readiness bug 納入
   `tests/architecture_compliance.py`：有 `get_command_capability()` 的 UI command path 不可用
   `controller.is_training()`、`has_datasets()` 或 `get_trainer()` 做 gating，除非明確在
-  `capability is None` legacy branch。
+  `capability is None` legacy branch。最新 guard extension 也把
+  `validate_ready()`、`has_model()`、`has_training_option()` 納入 Training readiness echo
+  防線；`check_ready_to_train()` 現在用明確 no-capability branch 讀 legacy controller
+  readiness，不再把 controller readiness call 藏在 capability conditional expression 裡。
   最新 Preprocess epoching cleanup 修掉另一個 capability 混用：`open_epoching()` 現在以
   `create_epoch` capability 判定是否可進入 epoch dialog；當 `create_epoch` enabled 時，不會再被
   `preprocess` capability 的 blocked reason 透過 `check_lock()` / `check_data_loaded()` 誤擋。

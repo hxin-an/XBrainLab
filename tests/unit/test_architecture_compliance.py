@@ -161,6 +161,28 @@ def start_training(self):
     assert "capability is None" in violations[0]
 
 
+def test_capability_readiness_guard_flags_validate_ready_after_capability(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def check_ready(self):
+    train_capability = get_command_capability(self, CommandName.TRAIN)
+    ready = (
+        train_capability.enabled
+        if train_capability is not None
+        else self.controller.validate_ready()
+    )
+    self.btn_start.setEnabled(ready)
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.validate_ready" in violations[0]
+    assert "capability is None" in violations[0]
+
+
 def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,

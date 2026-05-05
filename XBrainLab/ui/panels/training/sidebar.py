@@ -173,11 +173,10 @@ class TrainingSidebar(QWidget):
     def check_ready_to_train(self, *args):
         """Check if all configurations are set and enable/disable start button."""
         train_capability = get_command_capability(self, CommandName.TRAIN)
-        ready = (
-            train_capability.enabled
-            if train_capability is not None
-            else self.controller.validate_ready()
-        )
+        if train_capability is None:
+            ready = self.controller.validate_ready()
+        else:
+            ready = train_capability.enabled
         self.btn_start.setEnabled(ready)
 
         if not ready:
