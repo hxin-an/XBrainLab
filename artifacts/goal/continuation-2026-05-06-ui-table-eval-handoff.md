@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+feb9f88 ui: render preprocess panel from state query
+29137da docs: refresh handoff after preprocess query guard
 ebbdcfd ui: query epoching data through command spine
 bb005ab ui: render preprocess sidebar from capabilities
 7ab9501 ui: load training settings from state snapshot
@@ -165,6 +167,15 @@ bb57beb ui: use backend truth for split replacement
     `QueryStateCommand(query="data_lists", include_objects=True)`.
   - `PreprocessController.get_preprocessed_data_list()` remains only for no-capability mock /
     legacy dialog population.
+- Preprocess panel state-query render:
+  - `PreprocessPanel.update_panel()` and `update_plot_only()` now query
+    `QueryStateCommand(query="data_lists", include_objects=True)` in real `Study` contexts.
+  - The panel passes queried preprocessed / original objects into `PreprocessPlotter`, so history,
+    preview controls, and plot refresh do not start from stale controller list reads.
+  - `PreviewWidget.request_plot_update` routes through `PreprocessPanel.update_plot_only()` to keep
+    user control changes on the same query-backed render source.
+  - `.basedpyright/baseline.json` dropped by one suppressed error after touched Preprocess tests
+    and panel typing were cleaned up.
 
 ## Validation Already Run
 
@@ -355,6 +366,17 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for bb005ab / ebbdcfd; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess -q
+# 41 passed for feb9f88
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for feb9f88; basedpyright baseline decreased by 1;
+# mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
