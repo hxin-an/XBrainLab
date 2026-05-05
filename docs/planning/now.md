@@ -170,6 +170,8 @@
 - 最新 Training split cleanup 又把 existing-dataset replacement preflight 收回 backend
   capability truth：real `Study` path 不再依賴 stale `TrainingController.has_datasets()` /
   `get_trainer()` 來決定是否要先確認並送 `ClearDatasetsCommand`。
+- 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
+  enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。

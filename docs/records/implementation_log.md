@@ -2897,3 +2897,27 @@ datasets / trainer and `clear_datasets` is enabled, the UI asks for confirmation
 
 - This is one Training sidebar capability-truth cleanup. It does not complete the full UI refresh
   coordinator, controller fallback audit, or human desktop training workflow acceptance.
+
+## 2026-05-06 Start Training Capability Truth
+
+### 狀態
+
+Start Training now follows backend `train` capability truth in command-capable UI paths. If the
+capability is enabled, the UI dispatches `TrainCommand` even when `TrainingController.is_training()`
+is stale. The controller running-state check remains only for no-capability mock / legacy paths.
+
+### 已可宣稱
+
+- A stale controller running flag can no longer silently prevent a service-backed `TrainCommand`.
+- Long-running confirmation behavior remains governed by backend capability metadata.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not certify long-running desktop training acceptance, GPU/CPU resource behavior, or
+  Windows human click-through.

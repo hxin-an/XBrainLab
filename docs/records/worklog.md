@@ -9167,3 +9167,32 @@
 - 不能宣稱：
   - This does not complete full controller fallback removal, command-driven UI refresh closure, or
     human training workflow acceptance.
+
+### 2026-05-06 Start Training capability-truth cleanup
+
+- scope：
+  - Continue Training sidebar command-truth cleanup.
+  - Prevent stale controller running state from silently blocking an enabled backend `train`
+    capability.
+- red / focused test：
+  - Added
+    `TestTrainingSidebar.test_start_training_prefers_backend_capability_over_stale_controller`.
+  - It failed because `start_training_ui_action()` returned without calling
+    `execute_application_command()` when `TrainingController.is_training()` was stale `True`,
+    despite backend `train` capability being enabled.
+- 做了什麼：
+  - Added `TrainingSidebar._should_start_training()`.
+  - Command-capable path now uses backend `train` capability truth for start gating.
+  - No-capability mock / legacy path still checks `TrainingController.is_training()`.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_prefers_backend_capability_over_stale_controller -q`
+    -> failed because no command was executed.
+  - After fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_service_success_does_not_fallback_to_controller tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_start_training_ui_action -q`
+    -> `3 passed`.
+- local eval：
+  - Not run. This is a Training sidebar capability-truth cleanup and stays under the fast dev gate.
+- 不能宣稱：
+  - This does not complete long-running training acceptance, resource behavior verification, or
+    human desktop click-through.

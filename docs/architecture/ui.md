@@ -135,6 +135,9 @@ Training split replacement now also uses backend capability truth: when `generat
 blocked only by existing generated datasets / trainer and `clear_datasets` is enabled, the UI asks
 for confirmation and dispatches `ClearDatasetsCommand` before `GenerateDatasetCommand`, independent
 of stale controller `has_datasets()` / `get_trainer()` state.
+Start Training also follows backend capability truth: when the `train` capability is enabled, the
+UI dispatches `TrainCommand` even if `TrainingController.is_training()` is stale. Controller
+running checks remain only for no-capability mock / legacy paths.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller

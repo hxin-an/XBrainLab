@@ -863,6 +863,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   truth：real `Study` path 若 `generate_dataset` 只因 existing dataset / trainer 被 block，但
   `clear_datasets` enabled，UI 會要求 confirmation 並先送 `ClearDatasetsCommand`，不再依賴
   stale `TrainingController.has_datasets()` / `get_trainer()` 判斷是否要清資料。
+  最新 Start Training cleanup 也把 start gate 改成 backend `train` capability 優先：real
+  command-capable path 若 capability enabled，stale `TrainingController.is_training()` 不會再讓
+  Start button silently skip `TrainCommand`；controller running check 只留給 no-capability mock /
+  legacy path。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

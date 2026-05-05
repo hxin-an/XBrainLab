@@ -491,7 +491,7 @@ class TrainingSidebar(QWidget):
                     ),
                 )
                 return
-            if not self.controller.is_training():
+            if self._should_start_training(train_capability):
                 if train_capability is not None and (
                     train_capability.requires_confirmation
                     or train_capability.confirmation_required
@@ -527,6 +527,11 @@ class TrainingSidebar(QWidget):
                 # Observer in Panel handles "training_started" event.
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
+
+    def _should_start_training(self, train_capability) -> bool:
+        if train_capability is not None:
+            return train_capability.enabled
+        return not self.controller.is_training()
 
     def stop_training(self):
         """Request the controller to stop the current training run."""
