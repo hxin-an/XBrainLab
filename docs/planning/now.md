@@ -203,6 +203,9 @@
 - 最新 saliency 2D cleanup 把 Map / Spectrogram / Topomap figure replacement 收斂到
   `BaseSaliencyView._replace_figure()`；替換或關閉 view 時會 close figure、detach / deleteLater
   canvas 並清引用。這是 focused Matplotlib canvas cleanup，不是完整 saliency UX 或 memory soak。
+- 最新 evaluation cleanup 讓 `ConfusionMatrixWidget.update_plot()` / close path close 目前 figure，
+  detach / `deleteLater()` 舊 canvas 或 message widgets，並清掉引用；這是 focused Evaluation
+  widget cleanup，不是 full evaluation UI soak。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

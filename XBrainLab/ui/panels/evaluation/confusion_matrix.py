@@ -47,8 +47,8 @@ class ConfusionMatrixWidget(QWidget):
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
         # Initial Placeholder
-        self.fig = Figure(figsize=(5, 4), dpi=100)
-        self.canvas = FigureCanvas(self.fig)
+        self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
+        self.canvas: FigureCanvas | None = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
 
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
@@ -75,16 +75,8 @@ class ConfusionMatrixWidget(QWidget):
 
         """
         try:
-            for i in reversed(range(self.plot_layout.count())):
-                item = self.plot_layout.itemAt(i)
-                if item:
-                    w = item.widget()
-                    if w:
-                        w.setParent(None)
-
-            # Close old matplotlib figure to prevent memory leak
-            if hasattr(self, "fig") and self.fig is not None:
-                plt.close(self.fig)
+            self._clear_plot_widgets()
+            self._close_current_figure()
 
             if plan is None:
                 self._show_message("No Data Available")
@@ -145,3 +137,23 @@ class ConfusionMatrixWidget(QWidget):
         lbl.setStyleSheet(f"color: {color};")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.plot_layout.addWidget(lbl)
+
+    def _clear_plot_widgets(self) -> None:
+        for i in reversed(range(self.plot_layout.count())):
+            item = self.plot_layout.itemAt(i)
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+                    widget.deleteLater()
+        self.canvas = None
+
+    def _close_current_figure(self) -> None:
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
+
+    def closeEvent(self, event):  # noqa: N802
+        self._clear_plot_widgets()
+        self._close_current_figure()
+        super().closeEvent(event)

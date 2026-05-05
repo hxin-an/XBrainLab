@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Confusion Matrix Widget Cleanup
+
+### 狀態
+
+The Evaluation confusion matrix widget now has explicit figure / widget cleanup for plot updates
+and close. `update_plot()` clears existing layout widgets with `deleteLater()`, closes the current
+Matplotlib figure, and clears canvas / figure references before adding either a message label or a
+new confusion matrix canvas.
+
+### 已可宣稱
+
+- Clearing or replacing confusion matrix content no longer keeps stale canvas / message widget
+  references around the widget instance.
+- Focused UI tests cover plan=None cleanup and evaluation panel/chart regressions.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/evaluation/confusion_matrix.py`
+- Tests: `tests/unit/ui/test_ui_components.py`,
+  `tests/unit/ui/test_evaluation_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full Evaluation tab soak evidence, full evaluation workflow UI acceptance, or
+  desktop memory trend proof.
+
+### 下一手重點
+
+Continue focused cleanup for evaluation/visualization widgets with observable open/close or
+replace-path regressions before attempting broader memory trend artifacts.
+
 ## 2026-05-06 Saliency 2D Canvas Cleanup
 
 ### 狀態

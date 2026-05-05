@@ -95,6 +95,38 @@ class TestConfusionMatrix:
         qtbot.addWidget(w)
         w.update_plot(None)
 
+    def test_update_none_releases_previous_canvas_and_children(self, qtbot):
+        from PyQt6.QtWidgets import QLabel
+
+        from XBrainLab.ui.panels.evaluation import confusion_matrix
+        from XBrainLab.ui.panels.evaluation.confusion_matrix import (
+            ConfusionMatrixWidget,
+        )
+
+        class CleanupLabel(QLabel):
+            deleted = False
+
+            def deleteLater(self):
+                self.deleted = True
+                super().deleteLater()
+
+        w = ConfusionMatrixWidget()
+        qtbot.addWidget(w)
+        old_fig = w.fig
+        old_canvas = w.canvas
+        assert old_canvas is not None
+        temporary_label = CleanupLabel("temporary")
+        w.plot_layout.addWidget(temporary_label)
+
+        with patch.object(confusion_matrix.plt, "close") as close_figure:
+            w.update_plot(None)
+
+        close_figure.assert_called_once_with(old_fig)
+        assert temporary_label.deleted is True
+        assert old_canvas.parent() is None
+        assert w.fig is None
+        assert w.canvas is None
+
 
 class TestMetricsBarChart:
     def test_creates(self, qtbot):

@@ -10623,3 +10623,41 @@
 - 不能宣稱：
   - This does not certify full saliency workflow UX, long-run visualization memory trends,
     interactive desktop 3D render, or human Windows desktop acceptance.
+
+### 2026-05-06 ConfusionMatrixWidget cleanup
+
+- scope：
+  - Continue evaluation / visualization widget cleanup with a focused Evaluation tab component.
+  - Ensure confusion matrix plot replacement and plan=None clearing release old widgets and figure
+    references.
+- red / focused tests：
+  - Added `test_update_none_releases_previous_canvas_and_children`.
+  - Red gate failed because a temporary child label was detached but not scheduled for
+    `deleteLater()`, and `fig` / `canvas` references stayed populated after `update_plot(None)`.
+- 做了什麼：
+  - Added `_clear_plot_widgets()` to detach and `deleteLater()` all plot-layout child widgets and
+    clear `canvas`.
+  - Added `_close_current_figure()` to close the current Matplotlib figure and clear `fig`.
+  - `update_plot()` and `closeEvent()` now use those helpers before drawing a new confusion matrix
+    or message.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_update_none_releases_previous_canvas_and_children -q`
+    -> failed because `temporary_label.deleted` stayed `False`.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_update_none_releases_previous_canvas_and_children tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_creates tests/unit/ui/test_ui_components.py::TestConfusionMatrix::test_update_plot_no_data -q`
+    -> `3 passed`.
+  - Evaluation regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_ui_components.py::TestConfusionMatrix tests/unit/ui/test_ui_components.py::TestMetricsBarChart -q`
+    -> `29 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/evaluation/confusion_matrix.py tests/unit/ui/test_ui_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/evaluation/confusion_matrix.py tests/unit/ui/test_ui_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI resource cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not certify full Evaluation tab UX, long-run memory trend behavior, or human desktop
+    acceptance.
