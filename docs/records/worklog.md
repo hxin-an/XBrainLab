@@ -7908,3 +7908,22 @@
     -> `0 errors, 0 warnings, 0 notes`.
 - 不能宣稱：
   - 這不是 full controller fallback removal or UI refresh closure。
+
+### 2026-05-05 19:35 Validation doc sync for UI refresh guard slices
+
+- scope：
+  - Documentation consistency after the latest UI refresh coordinator / fallback guard commits.
+  - No runtime code change in this slice.
+- 做了什麼：
+  - Added a concise `docs/validation/README.md` entry mapping the recent downstream refresh scope,
+    observer helper guard, and missing-result legacy refresh guard to concrete tests and claim
+    boundaries.
+  - Kept the claim conservative: stronger command-result refresh guardrails, not full
+    command-driven UI refresh or human Windows acceptance.
+- validation：
+  - `git diff --check`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This docs sync is not product completion and adds no new runtime evidence.

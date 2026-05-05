@@ -108,6 +108,40 @@ UI baseline capture 結果：
 - UI unit legacy runtime expectations 已改成 remote switch fail-closed / active local deletion block。
 - deterministic agent eval artifact 已刷新。
 
+2026-05-05 UI command refresh coordinator / fallback guard follow-up:
+
+- downstream command-result refresh scope:
+  - `refresh_after_command()` now refreshes Evaluation / Visualization readiness when
+    `CommandResult.changed_state` reports training / epoch / evaluation changes.
+  - focused gate:
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_application_capabilities.py -q`
+    -> `15 passed`.
+  - UI unit regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `933 passed`.
+- observer refresh helper guard:
+  - architecture compliance now fails new direct `_create_bridge(..., self.update_panel)` and
+    `_create_bridge(..., self.refresh_from_observer)` panel call sites; simple observer refresh must
+    use `BasePanel._create_refresh_bridge()`.
+  - focused gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `9 passed`.
+- missing-result legacy refresh guard:
+  - architecture compliance now distinguishes `result.failed` UI restore from `result is None`
+    compatibility branches. Missing-result branches may not directly call panel-local refresh
+    methods outside explicit `*_after_legacy_result` helpers.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- static / docs gates for these slices:
+  - `git diff --check` -> pass.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+
+This supports the claim that command-result refresh and mock / legacy fallback guardrails are
+stronger than the first coordinator slice. It does not complete full command-driven UI refresh,
+remove controller observer callbacks, prove Data Interpretation wizard maturity, or replace human
+Windows desktop acceptance.
+
 2026-05-05 deterministic tool-call eval follow-up:
 
 - 新增 `wrong-tool-temptation-apply-after-epoch` case：state 已有 validated safe Data
