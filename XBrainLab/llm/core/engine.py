@@ -92,6 +92,10 @@ class LLMEngine:
                 logger.info("Switched to cached backend: %s", mode)
                 return
             # Remove stale backend
+            stale_backend = self.backends[mode]
+            unload = getattr(stale_backend, "unload", None)
+            if callable(unload):
+                unload()
             del self.backends[mode]
 
         # 2. Create if missing
@@ -106,6 +110,16 @@ class LLMEngine:
         self._backend_model_ids[mode] = self._get_current_model_id(mode)
         self.active_backend = new_backend
         logger.info("Created and switched to backend: %s", mode)
+
+    def close(self) -> None:
+        """Unload cached local backends and clear active backend references."""
+        for backend in list(self.backends.values()):
+            unload = getattr(backend, "unload", None)
+            if callable(unload):
+                unload()
+        self.backends.clear()
+        self._backend_model_ids.clear()
+        self.active_backend = None
 
     def generate_stream(self, messages: list):
         """Generates a response in a streaming fashion.

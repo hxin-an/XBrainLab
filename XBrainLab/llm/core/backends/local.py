@@ -4,6 +4,7 @@ Implements the ``BaseBackend`` interface for on-device inference using
 HuggingFace ``transformers`` with optional 4-bit quantization.
 """
 
+import gc
 import logging
 from threading import Thread
 from typing import Any, TypedDict, cast
@@ -208,6 +209,27 @@ class LocalBackend(BaseBackend):
         except Exception as e:
             logger.error("Failed to load model: %s", e)
             raise
+
+    def unload(self) -> None:
+        """Release loaded model resources and clear CUDA cache when available."""
+        self.model = None
+        self.tokenizer = None
+        self.is_loaded = False
+        gc.collect()
+
+        try:
+            import torch
+        except ModuleNotFoundError:
+            return
+
+        cuda = getattr(torch, "cuda", None)
+        if cuda is None:
+            return
+        try:
+            if cuda.is_available():
+                cuda.empty_cache()
+        except Exception:  # pragma: no cover - defensive cleanup path
+            logger.debug("CUDA cache cleanup failed during local model unload.")
 
     def _process_messages_for_template(self, messages: list) -> list:
         """Processes messages for models with strict chat template rules.

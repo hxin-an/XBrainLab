@@ -66,6 +66,27 @@ class TestAgentWorkerCleanup:
         mock_thread.requestInterruption.assert_called_once()
         assert worker.generation_thread is None
 
+    def test_shutdown_waits_for_generation_and_closes_engine(self):
+        from XBrainLab.llm.agent.worker import AgentWorker
+
+        worker = AgentWorker()
+        engine = MagicMock()
+        worker.engine = engine
+        worker.timeout_timer = MagicMock()
+        mock_thread = MagicMock()
+        mock_thread.isRunning.return_value = True
+        mock_thread.wait.return_value = True
+        worker.generation_thread = mock_thread
+
+        worker.shutdown(wait_ms=250)
+
+        worker.timeout_timer.stop.assert_called_once()
+        mock_thread.requestInterruption.assert_called_once()
+        mock_thread.wait.assert_called_once_with(250)
+        engine.close.assert_called_once()
+        assert worker.engine is None
+        assert worker.generation_thread is None
+
 
 class TestAgentWorkerGenerate:
     """Cover generate_from_messages paths."""

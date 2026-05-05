@@ -95,6 +95,15 @@ Local model downloader lifecycle gate:
 dialog teardown. It is not a long-running local model soak, GPU leak proof, or human desktop
 acceptance.
 
+Local runtime shutdown lifecycle gate:
+`poetry run pytest --capture=sys tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_engine.py tests/unit/llm/core/test_backend_local.py tests/unit/llm/core/test_engine_hotswap.py -q`
+-> `37 passed`；
+`poetry run pytest --capture=sys tests/unit/llm/agent/test_worker.py tests/unit/llm/test_worker_coverage.py tests/unit/llm/agent/test_worker_timeout.py -q`
+-> `39 passed`；
+`poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_controller_cov.py tests/unit/llm/agent/test_controller_integration.py -q`
+-> `99 passed`。This supports backend unload / engine close / worker shutdown contract and
+controller close wiring. It is still not GPU leak-proof soak evidence or human desktop acceptance.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

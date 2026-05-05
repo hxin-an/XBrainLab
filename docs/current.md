@@ -25,7 +25,11 @@ consent，使用者明確選擇 Enable / Download / Use existing cache / Later /
 偷偷載入大型模型。最新 local model downloader lifecycle cleanup 也讓下載 worker 在
 finished / error / cancel 後 bounded join subprocess 並關閉 queue；AI Assistant settings dialog
 關閉或取消時會走 bounded downloader shutdown，而不是只發 cancel 後直接銷毀 dialog。這是
-明顯 thread/process cleanup smoke，不是長時間 local model soak。
+明顯 thread/process cleanup smoke，不是長時間 local model soak。後續 local runtime shutdown
+slice 又新增 `LocalBackend.unload()`、`LLMEngine.close()` 和 `AgentWorker.shutdown()`：controller
+close 會 bounded 停止 generation thread、卸載 cached backend，並在可用時清 CUDA cache。這降低
+assistant open/close 與 model switch 後的 GPU/cache 殘留風險，但仍不是長時間 true local model
+桌面 soak。
 
 2026-05-03 人工產品審核 follow-up 又補了一輪產品級修正：Assistant dock 頂部不再顯示
 chip dump，chat panel 內也不再放 `Conversation` 標題、第二條狀態列或 developer mode

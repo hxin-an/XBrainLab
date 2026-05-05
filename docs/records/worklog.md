@@ -37,6 +37,56 @@
 
 ## 2026-05-06
 
+### 04:45 Local runtime shutdown cleanup
+
+- 做了什麼：
+  - 檢查 `LocalBackend` / `LLMEngine` / `AgentWorker` / `LLMController.close()` 的 local runtime
+    cleanup path。
+  - 先補紅燈 tests：`LocalBackend.unload()` 釋放 model / tokenizer 並清 CUDA cache；
+    `LLMEngine.close()` unload cached backends；`AgentWorker.shutdown()` bounded wait generation
+    thread 並 close engine；`LLMController.close()` 呼叫 worker shutdown。
+  - 實作 `LocalBackend.unload()`、`LLMEngine.close()`、stale backend reload 前 unload、
+    `AgentWorker.shutdown()`、generation thread active-reference tracking，以及 controller close
+    的 bounded worker shutdown / worker-thread wait。
+- 結果：
+  - Focused red tests 已轉綠。
+  - LLM core / worker / controller regression 均通過。
+  - 這是 assistant lifecycle resource cleanup；未跑 true local model 或 GPU soak，也未跑
+    release / thesis local eval。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/llm/core/test_local_backend.py::TestLocalBackendLoad::test_unload_releases_model_and_cuda_cache tests/unit/llm/core/test_engine.py::test_engine_close_unloads_cached_backends -q`
+    -> `2 failed`，`unload` / `close` 不存在。
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/llm/test_worker_coverage.py::TestAgentWorkerCleanup::test_shutdown_waits_for_generation_and_closes_engine tests/unit/llm/agent/test_controller.py::TestClose::test_close_stops_thread -q`
+    -> `2 failed`，`AgentWorker.shutdown()` 不存在且 controller close 未呼叫它。
+  - Focused pass：
+    `poetry run pytest --capture=sys tests/unit/llm/core/test_local_backend.py::TestLocalBackendLoad::test_unload_releases_model_and_cuda_cache tests/unit/llm/core/test_engine.py::test_engine_close_unloads_cached_backends tests/unit/llm/test_worker_coverage.py::TestAgentWorkerCleanup::test_shutdown_waits_for_generation_and_closes_engine tests/unit/llm/agent/test_controller.py::TestClose::test_close_stops_thread -q`
+    -> `4 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_engine.py tests/unit/llm/core/test_backend_local.py tests/unit/llm/core/test_engine_hotswap.py -q`
+    -> `37 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_worker.py tests/unit/llm/test_worker_coverage.py tests/unit/llm/agent/test_worker_timeout.py -q`
+    -> `39 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/llm/agent/test_controller.py tests/unit/llm/agent/test_controller_cov.py tests/unit/llm/agent/test_controller_integration.py -q`
+    -> `99 passed`。
+  - Focused lint/type：
+    `poetry run ruff check XBrainLab/llm/core/backends/local.py XBrainLab/llm/core/engine.py XBrainLab/llm/agent/worker.py XBrainLab/llm/agent/controller.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_engine.py tests/unit/llm/test_worker_coverage.py tests/unit/llm/agent/test_controller.py`
+    -> pass。
+    `poetry run basedpyright XBrainLab/llm/core/backends/local.py XBrainLab/llm/core/engine.py XBrainLab/llm/agent/worker.py XBrainLab/llm/agent/controller.py tests/unit/llm/core/test_local_backend.py tests/unit/llm/core/test_engine.py tests/unit/llm/test_worker_coverage.py tests/unit/llm/agent/test_controller.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material advisory。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。未跑 full local LLM primary / fallback x3，因為這不是
+    release / thesis evidence closure。
+
 ### 04:30 Local model downloader lifecycle cleanup
 
 - 做了什麼：

@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Local Runtime Shutdown Cleanup
+
+### 狀態
+
+Local assistant runtime teardown now has explicit cleanup boundaries. `LocalBackend.unload()`
+releases model / tokenizer references, runs garbage collection, and clears CUDA cache when CUDA is
+available. `LLMEngine.close()` unloads cached local backends and clears active backend references.
+`AgentWorker.shutdown()` stops timeout timers, interrupts / bounded-waits generation threads, and
+closes the engine; `LLMController.close()` now invokes it before quitting the worker thread.
+
+### 已可宣稱
+
+- Assistant close / shutdown now releases cached local backend references and has a bounded
+  generation-thread cleanup path.
+- Focused tests cover backend unload, engine close, worker shutdown, and controller close wiring.
+
+### Evidence 入口
+
+- Code: `XBrainLab/llm/core/backends/local.py`, `XBrainLab/llm/core/engine.py`,
+  `XBrainLab/llm/agent/worker.py`, `XBrainLab/llm/agent/controller.py`
+- Tests: local backend / engine / worker / controller unit suites
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not a long-running true local model UI soak, GPU memory leak proof, or human Windows
+  desktop acceptance.
+
+### 下一手重點
+
+Keep extending lifecycle cleanup to long-running training / visualization / MCP job paths and add
+resource trend evidence only where the test can observe a real leak signal.
+
 ## 2026-05-06 Local Model Downloader Lifecycle Cleanup
 
 ### 狀態

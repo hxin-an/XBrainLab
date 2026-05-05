@@ -185,6 +185,10 @@
   join subprocess，cancel path 使用 bounded terminate / kill join，並讓 AI Assistant settings
   dialog teardown 走 bounded `ModelDownloader.shutdown()`；這降低關閉下載視窗後 QThread /
   subprocess 殘留風險。這仍只是 focused lifecycle smoke，不是長時間 local model soak。
+- 最新 local runtime shutdown cleanup 讓 `LocalBackend.unload()` 釋放 model / tokenizer 並在 CUDA
+  可用時清 cache；`LLMEngine.close()` 會卸載 cached backend；`AgentWorker.shutdown()` 會停止
+  timeout timer、bounded interrupt / wait generation thread，並在 controller close 時執行。這是
+  assistant lifecycle resource cleanup，不是 GPU leak-proof soak。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

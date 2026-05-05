@@ -5,12 +5,16 @@ thread, with streaming output, timeout handling, and hot-swap model
 switching.
 """
 
+import contextlib
+
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
+
+GENERATION_THREAD_SHUTDOWN_WAIT_MS = 1500
 
 
 class GenerationThread(QThread):
@@ -53,6 +57,9 @@ class GenerationThread(QThread):
         except Exception as e:
             logger.error("Generation error: %s", e, exc_info=True)
             self.error_occurred.emit(str(e))
+
+
+ACTIVE_GENERATION_THREADS: set[GenerationThread] = set()
 
 
 class AgentWorker(QObject):
@@ -182,26 +189,44 @@ class AgentWorker(QObject):
             logger.error("Failed to initialize Agent", exc_info=True)
             self.error.emit(f"Model Load Error: {e!s}")
 
-    def _cleanup_generation_thread(self):
+    def _track_generation_thread(self, thread: GenerationThread) -> None:
+        """Keep running generation threads alive until Qt reports finished."""
+        ACTIVE_GENERATION_THREADS.add(thread)
+        thread.finished.connect(lambda: ACTIVE_GENERATION_THREADS.discard(thread))
+        thread.finished.connect(thread.deleteLater)
+
+    @staticmethod
+    def _disconnect_generation_thread(thread: GenerationThread) -> None:
+        """Disconnect generation callbacks if they are still connected."""
+        with contextlib.suppress(TypeError, RuntimeError):
+            thread.chunk_received.disconnect()
+        with contextlib.suppress(TypeError, RuntimeError):
+            thread.finished_generation.disconnect()
+        with contextlib.suppress(TypeError, RuntimeError):
+            thread.error_occurred.disconnect()
+
+    def _cleanup_generation_thread(self, wait_ms: int = 0):
         """Disconnect and request interruption of any running generation thread.
 
         Prevents double callbacks and interleaved chunks when a new
         generation is started before a previous one finishes.
         """
-        if self.generation_thread is not None:
-            try:
-                self.generation_thread.chunk_received.disconnect(self.chunk_received)
-                self.generation_thread.finished_generation.disconnect(
-                    self._on_generation_finished,
-                )
-                self.generation_thread.error_occurred.disconnect(
-                    self._on_generation_error,
-                )
-            except (TypeError, RuntimeError):
-                pass  # Already disconnected
-            if self.generation_thread.isRunning():
-                self.generation_thread.requestInterruption()
-            self.generation_thread = None
+        thread = self.generation_thread
+        if thread is None:
+            return
+
+        self._disconnect_generation_thread(thread)
+        running = False
+        with contextlib.suppress(RuntimeError):
+            running = thread.isRunning()
+        if running:
+            thread.requestInterruption()
+            if wait_ms > 0:
+                thread.wait(max(0, int(wait_ms)))
+        with contextlib.suppress(RuntimeError):
+            if not thread.isRunning():
+                ACTIVE_GENERATION_THREADS.discard(thread)
+        self.generation_thread = None
 
     def generate_from_messages(self, messages):
         """Runs LLM generation using a full message history.
@@ -300,6 +325,7 @@ class AgentWorker(QObject):
         self.generation_thread.chunk_received.connect(self.chunk_received)
         self.generation_thread.finished_generation.connect(self._on_generation_finished)
         self.generation_thread.error_occurred.connect(self._on_generation_error)
+        self._track_generation_thread(self.generation_thread)
 
         # Timeout timer (thread-safe UI timer) — reuse existing or create once
         self._is_timed_out = False
@@ -328,21 +354,7 @@ class AgentWorker(QObject):
 
             # We can't safely kill the thread in Python, but we can ignore its
             # future output and signal the UI to proceed.
-            try:
-                self.generation_thread.requestInterruption()  # Request stop
-                self.generation_thread.chunk_received.disconnect(self.chunk_received)
-                self.generation_thread.finished_generation.disconnect(
-                    self._on_generation_finished,
-                )
-                self.generation_thread.error_occurred.disconnect(
-                    self._on_generation_error,
-                )
-                # self.generation_thread.terminate() # Dangerous, avoid unless necessary
-            except Exception:
-                logger.debug(
-                    "Signal disconnect failed (already disconnected)",
-                    exc_info=True,
-                )
+            self._cleanup_generation_thread()
 
             self.error.emit("Error: Generation timed out (Local LLM is too slow).")
             self.finished.emit([])  # Unblock the UI
@@ -431,3 +443,14 @@ class AgentWorker(QObject):
             engine.config.active_mode = old_active_mode
             logger.error("Failed to switch model: %s", e, exc_info=True)
             self.error.emit(f"Switch Failed: {e}")
+
+    def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> None:
+        """Stop generation work and release the loaded local model backend."""
+        if self.timeout_timer is not None:
+            self.timeout_timer.stop()
+        self._cleanup_generation_thread(wait_ms=wait_ms)
+        if self.engine is not None:
+            close = getattr(self.engine, "close", None)
+            if callable(close):
+                close()
+            self.engine = None

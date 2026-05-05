@@ -443,6 +443,7 @@ class TestClose:
     def test_close_stops_thread(self, ctrl):
         ctrl.worker_thread.isRunning.return_value = True
         ctrl.close()
+        ctrl.worker.shutdown.assert_called_once()
         ctrl.worker_thread.quit.assert_called_once()
         ctrl.worker_thread.wait.assert_called_once()
 

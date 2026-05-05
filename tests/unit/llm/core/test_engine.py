@@ -45,6 +45,21 @@ def test_engine_init_legacy_remote_request_uses_local(mock_config):
         assert "local" in engine.backends
 
 
+def test_engine_close_unloads_cached_backends(mock_config):
+    engine = LLMEngine(mock_config)
+    backend = MagicMock()
+    engine.backends["local"] = backend
+    engine._backend_model_ids["local"] = mock_config.model_name
+    engine.active_backend = backend
+
+    engine.close()
+
+    backend.unload.assert_called_once()
+    assert engine.backends == {}
+    assert engine._backend_model_ids == {}
+    assert engine.active_backend is None
+
+
 # --- Test LocalBackend ---
 
 

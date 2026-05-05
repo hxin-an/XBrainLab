@@ -51,6 +51,9 @@ from .worker import AgentWorker
 logger = logging.getLogger(__name__)
 
 
+WORKER_THREAD_SHUTDOWN_WAIT_MS = 2000
+
+
 TOOL_ACTION_LABELS = {
     "list_files": "File browser",
     "get_dataset_info": "Dataset summary",
@@ -1642,9 +1645,14 @@ class LLMController(QObject):
                 self.rag_retriever.close()
             except Exception:
                 logger.debug("RAG retriever cleanup failed", exc_info=True)
+        if hasattr(self, "worker") and self.worker:
+            try:
+                self.worker.shutdown(wait_ms=WORKER_THREAD_SHUTDOWN_WAIT_MS)
+            except Exception:
+                logger.debug("Agent worker cleanup failed", exc_info=True)
         if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
             self.worker_thread.quit()
-            self.worker_thread.wait()
+            self.worker_thread.wait(WORKER_THREAD_SHUTDOWN_WAIT_MS)
 
     def stop_generation(self):
         """Stops the current generation process and resets processing state."""

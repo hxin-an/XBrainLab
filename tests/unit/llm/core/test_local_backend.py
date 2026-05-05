@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -190,8 +191,9 @@ class TestLocalBackendLoad:
             backend._patch_remote_code_compat()
             assert hasattr(transformers_utils, "LossKwargs")
         finally:
+            utils = cast(Any, transformers_utils)
             if had_previous:
-                transformers_utils.LossKwargs = previous
+                utils.LossKwargs = previous
             elif hasattr(transformers_utils, "LossKwargs"):
                 delattr(transformers_utils, "LossKwargs")
 
@@ -220,22 +222,44 @@ class TestLocalBackendLoad:
             assert hasattr(DynamicCache, "seen_tokens")
             assert hasattr(DynamicCache, "get_max_length")
             assert hasattr(DynamicCache, "get_usable_length")
-            assert DynamicCache().seen_tokens == 0
-            assert DynamicCache().get_max_length() is None
-            assert DynamicCache().get_usable_length(1) == 0
+            dynamic_cache = cast(Any, DynamicCache())
+            assert dynamic_cache.seen_tokens == 0
+            assert dynamic_cache.get_max_length() is None
+            assert dynamic_cache.get_usable_length(1) == 0
         finally:
+            dynamic_cache_cls = cast(Any, DynamicCache)
             if had_seen:
-                DynamicCache.seen_tokens = previous_seen
+                dynamic_cache_cls.seen_tokens = previous_seen
             elif hasattr(DynamicCache, "seen_tokens"):
                 delattr(DynamicCache, "seen_tokens")
             if had_max:
-                DynamicCache.get_max_length = previous_max
+                dynamic_cache_cls.get_max_length = previous_max
             elif hasattr(DynamicCache, "get_max_length"):
                 delattr(DynamicCache, "get_max_length")
             if had_usable:
-                DynamicCache.get_usable_length = previous_usable
+                dynamic_cache_cls.get_usable_length = previous_usable
             elif hasattr(DynamicCache, "get_usable_length"):
                 delattr(DynamicCache, "get_usable_length")
+
+    def test_unload_releases_model_and_cuda_cache(self):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        cfg = _make_config(device="cuda")
+        backend = LocalBackend(cfg)
+        backend.model = MagicMock()
+        backend.tokenizer = MagicMock()
+        backend.is_loaded = True
+
+        mock_torch = MagicMock()
+        mock_torch.cuda.is_available.return_value = True
+
+        with patch.dict("sys.modules", {"torch": mock_torch}):
+            backend.unload()
+
+        assert backend.model is None
+        assert backend.tokenizer is None
+        assert backend.is_loaded is False
+        mock_torch.cuda.empty_cache.assert_called_once()
 
 
 class TestProcessMessages:
