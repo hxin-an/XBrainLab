@@ -30,6 +30,10 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+ebbdcfd ui: query epoching data through command spine
+bb005ab ui: render preprocess sidebar from capabilities
+7ab9501 ui: load training settings from state snapshot
+7978c54 docs: refresh handoff after query-truth slices
 d0a66b2 ui: use state query for smart parse files
 d2e5b73 ui: use state query for montage channels
 7b3c3e7 ui: use command query for saliency settings
@@ -143,11 +147,24 @@ bb57beb ui: use backend truth for split replacement
     before opening the parser dialog.
   - `DatasetController.get_filenames()` is only used through the mock / legacy query fallback
     helper when ApplicationService query result is unavailable.
+- Training settings state snapshot defaults:
+  - `Training Settings` now checks `QueryStateCommand(query="state")` for
+    `state.training.training_option` before opening the settings dialog.
+  - `TrainingController.get_training_option()` is only used in mock / legacy query fallback.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
     capability through `check_lock()` / `check_data_loaded()`.
   - Legacy controller lock/data checks remain only for no-capability mock / legacy contexts.
+- Preprocess sidebar capability-first render:
+  - `update_sidebar()` no longer reads stale `PreprocessController.get_preprocessed_data_list()`
+    when `preprocess` / `create_epoch` capabilities are visible.
+  - The architecture guard now flags `get_preprocessed_data_list()` in capability-backed UI paths.
+- Epoching dialog query data source:
+  - command-capable `open_epoching()` now gets preprocessed dialog data through
+    `QueryStateCommand(query="data_lists", include_objects=True)`.
+  - `PreprocessController.get_preprocessed_data_list()` remains only for no-capability mock /
+    legacy dialog population.
 
 ## Validation Already Run
 
@@ -316,6 +333,28 @@ poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for the 7b3c3e7 / d2e5b73 / d0a66b2 UI query-truth slices;
 # mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  tests/unit/ui/training/test_training_panel.py \
+  tests/unit/ui/training/test_training_setting.py \
+  -q
+# 60 passed for 7ab9501
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  -q
+# 23 passed for ebbdcfd
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 29 passed for ebbdcfd
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for bb005ab / ebbdcfd; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
