@@ -10750,3 +10750,61 @@
 - 不能宣稱：
   - This does not refresh deterministic or local model benchmark artifacts.
   - Human desktop acceptance, import wizard maturity, and product completion remain open.
+
+### 2026-05-06 Data Interpretation Review Summary row clipping
+
+- scope：
+  - Continue the user-reported Data Interpretation preview polish after table-fit and contrast
+    fixes.
+  - Ensure `Review Summary` scrolls cleanly without exposing half-visible text rows.
+- red / focused tests：
+  - Added `test_data_interpretation_preview_dialog_review_summary_shows_whole_rows`.
+  - Red gate first failed because five review rows could exceed the viewport; after the first height
+    adjustment, refreshed screenshot still showed a sixth row clipped at the bottom, so the test was
+    tightened to catch partial visible rows when there are more rows than the visible summary area.
+- 做了什麼：
+  - Added `_fit_review_tree_height()` to size the dialog `Review Summary` tree to complete rows.
+  - The summary shows up to five complete rows and uses vertical scrolling for additional rows,
+    without leaving a partial row visible at the bottom.
+  - Added `partial_visible_tree_rows()` and vertical scrollbar metadata to
+    `scripts/dev/capture_data_interpretation_replay.py`.
+  - Updated the UI product walkthrough test fakes to accept production dialog context kwargs
+    (`epoch_data`, `initial_option`, and future dialog context fields).
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_review_summary_shows_whole_rows -q`
+    -> failed on clipped review rows.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_review_summary_shows_whole_rows -q`
+    -> `1 passed`.
+  - Dialog / replay / walkthrough regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/integration/ui/test_product_walkthrough.py -q`
+    -> `27 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/integration/ui/test_product_walkthrough.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py scripts/dev/capture_data_interpretation_replay.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/integration/ui/test_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-preview.png`,
+    `artifacts/ui/data-interpretation-remap.png`, and `artifacts/ui/data-interpretation-replay.json`.
+    Manual screenshot review confirmed the preview `Review Summary` now shows whole rows only.
+    Replay JSON records preview `Review Summary` `partial_visible_rows=[]`,
+    `vertical_scrollbar_max=4`; remap `Review Summary` `partial_visible_rows=[]`,
+    `vertical_scrollbar_max=0`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+- local eval：
+  - Not run. This is a UI replay / visual polish slice; fast dev gate is sufficient.
+- 不能宣稱：
+  - This does not complete mature Data Interpretation wizard UX, full real-data manual
+    certification, Windows desktop acceptance, or product completion.

@@ -205,6 +205,49 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         assert horizontal_scrollbar.maximum() == 0
 
 
+def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "warnings": [
+                "Multiple EEG files were discovered; review subject/session mapping.",
+                "External label/event carriers require preview before apply.",
+            ],
+            "confirmation_items": [
+                "Confirm label carrier alignment.",
+                "Confirm session metadata for sub-01.",
+                "Confirm event role mapping.",
+            ],
+            "downstream_impacts": [
+                "Training will use the confirmed recipe.",
+                "Evaluation will use the same class map.",
+            ],
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(1040, 760)
+    dialog.show()
+    qtbot.wait(0)
+
+    review_tree = dialog.review_tree
+    assert review_tree.topLevelItemCount() == 7
+    viewport = review_tree.viewport()
+    scrollbar = review_tree.verticalScrollBar()
+    assert viewport is not None
+    assert scrollbar is not None
+    viewport_rect = viewport.rect()
+
+    for row in range(review_tree.topLevelItemCount()):
+        item = review_tree.topLevelItem(row)
+        assert item is not None
+        row_rect = review_tree.visualItemRect(item)
+        if row_rect.isValid() and row_rect.top() < viewport_rect.bottom():
+            assert row_rect.bottom() <= viewport_rect.bottom()
+    assert scrollbar.maximum() > 0
+
+
 def test_data_interpretation_preview_dialog_returns_review_edits(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

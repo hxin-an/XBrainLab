@@ -336,7 +336,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     generator = test_app.study.get_datasets_generator(split_config)
 
     class FakeSplitDialog:
-        def __init__(self, _parent, _controller):
+        def __init__(self, _parent, _controller, **_dialog_context):
             pass
 
         def exec(self):
@@ -346,7 +346,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return generator
 
     class FakeModelDialog:
-        def __init__(self, _parent, _controller):
+        def __init__(self, _parent, _controller, **_dialog_context):
             pass
 
         def exec(self):
@@ -356,7 +356,7 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             return ModelHolder(EEGNet, {}, None)
 
     class FakeTrainingSettingDialog:
-        def __init__(self, _parent, _controller):
+        def __init__(self, _parent, _controller, **_dialog_context):
             pass
 
         def exec(self):

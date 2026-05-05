@@ -3319,6 +3319,8 @@
             97
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -3369,6 +3371,8 @@
             157
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -3419,6 +3423,8 @@
             522
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -3489,6 +3495,8 @@
             620
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 4,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
         }
@@ -3611,6 +3619,8 @@
             97
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -3661,6 +3671,8 @@
             157
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -3691,6 +3703,8 @@
             522
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -3733,14 +3747,16 @@
             "Interactive"
           ],
           "stretch_last_section": false,
-          "header_length": 972,
-          "viewport_width": 972,
+          "header_length": 982,
+          "viewport_width": 982,
           "column_widths": [
-            179,
-            173,
-            620
+            181,
+            175,
+            626
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
         }

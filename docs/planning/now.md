@@ -659,6 +659,9 @@
     並填滿主 panel，其他欄保留穩定寬度，避免載入後表格內縮。
   - 最新 confirmation-copy polish 讓底部提示只顯示短 action cue；具體 metadata / label carrier
     confirmation 留在 `Review Summary` rows，避免 raw filename 長句在 dialog 底部重複。
+  - 最新 review-row polish 讓 `Review Summary` 高度只顯示完整 rows；超過可見列數時滾動，但不露出
+    半截文字。Replay JSON 也新增 `vertical_scrollbar_max` / `partial_visible_rows` evidence，最新
+    preview / remap dialog 都是 `partial_visible_rows=[]`。
   - Dataset table `Events` 欄現在用 `Events (n)` 表示 recording events、`Labels (n)` 表示外部
     labels；external labels 使用中性文字，不再用綠色表示成功狀態。
   - Dataset sidebar `Channel Selection` 也已改成中性 sidebar action；它會修改資料，不再用

@@ -198,10 +198,11 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.review_tree.setRootIsDecorated(False)
         self.review_tree.setAlternatingRowColors(True)
         self.review_tree.setUniformRowHeights(True)
-        self.review_tree.setMinimumHeight(120)
+        self.review_tree.setMinimumHeight(132)
         self.review_tree.setMaximumHeight(220)
         self._fit_tree_columns(self.review_tree, (150, 145, 520), stretch_column=2)
         self._populate_review_tree()
+        self._fit_review_tree_height()
         review_layout.addWidget(self.review_tree)
         layout.addWidget(review_group)
 
@@ -251,6 +252,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)
         QTimer.singleShot(0, self._fit_all_tree_columns_to_viewport)
+        QTimer.singleShot(0, self._fit_review_tree_height)
 
     def get_result(self) -> dict[str, Any]:
         return {
@@ -356,6 +358,24 @@ class DataInterpretationPreviewDialog(BaseDialog):
         )
         for column, width in enumerate(scaled):
             tree.setColumnWidth(column, width)
+
+    def _fit_review_tree_height(self) -> None:
+        if not hasattr(self, "review_tree"):
+            return
+        row_count = max(1, self.review_tree.topLevelItemCount())
+        visible_rows = min(row_count, 5)
+        row_heights = [
+            self.review_tree.sizeHintForRow(index)
+            for index in range(min(row_count, visible_rows))
+        ]
+        row_height = max(23, *(height for height in row_heights if height > 0))
+        header = self.review_tree.header()
+        header_height = header.height() if header is not None else 28
+        frame_padding = self.review_tree.frameWidth() * 2
+        target_height = header_height + (visible_rows * row_height) + frame_padding
+        bounded_height = min(max(target_height, 132), 220)
+        self.review_tree.setMinimumHeight(bounded_height)
+        self.review_tree.setMaximumHeight(bounded_height)
 
     @staticmethod
     def _apply_tree_palette(tree: QTreeWidget) -> None:

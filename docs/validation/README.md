@@ -180,6 +180,17 @@ MetricsBarChart close cleanup gate:
 -> `30 passed`。This supports close cleanup for the per-class metrics chart figure / canvas. It
 does not prove full Evaluation tab UX, long-run memory trend behavior, or human desktop acceptance.
 
+Data Interpretation review-row polish gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/integration/ui/test_product_walkthrough.py -q`
+-> `27 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+refreshed `artifacts/ui/data-interpretation-preview.png`,
+`artifacts/ui/data-interpretation-remap.png`, and
+`artifacts/ui/data-interpretation-replay.json`。The replay JSON records
+`partial_visible_rows=[]` for both preview and remap `Review Summary` trees. This supports the
+automated PyQt replay claim that the review summary no longer shows clipped rows in this fixture;
+it does not prove mature import-wizard UX or Windows human desktop acceptance.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

@@ -193,6 +193,8 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     assert state["stretch_last_section"] is False
     assert abs(state["header_length"] - state["viewport_width"]) <= 2
     assert state["horizontal_scrollbar_max"] == 0
+    assert state["vertical_scrollbar_max"] >= 0
+    assert state["partial_visible_rows"] == []
     assert state["text_elide_mode"] == "ElideRight"
     assert state["alternating_row_colors"] is True
 

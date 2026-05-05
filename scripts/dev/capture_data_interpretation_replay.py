@@ -267,7 +267,8 @@ def tree_state(tree: QTreeWidget) -> dict[str, Any]:
         else []
     )
     viewport = tree.viewport()
-    scrollbar = tree.horizontalScrollBar()
+    horizontal_scrollbar = tree.horizontalScrollBar()
+    vertical_scrollbar = tree.verticalScrollBar()
     return {
         "headers": headers,
         "rows": tree_rows(tree),
@@ -280,10 +281,33 @@ def tree_state(tree: QTreeWidget) -> dict[str, Any]:
         "column_widths": [
             tree.columnWidth(column) for column in range(tree.columnCount())
         ],
-        "horizontal_scrollbar_max": scrollbar.maximum() if scrollbar is not None else 0,
+        "horizontal_scrollbar_max": (
+            horizontal_scrollbar.maximum() if horizontal_scrollbar is not None else 0
+        ),
+        "vertical_scrollbar_max": (
+            vertical_scrollbar.maximum() if vertical_scrollbar is not None else 0
+        ),
+        "partial_visible_rows": partial_visible_tree_rows(tree),
         "text_elide_mode": tree.textElideMode().name,
         "alternating_row_colors": tree.alternatingRowColors(),
     }
+
+
+def partial_visible_tree_rows(tree: QTreeWidget) -> list[int]:
+    """Return row indexes that are visibly clipped at the viewport bottom."""
+    viewport = tree.viewport()
+    if viewport is None:
+        return []
+    viewport_bottom = viewport.rect().bottom()
+    partial: list[int] = []
+    for row in range(tree.topLevelItemCount()):
+        item = tree.topLevelItem(row)
+        if item is None:
+            continue
+        rect = tree.visualItemRect(item)
+        if rect.isValid() and rect.top() < viewport_bottom < rect.bottom():
+            partial.append(row)
+    return partial
 
 
 def set_tree_cell(tree: QTreeWidget, item: Any, column: int, text: str) -> None:

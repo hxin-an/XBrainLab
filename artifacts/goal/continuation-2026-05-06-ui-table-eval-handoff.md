@@ -94,6 +94,9 @@ bb57beb ui: use backend truth for split replacement
   - backend recipe choices still preserve raw values such as `trial_type`.
 - Review Summary contrast:
   - alternate row color lowered to `#232323`, avoiding harsh black/white striping.
+  - latest polish fixes clipped Review Summary rows; `tree_state()` records
+    `vertical_scrollbar_max` and `partial_visible_rows`, and the refreshed replay shows
+    `partial_visible_rows=[]` for preview and remap dialogs.
 - Label/Event review table readability:
   - label-carrier `Format` column widened so `BIDS events` remains visible in product-width dialog.
 - Dataset loaded table artifact:

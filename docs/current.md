@@ -550,7 +550,11 @@ filename。Data Interpretation replay
 JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，applied artifact
 顯示全部欄位填滿主 panel；human-like walkthrough JSON 也同步保存同類 geometry evidence，
 例如載入後 Dataset table `header_length=509`、`viewport_width=510`、
-`horizontal_scrollbar_max=0`。這支撐 automated PyQt replay
+`horizontal_scrollbar_max=0`。最新 review-row polish 又讓 preview / remap dialog 的
+`Review Summary` 高度對齊完整 row，JSON 現在保存 `vertical_scrollbar_max` 和
+`partial_visible_rows`；最新 Data Interpretation replay 顯示 preview `Review Summary`
+`partial_visible_rows=[]`、`vertical_scrollbar_max=4`，remap dialog `partial_visible_rows=[]`。
+這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。
 最新 recipe reload review slice 又把 saved recipe 與重新 scan 的 comparison 補進 preview

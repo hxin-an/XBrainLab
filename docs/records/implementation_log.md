@@ -3636,3 +3636,38 @@ primary/fallback x3.
 - This does not refresh local benchmark artifacts or update the thesis score claim. Formal
   release/thesis evidence still needs intentional full deterministic + primary x3 + fallback x3
   with resource / latency artifacts.
+
+## 2026-05-06 Data Interpretation Review Row Polish
+
+### 狀態
+
+`DataInterpretationPreviewDialog` now sizes the `Review Summary` tree to whole rows. When the review
+has more rows than the visible summary area, it scrolls without exposing a clipped partial row at
+the bottom.
+
+### 已可宣稱
+
+- The preview / remap dialog review table no longer shows half-cut rows in the automated replay
+  fixture.
+- Replay JSON records `vertical_scrollbar_max` and `partial_visible_rows` for tree widgets, so row
+  clipping is machine-readable evidence instead of screenshot-only judgment.
+- The UI product walkthrough integration fakes now accept the same dialog context kwargs as the
+  production Training dialogs.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py`,
+  `scripts/dev/capture_data_interpretation_replay.py`
+- Tests：`tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`,
+  `tests/unit/scripts/test_capture_data_interpretation_replay.py`,
+  `tests/integration/ui/test_product_walkthrough.py`
+- Artifacts：`artifacts/ui/data-interpretation-preview.png`,
+  `artifacts/ui/data-interpretation-remap.png`,
+  `artifacts/ui/data-interpretation-replay.json`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a review-summary clipping fix and replay evidence refresh. It does not complete the
+  mature Data Interpretation wizard, Windows desktop acceptance, or full real-data import
+  certification.
