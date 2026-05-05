@@ -165,6 +165,13 @@ UI baseline capture 結果：
   - info service gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py tests/integration/ui/test_e2e_qtbot.py::TestInfoService -q`
     -> unit `4 passed`, integration `2 passed`.
+- TrainingPanel high-level callback shared-status refresh:
+  - `training_started`, `config_changed`, `training_stopped`, and `history_cleared` now refresh
+    aggregate info and assistant backend status after their event-specific UI updates.
+  - `training_updated` remains a high-frequency live update path and is intentionally excluded.
+  - focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py -q`
+    -> `17 passed`.
 - static / docs gates for these slices:
   - `git diff --check` -> pass.
   - `poetry run ruff check .` -> pass.

@@ -8396,3 +8396,44 @@
 - 不能宣稱：
   - This is a regression guard for one duplicate observer pattern. It does not close the full UI
     refresh coordinator audit, remove controller observer events, or complete product acceptance.
+
+### 2026-05-05 Training high-level event shared-status refresh
+
+- scope：
+  - `TrainingPanel` high-level observer callbacks:
+    `training_started`, `config_changed`, `training_stopped`, and `history_cleared`.
+- current gap：
+  - TrainingPanel callback-specific handlers updated the training UI, sidebar, log, or history but
+    did not refresh aggregate info panel or assistant backend status in pure controller-event paths.
+  - Simple observer refresh was already coordinator-backed, but these callback-specific events were
+    intentionally outside the simple bridge.
+- red / focused test：
+  - Added
+    `tests/unit/ui/training/test_training_panel.py::test_training_panel_high_level_events_refresh_shared_status`.
+  - Red result before implementation:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_panel_high_level_events_refresh_shared_status -q`
+    -> failed because `XBrainLab.ui.panels.training.panel.refresh_shared_status` did not exist.
+- 做了什麼：
+  - Added `refresh_shared_status(context)` to `XBrainLab.ui.refresh_coordinator`, with the same
+    main-window re-entrancy guard used by command and observer refresh.
+  - Called `refresh_shared_status(self)` after TrainingPanel `config_changed`, `training_started`,
+    `training_stopped`, and `history_cleared` handlers finish their event-specific UI updates.
+  - Left high-frequency `training_updated` on the live training update loop.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_panel_high_level_events_refresh_shared_status -q`
+    -> `1 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py -q`
+    -> `17 passed`.
+  - `poetry run ruff check XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/panels/training/panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is one callback-specific observer cleanup. It does not make UI refresh fully
+    command-driven, remove controller observer events, complete controller fallback audit, or
+    replace Windows human desktop acceptance.

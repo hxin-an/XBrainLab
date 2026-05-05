@@ -168,7 +168,11 @@ observer event 補刷新。
 
 單純的 observer-driven panel refresh 應使用 `BasePanel._create_refresh_bridge()`，不要直接把
 event handler 接到 `update_panel()`。需要特殊語意的 event，例如 import-finished handler、
-TrainingPanel 的 start/stop handler 或 live training update loop，仍可接自己的 handler。
+TrainingPanel 的 start/stop/config/history handler 或 live training update loop，仍可接自己的
+handler。TrainingPanel 的 high-level callbacks 會在完成 event-specific UI 更新後呼叫
+`refresh_shared_status()`，讓 aggregate info panel 和 assistant backend status 不必等下一個
+command result 或 tab switch；`training_updated` 因為是 high-frequency live update，仍只做
+training UI 自身更新。
 `tests/architecture_compliance.py` 會阻擋新的 direct `_create_bridge(..., self.update_panel)`
 和 direct `_create_bridge(..., self.refresh_from_observer)` call site；`BasePanel` helper 內部的
 delegation 是唯一例外。
@@ -191,7 +195,7 @@ signal 寫進 backend controller。
 | --- | --- | --- |
 | `DatasetPanel` | `data_changed`、`import_finished` | simple refresh bridge owns success refresh; `DatasetActionHandler.on_import_finished()` only surfaces import warnings |
 | `PreprocessPanel` | `preprocess_changed`、dataset `data_changed` | simple refresh bridge |
-| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset `data_changed`、preprocess events | start/stop/config/history handlers、`update_loop()`、simple refresh bridge |
+| `TrainingPanel` | `training_started`、`training_stopped`、`config_changed`、`training_updated`、`history_cleared`、dataset `data_changed`、preprocess events | start/stop/config/history handlers update training UI and shared status, `training_updated` uses live `update_loop()`, simple refresh bridge handles dataset/preprocess events |
 | `EvaluationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed` | simple refresh bridge |
 | `VisualizationPanel` | training `training_stopped`、`history_cleared`、`config_changed`、preprocess `preprocess_changed` | simple refresh bridge |
 

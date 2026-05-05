@@ -69,6 +69,23 @@ def refresh_after_observer(context: Any) -> bool:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
 
+def refresh_shared_status(context: Any) -> bool:
+    """Refresh shared status surfaces without refreshing a workflow panel."""
+    main_window = find_main_window(context)
+    if main_window is None:
+        return False
+
+    main_window_id = id(main_window)
+    if main_window_id in _REFRESHING_MAIN_WINDOWS:
+        return False
+
+    _REFRESHING_MAIN_WINDOWS.add(main_window_id)
+    try:
+        return _refresh_shared_status(main_window)
+    finally:
+        _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
+
+
 def refresh_panel(panel: Any) -> bool:
     """Refresh one workflow panel through the shared safe call boundary."""
     return _call_noarg(panel, "update_panel")

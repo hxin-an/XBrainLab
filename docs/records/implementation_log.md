@@ -2340,3 +2340,28 @@ warnings or event-specific behavior.
 
 - This is a guardrail only; it does not classify every callback-specific observer handler or close
   full command-driven UI refresh.
+
+## 2026-05-05 Training Event Shared-Status Refresh
+
+### 狀態
+
+TrainingPanel high-level observer callbacks now refresh shared UI status after their
+event-specific updates. `training_started`, `config_changed`, `training_stopped`, and
+`history_cleared` update the training UI, then ask the refresh coordinator to update aggregate
+info and assistant backend status.
+
+### 已可宣稱
+
+- High-level training observer events no longer leave aggregate info or assistant backend status
+  stale until a later command result, navigation, or simple observer refresh.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/panels/training/panel.py`
+- Tests：`tests/unit/ui/training/test_training_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one callback-specific observer cleanup. It does not complete full command-driven UI
+  refresh, remove controller observers, or replace human desktop acceptance.

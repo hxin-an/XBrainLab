@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.base_panel import BasePanel
+from XBrainLab.ui.refresh_coordinator import refresh_shared_status
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
@@ -209,6 +210,7 @@ class TrainingPanel(BasePanel):
         if hasattr(self, "sidebar"):
             self.sidebar.check_ready_to_train()
         self.update_loop()
+        refresh_shared_status(self)
 
     def _on_training_started(self):
         """Event handler: Training has started."""
@@ -217,6 +219,7 @@ class TrainingPanel(BasePanel):
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_started()
         self.update_loop(force_active=True)
+        refresh_shared_status(self)
 
     def _on_training_stopped(self):
         """Event handler: Training has stopped."""
@@ -226,12 +229,14 @@ class TrainingPanel(BasePanel):
         self.update_loop()
         if hasattr(self, "sidebar"):
             self.sidebar.on_training_stopped()
+        refresh_shared_status(self)
 
     def _on_history_cleared(self):
         """Event handler: History cleared."""
         self.log_text.clear()
         self._clear_training_display()
         self.update_loop()  # Will clear table if history is empty
+        refresh_shared_status(self)
 
     def _clear_training_display(self):
         """Clear plot selection state when no valid training history remains."""

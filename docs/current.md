@@ -814,7 +814,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 downstream coordinator cleanup 又讓
   `training_changed` command result 刷新 Evaluation / Visualization readiness、`epoch_changed`
   刷新 Visualization readiness、`evaluation_changed` 也刷新 Visualization readiness，減少這些
-  analysis panels 對 observer-only refresh 的依賴。2026-05-05 reviewer finding 已明確接受：
+  analysis panels 對 observer-only refresh 的依賴。最新 TrainingPanel callback cleanup 又讓
+  `training_started`、`training_stopped`、`config_changed` 和 `history_cleared` 這些高層事件
+  handler 在完成自身 UI 更新後刷新 aggregate info panel 和 assistant backend status；
+  high-frequency `training_updated` 仍維持 event-specific live update loop。2026-05-05 reviewer finding 已明確接受：
   這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
   validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
   closure。後續仍要把

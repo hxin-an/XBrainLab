@@ -1,4 +1,5 @@
 import sys
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -576,6 +577,44 @@ def test_training_panel_clears_log_on_history_cleared(
     qtbot.wait(50)
 
     assert panel.log_text.toPlainText() == ""
+
+
+def test_training_panel_high_level_events_refresh_shared_status(
+    mock_main_window,
+    qtbot,
+):
+    """Named training callbacks should keep shared UI status current."""
+    controller: Any = Observable()
+    controller.validate_ready = MagicMock(return_value=True)
+    controller.has_datasets = MagicMock(return_value=True)
+    controller.has_model = MagicMock(return_value=True)
+    controller.has_training_option = MagicMock(return_value=True)
+    controller.get_formatted_history = MagicMock(return_value=[])
+
+    panel = TrainingPanel(
+        parent=mock_main_window,
+        controller=controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    with (
+        patch("PyQt6.QtWidgets.QMessageBox.information"),
+        patch(
+            "XBrainLab.ui.panels.training.panel.refresh_shared_status",
+        ) as refresh,
+    ):
+        controller.notify("training_started")
+        qtbot.wait(50)
+        controller.notify("config_changed")
+        qtbot.wait(50)
+        controller.notify("training_stopped")
+        qtbot.wait(50)
+        controller.notify("history_cleared")
+        qtbot.wait(50)
+
+    assert refresh.call_count == 4
+    refresh.assert_any_call(panel)
 
 
 def test_training_panel_clears_log_on_config_changed(
