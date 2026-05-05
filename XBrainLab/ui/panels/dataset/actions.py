@@ -614,6 +614,21 @@ class DatasetActionHandler:
 
         Blocked if the dataset is locked or no data is loaded.
         """
+        smart_parse_capability = get_command_capability(
+            self.panel,
+            CommandName.APPLY_SMART_PARSE,
+        )
+        if smart_parse_capability is not None and not smart_parse_capability.enabled:
+            QMessageBox.warning(
+                self.panel,
+                "Smart Parse Blocked",
+                blocked_reason(
+                    smart_parse_capability,
+                    "Load raw data before applying smart parse.",
+                ),
+            )
+            return
+
         controller = self.controller
         if controller is None:
             QMessageBox.critical(

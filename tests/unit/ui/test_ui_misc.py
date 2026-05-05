@@ -757,6 +757,29 @@ class TestDatasetActionHandler:
                 handler.open_smart_parser()
                 handler.panel.controller.apply_smart_parse.assert_called()
 
+    def test_open_smart_parser_uses_backend_capability(self, handler):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller.is_locked.return_value = False
+        handler.panel.controller.has_data.return_value = True
+        handler.panel.controller.get_filenames.return_value = ["file1.set"]
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
+            ) as mock_dialog,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            handler.open_smart_parser()
+
+        mock_dialog.assert_not_called()
+        mock_mb.warning.assert_called_once()
+        assert (
+            "Load raw data before applying smart parse."
+            in (mock_mb.warning.call_args.args[2])
+        )
+
     def test_import_label_returns_early_no_files(self, handler):
         """import_label calls _get_target_files_for_import first; if empty, returns."""
         handler.panel.table.selectedIndexes.return_value = []

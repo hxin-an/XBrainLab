@@ -5545,3 +5545,41 @@
   - This is a Dataset sidebar capability alignment slice, not full UI product completion.
   - It does not replace human desktop acceptance, mature import wizard editor work, or a complete
     UI mutating-path audit.
+
+### 2026-05-05 Dataset smart-parse capability truth
+
+- scope：
+  - UI/backend command truth alignment for Dataset Smart Parse。
+  - No command schema, backend handler, MCP, agent, recipe, or screenshot artifact change.
+- problem：
+  - `open_smart_parser()` checked controller-local lock / has-data state before showing
+    `SmartParserDialog`; real `Study` capability could still block `apply_smart_parse`.
+  - This could let a UI dialog open even when ApplicationService would return
+    `Load raw data before applying smart parse.`
+- red test：
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_uses_backend_capability -q`
+    initially failed because `SmartParserDialog` was opened.
+- 做了什麼：
+  - Added a backend `apply_smart_parse` capability preflight before controller-local checks.
+  - Kept existing mock / legacy non-Study behavior for compatibility tests.
+- validation：
+  - focused red + success path:
+    `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_uses_backend_capability tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_success -q`
+    -> `2 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py -q`
+    -> `60 passed`.
+  - `timeout 300s poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass.
+  - `timeout 300s poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 120s git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one Dataset action capability alignment, not full UI product completion.
+  - It does not prove Windows human desktop acceptance or complete remaining mutating-path audit.

@@ -809,3 +809,27 @@ lock 判斷來啟用 label compatibility 或打開 channel selection dialog。
 
 - 這不是完整 Data Interpretation wizard editor，也不是 Windows human desktop acceptance。
 - 其他 panel 的 read-only controller refresh 和 mock fallback 仍需持續盤點。
+
+## 2026-05-05 Dataset Smart Parse Capability Truth
+
+### 狀態
+
+`DatasetActionHandler.open_smart_parser()` 現在會先讀 backend `apply_smart_parse` capability。
+real `Study` path 在沒有 raw data 時不會打開 Smart Parser dialog，而是顯示 shared backend
+blocked reason。
+
+### 已可宣稱
+
+- Smart Parse metadata mutation 的 UI preflight 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 仍保留 controller fallback 行為。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 UI mutating-path audit closure；context menu metadata / remove-file、training /
+  visualization remaining paths 仍需持續盤點。

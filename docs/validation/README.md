@@ -2078,6 +2078,26 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-05 Dataset Smart Parse capability follow-up：
+
+- UI/action:
+  - `DatasetActionHandler.open_smart_parser()` now checks backend `apply_smart_parse` capability
+    before opening `SmartParserDialog`.
+  - Empty real `Study` state shows the shared backend reason
+    `Load raw data before applying smart parse.` instead of opening a metadata mutation dialog.
+- targeted gates:
+  - focused red + success path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_uses_backend_capability tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_success -q`
+    -> `2 passed`.
+  - Dataset action/panel regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py -q`
+    -> `60 passed`.
+  - focused `ruff check` -> pass.
+  - focused `basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+
+這批 evidence 支撐 Smart Parse UI preflight 與 backend capability policy 對齊。它仍不是完整
+UI mutating-path audit 或 human desktop acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:
