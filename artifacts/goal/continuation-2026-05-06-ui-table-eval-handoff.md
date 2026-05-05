@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+e309996 test: guard training readiness controller echoes
+a6a6ba1 docs: refresh handoff after epoch gate audit
 a7b7222 ui: gate epoching with create capability
 343f8f9 docs: refresh handoff after readiness guard
 d5388e7 test: guard capability-gated controller readiness
@@ -86,6 +88,11 @@ bb57beb ui: use backend truth for split replacement
     `controller.has_datasets()`, and `controller.get_trainer()` in command paths that already have
     backend capability truth.
   - Such reads must live in explicit `capability is None` legacy branches.
+- Training readiness controller echo guard:
+  - The same architecture guard now covers `validate_ready()`, `has_model()`, and
+    `has_training_option()` controller reads.
+  - `TrainingSidebar.check_ready_to_train()` uses an explicit service-capability branch versus
+    no-capability legacy branch.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -154,6 +161,22 @@ poetry run python tests/architecture_compliance.py
 poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
 poetry run mkdocs build --strict
 # all passed for a7b7222; mkdocs still prints the existing Material advisory
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 24 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar \
+  tests/unit/ui/training/test_training_panel.py \
+  -q
+# 50 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for e309996; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
