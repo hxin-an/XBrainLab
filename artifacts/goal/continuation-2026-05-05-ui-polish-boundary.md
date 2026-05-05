@@ -8,6 +8,9 @@ mark Goal 1 product-complete while the blockers below remain.
 The latest validated commits at this handoff point are:
 
 ```text
+de796fe ui: refresh aggregate info through service
+9b4fae6 ui: route visualization observer refresh
+4d10496 docs: add ui polish continuation
 ee39fd6 ui: normalize montage command positions
 fd95cf8 ui: neutralize dataset channel action
 172d871 ui: humanize legacy fallback refusal
@@ -45,6 +48,12 @@ Do not push. Preserve the user-owned dirty files:
   montage positions are normalized into JSON-safe float tuples before
   `ApplyMontageCommand`; malformed coordinate vectors are blocked before
   ApplicationService.
+- `montage_changed` / `saliency_changed` now route through
+  `refresh_coordinator` and are owned by VisualizationPanel. Helper/secondary
+  contexts no longer refresh the wrong panel for visualization observer events.
+- `MainWindow.update_info_panel()` now delegates to
+  `InfoPanelService.notify_all()` in product MainWindow contexts. Direct
+  `info_panel.update_info()` remains only as an injected / legacy fallback.
 - Docs updated:
   `docs/current.md`, `docs/architecture/ui.md`, `docs/planning/now.md`,
   `docs/planning/roadmap.md`, `docs/validation/README.md`,
@@ -62,6 +71,19 @@ QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
   tests/unit/ui/test_agent_manager_coverage.py \
   tests/unit/ui/visualization/test_control_sidebar.py -q
 # 31 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  tests/unit/ui/test_visualization_panel_redesign.py -q
+# 61 passed
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_main_window_sync.py \
+  tests/unit/ui/test_refresh_coordinator.py \
+  tests/unit/ui/components/test_info_panel_service.py -q
+# 36 passed
 
 git diff --check
 poetry run ruff check .
@@ -114,7 +136,8 @@ Continue the architecture/product cleanup with a small validated slice:
 
 1. Audit one remaining observer/manual refresh path and route it through the
    refresh coordinator, with focused tests on changed-state -> panel/sidebar /
-   assistant refresh.
+   assistant refresh. The next useful sub-area is high-frequency / event-specific
+   training refresh ownership or remaining manual refresh helpers.
 2. Or advance the Data Interpretation mature wizard by adding a focused
    user-facing editor capability that reduces reliance on post-load label import
    compatibility.
