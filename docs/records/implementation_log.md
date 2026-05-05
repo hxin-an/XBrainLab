@@ -1066,3 +1066,25 @@ Visualization sidebar `Saliency Settings` 現在會先讀 backend `saliency` cap
 ### 不能宣稱完成
 
 - 這不是完整 saliency workflow UX 或 visualization desktop render acceptance。
+
+## 2026-05-05 Dataset Clear-Session Capability Truth
+
+### 狀態
+
+Dataset sidebar `Clear Dataset` 現在會讀 backend `reset_session` capability confirmation policy。
+empty real `Study` path 不再先要求 destructive confirmation；mock / legacy path 保留既有確認。
+
+### 已可宣稱
+
+- Dataset clear action 與 ApplicationService reset-session confirmation policy 對齊。
+- mock / legacy non-Study path 保留既有 controller fallback compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 reset / new-session human desktop acceptance。

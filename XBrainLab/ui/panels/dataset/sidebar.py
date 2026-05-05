@@ -338,28 +338,47 @@ class DatasetSidebar(QWidget):
 
     def clear_dataset(self):
         """Prompt the user and clear the entire loaded dataset."""
-        reply = QMessageBox.question(
-            self,
-            "Confirm Clear",
-            "Are you sure you want to clear the entire dataset?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        reset_capability = get_command_capability(self, CommandName.RESET_SESSION)
+        if reset_capability is not None and not reset_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Clear Dataset Blocked",
+                blocked_reason(
+                    reset_capability,
+                    "Dataset cannot be cleared right now.",
+                ),
+            )
+            return
+
+        needs_confirmation = reset_capability is None or (
+            reset_capability.confirmation_required
+            or reset_capability.requires_confirmation
         )
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                result = execute_application_command(
+        if needs_confirmation:
+            reply = QMessageBox.question(
+                self,
+                "Confirm Clear",
+                "Are you sure you want to clear the entire dataset?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            result = execute_application_command(
+                self,
+                ResetSessionCommand(confirmed=True),
+            )
+            if result is None:
+                self.controller.clean_dataset()
+            elif result.failed:
+                QMessageBox.critical(
                     self,
-                    ResetSessionCommand(confirmed=True),
+                    "Error",
+                    f"Failed to clear dataset: {result.message}",
                 )
-                if result is None:
-                    self.controller.clean_dataset()
-                elif result.failed:
-                    QMessageBox.critical(
-                        self,
-                        "Error",
-                        f"Failed to clear dataset: {result.message}",
-                    )
-                    return
-                self.panel.update_panel()
-                QMessageBox.information(self, "Success", "Dataset cleared.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to clear dataset: {e}")
+                return
+            self.panel.update_panel()
+            QMessageBox.information(self, "Success", "Dataset cleared.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to clear dataset: {e}")

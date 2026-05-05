@@ -6026,3 +6026,47 @@
     visualization desktop render acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Dataset clear-session capability truth
+
+- scope：
+  - UI/backend command truth alignment for Dataset sidebar `Clear Dataset` reset-session action。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `DatasetSidebar.clear_dataset()` always asked for destructive confirmation before executing
+    `ResetSessionCommand`.
+  - Empty real `Study` state has no state to destroy, and backend `reset_session` capability marks
+    confirmation as unnecessary.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset_uses_reset_session_capability_before_confirm -q`
+    initially failed because `QMessageBox.question()` was called.
+- 做了什麼：
+  - Added `reset_session` capability preflight and confirmation policy check before clearing.
+  - Kept mock / legacy non-Study confirmation and controller fallback.
+- validation：
+  - focused red + confirmation boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset_uses_reset_session_capability_before_confirm -q`
+    -> `1 passed`.
+  - Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/ui/dataset/test_panel.py::test_dataset_panel_clear_dataset tests/unit/ui/dataset/test_panel_minimal.py -q`
+    -> `10 passed`.
+  - backend lifecycle regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_lifecycle_service.py tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes tests/unit/backend/application/test_application_service.py::test_capability_policy_covers_all_declared_commands -q`
+    -> `5 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one reset-session confirmation boundary alignment, not full reset / new-session human
+    desktop acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.

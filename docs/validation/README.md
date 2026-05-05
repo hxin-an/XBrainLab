@@ -2325,6 +2325,27 @@ long-running training human acceptance。
 這批 evidence 支撐 Visualization sidebar saliency settings dialog 與 backend capability policy
 對齊。它仍不是完整 saliency workflow UX 或 visualization desktop render acceptance。
 
+2026-05-05 Dataset clear-session capability follow-up：
+
+- UI/action:
+  - `DatasetSidebar.clear_dataset()` now reads backend `reset_session` capability before deciding
+    whether a destructive confirmation prompt is needed.
+  - Empty real `Study` state no longer asks for confirmation before the no-op reset-session path.
+  - mock / legacy non-Study paths keep the existing confirmation and controller fallback.
+- targeted gates:
+  - focused red + confirmation boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset_uses_reset_session_capability_before_confirm -q`
+    -> `1 passed`.
+  - Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/ui/dataset/test_panel.py::test_dataset_panel_clear_dataset tests/unit/ui/dataset/test_panel_minimal.py -q`
+    -> `10 passed`.
+  - backend lifecycle regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_lifecycle_service.py tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes tests/unit/backend/application/test_application_service.py::test_capability_policy_covers_all_declared_commands -q`
+    -> `5 passed`.
+
+這批 evidence 支撐 Dataset clear action 與 backend reset-session confirmation policy 對齊。它仍
+不是完整 reset/new-session human desktop acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

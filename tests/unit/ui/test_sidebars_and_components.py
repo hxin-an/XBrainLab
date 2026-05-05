@@ -713,6 +713,31 @@ class TestDatasetSidebar:
             sidebar.clear_dataset()
             sidebar.panel.controller.clean_dataset.assert_called()
 
+    def test_clear_dataset_uses_reset_session_capability_before_confirm(
+        self,
+        qtbot,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        panel = _make_panel_mock()
+        panel.main_window.study = Study()
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        with (
+            patch.object(QMessageBox, "question") as mock_question,
+            patch.object(QMessageBox, "information") as mock_info,
+        ):
+            sb.clear_dataset()
+
+        mock_question.assert_not_called()
+        mock_info.assert_called_once_with(sb, "Success", "Dataset cleared.")
+        panel.controller.clean_dataset.assert_not_called()
+        panel.update_panel.assert_called()
+
 
 # ============ CardWidget & PlaceholderWidget ============
 
