@@ -37,6 +37,30 @@
 
 ## 2026-05-05
 
+### 16:56 Preprocess sidebar fallback boundary
+
+- 做了什麼：
+  - 延續 Training sidebar fallback boundary，把 Preprocess sidebar 的 filter / resample /
+    rereference / normalize / epoch / reset `result is None` fallback 改成
+    `run_legacy_controller_fallback()`。
+  - 先加紅燈：real `Study` + `execute_application_command()` 意外回 `None` 時，reset preprocess
+    不可呼叫 `controller.reset_preprocess()`。
+- 結果：
+  - Mock / legacy non-`Study` UI tests 仍可走既有 controller compatibility fallback。
+  - Real `Study` product runtime 不會在 missing CommandResult 時 silent fallback 到 preprocess
+    controller；reset path 會顯示 command unavailable / refusing fallback 的錯誤。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_refuses_real_study_controller_fallback -q`
+    -> failed；`controller.reset_preprocess()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_refuses_real_study_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_filtering_accepted tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_accepted tests/unit/ui/preprocess/test_preprocess_panel.py::TestPreprocessSidebarOps::test_rereference_success -q`
+    -> `4 passed`。
+  - Focused ruff / basedpyright on touched files -> pass / `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 跑 UI regression / docs / full static gates 後提交；剩餘 Dataset / Visualization /
+    AgentManager fallback 仍未完成。
+
 ### 16:51 Training sidebar fallback boundary
 
 - 做了什麼：

@@ -824,8 +824,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    `UI Command Refresh Coordinator + Controller Fallback Audit` 已完成第一個集中 refresh
    helper slice；接下來要把剩餘 panel-local manual refresh / controller observer path 和
    product runtime fallback 全面盤點，明確分離 mock / legacy compatibility fallback。
-   Training sidebar 已完成第一個 explicit fallback boundary slice；下一步可把相同 helper 推到
-   Dataset / Preprocess / Visualization / AgentManager 的剩餘 `result is None` controller fallback。
+   Training sidebar 已完成第一個 explicit fallback boundary slice；Preprocess sidebar 也已把
+   filter / resample / rereference / normalize / epoch / reset fallback 改成 mock / legacy
+   non-`Study` only。下一步可把相同 helper 推到 Dataset / Visualization / AgentManager 的剩餘
+   `result is None` controller fallback。
    Agent primary stage prompt 已先把 legacy `load_data / attach_labels` 降權，後續要繼續檢查
    UI 是否也完全以 Data Interpretation 作為新資料入口語言；MCP/headless schema 已先把
    legacy commands 標成非 primary workflow。

@@ -22,6 +22,7 @@ from XBrainLab.ui.application_capabilities import (
     blocked_reason,
     execute_application_command,
     get_command_capability,
+    run_legacy_controller_fallback,
 )
 from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.preprocess import (
@@ -354,7 +355,14 @@ class PreprocessSidebar(QWidget):
                             ),
                         )
                     if result is None:
-                        self.controller.apply_filter(l_freq, h_freq, notch_freqs)
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_filter(
+                                l_freq,
+                                h_freq,
+                                notch_freqs,
+                            ),
+                        )
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -382,7 +390,10 @@ class PreprocessSidebar(QWidget):
                         ),
                     )
                     if result is None:
-                        self.controller.apply_resample(rate)
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_resample(rate),
+                        )
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -415,7 +426,10 @@ class PreprocessSidebar(QWidget):
                         ),
                     )
                     if result is None:
-                        self.controller.apply_rereference(ref_channels)
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_rereference(ref_channels),
+                        )
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -442,7 +456,10 @@ class PreprocessSidebar(QWidget):
                         ),
                     )
                     if result is None:
-                        self.controller.apply_normalization(method)
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.apply_normalization(method),
+                        )
                     elif result.failed:
                         self._show_command_failure("Error", result.message)
                         return
@@ -484,11 +501,14 @@ class PreprocessSidebar(QWidget):
                     applied = True
                     if result is None:
                         applied = bool(
-                            self.controller.apply_epoching(
-                                baseline,
-                                selected_events,
-                                tmin,
-                                tmax,
+                            run_legacy_controller_fallback(
+                                self,
+                                lambda: self.controller.apply_epoching(
+                                    baseline,
+                                    selected_events,
+                                    tmin,
+                                    tmax,
+                                ),
                             )
                         )
                     elif result.failed:
@@ -548,7 +568,7 @@ class PreprocessSidebar(QWidget):
                 ResetPreprocessCommand(confirmed=True),
             )
             if result is None:
-                self.controller.reset_preprocess()
+                run_legacy_controller_fallback(self, self.controller.reset_preprocess)
             elif result.failed:
                 self._show_command_failure("Error", result.message)
                 return

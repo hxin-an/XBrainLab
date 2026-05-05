@@ -266,6 +266,38 @@ class TestPreprocessSidebar:
         )
         sidebar.panel.controller.reset_preprocess.assert_not_called()
 
+    def test_reset_preprocess_refuses_real_study_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw_data = MagicMock()
+        raw_data.is_raw.return_value = True
+        study.loaded_data_list = [raw_data]
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.has_data.return_value = True
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch.object(QMessageBox, "critical") as mock_critical,
+        ):
+            sidebar.reset_preprocess()
+
+        sidebar.panel.controller.reset_preprocess.assert_not_called()
+        assert "refusing controller fallback" in mock_critical.call_args.args[2]
+
 
 # ============ TrainingSidebar ============
 

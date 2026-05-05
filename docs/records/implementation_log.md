@@ -42,20 +42,22 @@
 ### 下一手重點
 ```
 
-## 2026-05-05 Training Sidebar Fallback Boundary
+## 2026-05-05 Training And Preprocess Fallback Boundary
 
 ### 狀態
 
-The controller fallback audit now has its first explicit runtime boundary. Training sidebar fallback
-paths for split cleanup / dataset generation, model selection, training settings, start / stop
-training, and clear history now use `run_legacy_controller_fallback()`. The helper allows fallback
-only for mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly
-does not return a `CommandResult`.
+The controller fallback audit now has explicit runtime boundaries for Training and Preprocess
+sidebars. Training sidebar fallback paths for split cleanup / dataset generation, model selection,
+training settings, start / stop training, and clear history now use
+`run_legacy_controller_fallback()`. Preprocess sidebar uses the same helper for filter / resample /
+rereference / normalize / epoch / reset fallback. The helper allows fallback only for mock / legacy
+non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does not return a
+`CommandResult`.
 
 ### 已可宣稱
 
-- Training sidebar real product runtime will not silently mutate the training controller if the
-  command helper fails to provide an ApplicationService result.
+- Training and Preprocess sidebars real product runtime will not silently mutate their controllers
+  if the command helper fails to provide an ApplicationService result.
 - Existing mock / legacy unit-test compatibility fallback remains available.
 
 ### Evidence 入口
@@ -68,8 +70,8 @@ does not return a `CommandResult`.
 
 ### 不能宣稱完成
 
-- This is not a full controller fallback audit. Dataset, Preprocess, Visualization, and
-  AgentManager fallback sites still need the same explicit boundary.
+- This is not a full controller fallback audit. Dataset, Visualization, and AgentManager fallback
+  sites still need the same explicit boundary.
 
 ### 下一手重點
 

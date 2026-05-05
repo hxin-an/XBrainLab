@@ -100,8 +100,9 @@ Training sidebar 已開始把這個 fallback boundary 顯式化：`run_legacy_co
 mock / legacy non-`Study` context 執行 controller fallback；real `Study` context 如果 command
 helper 意外回 `None`，會拒絕 fallback，避免 product runtime silent controller mutation。目前已覆蓋
 split cleanup / generate dataset、model selection、training settings、start / stop training 和
-clear history。Dataset / Preprocess / Visualization / AgentManager 的剩餘 fallback 還在後續 audit
-範圍。
+clear history。Preprocess sidebar 也已用同一 helper 覆蓋 filter / resample / rereference /
+normalize / epoch / reset fallback。Dataset / Visualization / AgentManager 的剩餘 fallback 還在後續
+audit 範圍。
 
 仍未完成：
 
