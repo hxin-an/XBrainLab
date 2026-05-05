@@ -138,6 +138,37 @@ query result, it renders no data / skips plotting instead of reading stale
 
 Continue auditing remaining read-side query fallbacks and product-runtime controller reads.
 
+## 2026-05-06 Visualization Fallback Refusal Product Warning
+
+### 狀態
+
+Visualization setup/export actions now convert real `Study` legacy fallback refusal into
+user-facing warnings. `Set Montage`, `Saliency Settings`, and `Export Saliency` no longer let
+`LegacyControllerFallbackUnavailableError` escape from Qt slots when query-none or apply-none
+fallback branches are forced.
+
+### 已可宣稱
+
+- Real `Study` Visualization fallback refusal is visible as product language instead of a raw
+  exception for Montage setup, Saliency Settings, and Export Saliency.
+- Mock / legacy fallback behavior remains available through the explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests: `tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete Visualization UX polish, desktop 3D acceptance, or every query fallback
+  cleanup.
+
+### 下一手重點
+
+Continue auditing remaining query-unavailable fallback branches and visualization lifecycle
+evidence.
+
 ## 2026-05-06 Data Splitting Dialog Context Boundary
 
 ### 狀態

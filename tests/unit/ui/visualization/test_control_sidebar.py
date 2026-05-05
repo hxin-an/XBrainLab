@@ -244,13 +244,62 @@ def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
             return_value=None,
         ),
-        pytest.raises(RuntimeError, match="could not safely complete"),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
+        sidebar.set_montage()
+
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once()
+    assert "could not safely complete" in mock_warning.call_args.args[2]
+    controller.set_montage.assert_not_called()
+
+
+def test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback(qtbot):
+    controller = MagicMock()
+    controller.has_epoch_data.return_value = True
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+    query_result = MagicMock(
+        failed=False,
+        diagnostics={"state": {"epoch": {"channel_names": ["Ch1"]}}},
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            side_effect=[query_result, None],
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ) as mock_info,
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
         sidebar.set_montage()
 
     controller.set_montage.assert_not_called()
+    mock_warning.assert_called_once()
+    assert "could not safely complete" in mock_warning.call_args.args[2]
+    mock_info.assert_not_called()
 
 
 def test_sidebar_set_montage_uses_query_channels_before_stale_controller(
@@ -356,7 +405,9 @@ def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
             "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
             return_value=None,
         ),
-        pytest.raises(RuntimeError, match="could not safely complete"),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
     ):
         mock_dialog.return_value.exec.return_value = True
         mock_dialog.return_value.get_result.return_value = {
@@ -364,7 +415,58 @@ def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
         }
         sidebar.set_saliency()
 
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once()
+    assert "could not safely complete" in mock_warning.call_args.args[2]
     controller.set_saliency_params.assert_not_called()
+
+
+def test_sidebar_set_saliency_apply_none_refuses_real_study_controller_fallback(qtbot):
+    controller = MagicMock()
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+    query_result = MagicMock(
+        failed=False,
+        diagnostics={
+            "payload_type": "saliency_summary",
+            "params": {"SmoothGrad": {"nt_samples": 4}},
+        },
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            side_effect=[query_result, None],
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ) as mock_info,
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = {
+            "SmoothGrad": {"nt_samples": 5},
+        }
+        sidebar.set_saliency()
+
+    controller.set_saliency_params.assert_not_called()
+    mock_warning.assert_called_once()
+    assert "could not safely complete" in mock_warning.call_args.args[2]
+    mock_info.assert_not_called()
 
 
 def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
@@ -525,3 +627,37 @@ def test_sidebar_export_saliency_uses_service_trainer_payload_before_panel_fallb
     assert isinstance(commands[1], VisualizeCommand)
     assert commands[1].include_objects is True
     mock_dialog.assert_called_once_with(sidebar, [service_trainer])
+
+
+def test_sidebar_export_saliency_refuses_real_study_query_none_controller_fallback(
+    qtbot,
+):
+    controller = MagicMock()
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    panel.get_trainers.return_value = [MagicMock()]
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.ExportSaliencyDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            side_effect=[None, None],
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+    ):
+        sidebar.export_saliency()
+
+    panel.get_trainers.assert_not_called()
+    controller.get_trainers.assert_not_called()
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once()
+    assert "could not safely complete" in mock_warning.call_args.args[2]

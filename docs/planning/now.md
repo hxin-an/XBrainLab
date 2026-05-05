@@ -309,6 +309,9 @@
   sidebar `Set Montage` 和 assistant montage confirmation fallback 改成同一個 mock / legacy-only
   helper。剩餘 `result is None` path 主要是
   Data Interpretation service-unavailable critical / false return 或已顯式 helper fallback。
+- 最新 Visualization fallback language slice 又把 Montage / Saliency Settings / Export Saliency 的
+  real `Study` query-none / apply-none fallback refusal 改成 user-facing warning，避免 Qt slot
+  外拋 `LegacyControllerFallbackUnavailableError`。
 - 最新 montage argument cleanup slice 又把 AgentManager 與 Visualization sidebar 的 confirmed
   positions 正規化收斂到同一 helper；dialog 回傳 list / dict / numpy-like coordinates 時，command
   path 會得到 JSON-safe float tuples，malformed vectors 會在 UI adapter boundary 被擋下。

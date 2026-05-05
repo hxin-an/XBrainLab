@@ -995,7 +995,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。
   最新 montage setup cleanup 也把 channel-name dialog defaults 改成先讀
   `QueryStateCommand(query="state")` 裡的 `state.epoch.channel_names`；controller
-  `get_channel_names()` 只保留在 query unavailable 的 mock / legacy fallback helper。
+  `get_channel_names()` 只保留在 query unavailable 的 mock / legacy fallback helper。最新
+  Visualization fallback language slice 又讓 Montage / Saliency Settings / Export Saliency 的
+  real `Study` query-none 或 apply-none fallback refusal 顯示 shared product warning，不再把
+  `LegacyControllerFallbackUnavailableError` 外拋到 UI slot。
   最新 Preprocess panel render cleanup 也讓 history / preview / plotter refresh 先走
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` refresh 不再從
   `PreprocessPanel.update_panel()` 直接讀 stale `PreprocessController.get_preprocessed_data_list()`。

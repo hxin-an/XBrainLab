@@ -2717,6 +2717,34 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Visualization fallback refusal product warning：
+
+- Focused gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_export_saliency_refuses_real_study_query_none_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_apply_none_refuses_real_study_controller_fallback -q`
+  -> `5 passed` after red failures where fallback refusal escaped as an exception.
+- Visualization regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization.py -q`
+  -> `64 passed`.
+- Focused lint/type/architecture:
+  `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+  -> `0 errors`;
+  `poetry run python tests/architecture_compliance.py` -> pass.
+- Static / docs / backend / agent gate:
+  `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+  `poetry run mkdocs build --strict`, and
+  `poetry run pytest --capture=sys tests/integration/backend -q` all passed
+  (`7` backend tests);
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Visualization UI fallback language slice.
+
+This supports real `Study` Montage / Saliency Settings / Export Saliency fallback refusal showing
+product warnings rather than raw exceptions. It does not prove full Visualization UX, desktop 3D
+acceptance, or saliency workflow completion.
+
 2026-05-06 Preprocess render query-none fallback boundary：
 
 - Focused red/fixed gates:

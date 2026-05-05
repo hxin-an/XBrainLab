@@ -18,6 +18,8 @@ from XBrainLab.backend.application import (
     VisualizeCommand,
 )
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -159,7 +161,11 @@ class ControlSidebar(QWidget):
             )
             return
 
-        chs = self._montage_channel_names(channel_query)
+        try:
+            chs = self._montage_channel_names(channel_query)
+        except LegacyControllerFallbackUnavailableError:
+            self._show_legacy_fallback_warning("Montage blocked")
+            return
         if not chs:
             QMessageBox.warning(
                 self,
@@ -188,13 +194,17 @@ class ControlSidebar(QWidget):
                     ),
                 )
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.controller.set_montage(
-                            list(chs),
-                            normalized_positions,
-                        ),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.set_montage(
+                                list(chs),
+                                normalized_positions,
+                            ),
+                        )
+                    except LegacyControllerFallbackUnavailableError:
+                        self._show_legacy_fallback_warning("Montage blocked")
+                        return
                 elif result.failed:
                     QMessageBox.warning(
                         self,
@@ -248,10 +258,15 @@ class ControlSidebar(QWidget):
                 query_result.message,
             )
             return
+        try:
+            dialog_params = self._saliency_dialog_params(query_result)
+        except LegacyControllerFallbackUnavailableError:
+            self._show_legacy_fallback_warning("Saliency blocked")
+            return
 
         win = SaliencySettingDialog(
             self,
-            self._saliency_dialog_params(query_result),
+            dialog_params,
         )
         if win.exec():
             params = win.get_result()
@@ -261,10 +276,14 @@ class ControlSidebar(QWidget):
                     SaliencyCommand(params=dict(params)),
                 )
                 if result is None:
-                    run_legacy_controller_fallback(
-                        self,
-                        lambda: self.controller.set_saliency_params(params),
-                    )
+                    try:
+                        run_legacy_controller_fallback(
+                            self,
+                            lambda: self.controller.set_saliency_params(params),
+                        )
+                    except LegacyControllerFallbackUnavailableError:
+                        self._show_legacy_fallback_warning("Saliency blocked")
+                        return
                 elif result.failed:
                     QMessageBox.critical(
                         self,
@@ -302,7 +321,11 @@ class ControlSidebar(QWidget):
 
         trainers = self._saliency_export_trainers()
         if trainers is None:
-            trainers = self._legacy_export_trainers()
+            try:
+                trainers = self._legacy_export_trainers()
+            except LegacyControllerFallbackUnavailableError:
+                self._show_legacy_fallback_warning("Export Saliency Blocked")
+                return
 
         if not trainers:
             QMessageBox.warning(self, "Warning", "No training results available.")
@@ -350,3 +373,6 @@ class ControlSidebar(QWidget):
         if diagnostics.get("saliency_available") is True:
             return None
         return "Saliency output is not ready to export."
+
+    def _show_legacy_fallback_warning(self, title: str) -> None:
+        QMessageBox.warning(self, title, LEGACY_FALLBACK_UNAVAILABLE_MESSAGE)

@@ -37,6 +37,54 @@
 
 ## 2026-05-06
 
+### 07:30 Visualization fallback refusal product warning
+
+- scope：
+  - Continue UI fallback audit for Visualization setup/export actions.
+  - Prevent real `Study` fallback refusal from escaping as `LegacyControllerFallbackUnavailableError`
+    in Qt slots.
+- red / focused tests：
+  - Updated existing montage/saliency real `Study` fallback tests to require user-facing warnings
+    instead of `RuntimeError`.
+  - Added apply-none cases for Montage and Saliency Settings.
+  - Added Export Saliency query-none fallback refusal coverage.
+  - Red gates failed because `_montage_channel_names()`, `_saliency_dialog_params()`, and
+    `_legacy_export_trainers()` let the fallback exception escape.
+- 做了什麼：
+  - `Set Montage` catches query-none and apply-none fallback refusal and shows `Montage blocked`
+    with the shared safety message.
+  - `Saliency Settings` catches query-none and apply-none fallback refusal and shows
+    `Saliency blocked` with the shared safety message.
+  - `Export Saliency` catches query-none trainer fallback refusal and shows
+    `Export Saliency Blocked` with the shared safety message.
+- validation：
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_export_saliency_refuses_real_study_query_none_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_apply_none_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_apply_none_refuses_real_study_controller_fallback -q`
+    -> `5 passed`.
+  - Visualization regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization.py -q`
+    -> `64 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Visualization UI fallback language cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete visualization UX, 3D desktop acceptance, or all query-unavailable
+    fallback cleanup.
+
 ### 07:20 Preprocess render query-none fallback boundary
 
 - scope：
