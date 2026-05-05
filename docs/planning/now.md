@@ -92,6 +92,8 @@
 - 最新 Preprocess sidebar refresh cleanup 已把 filter / resample / rereference / normalize /
   epoch / reset service-success `notify_update()` / `update_info_panel()` 移除；mock / legacy
   `None` fallback 才手動刷新。
+- 最新 Visualization control sidebar refresh cleanup 已把 montage / saliency service-success
+  `on_update()` 移除；saliency mock / legacy `None` fallback 才手動刷新。
 - 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若
@@ -734,7 +736,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    panel refresh、Data Interpretation apply / recipe reload refresh、post-load label
    compatibility service-success refresh、direct load compatibility service-success refresh，以及
    Dataset sidebar channel-selection / clear-dataset refresh、Dataset inline metadata refresh 已先
-   收回 coordinator。Preprocess sidebar service-success refresh 也已收回 coordinator。
+   收回 coordinator。Preprocess sidebar service-success refresh 和 Visualization control sidebar
+   montage / saliency service-success refresh 也已收回 coordinator。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

@@ -1,10 +1,11 @@
 import sys
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
 
-from XBrainLab.backend.application import ApplyMontageCommand
+from XBrainLab.backend.application import ApplyMontageCommand, SaliencyCommand
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
 
@@ -70,6 +71,7 @@ def test_sidebar_set_montage(mock_panel, qtbot):
         assert command.channels == ["Ch1"]
         assert command.positions == [(0.0, 0.0, 0.0)]
         mock_panel.controller.set_montage.assert_not_called()
+        mock_panel.on_update.assert_not_called()
         mock_info.assert_called_once()
 
 
@@ -78,7 +80,7 @@ def test_sidebar_set_montage_blocked_by_backend_capability(qtbot):
     controller.has_epoch_data.return_value = True
     controller.get_channel_names.return_value = ["Ch1", "Ch2"]
     main_window = QMainWindow()
-    main_window.study = Study()
+    cast(Any, main_window).study = Study()
     panel = MagicMock()
     panel.controller = controller
     panel.main_window = main_window
@@ -108,10 +110,11 @@ def test_sidebar_set_montage_real_study_uses_application_service(qtbot):
     controller.has_epoch_data.return_value = False
     controller.get_channel_names.return_value = ["Ch1", "Ch2"]
     main_window = QMainWindow()
-    main_window.study = Study()
+    study = Study()
+    cast(Any, main_window).study = study
     epoch_data = MagicMock()
     epoch_data.get_mne.return_value.info = {"ch_names": ["Ch1", "Ch2"]}
-    main_window.study.epoch_data = epoch_data
+    study.epoch_data = epoch_data
     panel = MagicMock()
     panel.controller = controller
     panel.main_window = main_window
@@ -179,7 +182,7 @@ def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
     controller = MagicMock()
     controller.get_saliency_params.return_value = None
     main_window = QMainWindow()
-    main_window.study = Study()
+    cast(Any, main_window).study = Study()
     panel = MagicMock()
     panel.controller = controller
     panel.main_window = main_window
@@ -211,7 +214,7 @@ def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
     controller = MagicMock()
     controller.get_saliency_params.return_value = None
     main_window = QMainWindow()
-    main_window.study = Study()
+    cast(Any, main_window).study = Study()
     panel = MagicMock()
     panel.controller = controller
     panel.main_window = main_window
@@ -239,3 +242,33 @@ def test_sidebar_set_saliency_refuses_real_study_controller_fallback(qtbot):
         sidebar.set_saliency()
 
     controller.set_saliency_params.assert_not_called()
+
+
+def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
+    mock_panel,
+    qtbot,
+):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    mock_panel.controller.get_saliency_params.return_value = None
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            return_value=MagicMock(failed=False),
+        ) as mock_execute,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ),
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = {"method": "gradient"}
+        sidebar.set_saliency()
+
+    command = mock_execute.call_args.args[1]
+    assert isinstance(command, SaliencyCommand)
+    mock_panel.controller.set_saliency_params.assert_not_called()
+    mock_panel.on_update.assert_not_called()

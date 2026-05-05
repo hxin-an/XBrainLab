@@ -140,6 +140,10 @@ class ControlSidebar(QWidget):
             normalized.append((float(coords[0]), float(coords[1]), float(coords[2])))
         return normalized
 
+    def _on_update_after_legacy_result(self, result) -> None:
+        if result is None and self.panel and hasattr(self.panel, "on_update"):
+            self.panel.on_update()
+
     def set_montage(self):
         """Open the montage-picker dialog and apply channel positions."""
         capability = get_command_capability(self, CommandName.APPLY_MONTAGE)
@@ -190,8 +194,7 @@ class ControlSidebar(QWidget):
                 QMessageBox.information(self, "Success", "Montage set")
 
                 # Notify parent to refresh view
-                if self.panel and hasattr(self.panel, "on_update"):
-                    self.panel.on_update()
+                self._on_update_after_legacy_result(result)
 
     def set_saliency(self):
         """Open the saliency-settings dialog and apply parameters."""
@@ -229,8 +232,7 @@ class ControlSidebar(QWidget):
                     return
                 QMessageBox.information(self, "Success", "Saliency parameters set")
 
-                if self.panel and hasattr(self.panel, "on_update"):
-                    self.panel.on_update()
+                self._on_update_after_legacy_result(result)
 
     def export_saliency(self):
         """Open the saliency-export dialog to save computed saliency data."""

@@ -37,6 +37,43 @@
 
 ## 2026-05-05
 
+### 18:15 Visualization control refresh coordinator slice
+
+- 做了什麼：
+  - 在 `ControlSidebar` 新增 `_on_update_after_legacy_result()`。
+  - montage (`ApplyMontageCommand`) 與 saliency (`SaliencyCommand`) service-success path 不再直接
+    `panel.on_update()`。
+  - 先改 montage 既有測試並新增 saliency service-success test 建立紅燈。
+  - 結果：
+  - Visualization control service-success path 交給 command refresh coordinator。
+  - saliency mock / legacy `None` fallback 仍保留手動 `on_update()`。
+  - 因為這個 slice 直接碰 `tests/unit/ui/visualization/test_control_sidebar.py`，也修掉該檔既有
+    Qt dynamic `study` attribute type issue，讓 direct basedpyright on touched files 可通過。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_service_success_uses_coordinator_refresh -q`
+    -> `2 failed`，兩者都是 `panel.on_update()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_service_success_uses_coordinator_refresh tests/unit/ui/test_dialogs_extra.py::TestControlSidebar::test_set_saliency -q`
+    -> `3 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_dialogs_extra.py::TestControlSidebar -q`
+    -> `13 passed`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `923 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+
 ### 18:06 Preprocess sidebar refresh coordinator slice
 
 - 做了什麼：

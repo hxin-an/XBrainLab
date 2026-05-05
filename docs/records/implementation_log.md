@@ -276,6 +276,35 @@ refreshes manually.
 Classify remaining callback / observer refresh paths and avoid converting them blindly unless the
 coordinator can preserve event semantics.
 
+## 2026-05-05 Visualization Control Refresh Cleanup
+
+### 狀態
+
+Visualization control sidebar montage and saliency service-success paths now use coordinator-owned
+refresh. Successful `ApplyMontageCommand` and `SaliencyCommand` no longer call
+`VisualizationPanel.on_update()` directly; mock / legacy saliency fallback still refreshes manually.
+
+### 已可宣稱
+
+- Visualization control service-success paths no longer duplicate panel refresh.
+- Legacy saliency fallback remains covered.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests: `tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish visualization product acceptance. Interactive desktop 3D / PyVista render,
+  human desktop acceptance, and callback-driven UI refresh remain open.
+
+### 下一手重點
+
+Continue classifying remaining callback / observer refresh paths and keep product visualization
+evidence separate from command-spine cleanup.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態
