@@ -161,6 +161,15 @@ def check_architecture(root_dir: str) -> int:
             print(f" - {violation}")
         return 1
 
+    observer_refresh_violations = check_ui_observer_direct_update_bridges(
+        Path(root_dir)
+    )
+    if observer_refresh_violations:
+        print("\nUI Observer Direct Refresh Violations Found:")
+        for violation in observer_refresh_violations:
+            print(f" - {violation}")
+        return 1
+
     print("\nArchitecture compliant!")
     return 0
 
@@ -300,6 +309,44 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
                     for call in _post_command_local_refresh_calls(node.body, source)
                 )
     return violations
+
+
+def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
+    """Return observer bridges that wire events directly to update_panel."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _call_name(node.func) != "_create_bridge":
+                continue
+            if not _observer_bridge_uses_direct_update_panel(node):
+                continue
+            violations.append(
+                f"{py_file.relative_to(root_dir)}:{node.lineno} wires observer "
+                "events directly to update_panel(); use refresh_from_observer() "
+                "for simple panel refresh, or a named callback handler for "
+                "event-specific behavior."
+            )
+    return violations
+
+
+def _observer_bridge_uses_direct_update_panel(call: ast.Call) -> bool:
+    if len(call.args) < 3:
+        return False
+    handler = call.args[2]
+    return isinstance(handler, ast.Attribute) and handler.attr == "update_panel"
 
 
 def _post_command_local_refresh_calls(

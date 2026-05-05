@@ -106,6 +106,9 @@
   的單純 observer `event -> update_panel()` bridge 改成 `refresh_from_observer()`，再委派
   `refresh_panel()`。callback-specific handlers 仍保留，例如 import-finished、TrainingPanel
   start/stop 和 live training update loop。
+- 最新 observer refresh architecture guard 已寫進 `tests/architecture_compliance.py`：新增的
+  `_create_bridge(..., self.update_panel)` 會 fail；simple refresh 要走 `refresh_from_observer()`，
+  event-specific behavior 要用 named callback handler。
 - 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若

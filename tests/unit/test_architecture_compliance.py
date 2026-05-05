@@ -1,4 +1,7 @@
-from tests.architecture_compliance import check_ui_post_command_local_refreshes
+from tests.architecture_compliance import (
+    check_ui_observer_direct_update_bridges,
+    check_ui_post_command_local_refreshes,
+)
 
 
 def _write_ui_file(root, source: str) -> None:
@@ -71,3 +74,43 @@ def run(self):
     )
 
     assert check_ui_post_command_local_refreshes(tmp_path) == []
+
+
+def test_observer_bridge_guard_flags_direct_update_panel(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(self.controller, "data_changed", self.update_panel)
+""",
+    )
+
+    violations = check_ui_observer_direct_update_bridges(tmp_path)
+
+    assert len(violations) == 1
+    assert "update_panel" in violations[0]
+    assert "refresh_from_observer" in violations[0]
+
+
+def test_observer_bridge_guard_allows_refresh_from_observer(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(self.controller, "data_changed", self.refresh_from_observer)
+""",
+    )
+
+    assert check_ui_observer_direct_update_bridges(tmp_path) == []
+
+
+def test_observer_bridge_guard_allows_callback_handlers(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_bridge(self.controller, "training_started", self._on_training_started)
+""",
+    )
+
+    assert check_ui_observer_direct_update_bridges(tmp_path) == []

@@ -782,8 +782,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `refresh_coordinator` 承接。最新 observer refresh cleanup 又把單純的
   `event -> update_panel()` bridge 收斂到 `BasePanel.refresh_from_observer()`，再委派
   `refresh_coordinator.refresh_panel()`；這保留 observer bridge 語意，但不再讓每個 panel 直接
-  接 `update_panel()`。後續仍要把剩餘 manual refresh / callback-specific observer path 收斂或
-  明確標成 event bridge。
+  接 `update_panel()`。最新 architecture guard 已把 `_create_bridge(..., self.update_panel)` 納入
+  `tests/architecture_compliance.py`，callback-specific handler 仍可用 named handler。後續仍要把
+  剩餘 manual refresh / callback-specific observer path 收斂或明確標成 event bridge。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training

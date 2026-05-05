@@ -37,6 +37,40 @@
 
 ## 2026-05-05
 
+### 19:04 UI observer refresh architecture guard
+
+- 做了什麼：
+  - 在 `tests/architecture_compliance.py` 新增
+    `check_ui_observer_direct_update_bridges()`。
+  - guard 會掃 `XBrainLab/ui/**/*.py`，若 `_create_bridge()` 第三個參數是
+    `self.update_panel` 就 fail，要求 simple observer refresh 改用
+    `refresh_from_observer()`。
+  - named callback handlers 仍允許，例如 `_on_training_started`，避免把 event-specific behavior
+    硬套成 generic refresh。
+  - 新增 `tests/unit/test_architecture_compliance.py` cases，覆蓋 direct update violation、
+    `refresh_from_observer` allowance 和 callback handler allowance。
+- 結果：
+  - 目前 real codebase 通過 guard，代表 observer refresh coordinator boundary 沒有直接回退。
+  - 這是防回歸 guard，不代表 callback-specific observer path 已全部分類完成。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_flags_direct_update_panel tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_allows_refresh_from_observer tests/unit/test_architecture_compliance.py::test_observer_bridge_guard_allows_callback_handlers -q`
+    -> import error，`check_ui_observer_direct_update_bridges` 尚不存在。
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `7 passed`。
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> pass。
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。下一步仍是 callback-specific observer / manual refresh 分類。
+
 ### 18:56 UI observer refresh coordinator slice
 
 - 做了什麼：

@@ -42,6 +42,34 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 UI Observer Refresh Architecture Guard
+
+### 狀態
+
+The observer refresh boundary now has a static compliance guard. `tests/architecture_compliance.py`
+fails new `_create_bridge(..., self.update_panel)` wiring and directs simple observer refresh to
+`refresh_from_observer()`. Named callback handlers remain allowed for event-specific behavior.
+
+### 已可宣稱
+
+- The simple observer refresh coordinator boundary is protected from straightforward regression.
+- Future observer bridge additions must choose between generic panel refresh and a named semantic
+  callback handler.
+
+### Evidence 入口
+
+- Code: `tests/architecture_compliance.py`
+- Test: `tests/unit/test_architecture_compliance.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish callback-specific observer classification or full command-driven UI refresh.
+
+### 下一手重點
+
+Audit callback-specific observer handlers and remaining panel-local manual refresh paths.
+
 ## 2026-05-05 UI Observer Refresh Coordinator Slice
 
 ### 狀態
