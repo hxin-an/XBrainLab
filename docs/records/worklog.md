@@ -7866,3 +7866,45 @@
     -> `0 errors, 0 warnings, 0 notes`.
 - 不能宣稱：
   - 這不是 full command-driven UI refresh closure。
+
+### 2026-05-05 19:32 UI legacy missing-result refresh guard
+
+- scope：
+  - Tighten post-command local refresh architecture compliance.
+  - No runtime UI behavior change in this slice.
+- problem：
+  - The previous post-command guard correctly blocked service-success local refresh, but it skipped
+    every failure / missing-result branch.
+  - That meant a future mock / legacy compatibility branch could add `if result is None:
+    self.update_panel()` directly instead of using the explicit legacy-result helper pattern.
+- red / focused tests：
+  - Added an architecture compliance unit test requiring direct local refresh inside
+    `if result is None:` to fail.
+  - The test failed before implementation with `len(violations) == 0`.
+- 做了什麼：
+  - Split `result.failed` and `result is None` handling in
+    `check_ui_post_command_local_refreshes()`.
+  - Failure branches may still skip the post-command local-refresh violation so UI can restore
+    rejected edits or warning state.
+  - Missing-result compatibility branches now get scanned unless they live inside an
+    `*_after_legacy_result` helper.
+  - Updated current truth, UI architecture, now, roadmap, and implementation log.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `9 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> pass.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - 這不是 full controller fallback removal or UI refresh closure。

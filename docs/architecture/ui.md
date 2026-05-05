@@ -120,6 +120,9 @@ training settings、start training 和 clear history 的 service-backed success 
 `CommandResult.changed_state` 觸發。legacy mock / non-`Study` fallback 仍會手動刷新。
 Dataset action handler 也已套用同一模式：smart parse、batch metadata 和 remove files 的
 service-backed success path 不再直接呼叫 `panel.update_panel()`；legacy fallback 仍手動刷新。
+Post-command refresh guard 現在也區分 missing-result compatibility 和 command failure：
+`result is None` branch 不可直接 local refresh，必須走 explicit legacy-result helper；
+`result.failed` branch 可保留 local restore / warning refresh。
 後續 downstream refresh cleanup 又把 analysis readiness scope 補進 coordinator：
 `training_changed` 會刷新 Evaluation / Visualization panel，`epoch_changed` 會刷新 Visualization
 panel，`evaluation_changed` 也會刷新 Visualization panel。這讓 training / epoch / evaluation

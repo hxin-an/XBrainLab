@@ -98,6 +98,9 @@
   在 service-backed `execute_application_command()` 後不可再直接呼叫 local refresh method；只允許
   explicit `refresh=False` query path 或 failure / legacy fallback branch。這能防止剛清掉的
   duplicated service-success refresh 回流，但不代表 observer/manual/tab-switch refresh 已全部收斂。
+- 最新 post-command legacy refresh guard hardening 已區分 `result.failed` 和 `result is None`：
+  failure branch 仍可做 UI restore，missing-result compatibility branch 不可直接呼叫 local refresh
+  method，必須走 explicit legacy-result helper。
 - 最新 tab-switch refresh cleanup 已把 `MainWindow.switch_page()` 的 hard-coded panel refresh mapping
   移到 `refresh_after_navigation()`；navigation refresh scope 現在也由
   `XBrainLab.ui.refresh_coordinator` 定義。這是小切片，還不代表 observer / callback refresh 已

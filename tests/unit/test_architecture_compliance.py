@@ -61,6 +61,23 @@ def run(self):
     assert "update_panel" in violations[0]
 
 
+def test_post_command_refresh_guard_flags_missing_result_direct_refresh(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def run(self):
+    result = execute_application_command(self, SomeCommand())
+    if result is None:
+        self.update_panel()
+""",
+    )
+
+    violations = check_ui_post_command_local_refreshes(tmp_path)
+
+    assert len(violations) == 1
+    assert "legacy-result helper" in violations[0]
+
+
 def test_post_command_refresh_guard_allows_refresh_false_query(tmp_path):
     _write_ui_file(
         tmp_path,

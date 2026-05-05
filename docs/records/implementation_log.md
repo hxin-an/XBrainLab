@@ -2006,3 +2006,27 @@ not wire `_create_bridge(..., self.update_panel)` or
 ### 不能宣稱完成
 
 - 這是 guard hardening，不是 full command-driven UI refresh closure。
+
+## 2026-05-05 UI Legacy Missing-Result Refresh Guard
+
+### 狀態
+
+The post-command local-refresh architecture guard now distinguishes command failure from missing
+ApplicationService results. Failure branches may still restore visible UI state, but `result is None`
+compatibility branches may not directly call panel-local refresh methods; they must use explicit
+legacy-result helpers.
+
+### 已可宣稱
+
+- New mock / legacy compatibility branches cannot reintroduce ad hoc `self.update_panel()` style
+  refresh after an `execute_application_command()` miss without failing architecture compliance.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這是 guard hardening，不是 full controller fallback removal or UI refresh closure.

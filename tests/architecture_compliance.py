@@ -306,7 +306,11 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
                     "service-backed success refresh must go through "
                     "refresh_after_command(), with local refresh limited to "
                     "explicit legacy-result helpers."
-                    for call in _post_command_local_refresh_calls(node.body, source)
+                    for call in _post_command_local_refresh_calls(
+                        node.body,
+                        source,
+                        node.name,
+                    )
                 )
     return violations
 
@@ -370,17 +374,20 @@ def _observer_bridge_uses_direct_refresh_from_observer(call: ast.Call) -> bool:
 def _post_command_local_refresh_calls(
     statements: list[ast.stmt],
     source: str,
+    function_name: str = "",
 ) -> list[ast.Call]:
     violations: list[ast.Call] = []
     command_seen = False
     for statement in statements:
         if command_seen:
-            visitor = _PostCommandLocalRefreshVisitor(source)
+            visitor = _PostCommandLocalRefreshVisitor(source, function_name)
             visitor.visit(statement)
             violations.extend(visitor.violations)
         violations.extend(
             _post_command_local_refresh_calls(
-                _nested_statement_bodies(statement), source
+                _nested_statement_bodies(statement),
+                source,
+                function_name,
             ),
         )
         if _contains_service_backed_command(statement):
@@ -425,12 +432,20 @@ def _call_has_refresh_false(call: ast.Call) -> bool:
 
 
 class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
-    def __init__(self, source: str) -> None:
+    def __init__(self, source: str, function_name: str = "") -> None:
         self.source = source
+        self.function_name = function_name
         self.violations: list[ast.Call] = []
 
     def visit_If(self, node: ast.If) -> None:
-        if _is_failure_or_missing_result_guard(node.test):
+        if _is_missing_result_guard(node.test):
+            if not _is_legacy_result_refresh_helper(self.function_name):
+                for statement in node.body:
+                    self.visit(statement)
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        if _is_failure_guard(node.test):
             for statement in node.orelse:
                 self.visit(statement)
             return
@@ -443,16 +458,28 @@ class _PostCommandLocalRefreshVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _is_failure_or_missing_result_guard(node: ast.AST) -> bool:
+def _is_failure_guard(node: ast.AST) -> bool:
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
         return False
     if isinstance(node, ast.Attribute):
         return node.attr == "failed"
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        return any(_is_failure_guard(value) for value in node.values)
+    return False
+
+
+def _is_missing_result_guard(node: ast.AST) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return False
     if isinstance(node, ast.Compare):
         return _is_none_failure_compare(node)
     if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
-        return any(_is_failure_or_missing_result_guard(value) for value in node.values)
+        return any(_is_missing_result_guard(value) for value in node.values)
     return False
+
+
+def _is_legacy_result_refresh_helper(function_name: str) -> bool:
+    return function_name.endswith("_after_legacy_result")
 
 
 def _is_none_failure_compare(node: ast.Compare) -> bool:
