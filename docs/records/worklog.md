@@ -10548,3 +10548,40 @@
 - 不能宣稱：
   - This does not cancel running PSD workers, prove long-running preprocessing performance, or
     certify memory leak behavior.
+
+### 2026-05-06 SinglePlotWindow close cleanup
+
+- scope：
+  - Continue focused UI resource cleanup for repeated plot window open/close.
+  - Ensure the base Matplotlib plot dialog closes the actual embedded figure, not only the original
+    `plot_number`, and releases Qt canvas / toolbar references.
+- red / focused tests：
+  - Added `test_close_releases_current_figure_and_qt_widgets`.
+  - Red gate failed because `closeEvent()` did not call `plt.close()` for the external figure passed
+    through `set_figure()`, and left `figure_canvas` / `toolbar` references populated.
+- 做了什麼：
+  - Added `_close_current_figure()` to close `fig_param["fig"]` and any remaining `plot_number`.
+  - Added `_release_canvas_widgets()` to remove canvas / toolbar from the layout, detach them,
+    schedule `deleteLater()`, and clear references.
+  - `closeEvent()` now runs both helpers before delegating to Qt close handling.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_close_releases_current_figure_and_qt_widgets -q`
+    -> failed because the external figure was not passed to `plt.close()`.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_close_releases_current_figure_and_qt_widgets tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_creates tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_has_figure_canvas -q`
+    -> `3 passed`.
+  - Plot window regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow tests/unit/ui/components/test_plot_figure_window.py tests/unit/ui/dialogs/test_dialogs_structure.py::TestDialogStructure::test_single_plot_window_init -q`
+    -> `19 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/components/single_plot_window.py tests/unit/ui/test_ui_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/components/single_plot_window.py tests/unit/ui/test_ui_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI resource cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not prove long-run Matplotlib memory trends, full visualization soak behavior,
+    interactive desktop 3D render, or human Windows desktop acceptance.

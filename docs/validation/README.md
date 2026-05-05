@@ -136,6 +136,14 @@ Preprocess PSD stale-result gate:
 -> `45 passed`。This supports stale-result rejection for async PSD plot workers. It does not prove
 worker cancellation, long-running preprocessing performance, or memory leak behavior.
 
+SinglePlotWindow close cleanup gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_close_releases_current_figure_and_qt_widgets tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_creates tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_has_figure_canvas -q`
+-> `3 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestSinglePlotWindow tests/unit/ui/components/test_plot_figure_window.py tests/unit/ui/dialogs/test_dialogs_structure.py::TestDialogStructure::test_single_plot_window_init -q`
+-> `19 passed`。This supports Matplotlib figure close and Qt canvas / toolbar cleanup for the base
+plot dialog. It does not prove long-run memory trends, full visualization soak behavior, or human
+desktop acceptance.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

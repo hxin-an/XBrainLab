@@ -197,6 +197,9 @@
   detached child widgets、對非 plotter child 排程 `deleteLater()`，並對 PyVista plotter 使用
   close / deleteLater 的 runtime-safe cleanup；這是反覆切換 3D view 的 Qt lifecycle guard，
   不是 interactive desktop 3D / OpenGL soak 或 Windows human desktop acceptance。
+- 最新 plot-window cleanup 讓 `SinglePlotWindow.closeEvent()` 關閉目前持有的 Matplotlib figure，
+  並 detach / `deleteLater()` canvas 與 toolbar、清空引用；這是反覆開關 plot 視窗的 focused
+  cleanup guard，不是 full visualization soak。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

@@ -26,6 +26,26 @@ class TestSinglePlotWindow:
         qtbot.addWidget(w)
         assert isinstance(w.figure_canvas, QWidget)
 
+    def test_close_releases_current_figure_and_qt_widgets(self, qtbot):
+        from matplotlib.figure import Figure
+        from PyQt6.QtGui import QCloseEvent
+
+        from XBrainLab.ui.components import single_plot_window
+        from XBrainLab.ui.components.single_plot_window import SinglePlotWindow
+
+        w = SinglePlotWindow(None, title="Test")
+        qtbot.addWidget(w)
+        external_figure = Figure()
+        w.set_figure(external_figure, w.figsize, w.dpi)
+
+        with patch.object(single_plot_window.plt, "close") as close_figure:
+            w.closeEvent(QCloseEvent())
+
+        assert external_figure in [call.args[0] for call in close_figure.call_args_list]
+        assert w.figure_canvas is None
+        assert w.toolbar is None
+        assert w.plot_number is None
+
 
 # ============ MessageBubble ============
 

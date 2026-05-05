@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Plot Window Close Cleanup
+
+### 狀態
+
+`SinglePlotWindow.closeEvent()` now closes the current Matplotlib figure stored in `fig_param`,
+detaches the figure canvas and toolbar from the Qt layout, schedules them for `deleteLater()`, and
+clears the window references. This covers the base dialog used by training / evaluation /
+visualization plot windows.
+
+### 已可宣稱
+
+- Closing a plot window now releases the currently embedded Matplotlib figure, including figures
+  installed through `set_figure()`.
+- Focused UI tests cover figure close and canvas / toolbar reference cleanup, plus PlotFigureWindow
+  close regression.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/components/single_plot_window.py`
+- Tests: `tests/unit/ui/test_ui_components.py`,
+  `tests/unit/ui/components/test_plot_figure_window.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full visualization memory soak evidence, interactive 3D acceptance, or Windows
+  desktop human verification.
+
+### 下一手重點
+
+Continue targeted cleanup for UI resources that have observable close/open regressions. Long-run
+memory trend evidence still needs a dedicated soak-style artifact before release claims.
+
 ## 2026-05-06 Preprocess PSD Worker Stale-Result Guard
 
 ### 狀態
