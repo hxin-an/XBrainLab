@@ -952,3 +952,26 @@ blocked reason。
 ### 不能宣稱完成
 
 - 這不是完整 training UI / long-running training human acceptance。
+
+## 2026-05-05 Reset Preprocess Capability Truth
+
+### 狀態
+
+Preprocess sidebar `Reset Preprocessing` 現在會讀 backend `reset_preprocess` capability，而不是
+把 reset lifecycle action 綁到 `preprocess` edit capability。real `Study` path 在 epoched /
+locked 狀態仍可執行 reset command，empty state 則顯示 shared blocked reason。
+
+### 已可宣稱
+
+- Reset-preprocess confirmation / blocked boundary 與 ApplicationService capability policy 對齊。
+- lifecycle reset 不再被 preprocess-edit policy 誤擋。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 reset / new-session human desktop acceptance。

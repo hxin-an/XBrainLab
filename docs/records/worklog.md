@@ -5798,3 +5798,50 @@
   - This is one destructive-action boundary alignment, not full training UI product acceptance.
   - It does not prove long-running training human acceptance or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Reset preprocess capability truth
+
+- scope：
+  - UI/backend command truth alignment for Preprocess sidebar `Reset Preprocessing` lifecycle
+    action。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `PreprocessSidebar.reset_preprocess()` called `check_data_loaded()`, which reads the
+    `preprocess` edit capability.
+  - After epoching or dataset generation, backend `preprocess` is intentionally blocked while
+    backend `reset_preprocess` can still be enabled. The UI could therefore block the reset action
+    with the wrong policy.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_uses_reset_capability_when_preprocess_locked -q`
+    initially failed because the confirmation prompt was never reached.
+- 做了什麼：
+  - Added `reset_preprocess` capability preflight before reset confirmation.
+  - Kept legacy `check_data_loaded()` only for mock / legacy non-Study paths.
+  - Added blocked empty-state coverage and locked-but-resettable coverage.
+- validation：
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_uses_reset_capability_when_preprocess_locked tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_blocked_by_reset_capability_before_confirm -q`
+    -> `2 passed`.
+  - Preprocess sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess/test_preprocess_panel.py -q`
+    -> `31 passed`.
+  - backend lifecycle regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_lifecycle_service.py tests/unit/backend/application/test_application_service.py::test_reset_preprocess_command_clears_downstream_training_plan tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `5 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one lifecycle reset boundary alignment, not full reset / new-session product
+    acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.

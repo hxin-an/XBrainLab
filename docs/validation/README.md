@@ -2209,6 +2209,30 @@ policy 對齊。它仍不是完整 visualization UI product acceptance 或 deskt
 這批 evidence 支撐 destructive clear-history UI boundary 與 backend capability policy 對齊。它仍
 不是完整 training UI / long-running training human acceptance。
 
+2026-05-05 Reset preprocessing capability follow-up：
+
+- UI/action:
+  - `PreprocessSidebar.reset_preprocess()` now checks backend `reset_preprocess` capability instead
+    of reusing the `preprocess` capability through `check_data_loaded()`.
+  - Empty real `Study` state shows `Load raw data before resetting preprocessing.` before any
+    confirmation prompt.
+  - Epoched / preprocessing-locked real `Study` path can still execute `ResetPreprocessCommand`
+    when backend `reset_preprocess` is enabled, instead of being blocked by the edit-preprocess
+    policy.
+- targeted gates:
+  - focused red + command path:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_uses_reset_capability_when_preprocess_locked tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_blocked_by_reset_capability_before_confirm -q`
+    -> `2 passed`.
+  - Preprocess sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/preprocess/test_preprocess_panel.py -q`
+    -> `31 passed`.
+  - backend lifecycle regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_lifecycle_service.py tests/unit/backend/application/test_application_service.py::test_reset_preprocess_command_clears_downstream_training_plan tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `5 passed`.
+
+這批 evidence 支撐 reset-preprocess lifecycle UI boundary 與 backend capability policy 對齊。它
+仍不是完整 reset / new-session human desktop acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

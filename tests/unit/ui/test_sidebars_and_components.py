@@ -161,6 +161,71 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.reset_preprocess.assert_not_called()
         sidebar.panel.update_panel.assert_called()
 
+    def test_reset_preprocess_uses_reset_capability_when_preprocess_locked(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw_data = MagicMock()
+        raw_data.is_raw.return_value = True
+        study.loaded_data_list = [raw_data]
+        study.preprocessed_data_list = [MagicMock()]
+        study.epoch_data = MagicMock()
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.has_data.return_value = False
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as mock_question,
+            patch.object(QMessageBox, "warning") as mock_warning,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            sidebar.reset_preprocess()
+
+        mock_question.assert_called_once()
+        mock_warning.assert_not_called()
+        from XBrainLab.backend.application import ResetPreprocessCommand
+
+        assert isinstance(mock_execute.call_args.args[1], ResetPreprocessCommand)
+        sidebar.panel.controller.reset_preprocess.assert_not_called()
+        sidebar.panel.update_panel.assert_called()
+
+    def test_reset_preprocess_blocked_by_reset_capability_before_confirm(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.has_data.return_value = True
+
+        with (
+            patch.object(QMessageBox, "question") as mock_question,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sidebar.reset_preprocess()
+
+        mock_question.assert_not_called()
+        mock_warning.assert_called_once_with(
+            sidebar,
+            "Reset Blocked",
+            "Load raw data before resetting preprocessing.",
+        )
+        sidebar.panel.controller.reset_preprocess.assert_not_called()
+
 
 # ============ TrainingSidebar ============
 

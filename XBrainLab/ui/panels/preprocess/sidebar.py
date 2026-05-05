@@ -511,31 +511,49 @@ class PreprocessSidebar(QWidget):
 
     def reset_preprocess(self):
         """Prompt the user and reset all preprocessing steps to the original data."""
-        if not self.check_data_loaded():
+        reset_capability = get_command_capability(self, CommandName.RESET_PREPROCESS)
+        if reset_capability is not None and not reset_capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Reset Blocked",
+                blocked_reason(
+                    reset_capability,
+                    "Load raw data before resetting preprocessing.",
+                ),
+            )
             return
 
-        reply = QMessageBox.question(
-            self,
-            "Confirm Reset",
-            "Are you sure you want to reset all preprocessing steps?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
+        if reset_capability is None and not self.check_data_loaded():
+            return
 
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                result = execute_application_command(
-                    self,
-                    ResetPreprocessCommand(confirmed=True),
-                )
-                if result is None:
-                    self.controller.reset_preprocess()
-                elif result.failed:
-                    self._show_command_failure("Error", result.message)
-                    return
-                self.notify_update()
-                if self.main_window and hasattr(self.main_window, "update_info_panel"):
-                    self.main_window.update_info_panel()
-                QMessageBox.information(self, "Success", "Preprocessing reset.")
-            except Exception as e:
-                logger.error("Reset failed: %s", e)
-                QMessageBox.critical(self, "Error", f"Reset failed: {e}")
+        needs_confirmation = reset_capability is None or (
+            reset_capability.confirmation_required
+            or reset_capability.requires_confirmation
+        )
+        if needs_confirmation:
+            reply = QMessageBox.question(
+                self,
+                "Confirm Reset",
+                "Are you sure you want to reset all preprocessing steps?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+        try:
+            result = execute_application_command(
+                self,
+                ResetPreprocessCommand(confirmed=True),
+            )
+            if result is None:
+                self.controller.reset_preprocess()
+            elif result.failed:
+                self._show_command_failure("Error", result.message)
+                return
+            self.notify_update()
+            if self.main_window and hasattr(self.main_window, "update_info_panel"):
+                self.main_window.update_info_panel()
+            QMessageBox.information(self, "Success", "Preprocessing reset.")
+        except Exception as e:
+            logger.error("Reset failed: %s", e)
+            QMessageBox.critical(self, "Error", f"Reset failed: {e}")
