@@ -37,6 +37,43 @@
 
 ## 2026-05-05
 
+### 17:42 Post-load label compatibility refresh coordinator slice
+
+- 做了什麼：
+  - 把 `ImportLabelsCommand` service-success path 的 `panel.update_panel()` 改成
+    `_update_panel_after_legacy_result(result)`。
+  - 先在 recipe-update label import 測試加紅燈：service-backed label import 成功並保存 recipe
+    時，action handler 不應直接刷新 Dataset panel。
+- 結果：
+  - service-backed post-load label compatibility 成功 path 交給 command refresh coordinator。
+  - mock / legacy `None` fallback path 仍保留手動 refresh。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe -q`
+    -> failed；`panel.update_panel()` 被呼叫。
+  - 修正後 focused tests：
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_offers_to_save_updated_recipe tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_single_same_length tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_batch tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_label_timestamp -q`
+    -> `4 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q`
+    -> `127 passed`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `920 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+  - 這不改變舊 label import 是 compatibility path 的定位；Data Interpretation wizard 仍需
+    mature embedded label editor。
+
 ### 17:34 Data Interpretation apply refresh coordinator slice
 
 - 做了什麼：

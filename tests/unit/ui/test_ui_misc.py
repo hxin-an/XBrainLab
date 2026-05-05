@@ -1511,6 +1511,7 @@ class TestDatasetActionHandler:
         assert saved
         assert saved[0].recipe_path == "/recipes/with_labels.json"
         assert "Recipe saved." in mock_mb.information.call_args.args[2]
+        handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     @patch("XBrainLab.ui.panels.dataset.actions.ImportLabelDialog")

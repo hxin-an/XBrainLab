@@ -78,6 +78,9 @@
   recipe reload apply 的 service-success `panel.update_panel()` 移除；這些 path 由
   `execute_application_command()` 的 refresh coordinator 依 `ApplyInterpretationCommand`
   `changed_state` 刷新 Dataset panel。
+- 最新 label compatibility refresh cleanup 已把 post-load `ImportLabelsCommand` service-success
+  refresh 改成 coordinator-owned；只有 mock / legacy `None` fallback 才手動呼叫
+  `panel.update_panel()`。這不改變它作為 compatibility path 的產品定位。
 - 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若
@@ -717,7 +720,8 @@ poetry run pytest --capture=sys tests/unit/mcp tests/integration/mcp -q
    Visualization / AgentManager fallback 已先改成 explicit mock / legacy-only helper；下一步應
    audit 剩餘 `result is None` branches 是否全部是 service-unavailable UI error / blocked return，
    並繼續收斂 observer/manual refresh。Training sidebar readiness refresh、Dataset action
-   panel refresh，以及 Data Interpretation apply / recipe reload refresh 已先收回 coordinator。
+   panel refresh、Data Interpretation apply / recipe reload refresh，以及 post-load label
+   compatibility service-success refresh 已先收回 coordinator。
 2. Data Interpretation mature wizard：embedded label / anchor / MAT variable editor，避免
    post-load compatibility label import 繼續主導心智模型。
 3. 進入下一輪 UI polish：mature import wizard editing、assistant main-window narrow composition、

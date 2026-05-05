@@ -146,19 +146,22 @@ metadata updates, and remove files. Service-backed success paths no longer call
 Continue Dataset refresh cleanup on import-label compatibility and inline metadata edit, then
 consider a static guard for duplicated post-command manual refresh if it can avoid false positives.
 
-## 2026-05-05 Data Interpretation Apply Refresh Cleanup
+## 2026-05-05 Data Interpretation / Label Compatibility Refresh Cleanup
 
 ### 狀態
 
 Data Interpretation import/apply and saved recipe reload apply now follow the same refresh boundary:
 successful `ApplyInterpretationCommand` paths no longer call `DatasetPanel.update_panel()` directly.
 The Dataset panel refresh is owned by `execute_application_command()` and
-`refresh_after_command()` based on `CommandResult.changed_state`.
+`refresh_after_command()` based on `CommandResult.changed_state`. Post-load label compatibility
+also follows that boundary for service-backed `ImportLabelsCommand` success; only mock / legacy
+`None` fallback refreshes manually.
 
 ### 已可宣稱
 
 - Data Interpretation file import, folder/BIDS import, and recipe reload apply no longer duplicate
   Dataset panel refresh in the action handler on service success.
+- Service-backed post-load label compatibility no longer duplicates Dataset panel refresh.
 - Existing service-unavailable handling remains explicit instead of falling back to controller
   mutation.
 
@@ -170,8 +173,9 @@ The Dataset panel refresh is owned by `execute_application_command()` and
 
 ### 不能宣稱完成
 
-- This does not finish the UI refresh target architecture. Import-label compatibility, inline
-  metadata table refresh, observer events, and tab-switch refresh still need audit.
+- This does not finish the UI refresh target architecture. Inline metadata table refresh,
+  observer events, and tab-switch refresh still need audit. Post-load label compatibility remains
+  a legacy compatibility path, not the Data Interpretation-first product workflow.
 
 ### 下一手重點
 

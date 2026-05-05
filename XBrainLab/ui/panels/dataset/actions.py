@@ -809,7 +809,7 @@ class DatasetActionHandler:
                 count = int(result.diagnostics.get("success_count", 0))
 
             if count > 0:
-                self.panel.update_panel()
+                self._update_panel_after_legacy_result(result)
                 recipe_message = (
                     self._offer_label_recipe_save(result) if result is not None else ""
                 )
