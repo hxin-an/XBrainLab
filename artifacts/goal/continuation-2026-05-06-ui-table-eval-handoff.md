@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+a00a5d5 ui: render evaluation from service payload
 c6c7e5b ui: query channel selection data
 0cea91e docs: refresh handoff after label target cleanup
 4f96005 ui: select label targets from dataset table
@@ -131,6 +132,14 @@ bb57beb ui: use backend truth for split replacement
     gate.
   - If ApplicationService reports evaluation blocked or unavailable, the panel clears to
     `No Data Available` instead of reading stale injected controller plans.
+- Evaluation panel object-payload render source:
+  - `EvaluateCommand(include_objects=True)` now returns UI-only plan objects, pooled evaluation
+    results, and model summaries for service-backed rendering.
+  - A real `Study` Evaluation panel uses that service payload for plan list, average metrics, and
+    summary text before falling back to controller reads.
+  - Automation / MCP `evaluate` schemas hide and reject `include_objects`, keeping external
+    clients on the serializable query contract.
+  - `.basedpyright/baseline.json` dropped by 3 suppressed optional-controller errors.
 - Visualization panel query display gate:
   - A real `Study` Visualization panel now uses readonly `VisualizeCommand` results as the
     controls/render gate.
@@ -459,6 +468,31 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for c6c7e5b; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q
+# 112 passed for a00a5d5
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  -q
+# 9 passed for a00a5d5
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for a00a5d5
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for a00a5d5
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for a00a5d5; basedpyright baseline decreased by 3;
+# mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
