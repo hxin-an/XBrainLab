@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Automated Walkthrough Geometry Gate Hardening
+
+### 狀態
+
+The consolidated human-like walkthrough quality gate now treats clipped visible rows as a UI
+quality failure. Shared replay table geometry records vertical scrollbar state and
+`partial_visible_rows`; the human-like UI quality review already checked tree widgets and now also
+checks table widgets for half-visible rows.
+
+### 已可宣稱
+
+- Automated UI-observable artifacts now fail when captured table/tree widgets expose clipped rows
+  at the viewport edge.
+- Latest refreshed human-like walkthrough artifact remains passed with `15` checked table/tree
+  widgets, `0` geometry findings, and `0` clipped-row findings.
+
+### Evidence 入口
+
+- Code: `scripts/dev/capture_data_interpretation_replay.py`,
+  `scripts/dev/capture_human_like_product_walkthrough.py`
+- Artifact: `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated PyQt artifact quality gating only. It is not mature import-wizard UX, Windows
+  launcher click-through, dual-monitor/DPI acceptance, or long local-model desktop verification.
+
+### 下一手重點
+
+Keep using the human-like walkthrough as a regression gate for screenshot-observable UI polish,
+while continuing separate human desktop acceptance and import-wizard maturity work.
+
 ## 2026-05-06 Metrics Bar Chart Close Cleanup
 
 ### 狀態

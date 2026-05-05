@@ -352,6 +352,8 @@
               79
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "panel_width": 796,
             "table_right_x": 536,
@@ -786,6 +788,8 @@
               97
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -836,6 +840,8 @@
               157
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -886,6 +892,8 @@
               522
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -956,6 +964,8 @@
               620
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 4,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": true
           }
@@ -1165,6 +1175,8 @@
               97
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -1215,6 +1227,8 @@
               157
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -1265,6 +1279,8 @@
               522
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -1335,6 +1351,8 @@
               620
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 4,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": true
           }
@@ -1856,6 +1874,8 @@
               75
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "panel_width": 796,
             "table_right_x": 536,
@@ -2128,6 +2148,8 @@
               75
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "panel_width": 796,
             "table_right_x": 536,
@@ -2571,6 +2593,8 @@
               97
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -2621,6 +2645,8 @@
               157
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -2671,6 +2697,8 @@
               522
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 0,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": false
           },
@@ -2766,6 +2794,8 @@
               620
             ],
             "horizontal_scrollbar_max": 0,
+            "vertical_scrollbar_max": 9,
+            "partial_visible_rows": [],
             "text_elide_mode": "ElideRight",
             "alternating_row_colors": true
           }
@@ -2786,7 +2816,7 @@
         "Resample",
         "Re-reference",
         "Normalize",
-        "Epoched (Locked)",
+        "Epoching",
         "Reset All Preprocessing",
         "Channel:",
         "C3",
@@ -2857,7 +2887,7 @@
           "tooltip": "Reset the session before changing preprocessing after epoching or dataset generation."
         },
         {
-          "text": "Epoched (Locked)",
+          "text": "Epoching",
           "enabled": false,
           "checked": null,
           "tooltip": "Reset the session before recreating epochs for the active dataset."
@@ -5123,7 +5153,7 @@
         "Resample",
         "Re-reference",
         "Normalize",
-        "Epoched (Locked)",
+        "Epoching",
         "Reset All Preprocessing",
         "Channel:",
         "C3",
@@ -5935,7 +5965,7 @@
           "tooltip": "Reset the session before changing preprocessing after epoching or dataset generation."
         },
         {
-          "text": "Epoched (Locked)",
+          "text": "Epoching",
           "enabled": false,
           "checked": null,
           "tooltip": "Reset the session before recreating epochs for the active dataset."
@@ -9596,6 +9626,8 @@
             79
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "panel_width": 796,
           "table_right_x": 536,
@@ -9646,6 +9678,8 @@
             97
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -9696,6 +9730,8 @@
             157
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -9746,6 +9782,8 @@
             522
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -9816,6 +9854,8 @@
             620
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 4,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
         }
@@ -9863,6 +9903,8 @@
             97
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -9913,6 +9955,8 @@
             157
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -9963,6 +10007,8 @@
             522
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -10033,6 +10079,8 @@
             620
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 4,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
         }
@@ -10092,6 +10140,8 @@
             75
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "panel_width": 796,
           "table_right_x": 536,
@@ -10154,6 +10204,8 @@
             75
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "panel_width": 796,
           "table_right_x": 536,
@@ -10204,6 +10256,8 @@
             97
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -10254,6 +10308,8 @@
             157
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -10304,6 +10360,8 @@
             522
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": false
         },
@@ -10399,6 +10457,8 @@
             620
           ],
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 9,
+          "partial_visible_rows": [],
           "text_elide_mode": "ElideRight",
           "alternating_row_colors": true
         }
@@ -19533,33 +19593,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 1013657,
+      "pid": 1074550,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 837464
+      "max_rss_kb": 836452
     },
     {
       "label": "before_close",
-      "pid": 1013657,
+      "pid": 1074550,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069896
+      "max_rss_kb": 1069344
     },
     {
       "label": "after_close",
-      "pid": 1013657,
+      "pid": 1074550,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1069896
+      "max_rss_kb": 1069344
     }
   ],
   "ui_quality_review": {
@@ -19713,6 +19773,7 @@
       "checked_widgets": 15,
       "width_tolerance_px": 8,
       "findings": [],
+      "clipped_row_findings": [],
       "rows": [
         {
           "phase": "main_window_initial_state",
@@ -19736,9 +19797,12 @@
           "right_boundary_x": 536,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19780,9 +19844,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19823,9 +19890,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19867,9 +19937,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19901,9 +19974,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 4,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19937,9 +20013,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -19980,9 +20059,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20024,9 +20106,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20058,9 +20143,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 4,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20096,9 +20184,12 @@
           "right_boundary_x": 536,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20142,9 +20233,12 @@
           "right_boundary_x": 536,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20186,9 +20280,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20229,9 +20326,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20273,9 +20373,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 0,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20307,9 +20410,12 @@
           "right_boundary_x": 0,
           "right_gap_to_boundary": 0,
           "horizontal_scrollbar_max": 0,
+          "vertical_scrollbar_max": 9,
+          "partial_visible_rows": [],
           "fits_panel": true,
           "fills_panel": true,
           "fills_content_boundary": true,
+          "shows_only_complete_rows": true,
           "resize_modes": [
             "Interactive",
             "Interactive",
@@ -20324,7 +20430,7 @@
           "alternating_row_colors": true
         }
       ],
-      "boundary": "Automated geometry smoke checks header length, viewport width, horizontal scrollbar state, and table-to-content-boundary gaps. Human review still decides visual polish."
+      "boundary": "Automated geometry smoke checks header length, viewport width, horizontal scrollbar state, table-to-content-boundary gaps, and whether visible rows are clipped at the viewport edge. Human review still decides visual polish."
     },
     "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, and selected snake_case command leakage.",
     "human_design_review_boundary": "This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions."
@@ -20344,10 +20450,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 232432,
+      "rss_growth_kb": 232892,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 4.133
+  "elapsed_seconds": 4.141
 }

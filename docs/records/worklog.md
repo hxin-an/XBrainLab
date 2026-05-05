@@ -10854,3 +10854,65 @@
 - 不能宣稱：
   - This does not complete full command-driven UI refresh coordination, remove all observer paths,
     or close controller fallback audit.
+
+### 2026-05-06 Human-like clipped-row quality gate
+
+- scope：
+  - Fold the Data Interpretation `Review Summary` partial-row evidence into the consolidated
+    human-like walkthrough quality gate.
+  - Prevent future artifacts from passing when a captured table/tree widget shows a half-visible
+    row at the viewport edge.
+- red / focused tests：
+  - Added `test_build_ui_quality_review_flags_clipped_table_rows`.
+  - Red gate failed as expected because `build_table_geometry_review()` ignored
+    `partial_visible_rows`.
+- 做了什麼：
+  - Extended shared `table_state()` with `vertical_scrollbar_max` and `partial_visible_rows`.
+  - Added `partial_visible_table_rows()` alongside the existing tree partial-row helper.
+  - Updated human-like `build_table_geometry_review()` to include
+    `shows_only_complete_rows`, fail on clipped visible rows, and expose
+    `clipped_row_findings` in JSON / Markdown.
+  - Refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` /
+    screenshots and `artifacts/ui/data-interpretation-replay.json`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_build_ui_quality_review_flags_clipped_table_rows -q`
+    -> failed as expected with no geometry finding.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py::test_build_ui_quality_review_flags_clipped_table_rows -q`
+    -> `1 passed`.
+  - Script unit regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py -q`
+    -> `16 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `5 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `21 passed`.
+  - Focused lint/type:
+    `poetry run ruff check scripts/dev/capture_data_interpretation_replay.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright scripts/dev/capture_data_interpretation_replay.py scripts/dev/capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - UI-observable replay:
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`; latest artifact status `passed`, checked `15` table/tree widgets,
+    geometry findings `0`, clipped-row findings `0`.
+    `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; Dataset table artifact now also records `vertical_scrollbar_max=0` and
+    `partial_visible_rows=[]`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+- local eval：
+  - Not run. This is UI artifact quality gating under the fast dev gate; no formal benchmark claim
+    changed.
+- 不能宣稱：
+  - This does not prove mature import-wizard UX, Windows human desktop acceptance, dual-monitor /
+    DPI behavior, or long real local-model sessions.

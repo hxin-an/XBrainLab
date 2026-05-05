@@ -302,6 +302,38 @@ def test_build_ui_quality_review_flags_table_gap_to_sidebar() -> None:
     assert finding["fills_content_boundary"] is False
 
 
+def test_build_ui_quality_review_flags_clipped_table_rows() -> None:
+    phases = [
+        {
+            "phase": "data_interpretation_preview",
+            "screenshot": "",
+            "visible_text": ["Interpretation Preview"],
+            "button_state": [],
+            "workflow_state": {},
+            "notes": {
+                "ui_geometry": {
+                    "review_summary": {
+                        "header_length": 900,
+                        "viewport_width": 900,
+                        "horizontal_scrollbar_max": 0,
+                        "vertical_scrollbar_max": 4,
+                        "partial_visible_rows": [5],
+                        "headers": ["Item", "Status", "Details"],
+                    }
+                }
+            },
+        }
+    ]
+
+    review = build_ui_quality_review(phases, screenshots={})
+
+    assert review["automated_checks_passed"] is False
+    finding = review["table_geometry_review"]["findings"][0]
+    assert finding["phase"] == "data_interpretation_preview"
+    assert finding["partial_visible_rows"] == [5]
+    assert finding["shows_only_complete_rows"] is False
+
+
 def test_merge_ui_quality_into_pass_fail_summary_blocks_passed_status() -> None:
     summary = {
         "passed": True,

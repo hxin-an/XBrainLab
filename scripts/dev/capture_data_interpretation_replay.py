@@ -202,7 +202,8 @@ def table_state(
         bool(header.stretchLastSection()) if header is not None else False
     )
     viewport = table.viewport()
-    scrollbar = table.horizontalScrollBar()
+    horizontal_scrollbar = table.horizontalScrollBar()
+    vertical_scrollbar = table.verticalScrollBar()
     state: dict[str, Any] = {
         "headers": headers,
         "rows": rows,
@@ -215,7 +216,13 @@ def table_state(
         "column_widths": [
             table.columnWidth(column) for column in range(table.columnCount())
         ],
-        "horizontal_scrollbar_max": scrollbar.maximum() if scrollbar is not None else 0,
+        "horizontal_scrollbar_max": (
+            horizontal_scrollbar.maximum() if horizontal_scrollbar is not None else 0
+        ),
+        "vertical_scrollbar_max": (
+            vertical_scrollbar.maximum() if vertical_scrollbar is not None else 0
+        ),
+        "partial_visible_rows": partial_visible_table_rows(table),
         "text_elide_mode": table.textElideMode().name,
     }
     if panel is not None:
@@ -306,6 +313,21 @@ def partial_visible_tree_rows(tree: QTreeWidget) -> list[int]:
             continue
         rect = tree.visualItemRect(item)
         if rect.isValid() and rect.top() < viewport_bottom < rect.bottom():
+            partial.append(row)
+    return partial
+
+
+def partial_visible_table_rows(table: QTableWidget) -> list[int]:
+    """Return row indexes that are visibly clipped at the viewport bottom."""
+    viewport = table.viewport()
+    if viewport is None:
+        return []
+    viewport_bottom = viewport.rect().bottom()
+    partial: list[int] = []
+    for row in range(table.rowCount()):
+        top = table.rowViewportPosition(row)
+        bottom = top + table.rowHeight(row)
+        if top < viewport_bottom < bottom:
             partial.append(row)
     return partial
 

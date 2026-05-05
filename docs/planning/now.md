@@ -401,8 +401,10 @@
   本身貼齊 sidebar，不只是欄位填滿一個內縮 viewport。
 - 最新 human-like walkthrough refresh 也把 table geometry 納入 top-level UI quality gate：
   `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` 目前 `status=passed`，
-  table geometry review 檢查 `15` 個 table/tree widgets、`0` findings；載入資料後 Dataset
-  table 記錄 `header_length=509`、`viewport_width=510`、`horizontal_scrollbar_max=0`。
+  table geometry review 檢查 `15` 個 table/tree widgets、`0` geometry findings、`0`
+  clipped-row findings；載入資料後 Dataset table 記錄 `header_length=509`、
+  `viewport_width=510`、`horizontal_scrollbar_max=0`。後續 artifact 若 capture 到任何
+  `partial_visible_rows`，human-like quality gate 會 failed。
 - Recipe reload 現在不只重掃 source path：`ReloadInterpretationRecipeCommand` 會把 saved
   selected files、metadata overrides、label carrier choices、event roles 和 class map rehydrated
   回 candidate `choices` 後再 preview / validate。Human-like walkthrough reload command result

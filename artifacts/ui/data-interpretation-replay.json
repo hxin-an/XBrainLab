@@ -3875,6 +3875,8 @@
           150
         ],
         "horizontal_scrollbar_max": 0,
+        "vertical_scrollbar_max": 0,
+        "partial_visible_rows": [],
         "text_elide_mode": "ElideRight",
         "panel_width": 1280,
         "table_right_x": 1020,

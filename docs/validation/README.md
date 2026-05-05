@@ -97,6 +97,12 @@ artifact。`artifacts/ui/data-interpretation-replay.json` 目前記錄 `widget_w
 capture 中載入資料後 table widget 直接貼齊 sidebar；human-like walkthrough 的較窄 capture
 同樣記錄 `right_gap_to_boundary=0`。這是 automated layout evidence，仍需真人桌面驗收判斷
 整體視覺品質。
+最新 clipped-row geometry gate 把同一 evidence 提升到 consolidated human-like walkthrough
+quality review：`table_state()` 現在也保存 `vertical_scrollbar_max` / `partial_visible_rows`，
+`build_table_geometry_review()` 會在任何 captured table/tree widget 出現半截 visible row 時 failed。
+最新 `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` 顯示 table geometry checked
+`15` widgets、geometry findings `0`、clipped row findings `0`；這仍是 offscreen PyQt automated
+evidence，不是 Windows human desktop acceptance。
 ChatPanel composer polish follow-up gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
 -> `55 passed`。
@@ -190,6 +196,16 @@ refreshed `artifacts/ui/data-interpretation-preview.png`,
 `partial_visible_rows=[]` for both preview and remap `Review Summary` trees. This supports the
 automated PyQt replay claim that the review summary no longer shows clipped rows in this fixture;
 it does not prove mature import-wizard UX or Windows human desktop acceptance.
+
+Human-like clipped-row quality gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+-> `21 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+refreshed `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md` and screenshots。
+The walkthrough quality review now fails on captured `partial_visible_rows`; latest artifact records
+`15` checked table/tree widgets, `0` geometry findings, and `0` clipped-row findings. This supports
+automated artifact quality gating only; it does not replace human Windows launcher / DPI /
+dual-monitor verification.
 
 Training updated refresh route gate:
 `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/training/test_training_panel.py -q`

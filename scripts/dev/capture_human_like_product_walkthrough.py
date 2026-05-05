@@ -1377,6 +1377,7 @@ def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
                 if has_right_boundary
                 else 0
             )
+            partial_visible_rows = geometry_int_list(state, "partial_visible_rows")
             fits_panel = (
                 header_length <= viewport_width + GEOMETRY_WIDTH_TOLERANCE_PX
                 and horizontal_scrollbar_max == 0
@@ -1386,6 +1387,7 @@ def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
                 not has_right_boundary
                 or abs(right_gap_to_boundary) <= GEOMETRY_WIDTH_TOLERANCE_PX
             )
+            shows_only_complete_rows = not partial_visible_rows
             row = {
                 "phase": phase_name,
                 "widget": widget_name,
@@ -1402,27 +1404,43 @@ def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
                 "right_boundary_x": geometry_int(state, "right_boundary_x"),
                 "right_gap_to_boundary": right_gap_to_boundary,
                 "horizontal_scrollbar_max": horizontal_scrollbar_max,
+                "vertical_scrollbar_max": geometry_int(
+                    state,
+                    "vertical_scrollbar_max",
+                ),
+                "partial_visible_rows": partial_visible_rows,
                 "fits_panel": fits_panel,
                 "fills_panel": fills_panel,
                 "fills_content_boundary": fills_content_boundary,
+                "shows_only_complete_rows": shows_only_complete_rows,
                 "resize_modes": list(state.get("resize_modes", [])),
                 "column_widths": list(state.get("column_widths", [])),
                 "text_elide_mode": state.get("text_elide_mode"),
                 "alternating_row_colors": state.get("alternating_row_colors"),
             }
             rows.append(row)
-            if not fits_panel or not fills_panel or not fills_content_boundary:
+            if (
+                not fits_panel
+                or not fills_panel
+                or not fills_content_boundary
+                or not shows_only_complete_rows
+            ):
                 findings.append(row)
+    clipped_row_findings = [
+        row for row in findings if not row.get("shows_only_complete_rows", True)
+    ]
     return {
         "passed": bool(rows) and not findings,
         "checked_widgets": len(rows),
         "width_tolerance_px": GEOMETRY_WIDTH_TOLERANCE_PX,
         "findings": findings,
+        "clipped_row_findings": clipped_row_findings,
         "rows": rows,
         "boundary": (
             "Automated geometry smoke checks header length, viewport width, "
-            "horizontal scrollbar state, and table-to-content-boundary gaps. "
-            "Human review still decides visual polish."
+            "horizontal scrollbar state, table-to-content-boundary gaps, and "
+            "whether visible rows are clipped at the viewport edge. Human review "
+            "still decides visual polish."
         ),
     }
 
@@ -1449,6 +1467,20 @@ def geometry_int(state: dict[str, Any], key: str) -> int:
         return int(state.get(key, 0))
     except (TypeError, ValueError):
         return 0
+
+
+def geometry_int_list(state: dict[str, Any], key: str) -> list[int]:
+    """Read a list of integer geometry fields from an artifact row."""
+    value = state.get(key, [])
+    if not isinstance(value, list):
+        return []
+    rows: list[int] = []
+    for item in value:
+        try:
+            rows.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return rows
 
 
 def forbidden_visible_text(texts: list[str]) -> list[str]:
@@ -1616,6 +1648,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
                 f"- table geometry passed: `{table_geometry.get('passed')}`",
                 f"- checked table/tree widgets: `{table_geometry.get('checked_widgets')}`",
                 f"- table geometry findings: `{len(table_geometry.get('findings', []))}`",
+                f"- clipped row findings: `{len(table_geometry.get('clipped_row_findings', []))}`",
             ]
         )
     lines.extend(["", "## Observable Evidence", ""])
