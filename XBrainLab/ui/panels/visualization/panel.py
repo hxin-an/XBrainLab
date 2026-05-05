@@ -356,13 +356,10 @@ class VisualizationPanel(BasePanel):
         if run_data == "average" or run_name == "Average":
             averaged_record = self._averaged_record_from_application_query(trainer)
             if averaged_record is _MISSING:
-                if (
-                    self._visualization_query_payload() is not None
-                    or self.controller is None
-                ):
+                if self._visualization_query_payload() is not None:
                     eval_record = None
                 else:
-                    eval_record = self.controller.get_averaged_record(trainer)
+                    eval_record = self._legacy_averaged_record_for_render(trainer)
             else:
                 eval_record = averaged_record
             if not eval_record:
@@ -470,6 +467,18 @@ class VisualizationPanel(BasePanel):
         if trainer_index < 0 or trainer_index >= len(records):
             return _MISSING
         return records[trainer_index]
+
+    def _legacy_averaged_record_for_render(self, trainer):
+        controller = self.controller
+        if controller is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: controller.get_averaged_record(trainer),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
 
     def _current_trainer_index(self, trainer) -> int:
         for index in range(1, self.plan_combo.count()):

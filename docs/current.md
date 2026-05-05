@@ -997,7 +997,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   failed ApplicationService visualization query 時直接回空 list，不再 fall back 到 stale
   controller trainers。最新 query-none render fallback boundary 也讓 real `Study`
   `VisualizeCommand(include_objects=True)` 意外回 `None` 時保持 empty controls，而不是回讀 stale
-  `VisualizationController.get_trainers()`。
+  `VisualizationController.get_trainers()`。最新 average stale-selection fallback boundary 又讓
+  query-none 狀態下留存的 Average selection 不再回讀 stale
+  `VisualizationController.get_averaged_record()`。
   最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。

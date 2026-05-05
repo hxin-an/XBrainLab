@@ -257,8 +257,10 @@
   `VisualizationController.get_trainers()` / `get_averaged_record()`。`include_objects` 是
   UI-only，automation / MCP `visualize` schema 不暴露也不接受它。最新 query-none render
   fallback boundary 也讓 real `Study` `VisualizeCommand(include_objects=True)` 意外回 `None`
-  時保持 empty controls，不再回讀 stale `VisualizationController.get_trainers()`。這仍不是
-  saliency/canvas screenshot acceptance。
+  時保持 empty controls，不再回讀 stale `VisualizationController.get_trainers()`；若 stale
+  Average selection 仍留在 UI，也不再回讀 stale
+  `VisualizationController.get_averaged_record()`。這仍不是 saliency/canvas screenshot
+  acceptance。
 - 最新 Visualization sidebar export cleanup 也讓 `Export Saliency` 先走 readonly
   `SaliencyCommand` gate；saliency output unavailable 時不再讀 stale trainer list 開 export dialog。
 - 最新 Visualization export trainer cleanup 又讓 saliency 可匯出時改用

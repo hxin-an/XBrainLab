@@ -307,3 +307,38 @@ def test_visualization_panel_uses_application_payload_before_stale_controller(
     args, _kwargs = current_widget.update_plot.call_args
     assert args[1] is service_trainer
     assert args[4] is average_record
+
+
+def test_visualization_panel_refuses_real_study_query_none_average_fallback(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    trainer = _make_trainer("StaleNet", repeats=1)
+    ctrl.get_averaged_record.side_effect = AssertionError(
+        "stale averaged records should not be read",
+    )
+    ctrl.get_averaged_record.reset_mock()
+    panel.friendly_map = {"Fold 1 (StaleNet)": trainer}
+    panel.plan_combo.clear()
+    panel.plan_combo.addItem("Fold 1 (StaleNet)", trainer)
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", "average")
+    current_widget = _current_mock_widget(panel)
+    current_widget.show_error.reset_mock()
+    current_widget.update_plot.reset_mock()
+
+    panel.on_update()
+
+    ctrl.get_averaged_record.assert_not_called()
+    current_widget.update_plot.assert_not_called()
+    current_widget.show_error.assert_called_once_with("No finished runs to average.")

@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Visualization Average Stale-Selection Fallback Boundary
+
+### 狀態
+
+Visualization panel now treats stale Average selections without a service payload as
+mock/legacy-only fallback. In a real `Study` context, query-none Average selection no longer reads
+`VisualizationController.get_averaged_record()`.
+
+### 已可宣稱
+
+- Real `Study` stale Visualization Average selections after a missing query result no longer
+  recover averaged records from the controller.
+- Mock / legacy panel rendering still keeps averaged-record compatibility through the explicit
+  fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/panel.py`
+- Tests: `tests/unit/ui/test_visualization_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete Visualization UX, saliency/canvas screenshot acceptance, or every
+  controller read fallback path.
+
+### 下一手重點
+
+Continue auditing remaining stale-selection and query-unavailable read fallbacks.
+
 ## 2026-05-06 Evaluation Stale-Selection Fallback Boundary
 
 ### 狀態
