@@ -167,8 +167,14 @@ class ControlSidebar(QWidget):
                     ),
                 )
                 if result is None:
-                    return
-                if result.failed:
+                    run_legacy_controller_fallback(
+                        self,
+                        lambda: self.controller.set_montage(
+                            list(chs),
+                            normalized_positions,
+                        ),
+                    )
+                elif result.failed:
                     QMessageBox.warning(
                         self,
                         "Montage blocked" if result.recoverable else "Montage failed",

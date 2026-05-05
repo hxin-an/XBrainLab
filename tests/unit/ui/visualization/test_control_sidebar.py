@@ -178,6 +178,68 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
         mock_warning.assert_called_once()
 
 
+def test_sidebar_set_montage_legacy_result_uses_controller_fallback(
+    mock_panel,
+    qtbot,
+):
+    sidebar = ControlSidebar(mock_panel)
+    qtbot.addWidget(sidebar)
+    mock_panel.controller.set_montage.return_value = None
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.information"
+        ) as mock_info,
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
+
+        sidebar.set_montage()
+
+    mock_panel.controller.set_montage.assert_called_once_with(
+        ["Ch1"],
+        [(0.0, 0.0, 0.0)],
+    )
+    mock_panel.on_update.assert_called_once()
+    mock_info.assert_called_once_with(sidebar, "Success", "Montage set")
+
+
+def test_sidebar_set_montage_refuses_real_study_controller_fallback(qtbot):
+    controller = MagicMock()
+    controller.has_epoch_data.return_value = True
+    controller.get_channel_names.return_value = ["Ch1", "Ch2"]
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.get_command_capability",
+            return_value=None,
+        ),
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.PickMontageDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            return_value=None,
+        ),
+        pytest.raises(RuntimeError, match="could not safely complete"),
+    ):
+        mock_dialog.return_value.exec.return_value = True
+        mock_dialog.return_value.get_result.return_value = (["Ch1"], [[0, 0, 0]])
+        sidebar.set_montage()
+
+    controller.set_montage.assert_not_called()
+
+
 def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
     controller = MagicMock()
     controller.get_saliency_params.return_value = None

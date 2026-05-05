@@ -211,7 +211,8 @@ use `run_legacy_controller_fallback()`. Preprocess sidebar uses the same helper 
 resample / rereference / normalize / epoch / reset fallback. Dataset panel / sidebar / action
 handler use it for metadata edit / batch metadata, smart parse, remove files, direct file import,
 clear dataset, channel selection, and post-load label compatibility fallback. Visualization saliency
-settings and AgentManager montage confirmation also use the helper. The helper allows fallback only
+settings, Visualization sidebar `Set Montage`, and AgentManager montage confirmation also use the
+helper. The helper allows fallback only
 for mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does
 not return a `CommandResult`. `tests/architecture_compliance.py` now guards this boundary by
 failing direct controller mutation calls inside UI `result is None` branches unless they go through
@@ -2786,3 +2787,29 @@ their own viewport but the table widget leaves a visible gap before the sidebar.
 
 - This is automated layout evidence. It does not replace human Windows desktop acceptance or a full
   visual design review on the user's monitor / DPI setup.
+
+## 2026-05-06 Visualization Montage Fallback Boundary
+
+### 狀態
+
+Visualization sidebar `Set Montage` now treats an unexpected missing ApplicationService result as
+an explicit mock / legacy fallback boundary instead of silently returning. Mock / legacy contexts
+can still use `VisualizationController.set_montage()`; real `Study` contexts are refused by
+`run_legacy_controller_fallback()`.
+
+### 已可宣稱
+
+- Visualization sidebar montage apply no longer has a silent no-op `result is None` path.
+- The same controller fallback refusal boundary now covers saliency settings, sidebar montage, and
+  assistant montage confirmation.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests：`tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one fallback-boundary cleanup. It does not complete the full UI refresh coordinator audit,
+  desktop visualization acceptance, or OpenGL / PyVista human verification.

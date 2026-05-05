@@ -9016,3 +9016,35 @@
     slices.
 - 不能宣稱：
   - This is an operational handoff only; it does not advance product completion by itself.
+
+### 2026-05-06 Visualization sidebar montage fallback boundary
+
+- scope：
+  - Continue `UI Command Refresh Coordinator + Controller Fallback Audit` with a small
+    Visualization sidebar mutating-path cleanup.
+  - Remove a silent `Set Montage` no-op when `execute_application_command()` unexpectedly returns
+    `None`.
+- red / focused tests：
+  - Added `test_sidebar_set_montage_legacy_result_uses_controller_fallback`; it failed because the
+    `result is None` branch returned before calling `VisualizationController.set_montage()`.
+  - Added `test_sidebar_set_montage_refuses_real_study_controller_fallback`; it failed because a
+    real `Study` missing-result path did not raise the product-runtime fallback refusal boundary.
+- 做了什麼：
+  - `ControlSidebar.set_montage()` now wraps the missing-result branch in
+    `run_legacy_controller_fallback(self, lambda: self.controller.set_montage(...))`.
+  - Mock / legacy contexts retain compatibility behavior and refresh via the existing
+    `_on_update_after_legacy_result(result)` helper.
+  - Real `Study` contexts cannot silently mutate the controller if the command adapter fails to
+    return a `CommandResult`.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_legacy_result_uses_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_montage_refuses_real_study_controller_fallback -q`
+    -> failed on no fallback call and no refusal.
+  - After fix:
+    same focused test command -> `2 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `46 passed`.
+- 不能宣稱：
+  - This does not complete full controller fallback removal, command-driven UI refresh closure,
+    visualization render acceptance, or human Windows desktop verification.

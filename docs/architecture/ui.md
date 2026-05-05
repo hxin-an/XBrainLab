@@ -120,7 +120,7 @@ clear history。Preprocess sidebar 也已用同一 helper 覆蓋 filter / resamp
 normalize / epoch / reset fallback。Dataset data-table/action paths 也已用同一 helper 覆蓋
 metadata edit / batch metadata、smart parse、remove files、direct file import、clear dataset、
 channel selection 和 post-load label compatibility fallback。Visualization saliency settings 和
-AgentManager montage confirmation fallback 也已用同一 helper 覆蓋。剩餘 `result is None` branches
+Visualization sidebar / AgentManager montage confirmation fallback 也已用同一 helper 覆蓋。剩餘 `result is None` branches
 主要是 service-unavailable UI error / blocked return，而不是 controller mutation fallback。
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation。

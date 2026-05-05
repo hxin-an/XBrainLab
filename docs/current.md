@@ -847,7 +847,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   settings、start / stop training 和 clear history 的 controller fallback 現在只允許 mock /
   legacy non-`Study` context；若 real `Study` command helper 意外回 `None`，會拒絕 fallback
   並顯示使用者可理解的安全訊息，而不是 silent controller mutation 或 raw developer wording。後續 Preprocess、Dataset、Visualization 和
-  AgentManager fallback audit 已沿用同一 helper；`tests/architecture_compliance.py` 也會阻擋
+  AgentManager fallback audit 已沿用同一 helper；最新 follow-up 也把 Visualization sidebar
+  `Set Montage` 的 missing-result branch 從 silent no-op 改成同一 explicit mock / legacy fallback
+  boundary。`tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類
   mutating controller method；合法 controller mutation 必須在 `run_legacy_controller_fallback()`
@@ -924,7 +926,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    non-`Study` only。Dataset data-table/action fallback 也已收斂 metadata edit / batch metadata、
    smart parse、remove files、direct file import、clear dataset、channel selection 和 post-load label
    compatibility fallback。Visualization saliency settings 和 AgentManager montage confirmation
-   fallback 也已收斂到同一 helper；目前剩餘 `result is None` path 主要是 service-unavailable
+   fallback 也已收斂到同一 helper；Visualization sidebar `Set Montage` missing-result fallback
+   也已收斂到同一 helper；目前剩餘 `result is None` path 主要是 service-unavailable
    blocked / critical / false returns 或已顯式標記的 mock / legacy compatibility fallback，不再是
    silent product controller mutation。`tests/architecture_compliance.py` 現在也會檢查 UI 的
    `result is None` branch 不可直接呼叫 controller mutation；mock / legacy-only fallback 必須經過

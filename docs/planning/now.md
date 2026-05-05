@@ -167,8 +167,9 @@
 - 最新 Dataset fallback audit slice 已把 metadata edit / batch metadata、smart parse、remove files、
   direct file import、clear dataset、channel selection 和 post-load label compatibility fallback 改成
   同一個 mock / legacy-only helper。剩餘 Visualization / AgentManager fallback 還要沿同一模式盤點。
-- 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings 和 assistant montage
-  confirmation fallback 改成同一個 mock / legacy-only helper。剩餘 `result is None` path 主要是
+- 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings、Visualization
+  sidebar `Set Montage` 和 assistant montage confirmation fallback 改成同一個 mock / legacy-only
+  helper。剩餘 `result is None` path 主要是
   Data Interpretation service-unavailable critical / false return 或已顯式 helper fallback。
 - 最新 montage argument cleanup slice 又把 AgentManager 與 Visualization sidebar 的 confirmed
   positions 正規化收斂到同一 helper；dialog 回傳 list / dict / numpy-like coordinates 時，command
