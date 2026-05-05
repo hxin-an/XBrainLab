@@ -97,6 +97,7 @@ class DataInterpretationCommandService:
         preview = build_interpretation_preview(
             preview_id=preview_id,
             candidate=candidate,
+            scan=scan,
         )
         self.state.record_preview(candidate, preview)
         return (
@@ -247,6 +248,8 @@ class DataInterpretationCommandService:
         preview = build_interpretation_preview(
             preview_id=preview_id,
             candidate=candidate,
+            scan=scan,
+            recipe=recipe,
         )
         decision = validate_interpretation_candidate(candidate)
         self.state.record_recipe_reload(

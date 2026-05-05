@@ -888,6 +888,14 @@ class DataInterpretationPreviewDialog(BaseDialog):
                     ),
                 )
             )
+            for diff_row in recipe_reload_summary.get("diff_rows", []) or []:
+                if not isinstance(diff_row, dict):
+                    continue
+                item = str(diff_row.get("item") or "Recipe reload")
+                status = str(diff_row.get("status") or "Review")
+                detail = str(diff_row.get("detail") or "").strip()
+                if detail:
+                    rows.append((item, status, detail))
         for label, status, values in (
             ("Warning", "Review", warnings),
             ("Confirmation", "Needs confirmation", confirmations),

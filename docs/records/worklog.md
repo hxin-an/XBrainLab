@@ -37,6 +37,58 @@
 
 ## 2026-05-05
 
+### 12:08 Recipe reload comparison rows
+
+- 做了什麼：
+  - 用 `data-interpretation-reviewer` / `ui-product-reviewer` 檢查 roadmap gap：recipe reload
+    已會 rehydrate saved choices，但 UI 只顯示 generic `Reloaded recipe / Reapplied`，沒有讓
+    使用者看到 saved recipe 與重新 scan 的差異。
+  - 先加紅燈測試，要求 backend preview payload 在 reload 時產生 `EEG files`、`Label carriers`
+    和 `Saved choices` diff rows；UI dialog 要把 `diff_rows` 顯示進 `Review Summary`。
+  - `build_interpretation_preview()` 新增 optional `scan` / `recipe` context；reload handler 會
+    傳入 recipe + rescan result，normal preview 仍只用 candidate。
+  - `recipe_reload_summary` 現在包含 `status` 和 `diff_rows`，會用 filename/carrier basename 比對
+    saved recipe selections 與 current scan，標出 `Matched` 或 `Changed`。
+  - `DataInterpretationPreviewDialog` 會把 `recipe_reload_summary.diff_rows` 轉成人話 review rows，
+    不顯示 raw JSON。
+  - 刷新 consolidated human-like walkthrough artifact。
+- 結果：
+  - 紅燈已確認：
+    - backend test 初始失敗：`build_interpretation_preview()` 不接受 `recipe` keyword。
+    - UI test 初始失敗：Review Summary 沒有 `EEG files` row。
+  - 新 artifact `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png` 可見
+    `Reloaded recipe`、`EEG files`、`Label carriers`、`Saved choices` rows。
+- 證據：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py::test_build_interpretation_preview_summarizes_recipe_reload_diff -q`
+    -> 初始紅燈，後續與 UI focused gate 一起通過。
+  - `poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_shows_recipe_reload_diff -q`
+    -> 初始紅燈，後續與 backend focused gate 一起通過。
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `16 passed`。
+  - `poetry run basedpyright XBrainLab/backend/application/data_interpretation_review.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/backend/test_application_service_workflow.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - `poetry run ruff check XBrainLab/backend/application/data_interpretation_review.py XBrainLab/backend/application/data_interpretation_service.py XBrainLab/ui/dialogs/dataset/data_interpretation_preview_dialog.py tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/backend/test_application_service_workflow.py`
+    -> pass。
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`，refreshed human-like walkthrough JSON / Markdown / screenshots。
+  - Post-change gates：
+    `git diff --check` -> pass；
+    `timeout 300s poetry run ruff check .` -> pass；
+    `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `105 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `3 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `12 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`；
+    `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`。
+- 接續 / 本輪剩餘：
+  - 這支撐 recipe reload comparison visibility，不是完整 recipe diff editor、complex conflict
+    resolver 或 Windows human desktop acceptance。
+
 ### 11:55 Data-entry routing and Dataset table fit
 
 - 做了什麼：

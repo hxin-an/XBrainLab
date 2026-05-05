@@ -262,6 +262,49 @@ UI baseline capture 結果：
   mature import wizard completion, Windows human desktop acceptance, or long-running assistant /
   MCP workflow closure.
 
+2026-05-05 Recipe reload comparison review:
+
+- Product/UI change:
+  - Reloaded recipe preview now compares saved recipe selections against the current rescan before
+    validation.
+  - Backend preview payload exposes `recipe_reload_summary.diff_rows` with user-facing `EEG files`,
+    `Label carriers`, and `Saved choices` rows.
+  - Data Interpretation wizard renders those rows in `Review Summary` instead of showing raw recipe
+    data or only a generic reapplied message.
+- TDD / focused evidence:
+  - Backend red test initially failed because `build_interpretation_preview()` did not accept
+    recipe context.
+  - UI red test initially failed because `Review Summary` did not show `EEG files` reload rows.
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/integration/backend/test_application_service_workflow.py::test_data_interpretation_to_dataset_workflow_is_non_mocked -q`
+    -> `16 passed`.
+  - Focused `ruff check` on touched backend/UI/test files -> pass.
+  - Focused `basedpyright` on touched backend/UI/test files -> `0 errors, 0 warnings, 0 notes`.
+- UI-observable artifact:
+  - `timeout 420s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`.
+  - `artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png` and
+    `human-like-walkthrough.json` now show recipe reload rows for `EEG files`, `Label carriers`,
+    and `Saved choices`.
+- Post-change gates:
+  - `git diff --check` -> pass.
+  - `timeout 300s poetry run ruff check .` -> pass.
+  - `timeout 300s poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `105 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py -q`
+    -> `12 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+- Claim boundary: this supports automated recipe reload comparison visibility. It does not prove
+  full recipe diff editing, complex conflict resolution, Windows human desktop acceptance, or mature
+  import wizard closure.
+
 2026-05-05 MCP stdio adapter session boundary:
 
 - Adapter change:

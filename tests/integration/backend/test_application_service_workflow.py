@@ -258,6 +258,11 @@ def test_data_interpretation_to_dataset_workflow_is_non_mocked(tmp_path):
         "event roles",
         "class map",
     ]
+    assert {
+        "item": "EEG files",
+        "status": "Matched",
+        "detail": "Saved recipe still matches 1 saved file(s).",
+    } in reload_preview["recipe_reload_summary"]["diff_rows"]
     assert reloaded_candidate["event_roles"]["internal_events"] == "class cue"
     assert reloaded_candidate["class_map"] == {"1": "left", "2": "right"}
     assert "choices:metadata_overrides" in reloaded_candidate["recipe_trace"]

@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 Recipe Reload Difference Review
+
+### 狀態
+
+Recipe reload preview now compares saved recipe selections with the current rescan before validation.
+The backend preview payload exposes reviewable diff rows for EEG files, label carriers, and saved
+choices; the Data Interpretation wizard renders those rows in `Review Summary`.
+
+### 已可宣稱
+
+- Reloaded recipes no longer show only a generic `reapplied` message; the user can see whether saved
+  files / label carriers still match the current scan.
+- Human-like walkthrough evidence was refreshed, including `07-recipe-reloaded.png`.
+
+### Evidence 入口
+
+- Backend/UI tests：`tests/unit/backend/application/test_data_interpretation_review.py`、
+  `tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py`
+- Workflow test：`tests/integration/backend/test_application_service_workflow.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/07-recipe-reloaded.png`
+- Walkthrough report：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+
+### 不能宣稱完成
+
+- 這不是完整 recipe diff editor，也不是人類 Windows desktop acceptance。
+- 這不處理複雜 recipe conflict resolution；目前只是讓 rescan comparison 可見。
+
+### 下一手重點
+
+把 same pattern 延伸到更成熟的 import wizard conflict handling：missing source、renamed files、
+anchor reconciliation 和 label carrier remap。
+
 ## 2026-05-05 Data Entry Routing And Dataset Table Fit
 
 ### 狀態

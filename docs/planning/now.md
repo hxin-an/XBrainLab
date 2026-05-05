@@ -349,6 +349,9 @@
   - warnings、confirmations、blocked reasons、downstream impact 和 format boundaries 已改成
     `Review Summary` table，不再是大段 plain text review dump；Data Interpretation replay JSON
     保存 `review_summary_rows`。
+  - Recipe reload preview 現在會把 saved recipe 與重新 scan 的 comparison 顯示為
+    `EEG files`、`Label carriers`、`Saved choices` rows，區分 matched / changed，不再只顯示
+    一句 `reapplied`。
   - 最新 UI table-fit polish 讓 label / event / recipe trace tables 用 stretch + elide 控制欄寬，
     `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄 stretch
     填滿主 panel，其他欄保留 resize-to-contents，避免載入後表格內縮。

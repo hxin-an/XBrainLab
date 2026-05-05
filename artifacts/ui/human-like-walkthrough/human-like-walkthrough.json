@@ -239,19 +239,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -395,19 +395,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -511,19 +511,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -1860,6 +1860,21 @@
             "Reloaded recipe",
             "Reapplied",
             "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+          ],
+          [
+            "EEG files",
+            "Matched",
+            "Saved recipe still matches 2 saved file(s)."
+          ],
+          [
+            "Label carriers",
+            "Matched",
+            "Saved recipe still matches 1 saved carrier(s)."
+          ],
+          [
+            "Saved choices",
+            "Reapplied",
+            "selected EEG files, metadata overrides, label carrier choices, event roles."
           ],
           [
             "Warning",
@@ -3559,19 +3574,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -3795,19 +3810,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -4550,19 +4565,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -4630,19 +4645,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -4674,19 +4689,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -5434,19 +5449,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -5544,19 +5559,19 @@
           "text": "Add Labels to Loaded Data",
           "enabled": false,
           "checked": null,
-          "tooltip": "Interpret a data source before adding labels."
+          "tooltip": "Load raw data before attaching labels."
         },
         {
           "text": "Smart Parse Metadata",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Auto-extract Subject/Session from filenames"
+          "tooltip": "Load raw data before applying smart parse."
         },
         {
           "text": "Channel Selection",
-          "enabled": true,
+          "enabled": false,
           "checked": null,
-          "tooltip": "Select specific channels to keep"
+          "tooltip": "Load raw data before preprocessing."
         },
         {
           "text": "Clear Dataset",
@@ -13496,13 +13511,31 @@
           "class_map": {},
           "recipe_reload_summary": {
             "recipe_id": "recipe-7",
+            "status": "matched",
             "reapplied_choice_types": [
               "selected EEG files",
               "metadata overrides",
               "label carrier choices",
               "event roles"
             ],
-            "message": "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+            "message": "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles.",
+            "diff_rows": [
+              {
+                "item": "EEG files",
+                "status": "Matched",
+                "detail": "Saved recipe still matches 2 saved file(s)."
+              },
+              {
+                "item": "Label carriers",
+                "status": "Matched",
+                "detail": "Saved recipe still matches 1 saved carrier(s)."
+              },
+              {
+                "item": "Saved choices",
+                "status": "Reapplied",
+                "detail": "selected EEG files, metadata overrides, label carrier choices, event roles."
+              }
+            ]
           }
         },
         "validation_decision": {
@@ -17807,33 +17840,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 865417,
+      "pid": 907421,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835924
+      "max_rss_kb": 836684
     },
     {
       "label": "before_close",
-      "pid": 865417,
+      "pid": 907421,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1067552
+      "max_rss_kb": 1068468
     },
     {
       "label": "after_close",
-      "pid": 865417,
+      "pid": 907421,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1067552
+      "max_rss_kb": 1068468
     }
   ],
   "ui_quality_review": {
@@ -18000,10 +18033,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 231628,
+      "rss_growth_kb": 231784,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 3.89
+  "elapsed_seconds": 3.917
 }

@@ -62,6 +62,60 @@ def test_build_interpretation_preview_serializes_review_payload():
     assert preview.event_roles == {"trial_type": "class cue"}
 
 
+def test_build_interpretation_preview_summarizes_recipe_reload_diff():
+    recipe = SimpleNamespace(
+        recipe_id="recipe-1",
+        source_path="/data",
+        selected_eeg_files=["/data/sub-01.fif", "/data/missing.fif"],
+        label_carriers=["/data/old_events.tsv"],
+        metadata=[],
+        event_roles={"trial_type": "class cue"},
+        class_map={"1": "left"},
+    )
+    scan = SimpleNamespace(
+        source_path="/data",
+        eeg_files=["/data/sub-01.fif", "/data/sub-02.fif"],
+        label_carriers=["/data/events.tsv"],
+    )
+
+    preview = build_interpretation_preview(
+        preview_id="preview-1",
+        candidate=_candidate(
+            selected_eeg_files=["/data/sub-01.fif", "/data/missing.fif"],
+            label_carriers=["/data/events.tsv"],
+            choices={
+                "recipe_id": "recipe-1",
+                "selected_eeg_files": ["/data/sub-01.fif", "/data/missing.fif"],
+                "event_roles": {"trial_type": "class cue"},
+                "class_map": {"1": "left"},
+            },
+        ),
+        recipe=recipe,
+        scan=scan,
+    )
+
+    summary = preview.recipe_reload_summary
+
+    assert summary["status"] == "needs_review"
+    assert summary["recipe_id"] == "recipe-1"
+    assert {
+        "item": "EEG files",
+        "status": "Changed",
+        "detail": (
+            "Matched 1 saved file(s). Missing from scan: missing.fif. "
+            "New in scan: sub-02.fif."
+        ),
+    } in summary["diff_rows"]
+    assert {
+        "item": "Label carriers",
+        "status": "Changed",
+        "detail": (
+            "Matched 0 saved carrier(s). Missing from scan: old_events.tsv. "
+            "New in scan: events.tsv."
+        ),
+    } in summary["diff_rows"]
+
+
 def test_validate_interpretation_candidate_needs_confirmation_and_blocked():
     needs_confirmation = validate_interpretation_candidate(_candidate())
     blocked = validate_interpretation_candidate(

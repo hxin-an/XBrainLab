@@ -493,6 +493,11 @@ JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，a
 顯示 `File=Stretch` 且整體欄位填滿主 panel。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。
+最新 recipe reload review slice 又把 saved recipe 與重新 scan 的 comparison 補進 preview
+payload 和 wizard `Review Summary`：reload dialog 現在會顯示 `EEG files`、`Label carriers`、
+`Saved choices` 這類 matched / changed rows，而不是只說 choices reapplied。`07-recipe-reloaded.png`
+和 human-like walkthrough JSON 已刷新。這支撐 recipe reload UI 明確顯示差異的 automated
+evidence；仍不是完整 recipe diff editor 或 human desktop acceptance。
 
 ## 可信狀態
 

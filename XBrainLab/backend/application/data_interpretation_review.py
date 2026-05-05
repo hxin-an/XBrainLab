@@ -52,6 +52,8 @@ def build_interpretation_preview(
     *,
     preview_id: str,
     candidate: Any,
+    scan: Any | None = None,
+    recipe: Any | None = None,
 ) -> InterpretationPreview:
     """Create a UI/agent-friendly preview for a candidate interpretation."""
     file_count = len(candidate.selected_eeg_files)
@@ -92,6 +94,9 @@ def build_interpretation_preview(
         class_map=dict(candidate.class_map),
         recipe_reload_summary=_recipe_reload_summary(
             getattr(candidate, "choices", {}),
+            scan=scan,
+            recipe=recipe,
+            candidate=candidate,
         ),
     )
 
@@ -133,7 +138,13 @@ def validate_interpretation_candidate(candidate: Any) -> ValidationDecision:
     )
 
 
-def _recipe_reload_summary(choices: dict[str, Any]) -> dict[str, Any]:
+def _recipe_reload_summary(
+    choices: dict[str, Any],
+    *,
+    scan: Any | None = None,
+    recipe: Any | None = None,
+    candidate: Any | None = None,
+) -> dict[str, Any]:
     recipe_id = str(choices.get("recipe_id") or "").strip()
     if not recipe_id:
         return {}
@@ -153,11 +164,128 @@ def _recipe_reload_summary(choices: dict[str, Any]) -> dict[str, Any]:
         )
     else:
         message = "Saved recipe source was rescanned before validation."
+    diff_rows = _recipe_reload_diff_rows(
+        recipe=recipe,
+        scan=scan,
+        candidate=candidate,
+        reapplied_choice_types=reapplied,
+    )
+    changed = any(row.get("status") == "Changed" for row in diff_rows)
     return {
         "recipe_id": recipe_id,
+        "status": "needs_review" if changed else "matched",
         "reapplied_choice_types": reapplied,
         "message": message,
+        "diff_rows": diff_rows,
     }
+
+
+def _recipe_reload_diff_rows(
+    *,
+    recipe: Any | None,
+    scan: Any | None,
+    candidate: Any | None,
+    reapplied_choice_types: list[str],
+) -> list[dict[str, str]]:
+    if recipe is None and scan is None and candidate is None:
+        return []
+    rows: list[dict[str, str]] = []
+    saved_files = _path_values(
+        getattr(recipe, "selected_eeg_files", []) if recipe is not None else []
+    )
+    current_files = _path_values(
+        getattr(scan, "eeg_files", [])
+        if scan is not None
+        else getattr(candidate, "selected_eeg_files", [])
+    )
+    rows.append(
+        _path_diff_row(
+            item="EEG files",
+            saved=saved_files,
+            current=current_files,
+            saved_label="saved file",
+        )
+    )
+
+    saved_carriers = _path_values(
+        getattr(recipe, "label_carriers", []) if recipe is not None else []
+    )
+    if not saved_carriers and recipe is not None:
+        saved_carriers = _path_values(
+            item.get("path")
+            for item in getattr(recipe, "label_carrier_plan", [])
+            if isinstance(item, dict)
+        )
+    current_carriers = _path_values(
+        getattr(scan, "label_carriers", [])
+        if scan is not None
+        else getattr(candidate, "label_carriers", [])
+    )
+    if saved_carriers or current_carriers:
+        rows.append(
+            _path_diff_row(
+                item="Label carriers",
+                saved=saved_carriers,
+                current=current_carriers,
+                saved_label="saved carrier",
+            )
+        )
+    if reapplied_choice_types:
+        rows.append(
+            {
+                "item": "Saved choices",
+                "status": "Reapplied",
+                "detail": ", ".join(reapplied_choice_types) + ".",
+            }
+        )
+    return rows
+
+
+def _path_diff_row(
+    *,
+    item: str,
+    saved: list[str],
+    current: list[str],
+    saved_label: str,
+) -> dict[str, str]:
+    matched = [name for name in saved if name in set(current)]
+    missing = [name for name in saved if name not in set(current)]
+    new = [name for name in current if name not in set(saved)]
+    if missing or new:
+        detail_parts = [
+            f"Matched {len(matched)} {saved_label}(s).",
+        ]
+        if missing:
+            detail_parts.append("Missing from scan: " + ", ".join(missing) + ".")
+        if new:
+            detail_parts.append("New in scan: " + ", ".join(new) + ".")
+        return {
+            "item": item,
+            "status": "Changed",
+            "detail": " ".join(detail_parts),
+        }
+    detail = (
+        f"Saved recipe still matches {len(matched)} {saved_label}(s)."
+        if saved
+        else f"Current scan has {len(current)} item(s); recipe had no saved selection."
+    )
+    return {
+        "item": item,
+        "status": "Matched",
+        "detail": detail,
+    }
+
+
+def _path_values(values: Any) -> list[str]:
+    result: list[str] = []
+    for value in values or []:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        name = Path(text).name or text
+        if name not in result:
+            result.append(name)
+    return result
 
 
 def _serialize(value: Any) -> Any:

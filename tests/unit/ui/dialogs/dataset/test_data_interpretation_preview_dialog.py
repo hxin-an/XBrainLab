@@ -483,6 +483,42 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
     assert "Saved recipe choices were reapplied before validation" in details
 
 
+def test_data_interpretation_preview_dialog_shows_recipe_reload_diff(qtbot):
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp/source"},
+        preview={
+            "recipe_reload_summary": {
+                "message": "Saved recipe choices were reapplied before validation.",
+                "diff_rows": [
+                    {
+                        "item": "EEG files",
+                        "status": "Changed",
+                        "detail": (
+                            "Matched 1 saved file(s). Missing from scan: "
+                            "missing.fif. New in scan: sub-02.fif."
+                        ),
+                    },
+                    {
+                        "item": "Saved choices",
+                        "status": "Reapplied",
+                        "detail": "metadata overrides, event roles.",
+                    },
+                ],
+            },
+        },
+        validation_decision={"decision": "needs_confirmation"},
+    )
+    qtbot.addWidget(dialog)
+
+    details = _tree_text(dialog.review_tree)
+
+    assert "EEG files" in details
+    assert "Changed" in details
+    assert "missing.fif" in details
+    assert "Saved choices" in details
+
+
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
