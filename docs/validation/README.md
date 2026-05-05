@@ -127,7 +127,12 @@ UI baseline capture 結果：
   - architecture compliance now fails new direct `_create_bridge(..., self.update_panel)` and
     `_create_bridge(..., self.refresh_from_observer)` panel call sites; simple observer refresh must
     use `BasePanel._create_refresh_bridge()`.
+  - `BasePanel.refresh_from_observer()` now delegates to `refresh_after_observer()`, which refreshes
+    the event source panel plus aggregate info and assistant backend status.
   - focused gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `32 passed`.
+  - architecture guard gate:
     `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
     -> `9 passed`.
 - missing-result legacy refresh guard:

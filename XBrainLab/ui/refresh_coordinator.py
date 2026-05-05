@@ -37,11 +37,7 @@ def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
             panel = getattr(main_window, panel_name, None)
             refreshed = refresh_panel(panel) or refreshed
 
-        refreshed = _call_noarg(main_window, "update_info_panel") or refreshed
-
-        agent_manager = getattr(main_window, "agent_manager", None)
-        refreshed = _call_noarg(agent_manager, "refresh_backend_status") or refreshed
-        return refreshed
+        return _refresh_shared_status(main_window) or refreshed
     finally:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
@@ -52,16 +48,38 @@ def refresh_after_navigation(main_window: Any, index: int) -> bool:
         return False
     panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
     refreshed = refresh_panel(panel)
-    refreshed = _call_noarg(main_window, "update_info_panel") or refreshed
+    return _refresh_shared_status(main_window) or refreshed
 
-    agent_manager = getattr(main_window, "agent_manager", None)
-    refreshed = _call_noarg(agent_manager, "refresh_backend_status") or refreshed
-    return refreshed
+
+def refresh_after_observer(context: Any) -> bool:
+    """Refresh one observer source panel plus shared status surfaces."""
+    main_window = find_main_window(context)
+    if main_window is None:
+        return refresh_panel(context)
+
+    main_window_id = id(main_window)
+    if main_window_id in _REFRESHING_MAIN_WINDOWS:
+        return False
+
+    _REFRESHING_MAIN_WINDOWS.add(main_window_id)
+    try:
+        refreshed = refresh_panel(context)
+        return _refresh_shared_status(main_window) or refreshed
+    finally:
+        _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
 
 def refresh_panel(panel: Any) -> bool:
     """Refresh one workflow panel through the shared safe call boundary."""
     return _call_noarg(panel, "update_panel")
+
+
+def _refresh_shared_status(main_window: Any) -> bool:
+    refreshed = _call_noarg(main_window, "update_info_panel")
+
+    agent_manager = getattr(main_window, "agent_manager", None)
+    refreshed = _call_noarg(agent_manager, "refresh_backend_status") or refreshed
+    return refreshed
 
 
 def find_main_window(context: Any) -> Any | None:

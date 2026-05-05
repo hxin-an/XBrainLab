@@ -114,8 +114,9 @@
   status。這是小切片，還不代表 observer / callback refresh 已收斂。
 - 最新 observer refresh cleanup 已把 Dataset / Preprocess / Training / Evaluation / Visualization
   的單純 observer `event -> update_panel()` bridge 改成 `refresh_from_observer()`，再委派
-  `refresh_panel()`。callback-specific handlers 仍保留，例如 import-finished、TrainingPanel
-  start/stop 和 live training update loop。
+  `refresh_after_observer()`；simple observer refresh 現在會刷新事件來源 panel、aggregate info
+  panel 和 assistant backend status。callback-specific handlers 仍保留，例如 import-finished、
+  TrainingPanel start/stop 和 live training update loop。
 - 最新 Dataset import-finished callback cleanup 已把 success refresh 移回 `data_changed`
   simple refresh bridge；`import_finished` callback 只保留 warnings，避免 legacy controller import
   成功時二次刷新 Dataset panel。

@@ -8,6 +8,7 @@ from XBrainLab.backend.application import ChangedState, CommandResult
 from XBrainLab.ui.refresh_coordinator import (
     refresh_after_command,
     refresh_after_navigation,
+    refresh_after_observer,
     refresh_panel,
 )
 
@@ -239,6 +240,24 @@ def test_navigation_refresh_ignores_unknown_panel_index():
     assert main_window.visualization_panel.update_calls == 0
     assert info.update_calls == 0
     assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_observer_refreshes_source_panel_and_shared_status():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel)
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
 
 
 def test_refresh_panel_uses_safe_noarg_update_call():

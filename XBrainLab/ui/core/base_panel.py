@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QWidget
 
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.core.observer_bridge import QtObserverBridge
-from XBrainLab.ui.refresh_coordinator import refresh_panel
+from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -79,7 +79,7 @@ class BasePanel(QWidget):
 
     def refresh_from_observer(self, *args, **kwargs) -> bool:
         """Refresh this panel from a backend observer event via coordinator."""
-        return refresh_panel(self)
+        return refresh_after_observer(self)
 
     def _create_refresh_bridge(
         self,

@@ -8243,3 +8243,42 @@
 - 不能宣稱：
   - This is one observer callback cleanup. It does not remove controller observer events, close the
     full UI refresh coordinator audit, or replace human desktop acceptance.
+
+### 2026-05-05 20:56 Observer shared-status refresh coordinator slice
+
+- scope：
+  - Simple observer refresh path through `BasePanel._create_refresh_bridge()`.
+- current gap：
+  - Simple observer refresh had been centralized to `BasePanel.refresh_from_observer()` but that
+    method delegated only to `refresh_panel(self)`.
+  - Backend observer events could refresh a panel while aggregate info panel and assistant backend
+    status waited for another refresh path.
+- red / focused test：
+  - Added `refresh_after_observer` expectations in `tests/unit/ui/test_refresh_coordinator.py` and
+    changed `BasePanel.refresh_from_observer()` delegation test to require the new coordinator path.
+  - Red result:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py::test_refresh_from_observer_delegates_to_coordinator -q`
+    -> import error because `refresh_after_observer` did not exist yet.
+- 做了什麼：
+  - Added `refresh_after_observer(context)` to `XBrainLab.ui.refresh_coordinator`.
+  - Added `_refresh_shared_status(main_window)` and reused it from command, navigation, and observer
+    refresh paths.
+  - Updated `BasePanel.refresh_from_observer()` to call `refresh_after_observer(self)`.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py::test_refresh_from_observer_delegates_to_coordinator -q`
+    -> `12 passed`.
+  - `poetry run ruff check XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/core/base_panel.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/core/base_panel.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `32 passed`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is simple observer shared-status cleanup only. Callback-specific observer handlers,
+    command-only refresh closure, full controller fallback removal, and human desktop acceptance
+    remain open.

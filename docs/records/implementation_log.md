@@ -2241,3 +2241,30 @@ success; it only surfaces import warnings.
 
 - This is one callback cleanup, not full observer callback classification or command-driven UI
   refresh closure.
+
+## 2026-05-05 Observer Shared-Status Refresh
+
+### 狀態
+
+Simple observer refresh now delegates through `refresh_after_observer()`. A backend observer event
+handled by `BasePanel._create_refresh_bridge()` refreshes the event source panel plus aggregate info
+and assistant backend status through the shared coordinator.
+
+### 已可宣稱
+
+- Simple observer events no longer refresh only the source panel while leaving shared status surfaces
+  stale.
+- Command-result, navigation, and simple observer refresh now share the same safe no-arg status
+  refresh helper.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/core/base_panel.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`, `tests/unit/ui/core/test_base_panel.py`,
+  `tests/unit/ui/test_panel_event_bridges.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full command-driven UI refresh closure; callback-specific observer handlers and
+  product runtime fallback audit remain open.

@@ -77,10 +77,12 @@ def test_methods_exist(panel):
 
 
 def test_refresh_from_observer_delegates_to_coordinator(panel):
-    with patch("XBrainLab.ui.core.base_panel.refresh_panel") as refresh_panel:
+    with patch(
+        "XBrainLab.ui.core.base_panel.refresh_after_observer",
+    ) as refresh_after_observer:
         panel.refresh_from_observer("event_arg", name="event")
 
-    refresh_panel.assert_called_once_with(panel)
+    refresh_after_observer.assert_called_once_with(panel)
 
 
 class TestCreateBridge:

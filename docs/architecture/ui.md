@@ -62,8 +62,9 @@ panel、aggregate info panel 和 assistant backend status。因此 tab-switch re
 以及 backend event 經 observer bridge 觸發。
 後續 observer cleanup 已把單純的 `event -> update_panel()` bridge 先收斂到
 `BasePanel._create_refresh_bridge()`；該 helper 統一接到 `refresh_from_observer()`，再委派
-`refresh_coordinator.refresh_panel()`。這保留 backend observer event 語意，但把 safe no-arg
-panel refresh call 放進同一個 coordinator 邊界。
+`refresh_coordinator.refresh_after_observer()`。這保留 backend observer event 語意，但把 safe
+no-arg panel refresh、aggregate info refresh 和 assistant backend status refresh 放進同一個
+coordinator 邊界。
 
 ## Controller 取得方式
 
