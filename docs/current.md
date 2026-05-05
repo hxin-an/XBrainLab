@@ -866,7 +866,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Start Training cleanup 也把 start gate 改成 backend `train` capability 優先：real
   command-capable path 若 capability enabled，stale `TrainingController.is_training()` 不會再讓
   Start button silently skip `TrainCommand`；controller running check 只留給 no-capability mock /
-  legacy path。
+  legacy path。最新 architecture guard follow-up 又把這類 pre-command readiness bug 納入
+  `tests/architecture_compliance.py`：有 `get_command_capability()` 的 UI command path 不可用
+  `controller.is_training()`、`has_datasets()` 或 `get_trainer()` 做 gating，除非明確在
+  `capability is None` legacy branch。
   `tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

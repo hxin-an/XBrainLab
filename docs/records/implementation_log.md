@@ -2921,3 +2921,31 @@ is stale. The controller running-state check remains only for no-capability mock
 
 - This does not certify long-running desktop training acceptance, GPU/CPU resource behavior, or
   Windows human click-through.
+
+## 2026-05-06 Capability-gated Readiness Architecture Guard
+
+### 狀態
+
+Architecture compliance now guards the stale-controller readiness pattern found in Training sidebar.
+If a UI command path reads backend capability with `get_command_capability()`, it may not gate that
+command with `controller.is_training()`, `controller.has_datasets()`, or `controller.get_trainer()`
+unless the read is explicitly inside a `capability is None` legacy branch.
+
+### 已可宣稱
+
+- The split replacement and Start Training stale-controller regressions now have a static
+  architecture guard.
+- `TrainingSidebar.split_data()` now stores `generate_capability` once, making the real capability
+  path versus legacy no-capability path explicit.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`, `XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/test_architecture_compliance.py`,
+  `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This guard covers a focused Training readiness smell. It does not prove that every UI read path is
+  command-driven or that all controller read dependencies are gone.

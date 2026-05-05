@@ -9196,3 +9196,36 @@
 - 不能宣稱：
   - This does not complete long-running training acceptance, resource behavior verification, or
     human desktop click-through.
+
+### 2026-05-06 Capability-gated readiness architecture guard
+
+- scope：
+  - Add a static guard for the pre-command stale-controller readiness pattern fixed in recent
+    Training sidebar slices.
+  - Make Training split legacy readiness checks syntactically explicit.
+- red / focused test：
+  - Added architecture compliance tests for capability-gated controller readiness.
+  - Initial test command failed because `check_ui_capability_gated_controller_readiness` did not
+    exist yet.
+- 做了什麼：
+  - Added `check_ui_capability_gated_controller_readiness()` to `tests/architecture_compliance.py`.
+  - The guard flags `controller.is_training()`, `controller.has_datasets()`, and
+    `controller.get_trainer()` in functions that use `get_command_capability()`, unless the read is
+    under an explicit `capability is None` legacy branch.
+  - Rewrote `TrainingSidebar.split_data()` to store `generate_capability` once and make its
+    no-capability legacy checks explicit.
+  - Rewrote `_should_clear_datasets_before_split()` and `_should_start_training()` so controller
+    readiness reads are only inside explicit no-capability branches.
+- validation：
+  - Red gate before checker implementation:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_controller_gate_after_capability tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_allows_explicit_legacy_none_branch tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_ignores_non_capability_legacy_function -q`
+    -> failed with missing checker import.
+  - After checker implementation:
+    same architecture unit command -> `3 passed`.
+  - `poetry run python tests/architecture_compliance.py` initially flagged
+    `TrainingSidebar.split_data()` inline capability check; after the explicit `generate_capability`
+    cleanup it passed with `Architecture compliant!`.
+- local eval：
+  - Not run. This is a static architecture guard / Training UI cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete controller fallback removal or prove all controller read paths are gone.

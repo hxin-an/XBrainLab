@@ -1,4 +1,5 @@
 from tests.architecture_compliance import (
+    check_ui_capability_gated_controller_readiness,
     check_ui_direct_controller_mutations,
     check_ui_direct_loader_apply,
     check_ui_observer_direct_update_bridges,
@@ -138,6 +139,54 @@ def select_model(self):
     )
 
     assert check_ui_post_command_controller_echoes(tmp_path) == []
+
+
+def test_capability_readiness_guard_flags_controller_gate_after_capability(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def start_training(self):
+    train_capability = get_command_capability(self, CommandName.TRAIN)
+    if train_capability is not None and not train_capability.enabled:
+        return
+    if not self.controller.is_training():
+        execute_application_command(self, TrainCommand())
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.is_training" in violations[0]
+    assert "capability is None" in violations[0]
+
+
+def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def start_training(self):
+    train_capability = get_command_capability(self, CommandName.TRAIN)
+    if train_capability is None and self.controller.is_training():
+        return
+    execute_application_command(self, TrainCommand())
+""",
+    )
+
+    assert check_ui_capability_gated_controller_readiness(tmp_path) == []
+
+
+def test_capability_readiness_guard_ignores_non_capability_legacy_function(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def start_training(self):
+    if not self.controller.is_training():
+        self.controller.start_training()
+""",
+    )
+
+    assert check_ui_capability_gated_controller_readiness(tmp_path) == []
 
 
 def test_observer_bridge_guard_flags_direct_update_panel(tmp_path):

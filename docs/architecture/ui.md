@@ -141,7 +141,9 @@ running checks remain only for no-capability mock / legacy paths.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller
-echo 重新判定 command success。
+echo 重新判定 command success。最新 guard 也防止有 `get_command_capability()` 的 UI command
+path 用 `controller.is_training()`、`has_datasets()` 或 `get_trainer()` 做 pre-command
+readiness gating，除非該 read 明確落在 `capability is None` legacy branch。
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit
 mock / legacy adapter：real `Study` context 會拒絕 direct `loader.apply(study)`，並提示使用
 Data Interpretation workflow。`find_study()` 現在也會透過 `controller.study` 辨識 real

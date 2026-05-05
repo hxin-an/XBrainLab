@@ -240,10 +240,11 @@ class TrainingSidebar(QWidget):
         if self._data_splitting_blocked():
             return
 
-        if (
-            get_command_capability(self, CommandName.GENERATE_DATASET) is None
-            and not self.controller.get_loaded_data_list()
-        ):
+        generate_capability = get_command_capability(
+            self,
+            CommandName.GENERATE_DATASET,
+        )
+        if generate_capability is None and not self.controller.get_loaded_data_list():
             QMessageBox.warning(
                 self,
                 "No Data",
@@ -251,10 +252,7 @@ class TrainingSidebar(QWidget):
             )
             return
 
-        if (
-            get_command_capability(self, CommandName.GENERATE_DATASET) is None
-            and self.controller.get_epoch_data() is None
-        ):
+        if generate_capability is None and self.controller.get_epoch_data() is None:
             QMessageBox.warning(
                 self,
                 "No Epoched Data",
@@ -262,10 +260,7 @@ class TrainingSidebar(QWidget):
             )
             return
 
-        if (
-            get_command_capability(self, CommandName.GENERATE_DATASET) is None
-            and self.controller.is_training()
-        ):
+        if generate_capability is None and self.controller.is_training():
             QMessageBox.warning(
                 self,
                 "Training Running",
@@ -364,9 +359,9 @@ class TrainingSidebar(QWidget):
             self,
             CommandName.GENERATE_DATASET,
         )
-        if generate_capability is not None:
-            return self._can_replace_existing_dataset(generate_capability.reasons)
-        return bool(self.controller.has_datasets() or self.controller.get_trainer())
+        if generate_capability is None:
+            return bool(self.controller.has_datasets() or self.controller.get_trainer())
+        return self._can_replace_existing_dataset(generate_capability.reasons)
 
     def _check_ready_after_legacy_result(self, result) -> None:
         if result is None:
@@ -529,9 +524,9 @@ class TrainingSidebar(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to start training: {e}")
 
     def _should_start_training(self, train_capability) -> bool:
-        if train_capability is not None:
-            return train_capability.enabled
-        return not self.controller.is_training()
+        if train_capability is None:
+            return not self.controller.is_training()
+        return train_capability.enabled
 
     def stop_training(self):
         """Request the controller to stop the current training run."""

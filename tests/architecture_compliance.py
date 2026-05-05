@@ -63,6 +63,11 @@ UI_POST_COMMAND_LOCAL_REFRESH_METHODS = (
     "update_panel",
 )
 UI_POST_COMMAND_CONTROLLER_ECHO_METHODS = ("get_model_holder",)
+UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS = (
+    "get_trainer",
+    "has_datasets",
+    "is_training",
+)
 
 
 def check_architecture(root_dir: str) -> int:
@@ -175,6 +180,15 @@ def check_architecture(root_dir: str) -> int:
     if controller_echo_violations:
         print("\nUI Post-command Controller Echo Violations Found:")
         for violation in controller_echo_violations:
+            print(f" - {violation}")
+        return 1
+
+    capability_readiness_violations = check_ui_capability_gated_controller_readiness(
+        Path(root_dir)
+    )
+    if capability_readiness_violations:
+        print("\nUI Capability-gated Controller Readiness Violations Found:")
+        for violation in capability_readiness_violations:
             print(f" - {violation}")
         return 1
 
@@ -504,6 +518,38 @@ def check_ui_post_command_controller_echoes(root_dir: Path) -> list[str]:
     return violations
 
 
+def check_ui_capability_gated_controller_readiness(root_dir: Path) -> list[str]:
+    """Return UI command gates that consult controller state despite capabilities."""
+    violations: list[str] = []
+    ui_dir = root_dir / "XBrainLab" / "ui"
+    if not ui_dir.exists():
+        return violations
+
+    for py_file in ui_dir.rglob("*.py"):
+        if py_file.name == "__init__.py":
+            continue
+        source = py_file.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not _contains_get_command_capability(node):
+                continue
+            visitor = _CapabilityGatedControllerReadinessVisitor()
+            visitor.visit(node)
+            violations.extend(
+                f"{py_file.relative_to(root_dir)}:{call.lineno} calls "
+                f"controller.{_call_name(call.func)}() in a capability-gated "
+                "command path; controller readiness checks must be limited to an "
+                "explicit capability is None branch."
+                for call in visitor.violations
+            )
+    return violations
+
+
 def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
     """Return observer bridges that bypass the simple refresh helper."""
     violations: list[str] = []
@@ -656,6 +702,14 @@ def _contains_service_backed_command(node: ast.AST) -> bool:
     return False
 
 
+def _contains_get_command_capability(node: ast.AST) -> bool:
+    return any(
+        isinstance(child, ast.Call)
+        and _call_name(child.func) == "get_command_capability"
+        for child in ast.walk(node)
+    )
+
+
 def _call_has_refresh_false(call: ast.Call) -> bool:
     for keyword in call.keywords:
         if keyword.arg != "refresh":
@@ -719,6 +773,35 @@ class _PostCommandControllerEchoVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+class _CapabilityGatedControllerReadinessVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.violations: list[ast.Call] = []
+        self._allow_controller_readiness = 0
+
+    def visit_If(self, node: ast.If) -> None:
+        if _is_missing_capability_guard(node.test):
+            self._allow_controller_readiness += 1
+            self.visit(node.test)
+            for statement in node.body:
+                self.visit(statement)
+            self._allow_controller_readiness -= 1
+            for statement in node.orelse:
+                self.visit(statement)
+            return
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if (
+            self._allow_controller_readiness == 0
+            and _call_name(node.func)
+            in UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS
+            and _call_receiver_is_controller(node.func)
+        ):
+            self.violations.append(node)
+            return
+        self.generic_visit(node)
+
+
 def _is_failure_guard(node: ast.AST) -> bool:
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
         return False
@@ -739,6 +822,16 @@ def _is_missing_result_guard(node: ast.AST) -> bool:
     return False
 
 
+def _is_missing_capability_guard(node: ast.AST) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return False
+    if isinstance(node, ast.Compare):
+        return _is_capability_none_compare(node)
+    if isinstance(node, ast.BoolOp):
+        return any(_is_missing_capability_guard(value) for value in node.values)
+    return False
+
+
 def _is_legacy_result_refresh_helper(function_name: str) -> bool:
     return function_name.endswith("_after_legacy_result")
 
@@ -754,6 +847,31 @@ def _is_none_failure_compare(node: ast.Compare) -> bool:
     if not (left_is_none or right_is_none):
         return False
     return isinstance(node.ops[0], (ast.Is, ast.Eq))
+
+
+def _is_capability_none_compare(node: ast.Compare) -> bool:
+    if len(node.ops) != 1 or len(node.comparators) != 1:
+        return False
+    if not isinstance(node.ops[0], (ast.Is, ast.Eq)):
+        return False
+
+    left = node.left
+    right = node.comparators[0]
+    return (
+        _is_capability_reference(left)
+        and isinstance(right, ast.Constant)
+        and right.value is None
+    ) or (
+        isinstance(left, ast.Constant)
+        and left.value is None
+        and _is_capability_reference(right)
+    )
+
+
+def _is_capability_reference(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return "capability" in node.id
+    return isinstance(node, ast.Attribute) and "capability" in node.attr
 
 
 if __name__ == "__main__":

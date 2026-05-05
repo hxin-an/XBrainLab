@@ -172,6 +172,10 @@
   `get_trainer()` 來決定是否要先確認並送 `ClearDatasetsCommand`。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
+- 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入
+  `tests/architecture_compliance.py`：有 capability surface 的 UI command path 不可再用
+  `controller.is_training()`、`has_datasets()`、`get_trainer()` gating，除非在 explicit
+  `capability is None` legacy branch。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。
