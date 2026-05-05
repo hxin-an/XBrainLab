@@ -80,9 +80,11 @@ def test_refresh_from_observer_delegates_to_coordinator(panel):
     with patch(
         "XBrainLab.ui.core.base_panel.refresh_after_observer",
     ) as refresh_after_observer:
-        panel.refresh_from_observer("event_arg", name="event")
+        panel.refresh_from_observer(
+            "event_arg", name="event", event_name="data_changed"
+        )
 
-    refresh_after_observer.assert_called_once_with(panel)
+    refresh_after_observer.assert_called_once_with(panel, event_name="data_changed")
 
 
 class TestCreateBridge:
@@ -117,8 +119,7 @@ class TestCreateBridge:
             bridge = panel._create_refresh_bridge(mock_ctrl, "data_changed")
 
         assert bridge in panel._bridges
-        create.assert_called_once_with(
-            mock_ctrl,
-            "data_changed",
-            panel.refresh_from_observer,
-        )
+        create.assert_called_once()
+        assert create.call_args.args[:2] == (mock_ctrl, "data_changed")
+        handler = create.call_args.args[2]
+        assert callable(handler)

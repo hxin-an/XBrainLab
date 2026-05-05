@@ -8672,3 +8672,46 @@
   - This proves automated PyQt replay geometry for the saved synthetic walkthrough, not human
     Windows desktop acceptance, dual-monitor / DPI, long local-model desktop sessions, or final
     Data Interpretation wizard completion.
+
+### 2026-05-05 Observer event-scope refresh coordinator
+
+- scope：
+  - Move known backend observer events closer to the command-result refresh model.
+  - Avoid repeated full panel refresh when multiple panels subscribe to the same observer event.
+  - No local LLM eval was run; this was a UI architecture fast-dev slice.
+- current gap：
+  - `BasePanel._create_refresh_bridge()` centralized simple observer wiring, but
+    `refresh_after_observer()` still refreshed only the panel that received the bridge.
+  - Because Dataset / Preprocess / Training / Evaluation / Visualization can all subscribe to
+    lifecycle events, making every bridge refresh downstream panels would duplicate work.
+- red / focused tests：
+  - Added tests requiring `data_changed` to refresh Dataset / Preprocess / Training through the
+    coordinator when the DatasetPanel owner bridge receives it.
+  - Added tests requiring `preprocess_changed` to refresh Preprocess / Training / Visualization
+    through the coordinator when the PreprocessPanel owner bridge receives it.
+  - Added secondary-subscriber tests requiring other subscribers of the same events to no-op instead
+    of duplicating the central refresh.
+  - Updated `BasePanel.refresh_from_observer()` tests so observer event names are passed to the
+    coordinator.
+- 做了什麼：
+  - `refresh_after_observer(context, event_name=...)` now routes known events via
+    `ChangedState`-style panel scopes.
+  - `BasePanel._create_refresh_bridge()` now wraps the observer callback and passes its event name
+    into `refresh_from_observer()`.
+  - Unknown observer events still refresh the source panel plus shared status.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_main_window_sync.py -q`
+    -> `47 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run mkdocs build --strict`
+    -> pass with the existing MkDocs Material 2.0 advisory banner.
+- 不能宣稱：
+  - This is not full command-driven UI refresh closure. It does not remove controller observers,
+    replace event-specific TrainingPanel callbacks, or complete human desktop acceptance.

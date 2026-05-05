@@ -2528,3 +2528,33 @@ automated replay.
 
 - This is automated UI-observable geometry evidence, not Windows human desktop acceptance or final
   Data Interpretation wizard completion.
+
+## 2026-05-05 Observer Event-Scope Refresh Coordinator
+
+### 狀態
+
+Known observer events now use coordinator-owned refresh scope instead of refreshing only whichever
+panel received the observer bridge. `data_changed` is owned by DatasetPanel and refreshes Dataset /
+Preprocess / Training once; `preprocess_changed` is owned by PreprocessPanel and refreshes
+Preprocess / Training / Visualization once. Secondary subscribers no-op to avoid repeated refreshes
+for the same backend observer event.
+
+### 已可宣稱
+
+- Simple observer refresh for data and preprocess lifecycle events is closer to command-result
+  changed-state refresh.
+- Duplicate downstream panel refresh from multiple subscribers of the same observer event is
+  explicitly guarded in tests.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/core/base_panel.py`
+- Tests：`tests/unit/ui/test_refresh_coordinator.py`, `tests/unit/ui/core/test_base_panel.py`,
+  `tests/unit/ui/test_panel_event_bridges.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not remove controller observers, complete callback-specific observer classification, or
+  make UI refresh fully command-driven. Training high-level callbacks, live updates, and remaining
+  manual UI refreshes still need explicit ownership.

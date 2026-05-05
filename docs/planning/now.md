@@ -133,6 +133,10 @@
 - 最新 observer refresh helper cleanup 已新增 `BasePanel._create_refresh_bridge()`，並把 Dataset /
   Preprocess / Training / Evaluation / Visualization 的 simple observer refresh call sites 改用
   這個 helper。這是 maintainability cleanup，仍不代表 UI refresh 已完全 command-driven。
+- 最新 observer event-scope cleanup 已讓 `data_changed` / `preprocess_changed` 使用 coordinator
+  changed-state scope：DatasetPanel owner bridge owns `data_changed` downstream refresh，
+  PreprocessPanel owner bridge owns `preprocess_changed` downstream refresh；其他同事件 subscriber
+  no-op，避免同一 backend observer event 重複刷新整組 panels。
 - 最新 downstream refresh coordinator cleanup 已讓 `training_changed` 刷新 Evaluation /
   Visualization readiness、`epoch_changed` 刷新 Visualization readiness、`evaluation_changed`
   也刷新 Visualization readiness。這把一部分 analysis panel readiness 從 observer-only 補刷新

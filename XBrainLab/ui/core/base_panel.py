@@ -77,9 +77,14 @@ class BasePanel(QWidget):
         Optional override for subclasses that need reactive updates.
         """
 
-    def refresh_from_observer(self, *args, **kwargs) -> bool:
+    def refresh_from_observer(
+        self,
+        *args,
+        event_name: str | None = None,
+        **kwargs,
+    ) -> bool:
         """Refresh this panel from a backend observer event via coordinator."""
-        return refresh_after_observer(self)
+        return refresh_after_observer(self, event_name=event_name)
 
     def _create_refresh_bridge(
         self,
@@ -87,7 +92,11 @@ class BasePanel(QWidget):
         event: str,
     ) -> QtObserverBridge:
         """Create a bridge for observer events that only refresh this panel."""
-        return self._create_bridge(controller, event, self.refresh_from_observer)
+
+        def _refresh_from_event(*args, **kwargs) -> bool:
+            return self.refresh_from_observer(*args, event_name=event, **kwargs)
+
+        return self._create_bridge(controller, event, _refresh_from_event)
 
     def _create_bridge(
         self,

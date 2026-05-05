@@ -283,6 +283,96 @@ def test_observer_refreshes_source_panel_and_shared_status():
     assert main_window.agent_manager.refresh_calls == 1
 
 
+def test_data_changed_observer_uses_central_refresh_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="data_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_data_changed_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.preprocess_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="data_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_preprocess_changed_observer_uses_central_refresh_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.preprocess_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="preprocess_changed")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 1
+    assert main_window.training_panel.update_calls == 1
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 1
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
+def test_secondary_preprocess_changed_observer_does_not_duplicate_central_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.training_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="preprocess_changed")
+
+    assert refreshed is False
+    assert main_window.dataset_panel.update_calls == 0
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 0
+    assert main_window.agent_manager.refresh_calls == 0
+
+
+def test_unknown_observer_event_keeps_source_panel_scope():
+    main_window = _main_window()
+    info = _attach_info_spy(main_window)
+    panel = main_window.dataset_panel
+    panel.main_window = main_window
+
+    refreshed = refresh_after_observer(panel, event_name="custom_event")
+
+    assert refreshed is True
+    assert main_window.dataset_panel.update_calls == 1
+    assert main_window.preprocess_panel.update_calls == 0
+    assert main_window.training_panel.update_calls == 0
+    assert main_window.evaluation_panel.update_calls == 0
+    assert main_window.visualization_panel.update_calls == 0
+    assert info.update_calls == 1
+    assert main_window.agent_manager.refresh_calls == 1
+
+
 def test_refresh_panel_uses_safe_noarg_update_call():
     panel = _PanelSpy()
 

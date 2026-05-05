@@ -811,7 +811,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   analysis panels 對 observer-only refresh 的依賴。最新 TrainingPanel callback cleanup 又讓
   `training_started`、`training_stopped`、`config_changed` 和 `history_cleared` 這些高層事件
   handler 在完成自身 UI 更新後刷新 aggregate info panel 和 assistant backend status；
-  high-frequency `training_updated` 仍維持 event-specific live update loop。2026-05-05 reviewer finding 已明確接受：
+  high-frequency `training_updated` 仍維持 event-specific live update loop。最新 observer
+  event-scope cleanup 又讓 `data_changed` 和 `preprocess_changed` 這兩種 known observer event
+  使用 coordinator changed-state scope：`data_changed` 只由 DatasetPanel owner bridge 一次刷新
+  Dataset / Preprocess / Training，`preprocess_changed` 只由 PreprocessPanel owner bridge 一次刷新
+  Preprocess / Training / Visualization；其他同事件 subscriber 不再重複刷新。2026-05-05 reviewer finding 已明確接受：
   這些進展仍只能稱為 command-driven refresh baseline / partial alignment，不阻塞目前
   validation/local eval closure，但在 product-complete 前仍必須完成 centralized coordinator
   closure。後續仍要把

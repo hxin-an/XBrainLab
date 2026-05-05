@@ -64,7 +64,7 @@ def test_preprocess_panel_observer_events_use_refresh_coordinator(qtbot):
         dataset_controller.notify("data_changed")
         qtbot.wait(50)
 
-    mock_refresh.assert_called_once_with(panel)
+    mock_refresh.assert_called_once_with(panel, event_name="data_changed")
 
 
 def test_training_panel_refreshes_once_for_successful_dataset_import(qtbot):

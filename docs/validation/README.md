@@ -139,9 +139,13 @@ UI baseline capture 結果：
     handling must use a named callback for warnings or event-specific behavior.
   - `BasePanel.refresh_from_observer()` now delegates to `refresh_after_observer()`, which refreshes
     the event source panel plus aggregate info and assistant backend status.
+  - latest event-scope follow-up maps known observer events through central changed-state scopes:
+    `data_changed` from the DatasetPanel owner bridge refreshes Dataset / Preprocess / Training;
+    `preprocess_changed` from the PreprocessPanel owner bridge refreshes Preprocess / Training /
+    Visualization; secondary subscribers no-op to avoid duplicate refresh.
   - focused gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
-    -> `32 passed`.
+    -> `38 passed`.
   - architecture guard gate:
     `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
     -> `13 passed`.

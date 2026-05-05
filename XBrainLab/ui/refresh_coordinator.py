@@ -15,6 +15,10 @@ _PANEL_NAMES_BY_INDEX = (
     "evaluation_panel",
     "visualization_panel",
 )
+_OBSERVER_EVENT_REFRESH_ROUTES = {
+    "data_changed": ("dataset_panel", ChangedState(raw_changed=True)),
+    "preprocess_changed": ("preprocess_panel", ChangedState(preprocessed_changed=True)),
+}
 
 
 def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
@@ -60,8 +64,8 @@ def refresh_after_navigation(main_window: Any, index: int) -> bool:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
 
 
-def refresh_after_observer(context: Any) -> bool:
-    """Refresh one observer source panel plus shared status surfaces."""
+def refresh_after_observer(context: Any, *, event_name: str | None = None) -> bool:
+    """Refresh UI surfaces affected by a backend observer event."""
     main_window = find_main_window(context)
     if main_window is None:
         return refresh_panel(context)
@@ -72,7 +76,18 @@ def refresh_after_observer(context: Any) -> bool:
 
     _REFRESHING_MAIN_WINDOWS.add(main_window_id)
     try:
-        refreshed = refresh_panel(context)
+        route = _OBSERVER_EVENT_REFRESH_ROUTES.get(str(event_name))
+        refreshed = False
+        if route is not None:
+            source_panel_name, changed_state = route
+            source_panel = getattr(main_window, source_panel_name, None)
+            if not _is_source_context(context, source_panel):
+                return False
+            for panel_name in _panel_names_for(changed_state):
+                panel = getattr(main_window, panel_name, None)
+                refreshed = refresh_panel(panel) or refreshed
+        else:
+            refreshed = refresh_panel(context)
         return _refresh_shared_status(main_window) or refreshed
     finally:
         _REFRESHING_MAIN_WINDOWS.discard(main_window_id)
@@ -106,6 +121,12 @@ def _refresh_shared_status(main_window: Any) -> bool:
     agent_manager = getattr(main_window, "agent_manager", None)
     refreshed = _call_noarg(agent_manager, "refresh_backend_status") or refreshed
     return refreshed
+
+
+def _is_source_context(context: Any, source_panel: Any) -> bool:
+    if source_panel is None:
+        return False
+    return context is source_panel or getattr(context, "panel", None) is source_panel
 
 
 def find_main_window(context: Any) -> Any | None:
