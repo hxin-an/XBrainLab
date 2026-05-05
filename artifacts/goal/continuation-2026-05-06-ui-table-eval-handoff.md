@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+3ecb698 ui: release metrics chart canvas on close
 62b7f64 ui: clean up confusion matrix canvas
 5ab35ba ui: release saliency canvases on replace
 f9acb77 ui: release plot window figures on close
@@ -281,6 +282,11 @@ bb57beb ui: use backend truth for split replacement
     `deleteLater()` existing canvas or message widgets, and clear references before drawing new
     content.
   - This is focused Evaluation tab widget cleanup, not full evaluation UI soak evidence.
+- Metrics chart close cleanup:
+  - `MetricsBarChartWidget.closeEvent()` now closes the current Matplotlib figure, detaches /
+    `deleteLater()` the canvas, and clears figure / canvas / axes references.
+  - This covers the Evaluation tab per-class metrics chart close path, not long-run Evaluation
+    memory trend proof.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -969,6 +975,38 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 62b7f64; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_close_releases_figure_and_canvas \
+  tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_creates \
+  tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_update_plot_no_data \
+  tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_update_plot_layout_failure_is_not_logged_as_error \
+  -q
+# 4 passed for 3ecb698
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  tests/unit/ui/test_panel_event_bridges.py \
+  tests/unit/ui/test_ui_components.py::TestConfusionMatrix \
+  tests/unit/ui/test_ui_components.py::TestMetricsBarChart \
+  -q
+# 30 passed for 3ecb698
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 3ecb698
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 3ecb698
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 3ecb698; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
