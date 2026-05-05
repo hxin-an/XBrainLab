@@ -178,6 +178,9 @@
   `capability is None` legacy branch。最新 extension 也覆蓋 `validate_ready()`、`has_model()`、
   `has_training_option()`；`TrainingSidebar.check_ready_to_train()` 已改成 explicit
   service-capability / no-capability legacy branch。
+- 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
+  有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
+  legacy lock/data reads 只留在 explicit no-capability branch。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
   legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。

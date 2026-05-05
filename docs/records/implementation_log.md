@@ -3005,3 +3005,32 @@ controller readiness, keeping real `Study` button state aligned with backend cap
 
 - This is still a focused guard extension. It does not prove all UI read/render paths are fully
   command-driven or that the UI refresh coordinator is complete.
+
+## 2026-05-06 Dataset Sidebar Capability-First Render State
+
+### 狀態
+
+Dataset sidebar button state and tooltips now stay on backend capability truth when a real `Study`
+provides command capabilities. `DatasetController.is_locked()` and `has_data()` reads are limited to
+explicit no-capability legacy branches.
+
+Architecture compliance now guards these dataset lock/data controller reads alongside the existing
+training readiness checks.
+
+### 已可宣稱
+
+- Stale dataset controller lock/data state no longer participates in capability-backed sidebar
+  rendering.
+- The guard covers the Dataset sidebar render smell that could otherwise reappear.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`, `tests/architecture_compliance.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py`,
+  `tests/unit/ui/dataset/test_dataset_sidebar.py`, `tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete full command-driven UI refresh coordination or remove all controller reads
+  used for table rendering / dialog data population.

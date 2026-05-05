@@ -1134,6 +1134,8 @@ class TestDatasetSidebar:
         assert sb.smart_parse_btn.toolTip() == (
             "Auto-extract Subject/Session from filenames"
         )
+        panel.controller.is_locked.assert_not_called()
+        panel.controller.has_data.assert_not_called()
 
     def test_open_channel_selection_uses_backend_preprocess_capability(self, qtbot):
         from XBrainLab.backend.study import Study

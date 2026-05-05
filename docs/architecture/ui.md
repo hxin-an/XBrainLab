@@ -150,6 +150,10 @@ readiness gating，除非該 read 明確落在 `capability is None` legacy branc
 也覆蓋 Training readiness 的 `validate_ready()`、`has_model()`、`has_training_option()` echo。
 `TrainingSidebar.check_ready_to_train()` 已改成明確 service-capability branch / no-capability
 legacy branch，避免 stale controller readiness 混入 real `Study` capability truth。
+Dataset sidebar render state follows the same boundary: with backend capabilities present,
+`update_sidebar()` no longer reads `DatasetController.is_locked()` / `has_data()` before setting
+button state or tooltips. Those controller reads are limited to explicit no-capability legacy
+branches, and architecture compliance guards this pattern.
 後續 raw-loader boundary cleanup 又把舊 `DatasetPanel.apply_loader()` 改成 explicit
 mock / legacy adapter：real `Study` context 會拒絕 direct `loader.apply(study)`，並提示使用
 Data Interpretation workflow。`find_study()` 現在也會透過 `controller.study` 辨識 real

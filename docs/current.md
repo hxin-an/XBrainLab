@@ -873,6 +873,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `validate_ready()`、`has_model()`、`has_training_option()` 納入 Training readiness echo
   防線；`check_ready_to_train()` 現在用明確 no-capability branch 讀 legacy controller
   readiness，不再把 controller readiness call 藏在 capability conditional expression 裡。
+  最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
+  `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
+  state；controller lock/data reads 只保留在 explicit no-capability legacy branch。
   最新 Preprocess epoching cleanup 修掉另一個 capability 混用：`open_epoching()` 現在以
   `create_epoch` capability 判定是否可進入 epoch dialog；當 `create_epoch` enabled 時，不會再被
   `preprocess` capability 的 blocked reason 透過 `check_lock()` / `check_data_loaded()` 誤擋。

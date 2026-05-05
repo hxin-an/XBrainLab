@@ -9312,3 +9312,51 @@
 - 不能宣稱：
   - This does not complete command-driven UI refresh coordinator, full controller read removal, or
     human desktop training acceptance.
+
+### 2026-05-06 Dataset sidebar capability-first render cleanup
+
+- scope：
+  - Continue the UI command/capability truth audit in a small Dataset sidebar slice.
+  - Prevent real `Study` sidebar rendering from reading stale `DatasetController.is_locked()` /
+    `has_data()` before applying backend capability truth.
+- red / focused tests：
+  - Added `test_capability_readiness_guard_flags_lock_state_after_capability`.
+  - It failed because the architecture guard did not flag `controller.is_locked()` after
+    `get_command_capability()`.
+  - Strengthened
+    `TestDatasetSidebar.test_update_sidebar_prefers_backend_capabilities_over_stale_lock` to assert
+    `is_locked()` / `has_data()` are not called when backend capabilities are present; it failed
+    because `update_sidebar()` called `is_locked()` unconditionally.
+- 做了什麼：
+  - Added `is_locked` and `has_data` to the capability-gated controller state guard.
+  - Rewrote `DatasetSidebar.update_sidebar()` so lock/data controller reads only occur inside
+    explicit no-capability legacy branches for source import, recipe reload, channel selection,
+    smart parse, and label import controls.
+- validation：
+  - Red guard before checker extension:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_lock_state_after_capability -q`
+    -> failed with `0` violations.
+  - Red product test before UI cleanup:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock -q`
+    -> failed because `controller.is_locked()` was called once.
+  - After guard extension:
+    `poetry run python tests/architecture_compliance.py` -> flagged
+    `XBrainLab/ui/panels/dataset/sidebar.py` for `is_locked()` and `has_data()` reads.
+  - After UI cleanup:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_lock tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_lock_state_after_capability -q`
+    -> `2 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar tests/unit/ui/dataset/test_dataset_sidebar.py -q`
+    -> `16 passed`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q` ->
+    `25 passed`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed.
+- local eval：
+  - Not run. This is a Dataset sidebar render / architecture guard cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete the UI refresh coordinator, all controller read removal, or human desktop
+    Data Interpretation acceptance.

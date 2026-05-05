@@ -173,8 +173,6 @@ class DatasetSidebar(QWidget):
             # Update Info Panel handled by Service
 
             # Update Button States (Tooltips only as per design)
-            is_locked = self.controller.is_locked()
-
             scan_capability = get_command_capability(self, CommandName.SCAN_SOURCE)
             reload_capability = get_command_capability(
                 self,
@@ -197,7 +195,7 @@ class DatasetSidebar(QWidget):
                     if scan_capability.enabled
                     else source_tooltip,
                 )
-            elif is_locked:
+            elif scan_capability is None and self.controller.is_locked():
                 self.import_btn.setToolTip(
                     "Dataset is locked. Reset before interpreting a new source.",
                 )
@@ -222,7 +220,7 @@ class DatasetSidebar(QWidget):
                         "Recipe reload is not available right now.",
                     ),
                 )
-            elif is_locked:
+            elif reload_capability is None and self.controller.is_locked():
                 self.reload_recipe_btn.setToolTip(
                     "Dataset is locked. Reset before reloading a recipe.",
                 )
@@ -245,7 +243,7 @@ class DatasetSidebar(QWidget):
                         "Load raw data before selecting channels.",
                     ),
                 )
-            elif is_locked:
+            elif preprocess_capability is None and self.controller.is_locked():
                 self.chan_select_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
                 )
@@ -266,7 +264,7 @@ class DatasetSidebar(QWidget):
                         "Load raw data before applying smart parse.",
                     ),
                 )
-            elif is_locked:
+            elif smart_parse_capability is None and self.controller.is_locked():
                 self.smart_parse_btn.setToolTip(
                     "Dataset is locked. Click to see details.",
                 )
@@ -289,12 +287,14 @@ class DatasetSidebar(QWidget):
                         "Interpret a data source before adding labels.",
                     ),
                 )
-            elif is_locked:
+            elif import_label_capability is None and self.controller.is_locked():
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Dataset is locked. Reset before changing labels.",
                 )
-            elif not bool(self.controller.has_data()):
+            elif import_label_capability is None and not bool(
+                self.controller.has_data()
+            ):
                 self.import_label_btn.setEnabled(False)
                 self.import_label_btn.setToolTip(
                     "Interpret a data source before adding labels.",

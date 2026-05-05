@@ -183,6 +183,27 @@ def check_ready(self):
     assert "capability is None" in violations[0]
 
 
+def test_capability_readiness_guard_flags_lock_state_after_capability(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def update_sidebar(self):
+    scan_capability = get_command_capability(self, CommandName.SCAN_SOURCE)
+    is_locked = self.controller.is_locked()
+    if scan_capability is not None:
+        self.import_btn.setEnabled(scan_capability.enabled)
+    elif is_locked:
+        self.import_btn.setToolTip("Dataset is locked.")
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.is_locked" in violations[0]
+    assert "capability is None" in violations[0]
+
+
 def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,
