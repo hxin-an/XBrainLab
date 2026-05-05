@@ -35,6 +35,54 @@
 - 接續 / 本輪剩餘：
 ```
 
+## 2026-05-06
+
+### 04:30 Local model downloader lifecycle cleanup
+
+- 做了什麼：
+  - 使用 `tdd-guard` / `performance-resource-reviewer` 檢查 local model downloader QThread /
+    subprocess lifecycle。
+  - 先補紅燈 tests：`ModelDownloader.shutdown()` 必須 cancel worker 並 bounded wait running
+    thread；`DownloadWorker.run()` 收到 `finished` queue message 後仍要 join subprocess；
+    `ModelSettingsDialog.reject()` / `closeEvent()` 下載中必須走 downloader shutdown。
+  - 實作 `DownloadWorker` terminal cleanup：`finally` 會 reap subprocess 並 close queue；
+    cancel path 改成 bounded terminate join，必要時 bounded kill join，避免 unbounded join。
+  - 實作 `ModelDownloader.shutdown(wait_ms=...)`，settings dialog teardown 使用它並抑制 close
+    teardown 期間的 cleanup popup。
+- 結果：
+  - Downloader focused lifecycle tests 先紅後綠。
+  - local model settings dialog close / reject 不再只是 fire-and-forget cancel。
+  - 沒有跑 local LLM eval；依照 current gate policy，這是 downloader lifecycle slice，只需
+    fast focused regression。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/llm/core/test_downloader.py::TestModelDownloader::test_shutdown_cancels_worker_and_waits_for_running_thread tests/unit/llm/core/test_downloader.py::TestDownloadWorker::test_run_joins_download_process_after_finished_message -q`
+    -> `2 failed`，`shutdown` 不存在、terminal message 後 process 未 join。
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_model_settings.py::TestRejectAndClose::test_reject_while_downloading tests/unit/ui/dialogs/test_model_settings.py::TestRejectAndClose::test_close_event -q`
+    -> `2 failed`，dialog teardown 未呼叫 shutdown。
+  - Focused pass：
+    `poetry run pytest --capture=sys tests/unit/llm/core/test_downloader.py::TestModelDownloader::test_shutdown_cancels_worker_and_waits_for_running_thread tests/unit/llm/core/test_downloader.py::TestDownloadWorker::test_run_joins_download_process_after_finished_message -q`
+    -> `2 passed`。
+  - Focused pass：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_model_settings.py::TestRejectAndClose::test_reject_while_downloading tests/unit/ui/dialogs/test_model_settings.py::TestRejectAndClose::test_close_event -q`
+    -> `2 passed`。
+  - Regression:
+    `poetry run pytest --capture=sys tests/unit/llm/core/test_downloader.py tests/unit/llm/test_coverage_boost.py::TestDownloadWorkerRun tests/unit/llm/test_misc_coverage.py::TestModelDownloaderCoverage tests/unit/test_llm_backend.py::TestDownloader -q`
+    -> `27 passed`。
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/test_local_bootstrap_validation.py -q`
+    -> `25 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material advisory。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。未跑 full local LLM primary / fallback x3，因為這不是
+    release / thesis evidence closure。
+
 ## 2026-05-05
 
 ### 19:04 UI observer refresh architecture guard

@@ -87,6 +87,14 @@ ChatPanel composer polish follow-up gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/chat/test_chat_panel.py tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/integration/ui/test_product_walkthrough.py -q`
 -> `55 passed`。
 
+Local model downloader lifecycle gate:
+`poetry run pytest --capture=sys tests/unit/llm/core/test_downloader.py tests/unit/llm/test_coverage_boost.py::TestDownloadWorkerRun tests/unit/llm/test_misc_coverage.py::TestModelDownloaderCoverage tests/unit/test_llm_backend.py::TestDownloader -q`
+-> `27 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_model_settings.py tests/unit/ui/test_local_bootstrap_validation.py -q`
+-> `25 passed`。This supports bounded QThread / subprocess cleanup for model download cancel /
+dialog teardown. It is not a long-running local model soak, GPU leak proof, or human desktop
+acceptance.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

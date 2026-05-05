@@ -4,6 +4,7 @@ Provides a multi-process download mechanism for HuggingFace models,
 with Qt signal integration for progress reporting and cancellation.
 """
 
+import contextlib
 import multiprocessing
 import os
 import queue  # Standard library queue for Empty exception
@@ -17,6 +18,12 @@ try:
     from huggingface_hub import snapshot_download
 except ImportError:
     snapshot_download = None  # type: ignore[assignment]
+
+
+PROCESS_JOIN_TIMEOUT_SEC = 2.0
+PROCESS_TERMINATE_JOIN_TIMEOUT_SEC = 5.0
+PROCESS_KILL_JOIN_TIMEOUT_SEC = 1.0
+THREAD_SHUTDOWN_WAIT_MS = 2000
 
 
 # -----------------------------------------------------------------------------
@@ -109,45 +116,49 @@ class DownloadWorker(QObject):
         process death, and queue messages until the download completes or
         fails.
         """
-        # Create Queue
-        self._queue = multiprocessing.Queue()
+        try:
+            # Create Queue
+            self._queue = multiprocessing.Queue()
 
-        # Start Process
-        self._process = multiprocessing.Process(
-            target=run_download_task,
-            args=(self.repo_id, self.cache_dir, self._queue),
-            daemon=True,
-        )
-        self._process.start()
+            # Start Process
+            self._process = multiprocessing.Process(
+                target=run_download_task,
+                args=(self.repo_id, self.cache_dir, self._queue),
+                daemon=True,
+            )
+            self._process.start()
 
-        # Monitor Loop
-        while True:
-            # Check cancellation first
-            if self._is_cancelled:
-                self._terminate_process()
-                self.download_failed.emit("Cancelled by user")
-                return
+            # Monitor Loop
+            while True:
+                # Check cancellation first
+                if self._is_cancelled:
+                    self._terminate_process()
+                    self.download_failed.emit("Cancelled by user")
+                    return
 
-            # Check if process died unexpectedly
-            if not self._process.is_alive():
-                # Process finished, but we should have received a message.
-                # Check queue one last time
-                if not self._check_queue():
-                    # Queue empty and process dead -> crashed
-                    exit_code = self._process.exitcode
-                    self.download_failed.emit(
-                        f"Download process terminated unexpectedly "
-                        f"(exit code: {exit_code})"
-                    )
-                break
+                # Check if process died unexpectedly
+                if not self._process.is_alive():
+                    # Process finished, but we should have received a message.
+                    # Check queue one last time
+                    if not self._check_queue():
+                        # Queue empty and process dead -> crashed
+                        exit_code = self._process.exitcode
+                        self.download_failed.emit(
+                            f"Download process terminated unexpectedly "
+                            f"(exit code: {exit_code})"
+                        )
+                    break
 
-            # Check queue (non-blocking)
-            if self._check_queue():
-                return  # Finished or Error happened
+                # Check queue (non-blocking)
+                if self._check_queue():
+                    return  # Finished or Error happened
 
-            # Sleep briefly to avoid busy loop
-            # We are in a background QThread, so sleep is fine.
-            time.sleep(0.1)
+                # Sleep briefly to avoid busy loop
+                # We are in a background QThread, so sleep is fine.
+                time.sleep(0.1)
+        finally:
+            self._reap_process()
+            self._close_queue()
 
     def _check_queue(self):
         """Reads and processes messages from the download queue.
@@ -183,9 +194,58 @@ class DownloadWorker(QObject):
 
     def _terminate_process(self):
         """Terminates the download subprocess and waits for cleanup."""
-        if self._process and self._process.is_alive():
-            self._process.terminate()
-            self._process.join()  # Cleanup
+        process = self._process
+        if not process:
+            return
+
+        try:
+            alive = process.is_alive()
+        except (OSError, RuntimeError, ValueError):
+            alive = False
+
+        if alive:
+            process.terminate()
+            process.join(PROCESS_TERMINATE_JOIN_TIMEOUT_SEC)
+            try:
+                alive = process.is_alive()
+            except (OSError, RuntimeError, ValueError):
+                alive = False
+            if alive and hasattr(process, "kill"):
+                process.kill()
+                process.join(PROCESS_KILL_JOIN_TIMEOUT_SEC)
+        else:
+            process.join(PROCESS_JOIN_TIMEOUT_SEC)
+
+        self._process = None
+
+    def _reap_process(self):
+        """Join the subprocess after terminal queue messages to avoid zombies."""
+        process = self._process
+        if not process:
+            return
+
+        try:
+            process.join(PROCESS_JOIN_TIMEOUT_SEC)
+            alive = process.is_alive()
+        except (OSError, RuntimeError, ValueError):
+            self._process = None
+            return
+
+        if alive:
+            self._terminate_process()
+        else:
+            self._process = None
+
+    def _close_queue(self):
+        """Close the multiprocessing queue after the worker loop exits."""
+        q = self._queue
+        if q is None:
+            return
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            q.close()
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            q.join_thread()
+        self._queue = None
 
     def cancel(self):
         """Requests cancellation of the in-progress download.
@@ -286,6 +346,40 @@ class ModelDownloader(QObject):
         # We let the worker loop process the cancellation and exit gracefully.
         # This ensures the process is consistently terminated.
         # Cleanup signals will handle the rest.
+
+    def shutdown(self, wait_ms=THREAD_SHUTDOWN_WAIT_MS):
+        """Cancel the active download and wait briefly for thread cleanup.
+
+        Returns:
+            ``True`` when no active thread remains or the thread stops within
+            the timeout, otherwise ``False``.
+
+        """
+        self.cancel_download()
+        thread = self._thread
+        if thread is None:
+            return True
+
+        try:
+            running = thread.isRunning()
+        except RuntimeError:
+            self._thread = None
+            return True
+
+        if not running:
+            self._thread = None
+            return True
+
+        try:
+            thread.quit()
+            stopped = bool(thread.wait(max(0, int(wait_ms))))
+        except RuntimeError:
+            self._thread = None
+            return True
+
+        if stopped:
+            self._thread = None
+        return stopped
 
     def _on_finished(self, path):
         """Handles successful download completion.

@@ -181,6 +181,10 @@
 - 最新 Data Splitting preview thread cleanup 讓 preview restart / dialog close 會 interrupt
   active `DatasetGenerator` 並 short-join preview worker；這是 focused lifecycle smoke，不是
   long-running dataset-generation soak test。
+- 最新 local model downloader lifecycle cleanup 讓 `DownloadWorker` 在 terminal queue message 後
+  join subprocess，cancel path 使用 bounded terminate / kill join，並讓 AI Assistant settings
+  dialog teardown 走 bounded `ModelDownloader.shutdown()`；這降低關閉下載視窗後 QThread /
+  subprocess 殘留風險。這仍只是 focused lifecycle smoke，不是長時間 local model soak。
 - 最新 Start Training cleanup 又把 start gate 收回 backend `train` capability truth：capability
   enabled 時不再因 stale `TrainingController.is_training()` 跳過 `TrainCommand`。
 - 最新 architecture guard follow-up 已把 pre-command stale readiness pattern 納入

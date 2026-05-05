@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Local Model Downloader Lifecycle Cleanup
+
+### 狀態
+
+The local model downloader now has a bounded teardown path. `DownloadWorker` reaps its
+subprocess after terminal queue messages, uses bounded terminate / kill joins on cancellation, and
+closes its multiprocessing queue when the worker exits. The AI Assistant settings dialog now calls
+`ModelDownloader.shutdown()` during reject / close so dialog teardown waits briefly for QThread
+cleanup instead of only sending a cancel request.
+
+### 已可宣稱
+
+- Model download cancel / dialog teardown has stronger thread and subprocess cleanup behavior.
+- Focused lifecycle tests cover bounded shutdown and process reaping.
+
+### Evidence 入口
+
+- Code: `XBrainLab/llm/core/downloader.py`, `XBrainLab/ui/dialogs/model_settings_dialog.py`
+- Tests: `tests/unit/llm/core/test_downloader.py`,
+  `tests/unit/ui/dialogs/test_model_settings.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not a long-running local model soak, GPU memory leak proof, or Windows desktop
+  acceptance.
+
+### 下一手重點
+
+Continue lifecycle/resource hardening for long-running local model, training, visualization, and
+MCP job paths; keep routine tool-call eval to fast dev gates unless refreshing release/thesis
+claims.
+
 ## 2026-05-05 UI Observer Refresh Architecture Guard
 
 ### 狀態

@@ -27,6 +27,8 @@ from XBrainLab.llm.core.model_catalog import (
     plan_model_download,
 )
 
+DOWNLOAD_TEARDOWN_WAIT_MS = 2000
+
 
 class ModelSettingsDialog(QDialog):
     """Dialog for configuring the local AI assistant runtime.
@@ -68,6 +70,7 @@ class ModelSettingsDialog(QDialog):
         self.downloader.finished.connect(self.on_download_finished)
         self.downloader.failed.connect(self.on_download_failed)
         self.is_downloading = False
+        self._download_teardown_in_progress = False
 
         self.init_ui()
         self.load_state()
@@ -386,12 +389,15 @@ class ModelSettingsDialog(QDialog):
         # Special handling for Cancellation Cleanup (User Request)
         if "Cancelled by user" in error:
             # User requested auto-cleanup without asking
-            self._cleanup_partial_files()
+            if self._download_teardown_in_progress:
+                self._cleanup_partial_files(show_message=False)
+            else:
+                self._cleanup_partial_files()
             return
 
         QMessageBox.critical(self, "Download Failed", error)
 
-    def _cleanup_partial_files(self):
+    def _cleanup_partial_files(self, show_message=True):
         """Best-effort cleanup of partial download files."""
         try:
             import shutil
@@ -406,13 +412,15 @@ class ModelSettingsDialog(QDialog):
 
             if removed_any:
                 self.check_local_model_status()  # Update UI state
-                QMessageBox.information(self, "Cleanup", "Partial files removed.")
+                if show_message:
+                    QMessageBox.information(self, "Cleanup", "Partial files removed.")
         except Exception as e:
-            QMessageBox.warning(
-                self,
-                "Cleanup Error",
-                f"Failed to cleanup partials directly: {e}",
-            )
+            if show_message:
+                QMessageBox.warning(
+                    self,
+                    "Cleanup Error",
+                    f"Failed to cleanup partials directly: {e}",
+                )
 
     def update_validation_state(self):
         """Enable Activate button if conditions met."""
@@ -469,15 +477,20 @@ class ModelSettingsDialog(QDialog):
 
     def reject(self):
         """Cancel any active download and reject the dialog."""
-        if self.is_downloading:
-            self.downloader.cancel_download()
+        self._shutdown_active_download()
         super().reject()
 
     def closeEvent(self, event):  # noqa: N802
         """Ensure threads stop on close."""
-        if self.is_downloading:
-            self.downloader.cancel_download()
+        self._shutdown_active_download()
         super().closeEvent(event)
+
+    def _shutdown_active_download(self):
+        """Cancel in-flight download work before dialog teardown."""
+        if self.is_downloading:
+            self._download_teardown_in_progress = True
+            self.downloader.shutdown(wait_ms=DOWNLOAD_TEARDOWN_WAIT_MS)
+            self.is_downloading = False
 
     def get_config(self):
         """Return the current LLM configuration.

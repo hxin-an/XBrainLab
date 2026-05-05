@@ -276,7 +276,7 @@ class TestRejectAndClose:
     def test_reject_while_downloading(self, dialog):
         dialog.is_downloading = True
         dialog.reject()
-        dialog.downloader.cancel_download.assert_called()
+        dialog.downloader.shutdown.assert_called_once()
 
     def test_close_event(self, dialog):
         dialog.is_downloading = True
@@ -284,7 +284,7 @@ class TestRejectAndClose:
 
         event = QCloseEvent()
         dialog.closeEvent(event)
-        dialog.downloader.cancel_download.assert_called()
+        dialog.downloader.shutdown.assert_called_once()
 
     def test_get_config(self, dialog):
         cfg = dialog.get_config()
