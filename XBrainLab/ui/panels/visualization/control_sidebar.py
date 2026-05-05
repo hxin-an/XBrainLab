@@ -194,6 +194,18 @@ class ControlSidebar(QWidget):
 
     def set_saliency(self):
         """Open the saliency-settings dialog and apply parameters."""
+        capability = get_command_capability(self, CommandName.SALIENCY)
+        if capability is not None and not capability.enabled:
+            QMessageBox.warning(
+                self,
+                "Saliency blocked",
+                blocked_reason(
+                    capability,
+                    "Saliency analysis is not ready yet.",
+                ),
+            )
+            return
+
         win = SaliencySettingDialog(self, self.controller.get_saliency_params())
         if win.exec():
             params = win.get_result()

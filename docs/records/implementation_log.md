@@ -1044,3 +1044,25 @@ blocked reason，programmatic `itemChanged` path 也會先做 capability preflig
 ### 不能宣稱完成
 
 - 這不是完整 Data Interpretation wizard editor 或 dataset table UX acceptance。
+
+## 2026-05-05 Visualization Saliency Settings Capability Truth
+
+### 狀態
+
+Visualization sidebar `Saliency Settings` 現在會先讀 backend `saliency` capability。empty real
+`Study` path 不再開不能套用的 saliency settings dialog，而是顯示 shared readiness reason。
+
+### 已可宣稱
+
+- Saliency settings dialog gate 與 ApplicationService capability policy 對齊。
+- mock / legacy non-Study path 保留既有 dialog / controller fallback compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests：`tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 saliency workflow UX 或 visualization desktop render acceptance。

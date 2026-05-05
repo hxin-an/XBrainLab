@@ -173,3 +173,35 @@ def test_sidebar_set_montage_surfaces_command_failure(mock_panel, qtbot):
         mock_panel.controller.set_montage.assert_not_called()
         mock_info.assert_not_called()
         mock_warning.assert_called_once()
+
+
+def test_sidebar_set_saliency_blocked_by_backend_capability(qtbot):
+    controller = MagicMock()
+    controller.get_saliency_params.return_value = None
+    main_window = QMainWindow()
+    main_window.study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.SaliencySettingDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+    ):
+        sidebar.set_saliency()
+
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once_with(
+        sidebar,
+        "Saliency blocked",
+        (
+            "Create epochs, generate datasets, or select a model and training "
+            "settings before querying saliency readiness."
+        ),
+    )

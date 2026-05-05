@@ -2303,6 +2303,28 @@ long-running training human acceptance。
 這批 evidence 支撐 dataset inline metadata editability 與 backend capability policy 對齊。它仍不是
 完整 Data Interpretation wizard editor 或 full dataset table UX acceptance。
 
+2026-05-05 Visualization saliency settings capability follow-up：
+
+- UI/action:
+  - `ControlSidebar.set_saliency()` now checks backend `saliency` capability before opening
+    `SaliencySettingDialog` for real `Study` paths.
+  - Empty real `Study` state shows the shared saliency readiness reason instead of opening a
+    settings dialog that cannot be applied.
+  - mock / legacy non-Study paths keep the existing dialog and controller fallback behavior.
+- targeted gates:
+  - focused red + dialog gate:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_blocked_by_backend_capability -q`
+    -> `1 passed`.
+  - Visualization sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_dialogs_extra.py::TestControlSidebar -q`
+    -> `11 passed`.
+  - backend saliency command regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py::test_visualize_and_saliency_commands_return_typed_query_payloads tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `5 passed`.
+
+這批 evidence 支撐 Visualization sidebar saliency settings dialog 與 backend capability policy
+對齊。它仍不是完整 saliency workflow UX 或 visualization desktop render acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

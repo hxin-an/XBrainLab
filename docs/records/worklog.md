@@ -5981,3 +5981,48 @@
     dataset table UX acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Visualization saliency settings capability truth
+
+- scope：
+  - UI/backend command truth alignment for Visualization sidebar `Saliency Settings` dialog。
+  - No command schema, backend handler, MCP, agent tool, or screenshot artifact change.
+- problem：
+  - `ControlSidebar.set_saliency()` opened `SaliencySettingDialog` before checking backend
+    `saliency` capability.
+  - Empty real `Study` state could show a settings dialog even though the command layer would
+    reject saliency readiness.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_blocked_by_backend_capability -q`
+    initially failed because the dialog opened.
+- 做了什麼：
+  - Added `saliency` capability preflight before opening `SaliencySettingDialog` for real `Study`
+    paths.
+  - Kept mock / legacy non-Study dialog behavior and controller fallback.
+- validation：
+  - focused red + dialog gate:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_blocked_by_backend_capability -q`
+    -> `1 passed`.
+  - Visualization sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_dialogs_extra.py::TestControlSidebar -q`
+    -> `11 passed`.
+  - backend saliency command regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_analysis_service.py tests/unit/backend/application/test_application_service.py::test_visualize_and_saliency_commands_return_typed_query_payloads tests/unit/backend/application/test_application_service.py::test_saliency_command_can_configure_params tests/unit/backend/application/test_application_service.py::test_blocked_query_and_lifecycle_commands_still_return_result_envelopes -q`
+    -> `5 passed`.
+  - `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> pass.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one saliency settings dialog boundary alignment, not full saliency workflow UX or
+    visualization desktop render acceptance.
+  - It does not prove Windows human desktop click-through or complete remaining mutating-path
+    audit.
