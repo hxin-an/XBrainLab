@@ -2717,6 +2717,36 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Evaluation stale-selection fallback boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_refuses_real_study_query_none_metric_fallback -q`
+  -> `1 passed` after initially exposing unstable `last_application_query` state in the same
+  stale-selection path.
+- Evaluation regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_ui_structure_refactored.py -q`
+  -> `13 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/evaluation/panel.py tests/unit/ui/test_evaluation_panel_redesign.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/evaluation/panel.py tests/unit/ui/test_evaluation_panel_redesign.py`
+  -> `0 errors`.
+- Static / docs / backend / agent gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Evaluation render fallback boundary slice.
+
+This supports real `Study` Evaluation stale average/summary selections clearing safely instead of
+reading stale controller pooled metrics or summaries. It does not prove full Evaluation UX or human
+desktop acceptance.
+
 2026-05-06 Training history query-none render fallback boundary：
 
 - Focused red/fixed gate:

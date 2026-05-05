@@ -327,6 +327,47 @@ def test_evaluation_panel_refuses_real_study_query_none_controller_fallback(
     assert panel.run_combo.count() == 0
 
 
+def test_evaluation_panel_refuses_real_study_query_none_metric_fallback(
+    qtbot,
+    monkeypatch,
+):
+    """Stale selected average rows should not recover metrics from a controller."""
+
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.evaluation.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    stale_controller = MagicMock()
+    stale_controller.get_plans.return_value = []
+    stale_controller.get_pooled_eval_result.side_effect = AssertionError(
+        "stale pooled evaluation metrics should not be read",
+    )
+    stale_controller.get_model_summary_str.side_effect = AssertionError(
+        "stale evaluation summary should not be read",
+    )
+
+    panel = EvaluationPanel(controller=stale_controller, parent=RealMainWindow())
+    qtbot.addWidget(panel)
+    panel.last_application_query = None
+    stale_plan = MockPlanHolder("Stale Plan")
+    panel.model_combo.clear()
+    panel.model_combo.addItem("Fold 1: Stale Plan", stale_plan)
+    panel.run_combo.clear()
+    panel.run_combo.addItem("Average", "average")
+
+    panel.update_views()
+    panel.update_model_summary(stale_plan)
+
+    stale_controller.get_pooled_eval_result.assert_not_called()
+    stale_controller.get_model_summary_str.assert_not_called()
+    assert panel.summary_text.toPlainText() == ""
+
+
 def test_evaluation_panel_clears_stale_plans_on_preprocess_change(qtbot):
     """Preprocess invalidation should clear stale evaluation plan selections."""
     main_window = MockMainWindow()

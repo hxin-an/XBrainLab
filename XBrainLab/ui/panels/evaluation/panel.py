@@ -82,6 +82,7 @@ class EvaluationPanel(BasePanel):
         # Store injected training controller
         self.training_controller = training_controller
         self.preprocess_controller = preprocess_controller
+        self.last_application_query = None
 
         # 2. Base Init
         super().__init__(parent=parent, controller=controller)
@@ -189,7 +190,7 @@ class EvaluationPanel(BasePanel):
 
     def _evaluation_query_payload(self) -> dict | None:
         """Return the current service-backed evaluation payload, if available."""
-        result = self.last_application_query
+        result = getattr(self, "last_application_query", None)
         if result is None or result.failed:
             return None
         diagnostics = getattr(result, "diagnostics", {}) or {}
@@ -282,9 +283,9 @@ class EvaluationPanel(BasePanel):
             if pooled_result is None:
                 if self._evaluation_query_payload() is not None:
                     return
-                if self.controller is None:
+                pooled_result = self._legacy_pooled_result_for_render(plan)
+                if pooled_result is None:
                     return
-                pooled_result = self.controller.get_pooled_eval_result(plan)
             pooled_labels, pooled_outputs, metrics = pooled_result
 
             if pooled_labels is None:
@@ -343,12 +344,32 @@ class EvaluationPanel(BasePanel):
         """Generate and display model summary."""
         summary_str = self._summary_from_application_query(plan, record)
         if summary_str is None:
-            summary_str = (
-                ""
-                if self.controller is None
-                else self.controller.get_model_summary_str(plan, record)
-            )
+            summary_str = self._legacy_summary_for_render(plan, record)
         self.summary_text.setText(summary_str)
+
+    def _legacy_pooled_result_for_render(self, plan):
+        controller = self.controller
+        if controller is None:
+            return None
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: controller.get_pooled_eval_result(plan),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return None
+
+    def _legacy_summary_for_render(self, plan, record=None) -> str:
+        controller = self.controller
+        if controller is None:
+            return ""
+        try:
+            return run_legacy_controller_fallback(
+                self,
+                lambda: controller.get_model_summary_str(plan, record),
+            )
+        except LegacyControllerFallbackUnavailableError:
+            return ""
 
     def _pooled_result_from_application_query(self, plan):
         payload = self._evaluation_query_payload()

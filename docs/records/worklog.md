@@ -37,6 +37,54 @@
 
 ## 2026-05-06
 
+### 07:45 Evaluation stale-selection fallback boundary
+
+- scope：
+  - Continue read-side fallback audit for Evaluation panel metrics and summary render.
+  - Prevent real `Study` stale average/summary selections from recovering through
+    `EvaluationController.get_pooled_eval_result()` / `get_model_summary_str()` when no service
+    payload is available.
+- red / focused tests：
+  - Added `test_evaluation_panel_refuses_real_study_query_none_metric_fallback`.
+  - Initial red gate exposed that the stale-selection path did not have stable
+    `last_application_query` initialization; this was the same path that would then recover through
+    controller pooled metrics / summary reads.
+- 做了什麼：
+  - `EvaluationPanel` now initializes `last_application_query`.
+  - `update_views()` and `update_model_summary()` route legacy pooled-result / summary rendering
+    through `run_legacy_controller_fallback()`.
+  - real `Study` fallback refusal skips stale average metrics and clears summary text instead of
+    reading stale controller metrics / summaries.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_refuses_real_study_query_none_metric_fallback -q`
+    -> failed on unstable `last_application_query` before the fix.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Evaluation regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_ui_structure_refactored.py -q`
+    -> `13 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/evaluation/panel.py tests/unit/ui/test_evaluation_panel_redesign.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/evaluation/panel.py tests/unit/ui/test_evaluation_panel_redesign.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is an Evaluation UI render fallback cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete all Evaluation UX, human desktop acceptance, or all controller read
+    fallback cleanup.
+
 ### 08:15 Training history query-none render fallback boundary
 
 - scope：

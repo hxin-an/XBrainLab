@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Evaluation Stale-Selection Fallback Boundary
+
+### 狀態
+
+Evaluation panel now initializes its service-query state and treats stale average/summary
+selections without a service payload as mock/legacy-only fallback. In a real `Study` context,
+query-none average rows and model summaries no longer read
+`EvaluationController.get_pooled_eval_result()` or `get_model_summary_str()`.
+
+### 已可宣稱
+
+- Real `Study` stale Evaluation selections after a missing query result no longer recover metrics
+  or summaries from the controller.
+- Mock / legacy panel rendering still keeps controller pooled-result and summary compatibility
+  through explicit fallback helpers.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/evaluation/panel.py`
+- Tests: `tests/unit/ui/test_evaluation_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete Evaluation UX or every controller read fallback path.
+
+### 下一手重點
+
+Continue auditing remaining stale-selection and query-unavailable read fallbacks.
+
 ## 2026-05-06 Training History Query-None Render Fallback Boundary
 
 ### 狀態

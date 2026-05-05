@@ -975,7 +975,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `EvaluationController.get_plans()` / `get_pooled_eval_result()` /
   `get_model_summary_str()`。最新 query-none fallback boundary 也讓 real `Study`
   `EvaluateCommand` 意外回 `None` 時清成 no-data，不再回讀 stale
-  `EvaluationController.get_plans()`。這個 object payload flag 是 UI-only：automation / MCP `evaluate`
+  `EvaluationController.get_plans()`。最新 stale-selection fallback boundary 又讓 query-none 狀態下
+  留存的 average/summary selection 不會回讀 stale
+  `EvaluationController.get_pooled_eval_result()` / `get_model_summary_str()`。
+  這個 object payload flag 是 UI-only：automation / MCP `evaluate`
   schema 不暴露也不接受它，避免 external client 要求非序列化 UI object。
   最新 Visualization panel cleanup 也把 readonly `VisualizeCommand` 結果接到 controls/render
   gate：visualization blocked / unavailable 時不再讀 stale injected
