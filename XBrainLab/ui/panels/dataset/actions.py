@@ -18,6 +18,7 @@ from XBrainLab.backend.application import (
     LoadDataCommand,
     MetadataUpdate,
     PreviewInterpretationCommand,
+    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     RemoveFilesCommand,
     SaveInterpretationRecipeCommand,
@@ -687,7 +688,12 @@ class DatasetActionHandler:
             QMessageBox.warning(self.panel, "Warning", "No data loaded.")
             return
 
-        filepaths = controller.get_filenames()
+        filepaths = self._smart_parse_filenames()
+        if filepaths is None:
+            return
+        if not filepaths:
+            QMessageBox.warning(self.panel, "Warning", "No data loaded.")
+            return
         dialog = SmartParserDialog(filepaths, self.panel)
         if dialog.exec():
             results = dialog.get_result()
@@ -708,6 +714,35 @@ class DatasetActionHandler:
             self._update_panel_after_legacy_result(result)
 
             QMessageBox.information(self.panel, "Success", f"Updated {count} files.")
+
+    def _smart_parse_filenames(self) -> list[str] | None:
+        result = execute_application_command(
+            self.panel,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            controller = self.controller
+            if controller is None:
+                return []
+            return run_legacy_controller_fallback(
+                self.panel,
+                controller.get_filenames,
+            )
+        if result.failed:
+            QMessageBox.warning(
+                self.panel,
+                "Smart Parse Blocked" if result.recoverable else "Smart Parse Failed",
+                result.message,
+            )
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        state = diagnostics.get("state")
+        raw = state.get("raw") if isinstance(state, dict) else {}
+        files = raw.get("files") if isinstance(raw, dict) else None
+        if not isinstance(files, list):
+            return []
+        return [str(file) for file in files if str(file)]
 
     def import_label(self):
         """Import external label files and apply them to loaded EEG data.

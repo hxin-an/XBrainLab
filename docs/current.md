@@ -876,6 +876,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。
+  最新 Dataset smart-parse cleanup 又把 parser dialog 的 file list 改成先讀
+  `QueryStateCommand(query="state")` 裡的 `state.raw.files`；`DatasetController.get_filenames()`
+  只保留在 query unavailable 的 mock / legacy fallback helper。
   最新 Preprocess epoching cleanup 修掉另一個 capability 混用：`open_epoching()` 現在以
   `create_epoch` capability 判定是否可進入 epoch dialog；當 `create_epoch` enabled 時，不會再被
   `preprocess` capability 的 blocked reason 透過 `check_lock()` / `check_data_loaded()` 誤擋。

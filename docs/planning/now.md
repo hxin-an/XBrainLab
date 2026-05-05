@@ -181,6 +181,9 @@
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。
+- 最新 Dataset smart-parse cleanup 也讓 parser dialog file list 先走
+  `QueryStateCommand(query="state")` 的 `state.raw.files`；stale
+  `DatasetController.get_filenames()` 只留在 query unavailable 的 mock / legacy fallback helper。
 - 最新 Evaluation panel query cleanup 已讓 real `Study` `EvaluateCommand` result gate display：
   evaluation blocked / unavailable 時不再讀 stale injected controller plans，而是顯示
   `No Data Available`。

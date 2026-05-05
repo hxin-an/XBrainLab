@@ -1200,13 +1200,23 @@ class TestDatasetActionHandler:
         handler.panel.controller.has_data.return_value = False
         handler.panel.controller.get_filenames.return_value = ["sub-01_task-mi_raw.fif"]
 
+        query_result = _command_result()
+        query_result.diagnostics = {
+            "state": {
+                "raw": {
+                    "files": ["sub-01_task-mi_raw.fif"],
+                },
+            },
+        }
+        apply_result = _command_result(success_count=1)
+
         with (
             patch(
                 "XBrainLab.ui.panels.dataset.actions.SmartParserDialog",
             ) as mock_dialog,
             patch(
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
-                return_value=_command_result(success_count=1),
+                side_effect=[query_result, apply_result],
             ) as mock_execute,
             patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
         ):
@@ -1216,8 +1226,9 @@ class TestDatasetActionHandler:
             }
             handler.open_smart_parser()
 
-        mock_dialog.assert_called_once()
-        mock_execute.assert_called_once()
+        handler.panel.controller.get_filenames.assert_not_called()
+        mock_dialog.assert_called_once_with(["sub-01_task-mi_raw.fif"], handler.panel)
+        assert mock_execute.call_count == 2
         handler.panel.controller.apply_smart_parse.assert_not_called()
         mock_mb.warning.assert_not_called()
 

@@ -244,6 +244,26 @@ def set_montage(self):
     assert "capability is None" in violations[0]
 
 
+def test_capability_readiness_guard_flags_filenames_after_capability(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def open_smart_parser(self):
+    capability = get_command_capability(self, CommandName.APPLY_SMART_PARSE)
+    if capability is not None and not capability.enabled:
+        return
+    files = self.controller.get_filenames()
+    return SmartParserDialog(files, self)
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.get_filenames" in violations[0]
+    assert "capability is None" in violations[0]
+
+
 def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,

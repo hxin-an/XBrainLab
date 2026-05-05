@@ -9591,3 +9591,44 @@
 - 不能宣稱：
   - This does not certify montage placement quality, full Visualization UX, saliency render output,
     or human desktop rendering.
+
+### 2026-05-06 Dataset smart-parse filename query defaults
+
+- scope：
+  - Continue UI/backend truth alignment for Dataset action dialogs.
+  - Prevent Smart Parser from using stale `DatasetController.get_filenames()` when ApplicationService
+    state is available.
+- tests：
+  - Added `test_capability_readiness_guard_flags_filenames_after_capability`.
+  - Strengthened
+    `test_open_smart_parser_prefers_backend_capability_over_stale_controller` so the dialog file
+    list comes from `QueryStateCommand(query="state")` diagnostics and controller filenames are not
+    read.
+- 做了什麼：
+  - Added `get_filenames` to the capability-gated controller state guard.
+  - `DatasetActionHandler.open_smart_parser()` now queries `state.raw.files` through
+    `QueryStateCommand(query="state")` with `refresh=False` before opening `SmartParserDialog`.
+  - Controller filename reads remain only through the mock / legacy fallback helper when the query
+    result is unavailable.
+- validation：
+  - Focused gates:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_filenames_after_capability -q`
+    -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_prefers_backend_capability_over_stale_controller -q`
+    -> `1 passed`.
+  - Regression gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler tests/unit/ui/dataset/test_panel.py::test_dataset_panel_smart_parse -q`
+    -> `67 passed`.
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `28 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Static gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a Dataset UI query-truth cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete all Dataset dialog population paths, mature Data Interpretation wizard
+    certification, or human desktop acceptance.

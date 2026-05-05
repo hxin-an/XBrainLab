@@ -154,6 +154,9 @@ Dataset sidebar render state follows the same boundary: with backend capabilitie
 `update_sidebar()` no longer reads `DatasetController.is_locked()` / `has_data()` before setting
 button state or tooltips. Those controller reads are limited to explicit no-capability legacy
 branches, and architecture compliance guards this pattern.
+Dataset smart-parse dialog setup also reads filenames from
+`QueryStateCommand(query="state")` / `state.raw.files` in real `Study` contexts.
+`DatasetController.get_filenames()` is limited to mock / legacy query fallback.
 Evaluation panel now also uses the readonly `EvaluateCommand` result as a display gate. If a real
 `Study` ApplicationService query reports evaluation blocked or unavailable, the panel clears to
 `No Data Available` instead of reading stale injected `EvaluationController.get_plans()` data.
