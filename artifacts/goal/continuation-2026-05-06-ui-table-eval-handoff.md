@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+25022fe ui: gate visualization display with query result
+f845829 docs: refresh handoff after evaluation query gate
 699e829 ui: gate evaluation display with query result
 c4dc092 docs: refresh handoff after dataset sidebar audit
 0c3de01 ui: render dataset sidebar from capabilities
@@ -108,6 +110,13 @@ bb57beb ui: use backend truth for split replacement
     gate.
   - If ApplicationService reports evaluation blocked or unavailable, the panel clears to
     `No Data Available` instead of reading stale injected controller plans.
+- Visualization panel query display gate:
+  - A real `Study` Visualization panel now uses readonly `VisualizeCommand` results as the
+    controls/render gate.
+  - If ApplicationService reports visualization blocked or unavailable, the panel clears plan/run
+    controls and shows a user-facing readiness message before reading injected controller trainers.
+  - The basedpyright baseline dropped from 115 to 112 suppressed errors after replacing dynamic
+    `show_error` calls with a typed helper.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -221,6 +230,21 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 699e829; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  -q
+# 35 passed
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 25022fe; basedpyright baseline refreshed from 115 to 112;
+# mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
