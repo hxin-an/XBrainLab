@@ -833,7 +833,7 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `run_legacy_controller_fallback()`：split cleanup / generate dataset、model selection、training
   settings、start / stop training 和 clear history 的 controller fallback 現在只允許 mock /
   legacy non-`Study` context；若 real `Study` command helper 意外回 `None`，會拒絕 fallback
-  並暴露錯誤，而不是 silent controller mutation。後續 Preprocess、Dataset、Visualization 和
+  並顯示使用者可理解的安全訊息，而不是 silent controller mutation 或 raw developer wording。後續 Preprocess、Dataset、Visualization 和
   AgentManager fallback audit 已沿用同一 helper；`tests/architecture_compliance.py` 也會阻擋
   UI `result is None` branch 直接 controller mutation。最新 guard follow-up 又會阻擋 UI
   product path 直接呼叫 `controller.update_metadata()` / `controller.start_training()` 這類

@@ -215,7 +215,9 @@ settings and AgentManager montage confirmation also use the helper. The helper a
 for mock / legacy non-`Study` contexts and refuses fallback when a real `Study` unexpectedly does
 not return a `CommandResult`. `tests/architecture_compliance.py` now guards this boundary by
 failing direct controller mutation calls inside UI `result is None` branches unless they go through
-the explicit fallback helper.
+the explicit fallback helper. The helper now raises a user-facing safety message for unexpected
+real `Study` fallback attempts, so broad UI error handlers no longer surface internal
+`ApplicationService` / controller-fallback wording.
 
 ### 已可宣稱
 
@@ -225,6 +227,8 @@ the explicit fallback helper.
 - Existing mock / legacy unit-test compatibility fallback remains available.
 - The architecture compliance gate now prevents reintroducing direct controller mutation fallback
   inside missing-command-result branches.
+- Unexpected real `Study` fallback refusal is still blocked, but the visible message is product
+  language rather than developer wording.
 
 ### Evidence 入口
 

@@ -147,7 +147,7 @@ def test_legacy_controller_fallback_refuses_real_study(qtbot):
     qtbot.addWidget(widget)
     fallback = MagicMock()
 
-    with pytest.raises(RuntimeError, match="real Study"):
+    with pytest.raises(RuntimeError, match="could not safely complete"):
         run_legacy_controller_fallback(widget, fallback)
 
     fallback.assert_not_called()
@@ -160,7 +160,7 @@ def test_legacy_controller_fallback_refuses_real_controller_study(qtbot):
     qtbot.addWidget(widget)
     fallback = MagicMock()
 
-    with pytest.raises(RuntimeError, match="real Study"):
+    with pytest.raises(RuntimeError, match="could not safely complete"):
         run_legacy_controller_fallback(widget, fallback)
 
     fallback.assert_not_called()

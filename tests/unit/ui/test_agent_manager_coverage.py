@@ -321,7 +321,7 @@ class TestMontagePicker:
                 "XBrainLab.ui.components.agent_manager.execute_application_command",
                 return_value=None,
             ),
-            pytest.raises(RuntimeError, match="real Study"),
+            pytest.raises(RuntimeError, match="could not safely complete"),
         ):
             m.open_montage_picker_dialog({"montage_name": "standard_1020"})
 

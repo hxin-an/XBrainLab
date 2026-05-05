@@ -8761,3 +8761,37 @@
 - 不能宣稱：
   - This does not rerun local eval or update thesis benchmark scores. It only guards the local eval
     CLI from unsafe/default full-gate usage under high resource pressure.
+
+### 2026-05-05 Legacy fallback refusal product language
+
+- scope：
+  - Keep controller fallback refusal as a product-runtime safety boundary, but stop surfacing raw
+    internal wording if a real `Study` path ever reaches a mock/legacy fallback branch.
+  - No local LLM eval was run; this is UI architecture/product-language hardening.
+- red / focused tests：
+  - Updated fallback refusal tests to require `could not safely complete` product wording.
+  - Added assertion that the Preprocess reset error dialog does not show `refusing controller
+    fallback` or `ApplicationService`.
+- 做了什麼：
+  - `run_legacy_controller_fallback()` now raises `LegacyControllerFallbackUnavailableError` with a
+    user-facing safety message.
+  - DatasetPanel legacy loader handling catches the dedicated exception type instead of string
+    matching internal fallback text.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_real_study tests/unit/ui/test_application_capabilities.py::test_legacy_controller_fallback_refuses_real_controller_study tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_reset_preprocess_refuses_real_study_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_stop_training_refuses_real_study_controller_fallback tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_set_saliency_refuses_real_study_controller_fallback tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_refuses_real_study_controller_fallback tests/unit/ui/test_agent_manager_coverage.py::TestMontagePicker::test_real_study_montage_refuses_controller_fallback tests/unit/ui/dataset/test_panel.py::test_dataset_panel_apply_loader_refuses_real_study -q`
+    -> `8 passed`.
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_application_capabilities.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_sidebars_and_components.py tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_ui_misc.py tests/unit/ui/test_agent_manager_coverage.py -q`
+    -> `240 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run mkdocs build --strict`
+    -> pass with the existing MkDocs Material 2.0 advisory banner.
+- 不能宣稱：
+  - This does not remove legacy/mock fallback paths. It only keeps the refusal boundary user-facing
+    if an impossible product fallback path is forced in tests or a runtime bug.

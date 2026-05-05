@@ -315,7 +315,10 @@ class TestPreprocessSidebar:
             sidebar.reset_preprocess()
 
         sidebar.panel.controller.reset_preprocess.assert_not_called()
-        assert "refusing controller fallback" in mock_critical.call_args.args[2]
+        visible_message = mock_critical.call_args.args[2]
+        assert "could not safely complete" in visible_message
+        assert "refusing controller fallback" not in visible_message
+        assert "ApplicationService" not in visible_message
 
 
 # ============ TrainingSidebar ============
@@ -581,7 +584,7 @@ class TestTrainingSidebar:
                 "XBrainLab.ui.panels.training.sidebar.execute_application_command",
                 return_value=None,
             ),
-            pytest.raises(RuntimeError, match="real Study"),
+            pytest.raises(RuntimeError, match="could not safely complete"),
         ):
             sidebar.stop_training()
 

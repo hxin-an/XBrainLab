@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import CommandName, UpdateMetadataCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -181,18 +182,14 @@ class DatasetPanel(BasePanel):
                 self,
                 lambda: self._apply_legacy_loader(loader),
             )
-        except RuntimeError as exc:
-            if "refusing controller fallback" in str(exc):
-                logger.warning("Blocked legacy loader apply in real Study context.")
-                QMessageBox.warning(
-                    self,
-                    "Interpret Data Source",
-                    "Use Interpret Data Source or Interpret Folder / BIDS so "
-                    "the import goes through the Data Interpretation workflow.",
-                )
-                return
-            logger.error("Failed to apply data", exc_info=True)
-            QMessageBox.critical(self, "Error", f"Failed to apply data: {exc}")
+        except LegacyControllerFallbackUnavailableError:
+            logger.warning("Blocked legacy loader apply in real Study context.")
+            QMessageBox.warning(
+                self,
+                "Interpret Data Source",
+                "Use Interpret Data Source or Interpret Folder / BIDS so "
+                "the import goes through the Data Interpretation workflow.",
+            )
             return
         except Exception as exc:
             logger.error("Failed to apply data", exc_info=True)

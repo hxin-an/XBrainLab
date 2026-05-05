@@ -13,6 +13,14 @@ from XBrainLab.backend.study import Study
 from XBrainLab.ui.refresh_coordinator import refresh_after_command
 
 _FallbackResult = TypeVar("_FallbackResult")
+LEGACY_FALLBACK_UNAVAILABLE_MESSAGE = (
+    "XBrainLab could not safely complete this action from the current window "
+    "state. Refresh the workflow and try again."
+)
+
+
+class LegacyControllerFallbackUnavailableError(RuntimeError):
+    """Raised when product runtime attempts a legacy controller mutation."""
 
 
 def find_study(context: Any) -> Any | None:
@@ -91,7 +99,4 @@ def run_legacy_controller_fallback(
     study = find_study(context)
     if study is None or not isinstance(study, Study) or isinstance(study, Mock):
         return fallback()
-    raise RuntimeError(
-        "ApplicationService command was unavailable for a real Study; "
-        "refusing controller fallback.",
-    )
+    raise LegacyControllerFallbackUnavailableError(LEGACY_FALLBACK_UNAVAILABLE_MESSAGE)

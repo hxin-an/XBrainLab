@@ -1016,7 +1016,7 @@ class TestDatasetActionHandler:
                 "XBrainLab.ui.panels.dataset.actions.execute_application_command",
                 return_value=None,
             ),
-            pytest.raises(RuntimeError, match="real Study"),
+            pytest.raises(RuntimeError, match="could not safely complete"),
         ):
             mock_mb.StandardButton.Yes = 1
             mock_mb.StandardButton.No = 2
