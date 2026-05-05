@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+f9acb77 ui: release plot window figures on close
 28c144a ui: ignore stale preprocess psd results
 d8221bb ui: source rereference dialog from state query
 9a5d0ef ui: clean up 3d visualization widgets
@@ -261,6 +262,11 @@ bb57beb ui: use backend truth for split replacement
     `plot_sample_data()` call has started.
   - This prevents old PSD results from overwriting the latest frequency plot during rapid preview
     refresh, but it does not cancel running workers or prove long-run performance.
+- Plot window close cleanup:
+  - `SinglePlotWindow.closeEvent()` now closes the currently embedded Matplotlib figure, detaches
+    canvas / toolbar widgets, schedules `deleteLater()`, and clears references.
+  - This covers the base plot dialog used by training / evaluation / visualization plot windows,
+    but it is not long-run visualization memory trend evidence.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -855,6 +861,36 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 28c144a; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_close_releases_current_figure_and_qt_widgets \
+  tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_creates \
+  tests/unit/ui/test_ui_components.py::TestSinglePlotWindow::test_has_figure_canvas \
+  -q
+# 3 passed for f9acb77
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_components.py::TestSinglePlotWindow \
+  tests/unit/ui/components/test_plot_figure_window.py \
+  tests/unit/ui/dialogs/test_dialogs_structure.py::TestDialogStructure::test_single_plot_window_init \
+  -q
+# 19 passed for f9acb77
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for f9acb77
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for f9acb77
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for f9acb77; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
