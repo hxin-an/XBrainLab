@@ -220,6 +220,8 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     dataset_reasons = []
     if not active_dataset.has_epoch_data:
         dataset_reasons.append("Create epochs before generating datasets.")
+    if active_training.is_running:
+        dataset_reasons.append("Stop training before changing data splitting.")
     if active_dataset.has_datasets or active_training.has_trainer:
         dataset_reasons.append(
             "Reset the session or start a new session before generating a new "
@@ -231,6 +233,10 @@ def build_capability_policy(state: ApplicationStateSnapshot) -> CapabilityPolicy
     )
 
     clear_dataset_reasons = []
+    if active_training.is_running:
+        clear_dataset_reasons.append(
+            "Stop training before clearing generated datasets.",
+        )
     if not active_dataset.has_datasets and not active_training.has_trainer:
         clear_dataset_reasons.append(
             "No generated datasets or training plans to clear.",

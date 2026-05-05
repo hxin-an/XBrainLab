@@ -34,6 +34,11 @@ from XBrainLab.ui.dialogs.dataset import DataSplittingDialog
 from XBrainLab.ui.dialogs.training import ModelSelectionDialog, TrainingSettingDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
+_DATASET_REPLACEMENT_REASON = (
+    "Reset the session or start a new session before generating a new "
+    "dataset from an existing active dataset."
+)
+
 
 class TrainingSidebar(QWidget):
     """Sidebar for ``TrainingPanel`` providing configuration and execution controls.
@@ -231,7 +236,13 @@ class TrainingSidebar(QWidget):
         Validates that epoched data exists and training is not running.
         Warns if existing datasets/history will be cleared.
         """
-        if not self.controller.get_loaded_data_list():
+        if self._data_splitting_blocked():
+            return
+
+        if (
+            get_command_capability(self, CommandName.GENERATE_DATASET) is None
+            and not self.controller.get_loaded_data_list()
+        ):
             QMessageBox.warning(
                 self,
                 "No Data",
@@ -239,7 +250,10 @@ class TrainingSidebar(QWidget):
             )
             return
 
-        if self.controller.get_epoch_data() is None:
+        if (
+            get_command_capability(self, CommandName.GENERATE_DATASET) is None
+            and self.controller.get_epoch_data() is None
+        ):
             QMessageBox.warning(
                 self,
                 "No Epoched Data",
@@ -247,7 +261,10 @@ class TrainingSidebar(QWidget):
             )
             return
 
-        if self.controller.is_training():
+        if (
+            get_command_capability(self, CommandName.GENERATE_DATASET) is None
+            and self.controller.is_training()
+        ):
             QMessageBox.warning(
                 self,
                 "Training Running",
@@ -303,6 +320,35 @@ class TrainingSidebar(QWidget):
                 "Data splitting configuration saved.",
             )
             self.check_ready_to_train()
+
+    def _data_splitting_blocked(self) -> bool:
+        generate_capability = get_command_capability(
+            self,
+            CommandName.GENERATE_DATASET,
+        )
+        if generate_capability is None or generate_capability.enabled:
+            return False
+
+        if self._can_replace_existing_dataset(generate_capability.reasons):
+            return False
+
+        QMessageBox.warning(
+            self,
+            "Data Splitting Blocked",
+            blocked_reason(
+                generate_capability,
+                "Create epochs before generating datasets.",
+            ),
+        )
+        return True
+
+    def _can_replace_existing_dataset(self, generate_reasons: list[str]) -> bool:
+        clear_capability = get_command_capability(self, CommandName.CLEAR_DATASETS)
+        return (
+            generate_reasons == [_DATASET_REPLACEMENT_REASON]
+            and clear_capability is not None
+            and clear_capability.enabled
+        )
 
     def select_model(self):
         """Open the model-selection dialog and store the chosen model.

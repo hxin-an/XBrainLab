@@ -1111,3 +1111,30 @@ save capability blocked 時提出「Save Updated Recipe」確認。
 ### 不能宣稱完成
 
 - 這不是完整 import wizard recipe UX acceptance。
+
+## 2026-05-05 Training Data-Splitting Capability Truth
+
+### 狀態
+
+Training sidebar 的 `Data Splitting` 現在會先讀 backend `generate_dataset` capability。real
+`Study` path 在未建立 epochs 時不再依賴 stale controller state 打開 splitting dialog；backend
+capability 也補上 training running 時不可 generate / clear datasets 的 boundary。
+
+### 已可宣稱
+
+- Data-splitting dialog gate 與 ApplicationService dataset-generation capability policy 對齊。
+- Existing datasets replacement boundary 仍保留：只有 backend 允許 `clear_datasets` 時才可進入
+  clear-then-generate path。
+- mock / legacy non-Study path 保留既有 controller-local compatibility。
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/capabilities.py`,
+  `XBrainLab/ui/panels/training/sidebar.py`
+- Tests：`tests/unit/backend/application/test_application_service.py`,
+  `tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 training workflow human acceptance 或 long-running training resource validation。

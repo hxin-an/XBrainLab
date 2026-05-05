@@ -1270,6 +1270,35 @@ def test_generate_dataset_blocks_when_dataset_already_exists():
     assert "new session" in result.message
 
 
+def test_generate_dataset_blocks_while_training_is_running():
+    service = ApplicationService(Study())
+    raw = _raw_mock()
+    service.study.data_manager.loaded_data_list = [raw]
+    service.study.data_manager.preprocessed_data_list = [raw]
+    service.study.data_manager.epoch_data = MagicMock()
+    service.training.is_training = MagicMock(return_value=True)
+
+    result = service.execute(GenerateDatasetCommand())
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    assert "Stop training before changing data splitting." in result.message
+
+
+def test_clear_datasets_blocks_while_training_is_running():
+    service = ApplicationService(Study())
+    service.study.data_manager.datasets = [MagicMock()]
+    service.training.is_training = MagicMock(return_value=True)
+    service.training.clean_datasets = MagicMock()
+
+    result = service.execute(ClearDatasetsCommand(confirmed=True))
+
+    assert result.failed is True
+    assert result.error_type == ErrorType.PRECONDITION
+    assert "Stop training before clearing generated datasets." in result.message
+    service.training.clean_datasets.assert_not_called()
+
+
 def test_generate_dataset_fails_when_split_audit_has_empty_or_leaking_splits():
     service = ApplicationService(Study())
     service.study.data_manager.epoch_data = MagicMock()

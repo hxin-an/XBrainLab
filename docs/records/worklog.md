@@ -6127,3 +6127,67 @@
     acceptance.
   - It does not prove Windows human desktop click-through or complete remaining mutating-path
     audit.
+
+### 2026-05-05 Training data-splitting capability truth
+
+- scope：
+  - Backend capability policy and Training sidebar command truth for dataset generation /
+    clear-datasets boundaries。
+  - No agent tool schema, MCP tool schema, Data Interpretation wizard, or screenshot artifact
+    change.
+- problem：
+  - `TrainingSidebar.split_data()` used controller-local loaded/epoch/training checks before opening
+    `DataSplittingDialog`, so a real `Study` path could open the dialog when backend
+    `generate_dataset` capability was blocked.
+  - Backend `clear_datasets` capability did not block while training was reported running.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_generate_dataset_blocks_while_training_is_running tests/unit/backend/application/test_application_service.py::test_clear_datasets_blocks_while_training_is_running -q`
+    initially failed because generate reached validation and clear succeeded.
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_uses_backend_generate_capability_before_dialog tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_allows_backend_replacement_boundary -q`
+    initially failed because the dialog opened on a backend-blocked real `Study` state.
+- 做了什麼：
+  - Added backend capability blockers for `generate_dataset` and `clear_datasets` while training is
+    running.
+  - Added Training sidebar `generate_dataset` capability preflight before opening the splitting
+    dialog.
+  - Preserved the existing replacement boundary: if the only generate blocker is existing active
+    datasets/trainer and backend `clear_datasets` is enabled, UI may still ask for destructive
+    confirmation and run clear-then-generate.
+  - Kept mock / legacy non-Study controller-local compatibility.
+- validation：
+  - focused backend red + policy boundary:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_generate_dataset_blocks_while_training_is_running tests/unit/backend/application/test_application_service.py::test_clear_datasets_blocks_while_training_is_running -q`
+    -> red before implementation, then `2 passed`.
+  - focused UI red + replacement boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_uses_backend_generate_capability_before_dialog tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_split_data_allows_backend_replacement_boundary -q`
+    -> red before implementation, then `2 passed`.
+  - Training sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `28 passed`.
+  - backend dataset-generation regression:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_application_service.py::test_generate_dataset_blocks_when_dataset_already_exists tests/unit/backend/application/test_application_service.py::test_generate_dataset_blocks_while_training_is_running tests/unit/backend/application/test_application_service.py::test_clear_datasets_blocks_while_training_is_running tests/unit/backend/application/test_application_service.py::test_clear_datasets_and_training_history_commands_route_cleanup -q`
+    -> `4 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one data-splitting capability boundary cleanup, not full training workflow human
+    acceptance.
+  - It does not prove long-running training resource cleanup, Windows launcher click-through, or
+    complete UI-observable walkthrough coverage.
