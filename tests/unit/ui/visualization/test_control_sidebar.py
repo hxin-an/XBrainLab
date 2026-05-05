@@ -9,6 +9,7 @@ from XBrainLab.backend.application import (
     ApplyMontageCommand,
     QueryStateCommand,
     SaliencyCommand,
+    VisualizeCommand,
 )
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.panels.visualization.control_sidebar import ControlSidebar
@@ -472,3 +473,55 @@ def test_sidebar_export_saliency_uses_query_before_stale_trainers(qtbot):
     mock_dialog.assert_not_called()
     mock_warning.assert_called_once()
     assert "saliency" in mock_warning.call_args.args[2].lower()
+
+
+def test_sidebar_export_saliency_uses_service_trainer_payload_before_panel_fallback(
+    qtbot,
+):
+    controller = MagicMock()
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    panel.get_trainers.side_effect = AssertionError(
+        "Export should use service trainer objects before panel fallback",
+    )
+    controller.get_trainers.side_effect = AssertionError(
+        "Export should not read controller trainers on service-backed path",
+    )
+    service_trainer = MagicMock()
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    saliency_result = MagicMock(
+        failed=False,
+        diagnostics={
+            "payload_type": "saliency_summary",
+            "saliency_available": True,
+        },
+    )
+    visualize_result = MagicMock(
+        failed=False,
+        diagnostics={
+            "payload_type": "visualization_summary",
+            "trainer_objects": [service_trainer],
+        },
+    )
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.ExportSaliencyDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.execute_application_command",
+            side_effect=[saliency_result, visualize_result],
+        ) as mock_execute,
+    ):
+        sidebar.export_saliency()
+
+    commands = [call.args[1] for call in mock_execute.call_args_list]
+    assert isinstance(commands[0], SaliencyCommand)
+    assert isinstance(commands[1], VisualizeCommand)
+    assert commands[1].include_objects is True
+    mock_dialog.assert_called_once_with(sidebar, [service_trainer])

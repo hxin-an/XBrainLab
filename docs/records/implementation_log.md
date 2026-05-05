@@ -3206,3 +3206,27 @@ back to `TrainingController.get_formatted_history()`.
 
 - This does not remove the high-frequency training observer loop, certify long-running training
   resource cleanup, or complete all Training sidebar controller fallback audit work.
+
+## 2026-05-06 Visualization Export Trainer Payload
+
+### 狀態
+
+`Export Saliency` now keeps its saliency readiness gate on `SaliencyCommand` and then opens the
+export dialog from `VisualizeCommand(include_objects=True)` trainer objects in real `Study`
+contexts. Panel/controller trainer reads remain only for query-unavailable mock / legacy fallback.
+
+### 已可宣稱
+
+- A stale injected Visualization panel or controller can no longer supply export trainers after a
+  successful service-backed visualization payload.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests：`tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not certify saliency artifact export contents, saliency canvas screenshots, or the full
+  Visualization workflow UX.

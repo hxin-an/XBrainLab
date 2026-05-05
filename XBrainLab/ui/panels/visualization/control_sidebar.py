@@ -15,6 +15,7 @@ from XBrainLab.backend.application import (
     CommandName,
     QueryStateCommand,
     SaliencyCommand,
+    VisualizeCommand,
 )
 from XBrainLab.ui.application_capabilities import (
     blocked_reason,
@@ -299,16 +300,43 @@ class ControlSidebar(QWidget):
             QMessageBox.warning(self, "Export Saliency Blocked", block_reason)
             return
 
-        if self.panel and hasattr(self.panel, "get_trainers"):
-            trainers = self.panel.get_trainers()
-        else:
-            trainers = self.controller.get_trainers()
+        trainers = self._saliency_export_trainers()
+        if trainers is None:
+            trainers = self._legacy_export_trainers()
 
         if not trainers:
             QMessageBox.warning(self, "Warning", "No training results available.")
             return
         win = ExportSaliencyDialog(self, trainers)
         win.exec()
+
+    def _saliency_export_trainers(self):
+        result = execute_application_command(
+            self,
+            VisualizeCommand(view="summary", include_objects=True),
+            refresh=False,
+        )
+        if result is None:
+            return None
+        if result.failed:
+            QMessageBox.warning(
+                self,
+                "Export Saliency Blocked",
+                result.message,
+            )
+            return []
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "visualization_summary":
+            return []
+        trainers = diagnostics.get("trainer_objects")
+        if not isinstance(trainers, list):
+            return []
+        return list(trainers)
+
+    def _legacy_export_trainers(self):
+        if self.panel and hasattr(self.panel, "get_trainers"):
+            return run_legacy_controller_fallback(self, self.panel.get_trainers)
+        return run_legacy_controller_fallback(self, self.controller.get_trainers)
 
     @staticmethod
     def _saliency_export_block_reason(result) -> str | None:

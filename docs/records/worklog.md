@@ -10111,3 +10111,56 @@
 - 不能宣稱：
   - This does not remove the high-frequency training observer loop, certify long-running training
     resource cleanup, or complete all Training sidebar controller fallback audit work.
+
+### 2026-05-06 Visualization export trainer payload source
+
+- scope：
+  - Continue Visualization read-side command-truth cleanup for Export Saliency.
+  - Prevent saliency export from using stale `panel.get_trainers()` /
+    `VisualizationController.get_trainers()` after service-backed saliency readiness passes.
+- red / focused test：
+  - Added
+    `test_sidebar_export_saliency_uses_service_trainer_payload_before_panel_fallback`.
+  - Red gate failed because `export_saliency()` called `panel.get_trainers()` after the saliency
+    query gate.
+- 做了什麼：
+  - `ControlSidebar.export_saliency()` now requests
+    `VisualizeCommand(view="summary", include_objects=True)` after `SaliencyCommand` confirms
+    export readiness.
+  - The export dialog receives service-backed `trainer_objects` in real `Study` contexts.
+  - `panel.get_trainers()` / `VisualizationController.get_trainers()` remain only in
+    query-unavailable mock / legacy fallback through `run_legacy_controller_fallback()`.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_export_saliency_uses_service_trainer_payload_before_panel_fallback -q`
+    -> failed on `panel.get_trainers()` fallback.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py -q`
+    -> `14 passed`.
+  - Focused lint/type/architecture:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/control_sidebar.py tests/unit/ui/visualization/test_control_sidebar.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - Slice gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `42 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a UI read-source cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not certify saliency export file contents, saliency canvas screenshots, or full
+    Visualization product UX.

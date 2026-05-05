@@ -217,6 +217,10 @@
   screenshot acceptance。
 - 最新 Visualization sidebar export cleanup 也讓 `Export Saliency` 先走 readonly
   `SaliencyCommand` gate；saliency output unavailable 時不再讀 stale trainer list 開 export dialog。
+- 最新 Visualization export trainer cleanup 又讓 saliency 可匯出時改用
+  `VisualizeCommand(include_objects=True)` 的 service-backed `trainer_objects`；real `Study`
+  export dialog 不再從 `panel.get_trainers()` / `VisualizationController.get_trainers()` 取 stale
+  trainer list，controller read 只留在 query unavailable 的 mock / legacy fallback helper。
 - 最新 Visualization saliency settings cleanup 也讓 settings dialog defaults 先走 readonly
   `SaliencyCommand` summary diagnostics；stale `VisualizationController.get_saliency_params()`
   只留在 query unavailable 的 mock / legacy fallback helper。

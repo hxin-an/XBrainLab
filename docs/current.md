@@ -925,6 +925,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   也是 UI-only：automation / MCP `visualize` schema 不暴露也不接受它。Visualization sidebar 的
   `Export Saliency` 也補上 readonly
   `SaliencyCommand` export gate；saliency output 不可用時不再讀 stale trainer list 開 export dialog。
+  最新 export trainer cleanup 又讓 saliency 可匯出時改用
+  `VisualizeCommand(include_objects=True)` 的 service-backed `trainer_objects` 開 export dialog；
+  `panel.get_trainers()` / `VisualizationController.get_trainers()` 只留在 query unavailable 的
+  mock / legacy fallback helper。
   最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。
