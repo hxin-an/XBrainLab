@@ -965,6 +965,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Preprocess panel render cleanup 也讓 history / preview / plotter refresh 先走
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` refresh 不再從
   `PreprocessPanel.update_panel()` 直接讀 stale `PreprocessController.get_preprocessed_data_list()`。
+  最新 Preprocess plotter cleanup 又替 async PSD worker result 加上 generation guard；快速重繪時
+  舊 PSD worker 結果不會回寫到新的 frequency plot。這是 UI responsiveness / stale result guard，
+  不是 long-running preprocessing performance soak。
   最新 Dataset table render cleanup 也讓 `DatasetPanel.update_panel()` 先走同一個 `data_lists`
   query；real `Study` table rows 不再從 `DatasetController.get_loaded_data_list()` 取得，該 read
   只留給 no-ApplicationService mock / legacy rendering。

@@ -36,6 +36,7 @@ class PreprocessPlotter:
         self.widget = widget
         self.controller = controller
         self.threadpool = QThreadPool.globalInstance()
+        self._plot_generation = 0
 
     def _get_chan_data(self, obj, ch_idx, start_time=0, duration=5):
         """Helper to retrieve channel data from a data object."""
@@ -154,6 +155,9 @@ class PreprocessPlotter:
         original_data_list: list[Any] | None = None,
     ):
         """Main plotting routine."""
+        self._plot_generation += 1
+        plot_generation = self._plot_generation
+
         # 1. Clear previous plots
         self.widget.plot_time.clear()
         self.widget.plot_freq.clear()
@@ -266,6 +270,8 @@ class PreprocessPlotter:
                 # We also need orig data if present
 
                 def handle_psd_result(result):
+                    if plot_generation != self._plot_generation:
+                        return
                     f_curr, p_curr, f_orig, p_orig = result
 
                     # Plot Original (if available)

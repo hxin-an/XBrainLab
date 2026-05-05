@@ -110,6 +110,39 @@ def test_plot_sample_data_async_psd(mock_widget, mock_controller):
         plotter.threadpool.start.assert_called_once()
 
 
+def test_stale_psd_result_does_not_update_latest_plot(mock_widget, mock_controller):
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+    plotter.threadpool = MagicMock()
+    handlers = []
+
+    class _Signal:
+        def connect(self, callback):
+            handlers.append(callback)
+
+    class _Signals:
+        result = _Signal()
+
+    class _Worker:
+        signals = _Signals()
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.Worker",
+        side_effect=lambda *_, **__: _Worker(),
+    ):
+        plotter.plot_sample_data()
+        plotter.plot_sample_data()
+
+    assert len(handlers) == 2
+    psd_result = (np.array([1.0]), np.array([1.0]), None, None)
+
+    handlers[0](psd_result)
+    mock_widget.plot_freq.plot.assert_not_called()
+
+    handlers[1](psd_result)
+    mock_widget.plot_freq.plot.assert_called_once()
+    mock_widget.plot_freq.setTitle.assert_called_with("ch1 (PSD)")
+
+
 def test_plot_no_data(mock_widget, mock_controller):
     mock_controller.has_data.return_value = False
     plotter = PreprocessPlotter(mock_widget, mock_controller)
@@ -137,6 +170,7 @@ class TestGetChanData:
 
         x, y = plotter._get_chan_data(raw_obj, ch_idx=0, start_time=0, duration=5)
         assert x is not None
+        assert y is not None
         assert len(y) == 500
 
     def test_raw_start_beyond_data(self, mock_widget, mock_controller):
@@ -183,6 +217,7 @@ class TestGetChanData:
 
         x, y = plotter._get_chan_data(epoch_obj, ch_idx=0, start_time=1)
         assert x is not None
+        assert y is not None
         assert len(y) == 200
 
     def test_epochs_bad_ndim(self, mock_widget, mock_controller):

@@ -10510,3 +10510,41 @@
 - 不能宣稱：
   - This does not finish all Preprocess dialog read-source audits, full preprocessing workflow UI
     acceptance, or long-running preprocessing resource validation.
+
+### 2026-05-06 Preprocess PSD stale-result guard
+
+- scope：
+  - Add an observable UI responsiveness guard for async Preprocess PSD rendering.
+  - Prevent an older QThreadPool PSD worker result from writing into the frequency plot after a
+    newer `plot_sample_data()` call has already started.
+- red / focused tests：
+  - Added `test_stale_psd_result_does_not_update_latest_plot`.
+  - Red gate failed because the first captured PSD result handler still plotted into
+    `plot_freq` after a second plot generation had started.
+- 做了什麼：
+  - Added `_plot_generation` to `PreprocessPlotter`.
+  - Each `plot_sample_data()` increments the generation and captures it for the PSD result handler.
+  - The handler returns without touching the UI if the result is stale.
+  - Tightened two existing test assertions with `y is not None` so focused basedpyright can verify
+    the touched test file without widening the baseline.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py::test_stale_psd_result_does_not_update_latest_plot -q`
+    -> failed because stale handler called `plot_freq.plot()`.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py::test_stale_psd_result_does_not_update_latest_plot tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_async_psd tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_time_domain -q`
+    -> `3 passed`.
+  - Preprocess regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `45 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI async render guard under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not cancel running PSD workers, prove long-running preprocessing performance, or
+    certify memory leak behavior.

@@ -42,6 +42,37 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Preprocess PSD Worker Stale-Result Guard
+
+### 狀態
+
+The Preprocess plotter now tracks a plot generation for async PSD calculations. Each
+`plot_sample_data()` call increments the generation, and a PSD worker result only updates the
+frequency plot if it still belongs to the latest generation.
+
+### 已可宣稱
+
+- Rapid Preprocess plot refreshes no longer let an older PSD worker result overwrite the latest
+  frequency plot.
+- Focused tests cover stale-result rejection and current-result rendering.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py`
+- Tests: `tests/unit/ui/preprocess/test_preprocess_plotter.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not cancellation of running PSD workers, a long-running preprocessing performance soak,
+  or a memory leak proof.
+
+### 下一手重點
+
+Keep worker lifecycle work focused on observable stale-result, cleanup, or leak signals. If future
+profiling shows PSD workers accumulating under real interaction, add cancellation/coalescing at the
+PreviewWidget timer boundary.
+
 ## 2026-05-06 Preprocess Dialog Query Source Cleanup
 
 ### 狀態

@@ -256,6 +256,9 @@
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study`
   `PreprocessPanel.update_panel()` 不再直接讀 stale
   `PreprocessController.get_preprocessed_data_list()`。
+- 最新 Preprocess plotter async cleanup 讓 PSD worker result 帶 plot generation guard；快速重繪時
+  stale PSD result 不會覆寫新的 frequency plot。這是 UI responsiveness / stale-result guard，
+  不是 long-running preprocessing performance soak。
 - 最新 Dataset table render cleanup 也讓 `DatasetPanel.update_panel()` 先走
   `QueryStateCommand(query="data_lists", include_objects=True)`；real `Study` table rows 不再直接讀
   stale `DatasetController.get_loaded_data_list()`。

@@ -129,6 +129,13 @@ Preprocess re-reference dialog query-source gate:
 epoching paths. It does not prove the full Preprocess UI workflow or all remaining controller read
 audits are complete.
 
+Preprocess PSD stale-result gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py::test_stale_psd_result_does_not_update_latest_plot tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_async_psd tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_time_domain -q`
+-> `3 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+-> `45 passed`。This supports stale-result rejection for async PSD plot workers. It does not prove
+worker cancellation, long-running preprocessing performance, or memory leak behavior.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`
