@@ -521,6 +521,8 @@
     confirmation 留在 `Review Summary` rows，避免 raw filename 長句在 dialog 底部重複。
   - Dataset table `Events` 欄現在用 `Events (n)` 表示 recording events、`Labels (n)` 表示外部
     labels；external labels 使用中性文字，不再用綠色表示成功狀態。
+  - Dataset sidebar `Channel Selection` 也已改成中性 sidebar action；它會修改資料，不再用
+    success-green 表示尚未發生的成功狀態。
   - subject / session / task / run 和 class map review cells 已可產生 dialog `choices`。
   - Dataset action 會在 apply 前用使用者 review choices re-preview / re-validate，再套用新
     candidate。

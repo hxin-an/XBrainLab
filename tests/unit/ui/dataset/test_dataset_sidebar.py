@@ -4,6 +4,7 @@ import pytest
 from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
 @pytest.fixture
@@ -29,6 +30,11 @@ def test_init_ui(sidebar):
     assert isinstance(sidebar.smart_parse_btn, QPushButton)
     assert isinstance(sidebar.chan_select_btn, QPushButton)
     assert isinstance(sidebar.clear_btn, QPushButton)
+
+
+def test_channel_selection_uses_neutral_action_style(sidebar):
+    assert sidebar.chan_select_btn.styleSheet() == Stylesheets.SIDEBAR_BTN
+    assert sidebar.chan_select_btn.styleSheet() != Stylesheets.BTN_SUCCESS
 
 
 def test_update_sidebar_locked(sidebar):

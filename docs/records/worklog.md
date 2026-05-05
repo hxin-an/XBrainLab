@@ -8795,3 +8795,28 @@
 - 不能宣稱：
   - This does not remove legacy/mock fallback paths. It only keeps the refusal boundary user-facing
     if an impossible product fallback path is forced in tests or a runtime bug.
+
+### 2026-05-05 Dataset sidebar neutral channel-selection action
+
+- scope：
+  - Address the screenshot-review concern that loaded Dataset view still had misleading green UI.
+  - This slice specifically handles `Channel Selection`; `Events` / `Labels` semantic coloring was
+    already muted in the table.
+- red / focused test：
+  - Added `test_channel_selection_uses_neutral_action_style`, which failed while
+    `chan_select_btn` used `Stylesheets.BTN_SUCCESS`.
+- 做了什麼：
+  - Changed `DatasetSidebar.chan_select_btn` to use `Stylesheets.SIDEBAR_BTN`.
+  - Kept button enablement and capability tooltip behavior unchanged.
+- UI observable artifact：
+  - First `xvfb-run` attempt failed in the environment with a Wayland protocol geometry error.
+  - `QT_QPA_PLATFORM=xcb` was unavailable because `xcb-cursor0` / `libxcb-cursor0` is missing.
+  - Re-ran with `QT_QPA_PLATFORM=offscreen` successfully:
+    `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md` shows status `passed`,
+    `26 / 26` phases, `20` screenshots, UI quality checks passed, and resource smoke passed.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py::test_channel_selection_uses_neutral_action_style -q`
+    -> `1 passed`.
+- 不能宣稱：
+  - This is automated PyQt/offscreen evidence, not Windows human desktop acceptance.
+  - This does not close the mature Data Interpretation wizard or broader UI polish backlog.

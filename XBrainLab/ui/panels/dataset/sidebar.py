@@ -153,7 +153,7 @@ class DatasetSidebar(QWidget):
 
         self.chan_select_btn = QPushButton("Channel Selection")
         self.chan_select_btn.setToolTip("Select specific channels to keep")
-        self.chan_select_btn.setStyleSheet(Stylesheets.BTN_SUCCESS)
+        self.chan_select_btn.setStyleSheet(Stylesheets.SIDEBAR_BTN)
         self.chan_select_btn.clicked.connect(self.open_channel_selection)
         exec_layout.addWidget(self.chan_select_btn)
 

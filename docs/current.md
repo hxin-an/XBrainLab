@@ -924,8 +924,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
    import 不再是主要使用心智模型。
 5. 繼續根據 human-like walkthrough screenshots 做 UI polish；第一輪已處理 Data Interpretation
    table density、Training plot readability / history header、Evaluation compact controls 和
-   ChatPanel reset stale UI，仍要補 mature import wizard editing、assistant main-window narrow
-   composition 和整體產品感。
+   ChatPanel reset stale UI。最新 Dataset sidebar polish 也把 `Channel Selection` 從 success-green
+   action 改成中性 workflow action；這個按鈕會修改資料，不應用成功狀態顏色誤導使用者。仍要補
+   mature import wizard editing、assistant main-window narrow composition 和整體產品感。
 6. 將 `121` case remap-expanded tool-call dashboard 整理成 thesis report evidence；目前
    deterministic / primary / fallback 都是 `121 / 121`，但不要把它擴張成 UI / launcher /
    import wizard 產品完成 claim。日常 tool-call 修正不可預設 full primary / fallback x3；

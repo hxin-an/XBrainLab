@@ -2592,3 +2592,29 @@ no-op in full MainWindow context to avoid repeated refreshes for the same backen
 
 - This does not remove controller observers or make UI refresh fully command-driven. High-frequency
   training live updates and remaining manual UI refreshes still need explicit ownership.
+
+## 2026-05-05 Dataset Sidebar Visual Semantics
+
+### 狀態
+
+Dataset sidebar action semantics were tightened after the screenshot review: `Channel Selection`
+now uses the neutral sidebar action style instead of success-green. The action can modify loaded
+data, so green was misleading unless a successful result had already occurred.
+
+### 已可宣稱
+
+- The Dataset sidebar no longer presents `Channel Selection` as a success-state action.
+- The automated human-like walkthrough artifact was refreshed successfully under Qt offscreen:
+  `26 / 26` phases, `20` screenshots, UI quality checks passed.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/dataset/test_dataset_sidebar.py`
+- Artifact：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is a visual semantics slice only. It does not complete mature import wizard editing,
+  Windows launcher human acceptance, or the broader UI refresh coordinator milestone.
