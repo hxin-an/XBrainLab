@@ -873,6 +873,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `validate_ready()`、`has_model()`、`has_training_option()` 納入 Training readiness echo
   防線；`check_ready_to_train()` 現在用明確 no-capability branch 讀 legacy controller
   readiness，不再把 controller readiness call 藏在 capability conditional expression 裡。
+  最新 Training settings cleanup 又把設定 dialog 預設值改成先讀
+  `QueryStateCommand(query="state")` 的 `state.training.training_option` snapshot；dialog
+  `controller.get_training_option()` 只保留給 query unavailable 的 mock / legacy path。
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。

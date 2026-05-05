@@ -16,6 +16,7 @@ from XBrainLab.backend.application import (
     CommandName,
     ConfigureTrainingCommand,
     GenerateDatasetCommand,
+    QueryStateCommand,
     StopTrainingCommand,
     TrainCommand,
 )
@@ -425,7 +426,11 @@ class TrainingSidebar(QWidget):
         ):
             return
 
-        win = TrainingSettingDialog(self, self.controller)
+        win = TrainingSettingDialog(
+            self,
+            self.controller,
+            initial_option=self._training_option_snapshot(),
+        )
         if win.exec():
             option = win.get_result()
             optimizer_name = getattr(getattr(option, "optim", None), "__name__", "adam")
@@ -464,6 +469,29 @@ class TrainingSidebar(QWidget):
                 return
             QMessageBox.information(self, "Success", "Training settings saved.")
             self._check_ready_after_legacy_result(result)
+
+    def _training_option_snapshot(self) -> dict | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="state"),
+            refresh=False,
+        )
+        if result is None:
+            return None
+        if result.failed:
+            QMessageBox.warning(
+                self,
+                "Training Settings Blocked"
+                if result.recoverable
+                else "Training Settings Failed",
+                result.message,
+            )
+            return {}
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        state = diagnostics.get("state")
+        training = state.get("training") if isinstance(state, dict) else {}
+        option = training.get("training_option") if isinstance(training, dict) else None
+        return dict(option) if isinstance(option, dict) else {}
 
     def start_training_ui_action(self):
         """Start training via the application command spine and enable stop.

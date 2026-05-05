@@ -9632,3 +9632,49 @@
 - 不能宣稱：
   - This does not complete all Dataset dialog population paths, mature Data Interpretation wizard
     certification, or human desktop acceptance.
+
+### 2026-05-06 Training settings state snapshot defaults
+
+- scope：
+  - Continue UI/backend truth alignment for Training configuration dialogs.
+  - Prevent Training Settings dialog defaults from using stale
+    `TrainingController.get_training_option()` when ApplicationService state is available.
+- red / focused test：
+  - Added
+    `test_training_setting_uses_state_snapshot_defaults_before_stale_controller`.
+  - It failed before implementation because `TrainingSettingDialog` read
+    `controller.get_training_option()` during construction.
+- 做了什麼：
+  - `TrainingSidebar.training_setting()` now queries `QueryStateCommand(query="state")` with
+    `refresh=False` and passes `state.training.training_option` into the dialog.
+  - `TrainingSettingDialog` accepts an `initial_option` snapshot and loads epoch / batch size /
+    learning rate / repeat / optimizer / device / checkpoint / output directory defaults without
+    reading the controller.
+  - Controller training-option reads remain only for query-unavailable mock / legacy dialog paths.
+- validation：
+  - Red gate before implementation:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar::test_training_setting_uses_state_snapshot_defaults_before_stale_controller -q`
+    -> failed because `controller.get_training_option()` was called.
+  - After implementation:
+    same focused command -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `34 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_setting.py tests/unit/ui/test_dialogs_extra.py::TestTrainingSettingDialog -q`
+    -> `12 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar tests/unit/ui/training/test_training_panel.py tests/unit/ui/training/test_training_setting.py -q`
+    -> `60 passed`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Static gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check XBrainLab/ui/panels/training/sidebar.py XBrainLab/ui/dialogs/training/training_setting_dialog.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/training/sidebar.py XBrainLab/ui/dialogs/training/training_setting_dialog.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is a Training UI dialog default cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not verify long-running training, GPU resource behavior, or human desktop training
+    acceptance.

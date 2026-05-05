@@ -138,6 +138,9 @@ of stale controller `has_datasets()` / `get_trainer()` state.
 Start Training also follows backend capability truth: when the `train` capability is enabled, the
 UI dispatches `TrainCommand` even if `TrainingController.is_training()` is stale. Controller
 running checks remain only for no-capability mock / legacy paths.
+Training settings dialog defaults now use `QueryStateCommand(query="state")` /
+`state.training.training_option` in real `Study` contexts. `TrainingController.get_training_option()`
+is limited to mock / legacy query fallback when no ApplicationService query result is available.
 Preprocess epoching follows the `create_epoch` capability directly: when `create_epoch` is enabled,
 `open_epoching()` no longer re-checks the separate `preprocess` capability through `check_lock()` /
 `check_data_loaded()`, so a valid epoching path is not blocked by a preprocess-only reason.

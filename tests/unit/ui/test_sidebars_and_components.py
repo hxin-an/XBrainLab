@@ -848,6 +848,86 @@ class TestTrainingSidebar:
             sidebar.training_setting()
             sidebar.panel.controller.set_training_option.assert_called_once()
 
+    def test_training_setting_uses_state_snapshot_defaults_before_stale_controller(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            ConfigureTrainingCommand,
+            QueryStateCommand,
+        )
+        from XBrainLab.ui.dialogs.training.training_setting_dialog import (
+            TrainingSettingDialog,
+        )
+
+        sidebar.panel.controller.is_training.return_value = False
+        sidebar.panel.controller.get_training_option.side_effect = AssertionError(
+            "stale controller option should not be read",
+        )
+        query_result = _command_result(
+            state={
+                "training": {
+                    "training_option": {
+                        "epoch": 7,
+                        "batch_size": 16,
+                        "learning_rate": 0.002,
+                        "repeat": 3,
+                        "device": "cpu",
+                        "optimizer": "Adam",
+                        "checkpoint_epoch": 2,
+                        "output_dir": "./snapshot-output",
+                    },
+                },
+            },
+        )
+        save_result = _command_result()
+        option = SimpleNamespace(
+            epoch=7,
+            bs=16,
+            lr=0.002,
+            repeat_num=3,
+            use_cpu=True,
+            gpu_idx=None,
+            optim=None,
+            optim_params={},
+            checkpoint_epoch=2,
+            output_dir="./snapshot-output",
+            evaluation_option=SimpleNamespace(value="test_acc"),
+        )
+
+        def accept_dialog(dialog):
+            assert dialog.epoch_entry.text() == "7"
+            assert dialog.bs_entry.text() == "16"
+            assert dialog.lr_entry.text() == "0.002"
+            assert dialog.repeat_entry.text() == "3"
+            assert dialog.output_dir_label.text() == "./snapshot-output"
+            return QDialog.DialogCode.Accepted
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.training.sidebar.execute_application_command",
+                side_effect=[query_result, save_result],
+            ) as mock_execute,
+            patch.object(
+                TrainingSettingDialog,
+                "exec",
+                new=accept_dialog,
+            ),
+            patch.object(
+                TrainingSettingDialog,
+                "get_result",
+                return_value=option,
+            ),
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            sidebar.training_setting()
+
+        sidebar.panel.controller.get_training_option.assert_not_called()
+        commands = [call.args[1] for call in mock_execute.call_args_list]
+        assert isinstance(commands[0], QueryStateCommand)
+        assert isinstance(commands[1], ConfigureTrainingCommand)
+        sidebar.panel.controller.set_training_option.assert_not_called()
+
     def test_training_setting_uses_backend_configure_capability_before_dialog(
         self,
         sidebar,
