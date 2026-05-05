@@ -759,7 +759,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   target direction 的 first slice，不是 target closure。最新 Training sidebar refresh cleanup 已把
   generate dataset、configure model/settings、start training 和 clear history 的 post-command
   `check_ready_to_train()` 改成 legacy fallback-only；real `Study` success path 的 readiness refresh
-  交給 coordinator。後續仍要把剩餘 manual refresh / controller observer path 收斂。
+  交給 coordinator。Dataset action handler 也已把 smart parse、batch metadata 和 remove files 的
+  post-command `panel.update_panel()` 改成 legacy fallback-only。後續仍要把剩餘 manual refresh /
+  controller observer path 收斂。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training

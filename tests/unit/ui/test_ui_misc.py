@@ -1024,6 +1024,23 @@ class TestDatasetActionHandler:
 
         handler.panel.controller.remove_files.assert_not_called()
 
+    def test_remove_files_service_success_uses_coordinator_refresh(self, handler):
+        handler.panel.controller = MagicMock()
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+            patch(
+                "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+                return_value=_command_result(),
+            ),
+        ):
+            mock_mb.StandardButton.Yes = 1
+            mock_mb.StandardButton.No = 2
+            mock_mb.question.return_value = 1
+            handler._remove_files([0])
+
+        handler.panel.update_panel.assert_not_called()
+
     def test_remove_files_uses_backend_capability_before_confirm(self, handler):
         from XBrainLab.backend.study import Study
 

@@ -117,6 +117,35 @@ Apply the same service-success versus legacy-fallback split to Dataset and Prepr
 `update_panel()` calls, then consider an architecture guard for duplicated post-command local
 refresh.
 
+## 2026-05-05 Dataset Action Refresh Cleanup
+
+### 狀態
+
+Dataset action handler now applies the same coordinator-owned refresh split for smart parse, batch
+metadata updates, and remove files. Service-backed success paths no longer call
+`panel.update_panel()` directly; mock / legacy fallback still refreshes manually.
+
+### 已可宣稱
+
+- Three common Dataset mutating actions no longer duplicate service-success panel refresh.
+- Legacy fallback update behavior remains covered.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/actions.py`
+- Test: `tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_service_success_uses_coordinator_refresh`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish Dataset refresh cleanup. Data Interpretation apply, import labels, and inline
+  metadata table refresh paths still need review.
+
+### 下一手重點
+
+Continue Dataset refresh cleanup on Data Interpretation apply and inline metadata edit, then consider
+a static guard for duplicated post-command manual refresh.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態

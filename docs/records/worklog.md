@@ -37,6 +37,32 @@
 
 ## 2026-05-05
 
+### 17:28 Dataset action refresh coordinator slice
+
+- 做了什麼：
+  - 延續 command-driven refresh cleanup，把 Dataset action handler 的 smart parse、batch metadata
+    和 remove files post-command `panel.update_panel()` 改成 legacy fallback-only。
+  - 新增 `_update_panel_after_legacy_result()`，只有 `execute_application_command()` 回 `None`
+    的 mock / legacy fallback 才手動刷新；real `Study` service success 交給
+    `refresh_after_command()`。
+  - 先加紅燈：`RemoveFilesCommand` service success 後不應在 action handler 直接呼叫
+    `panel.update_panel()`。
+- 結果：
+  - Dataset action handler 的三條常見 mutating path 不再在 service success path 重複刷新
+    Dataset panel。
+  - 這不涵蓋 Data Interpretation apply / import label / inline metadata table 的所有 manual refresh。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_service_success_uses_coordinator_refresh -q`
+    -> failed；`panel.update_panel()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files_service_success_uses_coordinator_refresh tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_remove_files tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_batch_set_session tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_open_smart_parser_success -q`
+    -> `4 passed`。
+  - Focused ruff / basedpyright on touched files -> pass / `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 跑 broader UI/docs/static gates 後提交；下一步可處理 Data Interpretation apply 或 Dataset inline
+    metadata table 的 manual refresh。
+
 ### 17:22 Training readiness refresh coordinator slice
 
 - 做了什麼：

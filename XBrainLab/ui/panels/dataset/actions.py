@@ -71,6 +71,10 @@ class DatasetActionHandler:
         """QMainWindow: The application main window reference."""
         return getattr(self.panel, "main_window", None)
 
+    def _update_panel_after_legacy_result(self, result) -> None:
+        if result is None:
+            self.panel.update_panel()
+
     def import_data(self):
         """Scan, preview, validate, and apply an EEG data interpretation."""
         scan_capability = get_command_capability(self.panel, CommandName.SCAN_SOURCE)
@@ -699,7 +703,7 @@ class DatasetActionHandler:
                 return
             else:
                 count = int(result.diagnostics.get("success_count", 0))
-            self.panel.update_panel()
+            self._update_panel_after_legacy_result(result)
 
             QMessageBox.information(self.panel, "Success", f"Updated {count} files.")
 
@@ -1089,7 +1093,7 @@ class DatasetActionHandler:
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
-            self.panel.update_panel()
+            self._update_panel_after_legacy_result(result)
 
     @staticmethod
     def _run_metadata_update_fallback(controller, updates) -> None:
@@ -1146,4 +1150,4 @@ class DatasetActionHandler:
             elif result.failed:
                 QMessageBox.critical(self.panel, "Error", result.message)
                 return
-            self.panel.update_panel()
+            self._update_panel_after_legacy_result(result)
