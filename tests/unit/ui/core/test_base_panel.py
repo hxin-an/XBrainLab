@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import Qt
@@ -19,13 +19,13 @@ class UnimplementedPanel(BasePanel):
 
 
 @pytest.fixture
-def panel(qtbot):
+def panel(qtbot) -> ConcretePanel:
     widget = ConcretePanel()
     qtbot.addWidget(widget)
     return widget
 
 
-def test_init(panel):
+def test_init(panel: ConcretePanel):
     assert isinstance(panel, QWidget)
     assert panel.controller is None
     assert panel.main_window is None
@@ -71,8 +71,16 @@ def test_set_busy(panel, qtbot):
 def test_methods_exist(panel):
     # Ensure optional methods exist and don't raise error
     panel.update_panel()
+    panel.refresh_from_observer()
     panel._setup_bridges()
     panel.cleanup()
+
+
+def test_refresh_from_observer_delegates_to_coordinator(panel):
+    with patch("XBrainLab.ui.core.base_panel.refresh_panel") as refresh_panel:
+        panel.refresh_from_observer("event_arg", name="event")
+
+    refresh_panel.assert_called_once_with(panel)
 
 
 class TestCreateBridge:

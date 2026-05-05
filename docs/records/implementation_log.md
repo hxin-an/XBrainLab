@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-05 UI Observer Refresh Coordinator Slice
+
+### 狀態
+
+Simple observer-driven panel refresh now has a named coordinator boundary. `BasePanel` exposes
+`refresh_from_observer()`, which delegates to `refresh_coordinator.refresh_panel()`. Dataset,
+Preprocess, Training, Evaluation, and Visualization panels use that helper for simple
+`event -> panel refresh` bridge handlers. Callback-specific events such as import-finished,
+TrainingPanel start/stop, and live training updates still keep their dedicated handlers.
+
+### 已可宣稱
+
+- Observer refresh no longer wires simple backend events directly to `update_panel()`.
+- Command-result refresh, navigation refresh, and simple observer refresh now share the same safe
+  no-arg panel refresh boundary.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/refresh_coordinator.py`, `XBrainLab/ui/core/base_panel.py`, workflow panels
+- Tests: `tests/unit/ui/test_refresh_coordinator.py`, `tests/unit/ui/core/test_base_panel.py`,
+  `tests/unit/ui/test_panel_event_bridges.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not eliminate observer events or finish command-driven UI refresh. Callback-specific
+  observer handlers and remaining manual refresh paths still need classification.
+
+### 下一手重點
+
+Audit callback-specific observer handlers and panel-local manual refreshes; keep legitimate event
+bridges explicit and move duplicated workflow refresh toward the coordinator.
+
 ## 2026-05-05 Data Interpretation Confirmation Copy Polish
 
 ### 狀態

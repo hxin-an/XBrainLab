@@ -779,7 +779,11 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `refresh_backend_status()`，除非是 explicit `refresh=False` query path 或 failure / legacy
   fallback branch。最新 tab-switch cleanup 又把 `MainWindow.switch_page()` 的 panel-index refresh
   mapping 移到 `refresh_after_navigation()`，讓 command result refresh 和 navigation refresh 都由
-  `refresh_coordinator` 承接。後續仍要把剩餘 manual refresh / controller observer path 收斂。
+  `refresh_coordinator` 承接。最新 observer refresh cleanup 又把單純的
+  `event -> update_panel()` bridge 收斂到 `BasePanel.refresh_from_observer()`，再委派
+  `refresh_coordinator.refresh_panel()`；這保留 observer bridge 語意，但不再讓每個 panel 直接
+  接 `update_panel()`。後續仍要把剩餘 manual refresh / callback-specific observer path 收斂或
+  明確標成 event bridge。
 - product runtime mutating workflow 不應 silent fallback 到 controller mutation。現有
   controller fallback 只可保留在 explicit mock / unit-test compatibility 或 isolated legacy
   adapter path；後續要繼續 audit dataset import、metadata / smart parse / remove、training

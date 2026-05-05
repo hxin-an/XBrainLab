@@ -72,7 +72,11 @@ class DatasetPanel(BasePanel):
     def _setup_bridges(self):
         """Register Qt observer bridges for controller events."""
         if self.controller:
-            self._create_bridge(self.controller, "data_changed", self.update_panel)
+            self._create_bridge(
+                self.controller,
+                "data_changed",
+                self.refresh_from_observer,
+            )
             self._create_bridge(
                 self.controller,
                 "import_finished",

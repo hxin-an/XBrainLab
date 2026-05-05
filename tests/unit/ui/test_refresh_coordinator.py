@@ -8,6 +8,7 @@ from XBrainLab.backend.application import ChangedState, CommandResult
 from XBrainLab.ui.refresh_coordinator import (
     refresh_after_command,
     refresh_after_navigation,
+    refresh_panel,
 )
 
 
@@ -172,3 +173,12 @@ def test_navigation_refresh_ignores_unknown_panel_index():
     assert main_window.training_panel.update_calls == 0
     assert main_window.evaluation_panel.update_calls == 0
     assert main_window.visualization_panel.update_calls == 0
+
+
+def test_refresh_panel_uses_safe_noarg_update_call():
+    panel = _PanelSpy()
+
+    refreshed = refresh_panel(panel)
+
+    assert refreshed is True
+    assert panel.update_calls == 1

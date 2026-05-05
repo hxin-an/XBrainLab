@@ -37,6 +37,50 @@
 
 ## 2026-05-05
 
+### 18:56 UI observer refresh coordinator slice
+
+- 做了什麼：
+  - 新增 `refresh_coordinator.refresh_panel(panel)`，作為單一 panel safe no-arg refresh helper。
+  - `refresh_after_command()` 和 `refresh_after_navigation()` 也改用 `refresh_panel()`，避免各自
+    直接呼叫 `_call_noarg(..., "update_panel")`。
+  - 在 `BasePanel` 新增 `refresh_from_observer()`，讓 observer event 可以走同一個 coordinator
+    boundary。
+  - Dataset / Preprocess / Training / Evaluation / Visualization panel 的單純
+    `event -> update_panel()` bridge 改成 `event -> refresh_from_observer()`。
+  - 保留 callback-specific handlers：Dataset import-finished action handler、TrainingPanel start/stop /
+    config / history / live update handlers 等沒有改成 generic refresh。
+  - 先補紅燈測試：`refresh_panel` 不存在、`refresh_from_observer` 不存在、Preprocess observer
+    event 沒走 `refresh_from_observer()`。
+- 結果：
+  - Observer event 語意保留，但 simple panel refresh 不再直接散落在各 panel。
+  - Command-result refresh、navigation refresh 和 simple observer refresh 現在共用
+    `refresh_panel()` 的 safe-call 邊界。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py::test_refresh_panel_uses_safe_noarg_update_call tests/unit/ui/core/test_base_panel.py::test_refresh_from_observer_delegates_to_coordinator tests/unit/ui/test_panel_event_bridges.py::test_preprocess_panel_observer_events_use_refresh_coordinator -q`
+    -> import error，`refresh_panel` 尚不存在。
+  - Focused tests：
+    `poetry run pytest --capture=sys tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `27 passed`。
+  - Focused lint/type：
+    `poetry run ruff check XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/core/base_panel.py XBrainLab/ui/panels/dataset/panel.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py`
+    -> pass。
+    `poetry run basedpyright XBrainLab/ui/refresh_coordinator.py XBrainLab/ui/core/base_panel.py XBrainLab/ui/panels/dataset/panel.py XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/training/panel.py XBrainLab/ui/panels/evaluation/panel.py XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_refresh_coordinator.py tests/unit/ui/core/test_base_panel.py tests/unit/ui/test_panel_event_bridges.py`
+    -> `0 errors, 0 warnings, 0 notes`。
+  - Source scan:
+    `rg -n "self\\.update_panel" XBrainLab/ui/panels -S` -> remaining direct calls are Dataset
+    panel internal fallback/failure refreshes, not `_create_bridge(..., self.update_panel)` handlers.
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning；
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `929 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。這不代表 observer/callback refresh 全部 closure。
+
 ### 18:46 Data Interpretation confirmation copy polish
 
 - 做了什麼：

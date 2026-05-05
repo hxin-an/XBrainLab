@@ -35,7 +35,7 @@ def refresh_after_command(context: Any, result: CommandResult | None) -> bool:
         refreshed = False
         for panel_name in _panel_names_for(result.changed_state):
             panel = getattr(main_window, panel_name, None)
-            refreshed = _call_noarg(panel, "update_panel") or refreshed
+            refreshed = refresh_panel(panel) or refreshed
 
         refreshed = _call_noarg(main_window, "update_info_panel") or refreshed
 
@@ -51,6 +51,11 @@ def refresh_after_navigation(main_window: Any, index: int) -> bool:
     if index < 0 or index >= len(_PANEL_NAMES_BY_INDEX):
         return False
     panel = getattr(main_window, _PANEL_NAMES_BY_INDEX[index], None)
+    return refresh_panel(panel)
+
+
+def refresh_panel(panel: Any) -> bool:
+    """Refresh one workflow panel through the shared safe call boundary."""
     return _call_noarg(panel, "update_panel")
 
 

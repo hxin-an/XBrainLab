@@ -59,19 +59,19 @@ class PreprocessPanel(BasePanel):
             self._create_bridge(
                 self.controller,
                 "preprocess_changed",
-                self.update_panel,
+                self.refresh_from_observer,
             )
 
             if self.dataset_controller:
                 self._create_bridge(
                     self.dataset_controller,
                     "data_changed",
-                    self.update_panel,
+                    self.refresh_from_observer,
                 )
                 self._create_bridge(
                     self.dataset_controller,
                     "import_finished",
-                    self.update_panel,
+                    self.refresh_from_observer,
                 )
 
     def init_ui(self):
