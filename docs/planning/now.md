@@ -254,6 +254,10 @@
   `artifacts/ui/data-interpretation-replay.json`，包含 preview/remap metadata、label carrier、event
   role 和 review summary 的 `header_length == viewport_width`、`horizontal_scrollbar_max=0`、
   `column_widths` 和 `text_elide_mode` evidence。
+- 最新 human-like walkthrough refresh 也把 table geometry 納入 top-level UI quality gate：
+  `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` 目前 `status=passed`，
+  table geometry review 檢查 `15` 個 table/tree widgets、`0` findings；載入資料後 Dataset
+  table 記錄 `header_length=509`、`viewport_width=510`、`horizontal_scrollbar_max=0`。
 - Recipe reload 現在不只重掃 source path：`ReloadInterpretationRecipeCommand` 會把 saved
   selected files、metadata overrides、label carrier choices、event roles 和 class map rehydrated
   回 candidate `choices` 後再 preview / validate。Human-like walkthrough reload command result

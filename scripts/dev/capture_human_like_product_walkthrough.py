@@ -38,7 +38,9 @@ from scripts.dev.capture_data_interpretation_replay import (
     SOURCE_DIR,
     SOURCE_PATH,
     apply_replay_review_choices,
+    table_state,
     tree_rows,
+    tree_state,
     write_synthetic_raw_fif,
 )
 from XBrainLab.backend.application import (
@@ -143,6 +145,7 @@ VISIBLE_FORBIDDEN = (
 
 RESOURCE_THREAD_TOLERANCE = 1
 RESOURCE_RSS_SMOKE_LIMIT_KB = 600_000
+GEOMETRY_WIDTH_TOLERANCE_PX = 8
 
 
 def main() -> int:
@@ -262,7 +265,12 @@ def _run_walkthrough_steps(
     capture_step(
         "main_window_initial_state",
         "dataset_page",
-        notes={"current_panel": "Dataset"},
+        notes={
+            "current_panel": "Dataset",
+            "ui_geometry": {
+                "dataset_table": table_state(window.dataset_panel.table),
+            },
+        },
     )
     capture_step(
         "data_source_selection",
@@ -313,6 +321,7 @@ def _run_walkthrough_steps(
             "decision": validation.diagnostics["validation_decision"]["decision"],
             "eeg_files": len(scan.diagnostics["scan_result"]["eeg_files"]),
             "label_carriers": len(scan.diagnostics["scan_result"]["label_carriers"]),
+            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
         },
     )
 
@@ -328,6 +337,7 @@ def _run_walkthrough_steps(
             "review_choices": sanitize(review_choices),
             "metadata_rows": tree_rows(dialog.file_tree),
             "label_carrier_rows": tree_rows(dialog.label_carrier_tree),
+            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
         },
     )
     append_phase_alias(
@@ -403,6 +413,9 @@ def _run_walkthrough_steps(
             ],
             "blocked": blocked_probe,
             "unconfirmed_apply": command_summary(apply_without_confirmation),
+            "ui_geometry": {
+                "dataset_table": table_state(window.dataset_panel.table),
+            },
         },
     )
     capture_step(
@@ -411,6 +424,9 @@ def _run_walkthrough_steps(
         notes={
             "applied": command_summary(apply_confirmed),
             "recipe": command_summary(save_recipe),
+            "ui_geometry": {
+                "dataset_table": table_state(window.dataset_panel.table),
+            },
         },
     )
     append_phase_alias(
@@ -436,6 +452,7 @@ def _run_walkthrough_steps(
         notes={
             "reload": command_summary(reload_recipe),
             "review_summary_rows": tree_rows(reload_dialog.review_tree),
+            "ui_geometry": sanitize(interpretation_dialog_geometry(reload_dialog)),
         },
     )
     reload_dialog.close()
@@ -635,6 +652,10 @@ def _run_walkthrough_steps(
     )
     observable_evidence = build_observable_evidence_summary(phases)
     ui_quality_review = build_ui_quality_review(phases, screenshots)
+    pass_fail_summary = merge_ui_quality_into_pass_fail_summary(
+        pass_fail_summary,
+        ui_quality_review,
+    )
     status = "passed" if pass_fail_summary["passed"] else "failed"
     return {
         "status": status,
@@ -846,6 +867,18 @@ def run_chatpanel_walkthrough(
 def apply_review_choices(dialog: DataInterpretationPreviewDialog) -> None:
     """Apply deterministic human-like review choices to the wizard."""
     apply_replay_review_choices(dialog)
+
+
+def interpretation_dialog_geometry(
+    dialog: DataInterpretationPreviewDialog,
+) -> dict[str, Any]:
+    """Return table/tree geometry evidence for Data Interpretation review panes."""
+    return {
+        "metadata": tree_state(dialog.file_tree),
+        "label_carriers": tree_state(dialog.label_carrier_tree),
+        "events": tree_state(dialog.event_tree),
+        "review_summary": tree_state(dialog.review_tree),
+    }
 
 
 def data_interpretation_decision_probe(
@@ -1188,6 +1221,20 @@ def build_resource_smoke_summary(
     }
 
 
+def merge_ui_quality_into_pass_fail_summary(
+    summary: dict[str, Any],
+    ui_quality_review: dict[str, Any],
+) -> dict[str, Any]:
+    """Fold automated UI quality checks into the walkthrough status summary."""
+    merged = dict(summary)
+    failed_checks = list(merged.get("failed_checks", []))
+    if not ui_quality_review.get("automated_checks_passed"):
+        failed_checks.append("ui quality review did not pass")
+    merged["failed_checks"] = failed_checks
+    merged["passed"] = bool(merged.get("passed")) and not failed_checks
+    return merged
+
+
 def _resource_note(
     resource_notes: list[dict[str, Any]],
     label: str,
@@ -1214,6 +1261,7 @@ def build_observable_evidence_summary(
     workflow_states: dict[str, dict[str, Any]] = {}
     backend_snapshots: dict[str, dict[str, Any]] = {}
     phase_screenshots: dict[str, str] = {}
+    ui_geometry: dict[str, dict[str, Any]] = {}
     for phase in phases:
         name = str(phase.get("phase", ""))
         if not name:
@@ -1224,12 +1272,16 @@ def build_observable_evidence_summary(
         workflow_states[name] = workflow_state
         backend_snapshots[name] = workflow_state
         phase_screenshots[name] = str(phase.get("screenshot", ""))
+        notes = phase.get("notes", {})
+        if isinstance(notes, dict) and isinstance(notes.get("ui_geometry"), dict):
+            ui_geometry[name] = dict(notes["ui_geometry"])
     return {
         "visible_text_snapshots": visible_text,
         "button_states": button_states,
         "workflow_states": workflow_states,
         "backend_state_snapshots": backend_snapshots,
         "phase_screenshots": phase_screenshots,
+        "ui_geometry_snapshots": ui_geometry,
     }
 
 
@@ -1269,13 +1321,16 @@ def build_ui_quality_review(
         and phase.get("screenshot")
         for phase in phases
     )
+    table_geometry_review = build_table_geometry_review(phases)
     return {
         "automated_checks_passed": not forbidden_rows
         and all(row["nonblank"] for row in screenshot_rows)
-        and all_phases_have_snapshots,
+        and all_phases_have_snapshots
+        and table_geometry_review["passed"],
         "screenshot_review": screenshot_rows,
         "forbidden_visible_text": forbidden_rows,
         "phase_snapshot_coverage": all_phases_have_snapshots,
+        "table_geometry_review": table_geometry_review,
         "visible_text_boundary": (
             "Checks visible widget text for raw tool syntax, schema, traceback, "
             "and selected snake_case command leakage."
@@ -1286,6 +1341,85 @@ def build_ui_quality_review(
             "long local-model sessions."
         ),
     }
+
+
+def build_table_geometry_review(phases: list[dict[str, Any]]) -> dict[str, Any]:
+    """Check table/tree geometry evidence for obvious overflow or underfill."""
+    rows: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    for phase in phases:
+        phase_name = str(phase.get("phase", ""))
+        notes = phase.get("notes", {})
+        if not isinstance(notes, dict):
+            continue
+        for widget_name, state in iter_geometry_states(notes.get("ui_geometry")):
+            header_length = geometry_int(state, "header_length")
+            viewport_width = geometry_int(state, "viewport_width")
+            if header_length <= 0 or viewport_width <= 0:
+                continue
+            horizontal_scrollbar_max = geometry_int(state, "horizontal_scrollbar_max")
+            width_gap = viewport_width - header_length
+            fits_panel = (
+                header_length <= viewport_width + GEOMETRY_WIDTH_TOLERANCE_PX
+                and horizontal_scrollbar_max == 0
+            )
+            fills_panel = width_gap <= GEOMETRY_WIDTH_TOLERANCE_PX
+            row = {
+                "phase": phase_name,
+                "widget": widget_name,
+                "headers": list(state.get("headers", [])),
+                "row_count": len(state.get("rows", []))
+                if isinstance(state.get("rows"), list)
+                else 0,
+                "header_length": header_length,
+                "viewport_width": viewport_width,
+                "width_gap": width_gap,
+                "horizontal_scrollbar_max": horizontal_scrollbar_max,
+                "fits_panel": fits_panel,
+                "fills_panel": fills_panel,
+                "resize_modes": list(state.get("resize_modes", [])),
+                "column_widths": list(state.get("column_widths", [])),
+                "text_elide_mode": state.get("text_elide_mode"),
+                "alternating_row_colors": state.get("alternating_row_colors"),
+            }
+            rows.append(row)
+            if not fits_panel or not fills_panel:
+                findings.append(row)
+    return {
+        "passed": bool(rows) and not findings,
+        "checked_widgets": len(rows),
+        "width_tolerance_px": GEOMETRY_WIDTH_TOLERANCE_PX,
+        "findings": findings,
+        "rows": rows,
+        "boundary": (
+            "Automated geometry smoke checks header length, viewport width, "
+            "and horizontal scrollbar state. Human review still decides visual polish."
+        ),
+    }
+
+
+def iter_geometry_states(
+    value: Any,
+    prefix: str = "",
+) -> list[tuple[str, dict[str, Any]]]:
+    """Flatten nested UI geometry maps into named widget states."""
+    if not isinstance(value, dict):
+        return []
+    if "header_length" in value and "viewport_width" in value:
+        return [(prefix or "widget", value)]
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for key, item in value.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        rows.extend(iter_geometry_states(item, name))
+    return rows
+
+
+def geometry_int(state: dict[str, Any], key: str) -> int:
+    """Read an integer geometry field from an artifact row."""
+    try:
+        return int(state.get(key, 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def forbidden_visible_text(texts: list[str]) -> list[str]:
@@ -1327,6 +1461,9 @@ def validate_walkthrough_payload(
         return False, "ui quality review is missing"
     if not payload["ui_quality_review"].get("automated_checks_passed"):
         return False, "ui quality review did not pass"
+    geometry_review = payload["ui_quality_review"].get("table_geometry_review", {})
+    if not geometry_review.get("passed"):
+        return False, "table geometry review did not pass"
     if "not human Windows desktop acceptance" not in payload.get(
         "claim_boundary",
         "",
@@ -1443,6 +1580,15 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- human review boundary: {quality.get('human_design_review_boundary', '')}",
         ]
     )
+    table_geometry = quality.get("table_geometry_review", {})
+    if table_geometry:
+        lines.extend(
+            [
+                f"- table geometry passed: `{table_geometry.get('passed')}`",
+                f"- checked table/tree widgets: `{table_geometry.get('checked_widgets')}`",
+                f"- table geometry findings: `{len(table_geometry.get('findings', []))}`",
+            ]
+        )
     lines.extend(["", "## Observable Evidence", ""])
     evidence = payload.get("observable_evidence", {})
     lines.extend(
@@ -1450,6 +1596,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
             f"- visible text snapshots: `{len(evidence.get('visible_text_snapshots', {}))}` phases",
             f"- button states: `{len(evidence.get('button_states', {}))}` phases",
             f"- workflow/backend snapshots: `{len(evidence.get('backend_state_snapshots', {}))}` phases",
+            f"- UI geometry snapshots: `{len(evidence.get('ui_geometry_snapshots', {}))}` phases",
         ]
     )
     lines.extend(["", "## Phases", ""])

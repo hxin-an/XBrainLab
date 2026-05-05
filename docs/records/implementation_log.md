@@ -2498,3 +2498,33 @@ Summary tree `header_length`, `viewport_width`, `column_widths`, `horizontal_scr
 
 - This is UI-observable automated evidence only. It does not replace human Windows desktop
   acceptance or complete the mature import wizard editor.
+
+## 2026-05-05 Human-Like Walkthrough Geometry Gate
+
+### 狀態
+
+The consolidated human-like walkthrough now carries table geometry evidence in its top-level
+observable summary and UI quality review. DatasetPanel also refits columns after Qt row-header /
+scrollbar geometry settles, so loaded rows no longer leave the table wider than the viewport in the
+automated replay.
+
+### 已可宣稱
+
+- Automated PyQt replay can detect Dataset / Data Interpretation table overflow regressions without
+  manually mining screenshots.
+- Current saved walkthrough passes with `15` checked table/tree widgets and `0` geometry findings.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/panel.py`,
+  `scripts/dev/capture_human_like_product_walkthrough.py`
+- Artifacts：`artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`,
+  `artifacts/ui/data-interpretation-replay.json`
+- Tests：`tests/unit/scripts/test_capture_human_like_product_walkthrough.py`,
+  `tests/unit/ui/dataset/test_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is automated UI-observable geometry evidence, not Windows human desktop acceptance or final
+  Data Interpretation wizard completion.

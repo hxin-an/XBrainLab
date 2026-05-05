@@ -3,7 +3,7 @@
 - status: `passed`
 - failure reason: none
 - claim boundary: Automated UI-observable PyQt replay; not human Windows desktop acceptance. Windows launcher click-through, dual-monitor/DPI behavior, and long real local-model desktop sessions remain human verification.
-- elapsed seconds: `3.764`
+- elapsed seconds: `4.501`
 - source: `<walkthrough_source>`
 - recipe: `/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/walkthrough-import.recipe.json`
 
@@ -14,7 +14,7 @@
 - screenshots: `20`
 - human desktop acceptance: `not performed`
 - resource smoke passed: `True`
-- RSS growth: `232156` KB / limit `600000` KB
+- RSS growth: `232040` KB / limit `600000` KB
 
 ## Screenshots
 
@@ -45,12 +45,16 @@
 - phase snapshot coverage: `True`
 - forbidden visible text findings: `0`
 - human review boundary: This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions.
+- table geometry passed: `True`
+- checked table/tree widgets: `15`
+- table geometry findings: `0`
 
 ## Observable Evidence
 
 - visible text snapshots: `26` phases
 - button states: `26` phases
 - workflow/backend snapshots: `26` phases
+- UI geometry snapshots: `6` phases
 
 ## Phases
 
@@ -123,9 +127,9 @@
 - smoke checked: `True`
 - smoke passed: `True`
 - boundary: Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks.
-- start: threads `1`, qt active `0`, rss `835836` KB
-- before_close: threads `1`, qt active `0`, rss `1067992` KB
-- after_close: threads `1`, qt active `0`, rss `1067992` KB
+- start: threads `1`, qt active `0`, rss `836832` KB
+- before_close: threads `1`, qt active `0`, rss `1068872` KB
+- after_close: threads `1`, qt active `0`, rss `1068872` KB
 
 ## Remaining Human Verification
 

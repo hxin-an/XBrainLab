@@ -40,6 +40,29 @@ def mock_controller(mock_main_window):
     return controller
 
 
+def loaded_data_stub(filename: str, *, labels_imported: bool = False) -> MagicMock:
+    data = MagicMock()
+    data.configure_mock(
+        **{
+            "get_filepath.return_value": f"/path/{filename}",
+            "get_filename.return_value": filename,
+            "get_subject_name.return_value": "S01",
+            "get_session_name.return_value": "session-01",
+            "get_nchan.return_value": 4,
+            "get_sfreq.return_value": 128.0,
+            "get_epochs_length.return_value": 1,
+            "has_event.return_value": True,
+            "is_raw.return_value": True,
+            "is_labels_imported.return_value": labels_imported,
+            "get_event_list.return_value": ([1, 2, 3, 4], {"left": 1}),
+            "get_filter_range.return_value": (0.0, 64.0),
+            "get_tmin.return_value": 0.0,
+            "get_epoch_duration.return_value": 1.0,
+        }
+    )
+    return data
+
+
 def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot):
     """Test initialization creates controller."""
     # Create a REAL QMainWindow to serve as parent
@@ -190,6 +213,33 @@ def test_dataset_panel_table_columns_shrink_to_fill_narrow_panel(
         max(panel.table.columnWidth(column) for column in range(7))
         < (DatasetPanel._TABLE_BASE_WIDTHS[0])
     )
+
+
+def test_dataset_panel_refits_table_after_loaded_rows_settle(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    mock_controller.get_loaded_data_list.return_value = [
+        loaded_data_stub("sub-01_task-mi_run-1_raw.fif"),
+        loaded_data_stub("sub-01_task-mi_run-2_raw.fif", labels_imported=True),
+    ]
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.resize(760, 420)
+    panel.show()
+
+    panel.update_panel()
+    qtbot.wait(10)
+
+    header = panel.table.horizontalHeader()
+    viewport = panel.table.viewport()
+    scrollbar = panel.table.horizontalScrollBar()
+    assert header is not None
+    assert viewport is not None
+    assert scrollbar is not None
+    assert abs(header.length() - viewport.width()) <= 2
+    assert scrollbar.maximum() == 0
 
 
 def test_dataset_panel_apply_loader_refuses_real_study(

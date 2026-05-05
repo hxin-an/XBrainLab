@@ -13,6 +13,7 @@ from scripts.dev.capture_human_like_product_walkthrough import (
     build_pass_fail_summary,
     build_ui_quality_review,
     forbidden_visible_text,
+    merge_ui_quality_into_pass_fail_summary,
     render_markdown,
     validate_walkthrough_payload,
 )
@@ -33,6 +34,17 @@ def _base_payload() -> dict:
         }
         for phase in REQUIRED_PHASES
     ]
+    phases[0]["notes"] = {
+        "ui_geometry": {
+            "dataset_table": {
+                "header_length": 640,
+                "viewport_width": 640,
+                "horizontal_scrollbar_max": 0,
+                "headers": ["File", "Subject"],
+                "rows": [],
+            }
+        }
+    }
     return {
         "status": "passed",
         "failure_reason": "",
@@ -70,6 +82,12 @@ def _base_payload() -> dict:
             "automated_checks_passed": True,
             "phase_snapshot_coverage": True,
             "forbidden_visible_text": [],
+            "table_geometry_review": {
+                "passed": True,
+                "checked_widgets": 1,
+                "findings": [],
+                "rows": [],
+            },
             "human_design_review_boundary": "Automated replay only.",
         },
         "elapsed_seconds": 10.0,
@@ -164,6 +182,28 @@ def test_observable_evidence_summary_indexes_phase_snapshots() -> None:
     assert REQUIRED_PHASES[0] in evidence["backend_state_snapshots"]
 
 
+def test_observable_evidence_summary_indexes_ui_geometry() -> None:
+    phases = _base_payload()["phases"]
+    phases[0]["notes"] = {
+        "ui_geometry": {
+            "dataset_table": {
+                "header_length": 640,
+                "viewport_width": 640,
+                "horizontal_scrollbar_max": 0,
+            }
+        }
+    }
+
+    evidence = build_observable_evidence_summary(phases)
+
+    assert (
+        evidence["ui_geometry_snapshots"][REQUIRED_PHASES[0]]["dataset_table"][
+            "viewport_width"
+        ]
+        == 640
+    )
+
+
 def test_validate_walkthrough_payload_requires_observable_evidence() -> None:
     payload = _base_payload()
     payload.pop("observable_evidence")
@@ -199,6 +239,52 @@ def test_build_ui_quality_review_flags_forbidden_visible_text() -> None:
 
     assert review["automated_checks_passed"] is False
     assert review["forbidden_visible_text"][0]["phase"] == "assistant"
+
+
+def test_build_ui_quality_review_flags_overflowing_table_geometry() -> None:
+    phases = [
+        {
+            "phase": "data_interpretation_preview",
+            "screenshot": "",
+            "visible_text": ["Interpretation Preview"],
+            "button_state": [],
+            "workflow_state": {},
+            "notes": {
+                "ui_geometry": {
+                    "review_summary": {
+                        "header_length": 1200,
+                        "viewport_width": 900,
+                        "horizontal_scrollbar_max": 40,
+                        "headers": ["Item", "Status", "Details"],
+                    }
+                }
+            },
+        }
+    ]
+
+    review = build_ui_quality_review(phases, screenshots={})
+
+    assert review["automated_checks_passed"] is False
+    assert review["table_geometry_review"]["passed"] is False
+    assert review["table_geometry_review"]["findings"][0]["phase"] == (
+        "data_interpretation_preview"
+    )
+
+
+def test_merge_ui_quality_into_pass_fail_summary_blocks_passed_status() -> None:
+    summary = {
+        "passed": True,
+        "failed_checks": [],
+    }
+    review = {
+        "automated_checks_passed": False,
+        "table_geometry_review": {"passed": False},
+    }
+
+    merged = merge_ui_quality_into_pass_fail_summary(summary, review)
+
+    assert merged["passed"] is False
+    assert "ui quality review did not pass" in merged["failed_checks"]
 
 
 def test_render_markdown_keeps_claim_boundary_and_transcripts() -> None:

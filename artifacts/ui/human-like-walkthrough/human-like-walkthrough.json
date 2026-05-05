@@ -315,7 +315,44 @@
         }
       },
       "notes": {
-        "current_panel": "Dataset"
+        "current_panel": "Dataset",
+        "ui_geometry": {
+          "dataset_table": {
+            "headers": [
+              "File",
+              "Subject",
+              "Session",
+              "Chan",
+              "Hz",
+              "Epochs",
+              "Events"
+            ],
+            "rows": [],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 533,
+            "viewport_width": 534,
+            "column_widths": [
+              141,
+              65,
+              79,
+              52,
+              56,
+              61,
+              79
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight"
+          }
+        }
       }
     },
     {
@@ -699,7 +736,224 @@
       "notes": {
         "decision": "needs_confirmation",
         "eeg_files": 2,
-        "label_carriers": 1
+        "label_carriers": 1,
+        "ui_geometry": {
+          "metadata": {
+            "headers": [
+              "File",
+              "Subject",
+              "Session",
+              "Task",
+              "Run"
+            ],
+            "rows": [
+              [
+                "sub-01_task-mi_run-1_raw.fif",
+                "01",
+                "",
+                "mi",
+                "1"
+              ],
+              [
+                "sub-01_task-mi_run-2_raw.fif",
+                "01",
+                "",
+                "mi",
+                "2"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              360,
+              152,
+              166,
+              207,
+              97
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "label_carriers": {
+            "headers": [
+              "Carrier",
+              "Matched EEG",
+              "Format",
+              "Label field",
+              "Anchor",
+              "Time",
+              "Granularity",
+              "Role"
+            ],
+            "rows": [
+              [
+                "events.tsv",
+                "Needs review",
+                "BIDS events",
+                "trial_type",
+                "onset",
+                "Seconds",
+                "Event",
+                "External labels"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              157,
+              151,
+              73,
+              120,
+              110,
+              110,
+              115,
+              146
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "events": {
+            "headers": [
+              "Item",
+              "Role",
+              "Meaning"
+            ],
+            "rows": [
+              [
+                "events.tsv",
+                "label / event carrier",
+                "Review alignment, anchor, and class map before apply."
+              ],
+              [
+                "Label carrier",
+                "event role",
+                "External label or event source"
+              ],
+              [
+                "Onset",
+                "event role",
+                "Time anchor"
+              ],
+              [
+                "Duration",
+                "event role",
+                "Event duration"
+              ],
+              [
+                "Trial type",
+                "event role",
+                "Class label candidate"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              274,
+              186,
+              522
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "review_summary": {
+            "headers": [
+              "Item",
+              "Status",
+              "What it means"
+            ],
+            "rows": [
+              [
+                "Warning",
+                "Review",
+                "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+              ],
+              [
+                "Warning",
+                "Review",
+                "External label/event carriers require preview before apply."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm label carrier alignment, anchor event, and class map before applying."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+              ],
+              [
+                "Downstream impact",
+                "After apply",
+                "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+              ],
+              [
+                "Format capability",
+                "Needs review",
+                "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+              ],
+              [
+                "Format capability",
+                "Supported",
+                "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              ],
+              [
+                "Format capability",
+                "Supported",
+                "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 972,
+            "viewport_width": 972,
+            "column_widths": [
+              179,
+              173,
+              620
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": true
+          }
+        }
       }
     },
     {
@@ -861,7 +1115,224 @@
             "Trial",
             "Class cue labels"
           ]
-        ]
+        ],
+        "ui_geometry": {
+          "metadata": {
+            "headers": [
+              "File",
+              "Subject",
+              "Session",
+              "Task",
+              "Run"
+            ],
+            "rows": [
+              [
+                "sub-01_task-mi_run-1_raw.fif",
+                "S01",
+                "session-01",
+                "motor-imagery",
+                "1"
+              ],
+              [
+                "sub-01_task-mi_run-2_raw.fif",
+                "01",
+                "",
+                "mi",
+                "2"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              360,
+              152,
+              166,
+              207,
+              97
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "label_carriers": {
+            "headers": [
+              "Carrier",
+              "Matched EEG",
+              "Format",
+              "Label field",
+              "Anchor",
+              "Time",
+              "Granularity",
+              "Role"
+            ],
+            "rows": [
+              [
+                "events.tsv",
+                "sub-01_task-mi_run-2_raw.fif",
+                "BIDS events",
+                "trial_type",
+                "onset",
+                "Seconds",
+                "Trial",
+                "Class cue labels"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              157,
+              151,
+              73,
+              120,
+              110,
+              110,
+              115,
+              146
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "events": {
+            "headers": [
+              "Item",
+              "Role",
+              "Meaning"
+            ],
+            "rows": [
+              [
+                "events.tsv",
+                "label / event carrier",
+                "Review alignment, anchor, and class map before apply."
+              ],
+              [
+                "Label carrier",
+                "event role",
+                "External label or event source"
+              ],
+              [
+                "Onset",
+                "event role",
+                "Time anchor"
+              ],
+              [
+                "Duration",
+                "event role",
+                "Event duration"
+              ],
+              [
+                "Trial type",
+                "event role",
+                "Class cue"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              274,
+              186,
+              522
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "review_summary": {
+            "headers": [
+              "Item",
+              "Status",
+              "What it means"
+            ],
+            "rows": [
+              [
+                "Warning",
+                "Review",
+                "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+              ],
+              [
+                "Warning",
+                "Review",
+                "External label/event carriers require preview before apply."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm label carrier alignment, anchor event, and class map before applying."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+              ],
+              [
+                "Downstream impact",
+                "After apply",
+                "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+              ],
+              [
+                "Format capability",
+                "Needs review",
+                "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+              ],
+              [
+                "Format capability",
+                "Supported",
+                "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              ],
+              [
+                "Format capability",
+                "Supported",
+                "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 972,
+            "viewport_width": 972,
+            "column_widths": [
+              179,
+              173,
+              620
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": true
+          }
+        }
       }
     },
     {
@@ -1323,6 +1794,62 @@
           "diagnostics_keys": [
             "exception_type"
           ]
+        },
+        "ui_geometry": {
+          "dataset_table": {
+            "headers": [
+              "File",
+              "Subject",
+              "Session",
+              "Chan",
+              "Hz",
+              "Epochs",
+              "Events"
+            ],
+            "rows": [
+              [
+                "sub-01_task-mi_run-1_raw.fif",
+                "S01",
+                "session-01",
+                "4",
+                "128.0",
+                "1",
+                "Events (6)"
+              ],
+              [
+                "sub-01_task-mi_run-2_raw.fif",
+                "01",
+                "0",
+                "4",
+                "128.0",
+                "1",
+                "Labels (4)"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 509,
+            "viewport_width": 510,
+            "column_widths": [
+              130,
+              63,
+              75,
+              52,
+              55,
+              59,
+              75
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight"
+          }
         }
       }
     },
@@ -1533,6 +2060,62 @@
             "recipe",
             "recipe_path"
           ]
+        },
+        "ui_geometry": {
+          "dataset_table": {
+            "headers": [
+              "File",
+              "Subject",
+              "Session",
+              "Chan",
+              "Hz",
+              "Epochs",
+              "Events"
+            ],
+            "rows": [
+              [
+                "sub-01_task-mi_run-1_raw.fif",
+                "S01",
+                "session-01",
+                "4",
+                "128.0",
+                "1",
+                "Events (6)"
+              ],
+              [
+                "sub-01_task-mi_run-2_raw.fif",
+                "01",
+                "0",
+                "4",
+                "128.0",
+                "1",
+                "Labels (4)"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 509,
+            "viewport_width": 510,
+            "column_widths": [
+              130,
+              63,
+              75,
+              52,
+              55,
+              59,
+              75
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight"
+          }
         }
       }
     },
@@ -1926,7 +2509,249 @@
             "Supported",
             "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
           ]
-        ]
+        ],
+        "ui_geometry": {
+          "metadata": {
+            "headers": [
+              "File",
+              "Subject",
+              "Session",
+              "Task",
+              "Run"
+            ],
+            "rows": [
+              [
+                "sub-01_task-mi_run-1_raw.fif",
+                "S01",
+                "session-01",
+                "motor-imagery",
+                "1"
+              ],
+              [
+                "sub-01_task-mi_run-2_raw.fif",
+                "01",
+                "",
+                "mi",
+                "2"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              360,
+              152,
+              166,
+              207,
+              97
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "label_carriers": {
+            "headers": [
+              "Carrier",
+              "Matched EEG",
+              "Format",
+              "Label field",
+              "Anchor",
+              "Time",
+              "Granularity",
+              "Role"
+            ],
+            "rows": [
+              [
+                "events.tsv",
+                "Needs review",
+                "BIDS events",
+                "trial_type",
+                "onset",
+                "Seconds",
+                "Trial",
+                "Class cue labels"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              157,
+              151,
+              73,
+              120,
+              110,
+              110,
+              115,
+              146
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "events": {
+            "headers": [
+              "Item",
+              "Role",
+              "Meaning"
+            ],
+            "rows": [
+              [
+                "events.tsv",
+                "label / event carrier",
+                "Review alignment, anchor, and class map before apply."
+              ],
+              [
+                "Label carrier",
+                "event role",
+                "External label or event source"
+              ],
+              [
+                "Onset",
+                "event role",
+                "Time anchor"
+              ],
+              [
+                "Duration",
+                "event role",
+                "Event duration"
+              ],
+              [
+                "Trial type",
+                "event role",
+                "Class cue"
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 982,
+            "viewport_width": 982,
+            "column_widths": [
+              274,
+              186,
+              522
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": false
+          },
+          "review_summary": {
+            "headers": [
+              "Item",
+              "Status",
+              "What it means"
+            ],
+            "rows": [
+              [
+                "Reloaded recipe",
+                "Reapplied",
+                "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+              ],
+              [
+                "EEG files",
+                "Matched",
+                "Saved recipe still matches 2 saved file(s)."
+              ],
+              [
+                "Label carriers",
+                "Matched",
+                "Saved recipe still matches 1 saved carrier(s)."
+              ],
+              [
+                "Saved choices",
+                "Reapplied",
+                "selected EEG files, metadata overrides, label carrier choices, event roles."
+              ],
+              [
+                "Warning",
+                "Review",
+                "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+              ],
+              [
+                "Warning",
+                "Review",
+                "External label/event carriers require preview before apply."
+              ],
+              [
+                "Warning",
+                "Review",
+                "Some discovered sources are not applied by this wizard yet: XDF / LSL."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm label carrier alignment, anchor event, and class map before applying."
+              ],
+              [
+                "Confirmation",
+                "Needs confirmation",
+                "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+              ],
+              [
+                "Downstream impact",
+                "After apply",
+                "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+              ],
+              [
+                "Format capability",
+                "Needs review",
+                "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+              ],
+              [
+                "Format capability",
+                "Blocked",
+                "XDF / LSL: blocked. XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+              ],
+              [
+                "Format capability",
+                "Supported",
+                "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              ],
+              [
+                "Format capability",
+                "Supported",
+                "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+              ]
+            ],
+            "resize_modes": [
+              "Interactive",
+              "Interactive",
+              "Interactive"
+            ],
+            "stretch_last_section": false,
+            "header_length": 972,
+            "viewport_width": 972,
+            "column_widths": [
+              179,
+              173,
+              620
+            ],
+            "horizontal_scrollbar_max": 0,
+            "text_elide_mode": "ElideRight",
+            "alternating_row_colors": true
+          }
+        }
       }
     },
     {
@@ -2848,8 +3673,8 @@
       "visible_text": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
-        "No EEG files are open yet.",
-        "Scan data source",
+        "Current workflow stage: Ready to train.",
+        "Start training",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -2952,8 +3777,8 @@
       "visible_text": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
-        "No EEG files are open yet.",
-        "Scan data source",
+        "Current workflow stage: Ready to train.",
+        "Start training",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -4340,16 +5165,16 @@
       "assistant_empty_state": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
-        "No EEG files are open yet.",
-        "Scan data source",
+        "Current workflow stage: Ready to train.",
+        "Start training",
         "Ask about EEG workflow",
         "Send"
       ],
       "assistant_repeated_open_close": [
         "Start with your EEG data",
         "Ask for a quick workflow check, plan preprocessing, or explain why training is blocked.",
-        "No EEG files are open yet.",
-        "Scan data source",
+        "Current workflow stage: Ready to train.",
+        "Start training",
         "Ask about EEG workflow",
         "Send"
       ],
@@ -8715,6 +9540,833 @@
       "reset_new_session_boundary": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/18-reset-boundary.png",
       "error_recovery": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/19-error-recovery.png",
       "eval_dashboard_report": "/mnt/d/workspace_v2/projects/lab/XBrainLab/artifacts/ui/human-like-walkthrough/20-eval-dashboard.png"
+    },
+    "ui_geometry_snapshots": {
+      "main_window_initial_state": {
+        "dataset_table": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "rows": [],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 533,
+          "viewport_width": 534,
+          "column_widths": [
+            141,
+            65,
+            79,
+            52,
+            56,
+            61,
+            79
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight"
+        }
+      },
+      "data_interpretation_scan_result": {
+        "metadata": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "01",
+              "",
+              "mi",
+              "1"
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "01",
+              "",
+              "mi",
+              "2"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "label_carriers": {
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "Needs review",
+              "BIDS events",
+              "trial_type",
+              "onset",
+              "Seconds",
+              "Event",
+              "External labels"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "events": {
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "label / event carrier",
+              "Review alignment, anchor, and class map before apply."
+            ],
+            [
+              "Label carrier",
+              "event role",
+              "External label or event source"
+            ],
+            [
+              "Onset",
+              "event role",
+              "Time anchor"
+            ],
+            [
+              "Duration",
+              "event role",
+              "Event duration"
+            ],
+            [
+              "Trial type",
+              "event role",
+              "Class label candidate"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "review_summary": {
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "rows": [
+            [
+              "Warning",
+              "Review",
+              "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+            ],
+            [
+              "Warning",
+              "Review",
+              "External label/event carriers require preview before apply."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm label carrier alignment, anchor event, and class map before applying."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+            ],
+            [
+              "Downstream impact",
+              "After apply",
+              "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+            ],
+            [
+              "Format capability",
+              "Needs review",
+              "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 972,
+          "viewport_width": 972,
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        }
+      },
+      "data_interpretation_preview": {
+        "metadata": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "S01",
+              "session-01",
+              "motor-imagery",
+              "1"
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "01",
+              "",
+              "mi",
+              "2"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "label_carriers": {
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "sub-01_task-mi_run-2_raw.fif",
+              "BIDS events",
+              "trial_type",
+              "onset",
+              "Seconds",
+              "Trial",
+              "Class cue labels"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "events": {
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "label / event carrier",
+              "Review alignment, anchor, and class map before apply."
+            ],
+            [
+              "Label carrier",
+              "event role",
+              "External label or event source"
+            ],
+            [
+              "Onset",
+              "event role",
+              "Time anchor"
+            ],
+            [
+              "Duration",
+              "event role",
+              "Event duration"
+            ],
+            [
+              "Trial type",
+              "event role",
+              "Class cue"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "review_summary": {
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "rows": [
+            [
+              "Warning",
+              "Review",
+              "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+            ],
+            [
+              "Warning",
+              "Review",
+              "External label/event carriers require preview before apply."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm label carrier alignment, anchor event, and class map before applying."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-1_raw.fif."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+            ],
+            [
+              "Downstream impact",
+              "After apply",
+              "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+            ],
+            [
+              "Format capability",
+              "Needs review",
+              "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 972,
+          "viewport_width": 972,
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        }
+      },
+      "data_interpretation_decisions": {
+        "dataset_table": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "S01",
+              "session-01",
+              "4",
+              "128.0",
+              "1",
+              "Events (6)"
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "01",
+              "0",
+              "4",
+              "128.0",
+              "1",
+              "Labels (4)"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 509,
+          "viewport_width": 510,
+          "column_widths": [
+            130,
+            63,
+            75,
+            52,
+            55,
+            59,
+            75
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight"
+        }
+      },
+      "data_interpretation_apply": {
+        "dataset_table": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "S01",
+              "session-01",
+              "4",
+              "128.0",
+              "1",
+              "Events (6)"
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "01",
+              "0",
+              "4",
+              "128.0",
+              "1",
+              "Labels (4)"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 509,
+          "viewport_width": 510,
+          "column_widths": [
+            130,
+            63,
+            75,
+            52,
+            55,
+            59,
+            75
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight"
+        }
+      },
+      "data_interpretation_reload_recipe": {
+        "metadata": {
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "rows": [
+            [
+              "sub-01_task-mi_run-1_raw.fif",
+              "S01",
+              "session-01",
+              "motor-imagery",
+              "1"
+            ],
+            [
+              "sub-01_task-mi_run-2_raw.fif",
+              "01",
+              "",
+              "mi",
+              "2"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "label_carriers": {
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "Needs review",
+              "BIDS events",
+              "trial_type",
+              "onset",
+              "Seconds",
+              "Trial",
+              "Class cue labels"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "events": {
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "rows": [
+            [
+              "events.tsv",
+              "label / event carrier",
+              "Review alignment, anchor, and class map before apply."
+            ],
+            [
+              "Label carrier",
+              "event role",
+              "External label or event source"
+            ],
+            [
+              "Onset",
+              "event role",
+              "Time anchor"
+            ],
+            [
+              "Duration",
+              "event role",
+              "Event duration"
+            ],
+            [
+              "Trial type",
+              "event role",
+              "Class cue"
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 982,
+          "viewport_width": 982,
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        "review_summary": {
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "rows": [
+            [
+              "Reloaded recipe",
+              "Reapplied",
+              "Saved recipe choices were reapplied before validation: selected EEG files, metadata overrides, label carrier choices, event roles."
+            ],
+            [
+              "EEG files",
+              "Matched",
+              "Saved recipe still matches 2 saved file(s)."
+            ],
+            [
+              "Label carriers",
+              "Matched",
+              "Saved recipe still matches 1 saved carrier(s)."
+            ],
+            [
+              "Saved choices",
+              "Reapplied",
+              "selected EEG files, metadata overrides, label carrier choices, event roles."
+            ],
+            [
+              "Warning",
+              "Review",
+              "Multiple EEG files were discovered; subject/session/run mapping should be reviewed."
+            ],
+            [
+              "Warning",
+              "Review",
+              "External label/event carriers require preview before apply."
+            ],
+            [
+              "Warning",
+              "Review",
+              "Some discovered sources are not applied by this wizard yet: XDF / LSL."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm label carrier alignment, anchor event, and class map before applying."
+            ],
+            [
+              "Confirmation",
+              "Needs confirmation",
+              "Confirm session metadata for sub-01_task-mi_run-2_raw.fif."
+            ],
+            [
+              "Downstream impact",
+              "After apply",
+              "Applying this interpretation will replace active raw data and invalidate downstream preprocessing, epochs, datasets, training, and saliency for the current session."
+            ],
+            [
+              "Format capability",
+              "Needs review",
+              "BIDS events: needs review. BIDS events use onset and duration with label columns such as trial_type or value; review event column and sidecar semantics."
+            ],
+            [
+              "Format capability",
+              "Blocked",
+              "XDF / LSL: blocked. XDF / LSL stream selection is not available in this import wizard yet. Convert streams to a supported EEG format or provide a prepared recipe."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ],
+            [
+              "Format capability",
+              "Supported",
+              "MNE FIF: supported. FIF can be loaded as an EEG recording; review metadata and events before supervised training."
+            ]
+          ],
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "stretch_last_section": false,
+          "header_length": 972,
+          "viewport_width": 972,
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "horizontal_scrollbar_max": 0,
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        }
+      }
     }
   },
   "command_results": [
@@ -17845,33 +19497,33 @@
   "resource_notes": [
     {
       "label": "start",
-      "pid": 975742,
+      "pid": 994624,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 835836
+      "max_rss_kb": 836832
     },
     {
       "label": "before_close",
-      "pid": 975742,
+      "pid": 994624,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1067992
+      "max_rss_kb": 1068872
     },
     {
       "label": "after_close",
-      "pid": 975742,
+      "pid": 994624,
       "python_threads": 1,
       "thread_names": [
         "MainThread"
       ],
       "qt_active_threads": 0,
-      "max_rss_kb": 1067992
+      "max_rss_kb": 1068872
     }
   ],
   "ui_quality_review": {
@@ -18020,6 +19672,534 @@
     ],
     "forbidden_visible_text": [],
     "phase_snapshot_coverage": true,
+    "table_geometry_review": {
+      "passed": true,
+      "checked_widgets": 15,
+      "width_tolerance_px": 8,
+      "findings": [],
+      "rows": [
+        {
+          "phase": "main_window_initial_state",
+          "widget": "dataset_table",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "row_count": 0,
+          "header_length": 533,
+          "viewport_width": 534,
+          "width_gap": 1,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            141,
+            65,
+            79,
+            52,
+            56,
+            61,
+            79
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": null
+        },
+        {
+          "phase": "data_interpretation_scan_result",
+          "widget": "metadata",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "row_count": 2,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_scan_result",
+          "widget": "label_carriers",
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "row_count": 1,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_scan_result",
+          "widget": "events",
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "row_count": 5,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_scan_result",
+          "widget": "review_summary",
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "row_count": 9,
+          "header_length": 972,
+          "viewport_width": 972,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        },
+        {
+          "phase": "data_interpretation_preview",
+          "widget": "metadata",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "row_count": 2,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_preview",
+          "widget": "label_carriers",
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "row_count": 1,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_preview",
+          "widget": "events",
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "row_count": 5,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_preview",
+          "widget": "review_summary",
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "row_count": 9,
+          "header_length": 972,
+          "viewport_width": 972,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        },
+        {
+          "phase": "data_interpretation_decisions",
+          "widget": "dataset_table",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "row_count": 2,
+          "header_length": 509,
+          "viewport_width": 510,
+          "width_gap": 1,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            130,
+            63,
+            75,
+            52,
+            55,
+            59,
+            75
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": null
+        },
+        {
+          "phase": "data_interpretation_apply",
+          "widget": "dataset_table",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Chan",
+            "Hz",
+            "Epochs",
+            "Events"
+          ],
+          "row_count": 2,
+          "header_length": 509,
+          "viewport_width": 510,
+          "width_gap": 1,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            130,
+            63,
+            75,
+            52,
+            55,
+            59,
+            75
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": null
+        },
+        {
+          "phase": "data_interpretation_reload_recipe",
+          "widget": "metadata",
+          "headers": [
+            "File",
+            "Subject",
+            "Session",
+            "Task",
+            "Run"
+          ],
+          "row_count": 2,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            360,
+            152,
+            166,
+            207,
+            97
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_reload_recipe",
+          "widget": "label_carriers",
+          "headers": [
+            "Carrier",
+            "Matched EEG",
+            "Format",
+            "Label field",
+            "Anchor",
+            "Time",
+            "Granularity",
+            "Role"
+          ],
+          "row_count": 1,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            157,
+            151,
+            73,
+            120,
+            110,
+            110,
+            115,
+            146
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_reload_recipe",
+          "widget": "events",
+          "headers": [
+            "Item",
+            "Role",
+            "Meaning"
+          ],
+          "row_count": 5,
+          "header_length": 982,
+          "viewport_width": 982,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            274,
+            186,
+            522
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": false
+        },
+        {
+          "phase": "data_interpretation_reload_recipe",
+          "widget": "review_summary",
+          "headers": [
+            "Item",
+            "Status",
+            "What it means"
+          ],
+          "row_count": 14,
+          "header_length": 972,
+          "viewport_width": 972,
+          "width_gap": 0,
+          "horizontal_scrollbar_max": 0,
+          "fits_panel": true,
+          "fills_panel": true,
+          "resize_modes": [
+            "Interactive",
+            "Interactive",
+            "Interactive"
+          ],
+          "column_widths": [
+            179,
+            173,
+            620
+          ],
+          "text_elide_mode": "ElideRight",
+          "alternating_row_colors": true
+        }
+      ],
+      "boundary": "Automated geometry smoke checks header length, viewport width, and horizontal scrollbar state. Human review still decides visual polish."
+    },
     "visible_text_boundary": "Checks visible widget text for raw tool syntax, schema, traceback, and selected snake_case command leakage.",
     "human_design_review_boundary": "This is automated UI-observable evidence. It does not replace a human desktop review of Windows launcher, dual-monitor/DPI, or long local-model sessions."
   },
@@ -18038,10 +20218,10 @@
       "after_close_python_threads": 1,
       "python_thread_tolerance": 1,
       "after_close_qt_active_threads": 0,
-      "rss_growth_kb": 232156,
+      "rss_growth_kb": 232040,
       "rss_limit_kb": 600000,
       "boundary": "Coarse process smoke only: RSS uses ru_maxrss high-water mark and this does not prove the absence of leaks."
     }
   },
-  "elapsed_seconds": 3.764
+  "elapsed_seconds": 4.501
 }

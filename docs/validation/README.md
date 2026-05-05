@@ -2161,6 +2161,37 @@ visible state / transcript artifact。
 這批 evidence 支撐 Data Interpretation preview dialog 和 applied Dataset panel 的 UI-observable
 replay。它仍不是完整真人 click-through，也尚未覆蓋 ChatPanel agent transcript。
 
+2026-05-05 Data Interpretation / Dataset table geometry gate：
+
+- scripts:
+  - `scripts/dev/capture_data_interpretation_replay.py`
+  - `scripts/dev/capture_human_like_product_walkthrough.py`
+- artifacts:
+  - `artifacts/ui/data-interpretation-replay.json`
+  - `artifacts/ui/data-interpretation-applied.png`
+  - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json`
+  - `artifacts/ui/human-like-walkthrough/human-like-walkthrough.md`
+- observed result:
+  - Data Interpretation replay Dataset table: `header_length=993`, `viewport_width=994`,
+    `horizontal_scrollbar_max=0`.
+  - Data Interpretation preview/remap metadata, label carrier, event role, and Review Summary
+    tree states all record `horizontal_scrollbar_max=0` and `text_elide_mode=ElideRight`.
+  - Human-like walkthrough status: `passed`; table geometry review checked `15` table/tree widgets
+    with `0` findings.
+  - Human-like walkthrough loaded Dataset table: `header_length=509`, `viewport_width=510`,
+    `horizontal_scrollbar_max=0`.
+- commands:
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_table_sizing.py -q`
+    -> `34 passed`.
+
+這批 evidence 支撐 automated PyQt replay 條件下 Dataset 主表和 Data Interpretation wizard
+tables 會填滿容器且不產生水平外溢。它仍不能替代 human desktop acceptance、Windows launcher
+click-through、雙螢幕 / DPI 或完整 Data Interpretation embedded label editor 驗收。
+
 2026-05-04 Data Interpretation wizard review hardening：
 
 - `DataInterpretationPreviewDialog` 已從單層 preview modal 硬化為第一版 wizard review surface：

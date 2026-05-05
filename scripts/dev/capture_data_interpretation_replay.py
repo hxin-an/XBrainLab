@@ -197,6 +197,7 @@ def table_state(table: QTableWidget) -> dict[str, Any]:
         bool(header.stretchLastSection()) if header is not None else False
     )
     viewport = table.viewport()
+    scrollbar = table.horizontalScrollBar()
     return {
         "headers": headers,
         "rows": rows,
@@ -207,6 +208,8 @@ def table_state(table: QTableWidget) -> dict[str, Any]:
         "column_widths": [
             table.columnWidth(column) for column in range(table.columnCount())
         ],
+        "horizontal_scrollbar_max": scrollbar.maximum() if scrollbar is not None else 0,
+        "text_elide_mode": table.textElideMode().name,
     }
 
 

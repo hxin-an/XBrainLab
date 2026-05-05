@@ -3845,17 +3845,19 @@
           "Interactive"
         ],
         "stretch_last_section": false,
-        "header_length": 994,
+        "header_length": 993,
         "viewport_width": 994,
         "column_widths": [
           321,
-          113,
+          112,
           150,
           75,
           86,
           99,
           150
-        ]
+        ],
+        "horizontal_scrollbar_max": 0,
+        "text_elide_mode": "ElideRight"
       },
       "visible_panel_text": [],
       "screenshot": "data-interpretation-applied.png"

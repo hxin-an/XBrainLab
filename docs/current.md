@@ -474,10 +474,12 @@ artifact 和 process/thread notes。artifact
 `26 / 26` phases、human desktop acceptance `not performed`。最新 artifact 已補上 top-level
 `observable_evidence` 和 `ui_quality_review`：`26` 個 phase 都有 visible text、button
 state、workflow/backend snapshot index，`20` 張 screenshot 全部通過 nonblank check，visible text
-raw tool / schema / traceback leakage check 為 `0` findings。最新 resource smoke gate 也會讓
+raw tool / schema / traceback leakage check 為 `0` findings；最新 table geometry review 會檢查
+Dataset table 與 Data Interpretation wizard tree table 的 header / viewport / scrollbar 狀態，
+目前 `15` 個 table/tree widgets 全部通過、`0` findings。最新 resource smoke gate 也會讓
 walkthrough 在 close 後 Python threads 未回落、Qt thread pool 仍 active 或 RSS high-water delta
 超過 threshold 時 fail；目前 artifact 顯示 resource smoke `passed=True`、RSS growth
-`232156 KB` / limit `600000 KB`、Qt active thread `0`。最新 2026-05-05 20:11 artifact
+`232040 KB` / limit `600000 KB`、Qt active thread `0`。最新 2026-05-05 20:11 artifact
 也已刷新 Data Interpretation decision copy 和 ChatPanel composer placeholder，可見
 `Review and confirm these choices before applying.` 以及 `Ask about EEG workflow`。這是 coarse cleanup smoke，不是
 memory-leak proof 或長時間 soak。後續 UI polish 已依截圖修正
@@ -499,7 +501,9 @@ label/event 和 `Review Summary` 欄寬。`Events` 欄現在用 `Events (n)` / `
 metadata / label carrier confirmation 仍只放在 `Review Summary` table，避免底部重複 raw
 filename。Data Interpretation replay
 JSON 已保存 Dataset table headers、rows、resize modes 和 column widths，applied artifact
-顯示全部欄位填滿主 panel。這支撐 automated PyQt replay
+顯示全部欄位填滿主 panel；human-like walkthrough JSON 也同步保存同類 geometry evidence，
+例如載入後 Dataset table `header_length=509`、`viewport_width=510`、
+`horizontal_scrollbar_max=0`。這支撐 automated PyQt replay
 條件下主要 UI path 可操作；仍不能替代 Windows Desktop 真人 click-through、雙螢幕 / DPI 或長時間
 true local model desktop session。
 最新 recipe reload review slice 又把 saved recipe 與重新 scan 的 comparison 補進 preview

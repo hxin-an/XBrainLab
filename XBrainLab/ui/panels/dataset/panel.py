@@ -1,6 +1,6 @@
 """Dataset panel for managing EEG data loading, metadata, and table display."""
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -64,6 +64,7 @@ class DatasetPanel(BasePanel):
 
         # 3. Helpers
         self.action_handler = DatasetActionHandler(self)
+        self._table_fit_pending = False
 
         # 4. Bridge & UI Setup (Explicit call required by new BasePanel contract)
         self._setup_bridges()
@@ -118,24 +119,54 @@ class DatasetPanel(BasePanel):
         self.sidebar = DatasetSidebar(self, self)
         main_layout.addWidget(self.sidebar, stretch=0)
         self._fit_table_columns_to_viewport()
+        self._schedule_table_column_fit()
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
         if hasattr(self, "table"):
             self._fit_table_columns_to_viewport()
+            self._schedule_table_column_fit()
+
+    def _schedule_table_column_fit(self) -> None:
+        """Refit once Qt has settled row headers and scrollbars."""
+        if self._table_fit_pending:
+            return
+        self._table_fit_pending = True
+        QTimer.singleShot(0, self._run_scheduled_table_column_fit)
+
+    def _run_scheduled_table_column_fit(self) -> None:
+        self._table_fit_pending = False
+        if hasattr(self, "table"):
+            self._fit_table_columns_to_viewport()
+            QTimer.singleShot(0, self._fit_table_columns_to_viewport)
 
     def _fit_table_columns_to_viewport(self) -> None:
         """Use the full table panel while keeping columns manually resizable."""
-        viewport = self.table.viewport()
-        if viewport is None:
-            return
-        widths = scaled_column_widths(
-            self._TABLE_BASE_WIDTHS,
-            viewport.width(),
-            min_width=self._TABLE_MIN_WIDTH,
-        )
-        for column, width in enumerate(widths):
-            self.table.setColumnWidth(column, width)
+        for _ in range(3):
+            self.table.updateGeometries()
+            viewport = self.table.viewport()
+            if viewport is None:
+                return
+            target_width = max(viewport.width() - 1, 0)
+            widths = scaled_column_widths(
+                self._TABLE_BASE_WIDTHS,
+                target_width,
+                min_width=self._TABLE_MIN_WIDTH,
+            )
+            for column, width in enumerate(widths):
+                self.table.setColumnWidth(column, width)
+            self.table.updateGeometries()
+            header = self.table.horizontalHeader()
+            scrollbar = self.table.horizontalScrollBar()
+            settled_viewport = self.table.viewport()
+            if (
+                header is not None
+                and scrollbar is not None
+                and settled_viewport is not None
+                and scrollbar.maximum() == 0
+                and abs(header.length() - settled_viewport.width()) <= 2
+            ):
+                return
 
     def apply_loader(self, loader):
         """Apply a legacy data loader only for mock or legacy UI contexts.
@@ -292,6 +323,7 @@ class DatasetPanel(BasePanel):
 
         self.table.blockSignals(False)
         self._fit_table_columns_to_viewport()
+        self._schedule_table_column_fit()
 
     @staticmethod
     def _metadata_item(

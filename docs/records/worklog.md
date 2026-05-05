@@ -7768,6 +7768,8 @@
   - `poetry run python tests/architecture_compliance.py`
     -> `Architecture compliant!`.
   - `poetry run mkdocs build --strict`
+    -> pass with the existing MkDocs Material 2.0 advisory banner.
+  - `poetry run mkdocs build --strict`
     -> pass with existing MkDocs Material warning.
   - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
     -> `930 passed`.
@@ -8613,3 +8615,60 @@
 - 不能宣稱：
   - This strengthens automated UI artifact evidence only. It is not mature import wizard completion
     or human desktop acceptance.
+
+### 2026-05-05 Human-like walkthrough table geometry gate
+
+- scope：
+  - Fold Dataset / Data Interpretation table geometry evidence into the consolidated human-like
+    product walkthrough.
+  - Fix the loaded Dataset table overflow caught by the new geometry gate.
+  - No local LLM eval was run; this was a UI/evidence fast-dev slice.
+- red / focused tests：
+  - Added a test requiring `build_observable_evidence_summary()` to index per-phase
+    `ui_geometry`.
+  - Added a test requiring `build_ui_quality_review()` to fail an overflowing table/tree geometry
+    row.
+  - Added a DatasetPanel regression test for loaded rows settling without horizontal scrollbar.
+  - Added a test ensuring UI quality failure blocks the walkthrough status, not only the validator.
+- 做了什麼：
+  - `scripts/dev/capture_human_like_product_walkthrough.py` now records `ui_geometry` notes for
+    Dataset table, Data Interpretation preview / confirm / reload trees, and summarizes them under
+    `observable_evidence.ui_geometry_snapshots`.
+  - UI quality review now reports `table_geometry_review` with checked widgets, findings, width gap,
+    header / viewport values, horizontal scrollbar state, resize modes, and column widths.
+  - The walkthrough pass/fail summary now fails when automated UI quality fails.
+  - `DatasetPanel` now refits table columns after Qt row-header / scrollbar geometry settles, and
+    uses the full viewport without leaving a horizontal scrollbar.
+  - `table_state()` now records horizontal scrollbar and elide-mode fields for table artifacts.
+- refreshed artifacts：
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_human_like_product_walkthrough.py`
+    -> exit `0`.
+  - `QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - Human-like walkthrough:
+    `artifacts/ui/human-like-walkthrough/human-like-walkthrough.json` / `.md`.
+  - Data Interpretation replay:
+    `artifacts/ui/data-interpretation-replay.json`,
+    `artifacts/ui/data-interpretation-applied.png`.
+- evidence：
+  - Human-like walkthrough status `passed`, `26 / 26` phases, `20` screenshots.
+  - Human-like table geometry review checked `15` widgets with `0` findings.
+  - Loaded Dataset table after apply: `header_length=509`, `viewport_width=510`,
+    `horizontal_scrollbar_max=0`.
+  - Data Interpretation replay Dataset table: `header_length=993`, `viewport_width=994`,
+    `horizontal_scrollbar_max=0`.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/scripts/test_capture_human_like_product_walkthrough.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/dataset/test_panel.py tests/unit/ui/test_table_sizing.py -q`
+    -> `34 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+- 不能宣稱：
+  - This proves automated PyQt replay geometry for the saved synthetic walkthrough, not human
+    Windows desktop acceptance, dual-monitor / DPI, long local-model desktop sessions, or final
+    Data Interpretation wizard completion.
