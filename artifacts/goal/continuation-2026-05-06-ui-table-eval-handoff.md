@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+d786276 ui: query preprocess plot data through service
+aea3d3a docs: refresh handoff after walkthrough geometry gate
 865b7c6 ui: flag clipped rows in walkthrough artifacts
 61312fc ui: route training updates through refresh coordinator
 1067c18 ui: prevent clipped interpretation review rows
@@ -119,6 +121,11 @@ bb57beb ui: use backend truth for split replacement
   - Latest `artifacts/ui/data-interpretation-replay.json` records
     `widget_width=1020`, `table_right_x=1020`, `right_boundary_x=1020`,
     `right_gap_to_boundary=0` for the 1280px loaded Dataset capture.
+- Preprocess plotter render source:
+  - `PreprocessPanel` and `PreprocessPlotter` now share `query_preprocess_render_lists()`.
+  - Direct `plot_sample_data()` calls use `QueryStateCommand(query="data_lists",
+    include_objects=True)` before controller reads.
+  - Controller data-list reads remain only for query-unavailable mock / legacy fallback.
 - Visualization sidebar `Set Montage` missing-result handling:
   - no longer silently returns when `execute_application_command()` unexpectedly returns `None`.
   - mock / legacy contexts use `run_legacy_controller_fallback()`; real `Study` contexts refuse
