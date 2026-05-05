@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+272dc5e ui: keep aggregate info on query truth
+5e9e351 docs: refresh handoff after preprocess render query
 feb9f88 ui: render preprocess panel from state query
 29137da docs: refresh handoff after preprocess query guard
 ebbdcfd ui: query epoching data through command spine
@@ -176,6 +178,12 @@ bb57beb ui: use backend truth for split replacement
     user control changes on the same query-backed render source.
   - `.basedpyright/baseline.json` dropped by one suppressed error after touched Preprocess tests
     and panel typing were cleaned up.
+- Aggregate info query-failure boundary:
+  - real `Study` `InfoPanelService` keeps aggregate info on
+    `QueryStateCommand(query="data_lists", include_objects=True)`.
+  - if that query fails or raises, the service logs and returns an empty summary instead of falling
+    back to dataset / preprocess controller list reads.
+  - mock / legacy non-`Study` contexts keep the controller-list compatibility fallback.
 
 ## Validation Already Run
 
@@ -377,6 +385,19 @@ poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for feb9f88; basedpyright baseline decreased by 1;
 # mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/components/test_info_panel_service.py \
+  tests/unit/ui/components/test_info_panel.py \
+  -q
+# 11 passed for 272dc5e
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 272dc5e; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
