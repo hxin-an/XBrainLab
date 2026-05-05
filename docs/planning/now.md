@@ -123,6 +123,8 @@
 - 最新 duplicate observer cleanup 已移除 PreprocessPanel / TrainingPanel 對 dataset
   `import_finished` 的 simple refresh listener；legacy import success refresh 只由 dataset
   `data_changed` observer 擁有。
+- 最新 InfoPanelService duplicate refresh cleanup 已移除 dataset `import_finished` bridge；aggregate
+  info panel 的成功資料變更 refresh 由 `data_changed` / `preprocess_changed` 擁有。
 - 最新 observer refresh helper cleanup 已新增 `BasePanel._create_refresh_bridge()`，並把 Dataset /
   Preprocess / Training / Evaluation / Visualization 的 simple observer refresh call sites 改用
   這個 helper。這是 maintainability cleanup，仍不代表 UI refresh 已完全 command-driven。

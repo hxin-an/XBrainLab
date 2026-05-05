@@ -52,14 +52,6 @@ class InfoPanelService(QObject):
         )
         self.preprocess_bridge.connect_to(self.notify_all)
 
-        # also listen to import finished
-        self.import_bridge = QtObserverBridge(
-            self.study.get_controller("dataset"),
-            "import_finished",
-            self,
-        )
-        self.import_bridge.connect_to(self.notify_all)
-
     def register(self, panel):
         """Register an info panel to receive automatic updates.
 

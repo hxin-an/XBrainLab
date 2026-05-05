@@ -152,12 +152,17 @@ UI baseline capture 結果：
     refresh.
   - PreprocessPanel and TrainingPanel no longer subscribe to dataset `import_finished` for simple
     refresh; successful legacy imports refresh them once through dataset `data_changed`.
+  - InfoPanelService no longer subscribes to dataset `import_finished`; aggregate info success
+    refresh is owned by `data_changed` / `preprocess_changed`.
   - focused gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
     -> `65 passed`.
   - observer bridge gate:
     `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_panel_event_bridges.py -q`
     -> `12 passed`.
+  - info service gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py tests/integration/ui/test_e2e_qtbot.py::TestInfoService -q`
+    -> unit `4 passed`, integration `2 passed`.
 - static / docs gates for these slices:
   - `git diff --check` -> pass.
   - `poetry run ruff check .` -> pass.

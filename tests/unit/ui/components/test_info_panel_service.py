@@ -1,9 +1,11 @@
 import weakref
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.components.info_panel_service import InfoPanelService
 
 
@@ -52,6 +54,42 @@ def test_register_and_notify(service, study_mock):
     # Check if panel called with correct args
     panel_mock.update_info.assert_called_with(
         loaded_data_list=["loaded_data"], preprocessed_data_list=["prep_data"]
+    )
+
+
+def test_successful_legacy_import_updates_info_once(qtbot):
+    """data_changed owns successful legacy import refresh for info panels."""
+
+    class DatasetController(Observable):
+        def get_loaded_data_list(self):
+            return ["raw"]
+
+    class PreprocessController(Observable):
+        def get_preprocessed_data_list(self):
+            return []
+
+    class StudyLike:
+        def __init__(self):
+            self.dataset = DatasetController()
+            self.preprocess = PreprocessController()
+
+        def get_controller(self, name):
+            return {"dataset": self.dataset, "preprocess": self.preprocess}[name]
+
+    study = StudyLike()
+    service = InfoPanelService(cast(Any, study))
+    panel = MagicMock()
+    service.register(panel)
+    panel.update_info.reset_mock()
+
+    study.dataset.notify("data_changed")
+    qtbot.wait(50)
+    study.dataset.notify("import_finished", 1, [])
+    qtbot.wait(50)
+
+    panel.update_info.assert_called_once_with(
+        loaded_data_list=["raw"],
+        preprocessed_data_list=[],
     )
 
 

@@ -2292,3 +2292,27 @@ panels refresh once through the shared observer bridge.
 
 - This is one observer deduplication slice, not full observer callback classification or full
   command-driven UI refresh closure.
+
+## 2026-05-05 InfoPanelService Import Refresh Deduplication
+
+### 狀態
+
+`InfoPanelService` no longer subscribes to dataset `import_finished`. Aggregate info panels refresh
+from dataset `data_changed` and preprocess `preprocess_changed`; Dataset action callbacks still own
+import warning presentation.
+
+### 已可宣稱
+
+- Successful legacy dataset import no longer updates aggregate info twice through both
+  `data_changed` and `import_finished`.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/components/info_panel_service.py`
+- Tests：`tests/unit/ui/components/test_info_panel_service.py`,
+  `tests/integration/ui/test_e2e_qtbot.py::TestInfoService`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is one aggregate-info observer cleanup, not full UI refresh target closure.

@@ -8319,3 +8319,41 @@
 - 不能宣稱：
   - This removes one duplicate observer refresh path. It does not classify all callback-specific
     observer handlers, remove controller observers, or complete UI command-refresh closure.
+
+### 2026-05-05 21:20 InfoPanelService import refresh deduplication
+
+- scope：
+  - Aggregate info panel refresh subscriptions in `InfoPanelService`.
+- current gap：
+  - `InfoPanelService` subscribed to dataset `data_changed`, preprocess `preprocess_changed`, and
+    dataset `import_finished`.
+  - Successful legacy dataset import emits `data_changed` followed by `import_finished`, so aggregate
+    info panels were updated twice for one successful import.
+- red / focused test：
+  - Added a Study-like observer stub test that registers a panel, emits `data_changed`, then
+    `import_finished(1, [])`, and requires one `update_info()` call.
+  - Red result:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py::test_successful_legacy_import_updates_info_once -q`
+    -> failed because `update_info()` was called twice.
+- 做了什麼：
+  - Removed the dataset `import_finished` bridge from `InfoPanelService`.
+  - Kept aggregate info refresh on dataset `data_changed` and preprocess `preprocess_changed`.
+  - Kept Dataset action callback as the owner of import warning presentation.
+- validation：
+  - `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/components/test_info_panel_service.py -q`
+    -> `4 passed`.
+  - `poetry run ruff check XBrainLab/ui/components/info_panel_service.py tests/unit/ui/components/test_info_panel_service.py`
+    -> pass.
+  - `poetry run basedpyright XBrainLab/ui/components/info_panel_service.py tests/unit/ui/components/test_info_panel_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+  - Corrected integration smoke path after a wrong node-id attempt:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/integration/ui/test_e2e_qtbot.py::TestInfoService -q`
+    -> `2 passed`.
+  - `git diff --check` -> pass.
+  - `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .` -> pass.
+  - `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - This is one aggregate info observer deduplication. It does not close all observer callbacks,
+    product runtime fallback audit, or human desktop acceptance.
