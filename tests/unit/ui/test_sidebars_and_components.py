@@ -992,6 +992,7 @@ class TestDatasetSidebar:
         mock_dialog.assert_called_once()
         assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
         panel.controller.apply_channel_selection.assert_not_called()
+        panel.update_panel.assert_not_called()
         mock_warning.assert_not_called()
 
     def test_open_channel_selection_accepted(self, sidebar):
@@ -1037,7 +1038,7 @@ class TestDatasetSidebar:
         mock_question.assert_not_called()
         mock_info.assert_called_once_with(sb, "Success", "Dataset cleared.")
         panel.controller.clean_dataset.assert_not_called()
-        panel.update_panel.assert_called()
+        panel.update_panel.assert_not_called()
 
 
 # ============ CardWidget & PlaceholderWidget ============

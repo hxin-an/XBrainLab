@@ -37,6 +37,42 @@
 
 ## 2026-05-05
 
+### 17:53 Dataset sidebar refresh coordinator slice
+
+- 做了什麼：
+  - 在 `DatasetSidebar` 新增 `_update_panel_after_legacy_result()`。
+  - channel selection (`PreprocessCommand(SELECT_CHANNELS)`) 與 clear dataset
+    (`ResetSessionCommand`) service-success path 不再直接呼叫 `panel.update_panel()`。
+  - 先改兩個既有測試建立紅燈：service-backed channel selection / clear dataset 成功後不應在
+    sidebar 直接刷新 Dataset panel。
+- 結果：
+  - Dataset sidebar mutating service-success path 交給 command refresh coordinator。
+  - mock / legacy `None` fallback 仍保留手動 refresh。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset_uses_reset_session_capability_before_confirm -q`
+    -> `2 failed`，兩者都是 `panel.update_panel()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_accepted tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset_uses_reset_session_capability_before_confirm tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_clear_dataset -q`
+    -> `4 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py -q`
+    -> `64 passed`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `920 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+
 ### 17:47 Direct load compatibility refresh coordinator slice
 
 - 做了什麼：

@@ -69,6 +69,10 @@ class DatasetSidebar(QWidget):
         """QMainWindow: The application main window reference."""
         return self.panel.main_window
 
+    def _update_panel_after_legacy_result(self, result) -> None:
+        if result is None:
+            self.panel.update_panel()
+
     def init_ui(self):
         """Build sidebar layout: info panel, operation and execution buttons."""
         self.setFixedWidth(260)
@@ -375,7 +379,7 @@ class DatasetSidebar(QWidget):
                             f"Channel selection failed: {command_result.message}",
                         )
                         return
-                    self.panel.update_panel()
+                    self._update_panel_after_legacy_result(command_result)
                     QMessageBox.information(
                         self,
                         "Success",
@@ -430,7 +434,7 @@ class DatasetSidebar(QWidget):
                     f"Failed to clear dataset: {result.message}",
                 )
                 return
-            self.panel.update_panel()
+            self._update_panel_after_legacy_result(result)
             QMessageBox.information(self, "Success", "Dataset cleared.")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to clear dataset: {e}")

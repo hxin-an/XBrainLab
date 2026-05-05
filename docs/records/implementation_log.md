@@ -185,6 +185,37 @@ duplicates Dataset panel refresh on service success.
 Continue the coordinator cleanup on remaining Dataset refresh paths and add broader refresh-scope
 tests only where they can observe user-facing behavior instead of only mock calls.
 
+## 2026-05-05 Dataset Sidebar Refresh Cleanup
+
+### 狀態
+
+Dataset sidebar channel selection and clear dataset actions now use the same coordinator-owned
+refresh boundary. Service-backed `PreprocessCommand(SELECT_CHANNELS)` and
+`ResetSessionCommand` success paths do not directly call `DatasetPanel.update_panel()`; only mock /
+legacy `None` fallback refreshes manually.
+
+### 已可宣稱
+
+- Channel selection and clear dataset sidebar service-success paths no longer duplicate panel
+  refresh.
+- Mock / legacy fallback behavior remains covered.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish UI refresh target architecture. Inline metadata table refresh, observer
+  events, tab-switch refresh, and callback-driven refresh remain separate mechanisms.
+
+### 下一手重點
+
+Continue with Dataset panel inline metadata refresh or classify callback / observer refresh paths
+before adding broader architecture guards.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態
