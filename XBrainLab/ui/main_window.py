@@ -401,8 +401,8 @@ class MainWindow(QMainWindow):
     def switch_page(self, index):
         """Switch the active panel in the stacked widget.
 
-        Updates button check states and calls ``update_panel()`` on the
-        target panel if available.
+        Updates button check states and delegates target-panel refresh to the
+        UI refresh coordinator.
 
         Args:
             index: Zero-based index of the panel to display.
