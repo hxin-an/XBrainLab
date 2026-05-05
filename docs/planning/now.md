@@ -225,7 +225,9 @@
   include_objects=True)`；real `Study` `TrainingPanel.update_loop()` 會用 service-backed
   history rows 更新 table / plot selection，不再從 stale injected
   `TrainingController.get_formatted_history()` 讀 history。controller formatted-history read
-  只留在 query unavailable 的 mock / legacy path。
+  只留在 query unavailable 的 mock / legacy path。最新 query-none fallback boundary 也讓
+  real `Study` training-history query 意外回 `None` 時清成 empty training display，不再回讀
+  stale controller history。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

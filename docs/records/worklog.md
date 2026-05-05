@@ -37,6 +37,54 @@
 
 ## 2026-05-06
 
+### 08:15 Training history query-none render fallback boundary
+
+- scope：
+  - Continue read-side fallback audit for Training panel history render.
+  - Prevent real `Study` `QueryStateCommand(query="training_history")` query-none path from
+    recovering through stale `TrainingController.get_formatted_history()`.
+- red / focused tests：
+  - Added `test_training_panel_refuses_real_study_query_none_controller_history`.
+  - Red gate failed because `TrainingPanel.update_loop()` called
+    `controller.get_formatted_history()` when `execute_application_command()` returned `None`.
+- 做了什麼：
+  - `TrainingPanel.update_loop()` now routes legacy history rendering through
+    `run_legacy_controller_fallback()`.
+  - real `Study` fallback refusal clears to empty training display and does not read stale
+    controller history.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_panel_refuses_real_study_query_none_controller_history -q`
+    -> failed on stale `get_formatted_history()`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Training panel regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
+    -> `33 passed`.
+  - Focused lint:
+    `poetry run ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py`
+    -> pass.
+  - Type:
+    `poetry run basedpyright XBrainLab/ui/panels/training/panel.py` -> `0 errors, 0 warnings, 0 notes`.
+    Direct focused basedpyright on `tests/unit/ui/training/test_training_panel.py` is not a useful
+    gate because that existing file has many dynamic Qt/Observable test typing errors unrelated to
+    this slice; repo-level `basedpyright` remains the required gate.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Training UI render fallback cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete Training UX, long-running training soak, human desktop acceptance, or all
+    controller read fallback cleanup.
+
 ### 08:00 Visualization query-none render fallback boundary
 
 - scope：

@@ -942,7 +942,8 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   include_objects=True)`；real `Study` `TrainingPanel.update_loop()` 會用 service-backed
   history rows 更新 table / plot selection，不再從 injected `TrainingController.get_formatted_history()`
   讀 stale history。controller formatted-history read 只保留在 query unavailable 的 mock /
-  legacy path。
+  legacy path。最新 query-none fallback boundary 也讓 real `Study` training-history query 意外
+  回 `None` 時清成 empty training display，不再回讀 stale controller history。
   最新 Dataset sidebar render cleanup 又把 `is_locked()` / `has_data()` 納入 guard：real
   `Study` button state 和 tooltip 有 backend capability 時不再先讀 stale controller lock/data
   state；controller lock/data reads 只保留在 explicit no-capability legacy branch。

@@ -2717,6 +2717,35 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Training history query-none render fallback boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_panel_refuses_real_study_query_none_controller_history -q`
+  -> `1 passed` after failing on stale `TrainingController.get_formatted_history()` before the fix.
+- Training panel regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py tests/unit/ui/test_panel_event_bridges.py -q`
+  -> `33 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/training/panel.py tests/unit/ui/training/test_training_panel.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/training/panel.py`
+  -> `0 errors`.
+- Static / docs / backend / agent gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Training render fallback boundary slice.
+
+This supports real `Study` training-history query-none fallback clearing to empty display instead
+of reading stale controller history. It does not prove Training UX, long-running training soak, or
+human desktop acceptance.
+
 2026-05-06 Visualization query-none render fallback boundary：
 
 - Focused red/fixed gate:

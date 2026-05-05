@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Training History Query-None Render Fallback Boundary
+
+### 狀態
+
+Training panel rendering now treats missing training-history query results as mock/legacy-only
+fallback. If a real `Study` `QueryStateCommand(query="training_history", include_objects=True)`
+call unexpectedly returns no result, the panel clears to an empty training display instead of
+reading stale `TrainingController.get_formatted_history()`.
+
+### 已可宣稱
+
+- Real `Study` training-history query-none fallback no longer reads stale controller history.
+- Mock / legacy panel rendering still keeps controller-history compatibility through the explicit
+  fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/training/panel.py`
+- Tests: `tests/unit/ui/training/test_training_panel.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete Training UX, live long-running training soak, or every controller read
+  fallback path.
+
+### 下一手重點
+
+Continue auditing remaining query-unavailable read fallbacks and command-driven refresh debt.
+
 ## 2026-05-06 Dataset Label Target Fallback Boundary
 
 ### 狀態

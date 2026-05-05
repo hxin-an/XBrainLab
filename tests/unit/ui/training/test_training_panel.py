@@ -324,6 +324,42 @@ def test_training_panel_uses_application_history_before_stale_controller(
     assert panel.current_plotting_record is service_entry["record"]
 
 
+def test_training_panel_refuses_real_study_query_none_controller_history(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.training.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    stale_controller = Observable()
+    stale_controller.validate_ready = MagicMock(return_value=True)
+    stale_controller.has_datasets = MagicMock(return_value=True)
+    stale_controller.has_model = MagicMock(return_value=True)
+    stale_controller.has_training_option = MagicMock(return_value=True)
+    stale_controller.get_formatted_history = MagicMock(
+        side_effect=AssertionError("stale training history should not be read"),
+    )
+
+    panel = TrainingPanel(
+        parent=RealMainWindow(),
+        controller=stale_controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_loop()
+
+    stale_controller.get_formatted_history.assert_not_called()
+    assert panel.history_table.rowCount() == 0
+    assert panel.current_plotting_record is None
+
+
 def test_training_panel_clears_stale_history_on_config_changed(
     mock_main_window,
     qtbot,
