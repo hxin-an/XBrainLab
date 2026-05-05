@@ -1,5 +1,8 @@
 """Bar chart widget for per-class precision, recall, and F1-score visualization."""
 
+from typing import Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -43,9 +46,9 @@ class MetricsBarChartWidget(QWidget):
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
 
         # Initial Placeholder
-        self.fig = Figure(figsize=(5, 4), dpi=100)
-        self.canvas = FigureCanvas(self.fig)
-        self.ax = self.fig.add_subplot(111)
+        self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
+        self.canvas: FigureCanvas | None = FigureCanvas(self.fig)
+        self.ax: Any = self.fig.add_subplot(111)
 
         Theme.apply_matplotlib_dark_theme(self.fig, ax=self.ax)
 
@@ -70,6 +73,8 @@ class MetricsBarChartWidget(QWidget):
 
         """
         try:
+            if self.fig is None or self.canvas is None or self.ax is None:
+                return
             self.ax.clear()
 
             # Theme applied later, but we need to set initial facecolor if clearing?
@@ -167,3 +172,22 @@ class MetricsBarChartWidget(QWidget):
 
         except Exception as e:
             logger.error("Error plotting bar chart: %s", e, exc_info=True)
+
+    def _release_canvas(self) -> None:
+        if self.canvas is None:
+            return
+        self.plot_layout.removeWidget(self.canvas)
+        self.canvas.setParent(None)
+        self.canvas.deleteLater()
+        self.canvas = None
+
+    def _close_current_figure(self) -> None:
+        if self.fig is not None:
+            plt.close(self.fig)
+            self.fig = None
+        self.ax = None
+
+    def closeEvent(self, event):  # noqa: N802
+        self._release_canvas()
+        self._close_current_figure()
+        super().closeEvent(event)

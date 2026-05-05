@@ -42,6 +42,36 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Metrics Bar Chart Close Cleanup
+
+### 狀態
+
+The Evaluation metrics bar chart now has an explicit close cleanup path. `closeEvent()` closes the
+current Matplotlib figure, detaches the embedded canvas from the Qt layout, schedules it for
+`deleteLater()`, and clears figure / canvas references.
+
+### 已可宣稱
+
+- Closing the per-class metrics chart releases its Matplotlib figure and Qt canvas references.
+- Focused UI tests cover close cleanup and Evaluation panel/chart regressions.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/evaluation/metrics_bar_chart.py`
+- Tests: `tests/unit/ui/test_ui_components.py`,
+  `tests/unit/ui/test_evaluation_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full Evaluation tab soak evidence, long-run memory trend proof, or desktop human
+  acceptance.
+
+### 下一手重點
+
+Evaluation Matplotlib widget cleanup now covers confusion matrix and metrics chart close/clear
+paths; broader memory trend evidence still needs a dedicated repeated UI workflow artifact.
+
 ## 2026-05-06 Confusion Matrix Widget Cleanup
 
 ### 狀態

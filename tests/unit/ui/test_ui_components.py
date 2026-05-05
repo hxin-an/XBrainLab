@@ -147,6 +147,28 @@ class TestMetricsBarChart:
         qtbot.addWidget(w)
         w.update_plot(None)
 
+    def test_close_releases_figure_and_canvas(self, qtbot):
+        import matplotlib.pyplot as plt
+        from PyQt6.QtGui import QCloseEvent
+
+        from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
+            MetricsBarChartWidget,
+        )
+
+        w = MetricsBarChartWidget()
+        qtbot.addWidget(w)
+        old_fig = w.fig
+        old_canvas = w.canvas
+        assert old_canvas is not None
+
+        with patch.object(plt, "close") as close_figure:
+            w.closeEvent(QCloseEvent())
+
+        close_figure.assert_called_once_with(old_fig)
+        assert old_canvas.parent() is None
+        assert w.fig is None
+        assert w.canvas is None
+
     def test_update_plot_layout_failure_is_not_logged_as_error(self, qtbot):
         from XBrainLab.ui.panels.evaluation import metrics_bar_chart
         from XBrainLab.ui.panels.evaluation.metrics_bar_chart import (
@@ -155,6 +177,7 @@ class TestMetricsBarChart:
 
         w = MetricsBarChartWidget()
         qtbot.addWidget(w)
+        assert w.fig is not None
         w.fig.tight_layout = MagicMock(side_effect=np.linalg.LinAlgError("singular"))
 
         with patch.object(metrics_bar_chart.logger, "error") as error_logger:

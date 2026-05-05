@@ -51,6 +51,9 @@ canvas、排程 `deleteLater()` 並清引用。這降低反覆切 saliency view 
 Matplotlib figure、detach / `deleteLater()` 舊 canvas 或 message widgets，並清掉 canvas /
 figure 引用。這降低 Evaluation tab 反覆切 plan / 清空資料時留下舊 widget 的風險，但仍不是
 完整 evaluation UI soak。
+最新 MetricsBarChart cleanup 也讓 per-class metrics chart close path close 目前 Matplotlib
+figure、detach / `deleteLater()` canvas 並清掉引用；這補齊 Evaluation tab 另一個 Matplotlib
+widget 的 focused close cleanup，但仍不是長時間 Evaluation memory trend proof。
 
 2026-05-03 人工產品審核 follow-up 又補了一輪產品級修正：Assistant dock 頂部不再顯示
 chip dump，chat panel 內也不再放 `Conversation` 標題、第二條狀態列或 developer mode

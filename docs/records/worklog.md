@@ -10661,3 +10661,39 @@
 - 不能宣稱：
   - This does not certify full Evaluation tab UX, long-run memory trend behavior, or human desktop
     acceptance.
+
+### 2026-05-06 MetricsBarChart close cleanup
+
+- scope：
+  - Continue Evaluation tab Matplotlib widget cleanup after ConfusionMatrixWidget.
+  - Ensure the per-class metrics chart releases its figure / canvas on widget close.
+- red / focused tests：
+  - Added `test_close_releases_figure_and_canvas`.
+  - Red gate failed because `MetricsBarChartWidget` inherited QWidget close behavior and never
+    called `plt.close()` or cleared canvas references.
+- 做了什麼：
+  - Added `_release_canvas()` and `_close_current_figure()` to `MetricsBarChartWidget`.
+  - `closeEvent()` now detaches / `deleteLater()` the canvas, closes the current figure, and clears
+    `fig` / `canvas` / `ax` references.
+  - `update_plot()` now returns quietly if the widget has already released its plotting resources.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_close_releases_figure_and_canvas -q`
+    -> failed because `plt.close()` was not called.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_close_releases_figure_and_canvas tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_creates tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_update_plot_no_data tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_update_plot_layout_failure_is_not_logged_as_error -q`
+    -> `4 passed`.
+  - Evaluation regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_ui_components.py::TestConfusionMatrix tests/unit/ui/test_ui_components.py::TestMetricsBarChart -q`
+    -> `30 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/evaluation/metrics_bar_chart.py tests/unit/ui/test_ui_components.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/evaluation/metrics_bar_chart.py tests/unit/ui/test_ui_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI resource cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not certify full Evaluation tab UX, long-run memory trend behavior, or human desktop
+    acceptance.

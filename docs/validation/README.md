@@ -159,6 +159,13 @@ ConfusionMatrixWidget cleanup gate:
 -> `29 passed`。This supports figure/canvas cleanup for confusion matrix update / clear paths. It
 does not prove full Evaluation tab UX, long-run memory trend behavior, or human desktop acceptance.
 
+MetricsBarChart close cleanup gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_close_releases_figure_and_canvas tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_creates tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_update_plot_no_data tests/unit/ui/test_ui_components.py::TestMetricsBarChart::test_update_plot_layout_failure_is_not_logged_as_error -q`
+-> `4 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_evaluation_panel_redesign.py tests/unit/ui/test_panel_event_bridges.py tests/unit/ui/test_ui_components.py::TestConfusionMatrix tests/unit/ui/test_ui_components.py::TestMetricsBarChart -q`
+-> `30 passed`。This supports close cleanup for the per-class metrics chart figure / canvas. It
+does not prove full Evaluation tab UX, long-run memory trend behavior, or human desktop acceptance.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`
