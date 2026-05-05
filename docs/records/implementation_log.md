@@ -42,6 +42,38 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Data Splitting Dialog Context Boundary
+
+### 狀態
+
+`DataSplittingDialog` now distinguishes product runtime from mock / legacy fallback. In a real
+`Study` context, missing explicit `epoch_data` / `dataset_generator` no longer triggers direct
+`TrainingController.get_epoch_data()` or `get_dataset_generator()` reads. The Training sidebar
+already passes service-backed context from `QueryStateCommand(query="dataset_generation_context",
+include_objects=True)`.
+
+### 已可宣稱
+
+- Real `Study` Data Splitting dialogs require explicit service-backed context.
+- Mock / legacy tests still preserve controller fallback behavior.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py`
+- Tests: `tests/unit/ui/dialogs/test_data_splitting.py`,
+  `tests/unit/ui/test_data_splitting.py`, `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not Data Splitting UX redesign, long-running dataset-generation soak, or complete
+  Training sidebar fallback closure.
+
+### 下一手重點
+
+Continue auditing dialog constructors and public UI helpers that can be invoked outside their
+service-backed caller path.
+
 ## 2026-05-06 Visualization Failed Query Fallback Cleanup
 
 ### 狀態

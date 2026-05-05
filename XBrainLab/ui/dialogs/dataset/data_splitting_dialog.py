@@ -7,6 +7,7 @@ strategies such as subject-wise, session-wise, or trial-wise splits.
 
 from enum import Enum
 from typing import Any
+from unittest.mock import Mock
 
 import numpy as np
 from PyQt6.QtCore import Qt
@@ -28,6 +29,8 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.backend.study import Study
+from XBrainLab.ui.application_capabilities import find_study
 from XBrainLab.ui.core.base_dialog import BaseDialog
 
 from .data_splitting_preview_dialog import (
@@ -36,6 +39,12 @@ from .data_splitting_preview_dialog import (
 )
 
 _UNSET = object()
+
+
+def _is_real_study_context(parent: Any, controller: Any) -> bool:
+    """Return whether the dialog is running in a real Study-backed UI context."""
+    study = find_study(parent) or find_study(controller)
+    return isinstance(study, Study) and not isinstance(study, Mock)
 
 
 class DrawColor(Enum):
@@ -356,15 +365,22 @@ class DataSplittingDialog(BaseDialog):
         epoch_data: Any = _UNSET,
     ):
         self.controller = controller
+        allow_controller_fallback = not _is_real_study_context(parent, controller)
 
         if epoch_data is _UNSET:
             self.epoch_data = (
-                self.controller.get_epoch_data() if self.controller else None
+                self.controller.get_epoch_data()
+                if self.controller and allow_controller_fallback
+                else None
             )
         else:
             self.epoch_data = epoch_data
 
-        if dataset_generator is _UNSET and self.controller:
+        if (
+            dataset_generator is _UNSET
+            and self.controller
+            and allow_controller_fallback
+        ):
             self.dataset_generator = self.controller.get_dataset_generator()
         else:
             self.dataset_generator = (

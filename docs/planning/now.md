@@ -176,8 +176,9 @@
   `get_trainer()` 來決定是否要先確認並送 `ClearDatasetsCommand`。
 - 最新 Training split dialog context cleanup 新增
   `QueryStateCommand(query="dataset_generation_context", include_objects=True)`；real `Study`
-  `DataSplittingDialog` 初始化使用 service-backed epoch/generator context，stale
-  `TrainingController.get_epoch_data()` / `get_dataset_generator()` 只留在 query unavailable 的
+  Training sidebar 會把 service-backed epoch/generator context 傳入 `DataSplittingDialog`。最新
+  dialog-level follow-up 也讓 real `Study` context 在缺少 explicit context 時回 `None`，不再自行讀
+  stale `TrainingController.get_epoch_data()` / `get_dataset_generator()`；controller reads 只留在
   mock / legacy dialog fallback。
 - 最新 Data Splitting preview thread cleanup 讓 preview restart / dialog close 會 interrupt
   active `DatasetGenerator` 並 short-join preview worker；這是 focused lifecycle smoke，不是

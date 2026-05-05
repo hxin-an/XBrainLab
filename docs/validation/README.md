@@ -133,6 +133,15 @@ Training force-clean lifecycle gate:
 -> `7 passed`。This supports bounded force-clean thread handling and preserving the trainer handle
 on cleanup timeout. It is not long-running training soak evidence.
 
+Data Splitting dialog explicit-context gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_data_splitting.py::TestDataSplittingDialog::test_real_study_requires_explicit_service_context -q`
+-> `1 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_data_splitting.py tests/unit/ui/test_data_splitting.py tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+-> `114 passed`。This supports the boundary that real `Study` Data Splitting dialogs require
+explicit service-backed epoch/generator context instead of reading stale TrainingController data.
+Mock / legacy dialog fallback remains. This does not redesign the split UX or prove long-running
+dataset-generation behavior.
+
 Visualization 3D widget cleanup gate:
 `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot_schedules_child_widgets_for_deletion tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor -q`
 -> `3 passed`；

@@ -37,6 +37,57 @@
 
 ## 2026-05-06
 
+### 06:50 Data Splitting dialog context boundary
+
+- scope：
+  - Continue dialog-level controller fallback audit.
+  - Prevent real `Study` `DataSplittingDialog` construction from reading stale
+    `TrainingController.get_epoch_data()` / `get_dataset_generator()` when the caller forgot to
+    pass service-backed context.
+- red / focused tests：
+  - Added `test_real_study_requires_explicit_service_context`.
+  - Red gate failed because dialog construction called `controller.get_epoch_data()` immediately.
+- 做了什麼：
+  - Added `_is_real_study_context(parent, controller)`.
+  - In a real `Study` context, `epoch_data` / `dataset_generator` default to `None` unless explicitly
+    provided.
+  - Mock / legacy non-`Study` contexts still use controller fallback, preserving existing dialog
+    coverage.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_data_splitting.py::TestDataSplittingDialog::test_real_study_requires_explicit_service_context -q`
+    -> failed as expected on stale controller read.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Dialog / Training sidebar regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dialogs/test_data_splitting.py tests/unit/ui/test_data_splitting.py tests/unit/ui/test_sidebars_and_components.py::TestTrainingSidebar -q`
+    -> `114 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py tests/unit/ui/dialogs/test_data_splitting.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/dialogs/dataset/data_splitting_dialog.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Note:
+    A focused `basedpyright` run including `tests/unit/ui/dialogs/test_data_splitting.py` exposes
+    existing optional-widget test errors in that file; the newly added `study` attribute issue was
+    fixed with a typed `RealStudyParent` helper. Full repo basedpyright remains the authoritative
+    type gate for this slice.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with existing MkDocs Material advisory.
+  - Agent / backend smoke:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+- local eval：
+  - Not run. This is a Data Splitting UI dialog fallback cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not redesign Data Splitting UX, prove long-running dataset-generation behavior, or
+    complete Training sidebar fallback closure.
+
 ### 06:40 Visualization failed-query trainer fallback cleanup
 
 - scope：
