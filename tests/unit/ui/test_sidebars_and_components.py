@@ -770,6 +770,52 @@ class TestDatasetSidebar:
         mock_warning.assert_called_once()
         assert "Load raw data before preprocessing." in mock_warning.call_args.args[2]
 
+    def test_open_channel_selection_prefers_backend_capability_over_stale_controller(
+        self,
+        qtbot,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.application import PreprocessCommand
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        panel = _make_panel_mock()
+        panel.main_window.study = study
+        panel.controller.has_data.return_value = False
+        panel.controller.is_locked.return_value = True
+        panel.controller.get_loaded_data_list.return_value = [raw]
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+            ) as mock_dialog,
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+                return_value=_command_result(),
+            ) as mock_execute,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            mock_dialog.return_value.exec.return_value = QDialog.DialogCode.Accepted
+            mock_dialog.return_value.get_result.return_value = ["Cz", "Pz"]
+            sb.open_channel_selection()
+
+        mock_dialog.assert_called_once()
+        assert isinstance(mock_execute.call_args.args[1], PreprocessCommand)
+        panel.controller.apply_channel_selection.assert_not_called()
+        mock_warning.assert_not_called()
+
     def test_open_channel_selection_accepted(self, sidebar):
         sidebar.panel.controller.has_data.return_value = True
         sidebar.panel.controller.is_locked.return_value = False

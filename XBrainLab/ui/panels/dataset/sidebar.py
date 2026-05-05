@@ -275,11 +275,11 @@ class DatasetSidebar(QWidget):
             )
             return
 
-        if not self.controller.has_data():
+        if preprocess_capability is None and not self.controller.has_data():
             QMessageBox.warning(self, "Warning", "No data loaded.")
             return
 
-        if self.controller.is_locked():
+        if preprocess_capability is None and self.controller.is_locked():
             QMessageBox.warning(
                 self,
                 "Action Blocked",

@@ -6244,3 +6244,56 @@
     wizard UX acceptance.
   - It does not prove Windows human desktop click-through or complete UI-observable walkthrough
     coverage.
+
+### 2026-05-05 Dataset Channel Selection source-of-truth cleanup
+
+- scope：
+  - UI command truth alignment for Dataset sidebar Channel Selection dialog gating。
+  - No backend command schema, agent tool, MCP tool, or screenshot artifact change.
+- problem：
+  - `DatasetSidebar.open_channel_selection()` first read backend `preprocess` capability, but after
+    capability passed it still used controller-local `has_data()` / `is_locked()` checks before the
+    confirmation and `ChannelSelectionDialog`.
+  - A stale controller state could block a real `Study` path even when backend capability said
+    preprocessing was available.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller -q`
+    initially failed because the channel-selection dialog did not open.
+- 做了什麼：
+  - Limited controller-local data / locked checks to mock / legacy non-Study paths.
+  - Kept real `Study` blocked behavior on backend `preprocess` capability.
+  - Kept controller fallback execution only when `execute_application_command()` returns `None`.
+- validation：
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller -q`
+    -> red before implementation, then passed.
+  - Channel Selection regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_uses_backend_preprocess_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_accepted -q`
+    -> `3 passed`.
+  - Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `8 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one Channel Selection source-of-truth cleanup, not full preprocessing UX or Data
+    Interpretation wizard acceptance.
+  - It does not prove Windows human desktop click-through or complete UI-observable walkthrough
+    coverage.

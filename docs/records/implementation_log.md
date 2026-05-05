@@ -1161,3 +1161,26 @@ mock / legacy non-Study compatibility。
 ### 不能宣稱完成
 
 - 這不是完整 metadata editor / Data Interpretation wizard UX acceptance。
+
+## 2026-05-05 Dataset Channel Selection Source-Of-Truth Cleanup
+
+### 狀態
+
+Dataset sidebar `Channel Selection` 現在在 real `Study` path 以 backend `preprocess` capability
+作為開 dialog 的 source of truth。controller-local `has_data()` / `is_locked()` checks 僅保留給
+mock / legacy non-Study compatibility。
+
+### 已可宣稱
+
+- Channel Selection dialog gate 不再被 stale controller state 蓋過 backend capability truth。
+- blocked real `Study` path 仍顯示 shared backend blocked reason。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 preprocessing UX 或 Data Interpretation wizard acceptance。

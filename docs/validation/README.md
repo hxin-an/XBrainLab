@@ -2461,6 +2461,41 @@ long-running training human acceptance。
 這批 evidence 支撐 Smart Parse dialog gate 不再被 stale controller state 蓋過 backend
 capability truth。它仍不是完整 metadata editor 或 Data Interpretation wizard UX acceptance。
 
+2026-05-05 Dataset Channel Selection source-of-truth follow-up：
+
+- UI/action:
+  - `DatasetSidebar.open_channel_selection()` now treats backend `preprocess` capability as the
+    real `Study` source of truth before confirmation and `ChannelSelectionDialog`.
+  - Controller-local `has_data()` / `is_locked()` checks are limited to mock / legacy non-Study
+    compatibility paths.
+  - Controller fallback execution remains limited to `execute_application_command() is None`.
+- targeted gates:
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller -q`
+    -> first run failed, implementation run passed.
+  - Channel Selection regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_uses_backend_preprocess_capability tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_accepted -q`
+    -> `3 passed`.
+  - Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `8 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 Channel Selection dialog gate 不再被 stale controller state 蓋過 backend
+capability truth。它仍不是完整 preprocessing UX 或 Data Interpretation wizard acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:
