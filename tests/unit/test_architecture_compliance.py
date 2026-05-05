@@ -264,6 +264,28 @@ def open_smart_parser(self):
     assert "capability is None" in violations[0]
 
 
+def test_capability_readiness_guard_flags_preprocessed_list_after_capability(
+    tmp_path,
+):
+    _write_ui_file(
+        tmp_path,
+        """
+def update_sidebar(self):
+    preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+    if preprocess_capability is not None and not preprocess_capability.enabled:
+        return
+    data_list = self.controller.get_preprocessed_data_list()
+    self._update_button_states(bool(data_list))
+""",
+    )
+
+    violations = check_ui_capability_gated_controller_readiness(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.get_preprocessed_data_list" in violations[0]
+    assert "capability is None" in violations[0]
+
+
 def test_capability_readiness_guard_allows_explicit_legacy_none_branch(tmp_path):
     _write_ui_file(
         tmp_path,

@@ -66,6 +66,7 @@ UI_POST_COMMAND_CONTROLLER_ECHO_METHODS = ("get_model_holder",)
 UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS = (
     "get_channel_names",
     "get_filenames",
+    "get_preprocessed_data_list",
     "get_trainer",
     "get_saliency_params",
     "has_datasets",

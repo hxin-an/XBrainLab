@@ -882,14 +882,17 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock render state
   收回 backend capability surface：real `Study` 有 `preprocess` / `create_epoch` capability 時不再讀
   stale `PreprocessController.get_preprocessed_data_list()`；該 controller read 只保留給
-  no-capability mock / legacy path。
+  no-capability mock / legacy path，並已納入 architecture compliance guard。
   最新 Dataset smart-parse cleanup 又把 parser dialog 的 file list 改成先讀
   `QueryStateCommand(query="state")` 裡的 `state.raw.files`；`DatasetController.get_filenames()`
   只保留在 query unavailable 的 mock / legacy fallback helper。
   最新 Preprocess epoching cleanup 修掉另一個 capability 混用：`open_epoching()` 現在以
   `create_epoch` capability 判定是否可進入 epoch dialog；當 `create_epoch` enabled 時，不會再被
   `preprocess` capability 的 blocked reason 透過 `check_lock()` / `check_data_loaded()` 誤擋。
-  舊 controller lock/data checks 只保留給 no-capability mock / legacy path。
+  舊 controller lock/data checks 只保留給 no-capability mock / legacy path。最新 guard follow-up
+  又讓 epoch dialog 的 preprocessed object list 先走 `QueryStateCommand(query="data_lists",
+  include_objects=True)`，`PreprocessController.get_preprocessed_data_list()` 只保留在
+  no-capability mock / legacy path。
   最新 Evaluation panel cleanup 則把 readonly `EvaluateCommand` 結果接到顯示 gate：real
   `Study` path 若 ApplicationService 回 blocked / unavailable evaluation，panel 不再繼續讀
   stale injected `EvaluationController.get_plans()` 來顯示過期 plan，而是清成

@@ -1,5 +1,7 @@
 """Sidebar widget for the preprocessing panel with operations and execution controls."""
 
+from typing import Any
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QFrame,
@@ -15,6 +17,7 @@ from XBrainLab.backend.application import (
     CreateEpochCommand,
     PreprocessCommand,
     PreprocessOperation,
+    QueryStateCommand,
     ResetPreprocessCommand,
 )
 from XBrainLab.backend.utils.logger import logger
@@ -169,17 +172,34 @@ class PreprocessSidebar(QWidget):
         # Handled by InfoPanelService
 
         is_epoched = False
-        has_capability_surface = (
-            get_command_capability(self, CommandName.PREPROCESS) is not None
-            or get_command_capability(self, CommandName.CREATE_EPOCH) is not None
-        )
-        if not has_capability_surface:
+        preprocess_capability = get_command_capability(self, CommandName.PREPROCESS)
+        epoch_capability = get_command_capability(self, CommandName.CREATE_EPOCH)
+        if preprocess_capability is None and epoch_capability is None:
             data_list = self.controller.get_preprocessed_data_list()
             if data_list:
                 first_data = data_list[0]
                 is_epoched = not first_data.is_raw()
 
         self._update_button_states(is_epoched)
+
+    def _preprocessed_data_list_for_epoching(
+        self,
+        epoch_capability,
+    ) -> list[Any] | None:
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="data_lists", include_objects=True),
+            refresh=False,
+        )
+        if result is None:
+            if epoch_capability is None:
+                return self.controller.get_preprocessed_data_list()
+            return []
+        if result.failed:
+            self._show_command_failure("Epoching Blocked", result.message)
+            return None
+        data_list = result.diagnostics.get("preprocessed_data_list")
+        return list(data_list) if isinstance(data_list, list) else []
 
     def _update_button_states(self, is_epoched):
         """Update button tooltips based on the epoched state.
@@ -496,7 +516,9 @@ class PreprocessSidebar(QWidget):
         ):
             return
 
-        data_list = self.controller.get_preprocessed_data_list()
+        data_list = self._preprocessed_data_list_for_epoching(epoch_capability)
+        if data_list is None:
+            return
         dialog = EpochingDialog(self, data_list)
         if dialog.exec():
             params = dialog.get_params()

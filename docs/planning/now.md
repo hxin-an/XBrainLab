@@ -187,7 +187,7 @@
 - 最新 Preprocess sidebar render cleanup 也把 `update_sidebar()` 的 epoched/lock state 收回
   backend capability surface：有 `preprocess` / `create_epoch` capability 時不再讀 stale
   `PreprocessController.get_preprocessed_data_list()`；該 controller read 只留在 no-capability
-  mock / legacy render branch。
+  mock / legacy render branch，並已納入 architecture compliance guard。
 - 最新 Dataset smart-parse cleanup 也讓 parser dialog file list 先走
   `QueryStateCommand(query="state")` 的 `state.raw.files`；stale
   `DatasetController.get_filenames()` 只留在 query unavailable 的 mock / legacy fallback helper。
@@ -209,7 +209,9 @@
   fallback helper。
 - 最新 Preprocess epoching cleanup 也把 epoch dialog gating 收回 `create_epoch` capability：
   `create_epoch` enabled 時不再被 separate `preprocess` capability blocked reason 誤擋，
-  legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。
+  legacy `check_lock()` / `check_data_loaded()` 只留給 no-capability path。最新 guard follow-up
+  又讓 epoch dialog data list 先走 `QueryStateCommand(query="data_lists", include_objects=True)`；
+  `PreprocessController.get_preprocessed_data_list()` 只留在 no-capability mock / legacy path。
 - 最新 Preprocess sidebar fallback audit slice 已把 filter / resample / rereference / normalize /
   epoch / reset 的 controller fallback 改成同一個 mock / legacy-only helper。剩餘 Dataset /
   Visualization / AgentManager fallback 還要沿同一模式盤點。

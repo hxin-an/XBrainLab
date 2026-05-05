@@ -9708,3 +9708,41 @@
 - 不能宣稱：
   - This does not complete full preprocessing workflow UX, command-driven UI refresh closure, or
     human desktop acceptance.
+
+### 2026-05-06 Preprocess render controller-read architecture guard
+
+- scope：
+  - Add a static regression guard for the Preprocess sidebar render cleanup.
+  - Prevent future capability-backed UI paths from re-reading stale
+    `PreprocessController.get_preprocessed_data_list()` outside an explicit no-capability legacy
+    branch.
+- red / focused test：
+  - Added
+    `test_capability_readiness_guard_flags_preprocessed_list_after_capability`.
+  - Red gate failed with `0` violations, proving the architecture checker did not yet cover this
+    controller read.
+- 做了什麼：
+  - Added `get_preprocessed_data_list` to
+    `UI_CAPABILITY_GATED_CONTROLLER_READINESS_METHODS`.
+  - Updated `PreprocessSidebar.update_sidebar()` to use explicit `preprocess_capability is None`
+    and `epoch_capability is None` branches for legacy render-state fallback.
+  - Updated `open_epoching()` to get dialog data through
+    `QueryStateCommand(query="data_lists", include_objects=True)` in command-capable contexts.
+    `PreprocessController.get_preprocessed_data_list()` remains only for no-capability mock /
+    legacy dialog population.
+- validation：
+  - Red gate:
+    `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py::test_capability_readiness_guard_flags_preprocessed_list_after_capability -q`
+    -> failed with `0` violations.
+  - After implementation:
+    same focused command -> `1 passed`.
+  - Focused UI gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_update_sidebar_prefers_backend_capabilities_over_stale_preprocessed_list tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_epoch_capability_not_preprocess_block tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_uses_query_data_list_before_stale_controller -q`
+    -> `3 passed`.
+  - Architecture gate:
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+- local eval：
+  - Not run. This is a static architecture guard under the fast dev gate.
+- 不能宣稱：
+  - This does not prove all controller read paths are gone; it prevents this specific stale
+    Preprocess render read from returning.

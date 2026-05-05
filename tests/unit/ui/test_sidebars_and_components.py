@@ -237,7 +237,11 @@ class TestPreprocessSidebar:
         self,
         sidebar,
     ):
-        from XBrainLab.backend.application import CommandName, CreateEpochCommand
+        from XBrainLab.backend.application import (
+            CommandName,
+            CreateEpochCommand,
+            QueryStateCommand,
+        )
 
         def capability_for(_, command_name):
             if command_name == CommandName.CREATE_EPOCH:
@@ -251,6 +255,11 @@ class TestPreprocessSidebar:
 
         sidebar.panel.controller.get_preprocessed_data_list.return_value = [MagicMock()]
 
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                return _command_result(preprocessed_data_list=[MagicMock()])
+            return _command_result()
+
         with (
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
@@ -259,7 +268,7 @@ class TestPreprocessSidebar:
             patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
             patch(
                 "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
-                return_value=_command_result(),
+                side_effect=execute_for,
             ) as mock_execute,
             patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
             patch("PyQt6.QtWidgets.QMessageBox.information"),
@@ -275,6 +284,56 @@ class TestPreprocessSidebar:
 
         mock_warning.assert_not_called()
         assert isinstance(mock_execute.call_args.args[1], CreateEpochCommand)
+        sidebar.panel.controller.apply_epoching.assert_not_called()
+
+    def test_open_epoching_uses_query_data_list_before_stale_controller(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.application import (
+            CreateEpochCommand,
+            QueryStateCommand,
+        )
+
+        query_data = [MagicMock()]
+        sidebar.panel.controller.get_preprocessed_data_list.side_effect = (
+            AssertionError("stale preprocessed list should not be read")
+        )
+
+        def execute_for(_, command, refresh=True):
+            if isinstance(command, QueryStateCommand):
+                return _command_result(preprocessed_data_list=query_data)
+            if isinstance(command, CreateEpochCommand):
+                return _command_result()
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
+                return_value=SimpleNamespace(enabled=True, reasons=[]),
+            ),
+            patch("XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog") as MockDlg,
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                side_effect=execute_for,
+            ) as mock_execute,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+            patch("PyQt6.QtWidgets.QMessageBox.information"),
+        ):
+            MockDlg.return_value.exec.return_value = True
+            MockDlg.return_value.get_params.return_value = (
+                (None, 0),
+                ["left", "right"],
+                -0.5,
+                1.0,
+            )
+            sidebar.open_epoching()
+
+        mock_warning.assert_not_called()
+        assert isinstance(mock_execute.call_args_list[0].args[1], QueryStateCommand)
+        assert isinstance(mock_execute.call_args_list[1].args[1], CreateEpochCommand)
+        MockDlg.assert_called_once_with(sidebar, query_data)
+        sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_epoching.assert_not_called()
 
     def test_reset_preprocess(self, sidebar):

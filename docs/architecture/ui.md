@@ -144,6 +144,9 @@ is limited to mock / legacy query fallback when no ApplicationService query resu
 Preprocess epoching follows the `create_epoch` capability directly: when `create_epoch` is enabled,
 `open_epoching()` no longer re-checks the separate `preprocess` capability through `check_lock()` /
 `check_data_loaded()`, so a valid epoching path is not blocked by a preprocess-only reason.
+The epoching dialog data list is now loaded through `QueryStateCommand(query="data_lists",
+include_objects=True)` in command-capable contexts; `PreprocessController.get_preprocessed_data_list()`
+is limited to no-capability mock / legacy dialog population.
 `tests/architecture_compliance.py` 會靜態檢查這條 boundary，防止新的 `result is None` branch
 直接呼叫 controller mutation，也防止 service-backed success path 在
 `execute_application_command()` 後回讀 `TrainingController.get_model_holder()` 這類 controller
@@ -160,7 +163,8 @@ branches, and architecture compliance guards this pattern.
 Preprocess sidebar render state now follows the same capability-surface boundary: with
 `preprocess` or `create_epoch` capabilities visible, `update_sidebar()` no longer reads stale
 `PreprocessController.get_preprocessed_data_list()` to infer epoched/lock state. That controller
-read remains only for no-capability mock / legacy rendering.
+read remains only for no-capability mock / legacy rendering, and architecture compliance guards
+this pattern.
 Dataset smart-parse dialog setup also reads filenames from
 `QueryStateCommand(query="state")` / `state.raw.files` in real `Study` contexts.
 `DatasetController.get_filenames()` is limited to mock / legacy query fallback.
