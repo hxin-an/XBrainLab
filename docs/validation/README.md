@@ -2496,6 +2496,43 @@ capability truth。它仍不是完整 metadata editor 或 Data Interpretation wi
 這批 evidence 支撐 Channel Selection dialog gate 不再被 stale controller state 蓋過 backend
 capability truth。它仍不是完整 preprocessing UX 或 Data Interpretation wizard acceptance。
 
+2026-05-05 Data Interpretation source-entry source-of-truth follow-up：
+
+- UI/action:
+  - `DatasetActionHandler.import_data()` now treats backend `scan_source` capability as the real
+    `Study` source of truth before the main file source dialog.
+  - `DatasetActionHandler._can_start_interpretation()` does the same for folder/BIDS source import
+    and other source-entry flows that pass a backend capability.
+  - Controller-local `is_locked()` checks are limited to mock / legacy non-Study compatibility
+    paths.
+- targeted gates:
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_prefers_backend_scan_capability_over_stale_controller -q`
+    -> first run failed, implementation run passed.
+  - source entry regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_locked tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_source_uses_folder_or_bids_root -q`
+    -> `4 passed`.
+  - Dataset action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `61 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 file / folder Data Interpretation source entry 不再被 stale controller lock state
+蓋過 backend capability truth。它仍不是完整 Data Interpretation wizard UX 或 human desktop import
+acceptance。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

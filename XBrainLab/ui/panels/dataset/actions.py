@@ -91,7 +91,7 @@ class DatasetActionHandler:
             )
             return
 
-        if controller.is_locked():
+        if scan_capability is None and controller.is_locked():
             QMessageBox.warning(
                 self.panel,
                 "Interpretation Blocked",
@@ -349,7 +349,7 @@ class DatasetActionHandler:
             )
             return False
 
-        if controller.is_locked():
+        if capability is None and controller.is_locked():
             QMessageBox.warning(
                 self.panel,
                 "Interpretation Blocked",

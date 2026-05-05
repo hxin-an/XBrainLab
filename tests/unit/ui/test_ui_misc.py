@@ -223,6 +223,35 @@ class TestDatasetActionHandler:
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_called()
 
+    def test_import_data_prefers_backend_scan_capability_over_stale_controller(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = True
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch.object(
+                handler,
+                "_run_data_interpretation_import",
+                return_value=True,
+            ) as mock_interpret,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_fd.getOpenFileNames.return_value = (
+                ["/tmp/sub-01_task-mi_raw.fif"],
+                "",
+            )
+            handler.import_data()
+
+        mock_fd.getOpenFileNames.assert_called_once()
+        mock_interpret.assert_called_once_with(["/tmp/sub-01_task-mi_raw.fif"])
+        mock_mb.warning.assert_not_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
@@ -288,6 +317,32 @@ class TestDatasetActionHandler:
         ]
         handler.panel.controller.import_files.assert_not_called()
         handler.panel.update_panel.assert_called()
+
+    def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
+        self,
+        handler,
+    ):
+        from XBrainLab.backend.study import Study
+
+        handler.panel.study = Study()
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = True
+
+        with (
+            patch("XBrainLab.ui.panels.dataset.actions.QFileDialog") as mock_fd,
+            patch.object(
+                handler,
+                "_run_data_interpretation_import",
+                return_value=True,
+            ) as mock_interpret,
+            patch("XBrainLab.ui.panels.dataset.actions.QMessageBox") as mock_mb,
+        ):
+            mock_fd.getExistingDirectory.return_value = "/tmp/bids-root"
+            handler.import_folder_source()
+
+        mock_fd.getExistingDirectory.assert_called_once()
+        mock_interpret.assert_called_once_with(["/tmp/bids-root"])
+        mock_mb.warning.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")

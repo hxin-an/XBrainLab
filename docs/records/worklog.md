@@ -6297,3 +6297,58 @@
     Interpretation wizard acceptance.
   - It does not prove Windows human desktop click-through or complete UI-observable walkthrough
     coverage.
+
+### 2026-05-05 Data Interpretation source-entry source-of-truth cleanup
+
+- scope：
+  - UI command truth alignment for main file import and folder/BIDS source import entry gates。
+  - No backend command schema, agent tool, MCP tool, or screenshot artifact change.
+- problem：
+  - `DatasetActionHandler.import_data()` and `_can_start_interpretation()` first read backend
+    capability, but after capability passed they still used controller-local `is_locked()` before
+    opening file/folder source dialogs.
+  - A stale controller lock state could block a real `Study` Data Interpretation source entry even
+    when backend `scan_source` capability was available.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_prefers_backend_scan_capability_over_stale_controller -q`
+    initially failed because neither source dialog opened.
+- 做了什麼：
+  - Limited controller-local locked checks to mock / legacy non-Study paths for file and
+    folder/BIDS Data Interpretation entry.
+  - Kept real `Study` blocked behavior on backend Data Interpretation capability / apply policy.
+  - Kept legacy file import fallback only when Data Interpretation and `LoadDataCommand` do not
+    handle the source.
+- validation：
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_prefers_backend_scan_capability_over_stale_controller -q`
+    -> red before implementation, then passed.
+  - source entry regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_prefers_backend_scan_capability_over_stale_controller tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_data_locked tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_import_folder_source_uses_folder_or_bids_root -q`
+    -> `4 passed`.
+  - Dataset action regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler -q`
+    -> `61 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one source-entry gate cleanup, not full Data Interpretation wizard UX or human desktop
+    import acceptance.
+  - It does not prove Windows human desktop click-through or complete UI-observable walkthrough
+    coverage.

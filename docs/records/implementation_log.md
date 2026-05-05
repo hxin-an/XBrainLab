@@ -1184,3 +1184,28 @@ mock / legacy non-Study compatibility。
 ### 不能宣稱完成
 
 - 這不是完整 preprocessing UX 或 Data Interpretation wizard acceptance。
+
+## 2026-05-05 Data Interpretation Source Entry Source-Of-Truth Cleanup
+
+### 狀態
+
+Dataset main file import 和 folder/BIDS source import 現在在 real `Study` path 以 backend
+`scan_source` capability 作為資料入口 source of truth。controller-local `is_locked()` check 僅
+保留給 mock / legacy non-Study compatibility。
+
+### 已可宣稱
+
+- File / folder Data Interpretation entry 不再被 stale controller lock state 蓋過 backend
+  capability truth。
+- blocked real `Study` path 仍由 backend Data Interpretation capability / apply raw-edit policy
+  控制，而不是 UI 自己判斷。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/dataset/actions.py`
+- Tests：`tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 Data Interpretation wizard UX 或 human desktop import acceptance。
