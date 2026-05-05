@@ -37,6 +37,44 @@
 
 ## 2026-05-05
 
+### 17:59 Dataset inline metadata refresh coordinator slice
+
+- 做了什麼：
+  - 在 `DatasetPanel` 新增 `_update_panel_after_legacy_result()`。
+  - subject/session inline metadata edit 成功執行 `UpdateMetadataCommand` 後，不再直接
+    `update_panel()`。
+  - 先新增 focused red test：service-backed inline subject edit 不應呼叫 controller fallback，也不應
+    在 panel 內直接刷新。
+  - 結果：
+  - inline metadata service-success path 交給 command refresh coordinator。
+  - mock / legacy `None` fallback 仍保留手動 refresh；failure / blocked path 仍刷新以還原 UI。
+  - 由於這個 slice 直接碰 `tests/unit/ui/dataset/test_panel.py`，也順手修正該檔既有 Qt dynamic
+    attribute / nullable item type issue，讓 direct basedpyright on touched files 可通過。
+- 證據：
+  - 初始紅燈：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_service_success_uses_coordinator_refresh -q`
+    -> failed；`update_panel()` 被呼叫。
+  - 修正後 focused tests：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_service_success_uses_coordinator_refresh tests/unit/ui/dataset/test_panel.py::test_dataset_panel_on_item_changed tests/unit/ui/dataset/test_panel.py::test_dataset_panel_metadata_cells_use_backend_update_capability -q`
+    -> `3 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/panel.py tests/unit/ui/dataset/test_panel.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_panel.py -q`
+    -> `11 passed`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `921 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+
 ### 17:53 Dataset sidebar refresh coordinator slice
 
 - 做了什麼：

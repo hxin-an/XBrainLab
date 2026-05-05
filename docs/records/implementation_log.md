@@ -216,6 +216,36 @@ legacy `None` fallback refreshes manually.
 Continue with Dataset panel inline metadata refresh or classify callback / observer refresh paths
 before adding broader architecture guards.
 
+## 2026-05-05 Dataset Inline Metadata Refresh Cleanup
+
+### 狀態
+
+Dataset table inline subject/session edits now use a legacy-only local refresh helper. Service-backed
+`UpdateMetadataCommand` success paths no longer call `DatasetPanel.update_panel()` directly; mock /
+legacy `None` fallback still refreshes manually.
+
+### 已可宣稱
+
+- Inline subject/session metadata service-success paths no longer duplicate panel refresh.
+- Existing mock / legacy controller update behavior and backend capability read-only behavior remain
+  covered.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/panel.py`
+- Tests: `tests/unit/ui/dataset/test_panel.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish UI refresh target architecture. Observer bridge refresh, tab-switch refresh,
+  import-finished callbacks, and training/preprocess lifecycle callbacks remain separate mechanisms.
+
+### 下一手重點
+
+Classify remaining callback-driven refreshes before deciding whether to refactor them into the
+coordinator or preserve them as explicit observer/event bridges.
+
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 
 ### 狀態

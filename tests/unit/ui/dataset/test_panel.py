@@ -1,8 +1,9 @@
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QHeaderView, QMainWindow, QMessageBox
+from PyQt6.QtWidgets import QHeaderView, QMainWindow, QMessageBox, QTableWidgetItem
 
 from XBrainLab.ui.panels.dataset.panel import DatasetPanel
 from XBrainLab.ui.styles.theme import Theme
@@ -15,11 +16,12 @@ def mock_main_window(qtbot):
     qtbot.addWidget(window)
 
     # Mock the study attribute and its methods
-    window.study = MagicMock()
-    window.study.loaded_data_list = []
+    study = MagicMock()
+    study.loaded_data_list = []
+    cast(Any, window).study = study
 
     # Add custom methods not in QMainWindow spec
-    window.refresh_panels = MagicMock()
+    cast(Any, window).refresh_panels = MagicMock()
 
     yield window
     window.close()
@@ -33,7 +35,7 @@ def mock_controller(mock_main_window):
     controller.get_loaded_data_list.return_value = []
 
     # Configure Study to return this controller
-    mock_main_window.study.get_controller.return_value = controller
+    cast(Any, mock_main_window).study.get_controller.return_value = controller
     return controller
 
 
@@ -46,7 +48,7 @@ def test_dataset_panel_init_controller(mock_main_window, mock_controller, qtbot)
     # or parent().study if passed parent.
     # Let's verify standard pattern: usually parent() -> main_window
 
-    real_window.study = mock_main_window.study
+    cast(Any, real_window).study = cast(Any, mock_main_window).study
 
     panel = DatasetPanel(parent=real_window)
     qtbot.addWidget(panel)
@@ -132,7 +134,9 @@ def test_dataset_panel_update_table(mock_main_window, mock_controller, qtbot):
     panel.update_panel()
 
     assert panel.table.rowCount() == 1
-    assert panel.table.item(0, 0).text() == "test.set"
+    file_item = panel.table.item(0, 0)
+    assert file_item is not None
+    assert file_item.text() == "test.set"
 
 
 def test_dataset_panel_table_columns_fill_available_width(
@@ -282,10 +286,49 @@ def test_dataset_panel_on_item_changed(mock_main_window, mock_controller, qtbot)
     with patch.object(panel, "update_panel"):
         # Simulate editing Subject (Column 1)
         item = panel.table.item(0, 1)  # Subject
+        assert item is not None
         item.setText("NewSub")
 
         # Verify controller called
         mock_controller.update_metadata.assert_called()
+
+
+def test_dataset_panel_metadata_service_success_uses_coordinator_refresh(
+    mock_main_window,
+    mock_controller,
+    qtbot,
+):
+    """Service-backed inline metadata edits should not refresh locally."""
+    from XBrainLab.backend.application import UpdateMetadataCommand
+
+    mock_data = MagicMock()
+    mock_controller.get_loaded_data_list.return_value = [mock_data]
+    panel = DatasetPanel(controller=mock_controller, parent=mock_main_window)
+    qtbot.addWidget(panel)
+    panel.table.blockSignals(True)
+    panel.table.setRowCount(1)
+    panel.table.setColumnCount(7)
+    name_item = QTableWidgetItem("file.set")
+    name_item.setData(Qt.ItemDataRole.UserRole, True)
+    panel.table.setItem(0, 0, name_item)
+    subject_item = QTableWidgetItem("S02")
+    panel.table.setItem(0, 1, subject_item)
+    panel.table.blockSignals(False)
+
+    with (
+        patch.object(panel, "update_panel") as mock_update,
+        patch(
+            "XBrainLab.ui.panels.dataset.panel.execute_application_command",
+            return_value=MagicMock(failed=False),
+        ) as mock_execute,
+    ):
+        panel.on_item_changed(subject_item)
+
+    command = mock_execute.call_args.args[1]
+    assert isinstance(command, UpdateMetadataCommand)
+    assert command.subject == "S02"
+    mock_controller.update_metadata.assert_not_called()
+    mock_update.assert_not_called()
 
 
 def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
@@ -295,7 +338,7 @@ def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
     window = QMainWindow()
     qtbot.addWidget(window)
     study = Study()
-    window.study = study
+    cast(Any, window).study = study
     mock_data = MagicMock()
     mock_data.configure_mock(
         **{
@@ -324,6 +367,8 @@ def test_dataset_panel_metadata_cells_use_backend_update_capability(qtbot):
     subject_item = panel.table.item(0, 1)
     session_item = panel.table.item(0, 2)
 
+    assert subject_item is not None
+    assert session_item is not None
     assert not subject_item.flags() & Qt.ItemFlag.ItemIsEditable
     assert not session_item.flags() & Qt.ItemFlag.ItemIsEditable
     assert "Reset the session before changing raw files" in subject_item.toolTip()

@@ -159,6 +159,10 @@ class DatasetPanel(BasePanel):
                 logger.error("Failed to apply data", exc_info=True)
                 QMessageBox.critical(self, "Error", f"Failed to apply data: {e}")
 
+    def _update_panel_after_legacy_result(self, result) -> None:
+        if result is None:
+            self.update_panel()
+
     def update_panel(self):
         """Refresh the sidebar and table contents from the controller."""
         if not hasattr(self, "controller"):
@@ -310,6 +314,7 @@ class DatasetPanel(BasePanel):
 
         if col == 1:  # Subject
             controller = getattr(self, "controller", None)
+            result = None
             if controller is not None:
                 result = execute_application_command(
                     self,
@@ -324,9 +329,10 @@ class DatasetPanel(BasePanel):
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()
                     return
-            self.update_panel()  # Refresh aggregates
+            self._update_panel_after_legacy_result(result)
         elif col == 2:  # Session
             controller = getattr(self, "controller", None)
+            result = None
             if controller is not None:
                 result = execute_application_command(
                     self,
@@ -341,4 +347,4 @@ class DatasetPanel(BasePanel):
                     QMessageBox.warning(self, "Metadata blocked", result.message)
                     self.update_panel()
                     return
-            self.update_panel()  # Refresh aggregates
+            self._update_panel_after_legacy_result(result)
