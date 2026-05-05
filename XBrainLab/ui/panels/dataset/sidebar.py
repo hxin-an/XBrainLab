@@ -20,6 +20,8 @@ from XBrainLab.backend.application import (
     ResetSessionCommand,
 )
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -358,6 +360,8 @@ class DatasetSidebar(QWidget):
             return
 
         data_list = self._loaded_data_list_for_channel_selection(preprocess_capability)
+        if data_list is None:
+            return
         dialog = ChannelSelectionDialog(self, data_list)
         if dialog.exec():
             result = dialog.get_result()
@@ -398,7 +402,7 @@ class DatasetSidebar(QWidget):
     def _loaded_data_list_for_channel_selection(
         self,
         preprocess_capability,
-    ) -> list[Any]:
+    ) -> list[Any] | None:
         result = execute_application_command(
             self,
             QueryStateCommand(query="data_lists", include_objects=True),
@@ -406,7 +410,18 @@ class DatasetSidebar(QWidget):
         )
         if result is None:
             if preprocess_capability is None:
-                return self.controller.get_loaded_data_list()
+                try:
+                    return run_legacy_controller_fallback(
+                        self,
+                        self.controller.get_loaded_data_list,
+                    )
+                except LegacyControllerFallbackUnavailableError:
+                    QMessageBox.warning(
+                        self,
+                        "Channel Selection Blocked",
+                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    )
+                    return None
             return []
         if result.failed:
             return []

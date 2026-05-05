@@ -37,6 +37,59 @@
 
 ## 2026-05-06
 
+### 07:10 Dataset/Preprocess query-unavailable fallback boundary
+
+- scope：
+  - Continue UI controller fallback audit for dialog source list queries.
+  - Prevent real `Study` Channel Selection / Epoching dialog source fallback from reading stale
+    controller lists when `QueryStateCommand` unexpectedly returns no result.
+- red / focused tests：
+  - Added `test_open_channel_selection_refuses_real_study_query_none_controller_fallback`.
+  - Added `test_open_epoching_refuses_real_study_query_none_controller_fallback`.
+  - Red gates failed because the query-unavailable branches directly called
+    `controller.get_loaded_data_list()` and `controller.get_preprocessed_data_list()`.
+- 做了什麼：
+  - Dataset Channel Selection source fallback now uses `run_legacy_controller_fallback()`; real
+    `Study` fallback refusal shows `Channel Selection Blocked` with the shared safety message and
+    does not open the dialog.
+  - Preprocess epoch dialog source fallback now uses the same helper; real `Study` fallback refusal
+    shows the shared safety message and does not open `EpochingDialog`.
+- validation：
+  - Red gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_refuses_real_study_query_none_controller_fallback -q`
+    -> failed on stale `get_preprocessed_data_list()`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_refuses_real_study_query_none_controller_fallback -q`
+    -> failed on stale `get_loaded_data_list()`.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_refuses_real_study_query_none_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_refuses_real_study_query_none_controller_fallback -q`
+    -> `2 passed`.
+  - Sidebar regressions:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `37 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/preprocess/test_preprocess_plotter.py tests/unit/ui/preprocess/test_data_query.py -q`
+    -> `31 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a UI controller fallback boundary cleanup under the fast dev gate; it does not
+    justify primary / fallback x3 local eval.
+- 不能宣稱：
+  - This does not finish command-driven UI refresh, remove all controller reads, or prove long-run
+    UI lifecycle / memory behavior.
+
 ### 07:00 Dataset label import target fallback boundary
 
 - scope：

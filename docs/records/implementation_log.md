@@ -74,6 +74,37 @@ now blocks with a user-facing warning instead of silently using stale controller
 Continue treating `Add Labels to Loaded Data` as compatibility-only while moving label/event
 confirmation into Data Interpretation wizard flows.
 
+## 2026-05-06 Dataset / Preprocess Query-Unavailable Fallback Boundary
+
+### 狀態
+
+Dataset Channel Selection and Preprocess Epoching dialog source-list fallbacks now use the shared
+legacy controller fallback guard. If a real `Study` path unexpectedly receives no
+ApplicationService query result, the UI blocks with the shared safety message instead of reading
+stale `DatasetController.get_loaded_data_list()` or
+`PreprocessController.get_preprocessed_data_list()`.
+
+### 已可宣稱
+
+- Real `Study` query-unavailable branches for these two dialog source lists no longer silently
+  recover from controller lists.
+- Mock / legacy non-`Study` dialog paths still keep controller-list compatibility through the
+  explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/sidebar.py`, `XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests: `tests/unit/ui/test_sidebars_and_components.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not remove every controller read path or complete command-driven UI refresh.
+
+### 下一手重點
+
+Continue auditing remaining query-unavailable UI fallbacks and observer/manual refresh paths.
+
 ## 2026-05-06 Data Splitting Dialog Context Boundary
 
 ### 狀態

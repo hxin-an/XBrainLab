@@ -383,6 +383,40 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
         sidebar.panel.controller.apply_epoching.assert_not_called()
 
+    def test_open_epoching_refuses_real_study_query_none_controller_fallback(
+        self,
+        sidebar,
+    ):
+        from XBrainLab.backend.study import Study
+
+        sidebar.panel.main_window.study = Study()
+        sidebar.panel.controller.has_data.return_value = True
+        sidebar.panel.controller.is_epoched.return_value = False
+        sidebar.panel.controller.get_preprocessed_data_list.side_effect = (
+            AssertionError("stale preprocessed list should not be read")
+        )
+
+        with (
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.preprocess.sidebar.EpochingDialog"
+            ) as mock_dialog,
+            patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning,
+        ):
+            sidebar.open_epoching()
+
+        mock_dialog.assert_not_called()
+        sidebar.panel.controller.get_preprocessed_data_list.assert_not_called()
+        mock_warning.assert_called_once()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
+
     def test_reset_preprocess(self, sidebar):
         from PyQt6.QtWidgets import QMessageBox
 
@@ -1558,6 +1592,51 @@ class TestDatasetSidebar:
         panel.controller.get_loaded_data_list.assert_not_called()
         panel.controller.apply_channel_selection.assert_not_called()
         mock_warning.assert_not_called()
+
+    def test_open_channel_selection_refuses_real_study_query_none_controller_fallback(
+        self,
+        qtbot,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.panels.dataset.sidebar import DatasetSidebar
+
+        panel = _make_panel_mock()
+        panel.main_window.study = Study()
+        panel.controller.has_data.return_value = True
+        panel.controller.is_locked.return_value = False
+        panel.controller.get_loaded_data_list.side_effect = AssertionError(
+            "stale loaded list should not be read",
+        )
+        sb = DatasetSidebar(panel)
+        qtbot.addWidget(sb)
+
+        with (
+            patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.get_command_capability",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.execute_application_command",
+                return_value=None,
+            ),
+            patch(
+                "XBrainLab.ui.panels.dataset.sidebar.ChannelSelectionDialog",
+            ) as mock_dialog,
+            patch.object(QMessageBox, "warning") as mock_warning,
+        ):
+            sb.open_channel_selection()
+
+        mock_dialog.assert_not_called()
+        panel.controller.get_loaded_data_list.assert_not_called()
+        mock_warning.assert_called_once()
+        assert "could not safely complete" in mock_warning.call_args.args[2]
 
     def test_open_channel_selection_accepted(self, sidebar):
         sidebar.panel.controller.has_data.return_value = True

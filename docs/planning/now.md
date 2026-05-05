@@ -298,6 +298,10 @@
   同一個 mock / legacy-only helper。最新 file-import boundary follow-up 也讓 `scan_source`
   capability 存在時不再從 Data Interpretation unavailable 旁路到 `LoadDataCommand` / legacy
   `import_files`。剩餘 Visualization / AgentManager fallback 還要沿同一模式盤點。
+- 最新 query-unavailable fallback boundary 又把 Dataset Channel Selection 和 Preprocess epoch
+  dialog source 的 `result is None` controller-list read 包進同一 safety helper。real `Study`
+  若 query helper 意外回 `None`，會顯示 shared safety message 並 block dialog，而不是讀 stale
+  `get_loaded_data_list()` / `get_preprocessed_data_list()`。
 - 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings、Visualization
   sidebar `Set Montage` 和 assistant montage confirmation fallback 改成同一個 mock / legacy-only
   helper。剩餘 `result is None` path 主要是

@@ -2717,6 +2717,36 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Dataset/Preprocess query-unavailable fallback boundary：
+
+- Focused red/fixed gates:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_refuses_real_study_query_none_controller_fallback tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_refuses_real_study_query_none_controller_fallback -q`
+  -> `2 passed` after failing on stale controller list reads before the fix.
+- Sidebar regressions:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+  -> `37 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/dataset/test_dataset_sidebar.py tests/unit/ui/preprocess/test_preprocess_plotter.py tests/unit/ui/preprocess/test_data_query.py -q`
+  -> `31 passed`.
+- Focused lint/type/architecture:
+  `poetry run ruff check XBrainLab/ui/panels/preprocess/sidebar.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/preprocess/sidebar.py XBrainLab/ui/panels/dataset/sidebar.py tests/unit/ui/test_sidebars_and_components.py`
+  -> `0 errors`;
+  `poetry run python tests/architecture_compliance.py` -> pass.
+- Static / docs / backend / agent gate:
+  `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+  `poetry run mkdocs build --strict`, and
+  `poetry run pytest --capture=sys tests/integration/backend -q` all passed
+  (`7` backend tests);
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate UI fallback boundary slice.
+
+This supports the safety boundary that real `Study` Channel Selection / Epoching dialog source
+fallbacks will block rather than read stale controller lists if the service query path unexpectedly
+returns no result. It does not prove all controller read fallbacks are gone.
+
 2026-05-06 Dataset label target fallback boundary：
 
 - Focused gate:

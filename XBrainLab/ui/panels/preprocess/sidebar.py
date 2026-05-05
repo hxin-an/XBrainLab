@@ -22,6 +22,8 @@ from XBrainLab.backend.application import (
 )
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.application_capabilities import (
+    LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+    LegacyControllerFallbackUnavailableError,
     blocked_reason,
     execute_application_command,
     get_command_capability,
@@ -203,7 +205,18 @@ class PreprocessSidebar(QWidget):
         )
         if result is None:
             if command_capability is None:
-                return self.controller.get_preprocessed_data_list()
+                try:
+                    return run_legacy_controller_fallback(
+                        self,
+                        self.controller.get_preprocessed_data_list,
+                    )
+                except LegacyControllerFallbackUnavailableError:
+                    QMessageBox.warning(
+                        self,
+                        failure_title,
+                        LEGACY_FALLBACK_UNAVAILABLE_MESSAGE,
+                    )
+                    return None
             return []
         if result.failed:
             self._show_command_failure(failure_title, result.message)
