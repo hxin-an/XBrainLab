@@ -99,6 +99,40 @@ def test_build_interpretation_candidate_blocks_selected_files_missing_from_scan(
     assert "not found in the current scan" in candidate.blocked_reasons[0]
 
 
+def test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices():
+    candidate = build_interpretation_candidate(
+        candidate_id="candidate-1",
+        scan=_scan(
+            eeg_files=["/data/renamed_raw.fif"],
+            metadata=[
+                FileMetadataResolution(
+                    file="/data/renamed_raw.fif",
+                    subject=_field("subject"),
+                    session=_field("session", "01"),
+                    task=_field("task", "mi"),
+                    run=_field("run", "1"),
+                )
+            ],
+        ),
+        choices={
+            "recipe_id": "recipe-1",
+            "selected_eeg_files": ["/data/original_raw.fif"],
+            "eeg_file_remap": {
+                "/data/original_raw.fif": "/data/renamed_raw.fif",
+            },
+            "metadata_overrides": {
+                "/data/original_raw.fif": {"subject": "S01"},
+            },
+        },
+    )
+
+    assert candidate.blocked_reasons == []
+    assert candidate.selected_eeg_files == ["/data/renamed_raw.fif"]
+    assert candidate.metadata[0].subject.value == "S01"
+    assert candidate.metadata[0].subject.source == "user_override"
+    assert "choices:eeg_file_remap" in candidate.recipe_trace
+
+
 def test_build_interpretation_candidate_blocks_required_label_carriers_missing_from_scan():
     candidate = build_interpretation_candidate(
         candidate_id="candidate-1",

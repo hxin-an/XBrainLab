@@ -399,20 +399,22 @@ UI baseline capture 結果：
   selector evidence is covered by the following wizard remap selector slice. Complex anchor
   reconciliation remains out of scope.
 
-2026-05-05 Recipe reload wizard label-carrier remap selector:
+2026-05-05 Recipe reload wizard EEG-file / label-carrier remap selector:
 
 - Product/UI change:
-  - Reload preview now exposes candidate replacement label/event carriers for a missing saved
-    carrier.
-  - A blocked reload dialog with remap options enables `Apply Remap`, shows user-facing remap copy,
-    and returns `choices.label_carrier_remap`.
+  - Reload preview now exposes candidate replacement EEG files and label/event carriers for missing
+    saved recipe paths.
+  - A blocked reload dialog with complete remap choices enables `Apply Remap`, shows user-facing
+    remap copy, and returns `choices.eeg_file_remap` / `choices.label_carrier_remap`.
+  - If multiple candidate replacement EEG files exist, Apply remains disabled until the user picks a
+    replacement; single-candidate remaps are selected automatically.
   - Dataset action re-previews and re-validates the merged recipe choices before applying the
     remapped candidate.
   - Data Interpretation replay now captures `artifacts/ui/data-interpretation-remap.png` and
     `ui_state.remap_dialog`.
 - Focused evidence:
-  - `timeout 300s env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_review.py tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py tests/unit/ui/dataset/test_panel.py tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_label_carrier_remap -q`
-    -> `29 passed`.
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_review.py tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_eeg_file_remap tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_label_carrier_remap tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_eeg_file_remap tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_requires_each_remap_choice tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_label_carrier_remap tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_eeg_file_remap tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_label_carrier_remap -q`
+    -> `16 passed`.
   - `poetry run ruff check ...` on touched UI/script/test files -> pass.
   - `poetry run basedpyright ...` on touched product files -> `0 errors, 0 warnings, 0 notes`.
   - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
@@ -424,19 +426,19 @@ UI baseline capture 結果：
   - `timeout 300s poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning.
   - `timeout 300s poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
   - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
-    -> `108 passed`.
-  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `6 passed`.
+    -> `109 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
   - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
     -> `473 passed`.
   - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q` -> `7 passed`.
 - UI-observable artifact:
-  - `artifacts/ui/data-interpretation-remap.png` shows the replacement selector and `Apply Remap`
-    button without contradictory blocked copy.
+  - `artifacts/ui/data-interpretation-remap.png` shows EEG file and label carrier replacement
+    selectors plus `Apply Remap` without contradictory blocked copy.
   - `artifacts/ui/data-interpretation-applied.png` shows the loaded Dataset table filling the main
     panel with neutral `Events (6)` / `Labels (4)` text.
-- Claim boundary: this supports the simple renamed label-carrier remap path in automated PyQt
-  replay. It is not a complete recipe conflict editor, complex anchor reconciliation UX, or human
-  Windows desktop acceptance.
+- Claim boundary: this supports simple renamed EEG file / label-carrier replacement paths in
+  automated PyQt replay. It is not a complete recipe conflict editor, complex anchor reconciliation
+  UX, or human Windows desktop acceptance.
 
 2026-05-05 MCP stdio adapter session boundary:
 

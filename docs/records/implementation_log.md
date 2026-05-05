@@ -52,19 +52,22 @@ choices; the Data Interpretation wizard renders those rows in `Review Summary`. 
 also blocks reload candidates when a saved selected EEG file is missing from the current scan, so
 apply cannot fall through into a runtime import failure. The same blocker now covers missing saved
 label/event carriers, so external labels cannot be silently dropped during recipe replay. Backend
-remap support now lets a saved carrier be explicitly mapped to a replacement carrier in the current
-scan while preserving saved label field / anchor / role choices. The wizard now exposes that remap
-as a user-facing selector, then re-previews and re-validates before apply.
+remap support now lets a saved EEG file or saved carrier be explicitly mapped to a replacement item
+in the current scan while preserving saved metadata / label field / anchor / role choices. The
+wizard now exposes those remaps as user-facing selectors, then re-previews and re-validates before
+apply.
 
 ### 已可宣稱
 
 - Reloaded recipes no longer show only a generic `reapplied` message; the user can see whether saved
   files / label carriers still match the current scan.
 - Missing saved EEG files and label/event carriers are now validation blockers before apply.
+- Explicit backend `eeg_file_remap` can clear the missing-selected-file blocker and preserve saved
+  metadata overrides on the replacement file.
 - Explicit backend `label_carrier_remap` can clear the missing-carrier blocker and preserve saved
   choices on the replacement carrier.
-- The UI can resolve the simple renamed-carrier case without falling through to a dead-end blocked
-  dialog.
+- The UI can resolve simple renamed-file and renamed-carrier cases without falling through to a
+  dead-end blocked dialog.
 - Human-like walkthrough evidence was refreshed, including `07-recipe-reloaded.png`.
 
 ### Evidence 入口
@@ -79,12 +82,13 @@ as a user-facing selector, then re-previews and re-validates before apply.
 ### 不能宣稱完成
 
 - 這不是完整 recipe diff editor，也不是人類 Windows desktop acceptance。
-- 這不處理複雜 recipe conflict resolution；目前只是讓 rescan comparison 可見。
+- 這不處理複雜 recipe conflict resolution 或 anchor reconciliation；目前是 simple replacement
+  selector。
 
 ### 下一手重點
 
-把 same pattern 延伸到更成熟的 import wizard conflict handling：missing source、renamed files、
-anchor reconciliation 和 label carrier remap。
+把 same pattern 延伸到更成熟的 import wizard conflict handling：missing source、multi-file
+matching heuristics、anchor reconciliation 和 embedded label editor。
 
 ## 2026-05-05 Data Entry Routing And Dataset Table Fit
 

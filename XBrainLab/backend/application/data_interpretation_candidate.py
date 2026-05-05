@@ -55,10 +55,16 @@ def build_interpretation_candidate(
 ) -> InterpretationCandidate:
     """Build a candidate interpretation from a scan result and user choices."""
     choices = dict(choices or {})
-    selected_files = [
+    eeg_file_remap = _string_mapping(choices.get("eeg_file_remap"))
+    raw_selected_files = [
         str(item)
         for item in choices.get("eeg_files", choices.get("selected_eeg_files", []))
-    ] or list(scan.eeg_files)
+    ]
+    selected_files = (
+        _remapped_selected_files(raw_selected_files, eeg_file_remap)
+        if raw_selected_files
+        else list(scan.eeg_files)
+    )
     blocked_reasons = list(scan.blocked_reasons)
     warnings = list(scan.warnings)
     confirmation_items: list[str] = []
@@ -66,7 +72,10 @@ def build_interpretation_candidate(
     class_map: dict[str, str] = _string_mapping(choices.get("class_map"))
     metadata = _apply_metadata_overrides(
         scan.metadata,
-        choices.get("metadata_overrides"),
+        _remapped_metadata_overrides(
+            choices.get("metadata_overrides"),
+            eeg_file_remap,
+        ),
     )
     label_carrier_choices = _remapped_label_carrier_choices(
         choices.get("label_carrier_choices"),
@@ -245,6 +254,32 @@ def _selected_files_missing_from_scan(
     return _paths_missing_from_scan(selected_files, scanned_files)
 
 
+def _remapped_selected_files(
+    selected_files: list[str],
+    remap: dict[str, str],
+) -> list[str]:
+    result: list[str] = []
+    for file_path in selected_files:
+        mapped = _mapped_path(file_path, remap)
+        if mapped and mapped not in result:
+            result.append(mapped)
+    return result
+
+
+def _remapped_metadata_overrides(
+    payload: Any,
+    remap: dict[str, str],
+) -> Any:
+    if not isinstance(payload, dict) or not remap:
+        return payload
+    result: dict[str, Any] = {}
+    for file_key, fields in payload.items():
+        mapped = _mapped_path(str(file_key), remap)
+        if mapped:
+            result[mapped] = fields
+    return result
+
+
 def _required_label_carriers_missing_from_scan(
     choices: dict[str, Any],
     scanned_carriers: list[str],
@@ -343,6 +378,8 @@ def _choice_recipe_trace(choices: dict[str, Any]) -> list[str]:
         choices.get("label_carrier_choices")
     ) or _string_list(choices.get("required_label_carriers")):
         traces.append("choices:label_carriers")
+    if _string_mapping(choices.get("eeg_file_remap")):
+        traces.append("choices:eeg_file_remap")
     if _string_mapping(choices.get("label_carrier_remap")):
         traces.append("choices:label_carrier_remap")
     return traces

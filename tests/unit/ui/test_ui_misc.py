@@ -498,6 +498,100 @@ class TestDatasetActionHandler:
         mock_mb.critical.assert_not_called()
         handler.panel.update_panel.assert_called()
 
+    @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
+    @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
+    def test_reload_interpretation_recipe_repreviews_blocked_eeg_file_remap(
+        self,
+        mock_mb,
+        mock_fd,
+        mock_preview_dialog,
+        handler,
+    ):
+        from XBrainLab.backend.application import (
+            ApplyInterpretationCommand,
+            PreviewInterpretationCommand,
+            ReloadInterpretationRecipeCommand,
+            ValidateInterpretationCommand,
+        )
+
+        old_file = "/tmp/old_raw.fif"
+        new_file = "/tmp/renamed_raw.fif"
+        handler.panel.controller = MagicMock()
+        handler.panel.controller.is_locked.return_value = False
+        mock_fd.getOpenFileName.return_value = ("/tmp/import_recipe.json", "")
+        mock_preview_dialog.return_value.exec.return_value = True
+        mock_preview_dialog.return_value.get_result.return_value = {
+            "confirmed": True,
+            "save_recipe": False,
+            "choices": {"eeg_file_remap": {old_file: new_file}},
+        }
+        commands = []
+
+        def fake_execute(_panel, command):
+            commands.append(command)
+            if isinstance(command, ReloadInterpretationRecipeCommand):
+                return _command_result(
+                    scan_result={"scan_id": "scan-1", "eeg_files": [new_file]},
+                    preview={"summary": "Recipe needs EEG file remap."},
+                    candidate={
+                        "candidate_id": "candidate-1",
+                        "choices": {
+                            "recipe_id": "recipe-1",
+                            "selected_eeg_files": [old_file],
+                        },
+                    },
+                    validation_decision={
+                        "candidate_id": "candidate-1",
+                        "decision": "blocked",
+                        "blocked_reasons": [
+                            "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+                        ],
+                    },
+                    recipe={"recipe_id": "recipe-1"},
+                )
+            if isinstance(command, PreviewInterpretationCommand):
+                assert command.scan_id == "scan-1"
+                assert command.choices["selected_eeg_files"] == [old_file]
+                assert command.choices["eeg_file_remap"] == {
+                    old_file: new_file,
+                }
+                return _command_result(
+                    preview={"summary": "Recipe remap ready."},
+                    candidate={"candidate_id": "candidate-2"},
+                )
+            if isinstance(command, ValidateInterpretationCommand):
+                return _command_result(
+                    validation_decision={
+                        "candidate_id": "candidate-2",
+                        "decision": "needs_confirmation",
+                        "required_confirmations": ["Confirm EEG file remap."],
+                        "blocked_reasons": [],
+                    },
+                )
+            if isinstance(command, ApplyInterpretationCommand):
+                return _command_result(applied_interpretation={})
+            raise AssertionError(f"unexpected command: {command!r}")
+
+        with patch(
+            "XBrainLab.ui.panels.dataset.actions.execute_application_command",
+            side_effect=fake_execute,
+        ):
+            handler.reload_interpretation_recipe()
+
+        assert [type(command) for command in commands] == [
+            ReloadInterpretationRecipeCommand,
+            PreviewInterpretationCommand,
+            ValidateInterpretationCommand,
+            ApplyInterpretationCommand,
+        ]
+        apply_command = commands[-1]
+        assert isinstance(apply_command, ApplyInterpretationCommand)
+        assert apply_command.candidate_id == "candidate-2"
+        assert apply_command.confirmed is True
+        mock_mb.critical.assert_not_called()
+        handler.panel.update_panel.assert_called()
+
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")
     def test_reload_interpretation_recipe_uses_reload_capability_gate(

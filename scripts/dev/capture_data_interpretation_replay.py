@@ -360,11 +360,27 @@ def capture_replay(app: QApplication) -> int:
                     "label_carriers": [str(LABEL_PATH)],
                 },
                 preview={
-                    "summary": "Reloaded recipe needs label carrier remap.",
+                    "summary": "Reloaded recipe needs file and label carrier remap.",
                     "recipe_reload_summary": {
                         "message": (
                             "Saved recipe choices were reapplied before validation."
                         ),
+                        "eeg_file_remap_options": [
+                            {
+                                "saved": str(SOURCE_DIR / "old_raw.fif"),
+                                "saved_name": "old_raw.fif",
+                                "candidates": [
+                                    {
+                                        "path": str(SOURCE_PATH),
+                                        "name": SOURCE_PATH.name,
+                                    },
+                                    {
+                                        "path": str(SECOND_SOURCE_PATH),
+                                        "name": SECOND_SOURCE_PATH.name,
+                                    },
+                                ],
+                            }
+                        ],
                         "label_carrier_remap_options": [
                             {
                                 "saved": str(SOURCE_DIR / "old_events.tsv"),
@@ -382,11 +398,20 @@ def capture_replay(app: QApplication) -> int:
                 validation_decision={
                     "decision": "blocked",
                     "blocked_reasons": [
+                        "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
                         "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
                     ],
                 },
             )
             remap_dialog.show()
+            app.processEvents()
+            for selector in [
+                *getattr(remap_dialog, "_eeg_file_remap_widgets", {}).values(),
+                *getattr(remap_dialog, "_label_carrier_remap_widgets", {}).values(),
+            ]:
+                if isinstance(selector, QComboBox) and not selector.currentData():
+                    next_index = 1 if selector.count() > 1 else 0
+                    selector.setCurrentIndex(next_index)
             app.processEvents()
             remap_dialog.repaint()
             app.processEvents()

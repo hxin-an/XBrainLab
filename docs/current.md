@@ -507,11 +507,12 @@ evidence；仍不是完整 recipe diff editor 或 human desktop acceptance。
 `label_carriers` / `label_carrier_plan.path` 帶回 candidate choices，若 current scan 找不到對應
 carrier，validation 會以 `Saved label/event carrier(s) were not found in the current scan: ...`
 擋下，避免 recipe replay 靜默丟失 external labels。
-後續 backend remap slice 已允許明確 `label_carrier_remap`，可把 saved carrier path/name 映射到
-current scan 的 replacement carrier；原 recipe 的 label field、anchor、time model、granularity
-和 role choices 會套到 replacement carrier。最新 UI slice 已把 wizard remap selector 接上：
-blocked reload dialog 會顯示 replacement carrier selector，使用者按 `Apply Remap` 後 UI 會
-re-preview / re-validate 再 apply。這仍不是完整 conflict editor 或複雜 anchor reconciliation。
+後續 remap slice 已允許明確 `eeg_file_remap` / `label_carrier_remap`，可把 saved EEG file 或
+saved carrier path/name 映射到 current scan 的 replacement；原 recipe 的 metadata override、
+label field、anchor、time model、granularity 和 role choices 會套到 replacement。最新 UI slice
+已把 wizard remap selector 接上：blocked reload dialog 會優先顯示 EEG file / label carrier
+replacement selector，使用者選完後按 `Apply Remap`，UI 會 re-preview / re-validate 再 apply。
+這仍不是完整 conflict editor 或複雜 anchor reconciliation。
 
 ## 可信狀態
 

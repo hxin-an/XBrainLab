@@ -123,6 +123,16 @@ def test_build_interpretation_preview_summarizes_recipe_reload_diff():
             ],
         }
     ]
+    assert summary["eeg_file_remap_options"] == [
+        {
+            "saved": "/data/missing.fif",
+            "saved_name": "missing.fif",
+            "candidates": [
+                {"path": "/data/sub-01.fif", "name": "sub-01.fif"},
+                {"path": "/data/sub-02.fif", "name": "sub-02.fif"},
+            ],
+        }
+    ]
 
 
 def test_validate_interpretation_candidate_needs_confirmation_and_blocked():

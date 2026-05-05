@@ -356,9 +356,10 @@
     `blocked`，不允許 apply 進入 runtime import failure。
   - Recipe reload 若發現 saved label/event carrier 不在 current scan 中，也會 `blocked`，避免
     recipe replay 靜默丟失 external labels。
-  - Backend 已支援 explicit `label_carrier_remap`，可把 saved carrier 映射到 current scan
-    replacement carrier 並沿用原本 label/anchor/role choices；UI selector 已接上，blocked reload
-    dialog 可讓使用者選 replacement carrier，並在 apply 前 re-preview / re-validate。
+  - Backend 已支援 explicit `eeg_file_remap` / `label_carrier_remap`，可把 saved EEG file 或
+    saved carrier 映射到 current scan replacement，並沿用原本 metadata / label / anchor / role
+    choices；UI selector 已接上，blocked reload dialog 可讓使用者選 replacement，並在 apply 前
+    re-preview / re-validate。
   - 最新 UI table-fit polish 讓 label / event / recipe trace tables 用 stretch + elide 控制欄寬，
     `Review Summary` 使用較低對比的 dark alternate row；Dataset table 的 `File` 欄承接剩餘寬度
     並填滿主 panel，其他欄保留穩定寬度，避免載入後表格內縮。

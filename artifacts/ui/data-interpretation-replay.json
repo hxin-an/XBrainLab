@@ -3310,7 +3310,7 @@
       "decision": "blocked",
       "visible_text": [
         "Select source | Scan result | Preview | Confirm | Apply | Save recipe",
-        "Reloaded recipe needs label carrier remap.",
+        "Reloaded recipe needs file and label carrier remap.",
         "Source",
         "/tmp/xbrainlab_data_interpretation_replay",
         "Type",
@@ -3321,10 +3321,20 @@
         "1",
         "BIDS",
         "Not detected",
-        "Validation needs a label carrier remap before applying.",
-        "Choose a replacement label/event carrier, then apply the remap to recheck this saved recipe."
+        "Validation needs recipe remaps before applying.",
+        "Choose replacement EEG files and label/event carriers, then apply the remap to recheck this saved recipe."
       ],
       "review_summary_rows": [
+        [
+          "Remap EEG file",
+          "Select",
+          "sub-01_task-mi_run-1_raw.fif"
+        ],
+        [
+          "Remap label carrier",
+          "Select",
+          "events.tsv"
+        ],
         [
           "Reloaded recipe",
           "Reapplied",
@@ -3333,15 +3343,18 @@
         [
           "Blocked reason",
           "Blocked",
-          "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
+          "Selected EEG file(s) were not found in the current scan: old_raw.fif."
         ],
         [
-          "Remap label carrier",
-          "Select",
-          "events.tsv"
+          "Blocked reason",
+          "Blocked",
+          "Saved label/event carrier(s) were not found in the current scan: old_events.tsv."
         ]
       ],
       "remap_choices": {
+        "eeg_file_remap": {
+          "<replay_source>/old_raw.fif": "<replay_source>/sub-01_task-mi_run-1_raw.fif"
+        },
         "label_carrier_choices": {
           "<replay_source>/events.tsv": {
             "role": "external labels"

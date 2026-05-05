@@ -412,6 +412,49 @@ def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path):
     )
 
 
+def test_reload_recipe_accepts_explicit_eeg_file_remap(tmp_path):
+    service = ApplicationService()
+    fif_path = _write_synthetic_raw_fif(tmp_path)
+    old_fif = tmp_path / "old_raw.fif"
+    recipe_path = tmp_path / "remap-eeg-file-recipe.json"
+    ImportRecipe(
+        recipe_id="recipe-remap-eeg",
+        interpretation_id="interpretation-1",
+        source_path=str(tmp_path),
+        source_kind="folder",
+        selected_eeg_files=[str(old_fif)],
+    ).write_json(str(recipe_path))
+
+    reload_result = service.execute(
+        ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
+    )
+    scan = reload_result.diagnostics["scan_result"]
+    candidate = reload_result.diagnostics["candidate"]
+    choices = dict(candidate["choices"])
+    choices["eeg_file_remap"] = {
+        str(old_fif): str(fif_path),
+    }
+
+    preview_result = service.execute(
+        PreviewInterpretationCommand(
+            scan_id=scan["scan_id"],
+            choices=choices,
+        ),
+    )
+    validation_result = service.execute(ValidateInterpretationCommand())
+
+    assert reload_result.diagnostics["validation_decision"]["decision"] == "blocked"
+    assert preview_result.ok is True
+    assert validation_result.ok is True
+    assert validation_result.diagnostics["validation_decision"]["decision"] in {
+        "safe",
+        "needs_confirmation",
+    }
+    remapped = preview_result.diagnostics["candidate"]
+    assert remapped["selected_eeg_files"] == [str(fif_path)]
+    assert "choices:eeg_file_remap" in remapped["recipe_trace"]
+
+
 def test_application_service_failed_command_sets_and_clears_last_error(tmp_path):
     service = ApplicationService()
     fif_path = _write_synthetic_raw_fif(tmp_path)

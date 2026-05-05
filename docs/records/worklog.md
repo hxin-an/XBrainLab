@@ -6814,3 +6814,69 @@
   - This is the simple renamed label/event carrier remap path, not a full recipe conflict editor or
     complex anchor reconciliation UX.
   - This is automated PyQt replay evidence, not human Windows desktop acceptance.
+
+### 2026-05-05 Recipe reload EEG file remap selector
+
+- scope：
+  - Data Interpretation recipe reload conflict handling for saved EEG files renamed or replaced in
+    the current scan。
+  - Same wizard review surface as label-carrier remap; no new legacy import path.
+- problem：
+  - Saved selected EEG files missing from rescan were correctly blocked, but there was no explicit
+    replacement path. Users could resolve a renamed label carrier, but not a renamed EEG file.
+  - A recipe with both missing EEG file and missing label carrier needed visible selectors for both
+    conflicts before `Apply Remap`.
+- red / focused tests：
+  - Focused backend/UI tests initially failed because `eeg_file_remap` did not clear selected-file
+    blockers, review summaries had no `eeg_file_remap_options`, and blocked dialogs did not enable
+    remap.
+- 做了什麼：
+  - `build_interpretation_candidate()` now normalizes `eeg_file_remap`, remaps selected EEG files,
+    remaps saved metadata overrides onto the replacement file, and writes
+    `choices:eeg_file_remap` to recipe trace.
+  - `build_interpretation_preview()` now exposes `eeg_file_remap_options` next to
+    `label_carrier_remap_options`.
+  - `DataInterpretationPreviewDialog` now has `Remap EEG file` selector rows, requires every remap
+    row to have a selected replacement before enabling `Apply Remap`, and returns
+    `choices.eeg_file_remap`.
+  - Dataset recipe reload action already merged arbitrary dialog choices, so EEG remap follows the
+    same re-preview / re-validate path as label carrier remap.
+  - Replay artifact now shows both EEG file and label carrier replacement selectors in
+    `artifacts/ui/data-interpretation-remap.png`.
+- validation：
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py::test_build_interpretation_candidate_remaps_saved_selected_eeg_file_choices tests/unit/backend/application/test_data_interpretation_review.py::test_build_interpretation_preview_summarizes_recipe_reload_diff tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_eeg_file_remap tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_eeg_file_remap tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_eeg_file_remap -q`
+    -> red before implementation, then `5 passed`.
+  - `env QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_data_interpretation_candidate.py tests/unit/backend/application/test_data_interpretation_review.py tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_eeg_file_remap tests/integration/backend/test_application_service_workflow.py::test_reload_recipe_accepts_explicit_label_carrier_remap tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_eeg_file_remap tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_requires_each_remap_choice tests/unit/ui/dialogs/dataset/test_data_interpretation_preview_dialog.py::test_data_interpretation_preview_dialog_returns_label_carrier_remap tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_eeg_file_remap tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler::test_reload_interpretation_recipe_repreviews_blocked_label_carrier_remap -q`
+    -> `16 passed`.
+  - `poetry run ruff check ...` on touched backend/UI/script/test files -> pass.
+  - `poetry run basedpyright ...` on touched product files -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - `git diff --check`
+    -> pass.
+  - `timeout 300s poetry run ruff check .`
+    -> pass.
+  - `timeout 300s poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `timeout 300s poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `timeout 300s poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `109 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `473 passed`.
+  - `timeout 300s poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+- evidence：
+  - `artifacts/ui/data-interpretation-remap.png` shows `Remap EEG file`, `Remap label carrier`, and
+    enabled `Apply Remap`.
+  - `artifacts/ui/data-interpretation-replay.json` records both remap choices in
+    `ui_state.remap_dialog.remap_choices`.
+- 不能宣稱：
+  - This is simple explicit file replacement, not automatic source-tree rename detection or
+    multi-file matching heuristics.
+  - This is not full recipe conflict editing, anchor reconciliation, or Windows human desktop
+    acceptance.

@@ -54,6 +54,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self._label_carrier_items: list[tuple[QTreeWidgetItem, dict[str, Any]]] = []
         self._label_target_widgets: dict[int, QComboBox] = {}
         self._label_choice_widgets: dict[tuple[int, int], QComboBox] = {}
+        self._eeg_file_remap_widgets: dict[str, QComboBox] = {}
         self._label_carrier_remap_widgets: dict[str, QComboBox] = {}
         self._event_role_widgets: dict[int, QComboBox] = {}
         self._event_role_items: list[tuple[QTreeWidgetItem, str, str]] = []
@@ -195,7 +196,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         self.review_tree.setAlternatingRowColors(True)
         self.review_tree.setUniformRowHeights(True)
         self.review_tree.setMinimumHeight(120)
-        self.review_tree.setMaximumHeight(170)
+        self.review_tree.setMaximumHeight(220)
         self._fit_tree_columns(self.review_tree, (150, 145, 520), stretch_column=2)
         self._populate_review_tree()
         review_layout.addWidget(self.review_tree)
@@ -207,7 +208,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
         layout.addWidget(self.confirmation_label)
 
         self.save_recipe_check = QCheckBox("Save reusable import recipe after applying")
-        apply_allowed = self.decision != "blocked" or self._has_remap_options()
+        apply_allowed = self._apply_allowed()
         self.save_recipe_check.setChecked(apply_allowed)
         self.save_recipe_check.setEnabled(apply_allowed)
         self.save_recipe_check.setToolTip(
@@ -241,9 +242,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
     def get_result(self) -> dict[str, Any]:
         return {
             "confirmed": self.decision == "needs_confirmation"
-            or (
-                self.decision == "blocked" and bool(self._label_carrier_remap_choices())
-            ),
+            or (self.decision == "blocked" and self._has_complete_remap_choices()),
             "save_recipe": self.save_recipe_check.isChecked(),
             "choices": self._edited_choices(),
         }
@@ -343,7 +342,13 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _decision_text(self) -> str:
         if self.decision == "blocked":
-            if self._has_remap_options():
+            has_eeg_remap = self._has_eeg_file_remap_options()
+            has_label_remap = self._has_label_carrier_remap_options()
+            if has_eeg_remap and has_label_remap:
+                return "Validation needs recipe remaps before applying."
+            if has_eeg_remap:
+                return "Validation needs an EEG file remap before applying."
+            if has_label_remap:
                 return "Validation needs a label carrier remap before applying."
             return "Validation blocked: this source cannot be applied yet."
         if self.decision == "needs_confirmation":
@@ -543,9 +548,22 @@ class DataInterpretationPreviewDialog(BaseDialog):
         event_roles = self._event_role_overrides()
         if event_roles:
             choices["event_roles"] = event_roles
+        eeg_file_remap = self._eeg_file_remap_choices()
+        if eeg_file_remap:
+            choices["eeg_file_remap"] = eeg_file_remap
         label_carriers = self._label_carrier_choices()
         if label_carriers:
             choices["label_carrier_choices"] = label_carriers
+        label_carrier_remap = self._label_carrier_remap_choices()
+        if label_carrier_remap:
+            choices["label_carrier_remap"] = label_carrier_remap
+        return choices
+
+    def _remap_choices(self) -> dict[str, dict[str, str]]:
+        choices: dict[str, dict[str, str]] = {}
+        eeg_file_remap = self._eeg_file_remap_choices()
+        if eeg_file_remap:
+            choices["eeg_file_remap"] = eeg_file_remap
         label_carrier_remap = self._label_carrier_remap_choices()
         if label_carrier_remap:
             choices["label_carrier_remap"] = label_carrier_remap
@@ -672,6 +690,15 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 choices[carrier_key] = changed
         return choices
 
+    def _eeg_file_remap_choices(self) -> dict[str, str]:
+        choices: dict[str, str] = {}
+        for saved, selector in self._eeg_file_remap_widgets.items():
+            value = selector.currentData()
+            replacement = str(value) if value is not None else ""
+            if replacement:
+                choices[saved] = replacement
+        return choices
+
     def _label_carrier_remap_choices(self) -> dict[str, str]:
         choices: dict[str, str] = {}
         for saved, selector in self._label_carrier_remap_widgets.items():
@@ -682,7 +709,51 @@ class DataInterpretationPreviewDialog(BaseDialog):
         return choices
 
     def _has_remap_options(self) -> bool:
+        return self._has_eeg_file_remap_options() or (
+            self._has_label_carrier_remap_options()
+        )
+
+    def _apply_allowed(self) -> bool:
+        return self.decision != "blocked" or self._has_complete_remap_choices()
+
+    def _has_complete_remap_choices(self) -> bool:
+        option_count = len(self._eeg_file_remap_options()) + len(
+            self._label_carrier_remap_options()
+        )
+        if option_count == 0:
+            return False
+        choice_count = len(self._eeg_file_remap_choices()) + len(
+            self._label_carrier_remap_choices()
+        )
+        return choice_count == option_count
+
+    def _sync_apply_state(self, *_args: Any) -> None:
+        if not hasattr(self, "button_box"):
+            return
+        apply_allowed = self._apply_allowed()
+        ok_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setEnabled(apply_allowed)
+        if hasattr(self, "save_recipe_check"):
+            was_checked = self.save_recipe_check.isChecked()
+            self.save_recipe_check.setEnabled(apply_allowed)
+            if not apply_allowed:
+                self.save_recipe_check.setChecked(False)
+            elif self.decision == "blocked" and not was_checked:
+                self.save_recipe_check.setChecked(True)
+
+    def _has_eeg_file_remap_options(self) -> bool:
+        return bool(self._eeg_file_remap_options())
+
+    def _has_label_carrier_remap_options(self) -> bool:
         return bool(self._label_carrier_remap_options())
+
+    def _eeg_file_remap_options(self) -> list[dict[str, Any]]:
+        summary = self.preview.get("recipe_reload_summary")
+        if not isinstance(summary, dict):
+            return []
+        options = summary.get("eeg_file_remap_options") or []
+        return [dict(item) for item in options if isinstance(item, dict)]
 
     def _label_carrier_remap_options(self) -> list[dict[str, Any]]:
         summary = self.preview.get("recipe_reload_summary")
@@ -887,12 +958,31 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _populate_review_tree(self) -> None:
         rows = self._review_rows()
-        for item, status, detail in rows:
-            tree_item = QTreeWidgetItem([item, status, detail])
-            for column in range(3):
-                tree_item.setToolTip(column, detail or status)
-            self.review_tree.addTopLevelItem(tree_item)
         remap_added = False
+        for remap in self._eeg_file_remap_options():
+            saved = str(remap.get("saved") or "").strip()
+            if not saved:
+                continue
+            saved_name = str(remap.get("saved_name") or Path(saved).name or saved)
+            tree_item = QTreeWidgetItem(
+                [
+                    "Remap EEG file",
+                    "Select",
+                    saved_name,
+                ]
+            )
+            tree_item.setToolTip(
+                2,
+                "Choose the current EEG file that replaces this saved recipe file.",
+            )
+            self.review_tree.addTopLevelItem(tree_item)
+            selector = self._remap_selector(
+                remap,
+                "Choose the replacement EEG file.",
+            )
+            self._eeg_file_remap_widgets[saved] = selector
+            self.review_tree.setItemWidget(tree_item, 2, selector)
+            remap_added = True
         for remap in self._label_carrier_remap_options():
             saved = str(remap.get("saved") or "").strip()
             if not saved:
@@ -911,10 +1001,18 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 "saved recipe carrier.",
             )
             self.review_tree.addTopLevelItem(tree_item)
-            selector = self._label_carrier_remap_selector(remap)
+            selector = self._remap_selector(
+                remap,
+                "Choose the replacement label/event carrier.",
+            )
             self._label_carrier_remap_widgets[saved] = selector
             self.review_tree.setItemWidget(tree_item, 2, selector)
             remap_added = True
+        for item, status, detail in rows:
+            tree_item = QTreeWidgetItem([item, status, detail])
+            for column in range(3):
+                tree_item.setToolTip(column, detail or status)
+            self.review_tree.addTopLevelItem(tree_item)
         if not rows and not remap_added:
             self.review_tree.addTopLevelItem(
                 QTreeWidgetItem(
@@ -926,10 +1024,10 @@ class DataInterpretationPreviewDialog(BaseDialog):
                 )
             )
 
-    def _label_carrier_remap_selector(self, remap: dict[str, Any]) -> QComboBox:
+    def _remap_selector(self, remap: dict[str, Any], tooltip: str) -> QComboBox:
         selector = QComboBox(self.review_tree)
         self._prepare_table_combo(selector)
-        selector.setToolTip("Choose the replacement label/event carrier.")
+        selector.setToolTip(tooltip)
         selector.addItem("Choose replacement", "")
         for candidate in remap.get("candidates", []) or []:
             if not isinstance(candidate, dict):
@@ -941,6 +1039,7 @@ class DataInterpretationPreviewDialog(BaseDialog):
             selector.addItem(name, path)
         if selector.count() == 2:
             selector.setCurrentIndex(1)
+        selector.currentIndexChanged.connect(self._sync_apply_state)
         return selector
 
     def _review_rows(self) -> list[tuple[str, str, str]]:
@@ -1028,7 +1127,19 @@ class DataInterpretationPreviewDialog(BaseDialog):
 
     def _confirmation_text(self) -> str:
         if self.decision == "blocked":
-            if self._has_remap_options():
+            has_eeg_remap = self._has_eeg_file_remap_options()
+            has_label_remap = self._has_label_carrier_remap_options()
+            if has_eeg_remap and has_label_remap:
+                return (
+                    "Choose replacement EEG files and label/event carriers, then "
+                    "apply the remap to recheck this saved recipe."
+                )
+            if has_eeg_remap:
+                return (
+                    "Choose a replacement EEG file, then apply the remap "
+                    "to recheck this saved recipe."
+                )
+            if has_label_remap:
                 return (
                     "Choose a replacement label/event carrier, then apply the remap "
                     "to recheck this saved recipe."

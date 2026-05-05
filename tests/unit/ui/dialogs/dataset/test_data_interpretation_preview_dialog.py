@@ -597,6 +597,116 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
     }
 
 
+def test_data_interpretation_preview_dialog_returns_eeg_file_remap(qtbot):
+    old_file = "/tmp/source/old_raw.fif"
+    new_file = "/tmp/source/renamed_raw.fif"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [new_file],
+            "label_carriers": [],
+        },
+        preview={
+            "recipe_reload_summary": {
+                "message": "Saved recipe choices were reapplied before validation.",
+                "eeg_file_remap_options": [
+                    {
+                        "saved": old_file,
+                        "saved_name": "old_raw.fif",
+                        "candidates": [
+                            {
+                                "path": new_file,
+                                "name": "renamed_raw.fif",
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": [
+                "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+            ],
+        },
+    )
+    qtbot.addWidget(dialog)
+
+    ok_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
+    assert ok_button is not None
+    assert ok_button.isEnabled()
+    assert ok_button.text() == "Apply Remap"
+    assert "EEG file remap" in dialog.decision_label.text()
+    assert "replacement EEG file" in dialog.confirmation_label.text()
+
+    details = _tree_text(dialog.review_tree)
+    assert "Remap EEG file" in details
+    assert "old_raw.fif" in details
+
+    selector = next(iter(dialog._eeg_file_remap_widgets.values()))
+    assert isinstance(selector, QComboBox)
+    assert selector.currentData() == new_file
+
+    result = dialog.get_result()
+
+    assert result["confirmed"] is True
+    assert result["choices"]["eeg_file_remap"] == {
+        old_file: new_file,
+    }
+
+
+def test_data_interpretation_preview_dialog_requires_each_remap_choice(qtbot):
+    old_file = "/tmp/source/old_raw.fif"
+    first_file = "/tmp/source/sub-01_raw.fif"
+    second_file = "/tmp/source/sub-02_raw.fif"
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={
+            "source_path": "/tmp/source",
+            "eeg_files": [first_file, second_file],
+            "label_carriers": [],
+        },
+        preview={
+            "recipe_reload_summary": {
+                "message": "Saved recipe choices were reapplied before validation.",
+                "eeg_file_remap_options": [
+                    {
+                        "saved": old_file,
+                        "saved_name": "old_raw.fif",
+                        "candidates": [
+                            {"path": first_file, "name": "sub-01_raw.fif"},
+                            {"path": second_file, "name": "sub-02_raw.fif"},
+                        ],
+                    }
+                ],
+            },
+        },
+        validation_decision={
+            "decision": "blocked",
+            "blocked_reasons": [
+                "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
+            ],
+        },
+    )
+    qtbot.addWidget(dialog)
+
+    ok_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Ok)
+    selector = next(iter(dialog._eeg_file_remap_widgets.values()))
+    assert ok_button is not None
+    assert isinstance(selector, QComboBox)
+    assert not ok_button.isEnabled()
+    assert dialog.get_result()["confirmed"] is False
+
+    selector.setCurrentIndex(selector.findData(second_file))
+
+    assert ok_button.isEnabled()
+    assert dialog.get_result()["confirmed"] is True
+    assert dialog.get_result()["choices"]["eeg_file_remap"] == {
+        old_file: second_file,
+    }
+
+
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,

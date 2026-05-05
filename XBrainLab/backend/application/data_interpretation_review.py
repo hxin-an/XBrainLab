@@ -177,11 +177,27 @@ def _recipe_reload_summary(
         "reapplied_choice_types": reapplied,
         "message": message,
         "diff_rows": diff_rows,
+        "eeg_file_remap_options": _eeg_file_remap_options(
+            recipe=recipe,
+            scan=scan,
+        ),
         "label_carrier_remap_options": _label_carrier_remap_options(
             recipe=recipe,
             scan=scan,
         ),
     }
+
+
+def _eeg_file_remap_options(
+    *,
+    recipe: Any | None,
+    scan: Any | None,
+) -> list[dict[str, Any]]:
+    if recipe is None or scan is None:
+        return []
+    saved = _raw_paths(getattr(recipe, "selected_eeg_files", []))
+    current = _raw_paths(getattr(scan, "eeg_files", []))
+    return _replacement_options(saved=saved, current=current)
 
 
 def _label_carrier_remap_options(
@@ -193,6 +209,14 @@ def _label_carrier_remap_options(
         return []
     saved = _raw_label_carrier_paths(recipe)
     current = _raw_paths(getattr(scan, "label_carriers", []))
+    return _replacement_options(saved=saved, current=current)
+
+
+def _replacement_options(
+    *,
+    saved: list[str],
+    current: list[str],
+) -> list[dict[str, Any]]:
     if not saved or not current:
         return []
     current_exact = set(current)
