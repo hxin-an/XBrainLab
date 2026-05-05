@@ -6453,3 +6453,56 @@
 - 不能宣稱：
   - This is one visible-state cleanup, not full Dataset page visual design pass.
   - It does not prove UI-observable walkthrough screenshots or human desktop acceptance.
+
+### 2026-05-05 Dataset sidebar replay artifact refresh
+
+- scope：
+  - UI-observable Data Interpretation replay evidence for Dataset sidebar visible button states。
+  - No product code behavior change beyond replay helper artifact coverage.
+- problem：
+  - The previous Data Interpretation replay JSON only preserved import-label button state. It did
+    not directly evidence the source-entry / recipe reload / Smart Parse visible-state capability
+    cleanup.
+- 做了什麼：
+  - Added reusable `button_state()` and `dataset_sidebar_state()` helpers to
+    `scripts/dev/capture_data_interpretation_replay.py`.
+  - Replay JSON now records all Dataset sidebar button text / enabled / tooltip states for both
+    empty and applied dataset phases.
+  - Refreshed `artifacts/ui/data-interpretation-replay.json`.
+- validation：
+  - helper unit test:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `2 passed`.
+  - replay + Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `12 passed`.
+  - replay artifact:
+    `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- evidence：
+  - empty `smart_parse`: enabled `false`, tooltip `Load raw data before applying smart parse.`
+  - applied `smart_parse`: enabled `true`, tooltip `Auto-extract Subject/Session from filenames`
+  - source / folder / recipe buttons record backend-aligned visible state in
+    `artifacts/ui/data-interpretation-replay.json`.
+- 不能宣稱：
+  - This is replay evidence for Dataset sidebar visible state, not full human desktop acceptance or
+    full Data Interpretation wizard visual redesign.

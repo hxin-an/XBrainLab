@@ -2604,6 +2604,42 @@ validation。
 這批 evidence 支撐 Dataset sidebar visible state 與 backend capability policy 對齊。它仍不是完整
 Dataset page visual design pass 或 UI-observable walkthrough acceptance。
 
+2026-05-05 Dataset sidebar replay artifact refresh：
+
+- replay/action:
+  - Added reusable replay helpers for Dataset sidebar button text / enabled / tooltip state.
+  - `artifacts/ui/data-interpretation-replay.json` now records all Dataset sidebar buttons for both
+    empty and applied dataset phases.
+- targeted gates:
+  - replay helper:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py -q`
+    -> `2 passed`.
+  - replay + Dataset sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/scripts/test_capture_data_interpretation_replay.py tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar -q`
+    -> `12 passed`.
+  - UI-observable replay artifact:
+    `timeout 180s env QT_QPA_PLATFORM=offscreen poetry run python scripts/dev/capture_data_interpretation_replay.py`
+    -> exit `0`; refreshed `artifacts/ui/data-interpretation-replay.json`.
+  - artifact evidence:
+    empty Smart Parse enabled `false` with tooltip `Load raw data before applying smart parse.`;
+    applied Smart Parse enabled `true` with tooltip `Auto-extract Subject/Session from filenames`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 UI-observable replay artifact 現在保留 Dataset sidebar button visible state。
+它仍不是完整 human desktop acceptance 或 full Data Interpretation wizard visual redesign。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

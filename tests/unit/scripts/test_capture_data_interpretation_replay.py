@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox
+from PyQt6.QtWidgets import QComboBox, QPushButton
 
 from scripts.dev.capture_data_interpretation_replay import (
     apply_replay_review_choices,
+    dataset_sidebar_state,
     tree_rows,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
@@ -45,3 +46,34 @@ def test_apply_replay_review_choices_updates_event_role_selector(qtbot) -> None:
     assert role_selector.currentData() == "class cue"
     assert ["trial_type", "event role", "Class cue"] in tree_rows(dialog.event_tree)
     assert dialog.get_result()["choices"]["event_roles"] == {"trial_type": "class cue"}
+
+
+def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
+    class SidebarStub:
+        pass
+
+    sidebar = SidebarStub()
+    for name, text in {
+        "import_btn": "Interpret EEG Source",
+        "import_folder_btn": "Interpret Folder",
+        "reload_recipe_btn": "Reload Import Recipe",
+        "import_label_btn": "Add Labels to Loaded Data",
+        "smart_parse_btn": "Smart Parse Metadata",
+        "chan_select_btn": "Channel Selection",
+        "clear_btn": "Clear Dataset",
+    }.items():
+        button = QPushButton(text)
+        qtbot.addWidget(button)
+        setattr(sidebar, name, button)
+
+    sidebar.smart_parse_btn.setEnabled(False)
+    sidebar.smart_parse_btn.setToolTip("Load raw data before applying smart parse.")
+
+    state = dataset_sidebar_state(sidebar)
+
+    assert state["import_source"]["text"] == "Interpret EEG Source"
+    assert state["smart_parse"] == {
+        "text": "Smart Parse Metadata",
+        "enabled": False,
+        "tooltip": "Load raw data before applying smart parse.",
+    }

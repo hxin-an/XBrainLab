@@ -968,7 +968,8 @@
             "duration": "event duration",
             "trial_type": "class label candidate"
           },
-          "class_map": {}
+          "class_map": {},
+          "recipe_reload_summary": {}
         }
       }
     },
@@ -1949,7 +1950,8 @@
             "duration": "event duration",
             "trial_type": "class cue"
           },
-          "class_map": {}
+          "class_map": {},
+          "recipe_reload_summary": {}
         }
       }
     },
@@ -3304,6 +3306,43 @@
       "screenshot": "data-interpretation-preview.png"
     },
     "dataset_panel": {
+      "sidebar_buttons": {
+        "import_source": {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        "import_folder": {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        "reload_recipe": {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        "import_labels": {
+          "text": "Add Labels to Loaded Data",
+          "enabled": true,
+          "tooltip": "Add labels to loaded data and update the current recipe trace."
+        },
+        "smart_parse": {
+          "text": "Smart Parse Metadata",
+          "enabled": true,
+          "tooltip": "Auto-extract Subject/Session from filenames"
+        },
+        "channel_selection": {
+          "text": "Channel Selection",
+          "enabled": true,
+          "tooltip": "Select specific channels to keep"
+        },
+        "clear_dataset": {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "tooltip": "Remove all loaded data"
+        }
+      },
       "import_button_text": "Interpret Data Source",
       "import_button_enabled": true,
       "import_label_button_text": "Add Labels to Loaded Data",
@@ -3314,9 +3353,46 @@
       "screenshot": "data-interpretation-applied.png"
     },
     "empty_dataset_sidebar": {
+      "buttons": {
+        "import_source": {
+          "text": "Interpret Data Source",
+          "enabled": true,
+          "tooltip": "Scan, preview, validate, and apply EEG data"
+        },
+        "import_folder": {
+          "text": "Interpret Folder / BIDS",
+          "enabled": true,
+          "tooltip": "Scan a folder or BIDS root, then preview and confirm it"
+        },
+        "reload_recipe": {
+          "text": "Reload Import Recipe",
+          "enabled": true,
+          "tooltip": "Review a saved import recipe before applying it"
+        },
+        "import_labels": {
+          "text": "Add Labels to Loaded Data",
+          "enabled": false,
+          "tooltip": "Load raw data before attaching labels."
+        },
+        "smart_parse": {
+          "text": "Smart Parse Metadata",
+          "enabled": false,
+          "tooltip": "Load raw data before applying smart parse."
+        },
+        "channel_selection": {
+          "text": "Channel Selection",
+          "enabled": false,
+          "tooltip": "Load raw data before preprocessing."
+        },
+        "clear_dataset": {
+          "text": "Clear Dataset",
+          "enabled": true,
+          "tooltip": "Remove all loaded data"
+        }
+      },
       "import_label_button_text": "Add Labels to Loaded Data",
       "import_label_button_enabled": false,
-      "import_label_button_tooltip": "Interpret a data source before adding labels."
+      "import_label_button_tooltip": "Load raw data before attaching labels."
     }
   }
 }

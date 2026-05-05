@@ -137,6 +137,28 @@ def visible_texts(widget: QWidget) -> list[str]:
     ]
 
 
+def button_state(button: Any) -> dict[str, Any]:
+    """Return the user-visible state for one button-like widget."""
+    return {
+        "text": " ".join(str(button.text() or "").split()),
+        "enabled": bool(button.isEnabled()),
+        "tooltip": " ".join(str(button.toolTip() or "").split()),
+    }
+
+
+def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
+    """Capture Dataset sidebar button states used by import workflows."""
+    return {
+        "import_source": button_state(sidebar.import_btn),
+        "import_folder": button_state(sidebar.import_folder_btn),
+        "reload_recipe": button_state(sidebar.reload_recipe_btn),
+        "import_labels": button_state(sidebar.import_label_btn),
+        "smart_parse": button_state(sidebar.smart_parse_btn),
+        "channel_selection": button_state(sidebar.chan_select_btn),
+        "clear_dataset": button_state(sidebar.clear_btn),
+    }
+
+
 def tree_rows(tree: QTreeWidget) -> list[list[str]]:
     """Return visible rows from a QTreeWidget."""
     rows: list[list[str]] = []
@@ -229,7 +251,9 @@ def capture_replay(app: QApplication) -> int:
     def run_steps() -> None:
         try:
             window.dataset_panel.sidebar.update_sidebar()
+            empty_sidebar_buttons = dataset_sidebar_state(window.dataset_panel.sidebar)
             empty_sidebar_state = {
+                "buttons": empty_sidebar_buttons,
                 "import_label_button_text": (
                     window.dataset_panel.sidebar.import_label_btn.text()
                 ),
@@ -320,6 +344,9 @@ def capture_replay(app: QApplication) -> int:
                 "ui_state": {
                     "dialog": dialog_state,
                     "dataset_panel": {
+                        "sidebar_buttons": dataset_sidebar_state(
+                            window.dataset_panel.sidebar,
+                        ),
                         "import_button_text": (
                             window.dataset_panel.sidebar.import_btn.text()
                         ),
