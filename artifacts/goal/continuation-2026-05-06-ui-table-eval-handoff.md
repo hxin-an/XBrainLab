@@ -30,6 +30,11 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+d0a66b2 ui: use state query for smart parse files
+d2e5b73 ui: use state query for montage channels
+7b3c3e7 ui: use command query for saliency settings
+f0ce929 docs: clarify local eval gate policy
+c370929 docs: refresh handoff after saliency export gate
 9327a4d ui: gate saliency export with query result
 af9048f docs: refresh handoff after visualization query gate
 25022fe ui: gate visualization display with query result
@@ -123,6 +128,21 @@ bb57beb ui: use backend truth for split replacement
   - `Export Saliency` now checks readonly `SaliencyCommand` readiness before reading trainer lists
     or opening the export dialog.
   - If saliency output is unavailable, the sidebar shows `Export Saliency Blocked`.
+- Saliency settings query defaults:
+  - `Saliency Settings` now checks readonly `SaliencyCommand` summary diagnostics before opening
+    the settings dialog.
+  - `VisualizationController.get_saliency_params()` is only used through the mock / legacy query
+    fallback helper when ApplicationService query result is unavailable.
+- Montage channel query defaults:
+  - `Set Montage` now checks `QueryStateCommand(query="state")` for `state.epoch.channel_names`
+    before opening the montage picker.
+  - `VisualizationController.get_channel_names()` is only used through the mock / legacy query
+    fallback helper when ApplicationService query result is unavailable.
+- Dataset smart-parse query defaults:
+  - `Smart Parse Metadata` now checks `QueryStateCommand(query="state")` for `state.raw.files`
+    before opening the parser dialog.
+  - `DatasetController.get_filenames()` is only used through the mock / legacy query fallback
+    helper when ApplicationService query result is unavailable.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -265,6 +285,37 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 9327a4d; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  -q
+# 39 passed for 7b3c3e7
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  -q
+# 40 passed for d2e5b73
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler \
+  tests/unit/ui/dataset/test_panel.py::test_dataset_panel_smart_parse \
+  -q
+# 67 passed for d0a66b2
+
+poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q
+# 28 passed for d0a66b2
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for the 7b3c3e7 / d2e5b73 / d0a66b2 UI query-truth slices;
+# mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture guard slices.
