@@ -216,6 +216,31 @@ class StateSnapshotService:
             )
         ]
 
+    def training_history(
+        self,
+        *,
+        include_objects: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return formatted training-history rows for UI or headless queries."""
+        getter = getattr(self.training, "get_formatted_history", None)
+        rows = self._safe_call_list(getter) if callable(getter) else []
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            summary = {
+                "group_name": str(row.get("group_name", "")),
+                "run_name": str(row.get("run_name", "")),
+                "model_name": str(row.get("model_name", "")),
+                "is_active": bool(row.get("is_active", False)),
+                "is_current_run": bool(row.get("is_current_run", False)),
+            }
+            if include_objects:
+                summary["plan"] = row.get("plan")
+                summary["record"] = row.get("record")
+            result.append(summary)
+        return result
+
     def _interpretation_snapshot(self) -> InterpretationStateSnapshot:
         return self.interpretation.snapshot()
 
@@ -571,5 +596,17 @@ class QueryStateCommandService:
             return (
                 "Smart filter suggestions ready.",
                 {"suggestions": suggestions},
+            )
+        if query == "training_history":
+            rows = self.state_builder.training_history(
+                include_objects=command.include_objects,
+            )
+            return (
+                "Training history query ready.",
+                {
+                    "payload_type": "training_history",
+                    "row_count": len(rows),
+                    "rows": rows,
+                },
             )
         raise ValueError(f"Unknown query_state request: {command.query}")

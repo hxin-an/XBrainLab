@@ -10,8 +10,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from XBrainLab.backend.application import QueryStateCommand
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import execute_application_command
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.refresh_coordinator import refresh_after_observer
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -356,8 +358,10 @@ class TrainingPanel(BasePanel):
     def update_loop(self, force_active=False):
         """Handle real-time training updates."""
         # 1. Update History Table
-        if self.controller:
+        plans = self._history_from_application_query()
+        if plans is None and self.controller:
             plans = self.controller.get_formatted_history()
+        if plans is not None:
             if not plans:
                 self._clear_training_display()
                 return
@@ -389,6 +393,20 @@ class TrainingPanel(BasePanel):
                     exc_info=True,
                 )
                 self.refresh_plot(self.current_plotting_record)
+
+    def _history_from_application_query(self):
+        result = execute_application_command(
+            self,
+            QueryStateCommand(query="training_history", include_objects=True),
+            refresh=False,
+        )
+        if result is None or result.failed:
+            return None
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "training_history":
+            return None
+        rows = diagnostics.get("rows")
+        return list(rows) if isinstance(rows, list) else []
 
     # check_ready_to_train moved to Sidebar
 

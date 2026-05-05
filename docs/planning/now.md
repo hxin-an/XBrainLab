@@ -184,6 +184,11 @@
 - 最新 Training settings cleanup 也讓 settings dialog defaults 先走
   `QueryStateCommand(query="state")` 的 `state.training.training_option`；stale
   `TrainingController.get_training_option()` 只留在 query unavailable 的 mock / legacy path。
+- 最新 Training history cleanup 新增 `QueryStateCommand(query="training_history",
+  include_objects=True)`；real `Study` `TrainingPanel.update_loop()` 會用 service-backed
+  history rows 更新 table / plot selection，不再從 stale injected
+  `TrainingController.get_formatted_history()` 讀 history。controller formatted-history read
+  只留在 query unavailable 的 mock / legacy path。
 - 最新 Dataset sidebar render cleanup 也把 `is_locked()` / `has_data()` 納入同一 guard：
   有 backend capability 時，button state / tooltip 不再先讀 stale controller lock/data state；
   legacy lock/data reads 只留在 explicit no-capability branch。

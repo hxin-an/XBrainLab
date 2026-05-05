@@ -110,6 +110,21 @@ class _TrainingController:
     def get_missing_requirements(self) -> list[str]:
         return ["model"]
 
+    def get_formatted_history(self) -> list[dict[str, Any]]:
+        plan = object()
+        record = type("Record", (), {"epoch": 2})()
+        return [
+            {
+                "plan": plan,
+                "record": record,
+                "group_name": "Group 1",
+                "run_name": "1",
+                "model_name": "EEGNet",
+                "is_active": True,
+                "is_current_run": True,
+            }
+        ]
+
 
 class _EvaluationController:
     def get_plans(self) -> list[Any]:
@@ -201,3 +216,24 @@ def test_query_state_service_returns_summary_and_capabilities() -> None:
     )
     assert suggestions_message == "Smart filter suggestions ready."
     assert suggestions == {"suggestions": [0, 1]}
+
+    history_message, history = _expect_payload(
+        query.handle_query_state(QueryStateCommand(query="training_history")),
+    )
+    assert history_message == "Training history query ready."
+    assert history["row_count"] == 1
+    assert history["rows"][0] == {
+        "group_name": "Group 1",
+        "run_name": "1",
+        "model_name": "EEGNet",
+        "is_active": True,
+        "is_current_run": True,
+    }
+
+    _history_objects_message, history_objects = _expect_payload(
+        query.handle_query_state(
+            QueryStateCommand(query="training_history", include_objects=True),
+        ),
+    )
+    assert "plan" in history_objects["rows"][0]
+    assert "record" in history_objects["rows"][0]

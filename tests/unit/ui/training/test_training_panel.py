@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
+from XBrainLab.backend.application.results import ChangedState, CommandResult
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.record.key import RecordKey, TrainRecordKey
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.panels.training.panel import MetricTab, TrainingPanel
@@ -271,6 +273,55 @@ def test_training_panel_populates_history_immediately_on_training_started(
     assert panel.history_table.rowCount() == 1
     assert panel.history_table.item(0, 3).text() == "Running"
     assert panel.current_plotting_record is not None
+
+
+def test_training_panel_uses_application_history_before_stale_controller(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    service_entry = _make_history_entry(model_name="ServiceNet")
+    query_result = CommandResult.success_result(
+        command_name="query_state",
+        message="Training history query ready.",
+        state={},
+        changed_state=ChangedState(),
+        diagnostics={
+            "payload_type": "training_history",
+            "row_count": 1,
+            "rows": [service_entry],
+        },
+    )
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.training.panel.execute_application_command",
+        lambda *_args, **_kwargs: query_result,
+    )
+    stale_controller = Observable()
+    stale_controller.validate_ready = MagicMock(return_value=True)
+    stale_controller.has_datasets = MagicMock(return_value=True)
+    stale_controller.has_model = MagicMock(return_value=True)
+    stale_controller.has_training_option = MagicMock(return_value=True)
+    stale_controller.get_formatted_history = MagicMock(
+        return_value=[_make_history_entry(model_name="StaleNet")]
+    )
+
+    panel = TrainingPanel(
+        parent=RealMainWindow(),
+        controller=stale_controller,
+        dataset_controller=Observable(),
+    )
+    qtbot.addWidget(panel)
+
+    panel.update_loop()
+
+    stale_controller.get_formatted_history.assert_not_called()
+    assert panel.history_table.rowCount() == 1
+    assert panel.history_table.item(0, 2).text() == "ServiceNet"
+    assert panel.current_plotting_record is service_entry["record"]
 
 
 def test_training_panel_clears_stale_history_on_config_changed(

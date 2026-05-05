@@ -10052,3 +10052,62 @@
 - 不能宣稱：
   - This does not certify saliency map / spectrogram / topomap / 3D canvas screenshot acceptance or
     full analysis workflow UX.
+
+### 2026-05-06 Training history query render source
+
+- scope：
+  - Continue UI read-side command-truth cleanup for the Training panel.
+  - Prevent real `Study` training history rendering from using stale injected
+    `TrainingController.get_formatted_history()`.
+- red / focused test：
+  - Added `QueryStateCommand(query="training_history")` assertions to
+    `test_query_state_service_returns_summary_and_capabilities`.
+  - Added `test_training_panel_uses_application_history_before_stale_controller`.
+  - Red gates failed because `training_history` was not a known query and Training panel did not
+    import / call `execute_application_command`.
+- 做了什麼：
+  - Added `StateSnapshotService.training_history()` and
+    `QueryStateCommandService` handling for `query="training_history"`.
+  - Query diagnostics include serializable row summaries by default and plan/record objects only
+    when `include_objects=True`.
+  - `TrainingPanel.update_loop()` now requests
+    `QueryStateCommand(query="training_history", include_objects=True)` with `refresh=False`.
+  - `TrainingController.get_formatted_history()` remains only for query unavailable mock / legacy
+    paths.
+- validation：
+  - Red gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py::test_query_state_service_returns_summary_and_capabilities -q`
+    -> failed on unknown `training_history`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py::test_training_panel_uses_application_history_before_stale_controller -q`
+    -> failed on missing `execute_application_command` import path.
+  - Focused pass:
+    same commands -> `1 passed` each.
+  - Regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application/test_state_service.py tests/unit/ui/training/test_training_panel.py -q`
+    -> `20 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/backend/application/state_service.py XBrainLab/ui/panels/training/panel.py tests/unit/backend/application/test_state_service.py tests/unit/ui/training/test_training_panel.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/backend/application/state_service.py XBrainLab/ui/panels/training/panel.py tests/unit/backend/application/test_state_service.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+  - Slice gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `114 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/training/test_training_panel.py -q`
+    -> `18 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `7 passed`.
+- local eval：
+  - Not run. This is a Training panel read-side cleanup under the fast dev gate; it does not
+    justify primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not remove the high-frequency training observer loop, certify long-running training
+    resource cleanup, or complete all Training sidebar controller fallback audit work.

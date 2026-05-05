@@ -3177,3 +3177,32 @@ command schemas and rejected by the automation payload builder.
 
 - This does not certify saliency map / spectrogram / topomap / 3D canvas screenshot acceptance or
   full analysis workflow UX.
+
+## 2026-05-06 Training History Query Rendering
+
+### 狀態
+
+`QueryStateCommand(query="training_history", include_objects=True)` now returns formatted training
+history rows through ApplicationService. In real `Study` contexts, `TrainingPanel.update_loop()`
+uses that service-backed history payload for table rendering and plot selection before falling
+back to `TrainingController.get_formatted_history()`.
+
+### 已可宣稱
+
+- A stale injected training controller can no longer override service-backed training history in
+  the main Training panel.
+- Headless query callers can request a serializable training-history summary without plan/record
+  objects.
+
+### Evidence 入口
+
+- Source：`XBrainLab/backend/application/state_service.py`,
+  `XBrainLab/ui/panels/training/panel.py`
+- Tests：`tests/unit/backend/application/test_state_service.py`,
+  `tests/unit/ui/training/test_training_panel.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not remove the high-frequency training observer loop, certify long-running training
+  resource cleanup, or complete all Training sidebar controller fallback audit work.
