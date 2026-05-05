@@ -114,8 +114,9 @@
   也刷新 Visualization readiness。這把一部分 analysis panel readiness 從 observer-only 補刷新
   收回 `CommandResult.changed_state` scope。
 - 最新 observer refresh architecture guard 已寫進 `tests/architecture_compliance.py`：新增的
-  `_create_bridge(..., self.update_panel)` 會 fail；simple refresh 要走 `refresh_from_observer()`，
-  event-specific behavior 要用 named callback handler。
+  `_create_bridge(..., self.update_panel)` 或 direct
+  `_create_bridge(..., self.refresh_from_observer)` 都會 fail；simple refresh 要走
+  `_create_refresh_bridge()`，event-specific behavior 要用 named callback handler。
 - 最新 Training sidebar fallback audit slice 已建立 `run_legacy_controller_fallback()`，並把 split
   cleanup / generate dataset、model selection、training settings、start / stop training 和 clear
   history 的 controller fallback 改成 mock / legacy non-`Study` only。real `Study` context 若

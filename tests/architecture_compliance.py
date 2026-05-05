@@ -312,7 +312,7 @@ def check_ui_post_command_local_refreshes(root_dir: Path) -> list[str]:
 
 
 def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
-    """Return observer bridges that wire events directly to update_panel."""
+    """Return observer bridges that bypass the simple refresh helper."""
     violations: list[str] = []
     ui_dir = root_dir / "XBrainLab" / "ui"
     if not ui_dir.exists():
@@ -331,14 +331,23 @@ def check_ui_observer_direct_update_bridges(root_dir: Path) -> list[str]:
                 continue
             if _call_name(node.func) != "_create_bridge":
                 continue
-            if not _observer_bridge_uses_direct_update_panel(node):
+            if _observer_bridge_uses_direct_update_panel(node):
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{node.lineno} wires observer "
+                    "events directly to update_panel(); use _create_refresh_bridge() "
+                    "for simple panel refresh (delegating to refresh_from_observer), "
+                    "or a named callback handler for event-specific behavior."
+                )
                 continue
-            violations.append(
-                f"{py_file.relative_to(root_dir)}:{node.lineno} wires observer "
-                "events directly to update_panel(); use refresh_from_observer() "
-                "for simple panel refresh, or a named callback handler for "
-                "event-specific behavior."
-            )
+            if (
+                py_file.name != "base_panel.py"
+                and _observer_bridge_uses_direct_refresh_from_observer(node)
+            ):
+                violations.append(
+                    f"{py_file.relative_to(root_dir)}:{node.lineno} wires simple "
+                    "observer refresh through _create_bridge(..., "
+                    "refresh_from_observer); use _create_refresh_bridge() instead."
+                )
     return violations
 
 
@@ -347,6 +356,15 @@ def _observer_bridge_uses_direct_update_panel(call: ast.Call) -> bool:
         return False
     handler = call.args[2]
     return isinstance(handler, ast.Attribute) and handler.attr == "update_panel"
+
+
+def _observer_bridge_uses_direct_refresh_from_observer(call: ast.Call) -> bool:
+    if len(call.args) < 3:
+        return False
+    handler = call.args[2]
+    return (
+        isinstance(handler, ast.Attribute) and handler.attr == "refresh_from_observer"
+    )
 
 
 def _post_command_local_refresh_calls(

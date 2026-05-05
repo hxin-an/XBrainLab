@@ -158,6 +158,9 @@ observer event 補刷新。
 單純的 observer-driven panel refresh 應使用 `BasePanel._create_refresh_bridge()`，不要直接把
 event handler 接到 `update_panel()`。需要特殊語意的 event，例如 import-finished handler、
 TrainingPanel 的 start/stop handler 或 live training update loop，仍可接自己的 handler。
+`tests/architecture_compliance.py` 會阻擋新的 direct `_create_bridge(..., self.update_panel)`
+和 direct `_create_bridge(..., self.refresh_from_observer)` call site；`BasePanel` helper 內部的
+delegation 是唯一例外。
 
 `QtObserverBridge` 的角色是把 backend 的 Python observer event 轉為 Qt signal：
 

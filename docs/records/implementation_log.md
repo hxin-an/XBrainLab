@@ -1982,3 +1982,27 @@ refreshes Visualization, and `evaluation_changed` also refreshes Visualization.
 
 - 這不是 full command-driven UI refresh closure；remaining manual / callback-specific refresh paths
   still need audit.
+
+## 2026-05-05 UI Observer Refresh Helper Guard
+
+### 狀態
+
+The observer refresh architecture guard now enforces the new helper boundary. New panel code may
+not wire `_create_bridge(..., self.update_panel)` or
+`_create_bridge(..., self.refresh_from_observer)` directly; simple observer refresh must go through
+`BasePanel._create_refresh_bridge()`. Named callback handlers remain allowed for semantic events.
+
+### 已可宣稱
+
+- The codebase cannot silently regress to duplicated simple observer refresh wiring without failing
+  `tests/architecture_compliance.py`.
+
+### Evidence 入口
+
+- Source：`tests/architecture_compliance.py`
+- Tests：`tests/unit/test_architecture_compliance.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這是 guard hardening，不是 full command-driven UI refresh closure。

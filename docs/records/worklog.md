@@ -7826,3 +7826,43 @@
   - 這不是 full command-driven UI refresh closure。
   - 這不移除 callback-specific observer handlers，也不證明 full train -> evaluate ->
     visualization desktop acceptance。
+
+### 2026-05-05 19:26 UI observer refresh helper guard
+
+- scope：
+  - Tighten the static architecture guard after introducing `BasePanel._create_refresh_bridge()`。
+  - No runtime UI behavior change in this slice.
+- problem：
+  - Previous guard blocked `_create_bridge(..., self.update_panel)` but still allowed future panels
+    to duplicate `_create_bridge(..., self.refresh_from_observer)` directly.
+  - That would bypass the helper boundary and make the observer refresh pattern harder to audit.
+- red / focused tests：
+  - Changed the architecture compliance unit test so direct
+    `_create_bridge(..., self.refresh_from_observer)` must fail and `_create_refresh_bridge(...)`
+    must pass.
+  - The direct-refresh test failed before implementation with `len(violations) == 0`.
+- 做了什麼：
+  - `check_ui_observer_direct_update_bridges()` now also flags direct
+    `_create_bridge(..., refresh_from_observer)` outside `base_panel.py`.
+  - Violation text now tells future contributors to use `_create_refresh_bridge()` for simple
+    observer refresh or a named callback handler for event-specific behavior.
+  - Updated current truth, UI architecture, now, roadmap, and implementation log.
+- validation：
+  - `poetry run pytest --capture=sys tests/unit/test_architecture_compliance.py -q`
+    -> `8 passed`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> `Architecture compliant!`.
+  - `poetry run ruff check tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> pass.
+  - `poetry run basedpyright tests/architecture_compliance.py tests/unit/test_architecture_compliance.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+- 不能宣稱：
+  - 這不是 full command-driven UI refresh closure。

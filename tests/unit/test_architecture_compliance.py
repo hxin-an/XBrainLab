@@ -92,12 +92,27 @@ def _setup_bridges(self):
     assert "refresh_from_observer" in violations[0]
 
 
-def test_observer_bridge_guard_allows_refresh_from_observer(tmp_path):
+def test_observer_bridge_guard_flags_direct_refresh_from_observer(tmp_path):
     _write_ui_file(
         tmp_path,
         """
 def _setup_bridges(self):
     self._create_bridge(self.controller, "data_changed", self.refresh_from_observer)
+""",
+    )
+
+    violations = check_ui_observer_direct_update_bridges(tmp_path)
+
+    assert len(violations) == 1
+    assert "_create_refresh_bridge" in violations[0]
+
+
+def test_observer_bridge_guard_allows_create_refresh_bridge(tmp_path):
+    _write_ui_file(
+        tmp_path,
+        """
+def _setup_bridges(self):
+    self._create_refresh_bridge(self.controller, "data_changed")
 """,
     )
 

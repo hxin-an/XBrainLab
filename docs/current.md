@@ -785,8 +785,10 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   接 `update_panel()`。最新 helper cleanup 又把 Dataset / Preprocess / Training / Evaluation /
   Visualization 的 simple observer bridge call sites 改成 `BasePanel._create_refresh_bridge()`，
   讓後續 panel 不必重複拼 `_create_bridge(..., refresh_from_observer)`。最新 architecture guard
-  已把 `_create_bridge(..., self.update_panel)` 納入 `tests/architecture_compliance.py`，
-  callback-specific handler 仍可用 named handler。最新 downstream coordinator cleanup 又讓
+  已把 `_create_bridge(..., self.update_panel)` 和 direct
+  `_create_bridge(..., self.refresh_from_observer)` 納入 `tests/architecture_compliance.py`；
+  simple refresh 必須走 `_create_refresh_bridge()`，callback-specific handler 仍可用 named handler。
+  最新 downstream coordinator cleanup 又讓
   `training_changed` command result 刷新 Evaluation / Visualization readiness、`epoch_changed`
   刷新 Visualization readiness、`evaluation_changed` 也刷新 Visualization readiness，減少這些
   analysis panels 對 observer-only refresh 的依賴。後續仍要把
