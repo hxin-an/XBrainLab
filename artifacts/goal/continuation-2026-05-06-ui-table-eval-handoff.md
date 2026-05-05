@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+c7d13ca ui: guard evaluation stale selection fallback
+ca6556d docs: refresh handoff after training history guard
 bdfebfa ui: guard training history fallback
 8f0299d docs: refresh handoff after visualization query guard
 18f2c87 ui: guard visualization query fallback
@@ -113,6 +115,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Evaluation stale-selection fallback:
+  - `EvaluationPanel` now initializes its service-query state.
+  - real `Study` stale average/summary selections without a service payload no longer recover
+    through `EvaluationController.get_pooled_eval_result()` /
+    `get_model_summary_str()`.
+  - mock / legacy rendering still uses explicit `run_legacy_controller_fallback()`.
 - Training history query-none render fallback:
   - real `Study` Training panel now treats a missing
     `QueryStateCommand(query="training_history", include_objects=True)` result as unavailable
@@ -1290,6 +1298,33 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for bdfebfa; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py::test_evaluation_panel_refuses_real_study_query_none_metric_fallback \
+  -q
+# 1 passed for c7d13ca after red failure on unstable last_application_query in the stale-selection path
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_evaluation_panel_redesign.py \
+  tests/unit/ui/test_ui_structure_refactored.py \
+  -q
+# 13 passed for c7d13ca
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for c7d13ca
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for c7d13ca
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for c7d13ca; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
