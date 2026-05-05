@@ -37,6 +37,56 @@
 
 ## 2026-05-06
 
+### 07:20 Preprocess render query-none fallback boundary
+
+- scope：
+  - Continue read-side fallback audit for Preprocess render paths.
+  - Prevent real `Study` panel refresh / direct plot calls from recovering query-none state through
+    stale `PreprocessController.get_preprocessed_data_list()`.
+- red / focused tests：
+  - Added `test_update_panel_refuses_real_study_query_none_controller_fallback`.
+  - Added `test_plot_sample_data_refuses_real_study_query_none_controller_fallback`.
+  - Red gates failed because `PreprocessPanel.update_panel()` and
+    `PreprocessPlotter.plot_sample_data()` directly read controller data when the shared query
+    helper returned `None`.
+- 做了什麼：
+  - `PreprocessPanel.update_panel()` now routes query-none render fallback through
+    `run_legacy_controller_fallback()` and renders no-data for real `Study` fallback refusal.
+  - `PreprocessPlotter.plot_sample_data()` now uses the same guard before legacy controller
+    readiness/list reads and skips plotting for real `Study` fallback refusal.
+- validation：
+  - Red gates:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback -q`
+    -> failed on stale `get_preprocessed_data_list()`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_refuses_real_study_query_none_controller_fallback -q`
+    -> failed on stale controller readiness/list reads.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_refuses_real_study_query_none_controller_fallback -q`
+    -> `2 passed`.
+  - Preprocess regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `73 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Preprocess UI render fallback cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not prove long-run plot memory trend, remove observer refresh debt, or complete all
+    query-unavailable fallback cleanup.
+
 ### 07:10 Dataset/Preprocess query-unavailable fallback boundary
 
 - scope：

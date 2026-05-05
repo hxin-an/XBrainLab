@@ -302,6 +302,9 @@
   dialog source 的 `result is None` controller-list read 包進同一 safety helper。real `Study`
   若 query helper 意外回 `None`，會顯示 shared safety message 並 block dialog，而不是讀 stale
   `get_loaded_data_list()` / `get_preprocessed_data_list()`。
+- 最新 Preprocess render fallback boundary 也把 `PreprocessPanel.update_panel()` 和 direct
+  `PreprocessPlotter.plot_sample_data()` 的 query-none fallback 收起來；real `Study` 會顯示
+  no-data / skip plot，不再回讀 stale `PreprocessController.get_preprocessed_data_list()`。
 - 最新 Visualization / AgentManager fallback audit slice 已把 saliency settings、Visualization
   sidebar `Set Montage` 和 assistant montage confirmation fallback 改成同一個 mock / legacy-only
   helper。剩餘 `result is None` path 主要是

@@ -105,6 +105,39 @@ stale `DatasetController.get_loaded_data_list()` or
 
 Continue auditing remaining query-unavailable UI fallbacks and observer/manual refresh paths.
 
+## 2026-05-06 Preprocess Render Query-None Fallback Boundary
+
+### 狀態
+
+Preprocess panel rendering and direct plotter refresh now treat query-none fallback as a
+mock/legacy-only path. If a real `Study` render path unexpectedly receives no ApplicationService
+query result, it renders no data / skips plotting instead of reading stale
+`PreprocessController.get_preprocessed_data_list()`.
+
+### 已可宣稱
+
+- Real `Study` Preprocess render and direct plotter query-none paths no longer read stale controller
+  list/readiness state.
+- Mock / legacy non-`Study` render paths still keep controller-list compatibility through the
+  explicit fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/preprocess/panel.py`,
+  `XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py`
+- Tests: `tests/unit/ui/preprocess/test_preprocess_panel.py`,
+  `tests/unit/ui/preprocess/test_preprocess_plotter.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not prove long-running plot resource stability or complete observer/manual refresh
+  cleanup.
+
+### 下一手重點
+
+Continue auditing remaining read-side query fallbacks and product-runtime controller reads.
+
 ## 2026-05-06 Data Splitting Dialog Context Boundary
 
 ### 狀態

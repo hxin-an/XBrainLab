@@ -2717,6 +2717,33 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Preprocess render query-none fallback boundary：
+
+- Focused red/fixed gates:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess/test_preprocess_panel.py::test_update_panel_refuses_real_study_query_none_controller_fallback tests/unit/ui/preprocess/test_preprocess_plotter.py::test_plot_sample_data_refuses_real_study_query_none_controller_fallback -q`
+  -> `2 passed` after failing on stale controller list/readiness reads before the fix.
+- Preprocess regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/preprocess tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+  -> `73 passed`.
+- Focused lint/type/architecture:
+  `poetry run ruff check XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/preprocess/panel.py XBrainLab/ui/panels/preprocess/plotters/preprocess_plotter.py tests/unit/ui/preprocess/test_preprocess_panel.py tests/unit/ui/preprocess/test_preprocess_plotter.py`
+  -> `0 errors`;
+  `poetry run python tests/architecture_compliance.py` -> pass.
+- Static / docs / backend / agent gate:
+  `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+  `poetry run mkdocs build --strict`, and
+  `poetry run pytest --capture=sys tests/integration/backend -q` all passed
+  (`7` backend tests);
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate UI render fallback boundary slice.
+
+This supports real `Study` Preprocess panel/plotter query-none fallback refusing stale controller
+list reads. It does not prove long-run plotting memory stability or complete all UI refresh debt.
+
 2026-05-06 Dataset/Preprocess query-unavailable fallback boundary：
 
 - Focused red/fixed gates:

@@ -12,6 +12,10 @@ from PyQt6.QtCore import QThreadPool
 from scipy.signal import welch
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.worker import Worker
 from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 from XBrainLab.ui.styles.theme import Theme
@@ -149,6 +153,21 @@ class PreprocessPlotter:
 
         return f, pxx, f_orig, pxx_orig
 
+    def _legacy_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
+        def fallback() -> tuple[list[Any], list[Any]] | None:
+            if not self.controller or not self.controller.has_data():
+                return None
+            data_list = self.controller.get_preprocessed_data_list()
+            orig_list: list[Any] = []
+            if hasattr(self.controller, "study"):
+                orig_list = list(self.controller.study.loaded_data_list)
+            return data_list, orig_list
+
+        try:
+            return run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError:
+            return None
+
     def plot_sample_data(
         self,
         *,
@@ -178,11 +197,10 @@ class PreprocessPlotter:
             if queried_lists is not None:
                 data_list, orig_list = queried_lists
             else:
-                if not self.controller or not self.controller.has_data():
+                legacy_lists = self._legacy_data_lists_for_render()
+                if legacy_lists is None:
                     return
-                data_list = self.controller.get_preprocessed_data_list()
-                if original_data_list is None and hasattr(self.controller, "study"):
-                    orig_list = self.controller.study.loaded_data_list
+                data_list, orig_list = legacy_lists
         elif original_data_list is None and hasattr(self.controller, "study"):
             orig_list = self.controller.study.loaded_data_list
 

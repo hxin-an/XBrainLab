@@ -4,6 +4,10 @@ from typing import Any
 
 from PyQt6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.panels.preprocess.data_query import query_preprocess_render_lists
 from XBrainLab.ui.panels.preprocess.history_widget import HistoryWidget
@@ -96,10 +100,9 @@ class PreprocessPanel(BasePanel):
         if controller is None:
             data_list = []
         elif queried_lists is None:
-            data_list = controller.get_preprocessed_data_list()
-            study = getattr(controller, "study", None)
-            if study is not None:
-                original_data_list = list(getattr(study, "loaded_data_list", []))
+            data_list, original_data_list = self._legacy_data_lists_for_render(
+                controller
+            )
         else:
             data_list, original_data_list = queried_lists
         is_epoched = False
@@ -165,3 +168,17 @@ class PreprocessPanel(BasePanel):
 
     def _query_data_lists_for_render(self) -> tuple[list[Any], list[Any]] | None:
         return query_preprocess_render_lists(self)
+
+    def _legacy_data_lists_for_render(self, controller) -> tuple[list[Any], list[Any]]:
+        def fallback() -> tuple[list[Any], list[Any]]:
+            data_list = controller.get_preprocessed_data_list()
+            study = getattr(controller, "study", None)
+            original_data_list: list[Any] = []
+            if study is not None:
+                original_data_list = list(getattr(study, "loaded_data_list", []))
+            return data_list, original_data_list
+
+        try:
+            return run_legacy_controller_fallback(self, fallback)
+        except LegacyControllerFallbackUnavailableError:
+            return [], []

@@ -180,6 +180,33 @@ def test_plot_sample_data_uses_service_query_before_controller(
     mock_widget.plot_time.plot.assert_called()
 
 
+def test_plot_sample_data_refuses_real_study_query_none_controller_fallback(
+    mock_widget,
+    mock_controller,
+):
+    from XBrainLab.backend.study import Study
+
+    mock_controller.study = Study()
+    mock_controller.has_data.side_effect = AssertionError(
+        "stale controller readiness should not be read",
+    )
+    mock_controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "stale controller list should not be read",
+    )
+    plotter = PreprocessPlotter(mock_widget, mock_controller)
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.plotters.preprocess_plotter.query_preprocess_render_lists",
+        return_value=None,
+    ) as query:
+        plotter.plot_sample_data()
+
+    query.assert_called_once_with(plotter)
+    mock_controller.has_data.assert_not_called()
+    mock_controller.get_preprocessed_data_list.assert_not_called()
+    mock_widget.plot_time.plot.assert_not_called()
+
+
 class TestGetChanData:
     """Tests for _get_chan_data covering raw and epoch paths."""
 

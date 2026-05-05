@@ -88,6 +88,33 @@ def test_update_panel_uses_query_data_lists_before_stale_controller(qtbot):
     )
 
 
+def test_update_panel_refuses_real_study_query_none_controller_fallback(qtbot):
+    from XBrainLab.backend.study import Study
+
+    controller = MagicMock()
+    controller.study = Study()
+    controller.get_preprocessed_data_list.side_effect = AssertionError(
+        "stale preprocessed list should not be read",
+    )
+    dataset_controller = MagicMock()
+
+    panel = PreprocessPanel(
+        controller=controller,
+        dataset_controller=dataset_controller,
+    )
+    qtbot.addWidget(panel)
+    panel.preview_widget.reset_view = MagicMock()
+
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render_lists",
+        return_value=None,
+    ):
+        panel.update_panel()
+
+    controller.get_preprocessed_data_list.assert_not_called()
+    panel.preview_widget.reset_view.assert_called_once()
+
+
 def test_preprocess_panel_filtering(mock_main_window, mock_controller, qtbot):
     """Test filtering delegates to controller."""
     mock_controller.has_data.return_value = True
