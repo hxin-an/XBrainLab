@@ -42,6 +42,39 @@
 ### 下一手重點
 ```
 
+## 2026-05-06 Saliency 2D Canvas Cleanup
+
+### 狀態
+
+Map, Spectrogram, and Topomap saliency views now share the base view figure-replacement lifecycle.
+`BaseSaliencyView._replace_figure()` closes the current Matplotlib figure, detaches the old canvas,
+schedules it for `deleteLater()`, installs the new figure canvas, and clears references during
+close.
+
+### 已可宣稱
+
+- 2D saliency view replacement and close paths now release their Matplotlib figure / canvas
+  references through one shared helper.
+- Focused UI tests cover close cleanup and replacement cleanup, and visualization regression tests
+  cover Map / Spectrogram / Topomap / 3D blocked behavior.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/saliency_views/base_saliency_view.py`,
+  `map_view.py`, `spectrogram_view.py`, `topomap_view.py`
+- Tests: `tests/unit/ui/test_visualization.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This is not full saliency workflow UX acceptance, long-run visualization memory trend evidence,
+  interactive desktop 3D acceptance, or human Windows desktop verification.
+
+### 下一手重點
+
+Continue tying cleanup claims to observable UI artifacts or lifecycle tests. Full visualization
+release evidence still needs desktop render and longer open/close/resource trend checks.
+
 ## 2026-05-06 Plot Window Close Cleanup
 
 ### 狀態

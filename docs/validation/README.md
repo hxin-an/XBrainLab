@@ -144,6 +144,14 @@ SinglePlotWindow close cleanup gate:
 plot dialog. It does not prove long-run memory trends, full visualization soak behavior, or human
 desktop acceptance.
 
+Saliency 2D canvas cleanup gate:
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_close_releases_figure_and_canvas tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_replace_figure_releases_previous_canvas tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_update_plot_no_eval tests/unit/ui/test_visualization.py::TestSaliencySpectrogramWidget::test_update_plot_no_eval tests/unit/ui/test_visualization.py::TestSaliencyTopographicMapWidget::test_update_plot_no_eval -q`
+-> `5 passed`；
+`QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/components/test_plot_figure_window.py -q`
+-> `61 passed`。This supports shared figure/canvas close and replacement cleanup for 2D saliency
+views. It does not prove full saliency workflow UX, long-run visualization memory trends,
+interactive desktop 3D render, or human desktop acceptance.
+
 目前 fast engineering artifact 狀態是：
 
 - generated at: `2026-05-04 04:07:48 UTC+08:00`

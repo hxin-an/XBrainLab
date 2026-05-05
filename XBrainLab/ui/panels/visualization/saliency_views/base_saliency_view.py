@@ -30,7 +30,7 @@ class BaseSaliencyView(QWidget):
 
         # 1. Matplotlib Canvas (Default, subclasses can override)
         self.fig: Figure | None = Figure(figsize=(5, 4), dpi=100)
-        self.canvas = FigureCanvas(self.fig)
+        self.canvas: FigureCanvas | None = FigureCanvas(self.fig)
 
         # Apply Theme
         Theme.apply_matplotlib_dark_theme(self.fig)
@@ -48,15 +48,17 @@ class BaseSaliencyView(QWidget):
 
     def show_error(self, message):
         """Display an error message overlaid on the view."""
-        self.canvas.hide()
+        if self.canvas is not None:
+            self.canvas.hide()
         self.error_label.setText(f"Error: {message}")
         self.error_label.show()
 
     def clear_plot(self):
         """Clear the plot and reset error state."""
         self.error_label.hide()
-        self.canvas.show()
-        if self.fig is None:
+        if self.canvas is not None:
+            self.canvas.show()
+        if self.fig is None or self.canvas is None:
             return
         self.fig.clear()
         self.canvas.draw()
@@ -67,9 +69,29 @@ class BaseSaliencyView(QWidget):
         """
         raise NotImplementedError
 
-    def closeEvent(self, event):  # noqa: N802
-        """Release matplotlib Figure to prevent memory leaks."""
+    def _close_current_figure(self) -> None:
         if self.fig is not None:
             plt.close(self.fig)
             self.fig = None
+
+    def _release_canvas(self) -> None:
+        if self.canvas is None:
+            return
+        self.main_layout.removeWidget(self.canvas)
+        self.canvas.setParent(None)
+        self.canvas.deleteLater()
+        self.canvas = None
+
+    def _replace_figure(self, figure: Figure) -> None:
+        self._close_current_figure()
+        self._release_canvas()
+        self.fig = figure
+        Theme.apply_matplotlib_dark_theme(self.fig)
+        self.canvas = FigureCanvas(self.fig)
+        self.main_layout.insertWidget(0, self.canvas)
+
+    def closeEvent(self, event):  # noqa: N802
+        """Release matplotlib figure and canvas widgets to prevent leaks."""
+        self._close_current_figure()
+        self._release_canvas()
         super().closeEvent(event)

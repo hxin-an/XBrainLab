@@ -1,6 +1,3 @@
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import VisualizerType
 from XBrainLab.ui.styles.theme import Theme
@@ -50,18 +47,7 @@ class SaliencyMapWidget(BaseSaliencyView):
             new_fig = visualizer.get_plt(method=method, absolute=absolute)
 
             if new_fig:
-                # Replace Figure
-                self.main_layout.removeWidget(self.canvas)
-                self.canvas.close()
-                if self.fig is not None:
-                    plt.close(self.fig)
-
-                self.fig = new_fig
-                Theme.apply_matplotlib_dark_theme(self.fig)
-
-                self.canvas = FigureCanvas(self.fig)
-                # Insert at top (index 0), error label is at index 1
-                self.main_layout.insertWidget(0, self.canvas)
+                self._replace_figure(new_fig)
             else:
                 self.show_error("No Data Available")
 

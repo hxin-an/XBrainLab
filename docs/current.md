@@ -43,6 +43,10 @@ soak 或 Windows human desktop acceptance。
 所持有的 Matplotlib figure，並 detach / `deleteLater()` figure canvas 與 toolbar，再清掉引用。
 這降低反覆開關 training / evaluation / visualization plot 視窗後留下 Matplotlib / Qt widget
 reference 的風險，但仍不是完整 visualization soak 或桌面人工驗收。
+最新 saliency 2D cleanup 又把 Map / Spectrogram / Topomap 的 figure replacement 收斂到
+`BaseSaliencyView._replace_figure()`；替換或關閉 saliency view 時會 close 目前 figure、detach
+canvas、排程 `deleteLater()` 並清引用。這降低反覆切 saliency view 後留下 Matplotlib canvas 的
+風險，但仍不是完整 saliency workflow UX 或長時間 visualization memory soak。
 
 2026-05-03 人工產品審核 follow-up 又補了一輪產品級修正：Assistant dock 頂部不再顯示
 chip dump，chat panel 內也不再放 `Conversation` 標題、第二條狀態列或 developer mode

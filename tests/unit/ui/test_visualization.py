@@ -104,6 +104,48 @@ class TestSaliencyMapWidget:
         except Exception:
             pass  # matplotlib rendering backend errors are acceptable
 
+    def test_close_releases_figure_and_canvas(self, qtbot):
+        from PyQt6.QtGui import QCloseEvent
+
+        from XBrainLab.ui.panels.visualization.saliency_views import base_saliency_view
+        from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+            SaliencyMapWidget,
+        )
+
+        w = SaliencyMapWidget()
+        qtbot.addWidget(w)
+        fig = w.fig
+
+        with patch.object(base_saliency_view.plt, "close") as close_figure:
+            w.closeEvent(QCloseEvent())
+
+        close_figure.assert_called_once_with(fig)
+        assert w.fig is None
+        assert w.canvas is None
+
+    def test_replace_figure_releases_previous_canvas(self, qtbot):
+        from matplotlib.figure import Figure
+
+        from XBrainLab.ui.panels.visualization.saliency_views import base_saliency_view
+        from XBrainLab.ui.panels.visualization.saliency_views.map_view import (
+            SaliencyMapWidget,
+        )
+
+        w = SaliencyMapWidget()
+        qtbot.addWidget(w)
+        old_fig = w.fig
+        old_canvas = w.canvas
+        assert old_canvas is not None
+        new_fig = Figure(figsize=(5, 4), dpi=100)
+
+        with patch.object(base_saliency_view.plt, "close") as close_figure:
+            w._replace_figure(new_fig)
+
+        close_figure.assert_called_once_with(old_fig)
+        assert w.fig is new_fig
+        assert w.canvas is not old_canvas
+        assert old_canvas.parent() is None
+
 
 # ============ SaliencySpectrogramWidget ============
 

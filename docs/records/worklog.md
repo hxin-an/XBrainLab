@@ -10585,3 +10585,41 @@
 - 不能宣稱：
   - This does not prove long-run Matplotlib memory trends, full visualization soak behavior,
     interactive desktop 3D render, or human Windows desktop acceptance.
+
+### 2026-05-06 Saliency 2D canvas cleanup
+
+- scope：
+  - Continue visualization resource cleanup after plot-window and 3D widget cleanup.
+  - Remove duplicated Map / Spectrogram / Topomap figure-replacement code that closed figures but
+    did not detach / deleteLater the old Matplotlib canvas.
+- red / focused tests：
+  - Added `test_close_releases_figure_and_canvas`.
+  - Added `test_replace_figure_releases_previous_canvas`.
+  - Red gates failed because close left `canvas` populated and `_replace_figure()` did not exist.
+- 做了什麼：
+  - Added `BaseSaliencyView._close_current_figure()`, `_release_canvas()`, and `_replace_figure()`.
+  - `closeEvent()` now closes the current figure, detaches canvas, schedules `deleteLater()`, and
+    clears references.
+  - Map / Spectrogram / Topomap update paths now call the shared `_replace_figure()` helper instead
+    of duplicating partial canvas replacement code.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_close_releases_figure_and_canvas tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_replace_figure_releases_previous_canvas -q`
+    -> failed because `canvas` remained set and `_replace_figure()` was missing.
+  - Focused pass:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_close_releases_figure_and_canvas tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_replace_figure_releases_previous_canvas tests/unit/ui/test_visualization.py::TestSaliencyMapWidget::test_update_plot_no_eval tests/unit/ui/test_visualization.py::TestSaliencySpectrogramWidget::test_update_plot_no_eval tests/unit/ui/test_visualization.py::TestSaliencyTopographicMapWidget::test_update_plot_no_eval -q`
+    -> `5 passed`.
+  - Visualization regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/components/test_plot_figure_window.py -q`
+    -> `61 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/saliency_views/base_saliency_view.py XBrainLab/ui/panels/visualization/saliency_views/map_view.py XBrainLab/ui/panels/visualization/saliency_views/spectrogram_view.py XBrainLab/ui/panels/visualization/saliency_views/topomap_view.py tests/unit/ui/test_visualization.py`
+    -> `All checks passed!`.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/saliency_views/base_saliency_view.py XBrainLab/ui/panels/visualization/saliency_views/map_view.py XBrainLab/ui/panels/visualization/saliency_views/spectrogram_view.py XBrainLab/ui/panels/visualization/saliency_views/topomap_view.py tests/unit/ui/test_visualization.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+- local eval：
+  - Not run. This is a UI resource cleanup under the fast dev gate; it does not justify
+    primary/fallback x3 local eval.
+- 不能宣稱：
+  - This does not certify full saliency workflow UX, long-run visualization memory trends,
+    interactive desktop 3D render, or human Windows desktop acceptance.
