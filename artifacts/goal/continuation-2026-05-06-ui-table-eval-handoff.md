@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+7fc1027 ui: guard visualization average fallback
+ad0ba84 docs: refresh handoff after evaluation selection guard
 c7d13ca ui: guard evaluation stale selection fallback
 ca6556d docs: refresh handoff after training history guard
 bdfebfa ui: guard training history fallback
@@ -115,6 +117,12 @@ bb57beb ui: use backend truth for split replacement
 
 ## What Was Closed In This Slice
 
+- Visualization average stale-selection fallback:
+  - real `Study` stale Average selections without a service payload no longer recover through
+    `VisualizationController.get_averaged_record()`.
+  - the panel shows the existing user-facing `No finished runs to average.` message instead of
+    reading stale controller data.
+  - mock / legacy rendering still uses explicit `run_legacy_controller_fallback()`.
 - Evaluation stale-selection fallback:
   - `EvaluationPanel` now initializes its service-query state.
   - real `Study` stale average/summary selections without a service payload no longer recover
@@ -1325,6 +1333,35 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for c7d13ca; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_panel_refuses_real_study_query_none_average_fallback \
+  -q
+# 1 passed for 7fc1027 after red failure on stale VisualizationController.get_averaged_record()
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/visualization/test_control_sidebar.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  tests/unit/ui/test_visualization.py \
+  -q
+# 66 passed for 7fc1027
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 7fc1027
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 7fc1027
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 7fc1027; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
