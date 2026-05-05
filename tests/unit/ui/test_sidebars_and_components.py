@@ -63,6 +63,26 @@ class TestPreprocessSidebar:
             # check_lock returns True when epoched (action is blocked)
             assert sidebar.check_lock() is True
 
+    def test_check_lock_prefers_backend_capability_over_stale_controller(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.is_epoched.return_value = True
+
+        with patch.object(QMessageBox, "warning") as mock_warning:
+            assert sidebar.check_lock() is False
+
+        mock_warning.assert_not_called()
+
     def test_check_data_loaded_true(self, sidebar):
         assert sidebar.check_data_loaded() is True
 
@@ -70,6 +90,26 @@ class TestPreprocessSidebar:
         sidebar.panel.controller.has_data.return_value = False
         with patch("PyQt6.QtWidgets.QMessageBox.warning"):
             assert sidebar.check_data_loaded() is False
+
+    def test_check_data_loaded_prefers_backend_capability_over_stale_controller(
+        self,
+        sidebar,
+    ):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from XBrainLab.backend.study import Study
+
+        study = Study()
+        raw = MagicMock()
+        raw.get_filename.return_value = "sub-01_task-mi_raw.fif"
+        study.data_manager.loaded_data_list = [raw]
+        sidebar.panel.main_window.study = study
+        sidebar.panel.controller.has_data.return_value = False
+
+        with patch.object(QMessageBox, "warning") as mock_warning:
+            assert sidebar.check_data_loaded() is True
+
+        mock_warning.assert_not_called()
 
     def test_open_filtering_accepted(self, sidebar):
         with (

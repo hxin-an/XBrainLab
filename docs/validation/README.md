@@ -2533,6 +2533,41 @@ capability truth。它仍不是完整 preprocessing UX 或 Data Interpretation w
 蓋過 backend capability truth。它仍不是完整 Data Interpretation wizard UX 或 human desktop import
 acceptance。
 
+2026-05-05 Preprocess helper source-of-truth follow-up：
+
+- UI/action:
+  - `PreprocessSidebar.check_lock()` and `check_data_loaded()` now treat backend `preprocess`
+    capability as the real `Study` source of truth for shared preprocessing action gates.
+  - Controller-local `is_epoched()` / `has_data()` checks are limited to mock / legacy non-Study
+    compatibility paths.
+- targeted gates:
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_prefers_backend_capability_over_stale_controller -q`
+    -> first run failed, implementation run passed.
+  - Preprocess helper regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_locked tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_false -q`
+    -> `4 passed`.
+  - Preprocess sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `17 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - full quality gates:
+    `git diff --check`, `poetry run ruff check .`, `poetry run basedpyright`,
+    `poetry run python tests/architecture_compliance.py`, and
+    `poetry run mkdocs build --strict` passed. MkDocs emitted the existing Material warning only.
+
+這批 evidence 支撐 Preprocess shared helper gates 不再被 stale controller state 蓋過 backend
+capability truth。它仍不是完整 preprocessing workflow UI acceptance 或 signal/thread lifecycle
+validation。
+
 2026-05-04 Data Interpretation format capability boundary slice：
 
 - backend:

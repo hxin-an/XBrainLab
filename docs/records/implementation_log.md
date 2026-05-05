@@ -1209,3 +1209,26 @@ Dataset main file import 和 folder/BIDS source import 現在在 real `Study` pa
 ### 不能宣稱完成
 
 - 這不是完整 Data Interpretation wizard UX 或 human desktop import acceptance。
+
+## 2026-05-05 Preprocess Helper Source-Of-Truth Cleanup
+
+### 狀態
+
+Preprocess sidebar 的 shared `check_lock()` / `check_data_loaded()` helpers 現在在 real `Study`
+path 以 backend `preprocess` capability 作為 source of truth。controller-local `is_epoched()` /
+`has_data()` checks 僅保留給 mock / legacy non-Study compatibility。
+
+### 已可宣稱
+
+- Preprocess action helpers 不再被 stale controller state 蓋過 backend capability truth。
+- Legacy warning behavior 仍保留給 non-Study fallback。
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/preprocess/sidebar.py`
+- Tests：`tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- 這不是完整 preprocessing workflow UI acceptance 或 signal/thread lifecycle validation。

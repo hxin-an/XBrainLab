@@ -274,7 +274,7 @@ class PreprocessSidebar(QWidget):
                 ),
             )
             return True
-        if self.controller.is_epoched():
+        if preprocess_capability is None and self.controller.is_epoched():
             QMessageBox.warning(
                 self,
                 "Action Blocked",
@@ -304,7 +304,9 @@ class PreprocessSidebar(QWidget):
                 ),
             )
             return False
-        if not self.controller or not self.controller.has_data():
+        if preprocess_capability is None and (
+            not self.controller or not self.controller.has_data()
+        ):
             QMessageBox.warning(
                 self,
                 "Warning",

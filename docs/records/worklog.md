@@ -6352,3 +6352,54 @@
     import acceptance.
   - It does not prove Windows human desktop click-through or complete UI-observable walkthrough
     coverage.
+
+### 2026-05-05 Preprocess helper source-of-truth cleanup
+
+- scope：
+  - UI command truth alignment for shared Preprocess sidebar helper gates。
+  - No backend command schema, agent tool, MCP tool, or screenshot artifact change.
+- problem：
+  - `PreprocessSidebar.check_lock()` and `check_data_loaded()` first read backend `preprocess`
+    capability, but after capability passed they still used controller-local `is_epoched()` /
+    `has_data()` checks.
+  - Stale controller state could therefore block real `Study` preprocessing actions even when
+    backend capability said preprocessing was available.
+- red test：
+  - `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_prefers_backend_capability_over_stale_controller -q`
+    initially failed because both helper methods returned blocked.
+- 做了什麼：
+  - Limited controller-local epoched / has-data checks to mock / legacy non-Study paths.
+  - Kept real `Study` blocked behavior on backend `preprocess` capability.
+  - Preserved legacy warning behavior for non-Study fallback tests.
+- validation：
+  - focused red + stale-controller boundary:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_prefers_backend_capability_over_stale_controller -q`
+    -> red before implementation, then passed.
+  - Preprocess helper regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_prefers_backend_capability_over_stale_controller tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_lock_locked tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_check_data_loaded_false -q`
+    -> `4 passed`.
+  - Preprocess sidebar regression:
+    `poetry run pytest --capture=sys tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar -q`
+    -> `17 passed`.
+  - required backend/agent gates:
+    `poetry run pytest --capture=sys tests/unit/backend/application -q`
+    -> `104 passed`.
+    `poetry run pytest --capture=sys tests/integration/backend -q`
+    -> `3 passed`.
+    `poetry run pytest --capture=sys tests/unit/llm/agent tests/unit/llm/tools -q`
+    -> `470 passed`.
+    `poetry run pytest --capture=sys tests/integration/agent -q`
+    -> `7 passed`.
+  - `git diff --check`
+    -> pass.
+  - `poetry run ruff check .`
+    -> pass.
+  - `poetry run basedpyright`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - `poetry run python tests/architecture_compliance.py`
+    -> pass.
+  - `poetry run mkdocs build --strict`
+    -> pass with existing MkDocs Material warning.
+- 不能宣稱：
+  - This is one Preprocess helper gate cleanup, not full preprocessing workflow UI acceptance.
+  - It does not prove signal/thread lifecycle cleanup or complete UI-observable walkthrough coverage.
