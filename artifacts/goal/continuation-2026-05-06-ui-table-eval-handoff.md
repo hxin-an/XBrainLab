@@ -30,6 +30,7 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+9a5d0ef ui: clean up 3d visualization widgets
 5ff0790 training: bound force cleanup waits
 5940b7d llm: release local runtime on shutdown
 cc1b03e docs: refresh handoff after downloader lifecycle cleanup
@@ -241,6 +242,12 @@ bb57beb ui: use backend truth for split replacement
     handle intact so later cancel/status paths are still reachable.
   - `TrainingManager.clean_trainer()` only clears the trainer after `trainer.clean()` succeeds.
   - This is thread-handle safety coverage, not a long-running training soak.
+- Visualization 3D widget cleanup:
+  - `Saliency3DPlotWidget.clear_plot()` now detaches plot-layout children, schedules non-plotter
+    child widgets for `deleteLater()`, and closes / deletes the PyVista plotter with runtime-safe
+    method checks before clearing the reference.
+  - This is focused 3D widget lifecycle coverage, not interactive desktop 3D / PyVista render
+    acceptance or an OpenGL soak.
 - Preprocess epoch command truth:
   - `open_epoching()` uses backend `create_epoch` capability as the authoritative UI gate.
   - An enabled `create_epoch` capability is no longer vetoed by the separate `preprocess`
@@ -745,6 +752,37 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for 5ff0790; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot_schedules_child_widgets_for_deletion \
+  tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_clear_plot \
+  tests/unit/ui/test_visualization.py::TestSaliency3DPlotWidget::test_update_plot_blocks_offscreen_before_qtinteractor \
+  -q
+# 3 passed for 9a5d0ef
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_visualization.py \
+  tests/unit/ui/test_visualization_panel_coverage.py \
+  tests/unit/ui/test_visualization_panel_redesign.py \
+  tests/unit/ui/components/test_plot_figure_window.py \
+  -q
+# 59 passed for 9a5d0ef
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for 9a5d0ef
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for 9a5d0ef
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for 9a5d0ef; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
