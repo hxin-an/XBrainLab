@@ -30,6 +30,8 @@ Expected dirty files after this handoff:
 ## Latest Validated Commits
 
 ```text
+a315170 ui: guard dialog query fallback paths
+1ade9d2 docs: refresh handoff after label target fallback
 b6b6d00 ui: block stale label target fallback
 1e59b29 docs: refresh handoff after split dialog boundary
 2a08679 ui: require split dialog service context
@@ -336,6 +338,8 @@ bb57beb ui: use backend truth for split replacement
     `QueryStateCommand(query="data_lists", include_objects=True)`.
   - `PreprocessController.get_preprocessed_data_list()` remains only for no-capability mock /
     legacy dialog population.
+  - if a real `Study` path unexpectedly receives no query result, the dialog source fallback now
+    blocks with the shared safety message instead of reading a stale controller list.
 - Preprocess panel state-query render:
   - `PreprocessPanel.update_panel()` and `update_plot_only()` now query
     `QueryStateCommand(query="data_lists", include_objects=True)` in real `Study` contexts.
@@ -372,6 +376,8 @@ bb57beb ui: use backend truth for split replacement
     `ChannelSelectionDialog`.
   - `DatasetController.get_loaded_data_list()` remains only for no-capability mock / legacy dialog
     population.
+  - if a real `Study` path unexpectedly receives no query result, Channel Selection now blocks
+    instead of opening a stale/empty controller-backed dialog.
 
 ## Validation Already Run
 
@@ -1068,6 +1074,41 @@ poetry run basedpyright
 poetry run python tests/architecture_compliance.py
 poetry run mkdocs build --strict
 # all passed for b6b6d00; mkdocs still prints the existing Material advisory
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar::test_open_channel_selection_refuses_real_study_query_none_controller_fallback \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar::test_open_epoching_refuses_real_study_query_none_controller_fallback \
+  -q
+# 2 passed for a315170 after red failures on stale controller list reads
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/test_sidebars_and_components.py::TestPreprocessSidebar \
+  tests/unit/ui/test_sidebars_and_components.py::TestDatasetSidebar \
+  -q
+# 37 passed for a315170
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/ui/dataset/test_dataset_sidebar.py \
+  tests/unit/ui/preprocess/test_preprocess_plotter.py \
+  tests/unit/ui/preprocess/test_data_query.py \
+  -q
+# 31 passed for a315170
+
+poetry run pytest --capture=sys tests/integration/backend -q
+# 7 passed for a315170
+
+QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys \
+  tests/unit/llm/tools/test_application_surface.py \
+  tests/integration/agent/test_tool_call_eval.py \
+  -q
+# 20 passed for a315170
+
+git diff --check
+poetry run ruff check .
+poetry run basedpyright
+poetry run python tests/architecture_compliance.py
+poetry run mkdocs build --strict
+# all passed for a315170; mkdocs still prints the existing Material advisory
 ```
 
 No local LLM eval was run for these UI / architecture / lifecycle guard slices.
