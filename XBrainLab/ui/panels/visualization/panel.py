@@ -16,7 +16,11 @@ from PyQt6.QtWidgets import (
 from XBrainLab.backend.application import SaliencyCommand, VisualizeCommand
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.backend.visualization import supported_saliency_methods
-from XBrainLab.ui.application_capabilities import execute_application_command
+from XBrainLab.ui.application_capabilities import (
+    LegacyControllerFallbackUnavailableError,
+    execute_application_command,
+    run_legacy_controller_fallback,
+)
 from XBrainLab.ui.core.base_panel import BasePanel
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
@@ -206,7 +210,15 @@ class VisualizationPanel(BasePanel):
             return trainers
         if self.last_application_query is not None:
             return []
-        return [] if self.controller is None else self.controller.get_trainers()
+        return self._legacy_trainers_for_render()
+
+    def _legacy_trainers_for_render(self):
+        if self.controller is None:
+            return []
+        try:
+            return run_legacy_controller_fallback(self, self.controller.get_trainers)
+        except LegacyControllerFallbackUnavailableError:
+            return []
 
     def refresh_combos(self):
         """Refresh Plan ComboBox based on current trainers."""

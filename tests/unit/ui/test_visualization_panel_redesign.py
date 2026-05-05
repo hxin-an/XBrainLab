@@ -226,6 +226,38 @@ def test_visualization_get_trainers_does_not_fallback_after_failed_query(qtbot):
     ctrl.get_trainers.assert_not_called()
 
 
+def test_visualization_panel_refuses_real_study_query_none_controller_fallback(
+    qtbot,
+    monkeypatch,
+):
+    class RealMainWindow(QWidget):
+        def __init__(self):
+            super().__init__()
+            self.study = Study()
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.execute_application_command",
+        lambda *_args, **_kwargs: None,
+    )
+    panel, ctrl = _make_panel(qtbot, parent=RealMainWindow())
+    ctrl.get_trainers.side_effect = AssertionError(
+        "stale visualization trainers should not be read",
+    )
+    ctrl.get_averaged_record.side_effect = AssertionError(
+        "stale averaged records should not be read",
+    )
+    ctrl.get_trainers.reset_mock()
+    ctrl.get_averaged_record.reset_mock()
+
+    panel.refresh_combos()
+
+    ctrl.get_trainers.assert_not_called()
+    ctrl.get_averaged_record.assert_not_called()
+    assert panel.plan_combo.count() == 1
+    assert panel.plan_combo.itemText(0) == "Select a plan"
+    assert panel.run_combo.count() == 0
+
+
 def test_visualization_panel_uses_application_payload_before_stale_controller(
     qtbot,
     monkeypatch,

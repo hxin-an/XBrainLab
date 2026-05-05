@@ -2717,6 +2717,35 @@ UI，也不是 human desktop acceptance。
 這批 evidence 支撐 post-load label compatibility path 不再在 empty / blocked state 裡鼓勵舊
 attach-label 心智模型。它仍不是完整 embedded Data Interpretation label editor。
 
+2026-05-06 Visualization query-none render fallback boundary：
+
+- Focused red/fixed gate:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_panel_refuses_real_study_query_none_controller_fallback -q`
+  -> `1 passed` after failing on stale `VisualizationController.get_trainers()` before the fix.
+- Visualization regression:
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization.py -q`
+  -> `65 passed`.
+- Focused lint/type:
+  `poetry run ruff check XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_redesign.py`
+  -> pass;
+  `poetry run basedpyright XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_redesign.py`
+  -> `0 errors`.
+- Static / docs / backend / agent gate:
+  `git diff --check` -> pass;
+  `poetry run ruff check .` -> pass;
+  `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+  `poetry run python tests/architecture_compliance.py` -> pass;
+  `poetry run mkdocs build --strict` -> pass;
+  `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`;
+  `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+  -> `20 passed`.
+- Local eval:
+  not run. This was a fast dev gate Visualization render fallback boundary slice.
+
+This supports real `Study` Visualization panel query-none fallback keeping empty controls instead
+of reading stale controller trainers. It does not prove full Visualization UX, saliency/canvas
+screenshot acceptance, or human desktop acceptance.
+
 2026-05-06 Evaluation query-none render fallback boundary：
 
 - Focused red/fixed gate:

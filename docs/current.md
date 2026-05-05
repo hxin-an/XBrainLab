@@ -991,7 +991,9 @@ conflict editor、複雜 anchor reconciliation，也不能替代 UI / launcher /
   `panel.get_trainers()` / `VisualizationController.get_trainers()` 只留在 query unavailable 的
   mock / legacy fallback helper。最新 follow-up 又讓 `VisualizationPanel.get_trainers()` 在已有
   failed ApplicationService visualization query 時直接回空 list，不再 fall back 到 stale
-  controller trainers。
+  controller trainers。最新 query-none render fallback boundary 也讓 real `Study`
+  `VisualizeCommand(include_objects=True)` 意外回 `None` 時保持 empty controls，而不是回讀 stale
+  `VisualizationController.get_trainers()`。
   最新 saliency settings cleanup 也把設定 dialog 的預設值改成先讀 readonly `SaliencyCommand`
   summary diagnostics；`VisualizationController.get_saliency_params()` 只保留在 query unavailable
   的 mock / legacy fallback helper，避免 real `Study` UI 用 stale controller params 填 dialog。

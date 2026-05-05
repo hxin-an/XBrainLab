@@ -37,6 +37,51 @@
 
 ## 2026-05-06
 
+### 08:00 Visualization query-none render fallback boundary
+
+- scope：
+  - Continue read-side fallback audit for Visualization panel render.
+  - Prevent real `Study` `VisualizeCommand` query-none path from recovering through stale
+    `VisualizationController.get_trainers()`.
+- red / focused tests：
+  - Added `test_visualization_panel_refuses_real_study_query_none_controller_fallback`.
+  - Red gate failed because `VisualizationPanel.refresh_combos()` called
+    `controller.get_trainers()` when `execute_application_command()` returned `None`.
+- 做了什麼：
+  - `VisualizationPanel.get_trainers()` now routes legacy trainer rendering through
+    `run_legacy_controller_fallback()`.
+  - real `Study` fallback refusal keeps empty plan/run controls and does not read stale controller
+    trainers or averaged records.
+- validation：
+  - Red gate:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/test_visualization_panel_redesign.py::test_visualization_panel_refuses_real_study_query_none_controller_fallback -q`
+    -> failed on stale `get_trainers()`.
+  - Focused pass:
+    same command -> `1 passed`.
+  - Visualization regression:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py tests/unit/ui/test_visualization.py -q`
+    -> `65 passed`.
+  - Focused lint/type:
+    `poetry run ruff check XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_redesign.py`
+    -> pass.
+    `poetry run basedpyright XBrainLab/ui/panels/visualization/panel.py tests/unit/ui/test_visualization_panel_redesign.py`
+    -> `0 errors, 0 warnings, 0 notes`.
+  - Static / docs / architecture gate:
+    `git diff --check` -> pass;
+    `poetry run ruff check .` -> pass;
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`;
+    `poetry run python tests/architecture_compliance.py` -> pass;
+    `poetry run mkdocs build --strict` -> pass.
+  - Backend / agent regression:
+    `poetry run pytest --capture=sys tests/integration/backend -q` -> `7 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/llm/tools/test_application_surface.py tests/integration/agent/test_tool_call_eval.py -q`
+    -> `20 passed`.
+- local eval：
+  - Not run. This is a Visualization UI render fallback cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not complete Visualization UX, saliency/canvas screenshot acceptance, human desktop
+    acceptance, or all controller read fallback cleanup.
+
 ### 07:45 Evaluation query-none render fallback boundary
 
 - scope：

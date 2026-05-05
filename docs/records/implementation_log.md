@@ -138,6 +138,36 @@ query result, it renders no data / skips plotting instead of reading stale
 
 Continue auditing remaining read-side query fallbacks and product-runtime controller reads.
 
+## 2026-05-06 Visualization Query-None Render Fallback Boundary
+
+### 狀態
+
+Visualization panel rendering now treats missing ApplicationService query results as
+mock/legacy-only fallback. If a real `Study` `VisualizeCommand(include_objects=True)` call
+unexpectedly returns no result, the panel keeps empty plan/run controls instead of reading stale
+`VisualizationController.get_trainers()`.
+
+### 已可宣稱
+
+- Real `Study` Visualization query-none render fallback no longer reads stale controller trainers.
+- Mock / legacy panel rendering still keeps controller-trainer compatibility through the explicit
+  fallback helper.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/visualization/panel.py`
+- Tests: `tests/unit/ui/test_visualization_panel_redesign.py`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not complete Visualization UX, saliency/canvas screenshot acceptance, or every
+  controller read fallback path.
+
+### 下一手重點
+
+Continue auditing remaining query-unavailable read fallbacks and UI refresh coordinator debt.
+
 ## 2026-05-06 Visualization Fallback Refusal Product Warning
 
 ### 狀態
