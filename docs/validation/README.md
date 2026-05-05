@@ -1,6 +1,6 @@
 # XBrainLab Validation
 
-最後更新：`2026-05-05`
+最後更新：`2026-05-06`
 
 ## 這份文件的用途
 
@@ -46,7 +46,10 @@ Tool-call eval 另採分層 gate，避免每個小修都消耗完整 local bench
 loading the local model. It records disk/cache and `nvidia-smi` VRAM state in the result artifact;
 if a repeat-`3` full local gate sees high VRAM pressure, it writes `resource_preflight.json` /
 `.md` and exits before starting the model. This guard is for local eval execution only; routine
-development still should use deterministic changed cases or primary subsets.
+development still should use deterministic changed cases or primary subsets. On the target RTX
+5070 Ti 16GB machine, full fallback x3 is a release / thesis evidence gate only. If `nvidia-smi`
+shows VRAM near saturation, do not start a full fallback x3 run; record the resource state and use
+the fast dev or candidate gate until a formal benchmark claim is being refreshed.
 
 最新使用者要求的「單一 automated human-like walkthrough」已新增：
 `scripts/dev/capture_human_like_product_walkthrough.py` 產出

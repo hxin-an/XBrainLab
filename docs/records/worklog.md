@@ -9481,3 +9481,23 @@
 - 不能宣稱：
   - This does not certify saliency export file contents, saliency canvas correctness, or human
     desktop visualization acceptance.
+
+### 2026-05-06 Tool-call eval gate reminder sync
+
+- scope：
+  - Align validation / roadmap docs with the current local-eval operating rule after the user's
+    reminder not to run full primary/fallback x3 during routine slices.
+- 做了什麼：
+  - Kept the existing three-tier gate: fast dev deterministic changed/failed cases, candidate
+    primary affected families, release/thesis full deterministic + primary x3 + fallback x3.
+  - Strengthened the docs that RTX 5070 Ti 16GB fallback x3 is a high-pressure release/thesis gate,
+    and that `nvidia-smi` VRAM saturation should block/defer full fallback x3 rather than being
+    treated as normal slowness.
+- validation：
+  - `git diff --check docs/validation/README.md docs/planning/roadmap.md docs/records/worklog.md`
+    -> passed.
+  - `poetry run mkdocs build --strict` -> passed with the existing MkDocs Material advisory.
+- local eval：
+  - Not run. This is documentation / validation-boundary synchronization under the fast dev gate.
+- 不能宣稱：
+  - This does not refresh benchmark artifacts or update thesis accuracy claims.
