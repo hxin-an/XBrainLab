@@ -227,6 +227,16 @@ class ControlSidebar(QWidget):
 
     def export_saliency(self):
         """Open the saliency-export dialog to save computed saliency data."""
+        result = execute_application_command(
+            self,
+            SaliencyCommand(),
+            refresh=False,
+        )
+        block_reason = self._saliency_export_block_reason(result)
+        if block_reason is not None:
+            QMessageBox.warning(self, "Export Saliency Blocked", block_reason)
+            return
+
         if self.panel and hasattr(self.panel, "get_trainers"):
             trainers = self.panel.get_trainers()
         else:
@@ -237,3 +247,16 @@ class ControlSidebar(QWidget):
             return
         win = ExportSaliencyDialog(self, trainers)
         win.exec()
+
+    @staticmethod
+    def _saliency_export_block_reason(result) -> str | None:
+        if result is None:
+            return None
+        if result.failed:
+            return result.message
+        diagnostics = getattr(result, "diagnostics", {}) or {}
+        if diagnostics.get("payload_type") != "saliency_summary":
+            return None
+        if diagnostics.get("saliency_available") is True:
+            return None
+        return "Saliency output is not ready to export."

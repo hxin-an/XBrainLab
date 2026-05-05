@@ -3088,3 +3088,27 @@ panel clears plan/run controls and shows a user-facing readiness message before 
 
 - This does not certify saliency map / spectrogram / topomap / 3D canvas screenshot acceptance or
   full analysis workflow UX.
+
+## 2026-05-06 Visualization Export Query Gate
+
+### 狀態
+
+`Export Saliency` now checks readonly `SaliencyCommand` readiness before reading trainer lists or
+opening the export dialog. When saliency output is not available, the UI shows a user-facing blocked
+message.
+
+### 已可宣稱
+
+- Stale trainer lists can no longer open the saliency export dialog when ApplicationService says
+  saliency output is unavailable.
+- Mock / legacy export behavior remains available when no real ApplicationService query exists.
+
+### Evidence 入口
+
+- Source：`XBrainLab/ui/panels/visualization/control_sidebar.py`
+- Tests：`tests/unit/ui/visualization/test_control_sidebar.py`
+- Detailed validation：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not validate generated saliency files or saliency canvas correctness.

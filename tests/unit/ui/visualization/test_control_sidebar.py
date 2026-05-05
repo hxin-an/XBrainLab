@@ -334,3 +334,31 @@ def test_sidebar_set_saliency_service_success_uses_coordinator_refresh(
     assert isinstance(command, SaliencyCommand)
     mock_panel.controller.set_saliency_params.assert_not_called()
     mock_panel.on_update.assert_not_called()
+
+
+def test_sidebar_export_saliency_uses_query_before_stale_trainers(qtbot):
+    controller = MagicMock()
+    main_window = QMainWindow()
+    cast(Any, main_window).study = Study()
+    panel = MagicMock()
+    panel.controller = controller
+    panel.main_window = main_window
+    panel.get_trainers.return_value = [MagicMock()]
+    sidebar = ControlSidebar(panel)
+    qtbot.addWidget(sidebar)
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.ExportSaliencyDialog"
+        ) as mock_dialog,
+        patch(
+            "XBrainLab.ui.panels.visualization.control_sidebar.QMessageBox.warning"
+        ) as mock_warning,
+    ):
+        sidebar.export_saliency()
+
+    panel.get_trainers.assert_not_called()
+    controller.get_trainers.assert_not_called()
+    mock_dialog.assert_not_called()
+    mock_warning.assert_called_once()
+    assert "saliency" in mock_warning.call_args.args[2].lower()

@@ -9443,3 +9443,41 @@
 - 不能宣稱：
   - This does not certify saliency/canvas screenshot acceptance, full analysis workflow UX, or
     human desktop rendering.
+
+### 2026-05-06 Visualization export query gate
+
+- scope：
+  - Continue analysis UI query-truth cleanup in the Visualization sidebar.
+  - Prevent `Export Saliency` from opening on stale trainer lists when ApplicationService says
+    saliency output is unavailable.
+- red / focused test：
+  - Added `test_sidebar_export_saliency_uses_query_before_stale_trainers`.
+  - It failed because `export_saliency()` called `panel.get_trainers()` before any backend saliency
+    readiness query.
+- 做了什麼：
+  - `export_saliency()` now runs readonly `SaliencyCommand()` first.
+  - If the command fails or reports `saliency_available=False`, the sidebar shows
+    `Export Saliency Blocked` and does not read trainers or open the export dialog.
+  - Legacy/mock contexts where `execute_application_command()` returns `None` keep the existing
+    controller-backed export path.
+- validation：
+  - Red gate before fix:
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py::test_sidebar_export_saliency_uses_query_before_stale_trainers -q`
+    -> failed because `panel.get_trainers()` was called.
+  - After fix:
+    same focused command -> `1 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py -q`
+    -> `11 passed`.
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui/visualization/test_control_sidebar.py tests/unit/ui/test_visualization_panel_redesign.py tests/unit/ui/test_visualization_panel_coverage.py -q`
+    -> `38 passed`.
+  - Static / docs gates:
+    `git diff --check` -> passed.
+    `poetry run ruff check .` -> `All checks passed!`.
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`.
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`.
+    `poetry run mkdocs build --strict` -> passed.
+- local eval：
+  - Not run. This is a Visualization sidebar query gate cleanup under the fast dev gate.
+- 不能宣稱：
+  - This does not certify saliency export file contents, saliency canvas correctness, or human
+    desktop visualization acceptance.
