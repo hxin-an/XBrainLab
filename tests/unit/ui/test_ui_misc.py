@@ -221,7 +221,7 @@ class TestDatasetActionHandler:
         assert commands[-1].candidate_id == "candidate-1"
         assert commands[-1].confirmed is False
         handler.panel.controller.import_files.assert_not_called()
-        handler.panel.update_panel.assert_called()
+        handler.panel.update_panel.assert_not_called()
 
     def test_import_data_prefers_backend_scan_capability_over_stale_controller(
         self,
@@ -316,7 +316,7 @@ class TestDatasetActionHandler:
             ApplyInterpretationCommand,
         ]
         handler.panel.controller.import_files.assert_not_called()
-        handler.panel.update_panel.assert_called()
+        handler.panel.update_panel.assert_not_called()
 
     def test_import_folder_prefers_backend_scan_capability_over_stale_controller(
         self,
@@ -399,7 +399,7 @@ class TestDatasetActionHandler:
         assert isinstance(commands[1], ApplyInterpretationCommand)
         assert commands[1].candidate_id == "candidate-1"
         assert commands[1].confirmed is True
-        handler.panel.update_panel.assert_called()
+        handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
@@ -496,7 +496,7 @@ class TestDatasetActionHandler:
         assert apply_command.candidate_id == "candidate-2"
         assert apply_command.confirmed is True
         mock_mb.critical.assert_not_called()
-        handler.panel.update_panel.assert_called()
+        handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.DataInterpretationPreviewDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
@@ -590,7 +590,7 @@ class TestDatasetActionHandler:
         assert apply_command.candidate_id == "candidate-2"
         assert apply_command.confirmed is True
         mock_mb.critical.assert_not_called()
-        handler.panel.update_panel.assert_called()
+        handler.panel.update_panel.assert_not_called()
 
     @patch("XBrainLab.ui.panels.dataset.actions.QFileDialog")
     @patch("XBrainLab.ui.panels.dataset.actions.QMessageBox")

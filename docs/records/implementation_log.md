@@ -143,8 +143,40 @@ metadata updates, and remove files. Service-backed success paths no longer call
 
 ### 下一手重點
 
-Continue Dataset refresh cleanup on Data Interpretation apply and inline metadata edit, then consider
-a static guard for duplicated post-command manual refresh.
+Continue Dataset refresh cleanup on import-label compatibility and inline metadata edit, then
+consider a static guard for duplicated post-command manual refresh if it can avoid false positives.
+
+## 2026-05-05 Data Interpretation Apply Refresh Cleanup
+
+### 狀態
+
+Data Interpretation import/apply and saved recipe reload apply now follow the same refresh boundary:
+successful `ApplyInterpretationCommand` paths no longer call `DatasetPanel.update_panel()` directly.
+The Dataset panel refresh is owned by `execute_application_command()` and
+`refresh_after_command()` based on `CommandResult.changed_state`.
+
+### 已可宣稱
+
+- Data Interpretation file import, folder/BIDS import, and recipe reload apply no longer duplicate
+  Dataset panel refresh in the action handler on service success.
+- Existing service-unavailable handling remains explicit instead of falling back to controller
+  mutation.
+
+### Evidence 入口
+
+- Code: `XBrainLab/ui/panels/dataset/actions.py`
+- Tests: `tests/unit/ui/test_ui_misc.py::TestDatasetActionHandler`
+- Detailed validation commands：`docs/records/worklog.md`
+
+### 不能宣稱完成
+
+- This does not finish the UI refresh target architecture. Import-label compatibility, inline
+  metadata table refresh, observer events, and tab-switch refresh still need audit.
+
+### 下一手重點
+
+Continue the coordinator cleanup on remaining Dataset refresh paths and add broader refresh-scope
+tests only where they can observe user-facing behavior instead of only mock calls.
 
 ## 2026-05-05 UI Command Refresh Coordinator First Slice
 

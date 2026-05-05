@@ -328,7 +328,6 @@ class DatasetActionHandler:
             )
             return
 
-        self.panel.update_panel()
         recipe_message = ""
         if bool(dialog_result.get("save_recipe", False)):
             recipe_message = self._save_interpretation_recipe()
@@ -518,7 +517,6 @@ class DatasetActionHandler:
             )
             return True
 
-        self.panel.update_panel()
         recipe_message = ""
         if bool(dialog_result.get("save_recipe", False)):
             recipe_message = self._save_interpretation_recipe()

@@ -37,6 +37,44 @@
 
 ## 2026-05-05
 
+### 17:34 Data Interpretation apply refresh coordinator slice
+
+- 做了什麼：
+  - 延續 command-driven refresh cleanup，把 Data Interpretation EEG file / folder-BIDS import
+    apply 和 saved recipe reload apply 後的 `panel.update_panel()` 移除。
+  - 這些 service-success path 現在依 `execute_application_command()` 的
+    `refresh_after_command()`，用 `ApplyInterpretationCommand.changed_state` 刷新 Dataset panel。
+  - 先改測試建立紅燈：Data Interpretation command chain 成功後，action handler 不應直接呼叫
+    `panel.update_panel()`。
+- 結果：
+  - file import、folder/BIDS import、recipe reload、recipe reload label-carrier remap、recipe reload
+    EEG-file remap 五條成功 apply path 都不再重複手動刷新 Dataset panel。
+  - import-label compatibility 和 inline metadata table refresh 尚未納入這個 slice。
+- 證據：
+  - 初始紅燈：
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q`
+    -> `5 failed, 122 passed`，五個 failure 都是 `panel.update_panel()` 被呼叫。
+  - 修正後：
+    `poetry run pytest --capture=sys tests/unit/ui/test_ui_misc.py -q`
+    -> `127 passed`。
+  - Slice gates：
+    `git diff --check` -> pass；
+    `poetry run ruff check XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> pass；
+    `poetry run basedpyright XBrainLab/ui/panels/dataset/actions.py tests/unit/ui/test_ui_misc.py`
+    -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run mkdocs build --strict` -> pass with existing MkDocs Material warning。
+  - Broader gates：
+    `QT_QPA_PLATFORM=offscreen poetry run pytest --capture=sys tests/unit/ui -q`
+    -> `920 passed`；
+    `poetry run ruff check .` -> pass；
+    `poetry run basedpyright` -> `0 errors, 0 warnings, 0 notes`；
+    `poetry run python tests/architecture_compliance.py` -> `Architecture compliant!`。
+- 接續 / 本輪剩餘：
+  - 此 slice 已達可提交點。
+  - 下一步可處理 import-label compatibility / inline metadata refresh 或轉回成熟 import wizard
+    UI polish。
+
 ### 17:28 Dataset action refresh coordinator slice
 
 - 做了什麼：
